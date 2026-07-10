@@ -1,0 +1,11 @@
+{
+  "cwd": "playground",
+  "provider": "minimax-cn",
+  "model": "MiniMax-M2.7",
+  "toolsPreset": "readonly",
+  "meta": {
+    "example": "playground",
+    "stage": "smoke"
+  },
+  "systemPrompt": "You are running inside the supervisor playground. Be concise and follow TASK.md."
+}

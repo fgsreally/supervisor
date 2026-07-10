@@ -1,0 +1,4 @@
+{"id":"spawn","type":"spawn_instance","options":{"cwd":"playground","provider":"minimax-cn","model":"MiniMax-M2.7","toolsPreset":"readonly","meta":{"example":"playground","stage":"rpc-smoke"},"systemPrompt":"You are running inside the supervisor playground. Be concise and follow TASK.md."}}
+{"id":"state","type":"get_state"}
+{"id":"prompt","type":"prompt","message":"Read TASK.md and src/calculator.ts, then explain the first implementation step without editing files."}
+{"id":"messages","type":"get_messages"}

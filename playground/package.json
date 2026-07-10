@@ -1,0 +1,11 @@
+{
+  "name": "supervisor-playground",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node --import tsx src/calculator.test.ts"
+  },
+  "devDependencies": {
+    "tsx": "*"
+  }
+}

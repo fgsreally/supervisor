@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@earendil-works/pi-supervisor": ["./packages/supervisor/src/index.ts"],
+      "@earendil-works/pi-supervisor/*": ["./packages/supervisor/src/*"]
+    }
+  },
+  "include": ["packages/*/src/**/*", "packages/*/test/**/*"],
+  "exclude": ["packages/supervisor-web-ui/**/*", "**/dist/**"]
+}

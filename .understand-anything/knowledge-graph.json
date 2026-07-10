@@ -1,0 +1,2520 @@
+{
+  "version": "1.0.0",
+  "project": {
+    "name": "supervisor-standalone",
+    "languages": [
+      "typescript",
+      "vue",
+      "json",
+      "css",
+      "html",
+      "markdown",
+      "yaml",
+      "javascript"
+    ],
+    "frameworks": [
+      "Vue 3",
+      "Vite",
+      "Hono",
+      "Pinia",
+      "CodeMirror",
+      "VitePress"
+    ],
+    "description": "Supervisor backend (SQLite + Hono multi-session agent runtime) + Web UI (Vue 3 + Vite)",
+    "analyzedAt": "2026-07-06T04:01:44.957807+00:00",
+    "gitCommitHash": "(no commits)"
+  },
+  "nodes": [
+    {
+      "id": "file:src/App.vue",
+      "type": "file",
+      "name": "App.vue",
+      "filePath": "packages/supervisor-web-ui/src/App.vue",
+      "summary": "Root shell component acting as the main orchestrator for the entire UI. Manages responsive layout (desktop sidebar vs. mobile bottom nav), tab routing (chat/contacts/providers/resources/settings/search), panel visibility (list panel + main content area), and cross-panel navigation state (activeSessionId, activeAgentId, activeProviderId, activeResourceId). Composes ShellNav, ChatListPanel, ContactsPanel, ProvidersPanel, ResourcesPanel, SettingsPanel, SearchView, ChatView, ContactDetailView, AgentFormView, ProviderFormView, ProviderDetailView, ResourceDetailView, GlobalSearchModal, and EmptyPlaceholder. On mount, fetches all initial data via stores and resolves initial route. Handles mobilePage state ('list' vs 'detail') for mobile view switching.",
+      "tags": [
+        "root",
+        "layout",
+        "orchestrator",
+        "shell",
+        "navigation",
+        "responsive"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/main.ts",
+      "type": "file",
+      "name": "main.ts",
+      "filePath": "packages/supervisor-web-ui/src/main.ts",
+      "summary": "Application entry point. Initializes theme (initAppTheme), registers PWA service worker, creates Vue app with Pinia and Vue Router, mounts to #app. Sets up a one-time click listener to request notification permission.",
+      "tags": [
+        "entry-point",
+        "bootstrap",
+        "pwa",
+        "pinia",
+        "router"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/router/index.ts",
+      "type": "file",
+      "name": "router/index.ts",
+      "filePath": "packages/supervisor-web-ui/src/router/index.ts",
+      "summary": "Vue Router configuration with createWebHistory. Defines 7 routes: / -> redirect to /chat, /chat/:sessionId?, /contacts/:agentId?, /providers/:providerId?, /resources/:resourceId?, /settings, /search. Routes use empty placeholder components (App.vue handles actual rendering). Exports tabFromRoute() and idFromRoute() utilities for route parameter extraction.",
+      "tags": [
+        "router",
+        "routes",
+        "navigation",
+        "vue-router"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/views/ChatView.vue",
+      "type": "file",
+      "name": "views/ChatView.vue",
+      "filePath": "packages/supervisor-web-ui/src/views/ChatView.vue",
+      "summary": "Main chat view component. Composes ChatViewHeader, ChatSearchBar, ChatMessageList, ChatInputPanel, ChatSessionMenu, SessionLogPanel, and ToolDetailModal. Manages session message loading from store, streaming (SSE-based via api.promptSession/subscribeSessionEvents), search within messages, session menu actions (checkpoint/rewind/commit/complete/mute/showThinking), and notification dispatch for pending user asks and message completion. Converts raw SessionTreeEntry to ChatEntry display format via session-entries utility. Uses flatten-messages DisplayGroup pipeline for message rendering. Handles terminal session statuses (finish/error/stopped) by disabling input.",
+      "tags": [
+        "chat",
+        "streaming",
+        "sse",
+        "session",
+        "message-list",
+        "search",
+        "menu",
+        "notifications"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/views/ProviderFormView.vue",
+      "type": "file",
+      "name": "views/ProviderFormView.vue",
+      "filePath": "packages/supervisor-web-ui/src/views/ProviderFormView.vue",
+      "summary": "Provider create/edit form. Supports three modes: new provider (with preset buttons), edit existing provider, and models-only management. Renders ProviderModelTable for model CRUD, basic info section (name, id, icon, enabled), and connection config (apiType radio group, baseUrl). Handles data synchronization via syncModels() which diffs existing vs. new model lists and issues create/update/delete calls accordingly. CanSave computed validates name, id, and model entries.",
+      "tags": [
+        "form",
+        "provider",
+        "crud",
+        "model-management",
+        "presets"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/views/ContactDetailView.vue",
+      "type": "file",
+      "name": "views/ContactDetailView.vue",
+      "filePath": "packages/supervisor-web-ui/src/views/ContactDetailView.vue",
+      "summary": "Agent (contact) detail view with mobile and desktop layouts. Desktop shows avatar header, tab bar (Config/System Prompt/Skills/Extensions/Prompts), and tab content area with AgentConfigPanel, AgentSystemPromptPanel, or AgentResourceBrowser. Mobile shows avatar, description, linked provider row (navigable to ProviderDetailView), and MobileResourceTabs. Computes provider from agent's providerId via providerStore.",
+      "tags": [
+        "agent",
+        "detail",
+        "config",
+        "system-prompt",
+        "resource-browser",
+        "tabs"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/views/ProviderDetailView.vue",
+      "type": "file",
+      "name": "views/ProviderDetailView.vue",
+      "filePath": "packages/supervisor-web-ui/src/views/ProviderDetailView.vue",
+      "summary": "Provider detail/read-only view. Displays header with avatar, name, model count, enabled/disabled pill, edit/manage-models buttons. Shows configuration section (API type, base URL), ProviderModelTable for model listing, and linked agents section filtering agentStore by providerId. Each linked agent row navigates to ContactDetailView.",
+      "tags": [
+        "provider",
+        "detail",
+        "read-only",
+        "linked-agents"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/views/AgentFormView.vue",
+      "type": "file",
+      "name": "views/AgentFormView.vue",
+      "filePath": "packages/supervisor-web-ui/src/views/AgentFormView.vue",
+      "summary": "Agent creation form. Fields for name, optional id, description, provider (select from providerStore), model (filtered by selected provider), and tools preset (coding/readonly/none). Uses providerToUI to build provider+model options. Watches providerOptions to auto-select first provider/model on load. On save, calls agentStore.createAgent and emits 'saved' with new agent id.",
+      "tags": [
+        "agent",
+        "form",
+        "create",
+        "provider-select",
+        "model-select",
+        "tools-preset"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/views/ResourceDetailView.vue",
+      "type": "file",
+      "name": "views/ResourceDetailView.vue",
+      "filePath": "packages/supervisor-web-ui/src/views/ResourceDetailView.vue",
+      "summary": "Resource detail view with sidebar/main split layout. Sidebar shows resource type label (Skill/Extension/Prompt Template), file path, description, and SkillFileTree for skill-type resources. Main content area renders ResourceContentView with syntax-highlighted content. Handles three resource kinds: skills (with multi-file tree navigation), extensions, and prompts. Uses resourceStore and resources-ui utility for data.",
+      "tags": [
+        "resource",
+        "detail",
+        "skill-tree",
+        "code-viewer",
+        "sidebar-layout"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/views/SearchView.vue",
+      "type": "file",
+      "name": "views/SearchView.vue",
+      "filePath": "packages/supervisor-web-ui/src/views/SearchView.vue",
+      "summary": "Global search view with two tabs: sessions and messages. Session search is computed client-side from sessionStore.sessions (filtering by name/lastMessagePreview, excluding child sessions). Message search iterates sessionStore.messages to find text matches with snippet extraction and highlighting. Results display with highlighted keywords and navigation to /chat/:sessionId. Supports Ctrl+F / Cmd+F keyboard shortcut to focus input.",
+      "tags": [
+        "search",
+        "sessions",
+        "messages",
+        "highlight",
+        "debounced"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/store/index.ts",
+      "type": "file",
+      "name": "store/index.ts",
+      "filePath": "packages/supervisor-web-ui/src/store/index.ts",
+      "summary": "Pinia stores defining the global state management layer. Contains four stores: useRootStore (loading flags + error handling), useSessionStore (session CRUD, message fetching, checkpoint/rewind/commit, streaming, groupedSessions by cwd), useAgentStore (agent CRUD, agent resources, system MD fetch/update, categorized agents), useProviderStore (provider CRUD, model CRUD per provider), and useResourceStore (global resources, resourceItems conversion via layerFromApi). Each store uses root store for centralized loading/error state. All API calls delegate to the api module.",
+      "tags": [
+        "pinia",
+        "state-management",
+        "store",
+        "session",
+        "agent",
+        "provider",
+        "resource",
+        "crud"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:src/api/api.ts",
+      "type": "file",
+      "name": "api/api.ts",
+      "filePath": "packages/supervisor-web-ui/src/api/api.ts",
+      "summary": "HTTP API client layer. Re-exports types from upstream packages and defines domain types (Session, Agent, Provider, Model, SessionTreeEntry, etc.). Implements fetchJson, postJson, patchJson, putJson, deleteRequest utilities with error handling. Session API includes CRUD, streaming (promptSession with SSE reader, subscribeSessionEvents), checkpoint/rewind/commit/fork/clone, meta management, and message search. Agent API covers CRUD, resources, system MD, meta. Provider API covers CRUD, model CRUD. Additional APIs for session logs, global resources, file content, workspace files, and health check.",
+      "tags": [
+        "api-client",
+        "http",
+        "sse",
+        "streaming",
+        "crud",
+        "types"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/api/index.ts",
+      "type": "file",
+      "name": "api/index.ts",
+      "filePath": "packages/supervisor-web-ui/src/api/index.ts",
+      "summary": "Barrel file that re-exports everything from api/api.ts.",
+      "tags": [
+        "barrel",
+        "re-export"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/types/index.ts",
+      "type": "file",
+      "name": "types/index.ts",
+      "filePath": "packages/supervisor-web-ui/src/types/index.ts",
+      "summary": "Domain and UI type definitions extending upstream types. Defines SessionUiState (pinned, muted, unread, workspaceId, name, description) and SessionWithUiState. Defines AgentUiState (category) and AgentWithUiState with DEFAULT_AGENT_CATEGORIES. Defines ProviderWithUiState, ModelWithDisplay. Resource types: ResourceKind, ResourceLayer, ResourceItemBase, SkillFile, SkillResourceItem, ExtensionResourceItem, PromptResourceItem, Workspace. Message types: UserMessageContent, ChatAutocompleteContext, ChatAutocompleteItem. ViewMode, AppState, ThemeSettings.",
+      "tags": [
+        "types",
+        "domain-models",
+        "ui-types",
+        "resources"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/types/chat-entry.ts",
+      "type": "file",
+      "name": "types/chat-entry.ts",
+      "filePath": "packages/supervisor-web-ui/src/types/chat-entry.ts",
+      "summary": "Chat entry type definitions for the UI rendering pipeline. Defines ChatEntryBase, chat content parts (ChatToolPart, ChatThinkingPart, ChatTextPart, ChatUserFileAttachment), and the ChatEntry union type (system/message/toolResult/compaction) which drives message list rendering.",
+      "tags": [
+        "types",
+        "chat",
+        "message-parts",
+        "display-pipeline"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/types/chat-compose.ts",
+      "type": "file",
+      "name": "types/chat-compose.ts",
+      "filePath": "packages/supervisor-web-ui/src/types/chat-compose.ts",
+      "summary": "Minimal type definitions for chat input composition. Defines PendingChatImage (with id, name, mimeType, previewUrl, data) and ChatSendPayload (text + images array).",
+      "tags": [
+        "types",
+        "chat-input",
+        "image-upload"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/types/ui.ts",
+      "type": "file",
+      "name": "types/ui.ts",
+      "filePath": "packages/supervisor-web-ui/src/types/ui.ts",
+      "summary": "UI-specific type definitions for display components. Defines UIWorkspace, UISession (flat session row for list panels), UIProviderModel, UIProvider (merged provider+models), UIResourceKind, UIResourceLayer, UISkillFile, UIResourceItemBase, UISkillItem, UIFileItem, and the UIResourceItem union type.",
+      "tags": [
+        "types",
+        "ui-models",
+        "display",
+        "provider",
+        "resource"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/style.css",
+      "type": "file",
+      "name": "style.css",
+      "filePath": "packages/supervisor-web-ui/src/style.css",
+      "summary": "Global stylesheet with Tailwind CSS import, light/dark theme CSS custom properties (200+ variables), and base element resets. Light theme follows WeChat PC color scheme with green accent (#07c160). Dark theme uses dark grays and muted colors. Defines custom-scrollbar, tool bar states (border-bg-done-hover), status colors, bubble styles, code block colors, popup/CM editor variables, and mobile bottom nav styles.",
+      "tags": [
+        "styles",
+        "tailwind",
+        "dark-mode",
+        "light-mode",
+        "theme",
+        "css-variables"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/env.d.ts",
+      "type": "file",
+      "name": "env.d.ts",
+      "filePath": "packages/supervisor-web-ui/src/env.d.ts",
+      "summary": "TypeScript environment declarations. References Vite client types and vite-plugin-pwa types. Declares .vue module type for TypeScript support.",
+      "tags": [
+        "typescript",
+        "vite",
+        "declarations"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:src/config/workspace.ts",
+      "type": "file",
+      "name": "config/workspace.ts",
+      "filePath": "packages/supervisor-web-ui/src/config/workspace.ts",
+      "summary": "Workspace configuration utilities. getDefaultWorkspaceCwd() resolves workspace directory from VITE_WORKSPACE_CWD env var, localStorage fallback (pi-supervisor-last-cwd), or hardcoded default path. rememberCwd() persists the last used cwd to localStorage.",
+      "tags": [
+        "config",
+        "workspace",
+        "cwd",
+        "localStorage"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "complexity": "simple",
+      "filePath": "packages/supervisor/src/index.ts",
+      "id": "file:packages/supervisor/src/index.ts",
+      "name": "index.ts",
+      "summary": "Public entry point and package barrel. Exports startSupervisor(options) which wires SupervisorDb + SessionManager + Hono HTTP server together and returns {manager, stop}. Re-exports the full public API surface: agent paths/resources, SupervisorDb, createDefaultTools, extension loader/types, createHttpServer, extractMessageSearchFields, copyMessagesWithInheritance, SessionManager, SupervisorSessionRuntime, formatSkillsForPrompt/loadSkills, SessionSpawner, SpawnAgentToolProvider, TurnFileChanges/TurnRecord, and `export type * from ./types.js`.",
+      "tags": [
+        "entry",
+        "barrel",
+        "public-api",
+        "startSupervisor",
+        "supervisor"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/cli.ts",
+      "id": "file:packages/supervisor/src/cli.ts",
+      "name": "cli.ts",
+      "summary": "CLI entry (pi-supervisor). Uses node:util parseArgs with positional command parsing. Commands: serve (default; starts HTTP server via SessionManager + createHttpServer + ensureBuiltinAssistant), providers list/add/remove/set-key (interactive via prompts), models list/add/remove, extensions list/install/remove (per-agent home dir). Helpers: _parseExtensionFlags (passes through unknown --flag args), selectProviderLocal, getModelsByProvider, getPrimaryModelId, showHelp. Loads builtin providers from BUILT_IN_PROVIDERS.",
+      "tags": [
+        "cli",
+        "argv",
+        "interactive",
+        "serve",
+        "providers",
+        "models",
+        "extensions",
+        "prompts"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/types.ts",
+      "id": "file:packages/supervisor/src/types.ts",
+      "name": "types.ts",
+      "summary": "Shared domain types: SessionRow (DB) and Session (camelCase) with status enum {starting, running, waiting_user, idle, finish, error, stopped}, branchType referencing session-branch. SpawnSessionOptions, Agent/AgentRow/AgentWithSystemMd, MessageRow/MessageSearchHit, Provider/Model rows (Model.tags string[] from JSON), message types (SessionMessageResponse), checkpoint types (SessionCheckpoint, CreateCheckpointOptions), commit types (CommitSessionOptions, CommitSessionResult). ToolsPreset union: coding|readonly|none.",
+      "tags": [
+        "types",
+        "domain",
+        "session",
+        "agent",
+        "provider",
+        "model",
+        "message",
+        "checkpoint",
+        "shared"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "complex",
+      "filePath": "packages/supervisor/src/core/session-manager.ts",
+      "id": "file:packages/supervisor/src/core/session-manager.ts",
+      "name": "session-manager.ts",
+      "summary": "Central orchestrator. SessionManager owns SupervisorDb, ModelRegistry, and Maps of runtimes/turnTrackers/outputListeners/sessionToolConfigs/spawnAgentToolProviders. Methods: create (DB row), spawn (builds AgentHarness with NodeExecutionEnv + SQLiteSessionStorage + assembleSessionTools merging createDefaultTools + builtin-extension + spawners), restoreRuntime (lazy getOrRestoreRuntime), fork/clone (copyMessagesWithInheritance), complete (finalizeBuiltinExtensionGit then finish), kill, dispose, createCheckpoint/listCheckpoints/rewindToCheckpoint, commitSession (delegates to session-git-hooks), getTree (recursive children), agent CRUD with SYSTEM.md enrichment, provider/model CRUD, resolveGlobalResources (skills/prompts/extensions from ~/.pi/supervisor/global/). Subscribes to runtime events: status updates, per-turn file changes (TurnFileTracker), output dispatch. Defaults: DEFAULT_PROVIDER=anthropic, DEFAULT_MODEL_ID=claude-sonnet-4-6.",
+      "tags": [
+        "core",
+        "orchestrator",
+        "lifecycle",
+        "spawn",
+        "fork",
+        "clone",
+        "checkpoint",
+        "agents",
+        "providers",
+        "runtimes",
+        "central"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "complex",
+      "filePath": "packages/supervisor/src/core/session-runtime.ts",
+      "id": "file:packages/supervisor/src/core/session-runtime.ts",
+      "name": "session-runtime.ts",
+      "summary": "Wrapper around per-session AgentHarness. SupervisorSessionRuntime holds harness + skills + promptTemplates + callbacks. Extension lifecycle: initExtensions builds ExtensionDatabase (proxies to db), discovers+loads extensions into ExtensionRuntime, hooks harness tool_call/tool_result events. Forwards agent_start/agent_end/abort/error to extensions. Methods: prompt/steer/followUp/abort/compact/setModel/setThinkingLevel/setActiveTools/setTools/getMessages/getState/getSlashCommands/getLastAssistantText/collectExtensionTools/shutdownExtensions/reloadMessagesFromSessionTree/appendCompactionResult. Slash commands = skills (/skill:name) + prompt templates. expandSkillCommand strips frontmatter, wraps in <skill> XML. Exports SlashCommandInfo, SupervisorSessionState.",
+      "tags": [
+        "core",
+        "runtime",
+        "wrapper",
+        "harness",
+        "extensions",
+        "slash-commands",
+        "skills",
+        "prompt-templates"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/core/session-storage.ts",
+      "id": "file:packages/supervisor/src/core/session-storage.ts",
+      "name": "session-storage.ts",
+      "summary": "Implements SessionStorage from pi-agent-core for SQLite. SQLiteSessionStorage constructor takes SupervisorDb + sessionId. Methods: getMetadata/getHarnessMetadata, getLeafId/setLeafId, createEntryId (randomUUID), appendEntry (INSERT into messages with FTS extraction via extractMessageSearchFields), getEntry, findEntries (filtered by type), getLabel (scans label entries), getPathToRoot (walks parent_id chain in-memory), getEntries/getStoredMessages (via db.getMessageRows). AppendEntryOptions has meta + isOld. Helpers: rowToStoredMessage, toSessionMessageResponse.",
+      "tags": [
+        "core",
+        "sqlite",
+        "session-storage",
+        "messages",
+        "fts",
+        "tree-walk",
+        "implements"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "simple",
+      "filePath": "packages/supervisor/src/core/session-branch.ts",
+      "id": "file:packages/supervisor/src/core/session-branch.ts",
+      "name": "session-branch.ts",
+      "summary": "Fork/clone message inheritance helper. Exports SessionBranchType = spawn|fork|clone and copyMessagesWithInheritance(storage, entries) which deep-copies SessionTreeEntry[] with new randomUUID ids and remapped parentId chain, marking isOld=true. Used by SessionManager.fork (slice up to point) and SessionManager.clone (full list). Only 27 lines.",
+      "tags": [
+        "core-util",
+        "branch",
+        "fork",
+        "clone",
+        "inheritance",
+        "deep-copy"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/core/session-checkpoint.ts",
+      "id": "file:packages/supervisor/src/core/session-checkpoint.ts",
+      "name": "session-checkpoint.ts",
+      "summary": "Checkpoint/rewind subsystem. Stores checkpoints in session.meta.checkpoints. parseCheckpoints validates (id/entryId/createdAt required) and sorts by createdAt. assertSessionIdle rejects running/waiting_user sessions. createSessionCheckpoint captures leaf_id, creates git snapshot (createGitSnapshot), persists via updateMeta. rewindSessionToCheckpoint restores git snapshot (restoreGitSnapshot), appends audit entry (customType:checkpoint-rewind), sets leaf_id back to checkpoint.entryId, invokes reloadRuntime callback.",
+      "tags": [
+        "core",
+        "checkpoint",
+        "rewind",
+        "snapshot",
+        "git",
+        "branch-restore"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/core/session-git-hooks.ts",
+      "id": "file:packages/supervisor/src/core/session-git-hooks.ts",
+      "name": "session-git-hooks.ts",
+      "summary": "Git integration for session completion and auto-naming. findLastAssistantText/findFirstUserText extract text from messages. isDefaultSessionName detects placeholders (New chat, Session xxxx, nameDefault). commitSessionChanges parses git meta, bails if no porcelain changes, generates message via generateCommitMessage (utility LLM, tag:commit-message, fallback pi: session {shortId}), runs commitAll, stores lastCommit. maybeAutoNameSession generates title via generateSessionTitle (tag:session-title) when default name. Depends on git/git-worktree.js and utility-llm.js.",
+      "tags": [
+        "core",
+        "git-hooks",
+        "commit",
+        "title",
+        "auto-name",
+        "utility-llm"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "simple",
+      "filePath": "packages/supervisor/src/core/session-log-file.ts",
+      "id": "file:packages/supervisor/src/core/session-log-file.ts",
+      "name": "session-log-file.ts",
+      "summary": "Per-session JSONL log at ~/.pi/supervisor/logs/{sessionId}/session.log. SessionLogFile class with promise-chain writeQueue for thread-safe writes. Methods: init (mkdir), log(level,message,tags,meta) appends {t,l,m} JSON, close, readAll (returns LogEntry[], empty on missing file), destroy (rm -rf). Level: debug|info|warn|error. Only file in batch with zero intra-package imports (uses only node:fs/promises, node:path, node:os).",
+      "tags": [
+        "core-util",
+        "logging",
+        "jsonl",
+        "per-session",
+        "thread-safe",
+        "write-queue"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/agent/agent-paths.ts",
+      "id": "file:packages/supervisor/src/agent/agent-paths.ts",
+      "name": "agent-paths.ts",
+      "summary": "Manages agent home directory structure under ~/.pi/supervisor/agents and global resource catalog under ~/.pi/supervisor/global. Provides utilities for ensuring agent home (skills/extensions/prompts subdirs), symlinking global resources into agent homes (with Windows junction handling), installing extensions from source (copy of files or recursive directory copy with index.ts/index.js detection), removing extensions, and reading/writing the agent SYSTEM.md file. Includes a LOAD_PROJECT_RESOURCES feature flag (currently disabled) for loading project-level resources from <cwd>/.pi/supervisor/",
+      "tags": [
+        "agent",
+        "filesystem",
+        "symlink",
+        "extensions",
+        "skills",
+        "prompts",
+        "system-prompt"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/agent/agent-resources.ts",
+      "id": "file:packages/supervisor/src/agent/agent-resources.ts",
+      "name": "agent-resources.ts",
+      "summary": "Loads and resolves agent-scoped resources (skills, prompts, extensions) for sessions and the agent-detail API. loadAgentSessionResources returns skills+promptTemplates+systemMd from agent home only (no project). resolveAgentResources produces an AgentResources view filtered to the agent home layer plus default tools from the toolsPreset (coding/readonly/none). Also exposes listExtensionPathsFromDirs and helpers (skillsToResourceInfo, promptsToResourceInfo) for API serialization. Imports default-tools lazily at the bottom of the file (avoiding top-level cycles).",
+      "tags": [
+        "agent",
+        "resources",
+        "skills",
+        "prompts",
+        "extensions",
+        "layers",
+        "session"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "simple",
+      "filePath": "packages/supervisor/src/agent/built-in-providers.ts",
+      "id": "file:packages/supervisor/src/agent/built-in-providers.ts",
+      "name": "built-in-providers.ts",
+      "summary": "Static list of 8 BuiltInProvider definitions: anthropic (anthropic-messages, claude-sonnet-4-6/opus/haiku), openai (gpt-4o/o3/o4-mini), deepseek, minimax + minimax-cn (anthropic-messages baseURL variants), doubao (ByteDance, anthropic-messages), groq (openai-compatible), openrouter (aggregates anthropic/openai/google/meta models). Each defines id, name, icon (simple-icons mdi), apiType, baseUrl (null for native SDK), and defaultModels array. Used by provider bootstrap to seed initial DB rows.",
+      "tags": [
+        "providers",
+        "bootstrap",
+        "llm",
+        "anthropic",
+        "openai",
+        "deepseek",
+        "minimax",
+        "doubao",
+        "groq",
+        "openrouter"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/agent/builtin-assistant.ts",
+      "id": "file:packages/supervisor/src/agent/builtin-assistant.ts",
+      "name": "builtin-assistant.ts",
+      "summary": "Auto-creates the built-in Pi assistant agent (id pi-assistant, name Pi 助手) and a pinned session pi-assistant-session on startup. Writes a Chinese-language system prompt describing config/migration/skill-installation responsibilities. Installs a supervisor-guide skill into the global skills catalog and symlinks it into the assistant agent home via installBuiltinSkill. pickProvider selects the first enabled provider+model; if none, warns and skips. Updates session meta (name, pinned, builtin) and triggers manager.spawn if the session is new (non-blocking, errors logged).",
+      "tags": [
+        "builtin",
+        "assistant",
+        "auto-bootstrap",
+        "agent",
+        "session",
+        "skill",
+        "guide"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "simple",
+      "filePath": "packages/supervisor/src/agent/context-files.ts",
+      "id": "file:packages/supervisor/src/agent/context-files.ts",
+      "name": "context-files.ts",
+      "summary": "Discovers AGENTS.md/CLAUDE.md context files by walking from session cwd up to filesystem root plus ~/.pi/agent. De-duplicates by path with a seen set, prepending per-directory context (outer dirs come first). appendContextFilesToSystemPrompt concatenates a Context File section at the end of the base system prompt. Checks four filename variants: AGENTS.md, AGENTS.MD, CLAUDE.md, CLAUDE.MD.",
+      "tags": [
+        "context",
+        "system-prompt",
+        "agents-md",
+        "claude-md",
+        "filesystem-walk"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/agent/prompt-templates.ts",
+      "id": "file:packages/supervisor/src/agent/prompt-templates.ts",
+      "name": "prompt-templates.ts",
+      "summary": "Loads and expands markdown prompt templates with bash-style argument substitution. parseCommandArgs splits quoted argument strings. substituteArgs supports $1/$2 positional, $ARGUMENTS/$@ full-args, ${@:N} and ${@:N:L} slicing. loadPromptTemplates scans agent home prompts/, cwd/.pi/supervisor/prompts/, and explicit promptPaths; assigns SourceInfo (scope: agent|project|local). expandPromptTemplate expands /<name> <args> into template content with substituted args. Frontmatter provides description and optional argument-hint; description falls back to first non-empty trimmed line (60 chars with ellipsis).",
+      "tags": [
+        "prompts",
+        "templates",
+        "slash-commands",
+        "argument-substitution",
+        "bash",
+        "frontmatter"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "complex",
+      "filePath": "packages/supervisor/src/agent/skills.ts",
+      "id": "file:packages/supervisor/src/agent/skills.ts",
+      "name": "skills.ts",
+      "summary": "Agent Skills loader per the Agent Skills spec. Scans <agent-home>/skills/, <cwd>/.pi/supervisor/skills/, and explicit skillPaths. Discovery rule: directories with SKILL.md are skill roots (no recursion); otherwise root .md files load inline and subdirectories recurse. Validates name (lowercase a-z/0-9/hyphens, no leading/trailing/double hyphens, matches parent dir, max 64 chars) and description (required, max 1024 chars), accumulating ResourceDiagnostic warnings. Honors .gitignore/.ignore/.fdignore via the ignore library (prefixed with relative dir). De-duplicates by canonical path, reporting collision diagnostics. formatSkillsForPrompt emits an XML <available_skills> block; skills with disable-model-invocation=true are excluded from prompts.",
+      "tags": [
+        "skills",
+        "agent-skills-spec",
+        "frontmatter",
+        "ignore",
+        "diagnostics",
+        "xml",
+        "system-prompt"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/db/db.ts",
+      "id": "file:packages/supervisor/src/db/db.ts",
+      "name": "db.ts",
+      "summary": "SupervisorDb: SQLite via better-sqlite3, default path ~/.pi/supervisor.db, WAL+foreign_keys. Schema: providers, models (PK provider_id+model_id), agents (with home_dir, meta), sessions (with parent_id, agent_id, branch_type, leaf_id), messages (with message_role/search_text/is_old/meta). Migrations are incremental (PRAGMA table_info + ALTER TABLE adds), including instances->sessions, session_entries->messages, FK rebuild via foreign_keys=OFF swap, FTS5 virtual table messages_fts with after-insert/update/delete triggers, and backfillMessageSearchIndex from payload. CRUD methods cover full session/agent/provider/model/message lifecycle. searchMessages uses FTS5 MATCH with quoted-phrase escaping and snippet extraction.",
+      "tags": [
+        "sqlite",
+        "schema",
+        "migrations",
+        "fts5",
+        "crud",
+        "messages",
+        "sessions",
+        "agents",
+        "providers",
+        "models",
+        "search",
+        "better-sqlite3"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "simple",
+      "filePath": "packages/supervisor/src/db/message-search.ts",
+      "id": "file:packages/supervisor/src/db/message-search.ts",
+      "name": "message-search.ts",
+      "summary": "Extracts MessageSearchFields { messageRole, searchText } from a SessionTreeEntry for FTS indexing. For 'message' entries extracts role and concatenates text parts from array content (skips non-text parts); for 'compaction' entries uses summary trimmed; for 'custom_message' entries uses display flag and extracts text from custom content. Returns null fields when no extractable text. Used by db.ts backfill and message insert trigger logic.",
+      "tags": [
+        "fts",
+        "search",
+        "messages",
+        "extraction",
+        "indexing"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/http/http-server.ts",
+      "id": "file:packages/supervisor/src/http/http-server.ts",
+      "name": "http-server.ts",
+      "summary": "Hono HTTP server factory exposing 30+ routes. Health/settings (GET/PATCH). Agents: full CRUD, meta patch, resources, system-md, resource linking. Providers: CRUD, model management. Sessions: list (with lastMessagePreview), get, children, messages, search, spawn (POST), kill, complete (git merge), prompt (SSE stream), steer, follow-up, abort, compact, checkpoints (create/list/rewind), commit, model switch, thinking-level, state, commands (GET/POST), events SSE stream, send (deprecated), meta patch/replace, message meta, delete, fork, tree, clone. Files: workspace autocomplete, file content (whitelisted to agent homes). Ask-answer resolution, global resources catalog. Strips apiKey from provider responses.",
+      "tags": [
+        "http",
+        "hono",
+        "rest",
+        "sse",
+        "routes",
+        "api",
+        "agents",
+        "sessions",
+        "providers",
+        "models",
+        "messages",
+        "checkpoints",
+        "files",
+        "ask",
+        "resources"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "simple",
+      "filePath": "packages/supervisor/src/http/workspace-files.ts",
+      "id": "file:packages/supervisor/src/http/workspace-files.ts",
+      "name": "workspace-files.ts",
+      "summary": "Walks a directory tree (max 8 depth, max 800 files) skipping node_modules, .git, dist, build, .pi, .cursor, coverage, .next, .nuxt. Returns relative POSIX-style paths with trailing '/' for directories. Sorted alphabetically. Used by @-autocomplete via GET /workspace/files.",
+      "tags": [
+        "workspace",
+        "files",
+        "autocomplete",
+        "filesystem",
+        "walk",
+        "ignore-dirs"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/ask-tool.ts",
+      "id": "file:packages/supervisor/src/ask-tool.ts",
+      "name": "ask-tool.ts",
+      "summary": "AskTool implementation: structured user questions with multiple-choice options. createAskTool returns an AgentTool whose execute() builds AskQuestion[] from raw params. Maps pending asks per (sessionId, toolCallId) tracking promises. signal abort resolves with cancelled result. submitAskAnswer resolves via toolCallId lookup. cancelPendingAsks cancels all for a session. hooks (onPending/onResolved) fire on map transitions. Used by builtin-extension to flip session status waiting_user/running.",
+      "tags": [
+        "ask",
+        "tool",
+        "user-interaction",
+        "multiple-choice",
+        "session-status",
+        "abort",
+        "pending"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "complex",
+      "filePath": "packages/supervisor/src/builtin-extension.ts",
+      "id": "file:packages/supervisor/src/builtin-extension.ts",
+      "name": "builtin-extension.ts",
+      "summary": "Glue between SessionManager and built-in extension tools before per-session extension runtime is fully wired. createBuiltinExtensionTools returns [lsp, read_pattern, edit, ask]; ask tool toggles session status between waiting_user and running. prepareBuiltinExtensionSpawn sets projectName and session name; for non-builtin git sessions creates a git worktree via createSessionWorktree. handleBuiltinExtensionAgentEnd runs rolling compaction and auto-naming. finalizeBuiltinExtensionGit merges session branch and removes worktree after clean git status check.",
+      "tags": [
+        "builtin",
+        "extension",
+        "tools",
+        "worktree",
+        "git",
+        "compaction",
+        "auto-name",
+        "session"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "complex",
+      "filePath": "packages/supervisor/src/builtin-edit-tool.ts",
+      "id": "file:packages/supervisor/src/builtin-edit-tool.ts",
+      "name": "builtin-edit-tool.ts",
+      "summary": "Multi-patch exact-string replacement edit tool. Accepts edits[] or legacy single oldText/newText+anchors. For each edit, collects all match positions, filters by beforeText/afterText anchors within a configurable window (default 2400 chars), and selects by 1-based occurrence. Throws on missing target, anchor mismatch, ambiguous matches without disambiguator, and out-of-range occurrence. Writes only if content changed. Returns changed flag and edit count.",
+      "tags": [
+        "edit",
+        "tool",
+        "file-editing",
+        "patch",
+        "anchors",
+        "disambiguation"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/builtin-lsp-tool.ts",
+      "id": "file:packages/supervisor/src/builtin-lsp-tool.ts",
+      "name": "builtin-lsp-tool.ts",
+      "summary": "TypeScript/JavaScript language intelligence via typescript compiler API. Actions: symbols (navigation tree, optional symbol filter), definition (locations with preview), references (with preview), rename (cross-file with on-disk writes sorted descending), diagnostics (syntactic+semantic). createLanguageService loads tsconfig.json or defaults to ES2022/Node16. Position resolved from 1-based line+character or symbol regex match. Limited to .ts/.tsx/.js/.jsx/.mts/.cts. Results capped at 200 (symbols/diagnostics) or 500 (references).",
+      "tags": [
+        "lsp",
+        "tool",
+        "typescript",
+        "language-service",
+        "symbols",
+        "definition",
+        "references",
+        "rename",
+        "diagnostics",
+        "cross-file"
+      ],
+      "type": "file"
+    },
+    {
+      "complexity": "moderate",
+      "filePath": "packages/supervisor/src/builtin-read-tool.ts",
+      "id": "file:packages/supervisor/src/builtin-read-tool.ts",
+      "name": "builtin-read-tool.ts",
+      "summary": "Pattern-based precise file reader. Two modes: (1) range mode renders line-range [offset, offset+limit-1] with trailing file-length hint; (2) pattern mode with regex/ignoreCase support: with occurrence returns match+context lines, with single match returns directly, with multiple matches returns numbered listing clipped at maxMatches (180-char snippets). Defaults: offset=1, limit=200, context=2, maxMatches=20. Throws if offset past EOF.",
+      "tags": [
+        "read",
+        "tool",
+        "file-reading",
+        "pattern",
+        "regex",
+        "context",
+        "occurrence"
+      ],
+      "type": "file"
+    },
+    {
+      "id": "file:src/extensions/index.ts",
+      "type": "barrel",
+      "name": "Extension System Entry (index.ts)",
+      "filePath": "packages/supervisor/src/extensions/index.ts",
+      "summary": "Public barrel file that re-exports all extension system symbols: defineExtension, CommandRegistry, Loader functions, ExtensionRuntime, and all type exports. This is the public API surface of the extension system. Imports from define-extension.ts, http-commands.ts, loader.ts, runtime.ts, and types.ts.",
+      "tags": [
+        "extension-system",
+        "barrel-export",
+        "public-api"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/define-extension.ts",
+      "type": "DSL",
+      "name": "defineExtension DSL",
+      "filePath": "packages/supervisor/src/extensions/define-extension.ts",
+      "summary": "Provides `defineExtension()` and `defineExtensionAsync()` factory functions that wrap an ExtensionDefinition object with validation (checks name is non-empty string, setup is a function). The async variant accepts a factory function for deferred/lazy initialization. Both return the definition unchanged after validation. Used by third-party extension authors as the public API entry point, typically via the `@earendil-works/pi-supervisor` package alias.",
+      "tags": [
+        "extension-system",
+        "DSL",
+        "validation",
+        "public-api"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/loader.ts",
+      "type": "loader",
+      "name": "Extension Loader",
+      "filePath": "packages/supervisor/src/extensions/loader.ts",
+      "summary": "Extension discovery and loading system. Discovers extension files (.ts, .js, .mts, .mjs) in agent home directories (`<agentHomeDir>/extensions`) and project-local directories (`.pi/supervisor/extensions`). Uses `jiti` (JIT import) for TypeScript module loading with aliases for `@earendil-works/pi-supervisor` and typebox packages. Validates each loaded module has `name` (string) and `setup` (function). Built-in extension (`builtin-extension/index.ts`) is always loaded first. Provides: `discoverExtensionsInDir()`, `collectExtensionPaths()`, `loadExtension()`, `loadExtensions()`, `discoverAndLoadExtensions()`.",
+      "tags": [
+        "extension-system",
+        "loader",
+        "discovery",
+        "jiti",
+        "module-resolution"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/runtime.ts",
+      "type": "runtime",
+      "name": "ExtensionRuntime",
+      "filePath": "packages/supervisor/src/extensions/runtime.ts",
+      "summary": "Core extension runtime class (859 lines). Manages: (1) Extension lifecycle -- `loadExtension()` calls definition.setup(ctx) and stores cleanup handlers; `unloadAll()` runs all cleanups. (2) Event system -- `on()`/`emit()` for typed ExtensionEvent dispatch to registered handlers. (3) Tool/command registry -- ExtensionRegistry holds tools and commands registered by extensions. (4) Tool/command execution -- `executeTool()` and `executeCommand()` delegate to registered definitions. (5) ExtensionContext creation -- `createExtensionContext()` builds the context passed to each extension's setup(), providing access to session info, database, data writing, event binding, tool/command registration, session control, model control, exec, logging, and broadcasting. Also includes `createExtensionDatabase()` which wraps raw SQL queries into a typed ExtensionDatabase API (getMessages, getMessageTree, searchMessages, getCustomEntries, getSessionMeta, etc.) scoped to a session ID. Depends on `RuntimeOptions` including the `deps` dependency injection object.",
+      "tags": [
+        "extension-system",
+        "runtime",
+        "event-system",
+        "registry",
+        "database",
+        "lifecycle"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/tool-adapter.ts",
+      "type": "adapter",
+      "name": "Tool Adapter (toolInfoToAgentTool)",
+      "filePath": "packages/supervisor/src/extensions/tool-adapter.ts",
+      "summary": "Thin adapter (25 lines) that converts an extension `ToolInfo` into an `AgentTool` for the AgentHarness. The `toolInfoToAgentTool()` function wraps the tool's execute function to delegate to `ExtensionRuntime.executeTool()`, bridging the extension tool system with the pi-agent-core harness. Uses partial session context (empty id/cwd) and stub reportProgress.",
+      "tags": [
+        "extension-system",
+        "adapter",
+        "bridge",
+        "agent-harness"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/http-commands.ts",
+      "type": "infrastructure",
+      "name": "HTTP Command Registry",
+      "filePath": "packages/supervisor/src/extensions/http-commands.ts",
+      "summary": "HTTP command routing layer for extensions. `createCommandRegistry()` creates a session-scoped command registry that maps (sessionId, name) -> CommandDefinition. The `getHandler()` method generates an HTTP handler function that validates params via TypeBox Value.Parse, creates a CommandContext, and executes the command handler. `createCommandRouter()` provides Express-style routing helpers: `listCommands()` (GET /sessions/:id/commands) and `executeCommand()` (POST /sessions/:id/commands/:name). Supports notifications via a `notify` callback.",
+      "tags": [
+        "extension-system",
+        "http",
+        "commands",
+        "routing",
+        "validation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/types.ts",
+      "type": "types",
+      "name": "Extension Types Definition",
+      "filePath": "packages/supervisor/src/extensions/types.ts",
+      "summary": "Central type definitions (901 lines) for the entire extension system. Defines: ExtensionDefinition, ExtensionContext (the full API surface available to extensions), ExtensionDatabase (read-only query interface), all ExtensionEvent union members (session lifecycle, message flow, agent state, tool execution, compaction, model change, HTTP/WebSocket, extension system events), ToolDefinition/ToolInfo/ToolExecutionContext, CommandDefinition/CommandContext/CommandResult, SessionInfo, MessageEntry/MessageNode, SearchResult, ExecResult, EventBus, BroadcastEvent, LoadedExtension/LoadExtensionResult, ExtensionRegistry, RuntimeOptions, DbAdapterOptions, and more. Every extension system file imports from here.",
+      "tags": [
+        "extension-system",
+        "types",
+        "interfaces",
+        "unions",
+        "schema"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/extension-deps.ts",
+      "type": "infrastructure",
+      "name": "Extension Dependency Injection (buildExtensionDeps)",
+      "filePath": "packages/supervisor/src/extensions/extension-deps.ts",
+      "summary": "Builds the `RuntimeOptions.deps` object that bridges the extension runtime to the real supervisor core (SupervisorSessionRuntime, SessionManager, SupervisorDb). Provides real implementations for all deps methods: appendEntry (INSERT INTO messages with SQL), sendMessage/sendUserMessage (write to DB + optionally trigger agent prompt via runtime.prompt()), fork (delegates to manager.fork()), compact (delegates to runtime.compact()), setModel (delegates to runtime.setModel()), exec (via execCommand utility), and an EventBus implementation built on Node.js EventEmitter. Many methods have stub implementations: switchSession (no-op), navigateTree (TODO), setActiveTools (no-op), broadcast (TODO), getSignal (returns undefined).",
+      "tags": [
+        "extension-system",
+        "dependency-injection",
+        "bridge",
+        "event-bus",
+        "sql"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/read.ts",
+      "type": "tool",
+      "name": "Read Tool (createBuiltinReadTool)",
+      "filePath": "packages/supervisor/src/extensions/read.ts",
+      "summary": "Built-in `read_pattern` tool for the AgentHarness. Provides three modes: (1) range mode -- read a line range from a file with offset/limit; (2) pattern mode -- grep-like search inside a single file with context lines; (3) search_and_read mode -- cross-file grep via shell `find` + `grep` exec, returning structured results grouped by file. Normalizes line endings, clamps bounds, clips long lines. Falls back gracefully (no matches, empty files).",
+      "tags": [
+        "extension-system",
+        "tool",
+        "read",
+        "grep",
+        "file-reading"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/edit.ts",
+      "type": "tool",
+      "name": "Edit Tool (createBuiltinEditTool)",
+      "filePath": "packages/supervisor/src/extensions/edit.ts",
+      "summary": "Built-in `edit` tool for exact-string file replacement. Supports both single oldText/newText and multi-edit `edits[]` array. Uses beforeText/afterText context anchors to disambiguate multiple occurrences. Optional `requireApproval` mode that creates a PendingEditApproval and waits for user confirmation via the edit-approval module. Creates git snapshots before edits (best-effort). Computes and logs a unified diff preview. Applies changes via writeFile.",
+      "tags": [
+        "extension-system",
+        "tool",
+        "edit",
+        "file-modification",
+        "approval",
+        "diff"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/ask.ts",
+      "type": "tool",
+      "name": "Ask Tool (createAskTool)",
+      "filePath": "packages/supervisor/src/extensions/ask.ts",
+      "summary": "Built-in `ask` tool that presents multiple-choice questions to the user and waits for answers. Each question has an id, label, prompt, options array, and optional allowOther. Questions are stored in a pendingBySession map keyed by (sessionId, toolCallId). The tool blocks on a Promise that resolves when the user submits answers via `submitAskAnswer()`. Supports cancellation via AbortSignal. Hooks notify the UI when questions are pending or resolved.",
+      "tags": [
+        "extension-system",
+        "tool",
+        "ask",
+        "user-input",
+        "promise-blocking"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/lsp.ts",
+      "type": "tool",
+      "name": "LSP Tool (createBuiltinLspTool)",
+      "filePath": "packages/supervisor/src/extensions/lsp.ts",
+      "summary": "Built-in `lsp` tool providing language intelligence for TS/JS, Python, and Go. Actions: symbols, definition, references, diagnostics, rename. For TS/JS: uses TypeScript LanguageService (creates a full language service with tsconfig.json discovery). For Python: uses grep-based definition/reference lookup, regex-based symbol parsing, and `py_compile`/`ast.parse` for diagnostics. For Go: uses grep-based symbol lookup, regex-based symbol parsing, and `go vet`/`go build` for diagnostics. Rename is only supported for TS/JS (via TypeScript's findRenameLocations + file text changes). All results are returned as JSON-formatted text.",
+      "tags": [
+        "extension-system",
+        "tool",
+        "lsp",
+        "typescript",
+        "python",
+        "go",
+        "code-intelligence"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/read-orchestration.ts",
+      "type": "utility",
+      "name": "Read Orchestration Hint",
+      "filePath": "packages/supervisor/src/extensions/read-orchestration.ts",
+      "summary": "Two-phase reading strategy guidance injected into system prompts. Provides: (1) `READ_ORCHESTRATION_HINT` constant -- a text block describing the two-phase approach (grep/lsp to locate, then read with offset/limit). (2) `appendReadOrchestrationHint()` -- appends the hint to a system prompt, avoiding duplicates. (3) Helper types and functions for the search_and_read workflow: `SearchMatch` interface, `suggestReadRange()` for computing offset/limit around a line, `formatGrepResultsToSearchSuggestion()` for structured output formatting, `buildReadSuggestionForMatch()` for building a read payload from a match.",
+      "tags": [
+        "extension-system",
+        "utility",
+        "system-prompt",
+        "reading-strategy"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/ast-grep.ts",
+      "type": "tool",
+      "name": "AST Grep Tool (createAstGrepTool)",
+      "filePath": "packages/supervisor/src/extensions/ast-grep.ts",
+      "summary": "Built-in `ast_grep` tool providing tree-sitter-based structural code search, AST summary, and AST-based edit. Uses `@ast-grep/napi` bindings. Supports 40+ languages. Three modes: (1) search -- find AST pattern matches across files (single file or directory walk, with fallback to text search). (2) summary -- produce structural file overview with function signatures, class names, imports, bodies elided to line counts. (3) edit -- apply AST-based rewrite with pattern matching and text replacement (reverse-order to preserve offsets). Pattern syntax supports both string patterns and rule-object JSON patterns (via `SgNode.findAll`). Referenced from oh-my-pi's pi-ast crate.",
+      "tags": [
+        "extension-system",
+        "tool",
+        "ast-grep",
+        "tree-sitter",
+        "code-search",
+        "summary",
+        "edit"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/output-minimizer.ts",
+      "type": "utility",
+      "name": "Output Minimizer (minimizeOutput)",
+      "filePath": "packages/supervisor/src/extensions/output-minimizer.ts",
+      "summary": "Shell command output minimizer ported from oh-my-pi's Rust output minimizer. Applies pipeline stages: (1) match_output -- detect known patterns and short-circuit with one-line summary. (2) strip_lines -- remove lines matching regex patterns (progress, timestamps). (3) keep_lines -- only keep lines matching certain patterns. (4) replace -- regex text substitution. (5) head/tail -- keep first/last N lines. Has 11 built-in filters for: git log, git diff, git status, npm, cargo build, cargo test, pytest, docker build, make, npx, go test. Each filter is command-scoped (matchCommand + optional matchSubcommand). Includes a demoMinimizer() test harness.",
+      "tags": [
+        "extension-system",
+        "utility",
+        "output-minimizer",
+        "shell",
+        "port",
+        "omp"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/rolling-compaction.ts",
+      "type": "utility",
+      "name": "Rolling Compaction (maybeRunRollingCompaction)",
+      "filePath": "packages/supervisor/src/extensions/rolling-compaction.ts",
+      "summary": "Automatic context window compaction after each agent run. Checks if compression is needed based on: (1) context overflow -- if assistant message indicates the provider returned a context overflow error, recovers by removing the last assistant message and running compaction with overflow retry. (2) Token threshold -- calculates context tokens from usage data (calculateContextTokens) or estimates (estimateContextTokens), compares against context window and compaction settings. Uses `compactWithUtilityModel()` when a tagged 'summary' model is configured, otherwise falls back to `runtime.compact()`. Prevents double-compaction with compactingSessions Set and overflowRecoveryAttempted Set. Skips compaction when there are pending ask questions.",
+      "tags": [
+        "extension-system",
+        "utility",
+        "compaction",
+        "context-window",
+        "overflow-recovery"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/edit-approval.ts",
+      "type": "infrastructure",
+      "name": "Edit Approval Safety Net",
+      "filePath": "packages/supervisor/src/extensions/edit-approval.ts",
+      "summary": "Safety mechanism for the edit tool requiring user confirmation before applying changes. Mirrors the ask-tool pattern: pending approvals indexed by (sessionId, toolCallId) in a Map<string, Map<string, PendingEditApproval>>. Provides: `storePendingEditApproval()`, `getPendingEditApproval()`, `submitEditApproval()`, `cancelPendingEditApprovals()`. Hooks notify UI when approval is pending or resolved. The PendingEditApproval includes filePath, originalContent, modifiedContent, diff, and resolve/reject callbacks. Called from edit.ts when requireApproval=true.",
+      "tags": [
+        "extension-system",
+        "safety",
+        "approval",
+        "edit",
+        "user-confirmation"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/review.ts",
+      "type": "utility",
+      "name": "Review Agent (buildReviewPrompt) [partial]",
+      "filePath": "packages/supervisor/src/extensions/review.ts",
+      "summary": "Partial implementation of a side-channel approval system where a reviewer agent reviews all tool calls from a conversation turn. Currently only has `buildReviewPrompt()` which constructs a prompt from agent_end messages, listing all tool_use blocks with their inputs. The prompt asks the reviewer to respond with a JSON object (approved, reason, issues). The actual reviewer invocation and approval integration is not implemented -- this is a skeleton/fragment.",
+      "tags": [
+        "extension-system",
+        "utility",
+        "review",
+        "approval",
+        "incomplete"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/hindsight.ts",
+      "type": "utility",
+      "name": "Hindsight Memory System [buggy]",
+      "filePath": "packages/supervisor/src/extensions/hindsight.ts",
+      "summary": "Cross-session project memory system ported from oh-my-pi. Core flow (from omp hindsight design): agent_start -> recall (query project memories and inject into system prompt), agent_end -> retain (compress conversation to facts, write to hindsight DB table). Implements: `getProjectUrl()` -- finds git root or uses dir name as project identifier. `formatHindsightBlock()` -- formats memories as `<memories>` blocks for system prompt injection. `extractFactsFromMessages()` -- extracts sentences from assistant messages, filters out tool-related text, deduplicates, and writes to hindsight table via `db.insertHindsight()`. `recallHindsight()` -- queries and formats recent memories. BUG: Uses `require('node:fs')` synchronous require inside async function.",
+      "tags": [
+        "extension-system",
+        "utility",
+        "memory",
+        "hindsight",
+        "omp-port",
+        "buggy"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/extensions/spawn-agent-tool.ts",
+      "type": "tool",
+      "name": "Spawn Agent Tool (createSpawnAgentTool) [broken]",
+      "filePath": "packages/supervisor/src/extensions/spawn-agent-tool.ts",
+      "summary": "Attempted `spawn_agent` tool that would let an agent spawn child agents based on members table role='spawned'. Defines `SpawnAgentSessionSpi` interface for the SessionManager SPI (spawn, listMemberAgentIdsByRole, getAgent). The tool validates the agent exists and is in the allowed spawned list, then calls spi.spawn(). Marked as [broken] because: (1) the `spawn` method signature is checked but the SPI contract is only partially typed; (2) there is no integration showing how this SPI is wired into the actual session manager; (3) the `spawned` role concept exists in design but may not be implemented in the actual members table/DAL.",
+      "tags": [
+        "extension-system",
+        "tool",
+        "spawn",
+        "agent",
+        "broken",
+        "incomplete"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:src/ext-framework/index.ts",
+      "type": "dead-duplicate",
+      "name": "ext-framework/index.ts (DEAD DUPLICATE of extensions/index.ts)",
+      "filePath": "packages/supervisor/src/ext-framework/index.ts",
+      "summary": "EXACT DUPLICATE of extensions/index.ts (barrel file). Contains identical re-exports from define-extension.js, http-commands.js, loader.js, runtime.js, and types.js. The ext-framework directory is a dead leftover from an earlier iteration of the extension system, with 14 files that are duplicates of their counterparts in extensions/. The active code uses only the extensions/ directory.",
+      "tags": [
+        "extension-system",
+        "dead-code",
+        "duplicate",
+        "barrel-export"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:model-utils",
+      "type": "file",
+      "name": "model-utils.ts",
+      "filePath": "packages/supervisor/src/utils/model-utils.ts",
+      "summary": "Resolves model configurations from the pi-ai built-in registry with provider-level overrides (baseUrl, apiType). The single exported function resolveModelWithProviderOverrides takes a DB provider lookup, provider string, and modelId; returns a Model with overridden baseUrl/apiType when the DB provider differs from the pi-ai hardcoded defaults. Returns undefined when no match exists in pi-ai registry.",
+      "tags": [
+        "model",
+        "provider",
+        "override",
+        "resolution"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:utility-llm",
+      "type": "file",
+      "name": "utility-llm.ts",
+      "filePath": "packages/supervisor/src/utils/utility-llm.ts",
+      "summary": "Utility LLM call functions for internal tasks: session title generation, git commit message generation, and context window compaction. Exports resolveUtilityModelConfig to read utilityProvider/utilityModelId from supervisor settings, and resolveTaggedModelAuth to find a model whose tags match a task tag (summary, commit-message, session-title, review). The compactWithUtilityModel function wraps pi-agent-core's compact() with custom instructions support. All completions use completeSimple with typed prompt formatting.",
+      "tags": [
+        "llm",
+        "utility",
+        "compaction",
+        "title",
+        "commit",
+        "completion"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:default-tools",
+      "type": "file",
+      "name": "default-tools.ts",
+      "filePath": "packages/supervisor/src/utils/default-tools.ts",
+      "summary": "Default toolset preset for coding-agent sessions. Provides createDefaultTools(cwd, preset, options) which returns AgentTool[] for three presets: 'coding' (read, bash, edit, write, grep, find, ls), 'readonly' (grep, find, ls without mutation tools), or 'none' (empty). Wraps bash tool to require a non-empty intent field via assertBashIntent. Resolves shell path and command prefix from project-level settings via SettingsManager. Mirrors pi interactive's tool configuration approach.",
+      "tags": [
+        "tools",
+        "coding-agent",
+        "bash",
+        "preset",
+        "settings"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:event-bus",
+      "type": "file",
+      "name": "event-bus.ts",
+      "filePath": "packages/supervisor/src/utils/event-bus.ts",
+      "summary": "Simple typed event bus built on Node.js EventEmitter. Exposes emit, on (returns unsubscribe function), and clear methods. Handlers are wrapped in async try/catch to prevent uncaught rejections. The on() method wraps the raw handler for safe error isolation per channel.",
+      "tags": [
+        "events",
+        "emitter",
+        "pubsub"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:exec",
+      "type": "file",
+      "name": "exec.ts",
+      "filePath": "packages/supervisor/src/utils/exec.ts",
+      "summary": "Shell command execution utility using child_process.spawn. The execCommand function runs a command with args, cwd, optional AbortSignal, and timeout. Implements a two-phase kill: SIGTERM first, then SIGKILL after 5 seconds if the process hasn't exited. Returns stdout, stderr, exit code, and a killed flag. Does not use shell:true for security. Handles signal cleanup on close/error events.",
+      "tags": [
+        "exec",
+        "spawn",
+        "shell",
+        "process",
+        "timeout"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:supervisor-settings",
+      "type": "file",
+      "name": "supervisor-settings.ts",
+      "filePath": "packages/supervisor/src/utils/supervisor-settings.ts",
+      "summary": "Persistent settings manager for the supervisor runtime. Reads/writes a JSON settings file at ~/.pi/supervisor/settings.json. Exports SupervisorSettings interface with utilityProvider and utilityModelId fields. readSupervisorSettings merges with defaults on parse failure; writeSupervisorSettings patches and persists.",
+      "tags": [
+        "settings",
+        "config",
+        "persistence",
+        "json"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:diagnostics",
+      "type": "file",
+      "name": "diagnostics.ts",
+      "filePath": "packages/supervisor/src/utils/diagnostics.ts",
+      "summary": "Type definitions for resource diagnostics. Defines ResourceCollision (extension/skill/prompt/theme conflicts with winner/loser paths/sources) and ResourceDiagnostic (warning/error/collision with optional path and collision detail). Types only, no runtime logic.",
+      "tags": [
+        "diagnostics",
+        "types",
+        "resource",
+        "collision"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:paths",
+      "type": "file",
+      "name": "paths.ts",
+      "filePath": "packages/supervisor/src/utils/paths.ts",
+      "summary": "Path canonicalization utility. Exports canonicalizePath which resolves a path to its real filesystem form via realpathSync, with a try/catch fallback returning the raw path when resolution fails (e.g. the target does not exist yet). Prevents crashes on missing filesystem entries.",
+      "tags": [
+        "path",
+        "canonicalize",
+        "filesystem"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:frontmatter",
+      "type": "file",
+      "name": "frontmatter.ts",
+      "filePath": "packages/supervisor/src/utils/frontmatter.ts",
+      "summary": "YAML frontmatter parser for markdown-like content delimited by --- separators. Parses frontmatter into a typed record using the yaml library, normalizes CRLF/CR to LF. Exports parseFrontmatter (returns { frontmatter, body }) and stripFrontmatter (returns body only). Returns empty frontmatter object when no valid frontmatter is found.",
+      "tags": [
+        "frontmatter",
+        "yaml",
+        "parsing",
+        "markdown"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:source-info",
+      "type": "file",
+      "name": "source-info.ts",
+      "filePath": "packages/supervisor/src/utils/source-info.ts",
+      "summary": "Type definitions and a factory for source metadata tracking. Defines SourceScope (user/agent/project/temporary), SourceOrigin (package/top-level), and SourceInfo interface (path, source, scope, origin, baseDir). Exports createSyntheticSourceInfo factory with defaults scope=temporary, origin=top-level.",
+      "tags": [
+        "types",
+        "source",
+        "metadata"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:git-worktree",
+      "type": "file",
+      "name": "git-worktree.ts",
+      "filePath": "packages/supervisor/src/git/git-worktree.ts",
+      "summary": "Git worktree management for session isolation. Creates per-session git worktrees at .pi/supervisor/worktrees/{sessionId} with branch name pi/session-{8-char-id}. Provides functions: findGitRoot, getDefaultBranch, createSessionWorktree, commitAll (auto-commit), createGitSnapshot / restoreGitSnapshot (stash-style snapshots without mutation), mergeSessionBranch (merge back to base with --no-ff), removeSessionWorktree (force remove). Also exports parseSessionGitMeta to reconstruct SessionGitMeta from stored metadata. Uses execFile with increased maxBuffer (10MB) for git operations.",
+      "tags": [
+        "git",
+        "worktree",
+        "session",
+        "branch",
+        "merge",
+        "snapshot"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:turn-file-tracker",
+      "type": "file",
+      "name": "turn-file-tracker.ts",
+      "filePath": "packages/supervisor/src/git/turn-file-tracker.ts",
+      "summary": "Per-agent-turn file change tracker. The TurnFileTracker class listens to agent events (agent_start, tool_execution_start, tool_execution_end, agent_end) to record which files were added, modified, or deleted during a turn. Tracks edit/write tools directly (checking pre-existence for write to distinguish add vs modify) and parses bash commands (rm, mv, cp) for file changes. Exports normalizeFilePath (project-relative normalization), mergeTurnIntoMeta (append turn to session meta), and handleAgentEventForTurnFiles (event-driven state machine).",
+      "tags": [
+        "file",
+        "tracking",
+        "turn",
+        "changes",
+        "agent"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:mcp-index",
+      "type": "file",
+      "name": "index.ts (mcp)",
+      "filePath": "packages/supervisor/src/mcp/index.ts",
+      "summary": "Barrel re-export file for the MCP module. Re-exports McpClientManager, createMcpToolsForSession, disconnectMcpServers, getMcpManager, removeMcpManager, loadMcpConfig, getActiveMcpServers, mcpToolToAgentTool, McpConfig/McpServerConfigType/McpServerStatus types, and TypeBox schemas (McpConfigSchema, McpServerConfig, McpStdioServerConfig, McpSseServerConfig).",
+      "tags": [
+        "mcp",
+        "barrel",
+        "export"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:mcp-client-manager",
+      "type": "file",
+      "name": "mcp-client-manager.ts",
+      "filePath": "packages/supervisor/src/mcp/mcp-client-manager.ts",
+      "summary": "MCP client lifecycle manager. The McpClientManager class connects to configured MCP servers (stdio or SSE), lists their tools, and wraps them as AgentTools. Uses a module-level Map<string, McpClientManager> keyed by sessionId for lifecycle tracking. Implements singleton connection pattern via connectPromise to deduplicate concurrent connectAll calls. Each server's tools are cached and rebuilt on getTools(). Exports createMcpToolsForSession (factory for session-scoped MCP tools) and disconnectMcpServers (cleanup). Failed connections are stored with error state rather than thrown. SSE transport uses SSEClientTransport with URL; stdio uses StdioClientTransport with command/args/env.",
+      "tags": [
+        "mcp",
+        "client",
+        "lifecycle",
+        "tools",
+        "session"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:mcp-config-loader",
+      "type": "file",
+      "name": "mcp-config-loader.ts",
+      "filePath": "packages/supervisor/src/mcp/mcp-config-loader.ts",
+      "summary": "MCP configuration loader from agent home directory. Reads mcp.json at ~/.pi/supervisor/agents/{agentId}/mcp.json, resolves ${env:VAR_NAME} placeholders in all string values recursively, and returns structured McpConfig with server definitions. Exports loadMcpConfig (returns null on missing/parse errors) and getActiveMcpServers (filters out disabled servers). Unrecognized server config fields are passed through via the general object resolution.",
+      "tags": [
+        "mcp",
+        "config",
+        "env",
+        "json"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:mcp-extension",
+      "type": "file",
+      "name": "mcp-extension.ts",
+      "filePath": "packages/supervisor/src/mcp/mcp-extension.ts",
+      "summary": "MCP server integration as a pi supervisor extension. Uses defineExtension to create an 'mcp' extension that on session.start connects to all configured MCP servers via McpClientManager, wraps each tool as a ToolDefinition, and registers them with ctx.registerTool. On session.end, disconnects all servers. Cleanup on extension unload also disconnects. Uses type cast for the ToolDefinition compatibility layer between AgentTool and the extension framework.",
+      "tags": [
+        "mcp",
+        "extension",
+        "plugin",
+        "session",
+        "lifecycle"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:mcp-tool",
+      "type": "file",
+      "name": "mcp-tool.ts",
+      "filePath": "packages/supervisor/src/mcp/mcp-tool.ts",
+      "summary": "MCP tool-to-AgentTool adapter. Converts MCP tool definitions (name, description, inputSchema) into supervisor AgentTool instances. Tool names are prefixed with serverName (format: {serverName}__{toolName}). Includes a JSON Schema to TypeBox converter (jsonSchemaToTypeBox) supporting string/enum, number, integer, boolean, array, and object types with required/optional handling. The execute wrapper forwards calls to MCP server via the provided callTool callback and normalizes the response into AgentTool result format with content array and error handling. Falls back to Type.Unknown() for unsupported schema types.",
+      "tags": [
+        "mcp",
+        "tool",
+        "adapter",
+        "schema",
+        "typebox"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:mcp-types",
+      "type": "file",
+      "name": "mcp-types.ts",
+      "filePath": "packages/supervisor/src/mcp/mcp-types.ts",
+      "summary": "MCP configuration and status type definitions using TypeBox. Defines McpStdioServerConfig (type, command, args, env, timeoutMs, disabled) and McpSseServerConfig (type, url, headers, timeoutMs, disabled) schemas, combined into McpServerConfig union. McpConfigSchema wraps a record of server configs with optional sessionDefaults. Runtime types: McpServerConfigType (Static union), McpConfig interface, and McpServerStatus interface for UI display.",
+      "tags": [
+        "mcp",
+        "types",
+        "schema",
+        "typebox",
+        "config"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:session-spawner",
+      "type": "file",
+      "name": "session-spawner.ts",
+      "filePath": "packages/supervisor/src/spawn/session-spawner.ts",
+      "summary": "Abstract SessionSpawner interface for child session creation. Defines three methods: getSession (lookup by ID), getAgent (lookup by ID), and spawn (create a child session from SpawnSessionOptions). This is the minimal surface passed to SpawnAgentToolProvider via context.",
+      "tags": [
+        "spawn",
+        "session",
+        "interface",
+        "abstract"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:spawn-agent-tool-provider",
+      "type": "file",
+      "name": "spawn-agent-tool-provider.ts",
+      "filePath": "packages/supervisor/src/spawn/spawn-agent-tool-provider.ts",
+      "summary": "Abstract base class for the spawn_agent tool. Defines SpawnAgentRequest (agentId, instructions, meta) and SpawnAgentResult (sessionId, status, agentId, name) types, and SpawnAgentToolContext (parentSessionId, agentId, cwd, spawner). The SpawnAgentToolProvider abstract class requires subclasses to implement spawn(context, request), and provides createTools(context) which builds a single spawn_agent AgentTool with TypeBox-validated parameters. The tool returns JSON-stringified SpawnAgentResult.",
+      "tags": [
+        "spawn",
+        "agent",
+        "tool",
+        "abstract",
+        "parent-child"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:session-runtime-dead",
+      "type": "file",
+      "name": "session-runtime.ts (top-level)",
+      "filePath": "packages/supervisor/src/session-runtime.ts",
+      "summary": "DEAD CODE — duplicate of core/session-runtime.ts. Contains SupervisorSessionRuntime class with session lifecycle operations (prompt, abort, compact, setModel, setTools), slash command resolution (skills, prompt templates), and message retrieval. Also includes support types (SupervisorSessionState, SupervisorSessionEvent, SlashCommandInfo). The file at this path is a historical artifact that should not be imported; the canonical version lives at core/session-runtime.ts.",
+      "tags": [
+        "dead-code",
+        "duplicate",
+        "session",
+        "runtime"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:read-orchestration-hint",
+      "type": "file",
+      "name": "read-orchestration.ts",
+      "filePath": "packages/supervisor/src/read-orchestration.ts",
+      "summary": "Static two-phase read orchestration hint injected into coding session system prompts. Exports READ_ORCHESTRATION_HINT constant encouraging agents to: 1) Locate with grep/lsp, 2) Read with offset/limit around the target line. Exports appendReadOrchestrationHint function that appends the hint to a system prompt string, avoiding duplicate injection.",
+      "tags": [
+        "read",
+        "orchestration",
+        "prompt",
+        "system-prompt"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:hindsight-memory",
+      "type": "file",
+      "name": "hindsight-memory.ts",
+      "filePath": "packages/supervisor/src/hindsight-memory.ts",
+      "summary": "EMPTY FILE — placeholder with no code content. Intended for future hindsight/reflection memory functionality.",
+      "tags": [
+        "empty",
+        "placeholder"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:src/main.ts",
+      "target": "file:src/App.vue",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/main.ts",
+      "target": "file:src/router/index.ts",
+      "type": "uses",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/main.ts",
+      "target": "file:src/style.css",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/router/index.ts",
+      "target": "file:src/App.vue",
+      "type": "route-parent",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/App.vue",
+      "target": "file:src/store/index.ts",
+      "type": "uses-store",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/App.vue",
+      "target": "file:src/router/index.ts",
+      "type": "uses",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/App.vue",
+      "target": "file:src/views/SearchView.vue",
+      "type": "composes",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/App.vue",
+      "target": "file:src/views/ChatView.vue",
+      "type": "composes",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/App.vue",
+      "target": "file:src/views/ContactDetailView.vue",
+      "type": "composes",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/App.vue",
+      "target": "file:src/views/AgentFormView.vue",
+      "type": "composes",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/App.vue",
+      "target": "file:src/views/ProviderFormView.vue",
+      "type": "composes",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/App.vue",
+      "target": "file:src/views/ProviderDetailView.vue",
+      "type": "composes",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/App.vue",
+      "target": "file:src/views/ResourceDetailView.vue",
+      "type": "composes",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/App.vue",
+      "target": "file:src/config/workspace.ts",
+      "type": "uses",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/ChatView.vue",
+      "target": "file:src/store/index.ts",
+      "type": "uses-store",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/ChatView.vue",
+      "target": "file:src/api/api.ts",
+      "type": "uses-api",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/ChatView.vue",
+      "target": "file:src/types/chat-entry.ts",
+      "type": "uses-types",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/ChatView.vue",
+      "target": "file:src/types/chat-compose.ts",
+      "type": "uses-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/ProviderFormView.vue",
+      "target": "file:src/store/index.ts",
+      "type": "uses-store",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/ProviderFormView.vue",
+      "target": "file:src/types/ui.ts",
+      "type": "uses-types",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/ContactDetailView.vue",
+      "target": "file:src/store/index.ts",
+      "type": "uses-store",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/ProviderDetailView.vue",
+      "target": "file:src/store/index.ts",
+      "type": "uses-store",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/ProviderDetailView.vue",
+      "target": "file:src/types/ui.ts",
+      "type": "uses-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/AgentFormView.vue",
+      "target": "file:src/store/index.ts",
+      "type": "uses-store",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/ResourceDetailView.vue",
+      "target": "file:src/store/index.ts",
+      "type": "uses-store",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/SearchView.vue",
+      "target": "file:src/store/index.ts",
+      "type": "uses-store",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/views/SearchView.vue",
+      "target": "file:src/api/api.ts",
+      "type": "uses-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/store/index.ts",
+      "target": "file:src/api/api.ts",
+      "type": "uses-api",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/store/index.ts",
+      "target": "file:src/types/ui.ts",
+      "type": "uses-types",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/types/index.ts",
+      "target": "file:src/api/api.ts",
+      "type": "imports-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/types/ui.ts",
+      "target": "file:src/api/api.ts",
+      "type": "imports-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/index.ts",
+      "target": "file:packages/supervisor/src/core/session-manager.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/index.ts",
+      "target": "file:packages/supervisor/src/core/session-runtime.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/index.ts",
+      "target": "file:packages/supervisor/src/core/session-branch.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/index.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/cli.ts",
+      "target": "file:packages/supervisor/src/core/session-manager.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/cli.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/types.ts",
+      "target": "file:packages/supervisor/src/core/session-branch.ts",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-manager.ts",
+      "target": "file:packages/supervisor/src/core/session-branch.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-manager.ts",
+      "target": "file:packages/supervisor/src/core/session-checkpoint.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-manager.ts",
+      "target": "file:packages/supervisor/src/core/session-git-hooks.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-manager.ts",
+      "target": "file:packages/supervisor/src/core/session-runtime.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-manager.ts",
+      "target": "file:packages/supervisor/src/core/session-storage.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-manager.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-runtime.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-storage.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-branch.ts",
+      "target": "file:packages/supervisor/src/core/session-storage.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-checkpoint.ts",
+      "target": "file:packages/supervisor/src/core/session-storage.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-checkpoint.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/core/session-git-hooks.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/agent/agent-resources.ts",
+      "target": "file:packages/supervisor/src/agent/agent-paths.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/agent/agent-resources.ts",
+      "target": "file:packages/supervisor/src/agent/skills.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/agent/agent-resources.ts",
+      "target": "file:packages/supervisor/src/agent/prompt-templates.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/agent/agent-resources.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/agent/agent-resources.ts",
+      "target": "file:packages/supervisor/src/db/db.ts",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/agent/builtin-assistant.ts",
+      "target": "file:packages/supervisor/src/agent/agent-paths.ts",
+      "type": "imports",
+      "weight": 5,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/agent/builtin-assistant.ts",
+      "target": "file:packages/supervisor/src/db/db.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/db/db.ts",
+      "target": "file:packages/supervisor/src/agent/agent-paths.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/db/db.ts",
+      "target": "file:packages/supervisor/src/db/message-search.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/db/db.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 5,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/agent/skills.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/http/http-server.ts",
+      "target": "file:packages/supervisor/src/http/workspace-files.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/http/http-server.ts",
+      "target": "file:packages/supervisor/src/agent/agent-paths.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/http/http-server.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/builtin-extension.ts",
+      "target": "file:packages/supervisor/src/ask-tool.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/builtin-extension.ts",
+      "target": "file:packages/supervisor/src/builtin-edit-tool.ts",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/builtin-extension.ts",
+      "target": "file:packages/supervisor/src/builtin-lsp-tool.ts",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/builtin-extension.ts",
+      "target": "file:packages/supervisor/src/builtin-read-tool.ts",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:packages/supervisor/src/builtin-extension.ts",
+      "target": "file:packages/supervisor/src/types.ts",
+      "type": "imports",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/index.ts",
+      "target": "file:src/extensions/define-extension.ts",
+      "type": "re-exports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/index.ts",
+      "target": "file:src/extensions/http-commands.ts",
+      "type": "re-exports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/index.ts",
+      "target": "file:src/extensions/loader.ts",
+      "type": "re-exports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/index.ts",
+      "target": "file:src/extensions/runtime.ts",
+      "type": "re-exports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/index.ts",
+      "target": "file:src/extensions/types.ts",
+      "type": "re-exports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/loader.ts",
+      "target": "file:src/extensions/types.ts",
+      "type": "imports-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/runtime.ts",
+      "target": "file:src/extensions/types.ts",
+      "type": "imports-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/define-extension.ts",
+      "target": "file:src/extensions/types.ts",
+      "type": "imports-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/tool-adapter.ts",
+      "target": "file:src/extensions/types.ts",
+      "type": "imports-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/tool-adapter.ts",
+      "target": "file:src/extensions/runtime.ts",
+      "type": "imports-runtime",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/extension-deps.ts",
+      "target": "file:src/extensions/types.ts",
+      "type": "imports-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/http-commands.ts",
+      "target": "file:src/extensions/types.ts",
+      "type": "imports-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/edit-approval.ts",
+      "target": "file:src/extensions/types.ts",
+      "type": "imports-types",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/rolling-compaction.ts",
+      "target": "file:src/extensions/ask.ts",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/edit.ts",
+      "target": "file:src/extensions/edit-approval.ts",
+      "type": "uses-approval",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/runtime.ts",
+      "target": "file:src/extensions/extension-deps.ts",
+      "type": "depends-on-deps",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/read.ts",
+      "target": "file:src/extensions/read-orchestration.ts",
+      "type": "imports",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/index.ts",
+      "target": "file:src/ext-framework/index.ts",
+      "type": "is-duplicate-of",
+      "weight": 5,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/runtime.ts",
+      "target": "file:src/extensions/extension-deps.ts",
+      "type": "creates-extension-context-from-deps",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/edit.ts",
+      "target": "file:src/extensions/edit-approval.ts",
+      "type": "stores-pending-approval",
+      "weight": 2,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/rolling-compaction.ts",
+      "target": "file:src/extensions/ask.ts",
+      "type": "checks-pending-asks-before-compacting",
+      "weight": 1,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/runtime.ts",
+      "target": "file:src/extensions/types.ts",
+      "type": "implements-types",
+      "weight": 4,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/extension-deps.ts",
+      "target": "file:src/extensions/runtime.ts",
+      "type": "provides-deps-for",
+      "weight": 4,
+      "direction": "forward"
+    },
+    {
+      "source": "file:src/extensions/loader.ts",
+      "target": "file:src/extensions/runtime.ts",
+      "type": "loads-extensions-into",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:model-utils",
+      "target": "file:mcp-types",
+      "type": "imports",
+      "weight": 0,
+      "direction": "forward"
+    },
+    {
+      "source": "file:utility-llm",
+      "target": "file:model-utils",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:utility-llm",
+      "target": "file:supervisor-settings",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:default-tools",
+      "target": "file:mcp-types",
+      "type": "imports",
+      "weight": 0,
+      "direction": "forward"
+    },
+    {
+      "source": "file:mcp-client-manager",
+      "target": "file:mcp-config-loader",
+      "type": "imports",
+      "weight": 5,
+      "direction": "forward"
+    },
+    {
+      "source": "file:mcp-client-manager",
+      "target": "file:mcp-tool",
+      "type": "imports",
+      "weight": 4,
+      "direction": "forward"
+    },
+    {
+      "source": "file:mcp-client-manager",
+      "target": "file:mcp-types",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:mcp-config-loader",
+      "target": "file:mcp-types",
+      "type": "imports",
+      "weight": 4,
+      "direction": "forward"
+    },
+    {
+      "source": "file:mcp-extension",
+      "target": "file:mcp-client-manager",
+      "type": "imports",
+      "weight": 5,
+      "direction": "forward"
+    },
+    {
+      "source": "file:mcp-extension",
+      "target": "file:mcp-types",
+      "type": "imports",
+      "weight": 0,
+      "direction": "forward"
+    },
+    {
+      "source": "file:mcp-index",
+      "target": "file:mcp-client-manager",
+      "type": "imports",
+      "weight": 5,
+      "direction": "forward"
+    },
+    {
+      "source": "file:mcp-index",
+      "target": "file:mcp-config-loader",
+      "type": "imports",
+      "weight": 5,
+      "direction": "forward"
+    },
+    {
+      "source": "file:mcp-index",
+      "target": "file:mcp-tool",
+      "type": "imports",
+      "weight": 4,
+      "direction": "forward"
+    },
+    {
+      "source": "file:mcp-index",
+      "target": "file:mcp-types",
+      "type": "imports",
+      "weight": 3,
+      "direction": "forward"
+    },
+    {
+      "source": "file:spawn-agent-tool-provider",
+      "target": "file:session-spawner",
+      "type": "imports",
+      "weight": 4,
+      "direction": "forward"
+    },
+    {
+      "source": "file:session-runtime-dead",
+      "target": "file:model-utils",
+      "type": "imports",
+      "weight": 0,
+      "direction": "forward"
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer:frontend-shell",
+      "name": "Frontend Shell & Routing",
+      "description": "Vue 3 application shell, router setup, and root App component that orchestrates all views.",
+      "nodeIds": [
+        "file:src/App.vue",
+        "file:src/main.ts",
+        "file:src/router/index.ts",
+        "file:src/style.css",
+        "file:src/env.d.ts"
+      ]
+    },
+    {
+      "id": "layer:frontend-views",
+      "name": "Frontend Views",
+      "description": "Top-level Vue views (pages) for chat, agents, providers, resources, search.",
+      "nodeIds": [
+        "file:src/views/ChatView.vue",
+        "file:src/views/ProviderFormView.vue",
+        "file:src/views/ContactDetailView.vue",
+        "file:src/views/ProviderDetailView.vue",
+        "file:src/views/AgentFormView.vue",
+        "file:src/views/ResourceDetailView.vue",
+        "file:src/views/SearchView.vue"
+      ]
+    },
+    {
+      "id": "layer:frontend-state",
+      "name": "Frontend State Management",
+      "description": "Pinia stores, API client, and TypeScript types for the web UI.",
+      "nodeIds": [
+        "file:src/store/index.ts",
+        "file:src/api/api.ts",
+        "file:src/api/index.ts",
+        "file:src/types/index.ts",
+        "file:src/types/chat-entry.ts",
+        "file:src/types/chat-compose.ts",
+        "file:src/types/ui.ts",
+        "file:src/config/workspace.ts"
+      ]
+    },
+    {
+      "id": "layer:backend-entry",
+      "name": "Backend Entry & CLI",
+      "description": "Supervisor package entry point and CLI commands (serve, providers, models, extensions).",
+      "nodeIds": [
+        "file:packages/supervisor/src/index.ts",
+        "file:packages/supervisor/src/cli.ts",
+        "file:packages/supervisor/src/types.ts"
+      ]
+    },
+    {
+      "id": "layer:session-core",
+      "name": "Session Core",
+      "description": "Central session lifecycle: SessionManager, runtime wrapper, storage, branching, checkpoints, git hooks, log files.",
+      "nodeIds": [
+        "file:packages/supervisor/src/core/session-manager.ts",
+        "file:packages/supervisor/src/core/session-runtime.ts",
+        "file:packages/supervisor/src/core/session-storage.ts",
+        "file:packages/supervisor/src/core/session-branch.ts",
+        "file:packages/supervisor/src/core/session-checkpoint.ts",
+        "file:packages/supervisor/src/core/session-git-hooks.ts",
+        "file:packages/supervisor/src/core/session-log-file.ts"
+      ]
+    },
+    {
+      "id": "layer:agent-resources",
+      "name": "Agent & Resources",
+      "description": "Agent home paths, resource loading (skills/prompts/extensions), built-in providers, default assistant, context files.",
+      "nodeIds": [
+        "file:packages/supervisor/src/agent/agent-paths.ts",
+        "file:packages/supervisor/src/agent/agent-resources.ts",
+        "file:packages/supervisor/src/agent/built-in-providers.ts",
+        "file:packages/supervisor/src/agent/builtin-assistant.ts",
+        "file:packages/supervisor/src/agent/context-files.ts",
+        "file:packages/supervisor/src/agent/prompt-templates.ts",
+        "file:packages/supervisor/src/agent/skills.ts"
+      ]
+    },
+    {
+      "id": "layer:extensions",
+      "name": "Extension Framework",
+      "description": "Extension system: defineExtension DSL, loader, runtime, tool adapters, HTTP commands, type definitions, dependency injection. Also contains built-in tools (read/edit/ask/lsp/ast-grep) and utilities (output-minimizer, rolling-compaction).",
+      "nodeIds": [
+        "file:src/extensions/index.ts",
+        "file:src/extensions/define-extension.ts",
+        "file:src/extensions/loader.ts",
+        "file:src/extensions/runtime.ts",
+        "file:src/extensions/tool-adapter.ts",
+        "file:src/extensions/http-commands.ts",
+        "file:src/extensions/types.ts",
+        "file:src/extensions/extension-deps.ts",
+        "file:src/extensions/read.ts",
+        "file:src/extensions/edit.ts",
+        "file:src/extensions/ask.ts",
+        "file:src/extensions/lsp.ts",
+        "file:src/extensions/read-orchestration.ts",
+        "file:src/extensions/ast-grep.ts",
+        "file:src/extensions/output-minimizer.ts",
+        "file:src/extensions/rolling-compaction.ts",
+        "file:src/extensions/edit-approval.ts",
+        "file:src/extensions/review.ts",
+        "file:src/extensions/hindsight.ts",
+        "file:src/extensions/spawn-agent-tool.ts",
+        "file:src/ext-framework/index.ts"
+      ]
+    },
+    {
+      "id": "layer:builtin-tools",
+      "name": "Built-in Tool Wrappers",
+      "description": "Standalone built-in tool wrappers (ask, edit, lsp, read) used by the builtin-extension glue.",
+      "nodeIds": [
+        "file:packages/supervisor/src/ask-tool.ts",
+        "file:packages/supervisor/src/builtin-extension.ts",
+        "file:packages/supervisor/src/builtin-edit-tool.ts",
+        "file:packages/supervisor/src/builtin-lsp-tool.ts",
+        "file:packages/supervisor/src/builtin-read-tool.ts"
+      ]
+    },
+    {
+      "id": "layer:db",
+      "name": "Database Layer",
+      "description": "SQLite schema, migrations, CRUD operations, and FTS5 message search.",
+      "nodeIds": [
+        "file:packages/supervisor/src/db/db.ts",
+        "file:packages/supervisor/src/db/message-search.ts"
+      ]
+    },
+    {
+      "id": "layer:http",
+      "name": "HTTP Server",
+      "description": "Hono HTTP server with 30+ REST/SSE routes for sessions, agents, providers, models, git, checkpoints, and workspace files.",
+      "nodeIds": [
+        "file:packages/supervisor/src/http/http-server.ts",
+        "file:packages/supervisor/src/http/workspace-files.ts"
+      ]
+    },
+    {
+      "id": "layer:mcp",
+      "name": "MCP Integration",
+      "description": "Model Context Protocol client lifecycle, config loading, server-as-extension adapter, and tool bridging.",
+      "nodeIds": [
+        "file:mcp-index",
+        "file:mcp-client-manager",
+        "file:mcp-config-loader",
+        "file:mcp-extension",
+        "file:mcp-tool",
+        "file:mcp-types"
+      ]
+    },
+    {
+      "id": "layer:git",
+      "name": "Git Integration",
+      "description": "Per-session git worktrees, snapshots, merges, and per-turn file change tracking.",
+      "nodeIds": [
+        "file:git-worktree",
+        "file:turn-file-tracker"
+      ]
+    },
+    {
+      "id": "layer:spawn",
+      "name": "Spawn Framework",
+      "description": "Abstract SessionSpawner interface and SpawnAgentToolProvider base for subagent-spawning extensions.",
+      "nodeIds": [
+        "file:session-spawner",
+        "file:spawn-agent-tool-provider"
+      ]
+    },
+    {
+      "id": "layer:utils",
+      "name": "Shared Utilities",
+      "description": "Cross-cutting helpers: model resolution, utility LLM, default toolsets, event bus, shell exec, settings, paths, frontmatter parsing.",
+      "nodeIds": [
+        "file:model-utils",
+        "file:utility-llm",
+        "file:default-tools",
+        "file:event-bus",
+        "file:exec",
+        "file:supervisor-settings",
+        "file:diagnostics",
+        "file:paths",
+        "file:frontmatter",
+        "file:source-info",
+        "file:session-runtime-dead",
+        "file:read-orchestration-hint",
+        "file:hindsight-memory"
+      ]
+    },
+    {
+      "id": "layer:docs-config",
+      "name": "Documentation & Config",
+      "description": "Top-level docs, README, package.json, tsconfig, oxlint config.",
+      "nodeIds": []
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "项目概览",
+      "description": "从 README 开始了解这个独立后的 supervisor 项目：一个 SQLite+HTTP 的多会话 Agent 运行时 + Vue 3 Web UI。",
+      "nodeIds": []
+    },
+    {
+      "order": 2,
+      "title": "后端入口与 CLI",
+      "description": "index.ts 导出 startSupervisor()（将 SupervisorDb + SessionManager + Hono 绑定为一个 HTTP 服务）。cli.ts 是可选的命令行入口，提供 serve/providers/models/extensions 子命令。",
+      "nodeIds": [
+        "file:packages/supervisor/src/index.ts",
+        "file:packages/supervisor/src/cli.ts"
+      ]
+    },
+    {
+      "order": 3,
+      "title": "HTTP API 层",
+      "description": "http-server.ts 定义了 30+ 路由（/sessions /agents /providers /models /files /settings /healthz），所有数据流经此层进入 SessionManager。",
+      "nodeIds": [
+        "file:packages/supervisor/src/http/http-server.ts",
+        "file:packages/supervisor/src/http/workspace-files.ts"
+      ]
+    },
+    {
+      "order": 4,
+      "title": "会话生命周期中枢",
+      "description": "SessionManager（948 行）是整个系统的核心：spawn/prompt/abort/steer/fork/clone/kill/complete 会话，管理 checkpoint、commit、模型选择、工具注册、扩展加载。所有核心操作汇聚于此。",
+      "nodeIds": [
+        "file:packages/supervisor/src/core/session-manager.ts"
+      ]
+    },
+    {
+      "order": 5,
+      "title": "会话运行时与存储",
+      "description": "session-runtime.ts 包装 AgentHarness，代理 prompt/steer/abort/compact 到 harness。session-storage.ts 将消息树（SessionTreeEntry）持久化到 SQLite。",
+      "nodeIds": [
+        "file:packages/supervisor/src/core/session-runtime.ts",
+        "file:packages/supervisor/src/core/session-storage.ts"
+      ]
+    },
+    {
+      "order": 6,
+      "title": "数据库层",
+      "description": "db.ts（876 行）定义了完整的 SQLite schema（providers/models/agents/sessions/messages），带增量迁移和 FTS5 全文搜索。所有持久化最终落在这里。",
+      "nodeIds": [
+        "file:packages/supervisor/src/db/db.ts",
+        "file:packages/supervisor/src/db/message-search.ts"
+      ]
+    },
+    {
+      "order": 7,
+      "title": "Agent 资源管理",
+      "description": "agent-paths.ts 管理 ~/.pi/supervisor/agents/ 目录结构。skills.ts（504 行）加载技能文件，prompt-templates.ts（279 行）展开模板。builtin-assistant.ts 自动创建默认 agent。",
+      "nodeIds": [
+        "file:packages/supervisor/src/agent/agent-paths.ts",
+        "file:packages/supervisor/src/agent/agent-resources.ts",
+        "file:packages/supervisor/src/agent/skills.ts",
+        "file:packages/supervisor/src/agent/builtin-assistant.ts"
+      ]
+    },
+    {
+      "order": 8,
+      "title": "扩展框架",
+      "description": "扩展系统由 define-extension DSL、loader（从目录发现扩展）、runtime（管理实例和事件）、types（901 行类型定义）构成。扩展可以注册工具/命令/事件处理器。",
+      "nodeIds": [
+        "file:src/types/index.ts",
+        "file:src/extensions/define-extension.ts",
+        "file:src/extensions/loader.ts",
+        "file:src/extensions/runtime.ts",
+        "file:packages/supervisor/src/types.ts"
+      ]
+    },
+    {
+      "order": 9,
+      "title": "内建工具",
+      "description": "read.ts（模式搜索读取）、edit.ts（多补丁编辑）、ask.ts（结构化提问）、lsp.ts（1124 行，TypeScript/Python/Go 语言智能）、ast-grep.ts（结构搜索）等内建工具。由 builtin-extension.ts 装配后提供给 AgentHarness。",
+      "nodeIds": [
+        "file:packages/supervisor/src/builtin-extension.ts",
+        "file:src/extensions/read.ts",
+        "file:src/extensions/edit.ts",
+        "file:src/extensions/ask.ts",
+        "file:src/extensions/lsp.ts"
+      ]
+    },
+    {
+      "order": 10,
+      "title": "Git 集成",
+      "description": "git-worktree.ts 为每个会话创建隔离的工作目录。turn-file-tracker.ts 分析 agent 事件追踪文件改动。session-git-hooks.ts 自动生成 commit message。",
+      "nodeIds": [
+        "file:packages/supervisor/src/core/session-git-hooks.ts"
+      ]
+    },
+    {
+      "order": 11,
+      "title": "MCP 集成",
+      "description": "mcp-client-manager.ts 管理外部 MCP 服务器连接，mcp-extension.ts 将 MCP server 包装为 pi 扩展，mcp-tool.ts 适配 JSON Schema 到 TypeBox。",
+      "nodeIds": []
+    },
+    {
+      "order": 12,
+      "title": "前端 Shell 与路由",
+      "description": "App.vue（600 行）是响应式 Shell，支持桌面侧栏和移动底栏布局。router/index.ts 定义了 6 条路由（chat/contacts/providers/resources/settings/search）。",
+      "nodeIds": [
+        "file:src/App.vue",
+        "file:src/main.ts",
+        "file:src/types/index.ts"
+      ]
+    },
+    {
+      "order": 13,
+      "title": "前端存储层",
+      "description": "store/index.ts（753 行）包含 5 个 Pinia store（Root/Session/Agent/Provider/Resource），通过 api/api.ts（882 行）调用后端 HTTP API。",
+      "nodeIds": [
+        "file:src/types/index.ts",
+        "file:src/api/api.ts"
+      ]
+    },
+    {
+      "order": 14,
+      "title": "Chat 视图",
+      "description": "ChatView.vue（570 行）是核心交互界面，集成消息列表（ChatMessageList）、输入框（ChatComposer + ChatInputPanel）、会话菜单（ChatSessionMenu）、日志面板（SessionLogPanel）。",
+      "nodeIds": [
+        "file:src/views/ChatView.vue"
+      ]
+    }
+  ]
+}

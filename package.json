@@ -1,0 +1,39 @@
+{
+  "name": "supervisor-standalone",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "extensions/*"
+  ],
+  "scripts": {
+    "clean": "pnpm run clean --filter \"./packages/*\" --if-present",
+    "build": "pnpm --filter @earendil-works/pi-supervisor run build",
+    "dev": "pnpm --filter @earendil-works/pi-supervisor-ui run dev",
+    "dev:supervisor": "pnpm run build && pnpm --filter @earendil-works/pi-supervisor run serve:playground",
+    "playground": "pnpm run build && pnpm --filter @earendil-works/pi-supervisor run serve:playground",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint --fix .",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
+    "check": "oxlint . && oxfmt --check . && pnpm run check --filter \"./packages/*\" --if-present",
+    "test": "pnpm run test --filter \"./packages/*\" --if-present",
+    "serve": "node packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground --db playground/.supervisor/supervisor.db",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "oxfmt": "latest",
+    "oxlint": "latest",
+    "shx": "^0.4.0",
+    "tsdown": "^0.22.3",
+    "typescript": "^5.9.2",
+    "vitepress": "^1.6.4"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  }
+}

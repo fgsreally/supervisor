@@ -26,6 +26,19 @@ export {
 } from "./loader.js";
 export type { ExtensionEntryInfo } from "./loader.js";
 export { createExtensionDatabase, ExtensionRuntime } from "./runtime.js";
+export { ToolPolicy, matchGlob, extractFilePaths, isWriteTool } from "./tool-policy.js";
+export { submitApprovalResolution, cancelPendingApprovals } from "./extension-session-services.js";
+export type {
+  ApprovalRequest,
+  ApprovalResult,
+  ContinueTurnOptions,
+  ContinueTurnResult,
+  ScheduleInjectionInput,
+  ToolGuardHandler,
+  ToolResultHandler,
+  TurnFlowLock,
+  TurnUsage,
+} from "./extension-session-services.js";
 
 // Types
 export type {
@@ -64,9 +77,12 @@ export type {
   SupervisorSessionMessagesFacade,
   SupervisorSessionMetaFacade,
   SupervisorSessionRuntimeFacade,
+  SupervisorSessionToolSetFacade,
   SupervisorSystemFacade,
   SupervisorToolRegistryFacade,
   SupervisorUiFacade,
+  TurnFlowFacade,
+  TurnInjectorFacade,
   // Session & Messages
   SessionInfo,
   // Tools

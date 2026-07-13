@@ -48,6 +48,13 @@ export {
 } from "./agent/agent-resources.js";
 export { SupervisorDb } from "./db/db.js";
 export { createDefaultTools } from "./utils/default-tools.js";
+export {
+  activatePackagedTools,
+  enablePackagedToolForAgent,
+  getPackagedToolDir,
+  listEnabledPackagedToolIds,
+  listPackagedToolIds,
+} from "./tools/index.js";
 export { defineExtension, defineExtensionAsync } from "./extension-system/define-extension.js";
 export {
   discoverAndLoadExtensions,
@@ -81,6 +88,15 @@ export { extractMessageSearchFields } from "./db/message-search.js";
 export { copyMessagesWithInheritance } from "./core/session-branch.js";
 export type { SessionOutputListener } from "./core/session-manager.js";
 export { SessionManager } from "./core/session-manager.js";
+export {
+  ResourceService,
+  type BindResourceInput,
+  type InstallAndBindInput,
+  type InstallResourceInput,
+  type InstallResourceResult,
+  type ResourceServiceDeps,
+} from "./resources/resource-service.js";
+export type { AgentResourceBinding, Resource, ResourceKind } from "./resources/types.js";
 export type { SupervisorSessionEvent, SupervisorSessionState } from "./core/session-runtime.js";
 export { SupervisorSessionRuntime } from "./core/session-runtime.js";
 export { formatSkillsForPrompt, loadSkills, loadSkillsFromDir } from "./agent/skills.js";

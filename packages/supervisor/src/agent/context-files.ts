@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { renderPromptTemplate } from "./system-prompts.js";
 
 const CANDIDATES = ["AGENTS.md", "AGENTS.MD", "CLAUDE.md", "CLAUDE.MD"];
 
@@ -53,6 +54,11 @@ export function loadSupervisorContextFiles(cwd: string): ContextFile[] {
 export function appendContextFilesToSystemPrompt(baseSystemPrompt: string, cwd: string): string {
 	const contexts = loadSupervisorContextFiles(cwd);
 	if (contexts.length === 0) return baseSystemPrompt;
-	const sections = contexts.map((ctx) => `\n# Context File: ${ctx.path}\n\n${ctx.content.trim()}\n`);
+	const sections = contexts.map((ctx) =>
+		renderPromptTemplate("context-file-section", {
+			path: ctx.path,
+			content: ctx.content.trim(),
+		}),
+	);
 	return `${baseSystemPrompt}${sections.join("\n")}`;
 }

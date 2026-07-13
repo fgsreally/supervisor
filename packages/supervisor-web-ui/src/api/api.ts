@@ -473,8 +473,7 @@ function toCreateSessionBody(options: CreateSessionRequest) {
       options.projectId === undefined || options.projectId === null
         ? options.projectId
         : Number.parseInt(options.projectId, 10),
-    parentId:
-      options.parentId === undefined ? undefined : Number.parseInt(options.parentId, 10),
+    parentId: options.parentId === undefined ? undefined : Number.parseInt(options.parentId, 10),
     agentId:
       options.agentId === undefined || options.agentId === null
         ? options.agentId
@@ -944,9 +943,7 @@ export async function getProvider(id: string): Promise<Provider> {
 }
 
 /** Create a new provider. */
-export async function createProvider(
-  provider: CreateProviderRequest,
-): Promise<Provider> {
+export async function createProvider(provider: CreateProviderRequest): Promise<Provider> {
   const created = await postJson<RawProvider>("/providers", provider);
   return mapProvider(created);
 }
@@ -1014,14 +1011,122 @@ export async function getSessionLog(
 
 // ============ Resource API ============
 
+/** DB-backed resource kind (global catalog + agent bindings). */
+export type CatalogResourceKind = "extension" | "skill" | "prompt" | "mcp" | "tool";
+
+export interface CatalogResource {
+  id: number;
+  kind: CatalogResourceKind;
+  slug: string;
+  name: string | null;
+  description: string | null;
+  sourcePath: string | null;
+  version: string | null;
+  meta: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentResourceBinding {
+  id: number;
+  agentId: number;
+  resourceId: number;
+  enabled: boolean;
+  priority: number;
+  createdAt: string;
+  resource?: CatalogResource;
+}
+
+export interface InstallCatalogResourceRequest {
+  kind: Exclude<CatalogResourceKind, "tool">;
+  source: string;
+  slug?: string;
+  name?: string;
+  description?: string;
+  agentId?: string;
+  priority?: number;
+}
+
+export interface InstallCatalogResourceResult {
+  resource: CatalogResource;
+  rootDir?: string;
+  entryPath?: string;
+  installCommand?: "pnpm" | "npm" | "none";
+  binding?: AgentResourceBinding;
+}
+
 /** Get global resource catalog (~/.pi/supervisor/global/). */
 export async function getGlobalResources(): Promise<ResourceLayer> {
   return fetchJson<ResourceLayer>("/resources/global");
 }
 
+/** List resources registered in the database (optional kind filter). */
+export async function listResourceCatalog(kind?: CatalogResourceKind): Promise<CatalogResource[]> {
+  const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+  return fetchJson<CatalogResource[]>(`/resources${qs}`);
+}
+
+/** Install a resource into the global catalog; optionally bind to an agent. */
+export async function installCatalogResource(
+  request: InstallCatalogResourceRequest,
+): Promise<InstallCatalogResourceResult> {
+  const body: Record<string, unknown> = {
+    kind: request.kind,
+    source: request.source,
+    slug: request.slug,
+    name: request.name,
+    description: request.description,
+    priority: request.priority,
+  };
+  if (request.agentId !== undefined) {
+    body.agentId = Number.parseInt(request.agentId, 10);
+  }
+  return postJson<InstallCatalogResourceResult>("/resources/install", body);
+}
+
+/** Remove a resource from the global catalog (fails if still bound to agents). */
+export async function uninstallCatalogResource(
+  kind: CatalogResourceKind,
+  slug: string,
+): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>("/resources/uninstall", { kind, slug });
+}
+
+export type BindCatalogResourceRequest =
+  | { resourceId: number; priority?: number }
+  | { kind: CatalogResourceKind; slug: string; priority?: number };
+
+/** Bind a catalog resource to an agent (database binding). */
+export async function bindCatalogResourceToAgent(
+  agentId: string,
+  request: BindCatalogResourceRequest,
+): Promise<{ ok: boolean; binding: AgentResourceBinding }> {
+  return postJson<{ ok: boolean; binding: AgentResourceBinding }>(
+    `/agents/${agentId}/resources`,
+    request,
+  );
+}
+
+/** Unbind a catalog resource from an agent by resource id. */
+export async function unbindCatalogResourceFromAgent(
+  agentId: string,
+  resourceId: number,
+): Promise<{ ok: boolean }> {
+  return deleteRequest<{ ok: boolean }>(`/agents/${agentId}/resources/${resourceId}`);
+}
+
+/** List database resource bindings for an agent. */
+export async function listAgentResourceBindings(
+  agentId: string,
+  kind?: CatalogResourceKind,
+): Promise<AgentResourceBinding[]> {
+  const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+  return fetchJson<AgentResourceBinding[]>(`/agents/${agentId}/resource-bindings${qs}`);
+}
+
 export type AgentResourceKind = "skills" | "extensions" | "prompts";
 
-/** Symlink a global resource into an agent home directory. */
+/** @deprecated Prefer bindCatalogResourceToAgent — maps global path to slug for DB binding. */
 export async function linkAgentResource(
   agentId: string,
   kind: AgentResourceKind,
@@ -1046,12 +1151,18 @@ export async function listExtensions(): Promise<ExtensionResourceInfo[]> {
 
 /** Install extension from npm:<spec>, git:<url>, or local path. */
 export async function installExtension(source: string): Promise<ExtensionInstallResult> {
-  return postJson<ExtensionInstallResult>("/extensions/install", { source });
+  const result = await installCatalogResource({ kind: "extension", source });
+  return {
+    id: result.resource.slug,
+    rootDir: result.rootDir ?? result.resource.sourcePath ?? "",
+    entryPath: result.entryPath ?? "",
+    installCommand: result.installCommand ?? "none",
+  };
 }
 
 /** Remove extension from the global catalog. */
 export async function uninstallExtension(id: string): Promise<{ ok: boolean }> {
-  return postJson<{ ok: boolean }>(`/extensions/${id}/uninstall`, {});
+  return uninstallCatalogResource("extension", id);
 }
 
 /** Link a global extension to an agent. */
@@ -1059,7 +1170,8 @@ export async function linkExtensionToAgent(
   id: string,
   agentId: string,
 ): Promise<{ ok: boolean; linkPath: string }> {
-  return postJson<{ ok: boolean; linkPath: string }>(`/extensions/${id}/link`, { agentId });
+  const result = await bindCatalogResourceToAgent(agentId, { kind: "extension", slug: id });
+  return { ok: result.ok, linkPath: "" };
 }
 
 /** Unlink a global extension from an agent. */
@@ -1067,7 +1179,10 @@ export async function unlinkExtensionFromAgent(
   id: string,
   agentId: string,
 ): Promise<{ ok: boolean }> {
-  return postJson<{ ok: boolean }>(`/extensions/${id}/unlink`, { agentId });
+  const bindings = await listAgentResourceBindings(agentId, "extension");
+  const binding = bindings.find((b) => b.resource?.slug === id);
+  if (!binding) return { ok: true };
+  return unbindCatalogResourceFromAgent(agentId, binding.resourceId);
 }
 
 // ============ Message API ============

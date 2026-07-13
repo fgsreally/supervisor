@@ -5,6 +5,10 @@ import type { SupervisorSessionRuntime } from "../core/session-runtime.js";
 import type { SessionManager } from "../core/session-manager.js";
 import type { SupervisorDb } from "../db/db.js";
 import { ensureProjectDir, ensureSessionDir } from "../core/session-files.js";
+import {
+	DEFAULT_PARENT_MESSAGE_LEVEL,
+	DEFAULT_SESSION_INPUT_LEVEL,
+} from "../core/session-input-queue.js";
 import { execCommand } from "../utils/exec.js";
 import { mergeSessionToolInfos } from "./extension-event-bridge.js";
 import type {
@@ -128,13 +132,65 @@ export function buildExtensionDeps(deps: {
       }
     },
 
-    sendUserMessage: async (content: string, options?: { source?: string }) => {
+    sendUserMessage: async (
+      content: string,
+      options?: { source?: string; level?: number },
+    ) => {
+      await manager.submitSessionInput(sessionId, {
+        message: content,
+        level: options?.level ?? DEFAULT_SESSION_INPUT_LEVEL,
+        source: options?.source,
+      });
+    },
+
+    sendParentMsg: async (content, options) => {
+      const row = db.get(sessionId);
+      if (!row?.parent_id) {
+        throw new Error("sendParentMsg is only available on shadow child sessions");
+      }
+      const meta =
+        typeof row.meta === "string"
+          ? (JSON.parse(row.meta) as Record<string, unknown>)
+          : ((row.meta as Record<string, unknown> | null) ?? {});
+      if (meta.shadowOf !== row.parent_id) {
+        throw new Error("sendParentMsg requires a shadow child session (meta.shadowOf)");
+      }
+      await manager.submitSessionInput(row.parent_id, {
+        message: content,
+        level: options?.level ?? DEFAULT_PARENT_MESSAGE_LEVEL,
+        source: `shadow:${sessionId}`,
+      });
+    },
+
+    continueTurn: async (content: string, options?: { source?: string }) => {
       const state = await runtime.getState();
       if (state.isStreaming) {
         manager.followUp(sessionId, content, options?.source);
         return;
       }
       await manager.prompt(sessionId, content, undefined, options?.source);
+    },
+
+    setActiveTools: async (names: string[]) => {
+      await runtime.setActiveTools(names);
+    },
+
+    getContextUsage: async () => {
+      const row = db.db
+        .prepare(
+          `SELECT m.payload as usage
+           FROM messages m
+           WHERE m.session_id = ? AND m.message_role = 'assistant'
+           ORDER BY m.created_at DESC LIMIT 1`,
+        )
+        .get(sessionId) as { usage?: string } | undefined;
+      if (!row?.usage) return { tokens: null };
+      try {
+        const usage = JSON.parse(row.usage) as { totalTokens?: number; output?: number };
+        return { tokens: usage.totalTokens ?? usage.output ?? null };
+      } catch {
+        return { tokens: null };
+      }
     },
 
     getSessionDir: async () => ensureSessionDir(projectId, sessionId),
@@ -204,21 +260,7 @@ export function buildExtensionDeps(deps: {
       targetSessionId: number,
       options?: { timeoutMs?: number },
     ): Promise<void> => {
-      const timeoutMs = options?.timeoutMs ?? 30 * 60 * 1000;
-      const startedAt = Date.now();
-      while (Date.now() - startedAt < timeoutMs) {
-        const row = db.get(targetSessionId);
-        if (!row) throw new Error(`Session ${targetSessionId} not found`);
-        if (
-          row.status !== "starting" &&
-          row.status !== "running" &&
-          row.status !== "waiting_user"
-        ) {
-          return;
-        }
-        await sleep(250);
-      }
-      throw new Error(`Timed out waiting for session ${targetSessionId}`);
+      await manager.waitForSessionIdle(targetSessionId, options);
     },
 
     getSessionResultSummary: async (
@@ -514,6 +556,10 @@ type RuntimeDeps = {
     triggerTurn?: boolean;
   }) => Promise<void>;
   sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
+    sendParentMsg: (
+      content: string,
+      options?: { level?: number },
+    ) => Promise<void>;
   getSessionDir: () => Promise<string>;
   getProjectDir: () => Promise<string>;
   getMemberAgentsByTag: (tag: string) => Promise<MemberAgentInfo[]>;
@@ -568,4 +614,7 @@ type RuntimeDeps = {
   ) => void;
   broadcast: (event: { type: string; [key: string]: unknown }) => void;
   eventBus: EventBus;
+  continueTurn: (content: string, options?: { source?: string }) => Promise<void>;
+  setActiveTools: (names: string[]) => Promise<void>;
+  getContextUsage: () => Promise<{ tokens: number | null }>;
 };

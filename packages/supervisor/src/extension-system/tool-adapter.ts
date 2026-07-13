@@ -32,6 +32,14 @@ export function wrapToolWithExtensionRuntime(
   return {
     ...tool,
     async execute(toolCallId: string, params: unknown, signal?: AbortSignal, onUpdate?: unknown) {
+      const blocked = await runtime.checkToolBeforeCall(toolCallId, tool.name, params);
+      if (blocked.block) {
+        return {
+          content: [{ type: "text", text: blocked.reason ?? "Tool call blocked." }],
+          isError: true,
+        } as Awaited<ReturnType<AgentTool["execute"]>>;
+      }
+
       const result = await execute(toolCallId, params, signal, onUpdate as never);
       let transformed: unknown = result;
       await runtime.emit({
@@ -51,6 +59,9 @@ export function wrapToolWithExtensionRuntime(
         setResult: (next: unknown) => {
           transformed = next;
         },
+      });
+      await runtime.runToolAfterHandlers(toolCallId, tool.name, params, transformed, (next) => {
+        transformed = next;
       });
       return transformed as Awaited<ReturnType<AgentTool["execute"]>>;
     },

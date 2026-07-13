@@ -5,6 +5,7 @@
  */
 
 import type { TSchema } from "typebox";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type {
   BroadcastEvent,
   EventBus,
@@ -25,12 +26,14 @@ import type {
   ToolExecutionContext,
   ToolInfo,
 } from "./types.js";
-import sidecarExtension from "./extensions/sidecar/index.js";
+import shadowAgentExtension from "./extensions/shadow-agent/index.js";
 import subagentExtension from "./extensions/subagent/index.js";
+import { ExtensionSessionServices } from "./extension-session-services.js";
 
 interface RuntimeOptions {
   sessionId: number;
   parentSessionId?: number | null;
+  sessionMeta?: Record<string, unknown>;
   cwd: string;
   sessionDir: string;
   projectDir: string;
@@ -55,6 +58,10 @@ interface RuntimeOptions {
       triggerTurn?: boolean;
     }) => Promise<void>;
     sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
+    sendParentMsg: (
+      content: string,
+      options?: { level?: number },
+    ) => Promise<void>;
     getSessionDir: () => Promise<string>;
     getProjectDir: () => Promise<string>;
     getMemberAgentsByTag: (tag: string) => Promise<import("./types.js").MemberAgentInfo[]>;
@@ -123,6 +130,10 @@ interface RuntimeOptions {
 
     // 事件总线
     eventBus: EventBus;
+
+    continueTurn: (content: string, options?: { source?: string }) => Promise<void>;
+    setActiveTools: (names: string[]) => Promise<void>;
+    getContextUsage: () => Promise<{ tokens: number | null }>;
   };
 }
 
@@ -139,6 +150,7 @@ function createExtensionContext(
   registry: ExtensionRegistry,
   options: RuntimeOptions,
   registerOn: RegisterExtensionEvent,
+  services: ExtensionSessionServices,
 ): ExtensionContext {
   const { sessionId, parentSessionId, cwd, sessionDir, projectDir, agent, db, deps } = options;
   const isChildSession = parentSessionId !== null && parentSessionId !== undefined;
@@ -207,6 +219,7 @@ function createExtensionContext(
     appendEntry: deps.appendEntry,
     sendMessage: deps.sendMessage,
     sendUserMessage: deps.sendUserMessage,
+    sendParentMsg: deps.sendParentMsg,
     pausing: deps.pausing,
     spawn: deps.spawnSession,
     waitForResult: async (
@@ -221,6 +234,19 @@ function createExtensionContext(
     switchTo: deps.switchSession,
     navigateTree: deps.navigateTree,
     compact: deps.compact,
+    tools: {
+      setPolicy: (policy) => services.tools.setPolicy(policy),
+      getPolicy: () => services.tools.getPolicy(),
+      beforeUse: (handler, opts) => services.tools.beforeUse(handler, opts),
+      afterUse: (handler, opts) => services.tools.afterUse(handler, opts),
+      enable: (name) => services.tools.enable(name),
+      disable: (name, reason) => services.tools.disable(name, reason),
+      setActive: async (names) => {
+        services.tools.setActive(names);
+        await deps.setActiveTools(names);
+      },
+      getActive: () => services.tools.getActiveToolNames(),
+    },
   };
   const project = {
     cwd,
@@ -237,14 +263,31 @@ function createExtensionContext(
     setThinkingLevel: deps.setThinkingLevel,
     getThinkingLevel: deps.getThinkingLevel,
   };
+  const injectFacade = {
+    schedule: (input) => services.inject.schedule(input),
+    clear: (variant) => services.inject.clear(variant),
+    reattach: (variant, content, opts) => services.inject.reattach(variant, content, opts),
+  };
+  const flowFacade = {
+    continue: (opts) => services.flow.continue(opts),
+    pause: (reason) => services.flow.pause(reason),
+    resume: () => services.flow.resume(),
+    acquireLock: (key, opts) => services.flow.acquireLock(key, opts),
+    usage: (opts) => services.flow.usage(opts),
+    startScope: (scope) => services.flow.startScope(scope),
+    endScope: (scope) => services.flow.endScope(scope),
+  };
   const runtime = {
     on: registerOn,
     exec: deps.exec,
     log: deps.log,
     events: deps.eventBus,
+    flow: flowFacade,
+    inject: injectFacade,
   };
   const ui = {
     broadcast: deps.broadcast,
+    requestApproval: (request) => services.uiApproval.requestApproval(request),
   };
   const system = {
     db,
@@ -261,6 +304,7 @@ function createExtensionContext(
     tools: toolRegistry,
     ui,
     system,
+    inject: injectFacade,
 
     // 会话信息
     sessionId,
@@ -335,9 +379,22 @@ export class ExtensionRuntime {
   private extensions: LoadedExtension[] = [];
   private registry: ExtensionRegistry;
   private options: RuntimeOptions;
+  readonly services: ExtensionSessionServices;
+  private turnId = 0;
 
   constructor(options: RuntimeOptions) {
     this.options = options;
+    this.services = new ExtensionSessionServices({
+      sessionId: options.sessionId,
+      deps: {
+        continueTurn: options.deps.continueTurn,
+        getContextUsage: options.deps.getContextUsage,
+        isIdle: options.deps.isIdle,
+        isStreaming: options.deps.isStreaming,
+        pausing: options.deps.pausing,
+        broadcast: options.deps.broadcast,
+      },
+    });
     this.registry = {
       extensions: this.extensions,
       tools: new Map(),
@@ -362,6 +419,7 @@ export class ExtensionRuntime {
         this.registry,
         this.options,
         this.on.bind(this),
+        this.services,
       );
       const cleanup = definition.setup(ctx);
       if (typeof cleanup === "function") {
@@ -370,7 +428,9 @@ export class ExtensionRuntime {
       this.extensions.push(loaded);
     };
 
-    loadBuiltin(sidecarExtension, "builtin:sidecar");
+    if (typeof this.options.sessionMeta?.shadowOf === "number") {
+      loadBuiltin(shadowAgentExtension, "builtin:shadow-child");
+    }
     if (this.options.parentSessionId === null) {
       loadBuiltin(subagentExtension, "builtin:subagent");
     }
@@ -438,6 +498,7 @@ export class ExtensionRuntime {
       this.registry,
       this.options,
       this.on.bind(this),
+      this.services,
     );
 
     // 调用 setup
@@ -495,6 +556,44 @@ export class ExtensionRuntime {
     return this.registry.getAllTools();
   }
 
+  registerPackagedTool(
+    packageId: string,
+    tool: AgentTool,
+    pausing?: { message: string },
+  ): void {
+    const definition: ToolDefinition<TSchema, unknown> = {
+      name: tool.name,
+      description: tool.description ?? tool.name,
+      parameters: tool.parameters as TSchema,
+      execute: async (params, context) => {
+        const run = () => tool.execute(context.toolCallId, params, context.signal);
+        const result = pausing
+          ? await this.options.deps.pausing(pausing.message, run)
+          : await run();
+        return result as {
+          content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>;
+          details?: unknown;
+          isError?: boolean;
+        };
+      },
+    };
+
+    this.registry.tools.set(tool.name, {
+      name: tool.name,
+      description: tool.description ?? tool.name,
+      parameters: tool.parameters as TSchema,
+      source: "builtin",
+      extensionName: packageId,
+      definition,
+    });
+  }
+
+  logPackagedToolWarning(toolId: string, error: unknown): void {
+    this.options.deps.log("warn", `packaged tool ${toolId} skipped`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   getToolExecutionSession(): { id: string; cwd: string } {
     return { id: String(this.options.sessionId), cwd: this.options.cwd };
   }
@@ -517,6 +616,78 @@ export class ExtensionRuntime {
     }
 
     return await tool.execute(params, context);
+  }
+
+  async checkToolBeforeCall(
+    toolCallId: string,
+    name: string,
+    args: unknown,
+  ): Promise<{ block: boolean; reason?: string }> {
+    const event = {
+      type: "tool.before_call" as const,
+      toolCallId,
+      name,
+      args,
+      entryId: "",
+      block: undefined as { reason: string } | undefined,
+    };
+
+    const handlers = this.handlers.get("tool.before_call");
+    if (handlers) {
+      const eventCtx: EventHandlerContext = {
+        sessionId: this.options.sessionId,
+        timestamp: Date.now(),
+      };
+      for (const handler of handlers) {
+        try {
+          await handler(event, eventCtx);
+        } catch (err) {
+          this.options.deps.log("error", "tool.before_call handler failed", {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+    }
+
+    if (event.block) {
+      return { block: true, reason: event.block.reason };
+    }
+
+    const decision = await this.services.tools.checkBeforeCall({ toolCallId, name, args });
+    if (!decision.allow) {
+      return { block: true, reason: decision.reason };
+    }
+    return { block: false };
+  }
+
+  async runToolAfterHandlers(
+    toolCallId: string,
+    name: string,
+    args: unknown,
+    result: unknown,
+    setResult: (next: unknown) => void,
+  ): Promise<void> {
+    await this.services.tools.runAfterCall({ toolCallId, name, args, result }, setResult);
+  }
+
+  applyTurnInjections<T extends { role: string }>(messages: T[]): T[] {
+    return this.services.inject.applyToMessages(messages as never) as T[];
+  }
+
+  onTurnStarted(): number {
+    this.turnId += 1;
+    this.services.inject.onTurnStart();
+    return this.turnId;
+  }
+
+  onTurnEnded(usage?: { input?: number; output?: number; totalTokens?: number }): number {
+    this.services.flow.onTurnEnded(usage);
+    this.services.inject.onAssistantTurnEnd();
+    return this.turnId;
+  }
+
+  onStepEnded(usage?: { input?: number; output?: number; totalTokens?: number }): void {
+    this.services.flow.onStepEnded(usage);
   }
 }
 

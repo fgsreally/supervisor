@@ -18,15 +18,17 @@ import {
 } from "@earendil-works/pi-ai";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import {
-  type AgentResourceKind,
   ensureGlobalResourceDirs,
   getAgentHomeDir,
   getGlobalResourceDirs,
-  linkGlobalResourceToAgent,
   readAgentHomeSystemPrompt,
   writeAgentHomeSystemPrompt,
 } from "../agent/agent-paths.js";
 import { getDefaultCwd } from "../config/default-cwd.js";
+import { initializeResourceCatalog } from "../resources/catalog-sync.js";
+import { ExtensionModuleRegistry } from "../resources/extension-registry.js";
+import { ResourceService } from "../resources/resource-service.js";
+import type { ResourceKind } from "../resources/types.js";
 import {
   loadAgentSessionResources,
   promptsToResourceInfo,
@@ -35,12 +37,18 @@ import {
   resolveAgentTools,
   skillsToResourceInfo,
 } from "../agent/agent-resources.js";
+import { assertAgentUserSpawnable } from "../agent/internal-agents.js";
+import {
+  type ApprovalResult,
+  cancelPendingApprovals,
+  submitApprovalResolution,
+} from "../extension-system/extension-session-services.js";
 import {
   type AskAnswer,
   cancelPendingAsks,
   hasPendingAsks,
   submitAskAnswer,
-} from "../extension-system/extensions/ask/tool.js";
+} from "../tools/ask/tool.js";
 import {
   finalizeSessionLifecycleGit,
   handleSessionLifecycleAgentEnd,
@@ -51,8 +59,7 @@ import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
 import { listExtensionInfosInDirectories } from "../extension-system/loader.js";
 import { loadPromptTemplates } from "../agent/prompt-templates.js";
-import { appendReadOrchestrationHint } from "../extension-system/extensions/read/read-orchestration.js";
-import { recallHindsight } from "../core/hindsight.js";
+import { appendReadOrchestrationHint } from "../agent/system-prompts.js";
 import { copyMessagesWithInheritance } from "./session-branch.js";
 import {
   createSessionCheckpoint,
@@ -63,7 +70,16 @@ import { commitSessionChanges } from "./session-git-hooks.js";
 import { SupervisorSessionRuntime, type SupervisorSessionState } from "./session-runtime.js";
 import { SQLiteSessionStorage, toSessionMessageResponse } from "./session-storage.js";
 import { ensureSessionDir, removeProjectDirSync, removeSessionDirSync } from "./session-files.js";
+import { runShadowHook } from "../shadow/hook.js";
+import {
+  DEFAULT_SESSION_INPUT_LEVEL,
+  type SessionInputDisposition,
+  SessionInputQueue,
+  type SessionQueuedInput,
+  shouldInterruptSessionInput,
+} from "./session-input-queue.js";
 import { formatSkillsForPrompt, loadSkills } from "../agent/skills.js";
+import { resolveModelWithProviderOverrides } from "../utils/model-utils.js";
 import type { SessionSpawner } from "../spawn/session-spawner.js";
 import type { SpawnAgentToolProvider } from "../spawn/spawn-agent-tool-provider.js";
 import {
@@ -151,12 +167,38 @@ export class SessionManager {
   private outputListeners = new Map<number, Set<SessionOutputListener>>();
   private sessionToolConfigs = new Map<number, SessionToolConfig>();
   private spawnAgentToolProviders: SpawnAgentToolProvider[] = [];
+  private readonly sessionInputQueues = new SessionInputQueue();
+  private readonly extensionRegistry = new ExtensionModuleRegistry();
+  private readonly resourceService: ResourceService;
+  private resourcesInitialized = false;
 
   constructor(db: SupervisorDb) {
     this.db = db;
     const agentDir = join(homedir(), ".pi", "agent");
     const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
     this.modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
+    this.resourceService = new ResourceService({
+      db: this.db,
+      extensionRegistry: this.extensionRegistry,
+      ensureCatalog: () => this.ensureResourceCatalog(),
+    });
+    void this.ensureResourceCatalog();
+  }
+
+  async ensureResourceCatalog(): Promise<void> {
+    if (this.resourcesInitialized) return;
+    initializeResourceCatalog(this.db);
+    await this.extensionRegistry.refresh(this.db);
+    this.resourcesInitialized = true;
+  }
+
+  getExtensionRegistry(): ExtensionModuleRegistry {
+    return this.extensionRegistry;
+  }
+
+  /** Unified resource install / bind API (CLI, HTTP, extensions). */
+  get resources(): ResourceService {
+    return this.resourceService;
   }
 
   /** Cast SessionRow to the Session interface expected by the rest of the codebase. */
@@ -237,11 +279,13 @@ export class SessionManager {
   }
 
   async resolveAgentResources(agentId: number, cwd: string) {
-    return resolveAgentResources(this.db, agentId, cwd);
+    await this.ensureResourceCatalog();
+    return resolveAgentResources(this.db, agentId, cwd, this.extensionRegistry);
   }
 
   async resolveAgentTools(agentId: number, cwd: string) {
-    return resolveAgentTools(this.db, agentId, cwd);
+    await this.ensureResourceCatalog();
+    return resolveAgentTools(this.db, agentId, cwd, this.extensionRegistry);
   }
 
   private resolveProjectId(options: CreateSessionOptions): number {
@@ -277,11 +321,9 @@ export class SessionManager {
     sessionOverride: string,
     skillsText: string,
     systemMd: string,
-    projectDir: string,
     cwd: string,
   ): string {
-    const hindsight = recallHindsight(projectDir);
-    const parts = [sessionOverride, systemMd, hindsight, skillsText].filter((p) => p.length > 0);
+    const parts = [sessionOverride, systemMd, skillsText].filter((p) => p.length > 0);
     const base = appendContextFilesToSystemPrompt(parts.join("\n\n"), cwd);
     return appendReadOrchestrationHint(base);
   }
@@ -307,6 +349,15 @@ export class SessionManager {
         if (!hasPendingAsks(sessionId)) {
           this.db.updateStatus(sessionId, "idle");
         }
+        void (async () => {
+          if (!hasPendingAsks(sessionId)) {
+            await this.drainSessionInputQueue(sessionId);
+          }
+          await runShadowHook(this, this.db, sessionId, event);
+        })().catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`shadow hook failed [${sessionId}]:`, message);
+        });
       }
 
       handleSessionLifecycleAgentEnd(sessionId, runtime, event, this.db);
@@ -369,7 +420,11 @@ export class SessionManager {
     }
 
     const agent = this.getAgentForSession(session.agentId);
-    const { skills, promptTemplates, systemMd } = loadAgentSessionResources(agent, session.cwd);
+    const { skills, promptTemplates, systemMd } = loadAgentSessionResources(
+      this.db,
+      agent,
+      session.cwd,
+    );
     const skillsText = formatSkillsForPrompt(skills);
 
     const storage = new SQLiteSessionStorage(this.db, session.id);
@@ -385,13 +440,7 @@ export class SessionManager {
     const systemPrompt =
       config.systemPrompt.length > 0
         ? config.systemPrompt
-        : this.buildSystemPrompt(
-            "",
-            skillsText,
-            systemMd,
-            this.getProjectDirForSession(session),
-            session.cwd,
-          );
+        : this.buildSystemPrompt("", skillsText, systemMd, session.cwd);
 
     const harness = new AgentHarness({
       env,
@@ -478,6 +527,13 @@ export class SessionManager {
     if (options.agentId && !agentInDb) {
       throw new Error(`Agent ${options.agentId} not found`);
     }
+    const isInternalShadowRun =
+      options.meta != null &&
+      typeof options.meta === "object" &&
+      typeof (options.meta as Record<string, unknown>).shadowOf === "number";
+    if (agentInDb && !isInternalShadowRun) {
+      assertAgentUserSpawnable(agentInDb, options.agentId);
+    }
 
     const session = this.create({
       ...options,
@@ -492,11 +548,15 @@ export class SessionManager {
     );
     await ensureSessionDir(this.requireProjectId(activeSession), activeSession.id);
 
-    const provider = (options.provider ??
-      agentInDb?.providerId ??
-      DEFAULT_PROVIDER) as KnownProvider;
     const modelId = options.model ?? agentInDb?.modelId ?? DEFAULT_MODEL_ID;
-    const model = getModel(provider, modelId as never);
+    let model =
+      agentInDb?.providerId !== undefined
+        ? resolveModelWithProviderOverrides(this.db, agentInDb.providerId, modelId)
+        : undefined;
+    if (!model) {
+      const provider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
+      model = getModel(provider, modelId as never);
+    }
 
     if (!model) {
       throw new Error(`Model ${modelId} from provider ${provider} not found`);
@@ -517,6 +577,7 @@ export class SessionManager {
     );
 
     const { skills, promptTemplates, systemMd } = loadAgentSessionResources(
+      this.db,
       agentInDb,
       activeSession.cwd,
     );
@@ -527,7 +588,6 @@ export class SessionManager {
       baseSystemPrompt,
       skillsText,
       systemMd,
-      this.getProjectDirForSession(activeSession),
       activeSession.cwd,
     );
 
@@ -548,7 +608,7 @@ export class SessionManager {
     await harness.setThinkingLevel(activeSession.thinkingLevel);
 
     const runtimeConfig: RuntimeConfigSnapshot = {
-      provider,
+      provider: model.provider,
       modelId: model.id,
       systemPrompt,
       toolsPreset,
@@ -621,6 +681,102 @@ export class SessionManager {
     await (await this.getOrRestoreRuntime(id)).prompt(message, images, source);
   }
 
+  async submitSessionInput(
+    id: number,
+    input: {
+      message: string;
+      level?: number;
+      source?: string | null;
+      images?: ImageContent[];
+    },
+  ): Promise<SessionInputDisposition> {
+    const level = input.level ?? DEFAULT_SESSION_INPUT_LEVEL;
+    const entry: SessionQueuedInput = {
+      message: input.message,
+      level,
+      source: input.source ?? null,
+      enqueuedAt: Date.now(),
+      images: input.images,
+    };
+
+    if (shouldInterruptSessionInput(level)) {
+      await this.interruptAndPrompt(id, entry.message, entry.images, entry.source);
+      return "interrupt";
+    }
+
+    this.sessionInputQueues.enqueue(id, entry);
+
+    if (await this.isSessionBusy(id)) {
+      return "queued";
+    }
+
+    await this.drainSessionInputQueue(id);
+    return "drained";
+  }
+
+  private async isSessionBusy(sessionId: number): Promise<boolean> {
+    const runtime = this.runtimes.get(sessionId);
+    if (!runtime) return false;
+    return (await runtime.getState()).isStreaming;
+  }
+
+  async interruptAndPrompt(
+    id: number,
+    message: string,
+    images?: ImageContent[],
+    source?: string | null,
+  ): Promise<void> {
+    if (this.runtimes.has(id)) {
+      const runtime = this.runtimes.get(id)!;
+      const state = await runtime.getState();
+      if (state.isStreaming) {
+        await runtime.abort();
+        await runtime.waitForIdle();
+      }
+    }
+    await this.prompt(id, message, images, source);
+  }
+
+  peekSessionInput(sessionId: number): SessionQueuedInput | undefined {
+    return this.sessionInputQueues.peek(sessionId);
+  }
+
+  async drainSessionInputQueue(sessionId: number): Promise<boolean> {
+    const next = this.sessionInputQueues.dequeue(sessionId);
+    if (!next) return false;
+    await this.prompt(sessionId, next.message, next.images, next.source);
+    return true;
+  }
+
+  /** @deprecated use submitSessionInput */
+  enqueueParentMessage(parentSessionId: number, entry: SessionQueuedInput): void {
+    this.sessionInputQueues.enqueue(parentSessionId, entry);
+  }
+
+  /** @deprecated use peekSessionInput */
+  peekParentMessage(parentSessionId: number): SessionQueuedInput | undefined {
+    return this.peekSessionInput(parentSessionId);
+  }
+
+  /** @deprecated use drainSessionInputQueue */
+  async deliverNextParentMessage(parentSessionId: number): Promise<boolean> {
+    return this.drainSessionInputQueue(parentSessionId);
+  }
+
+  async waitForSessionIdle(sessionId: number, options?: { timeoutMs?: number }): Promise<void> {
+    const timeoutMs = options?.timeoutMs ?? 30 * 60 * 1000;
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      const row = this.db.get(sessionId);
+      if (!row) throw new Error(`Session ${sessionId} not found`);
+      if (row.status !== "starting" && row.status !== "running" && row.status !== "waiting_user") {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    throw new Error(`Timed out waiting for session ${sessionId}`);
+  }
+
   steer(id: number, message: string): void {
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
@@ -635,11 +791,16 @@ export class SessionManager {
 
   async abort(id: number): Promise<void> {
     cancelPendingAsks(id);
+    cancelPendingApprovals(id);
     await (await this.getOrRestoreRuntime(id)).abort();
   }
 
   submitAskAnswer(sessionId: number, toolCallId: string, answers: AskAnswer[]): boolean {
     return submitAskAnswer(sessionId, toolCallId, answers);
+  }
+
+  submitApprovalResolution(sessionId: number, approvalId: string, result: ApprovalResult): boolean {
+    return submitApprovalResolution(sessionId, approvalId, result);
   }
 
   async compact(
@@ -1123,6 +1284,7 @@ export class SessionManager {
    */
   resolveGlobalResources(): ResourceLayer {
     ensureGlobalResourceDirs();
+    initializeResourceCatalog(this.db);
     const globalRoot = ensureGlobalResourceDirs();
     const {
       skills: globalSkillsDir,
@@ -1165,11 +1327,49 @@ export class SessionManager {
     };
   }
 
-  linkAgentResource(agentId: number, kind: AgentResourceKind, globalPath: string): void {
-    const agent = this.db.getAgent(agentId);
-    if (!agent) throw new Error(`Agent not found: ${agentId}`);
-    const homeDir = agent.homeDir ?? getAgentHomeDir(agentId);
-    linkGlobalResourceToAgent(homeDir, kind, globalPath);
+  listResources(kind?: ResourceKind) {
+    return this.resourceService.listResources(kind);
+  }
+
+  listAgentResourceBindings(agentId: number, kind?: ResourceKind) {
+    return this.resourceService.listAgentBindings(agentId, kind);
+  }
+
+  async installExtension(source: string) {
+    return this.resourceService.installResource({ kind: "extension", source });
+  }
+
+  async uninstallExtension(slug: string): Promise<void> {
+    await this.resourceService.uninstallResource("extension", slug);
+  }
+
+  async updateExtension(slug: string) {
+    return this.resourceService.updateExtension(slug);
+  }
+
+  linkAgentResourceById(agentId: number, resourceId: number): void {
+    this.resourceService.bindResource({ agentId, resourceId });
+  }
+
+  linkAgentResourceBySlug(agentId: number, kind: ResourceKind, slug: string): void {
+    this.resourceService.bindResource({ agentId, kind, slug });
+  }
+
+  unlinkAgentResourceById(agentId: number, resourceId: number): void {
+    this.resourceService.unbindResource({ agentId, resourceId });
+  }
+
+  unlinkAgentResourceBySlug(agentId: number, kind: ResourceKind, slug: string): void {
+    this.resourceService.unbindResource({ agentId, kind, slug });
+  }
+
+  /** @deprecated use linkAgentResourceBySlug / linkAgentResourceById */
+  linkAgentResource(
+    agentId: number,
+    kind: "skills" | "extensions" | "prompts",
+    globalPath: string,
+  ): void {
+    this.resourceService.bindResourceByGlobalPath(agentId, kind, globalPath);
   }
 
   getLastMessagePreview(sessionId: number): string | null {

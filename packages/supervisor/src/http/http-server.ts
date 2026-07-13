@@ -7,19 +7,11 @@ import { isAbsolute, normalize, resolve, sep } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import {
-  getAgentHomeDir,
-  getSupervisorAgentsRoot,
-  linkGlobalResourceToAgent,
-  removeExtensionFromAgentDir,
-} from "../agent/agent-paths.js";
-import {
-  installExtensionToGlobal,
-  uninstallGlobalExtension,
-  updateGlobalExtension,
-} from "../agent/extension-installer.js";
+import { getAgentHomeDir, getSupervisorAgentsRoot } from "../agent/agent-paths.js";
+import { assertAgentUserSpawnable } from "../agent/internal-agents.js";
 import type { ExtensionEvent } from "../extension-system/types.js";
 import type { SessionManager } from "../core/session-manager.js";
+import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-service.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";
 import type { Model, Provider, SessionStatus } from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
@@ -580,6 +572,16 @@ export function createHttpServer(manager: SessionManager): Hono {
       if (agentId === null && body.agentId !== undefined && body.agentId !== null) {
         return jsonError(c, 400, "invalid agent id");
       }
+      if (agentId !== null) {
+        const agent = manager.getAgent(agentId);
+        if (!agent) return jsonError(c, 404, `Agent ${agentId} not found`);
+        try {
+          assertAgentUserSpawnable(agent, agentId);
+        } catch (e: unknown) {
+          const message = e instanceof Error ? e.message : String(e);
+          return jsonError(c, 403, message);
+        }
+      }
       const projectId =
         body.projectId === undefined || body.projectId === null
           ? undefined
@@ -641,6 +643,8 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
     const source = parseOptionalSource(body.source);
     if (source === null) return jsonError(c, 400, "source must be a non-empty string");
+    const level =
+      typeof body.level === "number" && Number.isFinite(body.level) ? body.level : undefined;
     const images = parsePromptImages(body.images);
     if (images === null) {
       return jsonError(c, 400, "invalid images, expected [{ mimeType, data }]");
@@ -700,12 +704,22 @@ export function createHttpServer(manager: SessionManager): Hono {
     void (async () => {
       try {
         await writeSse({ type: "started", sessionId });
-        await manager.prompt(sessionId, body.message, imageContent, source);
+        const disposition = await manager.submitSessionInput(sessionId, {
+          message: body.message,
+          images: imageContent,
+          source,
+          level,
+        });
         emitSessionExtensionEvent(manager, sessionId, {
           type: "http.response",
           status: 200,
           clientId,
         });
+        if (disposition === "queued") {
+          await writeSse({ type: "queued", sessionId });
+          await endStream();
+          return;
+        }
         if (!ended) {
           await writeSse({ type: "done" });
           await endStream();
@@ -768,7 +782,7 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // POST /sessions/:id/sidecar-message — deliver a sidecar agent result as a user message
+  // POST /sessions/:id/shadow-message — deliver a shadow collaborator result as a user message
   // POST /sessions/:id/abort — abort current work without deleting the runtime
   app.post("/sessions/:id/abort", async (c) => {
     try {
@@ -1155,6 +1169,29 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
+  // POST /sessions/:id/approval-resolve — resolve pending extension UI approval
+  app.post("/sessions/:id/approval-resolve", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const approvalId = body.approvalId;
+    const result = body.result;
+    if (!approvalId || typeof approvalId !== "string") {
+      return jsonError(c, 400, "approvalId is required");
+    }
+    if (!result || typeof result !== "object" || typeof result.action !== "string") {
+      return jsonError(c, 400, "result.action is required");
+    }
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      const ok = manager.submitApprovalResolution(id, approvalId, result);
+      if (!ok) return jsonError(c, 404, "No pending approval for this id");
+      return c.json({ ok: true });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 400, message);
+    }
+  });
+
   // GET /resources/global — global catalog (~/.pi/supervisor/global/)
   app.get("/resources/global", (c) => {
     try {
@@ -1165,7 +1202,126 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // POST /agents/:id/resources/link — symlink global resource into agent home
+  // GET /resources — resource catalog from database
+  app.get("/resources", (c) => {
+    try {
+      const kind = c.req.query("kind");
+      const resources =
+        kind && ["extension", "skill", "prompt", "mcp", "tool"].includes(kind)
+          ? manager.resources.listResources(kind as import("../resources/types.js").ResourceKind)
+          : manager.resources.listResources();
+      return c.json(resources);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 500, message);
+    }
+  });
+
+  // POST /resources/install — install resource into global catalog (optionally bind to agent)
+  app.post("/resources/install", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const input = parseInstallResourceBody(body as Record<string, unknown>);
+      const agentId =
+        typeof body.agentId === "number"
+          ? body.agentId
+          : body.agentId !== undefined
+            ? parseIntegerId(String(body.agentId))
+            : null;
+      if (agentId !== null && !Number.isFinite(agentId)) {
+        return jsonError(c, 400, "invalid agentId");
+      }
+      if (agentId !== null) {
+        const result = await manager.resources.installAndBind({
+          ...input,
+          agentId,
+          priority: typeof body.priority === "number" ? body.priority : undefined,
+        });
+        return c.json(result, 201);
+      }
+      const result = await manager.resources.installResource(input);
+      return c.json(result, 201);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 400, message);
+    }
+  });
+
+  // POST /resources/uninstall — remove resource from global catalog
+  app.post("/resources/uninstall", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const kind = body.kind;
+    const slug = body.slug;
+    if (typeof kind !== "string" || typeof slug !== "string") {
+      return jsonError(c, 400, "kind and slug are required");
+    }
+    if (!["extension", "skill", "prompt", "mcp", "tool"].includes(kind)) {
+      return jsonError(c, 400, "invalid kind");
+    }
+    try {
+      await manager.resources.uninstallResource(
+        kind as import("../resources/types.js").ResourceKind,
+        slug,
+      );
+      return c.json({ ok: true });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 400, message);
+    }
+  });
+
+  // GET /agents/:id/resource-bindings — DB bindings for an agent
+  app.get("/agents/:id/resource-bindings", (c) => {
+    try {
+      const agentId = parseIntegerId(c.req.param("id"));
+      if (agentId === null) return jsonError(c, 400, "invalid agent id");
+      const kind = c.req.query("kind");
+      const bindings = manager.resources.listAgentBindings(
+        agentId,
+        kind && ["extension", "skill", "prompt", "mcp", "tool"].includes(kind)
+          ? (kind as import("../resources/types.js").ResourceKind)
+          : undefined,
+      );
+      return c.json(bindings);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 500, message);
+    }
+  });
+
+  // POST /agents/:id/resources — link resource to agent
+  app.post("/agents/:id/resources", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const agentId = parseIntegerId(c.req.param("id"));
+      if (agentId === null) return jsonError(c, 400, "invalid agent id");
+      const binding = manager.resources.bindResource(
+        parseBindResourceBody(agentId, body as Record<string, unknown>),
+      );
+      return c.json({ ok: true, binding });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 400, message);
+    }
+  });
+
+  // DELETE /agents/:id/resources/:resourceId — unlink resource from agent
+  app.delete("/agents/:id/resources/:resourceId", (c) => {
+    try {
+      const agentId = parseIntegerId(c.req.param("id"));
+      const resourceId = parseIntegerId(c.req.param("resourceId"));
+      if (agentId === null || resourceId === null) {
+        return jsonError(c, 400, "invalid agent id or resource id");
+      }
+      manager.resources.unbindResource({ agentId, resourceId });
+      return c.json({ ok: true });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 400, message);
+    }
+  });
+
+  // POST /agents/:id/resources/link — legacy symlink API (maps slug from path)
   app.post("/agents/:id/resources/link", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const kind = body.kind;
@@ -1177,7 +1333,9 @@ export function createHttpServer(manager: SessionManager): Hono {
       return jsonError(c, 400, "path is required");
     }
     try {
-      manager.linkAgentResource(c.req.param("id"), kind, path);
+      const agentId = parseIntegerId(c.req.param("id"));
+      if (agentId === null) return jsonError(c, 400, "invalid agent id");
+      manager.resources.bindResourceByGlobalPath(agentId, kind, path);
       return c.json({ ok: true });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -1187,10 +1345,10 @@ export function createHttpServer(manager: SessionManager): Hono {
 
   // ============ Extension Management (global catalog) ============
 
-  // GET /extensions — list all extensions in the global catalog
+  // GET /extensions — list extensions from resource catalog
   app.get("/extensions", (c) => {
     try {
-      return c.json(manager.resolveGlobalResources().extensions);
+      return c.json(manager.resources.listResources("extension"));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 500, message);
@@ -1205,7 +1363,7 @@ export function createHttpServer(manager: SessionManager): Hono {
       return jsonError(c, 400, "source is required (npm:<spec>, git:<url>, or local path)");
     }
     try {
-      const result = installExtensionToGlobal(source);
+      const result = await manager.resources.installResource({ kind: "extension", source });
       return c.json(result, 201);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -1214,10 +1372,10 @@ export function createHttpServer(manager: SessionManager): Hono {
   });
 
   // POST /extensions/:id/update — re-fetch from package.json repository
-  app.post("/extensions/:id/update", (c) => {
+  app.post("/extensions/:id/update", async (c) => {
     const id = c.req.param("id");
     try {
-      const result = updateGlobalExtension(id);
+      const result = await manager.resources.updateExtension(id);
       return c.json(result);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -1226,10 +1384,10 @@ export function createHttpServer(manager: SessionManager): Hono {
   });
 
   // POST /extensions/:id/uninstall
-  app.post("/extensions/:id/uninstall", (c) => {
+  app.post("/extensions/:id/uninstall", async (c) => {
     const id = c.req.param("id");
     try {
-      uninstallGlobalExtension(id);
+      await manager.resources.uninstallResource("extension", id);
       return c.json({ ok: true });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -1237,7 +1395,7 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // POST /extensions/:id/link — link global extension to an agent
+  // POST /extensions/:id/link — link extension to an agent (DB binding)
   app.post("/extensions/:id/link", async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json().catch(() => ({}));
@@ -1246,22 +1404,16 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (agentId === null) {
       return jsonError(c, 400, "agentId is required");
     }
-    const globalExtDir = join(homedir(), ".pi", "supervisor", "global", "extensions");
-    const extDir = join(globalExtDir, id);
-    if (!existsSync(extDir)) {
-      return jsonError(c, 404, `Extension not found in global catalog: ${id}`);
-    }
     try {
-      const agentHomeDir = getAgentHomeDir(agentId);
-      const linkPath = linkGlobalResourceToAgent(agentHomeDir, "extensions", extDir);
-      return c.json({ ok: true, linkPath });
+      manager.resources.bindResource({ agentId, kind: "extension", slug: id });
+      return c.json({ ok: true });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 400, message);
     }
   });
 
-  // POST /extensions/:id/unlink — unlink global extension from an agent
+  // POST /extensions/:id/unlink — unlink extension from an agent
   app.post("/extensions/:id/unlink", async (c) => {
     const id = c.req.param("id");
     const body = await c.req.json().catch(() => ({}));
@@ -1271,8 +1423,7 @@ export function createHttpServer(manager: SessionManager): Hono {
       return jsonError(c, 400, "agentId is required");
     }
     try {
-      const agentHomeDir = getAgentHomeDir(agentId);
-      removeExtensionFromAgentDir(agentHomeDir, id);
+      manager.resources.unbindResource({ agentId, kind: "extension", slug: id });
       return c.json({ ok: true });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);

@@ -5,6 +5,18 @@
  */
 
 import type { Static, TSchema } from "typebox";
+import type { ToolPolicy } from "./tool-policy.js";
+import type {
+  ApprovalRequest,
+  ApprovalResult,
+  ContinueTurnOptions,
+  ContinueTurnResult,
+  ScheduleInjectionInput,
+  ToolGuardHandler,
+  ToolResultHandler,
+  TurnFlowLock,
+  TurnUsage,
+} from "./extension-session-services.js";
 
 // ============================================================================
 // Extension Entry
@@ -35,6 +47,9 @@ export interface ExtensionContext {
   readonly tools: SupervisorToolRegistryFacade;
   readonly ui: SupervisorUiFacade;
   readonly system: SupervisorSystemFacade;
+
+  /** Turn-boundary injections (plan/goal reminders). */
+  readonly inject: TurnInjectorFacade;
 
   // ==================== 会话信息 ====================
 
@@ -299,6 +314,10 @@ export interface SupervisorSessionFacade {
     triggerTurn?: boolean;
   }): Promise<void>;
   sendUserMessage(content: string, options?: { source?: string }): Promise<void>;
+  sendParentMsg(
+    content: string,
+    options?: { level?: number },
+  ): Promise<void>;
   pausing<T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T>;
   spawn(request: SpawnSessionRequest): Promise<SpawnSessionResult>;
   waitForResult(
@@ -320,6 +339,38 @@ export interface SupervisorSessionFacade {
     firstKeptEntryId: string;
     tokensBefore: number;
   }>;
+  readonly tools: SupervisorSessionToolSetFacade;
+}
+
+export interface SupervisorSessionToolSetFacade {
+  setPolicy(policy: ToolPolicy): void;
+  getPolicy(): ToolPolicy;
+  beforeUse(handler: ToolGuardHandler, options?: { priority?: number }): () => void;
+  afterUse(handler: ToolResultHandler, options?: { priority?: number }): () => void;
+  enable(name: string): void;
+  disable(name: string, reason?: string): void;
+  setActive(names: string[]): Promise<void>;
+  getActive(): string[] | null;
+}
+
+export interface TurnInjectorFacade {
+  schedule(input: ScheduleInjectionInput): void;
+  clear(variant: string): void;
+  reattach(
+    variant: string,
+    content: string,
+    options?: Omit<ScheduleInjectionInput, "variant" | "content">,
+  ): void;
+}
+
+export interface TurnFlowFacade {
+  continue(options?: ContinueTurnOptions): Promise<ContinueTurnResult>;
+  pause(reason?: string): Promise<void>;
+  resume(): Promise<void>;
+  acquireLock(key: string, options?: { ttlMs?: number }): Promise<TurnFlowLock | null>;
+  usage(options?: { since?: "session" | "lastTurn"; scope?: string }): Promise<TurnUsage>;
+  startScope(scope: string): void;
+  endScope(scope: string): void;
 }
 
 export interface SupervisorSessionMessagesFacade {
@@ -422,6 +473,8 @@ export interface SupervisorRuntimeFacade {
     meta?: Record<string, unknown>,
   ): void;
   readonly events: EventBus;
+  readonly flow: TurnFlowFacade;
+  readonly inject: TurnInjectorFacade;
 }
 
 export interface SupervisorToolRegistryFacade {
@@ -432,6 +485,7 @@ export interface SupervisorToolRegistryFacade {
 
 export interface SupervisorUiFacade {
   broadcast(event: BroadcastEvent): void;
+  requestApproval(request: ApprovalRequest): Promise<ApprovalResult>;
 }
 
 export interface SupervisorSystemFacade {
@@ -686,6 +740,35 @@ export type ExtensionEvent =
   | {
       type: "agent.abort";
       reason: "user" | "timeout" | "error";
+      timestamp: number;
+    }
+
+  // ==================== Turn / Step ====================
+  | {
+      type: "turn.started";
+      turnId: number;
+      timestamp: number;
+    }
+  | {
+      type: "turn.ended";
+      turnId: number;
+      reason?: string;
+      durationMs?: number;
+      usage?: {
+        input?: number;
+        output?: number;
+        totalTokens?: number;
+      };
+      timestamp: number;
+    }
+  | {
+      type: "step.ended";
+      turnId: number;
+      usage?: {
+        input?: number;
+        output?: number;
+        totalTokens?: number;
+      };
       timestamp: number;
     }
 
@@ -976,6 +1059,7 @@ export interface LoadExtensionsResult {
 export interface RuntimeOptions {
   sessionId: number;
   parentSessionId?: number | null;
+  sessionMeta?: Record<string, unknown>;
   cwd: string;
   sessionDir: string;
   projectDir: string;
@@ -998,6 +1082,10 @@ export interface RuntimeOptions {
       triggerTurn?: boolean;
     }) => Promise<void>;
     sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
+    sendParentMsg: (
+      content: string,
+      options?: { level?: number },
+    ) => Promise<void>;
     getSessionDir: () => Promise<string>;
     getProjectDir: () => Promise<string>;
     getMemberAgentsByTag: (tag: string) => Promise<MemberAgentInfo[]>;
@@ -1052,6 +1140,9 @@ export interface RuntimeOptions {
     ) => void;
     broadcast: (event: BroadcastEvent) => void;
     eventBus: EventBus;
+    continueTurn: (content: string, options?: { source?: string }) => Promise<void>;
+    setActiveTools: (names: string[]) => Promise<void>;
+    getContextUsage: () => Promise<{ tokens: number | null }>;
   };
 }
 

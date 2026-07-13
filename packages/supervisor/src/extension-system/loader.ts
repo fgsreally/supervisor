@@ -10,6 +10,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti/static";
 import { LOAD_PROJECT_RESOURCES } from "../agent/agent-paths.js";
+import { isLegacyPackagedToolExtensionDir, listPackagedToolIds } from "../tools/loader.js";
 import {
   readExtensionPackageJson,
   resolveExtensionEntries,
@@ -102,6 +103,9 @@ export function discoverExtensionsInDir(dir: string): string[] {
         entry.isDirectory() ||
         (entry.isSymbolicLink() && fs.existsSync(entryPath) && fs.statSync(entryPath).isDirectory())
       ) {
+        if (isLegacyPackagedToolExtensionDir(entryPath)) {
+          continue;
+        }
         const resolved = resolveExtensionEntries(entryPath);
         discovered.push(...resolved);
       }
@@ -225,41 +229,32 @@ export function filterExtensionInfosByDir(
 }
 
 // ============================================================================
-// Packaged extension helpers
+// Packaged tool helpers (deprecated extension paths)
 // ============================================================================
 
-const PACKAGED_EXTENSION_IDS = [
-  "read",
-  "edit",
-  "lsp",
-  "ask",
-  "ast-grep",
-  "output-minimizer",
-  "web",
-  "browser",
-] as const;
-
-/** Directory containing supervisor-shipped extension packages. */
+/**
+ * @deprecated Packaged capabilities are tools under `src/tools/`. Use `getPackagedToolDir()` from `tools/loader.js`.
+ */
 export function getPackagedExtensionsDir(): string {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(__dirname, "extensions");
+  return path.join(__dirname, "..", "tools");
 }
 
+/** @deprecated Use `listPackagedToolIds()` from `tools/loader.js`. */
 export function getPackagedExtensionPath(id: string): string {
-  return path.join(getPackagedExtensionsDir(), id, "index.ts");
+  return path.join(getPackagedExtensionsDir(), id);
 }
 
-/** All optional packaged tool extensions (not auto-loaded; subagent/sidecar are runtime built-ins). */
+/** @deprecated Use `listPackagedToolIds()` from `tools/loader.js`. */
 export function listPackagedExtensionPaths(): string[] {
-  return PACKAGED_EXTENSION_IDS.map((id) => getPackagedExtensionPath(id));
+  return listPackagedToolIds().map((id) => getPackagedExtensionPath(id));
 }
 
 /**
- * @deprecated Use `listPackagedExtensionPaths()` or `getPackagedExtensionPath(id)`.
- * Kept for callers that linked a single bundled extension path.
+ * @deprecated Use `getPackagedToolDir("lsp")` from `tools/loader.js`.
  */
 export function getSupervisorAgentToolsExtensionPath(): string {
-  return getPackagedExtensionPath("read");
+  return getPackagedExtensionPath("lsp");
 }
 
 // ============================================================================

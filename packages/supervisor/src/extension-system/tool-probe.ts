@@ -1,5 +1,6 @@
 import type { TSchema } from "typebox";
 import type { ExtensionContext, ExtensionDefinition, ToolDefinition } from "./types.js";
+import { ToolPolicy } from "./tool-policy.js";
 
 export interface ProbedTool {
   name: string;
@@ -76,6 +77,7 @@ function createProbeContext(
       appendEntry: noopAsync,
       sendMessage: noopAsync,
       sendUserMessage: noopAsync,
+      sendParentMsg: noopAsync,
       pausing: async (_reason: string, fn: () => Promise<unknown>) => fn(),
       spawn: async () => ({ sessionId: 0 }),
       waitForResult: async () => ({ status: "idle", result: null, truncated: false }),
@@ -84,6 +86,16 @@ function createProbeContext(
       switchTo: noopAsync,
       navigateTree: noopAsync,
       compact: noopAsync,
+      tools: {
+        setPolicy: noop,
+        getPolicy: () => ToolPolicy.coding(),
+        beforeUse: () => noop,
+        afterUse: () => noop,
+        enable: noop,
+        disable: noop,
+        setActive: noopAsync,
+        getActive: () => null,
+      },
     },
     agent: {
       id: 0,
@@ -104,9 +116,23 @@ function createProbeContext(
       exec: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
       log: noop,
       events: { emit: noopAsync, on: () => noop },
+      flow: {
+        continue: noopAsync,
+        pause: noopAsync,
+        resume: noopAsync,
+        acquireLock: async () => null,
+        usage: async () => ({ turns: 0, tokens: 0, wallClockMs: 0, contextTokens: null }),
+        startScope: noop,
+        endScope: noop,
+      },
+      inject: { schedule: noop, clear: noop, reattach: noop },
     },
     tools: toolRegistry,
-    ui: { broadcast: noopAsync },
+    ui: {
+      broadcast: noopAsync,
+      requestApproval: async () => ({ action: "approve" as const }),
+    },
+    inject: { schedule: noop, clear: noop, reattach: noop },
     system: { db: { sqlite: null } },
     sessionId: 0,
     cwd: process.cwd(),

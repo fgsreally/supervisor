@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { decodeHtmlText, htmlToText } from "../src/extension-system/extensions/web/html.js";
-import { assertSafeUrl } from "../src/extension-system/extensions/web/ssrf.js";
+import { decodeHtmlText, htmlToText } from "../src/tools/web/html.js";
+import { assertSafeUrl } from "../src/tools/web/ssrf.js";
 
 describe("web extension: ssrf", () => {
   it("blocks private IPv4 literals", async () => {

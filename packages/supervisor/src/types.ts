@@ -112,6 +112,7 @@ export interface AgentRow {
   model_id: string | null;
   tools_preset: string | null;
   home_dir: string | null;
+  is_internal: number;
   meta: string;
   created_at: number;
   updated_at: number;
@@ -125,6 +126,8 @@ export interface Agent {
   modelId: string | null;
   toolsPreset: ToolsPreset | null;
   homeDir: string | null;
+  /** Shipped/runtime agents (e.g. shadow) that cannot back user-facing sessions. */
+  isInternal: boolean;
   meta: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
@@ -202,7 +205,7 @@ export interface MessageSearchHit {
 export type SessionMessageResponse = SessionTreeEntry & {
   /** Copied from parent session via fork/clone. */
   isOld: boolean;
-  /** Originating sidecar agent id, null for normal user/main-agent messages. */
+  /** Originating shadow collaborator agent id, null for normal user/main-agent messages. */
   source: string | null;
   /** User/orchestrator extensions only. */
   meta: Record<string, unknown>;

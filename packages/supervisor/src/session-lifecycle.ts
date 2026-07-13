@@ -1,6 +1,6 @@
 /** Session lifecycle helpers that are not agent tools. */
 import type { AgentHarnessEvent } from "@earendil-works/pi-agent-core";
-import { hasPendingAsks } from "./extension-system/extensions/ask/tool.js";
+import { hasPendingAsks } from "./tools/ask/tool.js";
 import type { SupervisorDb } from "./db/db.js";
 import {
   createSessionWorktree,
@@ -11,9 +11,7 @@ import {
   removeSessionWorktree,
 } from "./git/git-worktree.js";
 import { maybeRunRollingCompaction } from "./core/compaction/rolling.js";
-import { extractFactsFromMessages } from "./core/hindsight.js";
 import { isDefaultSessionName, maybeAutoNameSession } from "./core/session-git-hooks.js";
-import { getProjectDir, getSessionDir } from "./core/session-files.js";
 import type { SupervisorSessionRuntime } from "./core/session-runtime.js";
 import type { Session, SessionRow, SpawnSessionOptions } from "./types.js";
 
@@ -107,14 +105,6 @@ export function handleSessionLifecycleAgentEnd(
   if (hasPendingAsks(String(sessionId))) return;
 
   void (async () => {
-    if (session.project_id != null) {
-      await extractFactsFromMessages(
-        event.messages,
-        getProjectDir(session.project_id),
-        sessionId,
-        getSessionDir(session.project_id, sessionId),
-      );
-    }
     await maybeRunRollingCompaction(
       sessionId,
       runtime,

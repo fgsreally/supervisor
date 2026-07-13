@@ -19,7 +19,7 @@ export function getSupervisorGlobalRoot(): string {
 	return join(homedir(), ".pi", "supervisor", "global");
 }
 
-export type AgentResourceKind = "skills" | "extensions" | "prompts";
+export type AgentResourceKind = "skills" | "extensions" | "prompts" | "mcp";
 
 export function getGlobalResourceDirs(): Record<AgentResourceKind, string> {
 	const root = getSupervisorGlobalRoot();
@@ -27,12 +27,13 @@ export function getGlobalResourceDirs(): Record<AgentResourceKind, string> {
 		skills: join(root, "skills"),
 		extensions: join(root, "extensions"),
 		prompts: join(root, "prompts"),
+		mcp: join(root, "mcp"),
 	};
 }
 
 export function ensureGlobalResourceDirs(): string {
 	const root = getSupervisorGlobalRoot();
-	for (const sub of ["skills", "extensions", "prompts"] as const) {
+	for (const sub of ["skills", "extensions", "prompts", "mcp"] as const) {
 		mkdirSync(join(root, sub), { recursive: true });
 	}
 	return root;
@@ -70,7 +71,7 @@ export function getAgentHomeDir(agentId: string | number): string {
 
 export function ensureAgentHome(agentId: string | number, homeDir?: string): string {
 	const root = homeDir ?? getAgentHomeDir(agentId);
-	for (const sub of ["skills", "extensions", "prompts"] as const) {
+	for (const sub of ["skills", "extensions", "prompts", "tools"] as const) {
 		mkdirSync(join(root, sub), { recursive: true });
 	}
 	return root;

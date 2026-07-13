@@ -32,15 +32,11 @@
 
 **修复建议**：在 `http-server.ts` 的 `POST /sessions/:id/commands` 处替换 501 为 `commandRouter.handle(sessionId, body.command, body.args)`。
 
-## 3. Hindsight 调用不存在的 DB 方法
+## 3. Hindsight 已迁至独立扩展
 
-**症状**：`src/extensions/hindsight.ts` 的 `extractFactsFromMessages` 和 `recallHindsight` 调用了 `db.insertHindsight`、`db.listHindsight`，但 `SupervisorDb`（`src/db/db.ts`）里**没有这两个方法**。
+**现状**：长期记忆由 `extensions/hindsight`（`@earendil-works/supervisor-hindsight`）维护；核心包已移除 `core/hindsight.ts` 及 session 生命周期中的硬编码挂钩。
 
-**后果**：如果 hindsight 扩展被加载并触发，运行时会因 `db.insertHindsight is not a function` 崩溃。
-
-**修复建议**：
-- 在 `db.ts` 加 `hindsight` 表（`id, session_id, fact, created_at`）和 `insertHindsight` / `listHindsight` 方法
-- 或：在 `extensions/loader.ts` 不加载 `hindsight.ts`
+**使用**：将扩展放入 agent / 项目 extensions 目录；配置 `HINDSIGHT_API_URL` 走 API，否则默认本地 `projectDir/hindsight.jsonl` 回退。
 
 ## 4. Review 扩展只有 prompt builder
 
@@ -72,10 +68,6 @@
 
 **修复建议**：删除该文件。
 
-## 8. `src/hindsight-memory.ts` 是空文件
-
-**症状**：`src/hindsight-memory.ts` 长度为 0 字节。oxlint 会发 `unicorn(no-empty-file)` 警告。
-
 **修复建议**：删除或在文件里加 export。
 
 ## 9. `src/session-runtime.ts`（顶层）疑似旧代码
@@ -94,11 +86,10 @@
 |---|---|---|
 | ~~CLI 入口缺失~~ | **~~高~~** | **~~是 — `pnpm run serve` 跑不起来~~** |
 | `/commands` 路由 501 | 中 | 否（功能缺失） |
-| hindsight DB 方法缺失 | 中 | 否（不加载该扩展就没事） |
+| hindsight 已迁至 extensions/hindsight | - | 否（需手动加载扩展） |
 | review 扩展未完成 | 低 | 否 |
 | spawn-agent 表缺失 | 中 | 否（不调用该工具就没事） |
 | ext-framework dead code | 低 | 否（占空间） |
 | session.ts / session-runtime.ts dead | 低 | 否 |
-| hindsight-memory.ts 空文件 | 低 | 否（lint 警告） |
 
 ~~最高优先级是补 `src/cli.ts` 入口。~~ **已修复**：`src/cli.ts` 与 `src/index.ts` 已从 pi 仓库 git 历史恢复（commit `1dfd00e` 误删，从 `1dfd00e^` 检出后修复导入路径），CLI 可正常工作。其余问题都属于"功能不完整"但不阻塞构建。

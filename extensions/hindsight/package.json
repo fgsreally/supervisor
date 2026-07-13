@@ -1,0 +1,39 @@
+{
+  "name": "@earendil-works/supervisor-hindsight",
+  "version": "0.1.0",
+  "description": "Supervisor extension: Hindsight long-term memory (API + local jsonl fallback)",
+  "type": "module",
+  "main": "./index.ts",
+  "files": [
+    "index.ts",
+    "register-tool.ts",
+    "client.ts",
+    "config.ts",
+    "bank.ts",
+    "content.ts",
+    "state.ts",
+    "local-store.ts",
+    "messages.ts",
+    "utils",
+    "tools",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "vitest --run"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-agent-core": "^0.74.0",
+    "@earendil-works/pi-supervisor": "^0.1.0"
+  },
+  "dependencies": {
+    "typebox": "^1.3.3"
+  },
+  "devDependencies": {
+    "@earendil-works/pi-agent-core": "^0.74.0",
+    "@earendil-works/pi-supervisor": "workspace:*",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  }
+}

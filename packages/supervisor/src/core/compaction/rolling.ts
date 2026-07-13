@@ -17,7 +17,7 @@ import {
   isContextOverflow,
   type Model,
 } from "@earendil-works/pi-ai";
-import { hasPendingAsks } from "../../extension-system/extensions/ask/tool.js";
+import { hasPendingAsks } from "../../tools/ask/tool.js";
 import type { SupervisorDb } from "../../db/db.js";
 import type { SupervisorSessionRuntime } from "../session-runtime.js";
 import { compactWithUtilityModel, resolveTaggedModelAuth } from "../../utils/utility-llm.js";

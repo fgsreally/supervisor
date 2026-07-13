@@ -14,14 +14,18 @@ import type { SourceInfo } from "../utils/source-info.js";
 import type { Session } from "../types.js";
 import { ExtensionRuntime, createExtensionDatabase } from "../extension-system/index.js";
 import type { ToolInfo } from "../extension-system/types.js";
-import { toolInfoToAgentTool, wrapToolWithExtensionRuntime } from "../extension-system/tool-adapter.js";
+import {
+  toolInfoToAgentTool,
+  wrapToolWithExtensionRuntime,
+} from "../extension-system/tool-adapter.js";
 import { buildExtensionDeps } from "../extension-system/extension-deps.js";
-import { discoverAndLoadExtensions } from "../extension-system/loader.js";
+import { getAgentHomeDir } from "../agent/agent-paths.js";
+import { activatePackagedTools, listEnabledPackagedToolIds } from "../tools/loader.js";
+import { isPackagedToolId } from "../tools/catalog.js";
 import {
   mapHarnessEventToExtensionEvents,
   mergeSessionToolInfos,
 } from "../extension-system/extension-event-bridge.js";
-import { getAgentHomeDir } from "../agent/agent-paths.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { SessionManager } from "./session-manager.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
@@ -177,9 +181,14 @@ export class SupervisorSessionRuntime {
         ),
       emitExtensionEvent: (event) => extensionRuntimeRef.current?.emit(event as any),
     });
+    const sessionMeta =
+      typeof session.meta === "string"
+        ? (JSON.parse(session.meta) as Record<string, unknown>)
+        : ((session.meta as Record<string, unknown> | undefined) ?? {});
     const options = {
       sessionId: this.id,
       parentSessionId: session.parentId,
+      sessionMeta,
       cwd,
       sessionDir: getSessionDir(session.projectId, this.id),
       projectDir: getProjectDir(session.projectId),
@@ -208,23 +217,44 @@ export class SupervisorSessionRuntime {
       agentDisplayName: agentName,
     } as any);
 
-    // Discover and load extensions from agent home + project
-    const agentHomeDir = getAgentHomeDir(String(agentId));
-    const result = await discoverAndLoadExtensions({ agentHomeDir, cwd });
-    for (const ext of result.extensions) {
-      await runtime.loadExtension(ext.definition, ext.path);
+    // Activate bound extensions (modules imported once at process level).
+    await manager.ensureResourceCatalog();
+    const extensionSlugs = db.listAgentResourceSlugs(agentId, "extension");
+    const modules = manager.getExtensionRegistry().getMany(extensionSlugs);
+    for (const mod of modules) {
+      if (mod.error) {
+        console.error(`extension module [${mod.slug}]:`, mod.error);
+        continue;
+      }
+      await runtime.loadExtension(mod.definition, mod.path);
     }
+
+    const toolSlugs = db.listAgentResourceSlugs(agentId, "tool");
+    const legacyToolIds = listEnabledPackagedToolIds(getAgentHomeDir(String(agentId)));
+    const packagedToolIds = [...new Set([...toolSlugs.filter(isPackagedToolId), ...legacyToolIds])];
+    await activatePackagedTools(runtime, {
+      cwd,
+      sessionId: this.id,
+      toolIds: packagedToolIds,
+    });
 
     // Connect harness hooks to extension events
     this.harness.on("tool_call", async (event) => {
-      await runtime.emit({
-        type: "tool.before_call" as any,
-        toolCallId: event.toolCallId,
-        name: event.toolName,
-        args: event.input,
-        entryId: "",
-      });
+      const blocked = await runtime.checkToolBeforeCall(
+        event.toolCallId,
+        event.toolName,
+        event.input,
+      );
+      if (blocked.block) {
+        return { block: true, reason: blocked.reason };
+      }
       return undefined;
+    });
+
+    this.harness.on("context", async (event) => {
+      const messages = runtime.applyTurnInjections(event.messages);
+      if (messages === event.messages) return undefined;
+      return { messages };
     });
 
     await runtime.emit({
@@ -267,6 +297,52 @@ export class SupervisorSessionRuntime {
             timestamp: Date.now(),
           } as any);
           break;
+
+        case "turn_start": {
+          const turnId = ext.onTurnStarted();
+          await ext.emit({
+            type: "turn.started",
+            turnId,
+            timestamp: Date.now(),
+          } as any);
+          break;
+        }
+
+        case "turn_end": {
+          const message = (event as { message?: { usage?: Record<string, number> } }).message;
+          const usage = message?.usage as
+            | { input?: number; output?: number; totalTokens?: number }
+            | undefined;
+          const turnId = ext.onTurnEnded(usage);
+          await ext.emit({
+            type: "turn.ended",
+            turnId,
+            reason: (event as { stopReason?: string }).stopReason,
+            usage,
+            timestamp: Date.now(),
+          } as any);
+          break;
+        }
+
+        case "message_end": {
+          const message = (event as { message?: { role?: string; usage?: Record<string, number> } })
+            .message;
+          if (message?.role === "assistant" && message.usage) {
+            const usage = message.usage as {
+              input?: number;
+              output?: number;
+              totalTokens?: number;
+            };
+            ext.onStepEnded(usage);
+            await ext.emit({
+              type: "step.ended",
+              turnId: 0,
+              usage,
+              timestamp: Date.now(),
+            } as any);
+          }
+          break;
+        }
 
         case "agent_end": {
           await ext.emit({
@@ -424,6 +500,10 @@ export class SupervisorSessionRuntime {
 
   async abort(): Promise<void> {
     await this.harness.abort();
+  }
+
+  async waitForIdle(): Promise<void> {
+    await this.harness.waitForIdle();
   }
 
   async compact(customInstructions?: string): Promise<{

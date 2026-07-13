@@ -4,7 +4,8 @@ import { join } from "node:path";
 import Database from "better-sqlite3";
 import { ensureAgentHome, getAgentHomeDir } from "../agent/agent-paths.js";
 import { encryptApiKey, decryptApiKey } from "../utils/encrypt.js";
-import type { SessionBranchType } from "../core/session-branch.js";
+import type { AgentResourceBinding, Resource, ResourceKind, ResourceRow, AgentResourceRow } from "../resources/types.js";
+import { isResourceKind } from "../resources/types.js";
 import type {
   Agent,
   AgentRow,
@@ -51,6 +52,7 @@ function rowToAgent(row: AgentRow): Agent {
     modelId: row.model_id,
     toolsPreset: (row.tools_preset as "coding" | "readonly" | "none") || null,
     homeDir: row.home_dir ?? null,
+    isInternal: Boolean(row.is_internal),
     meta: JSON.parse(row.meta),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -67,6 +69,21 @@ function rowToProvider(row: ProviderRow): Provider {
     baseUrl: row.base_url,
     apiKey: row.api_key ? decryptApiKey(row.api_key) : null,
     isEnabled: Boolean(row.is_enabled),
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
+
+function rowToResource(row: ResourceRow): Resource {
+  return {
+    id: row.id,
+    kind: row.kind as ResourceKind,
+    slug: row.slug,
+    name: row.name,
+    description: row.description,
+    sourcePath: row.source_path,
+    version: row.version,
+    meta: JSON.parse(row.meta),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -177,6 +194,7 @@ export class SupervisorDb {
 				extension_id  TEXT UNIQUE,
 				model_id      TEXT,
 				home_dir      TEXT,
+				is_internal   INTEGER NOT NULL DEFAULT 0,
 				meta          TEXT NOT NULL DEFAULT '{}',
 				created_at    INTEGER NOT NULL,
 				updated_at    INTEGER NOT NULL
@@ -248,11 +266,96 @@ export class SupervisorDb {
       CREATE INDEX IF NOT EXISTS idx_members_session ON members(session_id);
       CREATE INDEX IF NOT EXISTS idx_members_agent ON members(agent_id);
       DROP TABLE IF EXISTS extensions;
+
+      CREATE TABLE IF NOT EXISTS resources (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind          TEXT NOT NULL,
+        slug          TEXT NOT NULL,
+        name          TEXT,
+        description   TEXT,
+        source_path   TEXT,
+        version       TEXT,
+        meta          TEXT NOT NULL DEFAULT '{}',
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL,
+        UNIQUE(kind, slug)
+      );
+      CREATE INDEX IF NOT EXISTS idx_resources_kind ON resources(kind);
+
+      CREATE TABLE IF NOT EXISTS agent_resources (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        agent_id      INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+        resource_id   INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
+        enabled       INTEGER NOT NULL DEFAULT 1,
+        priority      INTEGER NOT NULL DEFAULT 0,
+        created_at    INTEGER NOT NULL,
+        UNIQUE(agent_id, resource_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_agent_resources_agent ON agent_resources(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_agent_resources_resource ON agent_resources(resource_id);
     `);
     this.ensureMessageFts();
+    this.ensureAgentIsInternalColumn();
+    this.migrateLegacyInternalAgents();
 
     // Initialize default providers from environment variables
     this.initializeDefaultProviders();
+  }
+
+  private ensureAgentIsInternalColumn(): void {
+    const columns = this.db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
+    if (columns.some((column) => column.name === "is_internal")) return;
+    this.db.exec(`ALTER TABLE agents ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0`);
+  }
+
+  /** Backfill is_internal from legacy meta.internal and rename resource-manager → intro. */
+  private migrateLegacyInternalAgents(): void {
+    const rows = this.db.prepare("SELECT id, name, meta FROM agents").all() as Array<{
+      id: number;
+      name: string;
+      meta: string;
+    }>;
+    for (const row of rows) {
+      const meta = JSON.parse(row.meta) as Record<string, unknown>;
+      let nextMeta = meta;
+      let isInternal = Boolean(meta.internal);
+      let name = row.name;
+
+      if (meta.internalKind === "resource-manager") {
+        nextMeta = {
+          ...meta,
+          packagedKind: "intro",
+          internalKind: undefined,
+          internal: undefined,
+          userSpawnable: undefined,
+        };
+        delete nextMeta.internalKind;
+        delete nextMeta.internal;
+        delete nextMeta.userSpawnable;
+        isInternal = false;
+        if (name === "Resource Manager") name = "Intro";
+      }
+
+      const sets: string[] = [];
+      const params: unknown[] = [];
+      if (isInternal) {
+        sets.push("is_internal = 1");
+      }
+      if (name !== row.name) {
+        sets.push("name = ?");
+        params.push(name);
+      }
+      if (JSON.stringify(nextMeta) !== row.meta) {
+        sets.push("meta = ?");
+        params.push(JSON.stringify(nextMeta));
+      }
+      if (sets.length === 0) continue;
+      sets.push("updated_at = ?");
+      params.push(Date.now(), row.id);
+      this.db
+        .prepare(`UPDATE agents SET ${sets.join(", ")} WHERE id = ?`)
+        .run(...params);
+    }
   }
 
 
@@ -504,6 +607,7 @@ export class SupervisorDb {
     model_id?: string | null;
     tools_preset?: string | null;
     home_dir?: string | null;
+    is_internal?: boolean;
     meta?: string | Record<string, unknown>;
   }): Agent {
     const now = Date.now();
@@ -518,12 +622,13 @@ export class SupervisorDb {
       model_id: row.model_id ?? null,
       tools_preset: row.tools_preset ?? null,
       home_dir: homeDir ?? null,
+      is_internal: row.is_internal ? 1 : 0,
       meta: metaJson,
     };
     const result = this.db
       .prepare(
-        `INSERT INTO agents (name, description, provider_id, model_id, system_prompt, tools_preset, home_dir, meta, created_at, updated_at)
-				 VALUES (@name, @description, @provider_id, @model_id, NULL, @tools_preset, @home_dir, @meta, @created_at, @updated_at)`,
+        `INSERT INTO agents (name, description, provider_id, model_id, system_prompt, tools_preset, home_dir, is_internal, meta, created_at, updated_at)
+				 VALUES (@name, @description, @provider_id, @model_id, NULL, @tools_preset, @home_dir, @is_internal, @meta, @created_at, @updated_at)`,
       )
       .run(full);
     const id = Number(result.lastInsertRowid);
@@ -545,7 +650,7 @@ export class SupervisorDb {
     patch: Partial<
       Pick<
         AgentRow,
-        "name" | "description" | "provider_id" | "model_id" | "tools_preset" | "home_dir"
+        "name" | "description" | "provider_id" | "model_id" | "tools_preset" | "home_dir" | "is_internal"
       >
     > & {
       meta?: Record<string, unknown>;
@@ -938,6 +1043,172 @@ export class SupervisorDb {
     });
 
     console.log(`Initialized default provider: ${name} (${slug}, id=${id})`);
+  }
+
+  // ============ Resource catalog ============
+
+  upsertResource(row: {
+    kind: ResourceKind;
+    slug: string;
+    name?: string | null;
+    description?: string | null;
+    source_path?: string | null;
+    version?: string | null;
+    meta?: Record<string, unknown>;
+  }): Resource {
+    const existing = this.getResourceByKindSlug(row.kind, row.slug);
+    const now = Date.now();
+    if (existing) {
+      return this.updateResource(existing.id, {
+        name: row.name ?? existing.name,
+        description: row.description ?? existing.description,
+        source_path: row.source_path ?? existing.sourcePath,
+        version: row.version ?? existing.version,
+        meta: row.meta ?? existing.meta,
+      });
+    }
+    const metaJson = JSON.stringify(row.meta ?? {});
+    const result = this.db
+      .prepare(
+        `INSERT INTO resources (kind, slug, name, description, source_path, version, meta, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        row.kind,
+        row.slug,
+        row.name ?? row.slug,
+        row.description ?? null,
+        row.source_path ?? null,
+        row.version ?? null,
+        metaJson,
+        now,
+        now,
+      );
+    return rowToResource(
+      this.db.prepare("SELECT * FROM resources WHERE id = ?").get(Number(result.lastInsertRowid)) as ResourceRow,
+    );
+  }
+
+  updateResource(
+    id: number,
+    patch: Partial<{
+      name: string | null;
+      description: string | null;
+      source_path: string | null;
+      version: string | null;
+      meta: Record<string, unknown>;
+    }>,
+  ): Resource {
+    const sets: string[] = ["updated_at = ?"];
+    const params: unknown[] = [Date.now()];
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === undefined) continue;
+      if (key === "meta") {
+        sets.push("meta = ?");
+        params.push(JSON.stringify(value ?? {}));
+      } else {
+        sets.push(`${key} = ?`);
+        params.push(value);
+      }
+    }
+    params.push(id);
+    this.db.prepare(`UPDATE resources SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+    const row = this.db.prepare("SELECT * FROM resources WHERE id = ?").get(id) as ResourceRow | undefined;
+    if (!row) throw new Error(`Resource ${id} not found`);
+    return rowToResource(row);
+  }
+
+  getResource(id: number): Resource | undefined {
+    const row = this.db.prepare("SELECT * FROM resources WHERE id = ?").get(id) as ResourceRow | undefined;
+    return row ? rowToResource(row) : undefined;
+  }
+
+  getResourceByKindSlug(kind: ResourceKind, slug: string): Resource | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM resources WHERE kind = ? AND slug = ?")
+      .get(kind, slug) as ResourceRow | undefined;
+    return row ? rowToResource(row) : undefined;
+  }
+
+  listResources(kind?: ResourceKind): Resource[] {
+    const rows = kind
+      ? (this.db.prepare("SELECT * FROM resources WHERE kind = ? ORDER BY slug").all(kind) as ResourceRow[])
+      : (this.db.prepare("SELECT * FROM resources ORDER BY kind, slug").all() as ResourceRow[]);
+    return rows.map(rowToResource);
+  }
+
+  deleteResource(id: number): void {
+    const refs = this.db
+      .prepare("SELECT COUNT(*) AS count FROM agent_resources WHERE resource_id = ?")
+      .get(id) as { count: number };
+    if (refs.count > 0) {
+      throw new Error(`Resource ${id} is still linked to ${refs.count} agent(s)`);
+    }
+    this.db.prepare("DELETE FROM resources WHERE id = ?").run(id);
+  }
+
+  linkAgentResource(agentId: number, resourceId: number, options?: { priority?: number }): AgentResourceBinding {
+    const now = Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO agent_resources (agent_id, resource_id, enabled, priority, created_at)
+         VALUES (?, ?, 1, ?, ?)
+         ON CONFLICT(agent_id, resource_id) DO UPDATE SET enabled = 1, priority = excluded.priority`,
+      )
+      .run(agentId, resourceId, options?.priority ?? 0, now);
+    const row = this.db
+      .prepare("SELECT * FROM agent_resources WHERE agent_id = ? AND resource_id = ?")
+      .get(agentId, resourceId) as AgentResourceRow;
+    return this.rowToAgentResourceBinding(row);
+  }
+
+  unlinkAgentResource(agentId: number, resourceId: number): void {
+    this.db
+      .prepare("DELETE FROM agent_resources WHERE agent_id = ? AND resource_id = ?")
+      .run(agentId, resourceId);
+  }
+
+  unlinkAgentResourceBySlug(agentId: number, kind: ResourceKind, slug: string): void {
+    const resource = this.getResourceByKindSlug(kind, slug);
+    if (!resource) return;
+    this.unlinkAgentResource(agentId, resource.id);
+  }
+
+  listAgentResources(agentId: number, kind?: ResourceKind): AgentResourceBinding[] {
+    const sql = kind
+      ? `SELECT ar.* FROM agent_resources ar
+         INNER JOIN resources r ON r.id = ar.resource_id
+         WHERE ar.agent_id = ? AND r.kind = ? AND ar.enabled = 1
+         ORDER BY ar.priority DESC, r.slug`
+      : `SELECT ar.* FROM agent_resources ar
+         INNER JOIN resources r ON r.id = ar.resource_id
+         WHERE ar.agent_id = ? AND ar.enabled = 1
+         ORDER BY r.kind, ar.priority DESC, r.slug`;
+    const rows = kind
+      ? (this.db.prepare(sql).all(agentId, kind) as AgentResourceRow[])
+      : (this.db.prepare(sql).all(agentId) as AgentResourceRow[]);
+    return rows.map((row) => this.rowToAgentResourceBinding(row, true));
+  }
+
+  listAgentResourceSlugs(agentId: number, kind: ResourceKind): string[] {
+    return this.listAgentResources(agentId, kind)
+      .map((binding) => binding.resource?.slug)
+      .filter((slug): slug is string => Boolean(slug));
+  }
+
+  private rowToAgentResourceBinding(row: AgentResourceRow, withResource = false): AgentResourceBinding {
+    const binding: AgentResourceBinding = {
+      id: row.id,
+      agentId: row.agent_id,
+      resourceId: row.resource_id,
+      enabled: Boolean(row.enabled),
+      priority: row.priority,
+      createdAt: new Date(row.created_at),
+    };
+    if (withResource) {
+      binding.resource = this.getResource(row.resource_id);
+    }
+    return binding;
   }
 }
 

@@ -85,7 +85,7 @@ export function resolveToolsOptions(cwd: string, overrides?: ToolsOptions): Tool
 
 /**
  * Default supervisor tools: pi coding tools plus grep/find/ls for exploration.
- * Additional capabilities come from extensions (lsp, ask, ast-grep, etc.).
+ * Additional capabilities come from packaged tools (`src/tools/`) and extensions.
  */
 export function createDefaultTools(
   cwd: string,

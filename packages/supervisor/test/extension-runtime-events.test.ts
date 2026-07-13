@@ -111,6 +111,9 @@ function createRuntimeOptions(sessionId = 1) {
       log: () => {},
       broadcast: () => {},
       eventBus,
+      continueTurn: async () => {},
+      setActiveTools: async () => {},
+      getContextUsage: async () => ({ tokens: null }),
     },
   };
 }

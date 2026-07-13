@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -126,19 +126,19 @@ describe("supervisor: SessionManager", () => {
       name: "Test Provider",
       api_type: "anthropic-messages",
     });
-    const sidecar = db.insertAgent({
-      name: "sidecar reviewer",
+    const reviewer = db.insertAgent({
+      name: "shadow reviewer",
       provider_id: providerId,
       model_id: "claude-sonnet-4-6",
     });
     const inst = await manager.spawn(SPAWN_OPTS);
 
-    manager.upsertMember(inst.id, sidecar.id, { role: "observer", tags: ["sidecar", "review"] });
+    manager.upsertMember(inst.id, reviewer.id, { role: "observer", tags: ["shadow", "review"] });
 
-    const agents = manager.listMemberAgentsByTag(inst.id, "sidecar");
+    const agents = manager.listMemberAgentsByTag(inst.id, "shadow");
     expect(agents).toHaveLength(1);
-    expect(agents[0]?.id).toBe(sidecar.id);
-    expect(agents[0]?.member.tags).toEqual(["sidecar", "review"]);
+    expect(agents[0]?.id).toBe(reviewer.id);
+    expect(agents[0]?.member.tags).toEqual(["shadow", "review"]);
   });
 
   it("prompt() throws for non-existent instance", async () => {
@@ -215,25 +215,6 @@ describe("supervisor: SessionManager", () => {
     const turns = updated.meta.turns as Array<{ files: { modified: string[] } }>;
     expect(turns).toHaveLength(1);
     expect(turns[0]!.files.modified).toContain("src/app.ts");
-  });
-
-  it("retains hindsight memories in the project directory on agent_end", async () => {
-    const inst = await manager.spawn(SPAWN_OPTS);
-    MockAgentHarness.instances[0]!.agent.emit({
-      type: "agent_end",
-      messages: [
-        {
-          role: "assistant",
-          content: "The project uses SQLite for persistence. Updated the implementation.",
-        },
-      ],
-    } as AgentEvent);
-
-    await flushLifecycle();
-
-    const projectDir = manager.getProject(inst.projectId!)!.workDir;
-    const hindsight = readFileSync(join(projectDir, "hindsight.jsonl"), "utf-8");
-    expect(hindsight).toContain("The project uses SQLite for persistence");
   });
 
   it("delete() removes the session-owned directory", async () => {

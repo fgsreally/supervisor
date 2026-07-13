@@ -7,6 +7,7 @@ import type { ResourceDiagnostic } from "../utils/diagnostics.js";
 import { parseFrontmatter } from "../utils/frontmatter.js";
 import { canonicalizePath } from "../utils/paths.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "../utils/source-info.js";
+import { loadPromptTemplate } from "./system-prompts.js";
 
 /** Max name length per spec */
 const MAX_NAME_LENGTH = 64;
@@ -346,10 +347,9 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
 		return "";
 	}
 
+	const preamble = loadPromptTemplate("skills-preamble");
 	const lines = [
-		"\n\nThe following skills provide specialized instructions for specific tasks.",
-		"Use the read tool to load a skill's file when the task matches its description.",
-		"When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.",
+		`\n\n${preamble}`,
 		"",
 		"<available_skills>",
 	];

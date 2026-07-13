@@ -15,6 +15,10 @@ describe("supervisor: extension tool adapter", () => {
       },
     };
     const runtime = {
+      async checkToolBeforeCall() {
+        return { block: false };
+      },
+      async runToolAfterHandlers() {},
       async emit(event: { type: string; setResult?: (result: unknown) => void }) {
         if (event.type === "tool.after_call") {
           event.setResult?.({ content: [{ type: "text", text: "replaced" }] });

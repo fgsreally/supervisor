@@ -10,6 +10,7 @@ import {
 	type ExtensionEntryInfo,
 } from "../extension-system/loader.js";
 import { probeExtensionTools } from "../extension-system/tool-probe.js";
+import { listEnabledPackagedToolIds, probePackagedTool, isPackagedToolId } from "../tools/loader.js";
 import { createDefaultTools } from "../utils/default-tools.js";
 import { loadPromptTemplates, type PromptTemplate } from "./prompt-templates.js";
 import { loadSkills, type Skill } from "./skills.js";
@@ -214,26 +215,43 @@ export function promptsToResourceInfo(prompts: PromptTemplate[]): PromptTemplate
 	return prompts.map(promptToInfo);
 }
 
-/** Load skills/prompts for session runtime (agent home only). */
+/** Load skills/prompts for session runtime from DB bindings. */
 export function loadAgentSessionResources(
+	db: SupervisorDb,
 	agent: Agent | undefined,
 	cwd: string,
 ): { skills: Skill[]; promptTemplates: PromptTemplate[]; systemMd: string } {
 	const agentHomeDir = agent?.homeDir ?? getAgentHomeDir(agent?.id ?? "default");
+	const agentId = agent?.id;
+
+	const skillPaths =
+		agentId !== undefined
+			? db
+					.listAgentResources(agentId, "skill")
+					.map((b) => b.resource?.sourcePath)
+					.filter((p): p is string => Boolean(p))
+			: [];
+	const promptPaths =
+		agentId !== undefined
+			? db
+					.listAgentResources(agentId, "prompt")
+					.map((b) => b.resource?.sourcePath)
+					.filter((p): p is string => Boolean(p))
+			: [];
 
 	const { skills } = loadSkills({
 		cwd,
 		agentHomeDir,
-		skillPaths: [],
-		includeDefaults: true,
+		skillPaths,
+		includeDefaults: skillPaths.length === 0,
 		includeProject: false,
 	});
 
 	const promptTemplates = loadPromptTemplates({
 		cwd,
 		agentHomeDir,
-		promptPaths: [],
-		includeDefaults: true,
+		promptPaths,
+		includeDefaults: promptPaths.length === 0,
 		includeProject: false,
 	});
 
@@ -253,16 +271,18 @@ export function listExtensionPathsFromDirs(agent: Agent | undefined, cwd: string
 }
 
 const SYSTEM_TOOLS: Array<Pick<AgentToolInfo, "name" | "source" | "description">> = [
-	{ name: "sidecar_deliver", source: "system", description: "Deliver sidecar agent result to main session" },
+	{ name: "send_parent_msg", source: "system", description: "Enqueue a message for the parent session (shadow child only)" },
+	{ name: "list_supervisor_resources", source: "system", description: "List readable pi-supervisor:// resources" },
 	{ name: "spawn_agent", source: "system", description: "Spawn a delegated subagent session" },
 	{ name: "read_supervisor_resource", source: "system", description: "Read pi-supervisor resource URLs" },
 ];
 
-/** Resolve the effective tool set for an agent (preset + system + installed extensions). */
+/** Resolve the effective tool set for an agent (preset + system + bound extensions). */
 export async function resolveAgentTools(
 	db: SupervisorDb,
 	agentId: number,
 	cwd: string,
+	extensionRegistry?: { getMany(slugs: string[]): Array<{ definition: import("../extension-system/types.js").ExtensionDefinition; error?: string }> },
 ): Promise<AgentToolInfo[]> {
 	const agent = db.getAgent(agentId);
 	if (!agent) {
@@ -283,19 +303,53 @@ export async function resolveAgentTools(
 		merged.set(tool.name, tool);
 	}
 
-	const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
-	const agentExtDir = join(homeDir, "extensions");
-	const extPaths = collectExtensionPaths([agentExtDir]);
-	const loaded = await loadExtensions(extPaths);
+	const extensionSlugs = db.listAgentResourceSlugs(agentId, "extension");
+	if (extensionRegistry) {
+		for (const mod of extensionRegistry.getMany(extensionSlugs)) {
+			if (mod.error) continue;
+			const probed = await probeExtensionTools(mod.definition);
+			for (const tool of probed) {
+				merged.set(tool.name, {
+					name: tool.name,
+					source: "extension",
+					extensionName: tool.extensionName,
+					description: tool.description,
+				});
+			}
+		}
+	} else {
+		const roots = extensionSlugs
+			.map((slug) => db.getResourceByKindSlug("extension", slug)?.sourcePath)
+			.filter((p): p is string => Boolean(p));
+		const extPaths = listExtensionInfosInDirectories(roots).map((info) => info.entryPath);
+		const loaded = await loadExtensions(extPaths);
+		for (const ext of loaded.extensions) {
+			if (ext.error) continue;
+			const probed = await probeExtensionTools(ext.definition);
+			for (const tool of probed) {
+				merged.set(tool.name, {
+					name: tool.name,
+					source: "extension",
+					extensionName: tool.extensionName,
+					description: tool.description,
+				});
+			}
+		}
+	}
 
-	for (const ext of loaded.extensions) {
-		if (ext.error) continue;
-		const probed = await probeExtensionTools(ext.definition);
+	const toolSlugs = db.listAgentResourceSlugs(agentId, "tool");
+	const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
+	const legacyToolIds =
+		toolSlugs.length > 0 ? toolSlugs : (listEnabledPackagedToolIds(homeDir) as string[]);
+	for (const toolId of legacyToolIds) {
+		if (!isPackagedToolId(toolId)) continue;
+		const probed = await probePackagedTool(toolId, cwd);
 		for (const tool of probed) {
+			if (tool.name === "(hook)") continue;
 			merged.set(tool.name, {
 				name: tool.name,
 				source: "extension",
-				extensionName: tool.extensionName,
+				extensionName: toolId,
 				description: tool.description,
 			});
 		}
@@ -304,24 +358,54 @@ export async function resolveAgentTools(
 	return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** API/UI: agent layer only — skills from `<agent-home>/skills/`. */
-export async function resolveAgentResources(db: SupervisorDb, agentId: number, cwd: string): Promise<AgentResources> {
+/** API/UI: agent resources from DB bindings. */
+export async function resolveAgentResources(
+	db: SupervisorDb,
+	agentId: number,
+	cwd: string,
+	extensionRegistry?: { getMany(slugs: string[]): Array<{ definition: import("../extension-system/types.js").ExtensionDefinition; error?: string; slug: string; path: string }> },
+): Promise<AgentResources> {
 	const agent = db.getAgent(agentId);
 	if (!agent) {
 		throw new Error(`Agent ${agentId} not found`);
 	}
 
 	const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
-	const { skills, promptTemplates, systemMd } = loadAgentSessionResources(agent, cwd);
+	const { skills, promptTemplates, systemMd } = loadAgentSessionResources(db, agent, cwd);
 
-	const agentSkillsDir = join(homeDir, "skills");
-	const agentPromptsDir = join(homeDir, "prompts");
-	const agentExtDir = join(homeDir, "extensions");
+	const bindings = db.listAgentResources(agentId);
+	const boundSkillPaths = new Set(
+		bindings
+			.filter((b) => b.resource?.kind === "skill" && b.resource.sourcePath)
+			.map((b) => b.resource!.sourcePath!),
+	);
+	const boundPromptPaths = new Set(
+		bindings
+			.filter((b) => b.resource?.kind === "prompt" && b.resource.sourcePath)
+			.map((b) => b.resource!.sourcePath!),
+	);
 
-	const agentExtInfos = listExtensionInfosInDirectories([agentExtDir]);
-	const agentExtensions = filterExtensionInfosByDir(agentExtInfos, agentExtDir).map(extensionEntryInfoToResourceInfo);
+	const agentSkills =
+		boundSkillPaths.size > 0
+			? skillsToResourceInfo(skills.filter((s) => boundSkillPaths.has(s.filePath)))
+			: skillsToResourceInfo(skills);
+	const agentPrompts =
+		boundPromptPaths.size > 0
+			? promptsToResourceInfo(promptTemplates.filter((p) => boundPromptPaths.has(p.filePath)))
+			: promptsToResourceInfo(promptTemplates);
 
-	const tools = await resolveAgentTools(db, agentId, cwd);
+	const agentExtensions = bindings
+		.filter((b) => b.resource?.kind === "extension")
+		.map((b) => {
+			const rootDir = b.resource?.sourcePath;
+			if (!rootDir) return null;
+			const infos = listExtensionInfosInDirectories([rootDir]);
+			const info = infos.find((i) => i.id === b.resource?.slug) ?? infos[0];
+			return info ? extensionEntryInfoToResourceInfo(info) : null;
+		})
+		.filter((e): e is ExtensionResourceInfo => e !== null);
+
+	const tools = await resolveAgentTools(db, agentId, cwd, extensionRegistry);
 
 	return {
 		agentId: agent.id,
@@ -331,8 +415,8 @@ export async function resolveAgentResources(db: SupervisorDb, agentId: number, c
 		tools,
 		layers: {
 			agent: {
-				skills: filterSkillsByDir(skills, agentSkillsDir),
-				prompts: filterPromptsByDir(promptTemplates, agentPromptsDir),
+				skills: agentSkills,
+				prompts: agentPrompts,
 				extensions: agentExtensions,
 			},
 		},

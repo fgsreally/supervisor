@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { getPackagedExtensionPath } from "../src/extension-system/loader.js";
-import { loadExtensionModule } from "../src/extension-system/loader.js";
+import { activatePackagedTool } from "../src/tools/catalog.js";
 
-describe("packaged web and browser extensions", () => {
-  it("loads supervisor-web extension", async () => {
-    const result = await loadExtensionModule(getPackagedExtensionPath("web"));
-    expect(result.error).toBeUndefined();
-    expect(result.definition?.name).toBe("supervisor-web");
-  });
+describe("packaged supervisor tools", () => {
+	it("activates web tools", async () => {
+		const activation = await activatePackagedTool("web", {
+			cwd: process.cwd(),
+			sessionId: 1,
+		});
+		expect(activation.tools.map((tool) => tool.name).sort()).toEqual(["web_fetch", "web_search"]);
+	});
 
-  it("loads supervisor-browser extension", async () => {
-    const result = await loadExtensionModule(getPackagedExtensionPath("browser"));
-    expect(result.error).toBeUndefined();
-    expect(result.definition?.name).toBe("supervisor-browser");
-  });
+	it("activates browser tool", async () => {
+		const activation = await activatePackagedTool("browser", {
+			cwd: process.cwd(),
+			sessionId: 1,
+		});
+		expect(activation.tools[0]?.name).toBe("browser");
+	});
 });

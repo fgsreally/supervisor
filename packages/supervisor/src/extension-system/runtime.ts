@@ -58,10 +58,7 @@ interface RuntimeOptions {
       triggerTurn?: boolean;
     }) => Promise<void>;
     sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
-    sendParentMsg: (
-      content: string,
-      options?: { level?: number },
-    ) => Promise<void>;
+    sendParentMsg: (content: string, options?: { level?: number }) => Promise<void>;
     getSessionDir: () => Promise<string>;
     getProjectDir: () => Promise<string>;
     getMemberAgentsByTag: (tag: string) => Promise<import("./types.js").MemberAgentInfo[]>;
@@ -537,7 +534,8 @@ export class ExtensionRuntime {
         }
       }
     }
-    this.extensions = [];
+    // Keep registry.extensions and this.extensions backed by the same array.
+    this.extensions.length = 0;
     this.handlers.clear();
     this.registry.tools.clear();
   }
@@ -556,11 +554,7 @@ export class ExtensionRuntime {
     return this.registry.getAllTools();
   }
 
-  registerPackagedTool(
-    packageId: string,
-    tool: AgentTool,
-    pausing?: { message: string },
-  ): void {
+  registerPackagedTool(packageId: string, tool: AgentTool, pausing?: { message: string }): void {
     const definition: ToolDefinition<TSchema, unknown> = {
       name: tool.name,
       description: tool.description ?? tool.name,

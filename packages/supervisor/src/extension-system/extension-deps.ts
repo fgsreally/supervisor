@@ -6,11 +6,10 @@ import type { SessionManager } from "../core/session-manager.js";
 import type { SupervisorDb } from "../db/db.js";
 import { ensureProjectDir, ensureSessionDir } from "../core/session-files.js";
 import {
-	DEFAULT_PARENT_MESSAGE_LEVEL,
-	DEFAULT_SESSION_INPUT_LEVEL,
+  DEFAULT_PARENT_MESSAGE_LEVEL,
+  DEFAULT_SESSION_INPUT_LEVEL,
 } from "../core/session-input-queue.js";
 import { execCommand } from "../utils/exec.js";
-import { mergeSessionToolInfos } from "./extension-event-bridge.js";
 import type {
   EventBus,
   ExecResult,
@@ -24,8 +23,8 @@ import type {
 } from "./types.js";
 
 /**
- * Build the EventBus for ExtensionRuntime.
- * Uses a simple Node.js EventEmitter for cross-extension communication.
+ * 为 Extension 创建事件总线。
+ * 使用 Node.js EventEmitter 实现同一 Agent 内的扩展间通信。
  */
 export function createEventBus(): EventBus {
   const emitter = new EventEmitter();
@@ -46,9 +45,8 @@ export function createEventBus(): EventBus {
 }
 
 /**
- * Build the deps object required by ExtensionRuntime.
- * All stubs are replaced with real implementations bridging to
- * SupervisorSessionRuntime, SessionManager, and SupervisorDb.
+ * 构建 Extension 内部运行实现需要的依赖。
+ * 将所有能力连接到 SupervisorSessionRuntime、SessionManager 和 SupervisorDb。
  */
 export function buildExtensionDeps(deps: {
   runtime: SupervisorSessionRuntime;
@@ -132,10 +130,7 @@ export function buildExtensionDeps(deps: {
       }
     },
 
-    sendUserMessage: async (
-      content: string,
-      options?: { source?: string; level?: number },
-    ) => {
+    sendUserMessage: async (content: string, options?: { source?: string; level?: number }) => {
       await manager.submitSessionInput(sessionId, {
         message: content,
         level: options?.level ?? DEFAULT_SESSION_INPUT_LEVEL,
@@ -388,7 +383,7 @@ export function buildExtensionDeps(deps: {
     },
 
     getSignal: () => {
-      // ExtensionRuntime's own AbortSignal (not the harness internal one)
+      // Extension 自己的 AbortSignal，不是 Harness 内部信号。
       return undefined;
     },
 
@@ -415,10 +410,10 @@ export function buildExtensionDeps(deps: {
       };
     },
 
-    switchSession: async (_targetSessionId: string) => {
+    switchSession: async (_targetSessionId: number) => {
       // Session-scoped: switching the extension context is a no-op for now
-      // because each session creates its own ExtensionRuntime.
-      // For cross-session communication, use the event bus instead.
+      // 每个 Agent 会话都有自己的 Extension，因此这里不切换实例。
+      // 跨会话通信应使用事件总线。
     },
 
     navigateTree: async (
@@ -556,10 +551,7 @@ type RuntimeDeps = {
     triggerTurn?: boolean;
   }) => Promise<void>;
   sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
-    sendParentMsg: (
-      content: string,
-      options?: { level?: number },
-    ) => Promise<void>;
+  sendParentMsg: (content: string, options?: { level?: number }) => Promise<void>;
   getSessionDir: () => Promise<string>;
   getProjectDir: () => Promise<string>;
   getMemberAgentsByTag: (tag: string) => Promise<MemberAgentInfo[]>;
@@ -586,7 +578,7 @@ type RuntimeDeps = {
   abort: () => void;
   waitForIdle: () => Promise<void>;
   fork: (entryId: string, options?: { position?: "before" | "at" }) => Promise<SessionInfo>;
-  switchSession: (sessionId: string) => Promise<void>;
+  switchSession: (sessionId: number) => Promise<void>;
   navigateTree: (
     entryId: string,
     options?: { summarize?: boolean; customInstructions?: string },

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { Type } from "typebox";
 import { defineExtension } from "../src/extension-system/define-extension.js";
-import { ExtensionRuntime } from "../src/extension-system/runtime.js";
+import { Extension } from "../src/extension-system/extension.js";
 import { createEventBus } from "../src/extension-system/extension-deps.js";
 import { ToolPolicy } from "../src/extension-system/tool-policy.js";
-import { wrapToolWithExtensionRuntime } from "../src/extension-system/tool-adapter.js";
 import type { RuntimeOptions } from "../src/extension-system/types.js";
 
 function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.fn> }) {
@@ -110,7 +110,7 @@ describe("extension api", () => {
   });
 
   it("session.tools.beforeUse can block tool calls", async () => {
-    const runtime = new ExtensionRuntime(createRuntimeOptions());
+    const runtime = new Extension(createRuntimeOptions());
     runtime.services.tools.beforeUse(() => ({ allow: false, reason: "blocked by extension" }));
 
     const result = await runtime.checkToolBeforeCall("tc-1", "edit", { file_path: "/a.ts" });
@@ -119,10 +119,8 @@ describe("extension api", () => {
   });
 
   it("inject appends boundary messages", () => {
-    const runtime = new ExtensionRuntime(createRuntimeOptions());
+    const runtime = new Extension(createRuntimeOptions());
     runtime.services.inject.schedule({ variant: "goal", content: "stay focused" });
-    runtime.onTurnStarted();
-
     const out = runtime.applyTurnInjections([
       { role: "user", content: [{ type: "text", text: "hi" }], timestamp: Date.now() },
     ]);
@@ -136,9 +134,9 @@ describe("extension api", () => {
 
   it("flow.continue queues a continuation turn", async () => {
     const continueTurn = vi.fn(async () => {});
-    const runtime = new ExtensionRuntime(createRuntimeOptions({ continueTurn }));
+    const runtime = new Extension(createRuntimeOptions({ continueTurn }));
 
-    await runtime.loadExtension(
+    await runtime.load(
       defineExtension({
         name: "flow-test",
         setup(ctx) {
@@ -157,11 +155,11 @@ describe("extension api", () => {
     });
   });
 
-  it("wrapToolWithExtensionRuntime returns error when blocked", async () => {
-    const runtime = new ExtensionRuntime(createRuntimeOptions());
+  it("Extension.wrapTools returns error when blocked", async () => {
+    const runtime = new Extension(createRuntimeOptions());
     runtime.services.tools.setPolicy(ToolPolicy.readonly());
 
-    const tool = wrapToolWithExtensionRuntime(
+    const [tool] = runtime.wrapTools([
       {
         name: "edit",
         label: "edit",
@@ -174,8 +172,7 @@ describe("extension api", () => {
           };
         },
       },
-      runtime,
-    );
+    ]);
 
     const result = await tool.execute("tc-1", { file_path: "/a.ts" });
     expect((result as { isError?: boolean }).isError).toBe(true);
@@ -191,7 +188,7 @@ describe("extension api", () => {
         approvalId = event.approvalId;
       }
     }) as RuntimeOptions["deps"]["broadcast"];
-    const runtime = new ExtensionRuntime(options);
+    const runtime = new Extension(options);
     const { submitApprovalResolution } =
       await import("../src/extension-system/extension-session-services.js");
 
@@ -205,5 +202,58 @@ describe("extension api", () => {
     expect(approvalId).toBeTruthy();
     submitApprovalResolution(1, approvalId, { action: "approve" });
     await expect(promise).resolves.toEqual({ action: "approve" });
+  });
+
+  it("每个 Agent 的 Extension 工具注册表彼此隔离", async () => {
+    const first = new Extension(createRuntimeOptions());
+    const second = new Extension({ ...createRuntimeOptions(), sessionId: 2 });
+
+    await first.load(
+      defineExtension({
+        name: "isolated-extension",
+        setup(ctx) {
+          ctx.agent.tools.register({
+            name: "isolated_tool",
+            description: "只属于第一个 Agent",
+            parameters: Type.Object({}),
+            async execute() {
+              return { content: [{ type: "text", text: "ok" }] };
+            },
+          });
+        },
+      }),
+      "/tmp/isolated-extension.ts",
+    );
+
+    expect(first.getTool("isolated_tool")).toBeDefined();
+    expect(second.getTool("isolated_tool")).toBeUndefined();
+  });
+
+  it("clear 统一执行 cleanup 并清空扩展工具", async () => {
+    const extension = new Extension(createRuntimeOptions());
+    const cleanup = vi.fn();
+
+    await extension.load(
+      defineExtension({
+        name: "cleanup-extension",
+        setup(ctx) {
+          ctx.agent.tools.register({
+            name: "cleanup_tool",
+            description: "用于验证清理",
+            parameters: Type.Object({}),
+            async execute() {
+              return { content: [{ type: "text", text: "ok" }] };
+            },
+          });
+          return cleanup;
+        },
+      }),
+      "/tmp/cleanup-extension.ts",
+    );
+
+    await extension.clear();
+
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(extension.getTool("cleanup_tool")).toBeUndefined();
   });
 });

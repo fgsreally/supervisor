@@ -12,8 +12,8 @@ export interface LoadedExtensionModule {
 }
 
 /**
- * Process-wide cache of jiti-imported extension modules.
- * Import once per slug; per-session ExtensionRuntime only runs setup().
+ * 进程级扩展模块导入缓存。
+ * 每个 slug 只导入一次；每个 Agent 的 Extension 实例只执行 setup()。
  */
 export class ExtensionModuleRegistry {
 	private readonly modules = new Map<string, LoadedExtensionModule>();

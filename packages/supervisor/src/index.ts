@@ -56,6 +56,8 @@ export {
   listPackagedToolIds,
 } from "./tools/index.js";
 export { defineExtension, defineExtensionAsync } from "./extension-system/define-extension.js";
+export { Extension } from "./extension-system/extension.js";
+export type { AgentExtensionModule } from "./extension-system/extension.js";
 export {
   discoverAndLoadExtensions,
   getPackagedExtensionPath,
@@ -96,6 +98,12 @@ export {
   type InstallResourceResult,
   type ResourceServiceDeps,
 } from "./resources/resource-service.js";
+export {
+  AgentResource,
+  type AgentResourceCommandInfo,
+  type AgentResourceCommandSource,
+  type AgentResourceOptions,
+} from "./resources/agent-resource.js";
 export type { AgentResourceBinding, Resource, ResourceKind } from "./resources/types.js";
 export type { SupervisorSessionEvent, SupervisorSessionState } from "./core/session-runtime.js";
 export { SupervisorSessionRuntime } from "./core/session-runtime.js";

@@ -27,6 +27,7 @@
     "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",
     "@hono/node-server": "^1.14.4",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@puppeteer/browsers": "^2.8.0",
     "better-sqlite3": "^11.10.0",
     "hono": "^4.8.4",
@@ -45,6 +46,7 @@
     "@types/prompts": "^2.4.9",
     "shx": "^0.4.0",
     "tsdown": "^0.22.3",
+    "unrun": "^0.3.1",
     "vitest": "^3.2.4"
   },
   "engines": {

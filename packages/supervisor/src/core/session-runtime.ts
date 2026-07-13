@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import type {
   AgentHarness,
   AgentHarnessEvent,
@@ -8,24 +7,17 @@ import type {
   ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
 import { getModel, type ImageContent, type KnownProvider, type Model } from "@earendil-works/pi-ai";
-import { expandPromptTemplate, type PromptTemplate } from "../agent/prompt-templates.js";
-import type { Skill } from "../agent/skills.js";
-import type { SourceInfo } from "../utils/source-info.js";
 import type { Session } from "../types.js";
-import { ExtensionRuntime, createExtensionDatabase } from "../extension-system/index.js";
-import type { ToolInfo } from "../extension-system/types.js";
-import {
-  toolInfoToAgentTool,
-  wrapToolWithExtensionRuntime,
-} from "../extension-system/tool-adapter.js";
+import type {
+  AgentResource,
+  AgentResourceCommandInfo,
+  AgentResourceCommandSource,
+} from "../resources/agent-resource.js";
+import { Extension, createExtensionDatabase } from "../extension-system/index.js";
 import { buildExtensionDeps } from "../extension-system/extension-deps.js";
 import { getAgentHomeDir } from "../agent/agent-paths.js";
 import { activatePackagedTools, listEnabledPackagedToolIds } from "../tools/loader.js";
 import { isPackagedToolId } from "../tools/catalog.js";
-import {
-  mapHarnessEventToExtensionEvents,
-  mergeSessionToolInfos,
-} from "../extension-system/extension-event-bridge.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { SessionManager } from "./session-manager.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
@@ -51,14 +43,9 @@ function harnessSession(harness: unknown): HarnessSessionTree {
   return (harness as { session: HarnessSessionTree }).session;
 }
 
-export type SlashCommandSource = "prompt" | "skill";
+export type SlashCommandSource = AgentResourceCommandSource;
 
-export interface SlashCommandInfo {
-  name: string;
-  description?: string;
-  source: SlashCommandSource;
-  sourceInfo: SourceInfo;
-}
+export type SlashCommandInfo = AgentResourceCommandInfo;
 
 export interface SupervisorSessionState {
   id: number;
@@ -78,9 +65,8 @@ export interface SupervisorSessionState {
 export interface SupervisorSessionRuntimeOptions {
   session: Session;
   harness: AgentHarness;
+  resource: AgentResource;
   storage?: SQLiteSessionStorage;
-  skills?: Skill[];
-  promptTemplates?: PromptTemplate[];
   getSession: () => Session | undefined;
   getMessages: () => Promise<SessionTreeEntry[]>;
 }
@@ -93,28 +79,27 @@ export type SupervisorSessionEventListener = (
 export class SupervisorSessionRuntime {
   readonly id: number;
   readonly harness: AgentHarness;
+  /** 与当前运行中 Agent 唯一绑定的非扩展资源管理器。 */
+  readonly resource: AgentResource;
 
   private getSession: () => Session | undefined;
   private getMessagesForSession: () => Promise<SessionTreeEntry[]>;
   private listeners = new Set<SupervisorSessionEventListener>();
-  private skills: Skill[];
-  private promptTemplates: PromptTemplate[];
   private storage?: SQLiteSessionStorage;
-  private _extensionRuntime: ExtensionRuntime | null = null;
-  private emittedAgentMessageCount = 0;
+  /** 与当前运行中 Agent 会话唯一绑定的 Extension 实例。 */
+  private _extension: Extension | null = null;
 
   constructor(options: SupervisorSessionRuntimeOptions) {
     this.id = options.session.id;
     this.harness = options.harness;
+    this.resource = options.resource;
     this.storage = options.storage;
-    this.skills = options.skills ?? [];
-    this.promptTemplates = options.promptTemplates ?? [];
     this.getSession = options.getSession;
     this.getMessagesForSession = options.getMessages;
 
     this.harness.subscribe((event) => {
       void this.emit(event);
-      void this.forwardHarnessEventToExtensions(event);
+      void this._extension?.handleHarnessEvent(event);
     });
   }
 
@@ -133,8 +118,8 @@ export class SupervisorSessionRuntime {
 
   // ==================== Extension Runtime ====================
 
-  get extensionRuntime(): ExtensionRuntime | null {
-    return this._extensionRuntime;
+  get extension(): Extension | null {
+    return this._extension;
   }
 
   /**
@@ -167,7 +152,7 @@ export class SupervisorSessionRuntime {
       sqlite: db.db,
     });
 
-    const extensionRuntimeRef: { current: ExtensionRuntime | null } = { current: null };
+    const extensionRef: { current: Extension | null } = { current: null };
     const deps = buildExtensionDeps({
       runtime: this,
       manager,
@@ -175,11 +160,11 @@ export class SupervisorSessionRuntime {
       sessionId: this.id,
       projectId: session.projectId,
       listSessionTools: () =>
-        mergeSessionToolInfos(
+        Extension.mergeToolInfos(
           this.harness.agent.state.tools ?? [],
-          extensionRuntimeRef.current?.getAllTools() ?? [],
+          extensionRef.current?.getAllTools() ?? [],
         ),
-      emitExtensionEvent: (event) => extensionRuntimeRef.current?.emit(event as any),
+      emitExtensionEvent: (event) => extensionRef.current?.emit(event as any),
     });
     const sessionMeta =
       typeof session.meta === "string"
@@ -203,12 +188,12 @@ export class SupervisorSessionRuntime {
       deps,
     };
 
-    const runtime = new ExtensionRuntime(options);
-    this._extensionRuntime = runtime;
-    extensionRuntimeRef.current = runtime;
+    const extension = new Extension(options);
+    this._extension = extension;
+    extensionRef.current = extension;
 
     const currentSession = this.getSession();
-    await runtime.emit({
+    await extension.emit({
       type: "session.prepare",
       sessionId: this.id,
       parentSessionId: currentSession?.parentId ? String(currentSession.parentId) : undefined,
@@ -220,44 +205,25 @@ export class SupervisorSessionRuntime {
     // Activate bound extensions (modules imported once at process level).
     await manager.ensureResourceCatalog();
     const extensionSlugs = db.listAgentResourceSlugs(agentId, "extension");
-    const modules = manager.getExtensionRegistry().getMany(extensionSlugs);
-    for (const mod of modules) {
-      if (mod.error) {
-        console.error(`extension module [${mod.slug}]:`, mod.error);
-        continue;
-      }
-      await runtime.loadExtension(mod.definition, mod.path);
+    const moduleErrors = await extension.loadModules(
+      manager.getExtensionRegistry().getMany(extensionSlugs),
+    );
+    for (const moduleError of moduleErrors) {
+      console.error(`extension module [${moduleError.slug}]:`, moduleError.error);
     }
 
     const toolSlugs = db.listAgentResourceSlugs(agentId, "tool");
     const legacyToolIds = listEnabledPackagedToolIds(getAgentHomeDir(String(agentId)));
     const packagedToolIds = [...new Set([...toolSlugs.filter(isPackagedToolId), ...legacyToolIds])];
-    await activatePackagedTools(runtime, {
+    await activatePackagedTools(extension, {
       cwd,
       sessionId: this.id,
       toolIds: packagedToolIds,
     });
 
-    // Connect harness hooks to extension events
-    this.harness.on("tool_call", async (event) => {
-      const blocked = await runtime.checkToolBeforeCall(
-        event.toolCallId,
-        event.toolName,
-        event.input,
-      );
-      if (blocked.block) {
-        return { block: true, reason: blocked.reason };
-      }
-      return undefined;
-    });
+    extension.bindHarness(this.harness);
 
-    this.harness.on("context", async (event) => {
-      const messages = runtime.applyTurnInjections(event.messages);
-      if (messages === event.messages) return undefined;
-      return { messages };
-    });
-
-    await runtime.emit({
+    await extension.emit({
       type: "session.start",
       reason: "startup",
       sessionId: this.id,
@@ -268,121 +234,7 @@ export class SupervisorSessionRuntime {
    * Collect all tools registered by extensions as AgentTool[].
    */
   collectExtensionTools(): AgentTool[] {
-    const runtime = this._extensionRuntime;
-    if (!runtime) return [];
-
-    const tools: AgentTool[] = [];
-    const infos = runtime.getAllTools() as ToolInfo[];
-    for (const info of infos) {
-      tools.push(toolInfoToAgentTool(info, runtime));
-    }
-    return tools;
-  }
-
-  /**
-   * Forward harness events to the extension runtime.
-   * Maps AgentHarnessEvent types to ExtensionEvent types.
-   */
-  private async forwardHarnessEventToExtensions(event: SupervisorSessionEvent): Promise<void> {
-    const ext = this._extensionRuntime;
-    if (!ext) return;
-
-    try {
-      switch (event.type) {
-        case "agent_start":
-          await ext.emit({
-            type: "agent.start",
-            messageId: "",
-            entryId: "",
-            timestamp: Date.now(),
-          } as any);
-          break;
-
-        case "turn_start": {
-          const turnId = ext.onTurnStarted();
-          await ext.emit({
-            type: "turn.started",
-            turnId,
-            timestamp: Date.now(),
-          } as any);
-          break;
-        }
-
-        case "turn_end": {
-          const message = (event as { message?: { usage?: Record<string, number> } }).message;
-          const usage = message?.usage as
-            | { input?: number; output?: number; totalTokens?: number }
-            | undefined;
-          const turnId = ext.onTurnEnded(usage);
-          await ext.emit({
-            type: "turn.ended",
-            turnId,
-            reason: (event as { stopReason?: string }).stopReason,
-            usage,
-            timestamp: Date.now(),
-          } as any);
-          break;
-        }
-
-        case "message_end": {
-          const message = (event as { message?: { role?: string; usage?: Record<string, number> } })
-            .message;
-          if (message?.role === "assistant" && message.usage) {
-            const usage = message.usage as {
-              input?: number;
-              output?: number;
-              totalTokens?: number;
-            };
-            ext.onStepEnded(usage);
-            await ext.emit({
-              type: "step.ended",
-              turnId: 0,
-              usage,
-              timestamp: Date.now(),
-            } as any);
-          }
-          break;
-        }
-
-        case "agent_end": {
-          await ext.emit({
-            type: "agent.end",
-            messageId: "",
-            entryId: "",
-            stopReason: (event as any).stopReason ?? "end_turn",
-            timestamp: Date.now(),
-            messages: (event as any).messages,
-          } as any);
-
-          const mapped = mapHarnessEventToExtensionEvents(event, this.id, {
-            previousMessageCount: this.emittedAgentMessageCount,
-          });
-          const messages = (event as any).messages ?? [];
-          this.emittedAgentMessageCount = Array.isArray(messages) ? messages.length : 0;
-          for (const mappedEvent of mapped) {
-            await ext.emit(mappedEvent as any);
-          }
-          break;
-        }
-
-        case "abort":
-          await ext.emit({
-            type: "agent.abort",
-            reason: (event as any).reason ?? "user",
-            timestamp: Date.now(),
-          } as any);
-          break;
-
-        default: {
-          for (const mappedEvent of mapHarnessEventToExtensionEvents(event, this.id)) {
-            await ext.emit(mappedEvent as any);
-          }
-          break;
-        }
-      }
-    } catch {
-      // Safe to ignore — extension runtime may not be fully initialized
-    }
+    return this._extension?.collectTools() ?? [];
   }
 
   /**
@@ -390,16 +242,7 @@ export class SupervisorSessionRuntime {
    * and forward it to extensions if so.
    */
   forwardErrorToExtensions(errorMessage: string, messageId?: string): void {
-    const ext = this._extensionRuntime;
-    if (!ext) return;
-    void ext
-      .emit({
-        type: "agent.error",
-        error: errorMessage,
-        messageId,
-        timestamp: Date.now(),
-      } as any)
-      .catch(() => {});
+    this._extension?.forwardError(errorMessage, messageId);
   }
 
   /**
@@ -413,64 +256,24 @@ export class SupervisorSessionRuntime {
     result?: unknown;
     isError?: boolean;
   }): void {
-    const ext = this._extensionRuntime;
+    const ext = this._extension;
     if (!ext) return;
     // Currently forwarded via harness tool_call/tool_result hooks in initExtensions
   }
 
-  /**
-   * Shutdown extension runtime: emit session.end and unload all.
-   */
-  async shutdownExtensions(): Promise<void> {
-    const runtime = this._extensionRuntime;
-    if (!runtime) return;
-
-    await runtime.emit({
-      type: "session.end",
-      reason: "shutdown",
-      sessionId: this.id,
-    } as any);
-
-    await runtime.unloadAll();
-    this._extensionRuntime = null;
-  }
-
-  // ==================== Original Methods ====================
-
-  /**
-   * Expand /skill:name commands to full skill content (XML format, matching coding-agent).
-   */
-  private expandSkillCommand(text: string): string {
-    if (!text.startsWith("/skill:")) return text;
-
-    const spaceIndex = text.indexOf(" ");
-    const skillName = spaceIndex === -1 ? text.slice(7) : text.slice(7, spaceIndex);
-    const args = spaceIndex === -1 ? "" : text.slice(spaceIndex + 1);
-
-    const skill = this.skills.find((s) => s.name === skillName);
-    if (!skill) return text;
-
-    try {
-      const rawContent = readFileSync(skill.filePath, "utf-8");
-      // Strip frontmatter
-      let body = rawContent;
-      if (rawContent.startsWith("---")) {
-        const end = rawContent.indexOf("\n---", 3);
-        if (end !== -1) {
-          body = rawContent.slice(end + 4).trim();
-        }
-      }
-      const skillBlock = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
-      return args ? `${skillBlock}\n\n${args}` : skillBlock;
-    } catch {
-      return text;
+  /** 清理与当前 Agent 绑定的 Extension 和其他 Resource。 */
+  async clear(): Promise<void> {
+    const extension = this._extension;
+    if (extension) {
+      await extension.clear();
+      this._extension = null;
     }
+    await this.resource.clear();
   }
 
   async prompt(message: string, images?: ImageContent[], source?: string | null): Promise<void> {
-    let expanded = this.expandSkillCommand(message);
-    expanded = expandPromptTemplate(expanded, this.promptTemplates);
-    const ext = this._extensionRuntime;
+    const expanded = this.resource.expandPrompt(message);
+    const ext = this._extension;
     if (ext) {
       await ext.emit({
         type: "message.user",
@@ -552,10 +355,7 @@ export class SupervisorSessionRuntime {
   }
 
   async setTools(tools: AgentTool[], activeToolNames?: string[]): Promise<void> {
-    const runtime = this._extensionRuntime;
-    const effectiveTools = runtime
-      ? tools.map((tool) => wrapToolWithExtensionRuntime(tool, runtime))
-      : tools;
+    const effectiveTools = this._extension?.wrapTools(tools) ?? tools;
     await this.harness.setTools(effectiveTools, activeToolNames);
   }
 
@@ -589,19 +389,7 @@ export class SupervisorSessionRuntime {
    * Mirrors coding-agent's AgentSession.getSlashCommands().
    */
   getSlashCommands(): SlashCommandInfo[] {
-    const skillCommands: SlashCommandInfo[] = this.skills.map((s) => ({
-      name: `skill:${s.name}`,
-      description: s.description,
-      source: "skill" as const,
-      sourceInfo: s.sourceInfo,
-    }));
-    const templateCommands: SlashCommandInfo[] = this.promptTemplates.map((t) => ({
-      name: t.name,
-      description: t.description,
-      source: "prompt" as const,
-      sourceInfo: t.sourceInfo,
-    }));
-    return [...skillCommands, ...templateCommands];
+    return this.resource.getSlashCommands();
   }
 
   getLastAssistantText(): string | undefined {

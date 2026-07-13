@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createEventBus } from "../src/extension-system/extension-deps.js";
-import { ExtensionRuntime } from "../src/extension-system/runtime.js";
+import { Extension } from "../src/extension-system/extension.js";
 import { defineExtension } from "../src/extension-system/define-extension.js";
 import { discoverAndLoadExtensions } from "../src/extension-system/loader.js";
 
@@ -120,10 +120,10 @@ function createRuntimeOptions(sessionId = 1) {
 
 describe("extension runtime events", () => {
   it("delivers system events registered via ctx.on", async () => {
-    const runtime = new ExtensionRuntime(createRuntimeOptions());
+    const runtime = new Extension(createRuntimeOptions());
     let seen = 0;
 
-    await runtime.loadExtension(
+    await runtime.load(
       defineExtension({
         name: "event-test",
         setup(ctx) {
@@ -152,11 +152,11 @@ describe("extension runtime events", () => {
   });
 
   it("exposes project-owned and session-owned directories to extensions", async () => {
-    const runtime = new ExtensionRuntime(createRuntimeOptions());
+    const runtime = new Extension(createRuntimeOptions());
     let seenDir = "";
     let seenProjectDir = "";
 
-    await runtime.loadExtension(
+    await runtime.load(
       defineExtension({
         name: "session-dir-test",
         async setup(ctx) {
@@ -172,14 +172,14 @@ describe("extension runtime events", () => {
   });
 
   it("exposes core session object helpers", async () => {
-    const runtime = new ExtensionRuntime(createRuntimeOptions());
+    const runtime = new Extension(createRuntimeOptions());
     let sessionId = 0;
     let isMain = false;
     let isChild = true;
     let messages = 0;
     let childSessions = 0;
 
-    await runtime.loadExtension(
+    await runtime.load(
       defineExtension({
         name: "core-object-test",
         async setup(ctx) {
@@ -201,8 +201,8 @@ describe("extension runtime events", () => {
   });
 
   it("registers subagent tool only on main sessions", () => {
-    const mainRuntime = new ExtensionRuntime(createRuntimeOptions());
-    const childRuntime = new ExtensionRuntime({
+    const mainRuntime = new Extension(createRuntimeOptions());
+    const childRuntime = new Extension({
       ...createRuntimeOptions(2),
       parentSessionId: 1,
     });
@@ -213,7 +213,7 @@ describe("extension runtime events", () => {
 
   it("spawns child sessions through the session instance", async () => {
     const options = createRuntimeOptions();
-    const runtime = new ExtensionRuntime(options);
+    const runtime = new Extension(options);
     const result = await runtime.executeTool(
       "spawn_agent",
       { subagent_type: "review", prompt: "review the change", finish_on_result: true },

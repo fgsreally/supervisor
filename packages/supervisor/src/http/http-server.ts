@@ -54,7 +54,7 @@ function emitSessionExtensionEvent(
 ): void {
   try {
     const runtime = manager.getRuntime(sessionId);
-    void runtime.extensionRuntime?.emit(event).catch(() => {});
+    void runtime.extension?.emit(event).catch(() => {});
   } catch {
     // session may not be loaded yet
   }

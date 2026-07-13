@@ -7,20 +7,6 @@ import { getActiveMcpServers } from "./mcp-config-loader.js";
 import { mcpToolToAgentTool, type McpToolDefinition } from "./mcp-tool.js";
 
 // ============================================================================
-// Module-level session registry for lifecycle management
-// ============================================================================
-
-const sessionManagers = new Map<string, McpClientManager>();
-
-export function getMcpManager(sessionId: string): McpClientManager | undefined {
-  return sessionManagers.get(sessionId);
-}
-
-export function removeMcpManager(sessionId: string): void {
-  sessionManagers.delete(sessionId);
-}
-
-// ============================================================================
 // Type for the SDK's Tool type
 // ============================================================================
 
@@ -45,18 +31,31 @@ interface InternalServerState {
 }
 
 export class McpClientManager {
+  /** 当前 MCP 连接所属的会话 ID。 */
   private readonly sessionId: string;
+  /** 当前 MCP 连接所属的 Agent ID。 */
   private readonly agentId: string;
+  /** 已尝试连接的 MCP 服务及其运行状态。 */
   private servers = new Map<string, InternalServerState>();
+  /** 已转换为 AgentTool 的 MCP 工具缓存。 */
   private toolsCache: AgentTool[] | null = null;
+  /** 正在进行的连接任务，用于合并并发 connectAll 调用。 */
   private connectPromise: Promise<void> | null = null;
+  /** Resource 类从数据库绑定中传入的 MCP 服务配置。 */
+  private readonly configuredServers?: Record<string, McpServerConfigType>;
 
-  constructor(sessionId: string, agentId: string) {
+  /** 创建当前 Agent 独占的 MCP 客户端管理器。 */
+  constructor(
+    sessionId: string,
+    agentId: string,
+    configuredServers?: Record<string, McpServerConfigType>,
+  ) {
     this.sessionId = sessionId;
     this.agentId = agentId;
+    this.configuredServers = configuredServers;
   }
 
-  /** Connect all active MCP servers for this agent. Idempotent. */
+  /** 连接当前 Agent 的全部启用 MCP 服务；重复调用是幂等的。 */
   async connectAll(): Promise<void> {
     // Use singleton so concurrent calls wait for the same connection attempt
     if (this.connectPromise) return this.connectPromise;
@@ -69,8 +68,9 @@ export class McpClientManager {
     }
   }
 
+  /** 执行一次实际连接，并记录每个 MCP 服务的成功或错误状态。 */
   private async doConnect(): Promise<void> {
-    const activeServers = getActiveMcpServers(this.agentId);
+    const activeServers = this.configuredServers ?? getActiveMcpServers(this.agentId);
 
     const entries = Object.entries(activeServers);
     if (entries.length === 0) return;
@@ -140,7 +140,7 @@ export class McpClientManager {
     this.toolsCache = this.buildTools();
   }
 
-  /** Disconnect all MCP servers. */
+  /** 断开全部 MCP 服务并清除工具缓存。 */
   async disconnectAll(): Promise<void> {
     const closePromises: Promise<void>[] = [];
 
@@ -163,13 +163,14 @@ export class McpClientManager {
     this.toolsCache = null;
   }
 
-  /** Get all AgentTools from connected MCP servers. */
+  /** 返回全部已连接 MCP 服务转换出的 AgentTool。 */
   getTools(): AgentTool[] {
     if (this.toolsCache) return this.toolsCache;
     this.toolsCache = this.buildTools();
     return this.toolsCache;
   }
 
+  /** 从已连接服务的工具定义构建 AgentTool 列表。 */
   private buildTools(): AgentTool[] {
     const tools: AgentTool[] = [];
 
@@ -192,7 +193,7 @@ export class McpClientManager {
     return tools;
   }
 
-  /** Call a tool on a specific MCP server. */
+  /** 调用指定 MCP 服务上的工具。 */
   async callTool(serverName: string, toolName: string, params: unknown): Promise<unknown> {
     const state = this.servers.get(serverName);
     if (!state || !state.connected) {
@@ -206,7 +207,7 @@ export class McpClientManager {
     return result;
   }
 
-  /** Get status of all configured MCP servers (for UI display). */
+  /** 返回全部 MCP 服务的连接状态，供 API 和 UI 展示。 */
   getServerStatuses(): McpServerStatus[] {
     const statuses: McpServerStatus[] = [];
 
@@ -224,31 +225,5 @@ export class McpClientManager {
     }
 
     return statuses;
-  }
-}
-
-// ============================================================================
-// Public API: create MCP tools for session
-// ============================================================================
-
-export async function createMcpToolsForSession(
-  sessionId: string,
-  agentId: string,
-): Promise<AgentTool[]> {
-  const config = getActiveMcpServers(agentId);
-  if (Object.keys(config).length === 0) return [];
-
-  const manager = new McpClientManager(sessionId, agentId);
-  await manager.connectAll();
-
-  sessionManagers.set(sessionId, manager);
-  return manager.getTools();
-}
-
-export async function disconnectMcpServers(sessionId: string): Promise<void> {
-  const manager = sessionManagers.get(sessionId);
-  if (manager) {
-    await manager.disconnectAll();
-    sessionManagers.delete(sessionId);
   }
 }

@@ -17,6 +17,12 @@ export {
   type UnbindResourceInput,
 } from "./resource-service.js";
 export {
+  AgentResource,
+  type AgentResourceCommandInfo,
+  type AgentResourceCommandSource,
+  type AgentResourceOptions,
+} from "./agent-resource.js";
+export {
   listAgentResourcePathsFromSqlite,
   listAgentToolSlugsFromSqlite,
 } from "./sqlite-bindings.js";

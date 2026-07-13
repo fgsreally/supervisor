@@ -6,6 +6,7 @@
 
 // Core
 export { defineExtension, defineExtensionAsync } from "./define-extension.js";
+export { Extension, type AgentExtensionModule } from "./extension.js";
 
 // Loader
 export {
@@ -25,7 +26,7 @@ export {
   resolveExtensionEntries,
 } from "./loader.js";
 export type { ExtensionEntryInfo } from "./loader.js";
-export { createExtensionDatabase, ExtensionRuntime } from "./runtime.js";
+export { createExtensionDatabase } from "./runtime.js";
 export { ToolPolicy, matchGlob, extractFilePaths, isWriteTool } from "./tool-policy.js";
 export { submitApprovalResolution, cancelPendingApprovals } from "./extension-session-services.js";
 export type {

@@ -28,9 +28,9 @@ import { getDefaultCwd } from "../config/default-cwd.js";
 import { initializeResourceCatalog } from "../resources/catalog-sync.js";
 import { ExtensionModuleRegistry } from "../resources/extension-registry.js";
 import { ResourceService } from "../resources/resource-service.js";
+import { AgentResource } from "../resources/agent-resource.js";
 import type { ResourceKind } from "../resources/types.js";
 import {
-  loadAgentSessionResources,
   promptsToResourceInfo,
   type ResourceLayer,
   resolveAgentResources,
@@ -78,7 +78,7 @@ import {
   type SessionQueuedInput,
   shouldInterruptSessionInput,
 } from "./session-input-queue.js";
-import { formatSkillsForPrompt, loadSkills } from "../agent/skills.js";
+import { loadSkills } from "../agent/skills.js";
 import { resolveModelWithProviderOverrides } from "../utils/model-utils.js";
 import type { SessionSpawner } from "../spawn/session-spawner.js";
 import type { SpawnAgentToolProvider } from "../spawn/spawn-agent-tool-provider.js";
@@ -242,6 +242,15 @@ export class SessionManager {
 
   private getAgentForSession(agentId: number | null) {
     return agentId ? this.db.getAgent(agentId) : undefined;
+  }
+
+  /** 按工具名称合并多组 Agent 工具，后传入的资源工具覆盖同名工具。 */
+  private mergeAgentTools(...groups: AgentTool[][]): AgentTool[] {
+    const merged = new Map<string, AgentTool>();
+    for (const tools of groups) {
+      for (const tool of tools) merged.set(tool.name, tool);
+    }
+    return [...merged.values()];
   }
 
   private async assembleSessionTools(
@@ -420,27 +429,31 @@ export class SessionManager {
     }
 
     const agent = this.getAgentForSession(session.agentId);
-    const { skills, promptTemplates, systemMd } = loadAgentSessionResources(
-      this.db,
+    await this.ensureResourceCatalog();
+    const resource = new AgentResource({
+      sessionId: session.id,
+      agentId: session.agentId ?? session.id,
       agent,
-      session.cwd,
-    );
-    const skillsText = formatSkillsForPrompt(skills);
+      cwd: session.cwd,
+      db: this.db,
+    });
+    await resource.load();
 
     const storage = new SQLiteSessionStorage(this.db, session.id);
     const harnessSession = new AgentSession(storage);
     const env = new NodeExecutionEnv({ cwd: session.cwd });
-    const tools = await this.assembleSessionTools(
+    const sessionTools = await this.assembleSessionTools(
       session.id,
       session.agentId,
       session.cwd,
       config.toolsPreset,
     );
+    const tools = this.mergeAgentTools(sessionTools, resource.getMcpTools());
 
     const systemPrompt =
       config.systemPrompt.length > 0
         ? config.systemPrompt
-        : this.buildSystemPrompt("", skillsText, systemMd, session.cwd);
+        : this.buildSystemPrompt("", resource.getSkillsPrompt(), resource.systemMd, session.cwd);
 
     const harness = new AgentHarness({
       env,
@@ -461,9 +474,8 @@ export class SessionManager {
     const runtime = new SupervisorSessionRuntime({
       session,
       harness,
+      resource,
       storage,
-      skills,
-      promptTemplates,
       getSession: () => this._getSession(session.id),
       getMessages: async () => {
         const storageForReads = new SQLiteSessionStorage(this.db, session.id);
@@ -568,26 +580,30 @@ export class SessionManager {
 
     // Use agent's toolsPreset if available, otherwise use options or default
     const toolsPreset = options.toolsPreset ?? agentInDb?.toolsPreset ?? "coding";
-    const tools = await this.assembleSessionTools(
+    await this.ensureResourceCatalog();
+    const resource = new AgentResource({
+      sessionId: activeSession.id,
+      agentId: activeSession.agentId ?? activeSession.id,
+      agent: agentInDb,
+      cwd: activeSession.cwd,
+      db: this.db,
+    });
+    await resource.load();
+
+    const sessionTools = await this.assembleSessionTools(
       activeSession.id,
       activeSession.agentId,
       activeSession.cwd,
       toolsPreset,
       options.tools,
     );
-
-    const { skills, promptTemplates, systemMd } = loadAgentSessionResources(
-      this.db,
-      agentInDb,
-      activeSession.cwd,
-    );
-    const skillsText = formatSkillsForPrompt(skills);
+    const tools = this.mergeAgentTools(sessionTools, resource.getMcpTools());
 
     const baseSystemPrompt = options.systemPrompt ?? "";
     const systemPrompt = this.buildSystemPrompt(
       baseSystemPrompt,
-      skillsText,
-      systemMd,
+      resource.getSkillsPrompt(),
+      resource.systemMd,
       activeSession.cwd,
     );
 
@@ -618,9 +634,8 @@ export class SessionManager {
     const runtime = new SupervisorSessionRuntime({
       session: activeSession,
       harness,
+      resource,
       storage,
-      skills,
-      promptTemplates,
       getSession: () => this._getSession(activeSession.id),
       getMessages: async () => {
         const storageForReads = new SQLiteSessionStorage(this.db, activeSession.id);
@@ -855,7 +870,7 @@ export class SessionManager {
       throw new Error("not running");
     }
     await runtime.abort().catch(() => {});
-    await runtime.shutdownExtensions().catch(() => {});
+    await runtime.clear().catch(() => {});
     this.runtimes.delete(id);
     this.turnTrackers.delete(id);
     this.sessionToolConfigs.delete(id);
@@ -871,8 +886,8 @@ export class SessionManager {
 
     // Emit session.before_complete
     const runtime = this.runtimes.get(id);
-    if (runtime?.extensionRuntime) {
-      void runtime.extensionRuntime.emit({
+    if (runtime?.extension) {
+      void runtime.extension.emit({
         type: "session.before_complete",
         sessionId: id,
       } as any);
@@ -895,7 +910,7 @@ export class SessionManager {
     if (this.runtimes.has(id)) {
       const runtime = this.runtimes.get(id);
       if (runtime) {
-        await runtime.shutdownExtensions().catch(() => {});
+        await runtime.clear().catch(() => {});
       }
       this.runtimes.delete(id);
       this.turnTrackers.delete(id);
@@ -1032,7 +1047,7 @@ export class SessionManager {
     const session = this._getSession(id);
     const runtime = this.runtimes.get(id);
     if (runtime) {
-      void runtime.shutdownExtensions().catch(() => {});
+      void runtime.clear().catch(() => {});
       this.runtimes.delete(id);
       this.turnTrackers.delete(id);
       this.sessionToolConfigs.delete(id);

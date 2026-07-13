@@ -25,12 +25,8 @@ function resolveEnvVarsInConfig(config: Record<string, unknown>): Record<string,
   return result;
 }
 
-/** Read MCP config from agent home directory. Returns null if no config exists. */
-export function loadMcpConfig(agentId: string): McpConfig | null {
-  const agentHomeDir = getAgentHomeDir(agentId);
-  if (!agentHomeDir) return null;
-
-  const configPath = join(agentHomeDir, "mcp.json");
+/** 从指定 JSON 文件读取 MCP 配置；文件不存在或内容无效时返回 null。 */
+export function loadMcpConfigFile(configPath: string): McpConfig | null {
   if (!existsSync(configPath)) return null;
 
   try {
@@ -41,7 +37,9 @@ export function loadMcpConfig(agentId: string): McpConfig | null {
     const resolved: McpConfig = { servers: {} };
     for (const [name, serverConfig] of Object.entries(parsed.servers)) {
       if (!serverConfig || typeof serverConfig !== "object") continue;
-      const resolvedConfig = resolveEnvVarsInConfig(serverConfig as Record<string, unknown>) as unknown as McpServerConfigType;
+      const resolvedConfig = resolveEnvVarsInConfig(
+        serverConfig as Record<string, unknown>,
+      ) as unknown as McpServerConfigType;
       resolved.servers[name] = resolvedConfig;
     }
 
@@ -53,6 +51,12 @@ export function loadMcpConfig(agentId: string): McpConfig | null {
   } catch {
     return null;
   }
+}
+
+/** 从 Agent 主目录读取兼容旧结构的 mcp.json 配置。 */
+export function loadMcpConfig(agentId: string): McpConfig | null {
+  const agentHomeDir = getAgentHomeDir(agentId);
+  return loadMcpConfigFile(join(agentHomeDir, "mcp.json"));
 }
 
 /** Get list of active (non-disabled) MCP server configs. */

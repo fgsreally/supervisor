@@ -87,7 +87,7 @@ describe("supervisor: SupervisorSessionRuntime", () => {
     });
     const shadowRuntime = manager.getRuntime(shadowChild.id);
 
-    await shadowRuntime.extensionRuntime!.executeTool(
+    await shadowRuntime.extension!.executeTool(
       "send_parent_msg",
       { message: "security issue", level: 80 },
       {
@@ -124,7 +124,7 @@ describe("supervisor: SupervisorSessionRuntime", () => {
     });
     const shadowRuntime = manager.getRuntime(shadowChild.id);
 
-    await shadowRuntime.extensionRuntime!.executeTool(
+    await shadowRuntime.extension!.executeTool(
       "send_parent_msg",
       { message: "security issue", level: 80 },
       {

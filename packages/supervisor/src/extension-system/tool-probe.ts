@@ -1,4 +1,5 @@
 import type { TSchema } from "typebox";
+import { ContextAgent, ContextDb, ContextSession } from "../core/context.js";
 import type { ExtensionContext, ExtensionDefinition, ToolDefinition } from "./types.js";
 import { ToolPolicy } from "./tool-policy.js";
 
@@ -10,7 +11,7 @@ export interface ProbedTool {
 
 export async function probeExtensionTools(definition: ExtensionDefinition): Promise<ProbedTool[]> {
   const registered: ProbedTool[] = [];
-  const ctx = createProbeContext(definition.name, (tool) => {
+  const ctx = createProbeContext((tool) => {
     registered.push({
       name: tool.name,
       description: tool.description,
@@ -28,7 +29,6 @@ export async function probeExtensionTools(definition: ExtensionDefinition): Prom
 }
 
 function createProbeContext(
-  extensionName: string,
   onRegister: (tool: ToolDefinition<TSchema, unknown>) => void,
 ): ExtensionContext {
   const noop = () => undefined;
@@ -41,51 +41,65 @@ function createProbeContext(
     get: () => undefined,
   };
 
-  const base = {
-    extension: { name: extensionName },
-    session: {
+  return {
+    db: new ContextDb(undefined),
+    session: new ContextSession({
       id: 0,
       cwd: process.cwd(),
       dir: process.cwd(),
+      isMain: true,
+      isChild: false,
+      getDir: async () => process.cwd(),
+      isIdle: () => true,
+      isStreaming: () => false,
+      getSignal: () => undefined,
+      abort: noop,
+      waitForIdle: noopAsync,
       messages: {
-        list: noopAsync,
-        get: async () => null,
+        list: async () => [],
+        get: async () => undefined,
         tree: async () => [],
         currentBranch: async () => [],
         search: async () => [],
-        getMeta: async () => null,
+        getMeta: async () => ({}),
         setMeta: noopAsync,
-        patchMeta: noopAsync,
+        patchMeta: async () => ({}),
         setLabel: noopAsync,
-        stats: async () => ({ total: 0, byRole: {} }),
-        contextUsage: async () => ({ tokens: 0, limit: 0 }),
+        stats: async () => ({ total: 0, user: 0, assistant: 0, tool: 0, custom: 0 }),
+        contextUsage: async () => ({ tokens: null, contextWindow: 0, percent: null }),
       },
-      members: { byTag: async () => [], byRole: async () => [] },
-      meta: { get: async () => ({}), set: noopAsync, patch: noopAsync },
-      runtime: {
-        isIdle: () => true,
-        isStreaming: () => false,
-        signal: new AbortController().signal,
-        abort: noop,
-        waitForIdle: noopAsync,
-      },
-      isMain: true,
-      isChild: false,
-      getDir: () => process.cwd(),
-      getParent: async () => null,
+      meta: { get: async () => ({}), set: noopAsync, patch: async () => ({}) },
+      getParent: async () => undefined,
       children: async () => [],
-      appendEntry: noopAsync,
+      appendEntry: async () => "",
       sendMessage: noopAsync,
       sendUserMessage: noopAsync,
       sendParentMsg: noopAsync,
-      pausing: async (_reason: string, fn: () => Promise<unknown>) => fn(),
-      spawn: async () => ({ sessionId: 0 }),
-      waitForResult: async () => ({ status: "idle", result: null, truncated: false }),
+      pausing: async <T>(_reason: string, work: Promise<T> | (() => Promise<T>)) =>
+        typeof work === "function" ? work() : work,
+      spawn: async () => ({
+        sessionId: 0,
+        parentId: null,
+        status: "idle",
+        agentId: null,
+      }),
+      waitForResult: async () => ({
+        sessionId: 0,
+        status: "idle",
+        result: "",
+        truncated: false,
+      }),
       finish: noopAsync,
-      fork: noopAsync,
+      fork: async () => ({
+        id: 0,
+        cwd: process.cwd(),
+        messageCount: 0,
+        createdAt: 0,
+        lastActiveAt: 0,
+      }),
       switchTo: noopAsync,
       navigateTree: noopAsync,
-      compact: noopAsync,
+      compact: async () => ({ summary: "", firstKeptEntryId: "", tokensBefore: 0 }),
       tools: {
         setPolicy: noop,
         getPolicy: () => ToolPolicy.coding(),
@@ -96,98 +110,50 @@ function createProbeContext(
         setActive: noopAsync,
         getActive: () => null,
       },
-    },
-    agent: {
+    }),
+    agent: new ContextAgent({
       id: 0,
       name: "probe",
       providerId: 0,
       modelId: "probe",
-      tools: toolRegistry,
+      getModel: () => ({ provider: "probe", id: "probe", contextWindow: 0 }),
+      registerTool: toolRegistry.register,
+      unregisterTool: noop,
+      listTools: toolRegistry.list,
+      getTool: toolRegistry.get,
+      findByTag: async () => [],
+      findByRole: async () => [],
       setModel: noopAsync,
-      setThinkingLevel: noopAsync,
-      getThinkingLevel: () => "off" as const,
-      get model() {
-        return { provider: "probe", id: "probe" };
-      },
+      setThinkingLevel: noop,
+      getThinkingLevel: () => "none" as const,
+    }),
+    project: {
+      cwd: process.cwd(),
+      dir: process.cwd(),
+      getDir: async () => process.cwd(),
     },
-    project: { cwd: process.cwd(), dir: process.cwd(), getDir: () => process.cwd() },
-    runtime: {
-      on: () => noop,
-      exec: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
-      log: noop,
-      events: { emit: noopAsync, on: () => noop },
-      flow: {
-        continue: noopAsync,
-        pause: noopAsync,
-        resume: noopAsync,
-        acquireLock: async () => null,
-        usage: async () => ({ turns: 0, tokens: 0, wallClockMs: 0, contextTokens: null }),
-        startScope: noop,
-        endScope: noop,
-      },
-      inject: { schedule: noop, clear: noop, reattach: noop },
-    },
-    tools: toolRegistry,
     ui: {
-      broadcast: noopAsync,
+      broadcast: noop,
       requestApproval: async () => ({ action: "approve" as const }),
     },
-    inject: { schedule: noop, clear: noop, reattach: noop },
-    system: { db: { sqlite: null } },
-    sessionId: 0,
-    cwd: process.cwd(),
-    sessionDir: process.cwd(),
-    projectDir: process.cwd(),
-    getSessionDir: () => process.cwd(),
-    getProjectDir: () => process.cwd(),
-    get model() {
-      return { provider: "probe", id: "probe" };
-    },
-    isIdle: () => true,
-    isStreaming: () => false,
-    signal: new AbortController().signal,
-    abort: noop,
-    waitForIdle: noopAsync,
-    registerTool: toolRegistry.register,
     on: () => noop,
-    exec: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
     log: noop,
-    events: { emit: noopAsync, on: () => noop },
-    broadcast: noopAsync,
-    appendEntry: noopAsync,
-    sendMessage: noopAsync,
-    sendUserMessage: noopAsync,
-    pausing: async (_reason: string, fn: () => Promise<unknown>) => fn(),
-    spawn: async () => ({ sessionId: 0 }),
-    waitForResult: async () => ({ status: "idle", result: null, truncated: false }),
-    finish: noopAsync,
-    fork: noopAsync,
-    switchTo: noopAsync,
-    navigateTree: noopAsync,
-    compact: noopAsync,
-    setModel: noopAsync,
-    setThinkingLevel: noopAsync,
-    getThinkingLevel: () => "off" as const,
-    getMessageMeta: noopAsync,
-    setMessageMeta: noopAsync,
-    patchMessageMeta: noopAsync,
-    setLabel: noopAsync,
-    setSessionMeta: noopAsync,
-    patchSessionMeta: noopAsync,
-    getMemberAgentsByTag: async () => [],
-    getMemberAgentsByRole: async () => [],
-    listSessionTools: () => [],
-    getMessages: async () => [],
-    getMessageById: async () => null,
-    getMessageTree: async () => [],
-    getCurrentBranch: async () => [],
-    searchMessages: async () => [],
-    getMessageStats: async () => ({ total: 0, byRole: {} }),
-    getContextUsage: async () => ({ tokens: 0, limit: 0 }),
-    getSessionMeta: async () => ({}),
-    getParentSession: async () => null,
-    getChildSessions: async () => [],
+    exec: async () => ({ stdout: "", stderr: "", code: 0, killed: false, duration: 0 }),
+    events: { emit: noop, on: () => noop, off: noop },
+    flow: {
+      continue: async () => ({ queued: false }),
+      pause: noopAsync,
+      resume: noopAsync,
+      acquireLock: async () => null,
+      usage: async () => ({
+        turns: 0,
+        tokens: 0,
+        wallClockMs: 0,
+        contextTokens: null,
+      }),
+      startScope: noop,
+      endScope: noop,
+    },
+    inject: { schedule: noop, clear: noop, reattach: noop },
   };
-
-  return base as unknown as ExtensionContext;
 }

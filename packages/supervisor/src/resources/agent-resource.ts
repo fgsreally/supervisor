@@ -3,9 +3,9 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Agent } from "../types.js";
 import type { SourceInfo } from "../utils/source-info.js";
 import type { SupervisorDb } from "../db/db.js";
-import { loadAgentSessionResources } from "../agent/agent-resources.js";
-import { expandPromptTemplate, type PromptTemplate } from "../agent/prompt-templates.js";
-import { formatSkillsForPrompt, type Skill } from "../agent/skills.js";
+import { loadAgentSessionResources } from "./agent-resources.js";
+import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.js";
+import { formatSkillsForPrompt, type Skill } from "./skills.js";
 import { McpClientManager } from "../mcp/mcp-client-manager.js";
 import { loadMcpConfigFile } from "../mcp/mcp-config-loader.js";
 import type { McpServerConfigType } from "../mcp/mcp-types.js";
@@ -108,11 +108,7 @@ export class AgentResource {
     this.loadedSystemMd = resources.systemMd;
 
     const mcpConfigs = this.loadBoundMcpConfigs();
-    this.mcpManager = new McpClientManager(
-      String(this.sessionId),
-      String(this.agentId),
-      mcpConfigs,
-    );
+    this.mcpManager = new McpClientManager(mcpConfigs);
     await this.mcpManager.connectAll();
     this.loaded = true;
   }
@@ -162,7 +158,7 @@ export class AgentResource {
     this.loaded = false;
   }
 
-  /** 从数据库绑定的 MCP JSON 文件合并服务配置；未绑定时保留旧版 Agent mcp.json 兼容逻辑。 */
+  /** 从数据库绑定的 MCP JSON 文件合并服务配置。 */
   private loadBoundMcpConfigs(): Record<string, McpServerConfigType> | undefined {
     const bindings = this.db.listAgentResources(this.agentId, "mcp");
     if (bindings.length === 0) return undefined;

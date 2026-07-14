@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readFile } from "node:fs/promises";
@@ -7,11 +7,11 @@ import { isAbsolute, normalize, resolve, sep } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { getAgentHomeDir, getSupervisorAgentsRoot } from "../agent/agent-paths.js";
-import { assertAgentUserSpawnable } from "../agent/internal-agents.js";
+import { getSupervisorAgentsRoot } from "../agent/agent-paths.js";
+import { assertAgentUserSpawnable, isBuiltinAgent } from "../agent/internal-agents.js";
 import type { ExtensionEvent } from "../extension-system/types.js";
 import type { SessionManager } from "../core/session-manager.js";
-import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-service.js";
+import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-manager.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";
 import type { Model, Provider, SessionStatus } from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
@@ -63,6 +63,23 @@ function emitSessionExtensionEvent(
 function parseIntegerId(value: string): number | null {
   const id = Number.parseInt(value, 10);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function getAgentMutationError(
+  manager: SessionManager,
+  agentId: number,
+): { status: 403 | 404; message: string } | null {
+  const agent = manager.getAgent(agentId);
+  if (!agent) return { status: 404, message: "agent not found" };
+  if (isBuiltinAgent(agent)) {
+    return { status: 403, message: "built-in agents cannot be modified through HTTP" };
+  }
+  return null;
+}
+
+function hasReservedAgentMeta(value: unknown): boolean {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return "builtin" in value || "userSpawnable" in value;
 }
 
 type PromptImageInput = { mimeType: string; data: string };
@@ -145,6 +162,9 @@ export function createHttpServer(manager: SessionManager): Hono {
       if (typeof body.providerId !== "number") {
         return jsonError(c, 400, "providerId is required");
       }
+      if (hasReservedAgentMeta(body.meta)) {
+        return jsonError(c, 400, "builtin and userSpawnable are reserved Agent metadata");
+      }
       const agent = manager.insertAgent(
         {
           name: body.name,
@@ -170,6 +190,11 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid agent id");
+      const mutationError = getAgentMutationError(manager, id);
+      if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
+      if (hasReservedAgentMeta(body.meta)) {
+        return jsonError(c, 400, "builtin and userSpawnable are reserved Agent metadata");
+      }
       const agent = manager.updateAgent(id, {
         name: body.name,
         description: body.description,
@@ -235,6 +260,8 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid agent id");
+      const mutationError = getAgentMutationError(manager, id);
+      if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
       const agent = manager.setAgentSystemMd(id, body.content);
       return c.json({ content: agent.systemMd });
     } catch (e: unknown) {
@@ -247,6 +274,8 @@ export function createHttpServer(manager: SessionManager): Hono {
   app.delete("/agents/:id", (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid agent id");
+    const mutationError = getAgentMutationError(manager, id);
+    if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
     manager.deleteAgent(id);
     return c.json({ ok: true });
   });
@@ -257,6 +286,11 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid agent id");
+      const mutationError = getAgentMutationError(manager, id);
+      if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
+      if (hasReservedAgentMeta(body)) {
+        return jsonError(c, 400, "builtin and userSpawnable are reserved Agent metadata");
+      }
       const meta = manager.updateAgentMeta(id, body);
       return c.json({ meta });
     } catch (e: unknown) {
@@ -1232,6 +1266,8 @@ export function createHttpServer(manager: SessionManager): Hono {
         return jsonError(c, 400, "invalid agentId");
       }
       if (agentId !== null) {
+        const mutationError = getAgentMutationError(manager, agentId);
+        if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
         const result = await manager.resources.installAndBind({
           ...input,
           agentId,
@@ -1289,12 +1325,14 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // POST /agents/:id/resources — link resource to agent
+  // POST /agents/:id/resources — bind a catalog resource to an agent
   app.post("/agents/:id/resources", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     try {
       const agentId = parseIntegerId(c.req.param("id"));
       if (agentId === null) return jsonError(c, 400, "invalid agent id");
+      const mutationError = getAgentMutationError(manager, agentId);
+      if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
       const binding = manager.resources.bindResource(
         parseBindResourceBody(agentId, body as Record<string, unknown>),
       );
@@ -1305,37 +1343,17 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // DELETE /agents/:id/resources/:resourceId — unlink resource from agent
-  app.delete("/agents/:id/resources/:resourceId", (c) => {
+  // DELETE /agents/:id/resources/:resourceId — remove an agent resource binding
+  app.delete("/agents/:id/resources/:resourceId", async (c) => {
     try {
       const agentId = parseIntegerId(c.req.param("id"));
       const resourceId = parseIntegerId(c.req.param("resourceId"));
       if (agentId === null || resourceId === null) {
         return jsonError(c, 400, "invalid agent id or resource id");
       }
-      manager.resources.unbindResource({ agentId, resourceId });
-      return c.json({ ok: true });
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      return jsonError(c, 400, message);
-    }
-  });
-
-  // POST /agents/:id/resources/link — legacy symlink API (maps slug from path)
-  app.post("/agents/:id/resources/link", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
-    const kind = body.kind;
-    const path = body.path;
-    if (kind !== "skills" && kind !== "extensions" && kind !== "prompts") {
-      return jsonError(c, 400, "kind must be skills, extensions, or prompts");
-    }
-    if (!path || typeof path !== "string") {
-      return jsonError(c, 400, "path is required");
-    }
-    try {
-      const agentId = parseIntegerId(c.req.param("id"));
-      if (agentId === null) return jsonError(c, 400, "invalid agent id");
-      manager.resources.bindResourceByGlobalPath(agentId, kind, path);
+      const mutationError = getAgentMutationError(manager, agentId);
+      if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
+      await manager.resources.unbindResource({ agentId, resourceId });
       return c.json({ ok: true });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -1388,42 +1406,6 @@ export function createHttpServer(manager: SessionManager): Hono {
     const id = c.req.param("id");
     try {
       await manager.resources.uninstallResource("extension", id);
-      return c.json({ ok: true });
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      return jsonError(c, 400, message);
-    }
-  });
-
-  // POST /extensions/:id/link — link extension to an agent (DB binding)
-  app.post("/extensions/:id/link", async (c) => {
-    const id = c.req.param("id");
-    const body = await c.req.json().catch(() => ({}));
-    const agentId =
-      typeof body.agentId === "number" ? body.agentId : parseIntegerId(String(body.agentId ?? ""));
-    if (agentId === null) {
-      return jsonError(c, 400, "agentId is required");
-    }
-    try {
-      manager.resources.bindResource({ agentId, kind: "extension", slug: id });
-      return c.json({ ok: true });
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      return jsonError(c, 400, message);
-    }
-  });
-
-  // POST /extensions/:id/unlink — unlink extension from an agent
-  app.post("/extensions/:id/unlink", async (c) => {
-    const id = c.req.param("id");
-    const body = await c.req.json().catch(() => ({}));
-    const agentId =
-      typeof body.agentId === "number" ? body.agentId : parseIntegerId(String(body.agentId ?? ""));
-    if (agentId === null) {
-      return jsonError(c, 400, "agentId is required");
-    }
-    try {
-      manager.resources.unbindResource({ agentId, kind: "extension", slug: id });
       return c.json({ ok: true });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);

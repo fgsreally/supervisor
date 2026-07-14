@@ -20,20 +20,19 @@ Pi Supervisor 由两个包组成：
 
 ### 核心模块
 
-| 模块 | 路径 | 职责 |
-|---|---|---|
-| SessionManager | `src/core/session-manager.ts:371` | 创建、fork、clone、kill、complete、checkpoint |
-| SessionRuntime | `src/core/session-runtime.ts:133` | prompt / steer / follow-up / abort |
-| SessionStorage | `src/core/session-storage.ts:12` | SQLite 持久化消息树 |
-| SupervisorDb | `src/db/db.ts:96` | schema、迁移、FTS5 全文搜索 |
-| ExtensionRuntime | `src/extensions/runtime.ts` | 加载扩展、事件分发、工具注入 |
-| MCP Client | `src/mcp/mcp-client-manager.ts` | Stdio + SSE MCP 服务器连接 |
-| Compaction | `src/extensions/compaction/` | rolling / projector / micro 三级压缩 |
+| 模块             | 路径                              | 职责                                          |
+| ---------------- | --------------------------------- | --------------------------------------------- |
+| SessionManager   | `src/core/session-manager.ts:371` | 创建、fork、clone、kill、complete、checkpoint |
+| SessionRuntime   | `src/core/session-runtime.ts:133` | prompt / steer / follow-up / abort            |
+| SessionStorage   | `src/core/session-storage.ts:12`  | SQLite 持久化消息树                           |
+| SupervisorDb     | `src/db/db.ts:96`                 | schema、迁移、FTS5 全文搜索                   |
+| ExtensionRuntime | `src/extension-system/runtime.ts` | 加载扩展、事件分发、工具注入                  |
+| MCP Client       | `src/mcp/mcp-client-manager.ts`   | Stdio + SSE MCP 服务器连接                    |
+| Compaction       | `src/core/compaction/rolling.ts`  | 按上下文用量执行滚动压缩                      |
 
 ### 数据存储
 
 - SQLite：`~/.pi/supervisor/supervisor.db`（schema 在 `src/db/db.ts:96-152`）
-- 会话 JSONL 日志：`~/.pi/supervisor/sessions/<id>.jsonl`（`src/core/session-log-file.ts:30`）
 - Agent 工作目录：`~/.pi/supervisor/agents/<agent-id>/`（`src/agent/agent-paths.ts`）
 
 ## 前端：`@earendil-works/pi-supervisor-ui`
@@ -42,15 +41,15 @@ Pi Supervisor 由两个包组成：
 
 ### 主要模块
 
-| 模块 | 路径 | 职责 |
-|---|---|---|
-| Router | `src/router/index.ts:18` | 7 个路由 |
-| Pinia Stores | `src/store/index.ts:41` | Root / Session / Agent / Provider / Resource |
-| API Client | `src/api/api.ts` | 882 行，覆盖所有 HTTP 端点 |
-| Chat 子系统 | `src/views/ChatView.vue` + `src/components/chat/*` | 对话、SSE 流式、autocomplete |
-| Settings | `src/views/ProviderDetailView.vue` / `AgentFormView.vue` | Provider/Agent 配置 |
-| Resources | `src/components/SkillFileTree.vue` 等 | Skills / Prompts / Extensions 浏览 |
-| Composables | `src/composables/*` | 主题、推送通知、布局尺寸 |
+| 模块         | 路径                                                     | 职责                                         |
+| ------------ | -------------------------------------------------------- | -------------------------------------------- |
+| Router       | `src/router/index.ts:18`                                 | 7 个路由                                     |
+| Pinia Stores | `src/store/index.ts:41`                                  | Root / Session / Agent / Provider / Resource |
+| API Client   | `src/api/api.ts`                                         | 882 行，覆盖所有 HTTP 端点                   |
+| Chat 子系统  | `src/views/ChatView.vue` + `src/components/chat/*`       | 对话、SSE 流式、autocomplete                 |
+| Settings     | `src/views/ProviderDetailView.vue` / `AgentFormView.vue` | Provider/Agent 配置                          |
+| Resources    | `src/components/SkillFileTree.vue` 等                    | Skills / Prompts / Extensions 浏览           |
+| Composables  | `src/composables/*`                                      | 主题、推送通知、布局尺寸                     |
 
 ## 数据流
 

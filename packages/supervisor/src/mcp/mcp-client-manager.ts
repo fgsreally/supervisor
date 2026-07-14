@@ -3,7 +3,6 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import type { McpServerConfigType, McpServerStatus } from "./mcp-types.js";
-import { getActiveMcpServers } from "./mcp-config-loader.js";
 import { mcpToolToAgentTool, type McpToolDefinition } from "./mcp-tool.js";
 
 // ============================================================================
@@ -31,10 +30,6 @@ interface InternalServerState {
 }
 
 export class McpClientManager {
-  /** 当前 MCP 连接所属的会话 ID。 */
-  private readonly sessionId: string;
-  /** 当前 MCP 连接所属的 Agent ID。 */
-  private readonly agentId: string;
   /** 已尝试连接的 MCP 服务及其运行状态。 */
   private servers = new Map<string, InternalServerState>();
   /** 已转换为 AgentTool 的 MCP 工具缓存。 */
@@ -42,17 +37,11 @@ export class McpClientManager {
   /** 正在进行的连接任务，用于合并并发 connectAll 调用。 */
   private connectPromise: Promise<void> | null = null;
   /** Resource 类从数据库绑定中传入的 MCP 服务配置。 */
-  private readonly configuredServers?: Record<string, McpServerConfigType>;
+  private readonly configuredServers: Record<string, McpServerConfigType>;
 
   /** 创建当前 Agent 独占的 MCP 客户端管理器。 */
-  constructor(
-    sessionId: string,
-    agentId: string,
-    configuredServers?: Record<string, McpServerConfigType>,
-  ) {
-    this.sessionId = sessionId;
-    this.agentId = agentId;
-    this.configuredServers = configuredServers;
+  constructor(configuredServers?: Record<string, McpServerConfigType>) {
+    this.configuredServers = configuredServers ?? {};
   }
 
   /** 连接当前 Agent 的全部启用 MCP 服务；重复调用是幂等的。 */
@@ -70,7 +59,7 @@ export class McpClientManager {
 
   /** 执行一次实际连接，并记录每个 MCP 服务的成功或错误状态。 */
   private async doConnect(): Promise<void> {
-    const activeServers = this.configuredServers ?? getActiveMcpServers(this.agentId);
+    const activeServers = this.configuredServers;
 
     const entries = Object.entries(activeServers);
     if (entries.length === 0) return;

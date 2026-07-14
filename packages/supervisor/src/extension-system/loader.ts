@@ -1,46 +1,17 @@
 /**
  * Supervisor Extension System - Loader
  *
- * 新的扩展加载器，只加载 supervisor 专用扩展
+ * 扩展发现与动态加载（jiti）
  */
 
 import * as fs from "node:fs";
-import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti/static";
-import { LOAD_PROJECT_RESOURCES } from "../agent/agent-paths.js";
-import { isLegacyPackagedToolExtensionDir, listPackagedToolIds } from "../tools/loader.js";
-import {
-  readExtensionPackageJson,
-  resolveExtensionEntries,
-} from "./extension-entry.js";
+import { readExtensionPackageJson, resolveExtensionEntries } from "./extension-entry.js";
 import type { ExtensionDefinition, LoadExtensionResult, LoadExtensionsResult } from "./types.js";
 
 export { resolveExtensionEntries } from "./extension-entry.js";
-
-const require = createRequire(import.meta.url);
-
-// ============================================================================
-// Configuration
-// ============================================================================
-
-/**
- * 获取扩展搜索目录
- * 只加载 supervisor 专用目录，与 coding-agent 完全分离
- * 每个 agent 只加载自己目录下的扩展
- */
-export function getExtensionDirectories(agentHomeDir: string, cwd: string): string[] {
-  const dirs = [path.join(agentHomeDir, "extensions")];
-  if (LOAD_PROJECT_RESOURCES) {
-    dirs.push(path.join(cwd, ".pi", "supervisor", "extensions"));
-  }
-  return dirs.filter((dir) => fs.existsSync(dir));
-}
-
-// ============================================================================
-// Module Resolution
-// ============================================================================
 
 let _aliases: Record<string, string> | null = null;
 
@@ -48,105 +19,12 @@ function getAliases(): Record<string, string> {
   if (_aliases) return _aliases;
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-  const typeboxEntry = require.resolve("typebox");
-  const typeboxCompileEntry = require.resolve("typebox/compile");
-  const typeboxValueEntry = require.resolve("typebox/value");
-
-  // 当前扩展系统的入口
-  const supervisorEntry = path.resolve(__dirname, "./index.js");
-
   _aliases = {
-    // 扩展系统
-    "@earendil-works/pi-supervisor": supervisorEntry,
-    "@mariozechner/pi-supervisor": supervisorEntry,
-
-    // typebox
-    typebox: typeboxEntry,
-    "typebox/compile": typeboxCompileEntry,
-    "typebox/value": typeboxValueEntry,
-    "@sinclair/typebox": typeboxEntry,
-    "@sinclair/typebox/compile": typeboxCompileEntry,
-    "@sinclair/typebox/value": typeboxValueEntry,
+    "@earendil-works/pi-supervisor": path.resolve(__dirname, "./index.js"),
   };
 
   return _aliases;
 }
-
-// ============================================================================
-// File Discovery
-// ============================================================================
-
-function isExtensionFile(name: string): boolean {
-  return (
-    name.endsWith(".ts") || name.endsWith(".js") || name.endsWith(".mts") || name.endsWith(".mjs")
-  );
-}
-
-/**
- * 在目录中搜索扩展：仅支持子目录扩展（扩展名/index.ts）。
- */
-export function discoverExtensionsInDir(dir: string): string[] {
-  if (!fs.existsSync(dir)) {
-    return [];
-  }
-
-  const discovered: string[] = [];
-
-  try {
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-
-    for (const entry of entries) {
-      const entryPath = path.join(dir, entry.name);
-
-      if (
-        entry.isDirectory() ||
-        (entry.isSymbolicLink() && fs.existsSync(entryPath) && fs.statSync(entryPath).isDirectory())
-      ) {
-        if (isLegacyPackagedToolExtensionDir(entryPath)) {
-          continue;
-        }
-        const resolved = resolveExtensionEntries(entryPath);
-        discovered.push(...resolved);
-      }
-    }
-  } catch {
-    // 忽略读取错误
-  }
-
-  return discovered;
-}
-
-/**
- * 从多个目录收集唯一扩展路径
- */
-export function collectExtensionPaths(dirs: string[]): string[] {
-  const seen = new Set<string>();
-  const paths: string[] = [];
-
-  for (const dir of dirs) {
-    for (const entry of discoverExtensionsInDir(dir)) {
-      const resolved = path.resolve(entry);
-      if (!seen.has(resolved)) {
-        seen.add(resolved);
-        paths.push(entry);
-      }
-    }
-  }
-
-  return paths;
-}
-
-/**
- * 从多个目录列出所有扩展文件（别名）
- */
-export function listExtensionsInDirectories(dirs: string[]): string[] {
-  return collectExtensionPaths(dirs);
-}
-
-// ============================================================================
-// Extension Metadata (static, for resource API & UI)
-// ============================================================================
 
 export interface ExtensionEntryInfo {
   /** Discovery root for this extension (parent dir of entryPath). */
@@ -165,12 +43,6 @@ export interface ExtensionEntryInfo {
   description: string | null;
   /** Always false — only directory extensions are supported. */
   isFlatFile: boolean;
-}
-
-function isUnder(filePath: string, dir: string): boolean {
-  const f = filePath.replace(/\\/g, "/");
-  const d = dir.replace(/\\/g, "/").replace(/\/$/, "");
-  return f === d || f.startsWith(`${d}/`);
 }
 
 function buildEntryInfo(entryPath: string, rootDir: string): ExtensionEntryInfo {
@@ -220,47 +92,6 @@ export function listExtensionInfosInDirectories(dirs: string[]): ExtensionEntryI
   return out;
 }
 
-/** Filter infos by parent scan dir. */
-export function filterExtensionInfosByDir(
-  infos: ExtensionEntryInfo[],
-  dir: string,
-): ExtensionEntryInfo[] {
-  return infos.filter((info) => isUnder(info.rootDir, dir) || isUnder(info.entryPath, dir));
-}
-
-// ============================================================================
-// Packaged tool helpers (deprecated extension paths)
-// ============================================================================
-
-/**
- * @deprecated Packaged capabilities are tools under `src/tools/`. Use `getPackagedToolDir()` from `tools/loader.js`.
- */
-export function getPackagedExtensionsDir(): string {
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  return path.join(__dirname, "..", "tools");
-}
-
-/** @deprecated Use `listPackagedToolIds()` from `tools/loader.js`. */
-export function getPackagedExtensionPath(id: string): string {
-  return path.join(getPackagedExtensionsDir(), id);
-}
-
-/** @deprecated Use `listPackagedToolIds()` from `tools/loader.js`. */
-export function listPackagedExtensionPaths(): string[] {
-  return listPackagedToolIds().map((id) => getPackagedExtensionPath(id));
-}
-
-/**
- * @deprecated Use `getPackagedToolDir("lsp")` from `tools/loader.js`.
- */
-export function getSupervisorAgentToolsExtensionPath(): string {
-  return getPackagedExtensionPath("lsp");
-}
-
-// ============================================================================
-// Module Loading
-// ============================================================================
-
 /**
  * 加载单个扩展模块
  */
@@ -282,7 +113,6 @@ export async function loadExtensionModule(
       };
     }
 
-    // 检查是否是 defineExtension 返回的对象
     const def = module as ExtensionDefinition;
 
     if (!def.name || typeof def.name !== "string") {
@@ -363,50 +193,4 @@ export async function loadExtensions(extensionPaths: string[]): Promise<LoadExte
     extensions,
     errors,
   };
-}
-
-export interface DiscoverAndLoadExtensionsOptions {
-  /** Agent home directory (~/.pi/supervisor/agents/{agentId}) */
-  agentHomeDir: string;
-  /** Current working directory for project-level extensions */
-  cwd: string;
-  /** Additional explicit paths to load */
-  additionalPaths?: string[];
-}
-
-/**
- * 自动发现并加载所有扩展
- *
- * 注意：只加载 supervisor 专用目录，不加载 coding-agent 的扩展
- * 每个 agent 只加载自己目录下的扩展
- */
-export async function discoverAndLoadExtensions(
-  options: DiscoverAndLoadExtensionsOptions,
-): Promise<LoadExtensionsResult> {
-  const { agentHomeDir, cwd, additionalPaths = [] } = options;
-
-  const allPaths: string[] = [];
-  const seen = new Set<string>();
-
-  // 1. Collect supervisor directories
-  const dirs = getExtensionDirectories(agentHomeDir, cwd);
-  for (const entry of collectExtensionPaths(dirs)) {
-    const resolved = path.resolve(entry);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      allPaths.push(entry);
-    }
-  }
-
-  // 2. Merge explicit paths
-  for (const p of additionalPaths) {
-    const resolved = path.resolve(p);
-    if (!seen.has(resolved)) {
-      seen.add(resolved);
-      allPaths.push(p);
-    }
-  }
-
-  // 3. Load selected extensions only
-  return loadExtensions(allPaths);
 }

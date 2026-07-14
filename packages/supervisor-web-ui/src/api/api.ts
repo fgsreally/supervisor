@@ -1124,15 +1124,15 @@ export async function listAgentResourceBindings(
   return fetchJson<AgentResourceBinding[]>(`/agents/${agentId}/resource-bindings${qs}`);
 }
 
-export type AgentResourceKind = "skills" | "extensions" | "prompts";
-
-/** @deprecated Prefer bindCatalogResourceToAgent — maps global path to slug for DB binding. */
-export async function linkAgentResource(
+/** Resolve a catalog entry by source path, then create a database binding. */
+export async function bindAgentResourceBySourcePath(
   agentId: string,
-  kind: AgentResourceKind,
-  path: string,
-): Promise<{ ok: boolean }> {
-  return postJson<{ ok: boolean }>(`/agents/${agentId}/resources/link`, { kind, path });
+  kind: CatalogResourceKind,
+  sourcePath: string,
+): Promise<{ ok: boolean; binding: AgentResourceBinding }> {
+  const resource = (await listResourceCatalog(kind)).find((item) => item.sourcePath === sourcePath);
+  if (!resource) throw new Error(`Resource is not registered in the catalog: ${sourcePath}`);
+  return bindCatalogResourceToAgent(agentId, { resourceId: resource.id });
 }
 
 // ============ Extension Management API ============
@@ -1163,26 +1163,6 @@ export async function installExtension(source: string): Promise<ExtensionInstall
 /** Remove extension from the global catalog. */
 export async function uninstallExtension(id: string): Promise<{ ok: boolean }> {
   return uninstallCatalogResource("extension", id);
-}
-
-/** Link a global extension to an agent. */
-export async function linkExtensionToAgent(
-  id: string,
-  agentId: string,
-): Promise<{ ok: boolean; linkPath: string }> {
-  const result = await bindCatalogResourceToAgent(agentId, { kind: "extension", slug: id });
-  return { ok: result.ok, linkPath: "" };
-}
-
-/** Unlink a global extension from an agent. */
-export async function unlinkExtensionFromAgent(
-  id: string,
-  agentId: string,
-): Promise<{ ok: boolean }> {
-  const bindings = await listAgentResourceBindings(agentId, "extension");
-  const binding = bindings.find((b) => b.resource?.slug === id);
-  if (!binding) return { ok: true };
-  return unbindCatalogResourceFromAgent(agentId, binding.resourceId);
 }
 
 // ============ Message API ============

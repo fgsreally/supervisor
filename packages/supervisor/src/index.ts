@@ -30,58 +30,26 @@ export function startSupervisor(options: SupervisorOptions = {}): {
   };
 }
 
+export { ensureAgentHome, getAgentHomeDir, getSupervisorAgentsRoot } from "./agent/agent-paths.js";
+export type { AgentResources, AgentToolInfo, ResourceLayer } from "./resources/agent-resources.js";
 export {
-  ensureAgentHome,
-  getAgentHomeDir,
-  getAgentResourceDirs,
-  getProjectResourceDirs,
-  getSupervisorAgentsRoot,
-  installExtensionToAgentDir,
-  removeExtensionFromAgentDir,
-} from "./agent/agent-paths.js";
-export type { AgentResources, AgentToolInfo, ResourceLayer } from "./agent/agent-resources.js";
-export {
-  listExtensionPathsFromDirs,
   loadAgentSessionResources,
   resolveAgentResources,
   resolveAgentTools,
-} from "./agent/agent-resources.js";
+} from "./resources/agent-resources.js";
 export { SupervisorDb } from "./db/db.js";
 export { createDefaultTools } from "./utils/default-tools.js";
-export {
-  activatePackagedTools,
-  enablePackagedToolForAgent,
-  getPackagedToolDir,
-  listEnabledPackagedToolIds,
-  listPackagedToolIds,
-} from "./tools/index.js";
-export { defineExtension, defineExtensionAsync } from "./extension-system/define-extension.js";
+export { activatePackagedTools, getPackagedToolDir, listPackagedToolIds } from "./tools/index.js";
+export { defineExtension } from "./extension-system/define-extension.js";
+export { Type, type Static, type TSchema } from "./extension-system/schema.js";
 export { Extension } from "./extension-system/extension.js";
 export type { AgentExtensionModule } from "./extension-system/extension.js";
-export {
-  discoverAndLoadExtensions,
-  getPackagedExtensionPath,
-  getPackagedExtensionsDir,
-  getSupervisorAgentToolsExtensionPath,
-  listPackagedExtensionPaths,
-  loadExtension,
-  loadExtensions,
-} from "./extension-system/loader.js";
+export { loadExtension, loadExtensions } from "./extension-system/loader.js";
 export type {
   ExtensionContext,
-  ExtensionInstance,
   SpawnSessionRequest,
   SpawnSessionResult,
-  SupervisorAgentFacade,
   SupervisorProjectFacade,
-  SupervisorRuntimeFacade,
-  SupervisorSessionFacade,
-  SupervisorSessionMembersFacade,
-  SupervisorSessionMessagesFacade,
-  SupervisorSessionMetaFacade,
-  SupervisorSessionRuntimeFacade,
-  SupervisorSystemFacade,
-  SupervisorToolRegistryFacade,
   SupervisorUiFacade,
   ToolDefinition,
 } from "./extension-system/types.js";
@@ -91,13 +59,20 @@ export { copyMessagesWithInheritance } from "./core/session-branch.js";
 export type { SessionOutputListener } from "./core/session-manager.js";
 export { SessionManager } from "./core/session-manager.js";
 export {
-  ResourceService,
+  Context,
+  ContextAgent,
+  ContextDb,
+  ContextSession,
+  type ContextDependencies,
+} from "./core/context.js";
+export {
+  ResourceManager,
   type BindResourceInput,
   type InstallAndBindInput,
   type InstallResourceInput,
   type InstallResourceResult,
-  type ResourceServiceDeps,
-} from "./resources/resource-service.js";
+  type ResourceManagerDeps,
+} from "./resources/resource-manager.js";
 export {
   AgentResource,
   type AgentResourceCommandInfo,
@@ -107,7 +82,7 @@ export {
 export type { AgentResourceBinding, Resource, ResourceKind } from "./resources/types.js";
 export type { SupervisorSessionEvent, SupervisorSessionState } from "./core/session-runtime.js";
 export { SupervisorSessionRuntime } from "./core/session-runtime.js";
-export { formatSkillsForPrompt, loadSkills, loadSkillsFromDir } from "./agent/skills.js";
+export { formatSkillsForPrompt, loadSkills, loadSkillsFromDir } from "./resources/skills.js";
 export type { SessionSpawner } from "./spawn/session-spawner.js";
 export type {
   SpawnAgentRequest,

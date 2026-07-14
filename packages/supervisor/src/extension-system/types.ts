@@ -5,15 +5,13 @@
  */
 
 import type { Static, TSchema } from "typebox";
-import type { ToolPolicy } from "./tool-policy.js";
+import type { ContextAgent, ContextDb, ContextSession } from "../core/context.js";
 import type {
   ApprovalRequest,
   ApprovalResult,
   ContinueTurnOptions,
   ContinueTurnResult,
   ScheduleInjectionInput,
-  ToolGuardHandler,
-  ToolResultHandler,
   TurnFlowLock,
   TurnUsage,
 } from "./extension-session-services.js";
@@ -27,7 +25,9 @@ export interface ExtensionDefinition {
   name: string;
 
   /** 初始化函数 */
-  setup(context: ExtensionContext): (() => void) | void | Promise<(() => void) | undefined>;
+  setup(
+    context: ExtensionContext,
+  ): (() => void | Promise<void>) | void | Promise<void | (() => void | Promise<void>)>;
 }
 
 export type ExtensionFactory = () => ExtensionDefinition | Promise<ExtensionDefinition>;
@@ -37,220 +37,37 @@ export type ExtensionFactory = () => ExtensionDefinition | Promise<ExtensionDefi
 // ============================================================================
 
 export interface ExtensionContext {
-  // ==================== 核心对象 API ====================
+  /** 当前扩展实例元信息 */
 
-  readonly extension: ExtensionInstance;
-  readonly session: SupervisorSessionFacade;
-  readonly agent: SupervisorAgentFacade;
+  /** 会话域：当前会话身份 + spawn / 消息 / meta 等操作 */
+  readonly session: ContextSession;
+
+  /** Agent 域：当前 agent 身份 + 工具注册 / 查找等操作 */
+  readonly agent: ContextAgent;
+
+  /** 项目域：工作区与项目级目录 */
   readonly project: SupervisorProjectFacade;
-  readonly runtime: SupervisorRuntimeFacade;
-  readonly tools: SupervisorToolRegistryFacade;
+
+  /** UI：广播、审批 */
   readonly ui: SupervisorUiFacade;
-  readonly system: SupervisorSystemFacade;
 
-  /** Turn-boundary injections (plan/goal reminders). */
-  readonly inject: TurnInjectorFacade;
+  /** Raw SQL access. Extensions using it are responsible for database integrity. */
+  readonly db: ContextDb;
 
-  // ==================== 会话信息 ====================
-
-  /** 当前会话 ID */
-  readonly sessionId: number;
-
-  /** 当前工作目录 */
-  readonly cwd: string;
-
-  /** Current session-owned directory for extension private files. */
-  readonly sessionDir: string;
-
-  /** Current project-owned directory for project-level extension files. */
-  readonly projectDir: string;
-
-  /** Ensure and return the current session-owned directory. */
-  getSessionDir(): Promise<string>;
-
-  /** Ensure and return the current project-owned directory. */
-  getProjectDir(): Promise<string>;
-
-  /** 当前模型信息 */
-  readonly model:
-    | {
-        provider: string;
-        id: string;
-        contextWindow: number;
-      }
-    | undefined;
-
-  /** Agent 是否空闲（不在流式输出中） */
-  isIdle(): boolean;
-
-  /** 当前 Agent 是否正在流式输出 */
-  isStreaming(): boolean;
-
-  /** 中止信号（仅在 Agent 运行时存在） */
-  signal: AbortSignal | undefined;
-
-  /** 中止当前 Agent 操作 */
-  abort(): void;
-
-  // ==================== 数据库访问（只读） ====================
-
-  /**
-   * 数据库查询接口
-   * 所有查询自动限制在当前会话范围
-   */
-  readonly db: ExtensionDatabase;
-
-  // ==================== 数据写入 ====================
-
-  /**
-   * 添加自定义 entry（用于状态持久化）
-   * 写入 messages 表，type="custom"
-   */
-  appendEntry<T>(customType: string, data: T): Promise<string>;
-
-  /**
-   * 发送消息到会话
-   * 触发 Agent 响应（如果 triggerTurn=true）
-   */
-  sendMessage(message: {
-    role: "custom";
-    customType: string;
-    content: string;
-    display?: boolean;
-    details?: unknown;
-    triggerTurn?: boolean;
-  }): Promise<void>;
-
-  /**
-   * 发送用户消息
-   * 等效于用户输入，触发 Agent 响应
-   */
-  sendUserMessage(content: string): Promise<void>;
-  sendUserMessage(content: string, options?: { source?: string }): Promise<void>;
-
-  getMemberAgentsByTag(tag: string): Promise<MemberAgentInfo[]>;
-
-  pausing<T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T>;
-
-  /**
-   * 设置会话元数据
-   * 合并到 sessions.meta JSON 字段
-   */
-  setSessionMeta(meta: Record<string, unknown>): Promise<void>;
-
-  /**
-   * 更新会话元数据（补丁）
-   */
-  patchSessionMeta(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
-
-  /**
-   * 设置消息元数据
-   * 合并到 messages.meta JSON 字段
-   */
-  setMessageMeta(messageId: string, meta: Record<string, unknown>): Promise<void>;
-
-  /**
-   * 更新消息元数据（补丁）
-   */
-  patchMessageMeta(
-    messageId: string,
-    patch: Record<string, unknown>,
-  ): Promise<Record<string, unknown>>;
-
-  /**
-   * 设置 entry 标签
-   */
-  setLabel(entryId: string, label: string | undefined): Promise<void>;
-
-  // ==================== 事件绑定 ====================
-
-  /**
-   * 绑定事件处理器
-   * 返回解绑函数
-   */
+  /** 订阅扩展事件，返回解绑函数 */
   on<T extends ExtensionEvent>(
     event: T["type"],
     handler: (event: T, ctx: EventHandlerContext) => void | Promise<void>,
   ): () => void;
 
-  // ==================== 工具注册 ====================
-
-  /**
-   * 注册 LLM 可调用的工具
-   * 工具对所有会话可见（全局注册）
-   */
-  registerTool<TParams extends TSchema, TResult>(
-    definition: ToolDefinition<TParams, TResult>,
+  /** 写日志 */
+  log(
+    level: "debug" | "info" | "warn" | "error",
+    message: string,
+    meta?: Record<string, unknown>,
   ): void;
 
-  /** 当前会话可用工具（内置 + 扩展，扩展同名覆盖内置） */
-  getAllTools(): ToolInfo[];
-
-  /** 按名称获取工具信息 */
-  getToolByName(name: string): ToolInfo | undefined;
-
-  // ==================== 会话控制 ====================
-
-  /**
-   * Fork 当前会话
-   * 创建新会话，复制到指定 entry
-   */
-  fork(entryId: string, options?: { position?: "before" | "at" }): Promise<SessionInfo>;
-
-  /**
-   * 切换会话
-   * 当前扩展上下文切换到新会话
-   */
-  switchSession(sessionId: number): Promise<void>;
-
-  /**
-   * 导航消息树
-   * 改变当前 leaf_id，等效于回到历史节点
-   */
-  navigateTree(
-    entryId: string,
-    options?: {
-      summarize?: boolean;
-      customInstructions?: string;
-    },
-  ): Promise<void>;
-
-  /**
-   * 压缩上下文
-   */
-  compact(options?: { customInstructions?: string }): Promise<{
-    summary: string;
-    firstKeptEntryId: string;
-    tokensBefore: number;
-  }>;
-
-  /**
-   * 等待 Agent 空闲
-   */
-  waitForIdle(): Promise<void>;
-
-  // ==================== 模型控制 ====================
-
-  /**
-   * 设置当前模型
-   */
-  setModel(provider: string, modelId: string): Promise<void>;
-
-  /**
-   * 设置思考级别
-   */
-  setThinkingLevel(level: "none" | "low" | "medium" | "high"): void;
-
-  /**
-   * 获取当前思考级别
-   */
-  getThinkingLevel(): "none" | "low" | "medium" | "high";
-
-  // ==================== 工具方法 ====================
-
-  /**
-   * 执行系统命令
-   */
+  /** 执行系统命令 */
   exec(
     command: string,
     args: string[],
@@ -261,98 +78,21 @@ export interface ExtensionContext {
     },
   ): Promise<ExecResult>;
 
-  /**
-   * 日志记录
-   */
-  log(
-    level: "debug" | "info" | "warn" | "error",
-    message: string,
-    meta?: Record<string, unknown>,
-  ): void;
+  /** 扩展间事件总线 */
+  readonly events: EventBus;
 
-  /**
-   * 发送 WebSocket 通知（广播给所有连接的客户端）
-   */
-  broadcast(event: BroadcastEvent): void;
+  /** Turn 流程控制 */
+  readonly flow: TurnFlowFacade;
 
-  // ==================== 共享事件总线 ====================
-
-  /**
-   * 跨扩展通信的事件总线
-   */
-  events: EventBus;
+  /** Turn 边界注入（plan/goal 等） */
+  readonly inject: TurnInjectorFacade;
 }
 
 // ============================================================================
 // Core Object Facades
 // ============================================================================
 
-export interface ExtensionInstance {
-  readonly name: string;
-}
-
-export interface SupervisorSessionFacade {
-  readonly id: number;
-  readonly cwd: string;
-  readonly dir: string;
-  readonly messages: SupervisorSessionMessagesFacade;
-  readonly members: SupervisorSessionMembersFacade;
-  readonly meta: SupervisorSessionMetaFacade;
-  readonly runtime: SupervisorSessionRuntimeFacade;
-  readonly isMain: boolean;
-  readonly isChild: boolean;
-  getDir(): Promise<string>;
-  getParent(): Promise<SessionInfo | undefined>;
-  children(): Promise<SessionInfo[]>;
-  appendEntry<T>(customType: string, data: T): Promise<string>;
-  sendMessage(message: {
-    role: "custom";
-    customType: string;
-    content: string;
-    display?: boolean;
-    details?: unknown;
-    triggerTurn?: boolean;
-  }): Promise<void>;
-  sendUserMessage(content: string, options?: { source?: string }): Promise<void>;
-  sendParentMsg(
-    content: string,
-    options?: { level?: number },
-  ): Promise<void>;
-  pausing<T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T>;
-  spawn(request: SpawnSessionRequest): Promise<SpawnSessionResult>;
-  waitForResult(
-    sessionId: number,
-    options?: { timeoutMs?: number; maxChars?: number },
-  ): Promise<SessionResultSummary>;
-  finish(sessionId?: number): Promise<void>;
-  fork(entryId: string, options?: { position?: "before" | "at" }): Promise<SessionInfo>;
-  switchTo(sessionId: number): Promise<void>;
-  navigateTree(
-    entryId: string,
-    options?: {
-      summarize?: boolean;
-      customInstructions?: string;
-    },
-  ): Promise<void>;
-  compact(options?: { customInstructions?: string }): Promise<{
-    summary: string;
-    firstKeptEntryId: string;
-    tokensBefore: number;
-  }>;
-  readonly tools: SupervisorSessionToolSetFacade;
-}
-
-export interface SupervisorSessionToolSetFacade {
-  setPolicy(policy: ToolPolicy): void;
-  getPolicy(): ToolPolicy;
-  beforeUse(handler: ToolGuardHandler, options?: { priority?: number }): () => void;
-  afterUse(handler: ToolResultHandler, options?: { priority?: number }): () => void;
-  enable(name: string): void;
-  disable(name: string, reason?: string): void;
-  setActive(names: string[]): Promise<void>;
-  getActive(): string[] | null;
-}
-
+/** 当前会话身份 + 会话域操作（融合） */
 export interface TurnInjectorFacade {
   schedule(input: ScheduleInjectionInput): void;
   clear(variant: string): void;
@@ -373,114 +113,10 @@ export interface TurnFlowFacade {
   endScope(scope: string): void;
 }
 
-export interface SupervisorSessionMessagesFacade {
-  list(options?: {
-    limit?: number;
-    offset?: number;
-    role?: "user" | "assistant" | "tool" | "custom";
-    parentId?: string | null;
-    entryType?: "message" | "custom" | "fork" | "label";
-  }): Promise<MessageEntry[]>;
-  get(id: string): Promise<MessageEntry | undefined>;
-  tree(leafId?: string): Promise<MessageNode[]>;
-  currentBranch(): Promise<MessageEntry[]>;
-  search(
-    query: string,
-    options?: {
-      limit?: number;
-      role?: "user" | "assistant" | "tool";
-    },
-  ): Promise<SearchResult[]>;
-  getMeta(messageId: string): Promise<Record<string, unknown>>;
-  setMeta(messageId: string, meta: Record<string, unknown>): Promise<void>;
-  patchMeta(messageId: string, patch: Record<string, unknown>): Promise<Record<string, unknown>>;
-  setLabel(entryId: string, label: string | undefined): Promise<void>;
-  stats(): Promise<{
-    total: number;
-    user: number;
-    assistant: number;
-    tool: number;
-    custom: number;
-  }>;
-  contextUsage(): Promise<{
-    tokens: number | null;
-    contextWindow: number;
-    percent: number | null;
-  }>;
-}
-
-export interface SupervisorSessionMembersFacade {
-  byTag(tag: string): Promise<MemberAgentInfo[]>;
-  byRole(role: string): Promise<MemberAgentInfo[]>;
-}
-
-export interface SupervisorSessionMetaFacade {
-  get(): Promise<Record<string, unknown>>;
-  set(meta: Record<string, unknown>): Promise<void>;
-  patch(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
-}
-
-export interface SupervisorSessionRuntimeFacade {
-  isIdle(): boolean;
-  isStreaming(): boolean;
-  readonly signal: AbortSignal | undefined;
-  abort(): void;
-  waitForIdle(): Promise<void>;
-}
-
-export interface SupervisorAgentFacade {
-  readonly id: number;
-  readonly name: string;
-  readonly providerId: number;
-  readonly modelId: string;
-  readonly systemPrompt?: string;
-  readonly model:
-    | {
-        provider: string;
-        id: string;
-        contextWindow: number;
-      }
-    | undefined;
-  readonly tools: SupervisorToolRegistryFacade;
-  setModel(provider: string, modelId: string): Promise<void>;
-  setThinkingLevel(level: "none" | "low" | "medium" | "high"): void;
-  getThinkingLevel(): "none" | "low" | "medium" | "high";
-}
-
 export interface SupervisorProjectFacade {
   readonly cwd: string;
   readonly dir: string;
   getDir(): Promise<string>;
-}
-
-export interface SupervisorRuntimeFacade {
-  on<T extends ExtensionEvent>(
-    event: T["type"],
-    handler: (event: T, ctx: EventHandlerContext) => void | Promise<void>,
-  ): () => void;
-  exec(
-    command: string,
-    args: string[],
-    options?: {
-      cwd?: string;
-      timeout?: number;
-      signal?: AbortSignal;
-    },
-  ): Promise<ExecResult>;
-  log(
-    level: "debug" | "info" | "warn" | "error",
-    message: string,
-    meta?: Record<string, unknown>,
-  ): void;
-  readonly events: EventBus;
-  readonly flow: TurnFlowFacade;
-  readonly inject: TurnInjectorFacade;
-}
-
-export interface SupervisorToolRegistryFacade {
-  register<TParams extends TSchema, TResult>(definition: ToolDefinition<TParams, TResult>): void;
-  list(): ToolInfo[];
-  get(name: string): ToolInfo | undefined;
 }
 
 export interface SupervisorUiFacade {
@@ -488,16 +124,11 @@ export interface SupervisorUiFacade {
   requestApproval(request: ApprovalRequest): Promise<ApprovalResult>;
 }
 
-export interface SupervisorSystemFacade {
-  readonly db: ExtensionDatabase;
-}
-
 // ============================================================================
 // Database Access
 // ============================================================================
 
 export interface ExtensionDatabase {
-  readonly sessions: ExtensionSessionsDatabase;
   readonly sqlite?: ExtensionSqliteDatabase;
 
   // ----- 消息查询 -----
@@ -591,11 +222,6 @@ export interface ExtensionDatabase {
     contextWindow: number;
     percent: number | null;
   }>;
-}
-
-export interface ExtensionSessionsDatabase {
-  get(sessionId: number): Promise<SessionInfo | undefined>;
-  childrenOf(sessionId: number): Promise<SessionInfo[]>;
 }
 
 export interface SpawnSessionRequest {
@@ -1026,7 +652,7 @@ export interface LoadedExtension {
   source: "global" | "project" | "builtin";
   handlers: Map<string, Set<(...args: unknown[]) => unknown>>;
   tools: Map<string, ToolDefinition<TSchema, unknown>>;
-  cleanup?: () => void;
+  cleanup?: () => void | Promise<void>;
 }
 
 export interface ExtensionRegistry {
@@ -1082,10 +708,7 @@ export interface RuntimeOptions {
       triggerTurn?: boolean;
     }) => Promise<void>;
     sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
-    sendParentMsg: (
-      content: string,
-      options?: { level?: number },
-    ) => Promise<void>;
+    sendParentMsg: (content: string, options?: { level?: number }) => Promise<void>;
     getSessionDir: () => Promise<string>;
     getProjectDir: () => Promise<string>;
     getMemberAgentsByTag: (tag: string) => Promise<MemberAgentInfo[]>;

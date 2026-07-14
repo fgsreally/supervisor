@@ -6,64 +6,65 @@
 
 ### Provider
 
-| 函数 | 方法 + 路径 |
-|---|---|
-| `listProviders()` | `GET /providers` |
-| `createProvider(data)` | `POST /providers` |
-| `getProvider(id)` | `GET /providers/:id` |
-| `updateProvider(id, data)` | `PATCH /providers/:id` |
-| `deleteProvider(id)` | `DELETE /providers/:id` |
+| 函数                       | 方法 + 路径             |
+| -------------------------- | ----------------------- |
+| `listProviders()`          | `GET /providers`        |
+| `createProvider(data)`     | `POST /providers`       |
+| `getProvider(id)`          | `GET /providers/:id`    |
+| `updateProvider(id, data)` | `PATCH /providers/:id`  |
+| `deleteProvider(id)`       | `DELETE /providers/:id` |
 
 ### Model
 
-| 函数 | 方法 + 路径 |
-|---|---|
-| `listProviderModels(providerId)` | `GET /providers/:id/models` |
-| `createProviderModel(providerId, data)` | `POST /providers/:id/models` |
-| `updateProviderModel(providerId, modelId, data)` | `PATCH /providers/:id/models/:modelId` |
-| `deleteProviderModel(providerId, modelId)` | `DELETE /providers/:id/models/:modelId` |
+| 函数                                             | 方法 + 路径                             |
+| ------------------------------------------------ | --------------------------------------- |
+| `listProviderModels(providerId)`                 | `GET /providers/:id/models`             |
+| `createProviderModel(providerId, data)`          | `POST /providers/:id/models`            |
+| `updateProviderModel(providerId, modelId, data)` | `PATCH /providers/:id/models/:modelId`  |
+| `deleteProviderModel(providerId, modelId)`       | `DELETE /providers/:id/models/:modelId` |
 
 ### Agent
 
-| 函数 | 方法 + 路径 |
-|---|---|
-| `listAgents()` | `GET /agents` |
-| `createAgent(data)` | `POST /agents` |
-| `getAgent(id)` | `GET /agents/:id` |
-| `updateAgent(id, data)` | `PATCH /agents/:id` |
-| `deleteAgent(id)` | `DELETE /agents/:id` |
-| `getAgentResources(id)` | `GET /agents/:id/resources` |
-| `getAgentSystemMd(id)` | `GET /agents/:id/system-md` |
-| `linkAgentResource(agentId, resourceId)` | `POST /agents/:id/resources/link` |
+| 函数                                                  | 方法 + 路径                                |
+| ----------------------------------------------------- | ------------------------------------------ |
+| `listAgents()`                                        | `GET /agents`                              |
+| `createAgent(data)`                                   | `POST /agents`                             |
+| `getAgent(id)`                                        | `GET /agents/:id`                          |
+| `updateAgent(id, data)`                               | `PATCH /agents/:id`                        |
+| `deleteAgent(id)`                                     | `DELETE /agents/:id`                       |
+| `getAgentResources(id)`                               | `GET /agents/:id/resources`                |
+| `getAgentSystemMd(id)`                                | `GET /agents/:id/system-md`                |
+| `bindCatalogResourceToAgent(agentId, request)`        | `POST /agents/:id/resources`               |
+| `unbindCatalogResourceFromAgent(agentId, resourceId)` | `DELETE /agents/:id/resources/:resourceId` |
 
 ### Session
 
-| 函数 | 方法 + 路径 |
-|---|---|
-| `listSessions()` | `GET /sessions` |
-| `getSession(id)` | `GET /sessions/:id` |
-| `createSession(data)` | `POST /sessions` |
-| `deleteSession(id)` | `DELETE /sessions/:id` |
-| `promptSession(id, data)` | `POST /sessions/:id/prompt`（SSE）|
-| `forkSession(id)` | `POST /sessions/:id/fork` |
-| `cloneSession(id)` | `POST /sessions/:id/clone` |
-| `killSession(id)` | `POST /sessions/:id/kill` |
-| `completeSession(id)` | `POST /sessions/:id/complete` |
-| `getSessionState(id)` | `GET /sessions/:id/state` |
-| `getSessionTree(id)` | `GET /sessions/:id/tree` |
-| `getSessionLog(id)` | `GET /sessions/:id/log` |
-| `createCheckpoint(id, label?)` | `POST /sessions/:id/checkpoint` |
-| `listCheckpoints(id)` | `GET /sessions/:id/checkpoints` |
-| `commitSession(id, msg?)` | `POST /sessions/:id/commit` |
-| `getSessionCommands(id)` | `GET /sessions/:id/commands` |
+| 函数                           | 方法 + 路径                        |
+| ------------------------------ | ---------------------------------- |
+| `listSessions()`               | `GET /sessions`                    |
+| `getSession(id)`               | `GET /sessions/:id`                |
+| `createSession(data)`          | `POST /sessions`                   |
+| `deleteSession(id)`            | `DELETE /sessions/:id`             |
+| `promptSession(id, data)`      | `POST /sessions/:id/prompt`（SSE） |
+| `forkSession(id)`              | `POST /sessions/:id/fork`          |
+| `cloneSession(id)`             | `POST /sessions/:id/clone`         |
+| `killSession(id)`              | `POST /sessions/:id/kill`          |
+| `completeSession(id)`          | `POST /sessions/:id/complete`      |
+| `getSessionState(id)`          | `GET /sessions/:id/state`          |
+| `getSessionTree(id)`           | `GET /sessions/:id/tree`           |
+| `getSessionLog(id)`            | `GET /sessions/:id/log`            |
+| `createCheckpoint(id, label?)` | `POST /sessions/:id/checkpoint`    |
+| `listCheckpoints(id)`          | `GET /sessions/:id/checkpoints`    |
+| `commitSession(id, msg?)`      | `POST /sessions/:id/commit`        |
+| `getSessionCommands(id)`       | `GET /sessions/:id/commands`       |
 
 ### Other
 
-| 函数 | 方法 + 路径 |
-|---|---|
-| `getFileContent(path)` | `GET /files/content?path=<path>` |
+| 函数                      | 方法 + 路径                      |
+| ------------------------- | -------------------------------- |
+| `getFileContent(path)`    | `GET /files/content?path=<path>` |
 | `listWorkspaceFiles(dir)` | `GET /workspace/files?dir=<dir>` |
-| `getGlobalResources()` | `GET /resources/global` |
+| `getGlobalResources()`    | `GET /resources/global`          |
 
 ## 未导出但存在
 

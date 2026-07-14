@@ -5,12 +5,12 @@ import type {
   AgentTool,
 } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "typebox";
+import type { Context } from "../core/context.js";
 import { ExtensionRuntime } from "./runtime.js";
 import type {
   EventHandlerContext,
   ExtensionDefinition,
   ExtensionEvent,
-  RuntimeOptions,
   ToolDefinition,
   ToolExecutionContext,
   ToolInfo,
@@ -51,9 +51,14 @@ export class Extension {
   readonly sessionId: number;
 
   /** 创建 Extension，并将它绑定到唯一的 Agent 会话。 */
-  constructor(options: RuntimeOptions) {
-    this.sessionId = options.sessionId;
-    this.runtime = new ExtensionRuntime(options);
+  constructor(context: Context) {
+    this.sessionId = context.session.id;
+    this.runtime = new ExtensionRuntime(context);
+  }
+
+  /** Activate built-in extensions after the session Context is fully constructed. */
+  async initialize(): Promise<void> {
+    await this.runtime.loadBuiltinExtensions();
   }
 
   /** 合并 Harness 内置工具和扩展工具；同名时扩展工具覆盖内置工具。 */
@@ -97,12 +102,17 @@ export class Extension {
     return errors;
   }
 
+  /** Deactivate one extension instance for this session and run its cleanup. */
+  async unload(extensionId: string): Promise<boolean> {
+    return this.runtime.unloadExtension(extensionId);
+  }
+
   /** 为当前 Agent 注册一个带类型的扩展事件处理器。 */
   on<T extends ExtensionEvent>(
     type: T["type"],
     handler: (event: T, context: EventHandlerContext) => void | Promise<void>,
   ): () => void {
-    return this.runtime.on(type, handler);
+    return this.runtime.on("$runtime", type, handler);
   }
 
   /** 向当前 Agent 的所有扩展分发一个 Supervisor 扩展事件。 */
@@ -287,7 +297,7 @@ export class Extension {
   }
 
   /** 将计划中的扩展注入应用到下一次 Agent 上下文。 */
-  applyTurnInjections<T extends { role: string }>(messages: T[]): T[] {
+  applyTurnInjections(messages: AgentMessage[]): AgentMessage[] {
     return this.runtime.applyTurnInjections(messages);
   }
 

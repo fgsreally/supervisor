@@ -1,21 +1,22 @@
 import { cpSync, existsSync, rmSync, statSync } from "node:fs";
 import { basename, extname, isAbsolute, join, resolve } from "node:path";
-import { ensureGlobalResourceDirs, getGlobalResourceDirs } from "../agent/agent-paths.js";
+import { ensureGlobalResourceDirs, getGlobalResourceDirs } from "./resource-paths.js";
 import {
   installExtensionToGlobal,
   type InstallResult,
   uninstallGlobalExtension,
   updateGlobalExtension,
-} from "../agent/extension-installer.js";
+} from "../extension-system/extension-installer.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { ExtensionModuleRegistry } from "./extension-registry.js";
 import type { AgentResourceBinding, Resource, ResourceKind } from "./types.js";
 import { isResourceKind } from "./types.js";
 
-export interface ResourceServiceDeps {
+export interface ResourceManagerDeps {
   db: SupervisorDb;
   extensionRegistry: ExtensionModuleRegistry;
   ensureCatalog: () => Promise<void>;
+  deactivateAgentExtension?: (agentId: number, slug: string) => Promise<void>;
 }
 
 export type InstallableResourceKind = "extension" | "skill" | "prompt" | "mcp";
@@ -139,8 +140,8 @@ function removeGlobalResourceFromDisk(kind: ResourceKind, slug: string): void {
  * Unified resource catalog operations: install to global disk, register in DB, bind to agents.
  * Used by SessionManager, HTTP API, and CLI.
  */
-export class ResourceService {
-  constructor(private readonly deps: ResourceServiceDeps) {}
+export class ResourceManager {
+  constructor(private readonly deps: ResourceManagerDeps) {}
 
   get db(): SupervisorDb {
     return this.deps.db;
@@ -231,27 +232,34 @@ export class ResourceService {
   bindResource(input: BindResourceInput): AgentResourceBinding {
     assertAgentExists(this.deps.db, input.agentId);
 
-    if ("resourceId" in input && input.resourceId !== undefined) {
+    if (!("kind" in input)) {
       const resource = this.deps.db.getResource(input.resourceId);
       if (!resource) throw new Error(`Resource not found: ${input.resourceId}`);
-      return this.deps.db.linkAgentResource(input.agentId, input.resourceId, {
+      return this.deps.db.bindAgentResource(input.agentId, input.resourceId, {
         priority: input.priority,
       });
     }
 
     const resource = this.deps.db.getResourceByKindSlug(input.kind, input.slug);
     if (!resource) throw new Error(`Resource not found: ${input.kind}/${input.slug}`);
-    return this.deps.db.linkAgentResource(input.agentId, resource.id, {
+    return this.deps.db.bindAgentResource(input.agentId, resource.id, {
       priority: input.priority,
     });
   }
 
-  unbindResource(input: UnbindResourceInput): void {
-    if ("resourceId" in input && input.resourceId !== undefined) {
-      this.deps.db.unlinkAgentResource(input.agentId, input.resourceId);
-      return;
+  async unbindResource(input: UnbindResourceInput): Promise<void> {
+    let extensionSlug: string | undefined;
+    if (!("kind" in input)) {
+      const resource = this.deps.db.getResource(input.resourceId);
+      if (resource?.kind === "extension") extensionSlug = resource.slug;
+      this.deps.db.unbindAgentResource(input.agentId, input.resourceId);
+    } else {
+      if (input.kind === "extension") extensionSlug = input.slug;
+      this.deps.db.unbindAgentResourceBySlug(input.agentId, input.kind, input.slug);
     }
-    this.deps.db.unlinkAgentResourceBySlug(input.agentId, input.kind, input.slug);
+    if (extensionSlug) {
+      await this.deps.deactivateAgentExtension?.(input.agentId, extensionSlug);
+    }
   }
 
   async installAndBind(
@@ -265,18 +273,6 @@ export class ResourceService {
       priority,
     });
     return { ...installed, binding };
-  }
-
-  /** Legacy: map global path basename to slug and bind via DB. */
-  bindResourceByGlobalPath(
-    agentId: number,
-    kind: "skills" | "extensions" | "prompts",
-    globalPath: string,
-  ): AgentResourceBinding {
-    const resourceKind: ResourceKind =
-      kind === "extensions" ? "extension" : kind === "skills" ? "skill" : "prompt";
-    const slug = basename(globalPath).replace(/\.md$/, "");
-    return this.bindResource({ agentId, kind: resourceKind, slug });
   }
 }
 

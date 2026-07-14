@@ -1,6 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { getAgentHomeDir } from "../agent/agent-paths.js";
 import type { McpConfig, McpServerConfigType } from "./mcp-types.js";
 
 /** Resolve `${env:VAR_NAME}` placeholders in a string value. */
@@ -51,24 +49,4 @@ export function loadMcpConfigFile(configPath: string): McpConfig | null {
   } catch {
     return null;
   }
-}
-
-/** 从 Agent 主目录读取兼容旧结构的 mcp.json 配置。 */
-export function loadMcpConfig(agentId: string): McpConfig | null {
-  const agentHomeDir = getAgentHomeDir(agentId);
-  return loadMcpConfigFile(join(agentHomeDir, "mcp.json"));
-}
-
-/** Get list of active (non-disabled) MCP server configs. */
-export function getActiveMcpServers(agentId: string): Record<string, McpServerConfigType> {
-  const config = loadMcpConfig(agentId);
-  if (!config) return {};
-
-  const active: Record<string, McpServerConfigType> = {};
-  for (const [name, serverConfig] of Object.entries(config.servers)) {
-    if (!serverConfig.disabled) {
-      active[name] = serverConfig;
-    }
-  }
-  return active;
 }

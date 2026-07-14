@@ -5,9 +5,11 @@ import { describe, expect, it } from "vitest";
 import { createEventBus } from "../src/extension-system/extension-deps.js";
 import { Extension } from "../src/extension-system/extension.js";
 import { defineExtension } from "../src/extension-system/define-extension.js";
-import { discoverAndLoadExtensions } from "../src/extension-system/loader.js";
+import { loadExtensions } from "../src/extension-system/loader.js";
+import type { RuntimeOptions } from "../src/extension-system/types.js";
+import { createExtensionTestContext } from "./extension-context-fixture.js";
 
-function createRuntimeOptions(sessionId = 1) {
+function createRuntimeOptions(sessionId = 1): RuntimeOptions & { finishedSessions: number[] } {
   const eventBus = createEventBus();
   const finishedSessions: number[] = [];
   return {
@@ -19,10 +21,6 @@ function createRuntimeOptions(sessionId = 1) {
     projectDir: tmpdir(),
     agent: { id: 1, name: "test", providerId: 1, modelId: "test-model" },
     db: {
-      sessions: {
-        get: async () => undefined,
-        childrenOf: async () => [],
-      },
       sqlite: undefined,
       getMessages: async () => [],
       getMessageById: async () => undefined,
@@ -48,6 +46,7 @@ function createRuntimeOptions(sessionId = 1) {
       appendEntry: async () => "entry-1",
       sendMessage: async () => {},
       sendUserMessage: async () => {},
+      sendParentMsg: async () => {},
       getSessionDir: async () => tmpdir(),
       getProjectDir: async () => tmpdir(),
       getMemberAgentsByTag: async () => [],
@@ -120,17 +119,17 @@ function createRuntimeOptions(sessionId = 1) {
 
 describe("extension runtime events", () => {
   it("delivers system events registered via ctx.on", async () => {
-    const runtime = new Extension(createRuntimeOptions());
+    const runtime = new Extension(createExtensionTestContext(createRuntimeOptions()));
     let seen = 0;
 
     await runtime.load(
       defineExtension({
         name: "event-test",
         setup(ctx) {
-          ctx.runtime.on("session.start", async () => {
+          ctx.on("session.start", async () => {
             seen += 1;
           });
-          ctx.runtime.on("tool.after_call", async () => {
+          ctx.on("tool.after_call", async () => {
             seen += 10;
           });
         },
@@ -152,7 +151,7 @@ describe("extension runtime events", () => {
   });
 
   it("exposes project-owned and session-owned directories to extensions", async () => {
-    const runtime = new Extension(createRuntimeOptions());
+    const runtime = new Extension(createExtensionTestContext(createRuntimeOptions()));
     let seenDir = "";
     let seenProjectDir = "";
 
@@ -172,7 +171,7 @@ describe("extension runtime events", () => {
   });
 
   it("exposes core session object helpers", async () => {
-    const runtime = new Extension(createRuntimeOptions());
+    const runtime = new Extension(createExtensionTestContext(createRuntimeOptions()));
     let sessionId = 0;
     let isMain = false;
     let isChild = true;
@@ -200,12 +199,16 @@ describe("extension runtime events", () => {
     expect(childSessions).toBe(0);
   });
 
-  it("registers subagent tool only on main sessions", () => {
-    const mainRuntime = new Extension(createRuntimeOptions());
-    const childRuntime = new Extension({
-      ...createRuntimeOptions(2),
-      parentSessionId: 1,
-    });
+  it("registers subagent tool only on main sessions", async () => {
+    const mainRuntime = new Extension(createExtensionTestContext(createRuntimeOptions()));
+    const childRuntime = new Extension(
+      createExtensionTestContext({
+        ...createRuntimeOptions(2),
+        parentSessionId: 1,
+      }),
+    );
+    await mainRuntime.initialize();
+    await childRuntime.initialize();
 
     expect(mainRuntime.getTool("spawn_agent")).toBeDefined();
     expect(childRuntime.getTool("spawn_agent")).toBeUndefined();
@@ -213,7 +216,8 @@ describe("extension runtime events", () => {
 
   it("spawns child sessions through the session instance", async () => {
     const options = createRuntimeOptions();
-    const runtime = new Extension(options);
+    const runtime = new Extension(createExtensionTestContext(options));
+    await runtime.initialize();
     const result = await runtime.executeTool(
       "spawn_agent",
       { subagent_type: "review", prompt: "review the change", finish_on_result: true },
@@ -252,14 +256,14 @@ let hits = 0;
 export default defineExtension({
   name: "hello-events",
   setup(ctx) {
-    ctx.runtime.on("session.start", async () => { hits += 1; });
+    ctx.on("session.start", async () => { hits += 1; });
     ctx.session.appendEntry("hello-events", { hits });
   },
 });`,
       "utf8",
     );
 
-    const result = await discoverAndLoadExtensions({ agentHomeDir: tmp, cwd: tmp });
+    const result = await loadExtensions([extFile]);
     expect(result.errors).toHaveLength(0);
     expect(result.extensions.some((ext) => ext.definition.name === "hello-events")).toBe(true);
 

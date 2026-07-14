@@ -1,30 +1,13 @@
 #!/usr/bin/env node
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { parseArgs } from "node:util";
 import { serve } from "@hono/node-server";
 import prompts from "prompts";
-import {
-  getAgentHomeDir,
-  installExtensionToAgentDir,
-  linkGlobalResourceToAgent,
-  removeExtensionFromAgentDir,
-} from "./agent/agent-paths.js";
-import { BUILT_IN_PROVIDERS } from "./agent/built-in-providers.js";
-import { ensureBuiltinAssistant } from "./agent/builtin-assistant.js";
-import { ensurePackagedAgents } from "./agent/internal-agents.js";
-import {
-  installExtensionToGlobal,
-  uninstallGlobalExtension,
-  updateGlobalExtension,
-} from "./agent/extension-installer.js";
+import { BUILT_IN_PROVIDERS } from "./providers/built-in-providers.js";
+import { ensureBuiltinAssistant, ensurePackagedAgents } from "./agent/internal-agents.js";
 import { SupervisorDb } from "./db/db.js";
 import { getDefaultCwd, resolveWorkspacePath, setDefaultCwd } from "./config/default-cwd.js";
-import { listExtensionInfosInDirectories } from "./extension-system/loader.js";
 import { createHttpServer } from "./http/http-server.js";
 import { SessionManager } from "./core/session-manager.js";
-import { initializeResourceCatalog } from "./resources/catalog-sync.js";
-import { getGlobalResourceDirs } from "./agent/agent-paths.js";
 import type { Provider } from "./types.js";
 
 const KNOWN_CLI_OPTIONS = new Set(["port", "p", "db", "cwd", "h", "help"]);
@@ -125,18 +108,13 @@ Model Commands:
   models add                Add a model ID to a provider (interactive)
   models remove             Remove a model from a provider (interactive)
 
-Extension Commands (global catalog -> agent symlink):
+Extension Commands:
   extensions install <source>           Install from npm:<spec>, git:<url>, or local-path into global catalog
   extensions update <id>                  Re-fetch extension from package.json repository field
   extensions uninstall <id>             Remove extension from global catalog
   extensions list                       List extensions in the global catalog
-  extensions link <agent-id> <id>       Symlink a global extension into an agent home
-  extensions unlink <agent-id> <id>     Remove the symlink from an agent home
-
-Extension Commands (per-agent, ~/.pi/supervisor/agents/{agentId}/extensions/):
-  extensions agent-list <agent-id>           List extension entry files in agent dir
-  extensions agent-install <agent-id> <path>  Copy extension into agent dir
-  extensions agent-remove <agent-id> <id>      Remove extension from agent dir
+  extensions bind <agent-id> <id>       Bind a catalog extension to an agent in the database
+  extensions unbind <agent-id> <id>     Remove an agent extension binding
 
 Options:
   -p, --port <port>         HTTP server port (default: 3030)
@@ -239,11 +217,11 @@ async function run() {
         break;
       }
 
-      if (subCmd === "link") {
+      if (subCmd === "bind") {
         const agentIdRaw = cmdArgs[1];
         const id = cmdArgs[2];
         if (!agentIdRaw || !id) {
-          console.error("Usage: pi-supervisor extensions link <agent-id> <id>");
+          console.error("Usage: pi-supervisor extensions bind <agent-id> <id>");
           process.exit(1);
         }
         const agentId = Number(agentIdRaw);
@@ -252,16 +230,16 @@ async function run() {
           process.exit(1);
         }
         manager.resources.bindResource({ agentId, kind: "extension", slug: id });
-        console.log(`Linked extension ${id} to agent ${agentId} (database binding)`);
+        console.log(`Bound extension ${id} to agent ${agentId}`);
         db.close();
         break;
       }
 
-      if (subCmd === "unlink") {
+      if (subCmd === "unbind") {
         const agentIdRaw = cmdArgs[1];
         const id = cmdArgs[2];
         if (!agentIdRaw || !id) {
-          console.error("Usage: pi-supervisor extensions unlink <agent-id> <id>");
+          console.error("Usage: pi-supervisor extensions unbind <agent-id> <id>");
           process.exit(1);
         }
         const agentId = Number(agentIdRaw);
@@ -269,62 +247,12 @@ async function run() {
           console.error("agent-id must be a number");
           process.exit(1);
         }
-        manager.resources.unbindResource({ agentId, kind: "extension", slug: id });
-        console.log(`Unlinked extension ${id} from agent ${agentId}`);
+        await manager.resources.unbindResource({ agentId, kind: "extension", slug: id });
+        console.log(`Unbound extension ${id} from agent ${agentId}`);
         db.close();
         break;
       }
 
-      // Legacy per-agent dir commands
-      const agentId = cmdArgs[1];
-      if (!agentId) {
-        console.error(
-          "Usage: pi-supervisor extensions <agent-list|agent-install|agent-remove|install|uninstall|list|link|unlink> ...",
-        );
-        process.exit(1);
-      }
-      const agentHomeDir = getAgentHomeDir(agentId);
-      const agentExtDir = join(agentHomeDir, "extensions");
-      if (subCmd === "agent-list") {
-        const paths = listExtensionInfosInDirectories([agentExtDir]);
-        if (paths.length === 0) {
-          console.log(`No extensions in ${agentExtDir}`);
-        } else {
-          for (const info of paths) {
-            console.log(info.entryPath);
-          }
-        }
-        db.close();
-        break;
-      }
-      if (subCmd === "agent-install") {
-        const source = cmdArgs[2];
-        if (!source) {
-          console.error("Usage: pi-supervisor extensions agent-install <agent-id> <path>");
-          process.exit(1);
-        }
-        const installed = await manager.resources.installAndBind({
-          agentId: Number(agentId),
-          kind: "extension",
-          source,
-        });
-        console.log(
-          `Installed and linked extension ${installed.resource.slug} to agent ${agentId}`,
-        );
-        db.close();
-        break;
-      }
-      if (subCmd === "agent-remove") {
-        const id = cmdArgs[2];
-        if (!id) {
-          console.error("Usage: pi-supervisor extensions agent-remove <agent-id> <id>");
-          process.exit(1);
-        }
-        manager.resources.unbindResource({ agentId: Number(agentId), kind: "extension", slug: id });
-        console.log(`Removed extension binding ${id} from agent ${agentId}`);
-        db.close();
-        break;
-      }
       console.error(`Unknown extensions sub-command: ${subCmd ?? ""}`);
       showHelp();
       db.close();

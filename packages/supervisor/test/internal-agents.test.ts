@@ -7,12 +7,14 @@ import {
   ensurePackagedAgents,
   findPackagedAgentId,
   isAgentUserSpawnable,
+  isBuiltinAgent,
   loadPackagedAgentPrompt,
 } from "../src/agent/internal-agents.js";
 import { SupervisorDb } from "../src/db.js";
 import { Extension } from "../src/extension-system/extension.js";
 import { createEventBus } from "../src/extension-system/extension-deps.js";
 import type { RuntimeOptions } from "../src/extension-system/types.js";
+import { createExtensionTestContext } from "./extension-context-fixture.js";
 
 let db: SupervisorDb;
 let tmpDir: string;
@@ -39,7 +41,6 @@ function createShadowRuntimeOptions(): RuntimeOptions {
     projectDir: process.cwd(),
     agent: { id: 1, name: "shadow", providerId: 1, modelId: "test-model" },
     db: {
-      sessions: { get: async () => undefined, childrenOf: async () => [] },
       sqlite: undefined,
       getMessages: async () => [],
       getMessageById: async () => undefined,
@@ -146,6 +147,11 @@ describe("packaged agents", () => {
     const intro = db.getAgent(introId!);
     expect(shadow?.isInternal).toBe(true);
     expect(intro?.isInternal).toBe(false);
+    expect(shadow?.meta).toEqual({ builtin: true, userSpawnable: false });
+    expect(intro?.meta).toEqual({ builtin: true, userSpawnable: true });
+    expect(intro?.toolsPreset).toBe("coding");
+    expect(isBuiltinAgent(shadow)).toBe(true);
+    expect(isBuiltinAgent(intro)).toBe(true);
     expect(isAgentUserSpawnable(shadow)).toBe(false);
     expect(isAgentUserSpawnable(intro)).toBe(true);
     expect(() => assertAgentUserSpawnable(shadow, shadowId)).toThrow(/internal/i);
@@ -153,7 +159,8 @@ describe("packaged agents", () => {
   });
 
   it("shadow-child extension bans edit and write tools", async () => {
-    const runtime = new Extension(createShadowRuntimeOptions());
+    const runtime = new Extension(createExtensionTestContext(createShadowRuntimeOptions()));
+    await runtime.initialize();
     const edit = await runtime.checkToolBeforeCall("tc-1", "edit", { file_path: "a.ts" });
     const write = await runtime.checkToolBeforeCall("tc-2", "write", { file_path: "a.ts" });
     const read = await runtime.checkToolBeforeCall("tc-3", "read", { file_path: "a.ts" });

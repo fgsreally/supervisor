@@ -3,15 +3,12 @@ import { join, relative } from "node:path";
 import { getAgentHomeDir, readAgentHomeSystemPrompt } from "../agent/agent-paths.js";
 import type { SupervisorDb } from "../db/db.js";
 import {
-  collectExtensionPaths,
   listExtensionInfosInDirectories,
-  filterExtensionInfosByDir,
   loadExtensions,
   type ExtensionEntryInfo,
 } from "../extension-system/loader.js";
 import { probeExtensionTools } from "../extension-system/tool-probe.js";
 import { isPackagedToolId, probePackagedTool } from "../tools/catalog.js";
-import { listEnabledPackagedToolIds } from "../tools/loader.js";
 import { createDefaultTools } from "../utils/default-tools.js";
 import { loadPromptTemplates, type PromptTemplate } from "./prompt-templates.js";
 import { loadSkills, type Skill } from "./skills.js";
@@ -175,29 +172,6 @@ function promptToInfo(template: PromptTemplate): PromptTemplateInfo {
   };
 }
 
-function isUnderDir(filePath: string, dir: string): boolean {
-  const normalizedFile = filePath.replace(/\\/g, "/");
-  const normalizedDir = dir.replace(/\\/g, "/").replace(/\/$/, "");
-  return normalizedFile === normalizedDir || normalizedFile.startsWith(`${normalizedDir}/`);
-}
-
-function filterSkillsByDir(skills: Skill[], dir: string): SkillInfo[] {
-  return skills.filter((s) => isUnderDir(s.baseDir, dir)).map(skillToInfo);
-}
-
-function filterPromptsByDir(prompts: PromptTemplate[], dir: string): PromptTemplateInfo[] {
-  return prompts.filter((p) => isUnderDir(p.filePath, dir)).map(promptToInfo);
-}
-
-function filterExtensionsByDir(paths: string[], dir: string): ExtensionPathInfo[] {
-  return paths
-    .filter((p) => isUnderDir(p, dir))
-    .map((entryPath) => ({
-      entryPath,
-      fileName: entryPath.split(/[/\\]/).pop() ?? entryPath,
-    }));
-}
-
 function extensionEntryInfoToResourceInfo(info: ExtensionEntryInfo): ExtensionResourceInfo {
   return {
     id: info.id,
@@ -246,37 +220,17 @@ export function loadAgentSessionResources(
 
   const { skills } = loadSkills({
     cwd,
-    agentHomeDir,
     skillPaths,
-    includeDefaults: skillPaths.length === 0,
-    includeProject: false,
   });
 
   const promptTemplates = loadPromptTemplates({
     cwd,
-    agentHomeDir,
     promptPaths,
-    includeDefaults: promptPaths.length === 0,
-    includeProject: false,
   });
 
   const systemMd = readAgentHomeSystemPrompt(agentHomeDir);
 
   return { skills, promptTemplates, systemMd };
-}
-
-/** Extension paths from filesystem only (agent home dir). */
-export function listExtensionPathsFromDirs(
-  agent: Agent | undefined,
-  cwd: string,
-  includeProject: boolean,
-): string[] {
-  const agentHomeDir = agent?.homeDir ?? getAgentHomeDir(agent?.id ?? "default");
-  const dirs = [join(agentHomeDir, "extensions")];
-  if (includeProject) {
-    dirs.push(join(cwd, ".pi", "supervisor", "extensions"));
-  }
-  return listExtensionInfosInDirectories(dirs).map((info) => info.entryPath);
 }
 
 const SYSTEM_TOOLS: Array<Pick<AgentToolInfo, "name" | "source" | "description">> = [
@@ -364,10 +318,7 @@ export async function resolveAgentTools(
   }
 
   const toolSlugs = db.listAgentResourceSlugs(agentId, "tool");
-  const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
-  const legacyToolIds =
-    toolSlugs.length > 0 ? toolSlugs : (listEnabledPackagedToolIds(homeDir) as string[]);
-  for (const toolId of legacyToolIds) {
+  for (const toolId of toolSlugs) {
     if (!isPackagedToolId(toolId)) continue;
     const probed = await probePackagedTool(toolId, cwd);
     for (const tool of probed) {

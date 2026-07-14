@@ -28,14 +28,14 @@ pi-supervisor extensions install npm:my-ext@1.0.0
 pi-supervisor extensions install https://github.com/acme/my-ext
 pi-supervisor extensions install https://github.com/acme/monorepo/tree/main/packages/my-ext
 
-# 软链到 agent（不复制、不重复安装依赖）
-pi-supervisor extensions link <agent-id> <extension-id>
+# 通过数据库绑定到 agent
+pi-supervisor extensions bind <agent-id> <extension-id>
 
-# 从 package.json repository 字段拉取最新代码（保留目录，软链不失效）
+# 从 package.json repository 字段拉取最新代码（保留资源路径）
 pi-supervisor extensions update <extension-id>
 ```
 
-安装一次、多个 agent 共用：全局目录里只有一份代码和 `node_modules`，各 agent 通过软链引用。
+安装一次、多个 agent 共用：全局目录里只有一份代码和 `node_modules`，各 agent 通过数据库 binding 选择资源。
 
 扩展 `package.json` 需包含 `repository` 字段才能 `update`，例如：
 
@@ -57,38 +57,61 @@ monorepo 子目录：
 }
 ```
 
-不推荐 `extensions agent-install` 复制扩展；若源路径已在全局 catalog，请用 `link`。
+扩展只安装到全局 catalog；使用 `extensions bind` 为 Agent 创建数据库 binding。
 
 ## 加载目录
 
-`discoverAndLoadExtensions()` 默认只扫描 agent 目录：
+扩展安装到全局 catalog，Agent 通过数据库 `agent_resources` binding 选择扩展。Session 启动时只加载数据库中已绑定的扩展，不扫描 Agent Home 或项目目录。
 
-- `<agentHomeDir>/extensions`
-
-项目目录 `<cwd>/.pi/supervisor/extensions` 仅在 `LOAD_PROJECT_RESOURCES=true` 时启用。
-
-supervisor 不再默认加载任何工具扩展。仓库随包提供的 `supervisor-agent-tools` 只是可选扩展，路径可通过 `getSupervisorAgentToolsExtensionPath()` 获得。
+打包工具（`edit`、`lsp`、`web` 等）在 `src/tools/`，由 agent 资源配置启用，不再走扩展目录。
 
 ## 工具边界
 
-默认 agent 工具只保留 pi 原生 4 个：
+默认 agent 以会话资源绑定的工具为准；扩展可通过 `ctx.agent.tools.register` 增加工具。
 
-- `read`
-- `bash`
-- `edit`
-- `write`
+## 扩展 Context
 
-其他工具，包括 `ask`、`read_pattern`、`lsp`、`ast_grep`、输出压缩等，都必须通过扩展注册或覆盖。
+`setup(ctx)` 暴露业务域对象与少量宿主能力：
 
-## 可选工具扩展
+| 位置                              | 用途                                        |
+| --------------------------------- | ------------------------------------------- |
+| `ctx.session`                     | 会话域操作（spawn、发消息、meta、工具策略） |
+| `ctx.session.current`             | 当前会话（id / cwd / 是否空闲等）           |
+| `ctx.agent`                       | Agent 域操作（`tools.register`、改模型）    |
+| `ctx.agent.current`               | 当前 agent（id / name / model 等）          |
+| `ctx.db`                          | 只读库查询                                  |
+| `ctx.project`                     | 项目目录                                    |
+| `ctx.ui`                          | 广播、审批                                  |
+| `ctx.on` / `ctx.log` / `ctx.exec` | 事件、日志、命令                            |
+| `ctx.flow` / `ctx.inject`         | Turn 流程与注入                             |
 
-`src/extensions/agent-tools/index.ts` 提供一个可选工具扩展，名称为 `supervisor-agent-tools`。它注册：
+示例：
 
-- `ask`
-- `read_pattern`
-- `lsp`
-- `edit` 覆盖
-- 可用时注册 `ast_grep`
-- `tool.after_call` 输出压缩
+```ts
+import { defineExtension, Type } from "@earendil-works/pi-supervisor";
 
-是否加载它由用户或上层配置决定。
+export default defineExtension({
+  name: "demo",
+  setup(ctx) {
+    ctx.agent.tools.register({
+      name: "ping",
+      description: "Ping",
+      parameters: Type.Object({}),
+      async execute() {
+        return {
+          content: [
+            {
+              type: "text",
+              text: `session ${ctx.session.current.id} / agent ${ctx.agent.current.id}`,
+            },
+          ],
+        };
+      },
+    });
+
+    ctx.on("session.start", async () => {
+      await ctx.session.appendEntry("demo", { ok: true });
+    });
+  },
+});
+```

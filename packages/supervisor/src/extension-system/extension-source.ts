@@ -38,7 +38,7 @@ export function parseGithubUrl(input: string): ParsedGitSource | null {
     cloneUrl: `https://github.com/${owner}/${repo}.git`,
     ref,
     subpath: subpath || undefined,
-    idHint: subpath ? subpath.split("/").pop() ?? repo : repo,
+    idHint: subpath ? (subpath.split("/").pop() ?? repo) : repo,
   };
 }
 
@@ -83,7 +83,15 @@ export function parseExtensionSource(input: string): ExtensionSource {
     if (githubFromGitPlus) {
       return { kind: "git", ...githubFromGitPlus };
     }
-    return { kind: "git", cloneUrl: rest, idHint: rest.replace(/\.git$/, "").split("/").pop() ?? "extension" };
+    return {
+      kind: "git",
+      cloneUrl: rest,
+      idHint:
+        rest
+          .replace(/\.git$/, "")
+          .split("/")
+          .pop() ?? "extension",
+    };
   }
 
   const gitRemote = parseGitRemote(trimmed);
@@ -95,7 +103,11 @@ export function parseExtensionSource(input: string): ExtensionSource {
     return {
       kind: "git",
       cloneUrl: trimmed.endsWith(".git") ? trimmed : `${trimmed}.git`,
-      idHint: trimmed.replace(/\.git$/, "").split("/").pop() ?? "extension",
+      idHint:
+        trimmed
+          .replace(/\.git$/, "")
+          .split("/")
+          .pop() ?? "extension",
     };
   }
 
@@ -176,7 +188,10 @@ export function repositoryToGitSource(
     const cloneUrl = normalizeCloneUrl(url);
     const idHint =
       directory?.split("/").filter(Boolean).pop() ??
-      cloneUrl.replace(/\.git$/, "").split("/").pop() ??
+      cloneUrl
+        .replace(/\.git$/, "")
+        .split("/")
+        .pop() ??
       "extension";
     return { kind: "git", cloneUrl, subpath: directory, idHint };
   }

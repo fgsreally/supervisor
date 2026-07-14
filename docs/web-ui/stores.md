@@ -20,6 +20,7 @@ interface RootState {
 核心 store，最复杂：
 
 **State**：
+
 - `sessions: Session[]`
 - `messages: SessionMessageResponse[]`
 - `currentSessionId: string | null`
@@ -27,6 +28,7 @@ interface RootState {
 - `groupedSessions`（按 workspace 分组的 getter）
 
 **Actions**：
+
 - `fetchSessions()` / `fetchSession(id)` / `fetchSessionTree(id)`
 - `createSession(opts)` / `deleteSession(id)`
 - `promptSession(id, msg)` — **核心**，启动 SSE
@@ -41,14 +43,16 @@ interface RootState {
 ### useAgentStore（`store/index.ts:329-511`）
 
 **State**：
+
 - `agents: Agent[]`
 - `agentResources: Map<string, AgentResource>`
 
-**Actions**：fetch / create / update / delete agent，fetch / update systemMd，link resource。
+**Actions**：fetch / create / update / delete agent，fetch / update systemMd，bind resource。
 
 ### useProviderStore（`store/index.ts:515-687`）
 
 **State**：
+
 - `providers: Provider[]`
 - `providerModels: Map<string, Model[]>`
 
@@ -57,6 +61,7 @@ interface RootState {
 ### useResourceStore（`store/index.ts:691-753`）
 
 **State**：
+
 - `globalSkills / globalPrompts / globalExtensions: ResourceFile[]`
 - `resourceItems: AgentResource[]`
 

@@ -56,8 +56,8 @@ describe("AgentResource", () => {
       name: "answer",
       source_path: promptPath,
     });
-    db.linkAgentResource(agent.id, skill.id);
-    db.linkAgentResource(agent.id, prompt.id);
+    db.bindAgentResource(agent.id, skill.id);
+    db.bindAgentResource(agent.id, prompt.id);
 
     const resource = new AgentResource({
       sessionId: 10,

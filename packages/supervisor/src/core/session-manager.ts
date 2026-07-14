@@ -18,16 +18,15 @@ import {
 } from "@earendil-works/pi-ai";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import {
-  ensureGlobalResourceDirs,
   getAgentHomeDir,
-  getGlobalResourceDirs,
   readAgentHomeSystemPrompt,
   writeAgentHomeSystemPrompt,
 } from "../agent/agent-paths.js";
 import { getDefaultCwd } from "../config/default-cwd.js";
 import { initializeResourceCatalog } from "../resources/catalog-sync.js";
 import { ExtensionModuleRegistry } from "../resources/extension-registry.js";
-import { ResourceService } from "../resources/resource-service.js";
+import { ResourceManager } from "../resources/resource-manager.js";
+import { ensureGlobalResourceDirs, getGlobalResourceDirs } from "../resources/resource-paths.js";
 import { AgentResource } from "../resources/agent-resource.js";
 import type { ResourceKind } from "../resources/types.js";
 import {
@@ -36,7 +35,7 @@ import {
   resolveAgentResources,
   resolveAgentTools,
   skillsToResourceInfo,
-} from "../agent/agent-resources.js";
+} from "../resources/agent-resources.js";
 import { assertAgentUserSpawnable } from "../agent/internal-agents.js";
 import {
   type ApprovalResult,
@@ -54,12 +53,12 @@ import {
   handleSessionLifecycleAgentEnd,
   prepareSessionLifecycleSpawn,
 } from "../session-lifecycle.js";
-import { appendContextFilesToSystemPrompt } from "../agent/context-files.js";
+import { appendContextFilesToSystemPrompt } from "./context-files.js";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
 import { listExtensionInfosInDirectories } from "../extension-system/loader.js";
-import { loadPromptTemplates } from "../agent/prompt-templates.js";
-import { appendReadOrchestrationHint } from "../agent/system-prompts.js";
+import { loadPromptTemplates } from "../resources/prompt-templates.js";
+import { appendReadOrchestrationHint } from "../resources/system-prompts.js";
 import { copyMessagesWithInheritance } from "./session-branch.js";
 import {
   createSessionCheckpoint,
@@ -78,7 +77,7 @@ import {
   type SessionQueuedInput,
   shouldInterruptSessionInput,
 } from "./session-input-queue.js";
-import { loadSkills } from "../agent/skills.js";
+import { loadSkills } from "../resources/skills.js";
 import { resolveModelWithProviderOverrides } from "../utils/model-utils.js";
 import type { SessionSpawner } from "../spawn/session-spawner.js";
 import type { SpawnAgentToolProvider } from "../spawn/spawn-agent-tool-provider.js";
@@ -169,7 +168,7 @@ export class SessionManager {
   private spawnAgentToolProviders: SpawnAgentToolProvider[] = [];
   private readonly sessionInputQueues = new SessionInputQueue();
   private readonly extensionRegistry = new ExtensionModuleRegistry();
-  private readonly resourceService: ResourceService;
+  private readonly resourceManager: ResourceManager;
   private resourcesInitialized = false;
 
   constructor(db: SupervisorDb) {
@@ -177,10 +176,11 @@ export class SessionManager {
     const agentDir = join(homedir(), ".pi", "agent");
     const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
     this.modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
-    this.resourceService = new ResourceService({
+    this.resourceManager = new ResourceManager({
       db: this.db,
       extensionRegistry: this.extensionRegistry,
       ensureCatalog: () => this.ensureResourceCatalog(),
+      deactivateAgentExtension: (agentId, slug) => this.deactivateAgentExtension(agentId, slug),
     });
     void this.ensureResourceCatalog();
   }
@@ -197,8 +197,8 @@ export class SessionManager {
   }
 
   /** Unified resource install / bind API (CLI, HTTP, extensions). */
-  get resources(): ResourceService {
-    return this.resourceService;
+  get resources(): ResourceManager {
+    return this.resourceManager;
   }
 
   /** Cast SessionRow to the Session interface expected by the rest of the codebase. */
@@ -486,12 +486,9 @@ export class SessionManager {
     await runtime.initExtensions(
       session.agentId ?? session.id,
       agent?.name ?? "Session",
-      agent?.providerId ?? 0,
-      config.modelId,
       session.cwd,
       this.db,
       this,
-      systemPrompt,
     );
     const extensionTools = runtime.collectExtensionTools();
     if (extensionTools.length > 0) {
@@ -646,12 +643,9 @@ export class SessionManager {
     await runtime.initExtensions(
       activeSession.agentId ?? activeSession.id,
       agentInDb?.name ?? "Session",
-      agentInDb?.providerId ?? 0,
-      model.id,
       activeSession.cwd,
       this.db,
       this,
-      systemPrompt,
     );
     const extensionTools = runtime.collectExtensionTools();
     if (extensionTools.length > 0) {
@@ -1295,7 +1289,7 @@ export class SessionManager {
 
   /**
    * Resolve global resource catalog from ~/.pi/supervisor/global/.
-   * Agents link entries from here into their home via symlinks.
+   * Agent access is controlled by database resource bindings.
    */
   resolveGlobalResources(): ResourceLayer {
     ensureGlobalResourceDirs();
@@ -1309,18 +1303,12 @@ export class SessionManager {
 
     const { skills } = loadSkills({
       cwd: globalRoot,
-      agentHomeDir: globalRoot,
       skillPaths: [globalSkillsDir],
-      includeDefaults: false,
-      includeProject: false,
     });
 
     const promptTemplates = loadPromptTemplates({
       cwd: globalRoot,
-      agentHomeDir: globalRoot,
       promptPaths: [globalPromptsDir],
-      includeDefaults: false,
-      includeProject: false,
     });
 
     const extInfos = listExtensionInfosInDirectories([globalExtDir]);
@@ -1343,48 +1331,51 @@ export class SessionManager {
   }
 
   listResources(kind?: ResourceKind) {
-    return this.resourceService.listResources(kind);
+    return this.resourceManager.listResources(kind);
   }
 
   listAgentResourceBindings(agentId: number, kind?: ResourceKind) {
-    return this.resourceService.listAgentBindings(agentId, kind);
+    return this.resourceManager.listAgentBindings(agentId, kind);
+  }
+
+  private async deactivateAgentExtension(agentId: number, slug: string): Promise<void> {
+    const extensionId = this.extensionRegistry.get(slug)?.definition.name ?? slug;
+    const activeRuntimes = [...this.runtimes.entries()]
+      .filter(([sessionId]) => this._getSession(sessionId)?.agentId === agentId)
+      .map(([, runtime]) => runtime);
+    await Promise.all(activeRuntimes.map((runtime) => runtime.deactivateExtension(extensionId)));
   }
 
   async installExtension(source: string) {
-    return this.resourceService.installResource({ kind: "extension", source });
+    return this.resourceManager.installResource({ kind: "extension", source });
   }
 
   async uninstallExtension(slug: string): Promise<void> {
-    await this.resourceService.uninstallResource("extension", slug);
+    await this.resourceManager.uninstallResource("extension", slug);
   }
 
   async updateExtension(slug: string) {
-    return this.resourceService.updateExtension(slug);
+    return this.resourceManager.updateExtension(slug);
   }
 
-  linkAgentResourceById(agentId: number, resourceId: number): void {
-    this.resourceService.bindResource({ agentId, resourceId });
+  bindAgentResourceById(agentId: number, resourceId: number): void {
+    this.resourceManager.bindResource({ agentId, resourceId });
   }
 
-  linkAgentResourceBySlug(agentId: number, kind: ResourceKind, slug: string): void {
-    this.resourceService.bindResource({ agentId, kind, slug });
+  bindAgentResourceBySlug(agentId: number, kind: ResourceKind, slug: string): void {
+    this.resourceManager.bindResource({ agentId, kind, slug });
   }
 
-  unlinkAgentResourceById(agentId: number, resourceId: number): void {
-    this.resourceService.unbindResource({ agentId, resourceId });
+  async unbindAgentResourceById(agentId: number, resourceId: number): Promise<void> {
+    await this.resourceManager.unbindResource({ agentId, resourceId });
   }
 
-  unlinkAgentResourceBySlug(agentId: number, kind: ResourceKind, slug: string): void {
-    this.resourceService.unbindResource({ agentId, kind, slug });
-  }
-
-  /** @deprecated use linkAgentResourceBySlug / linkAgentResourceById */
-  linkAgentResource(
+  async unbindAgentResourceBySlug(
     agentId: number,
-    kind: "skills" | "extensions" | "prompts",
-    globalPath: string,
-  ): void {
-    this.resourceService.bindResourceByGlobalPath(agentId, kind, globalPath);
+    kind: ResourceKind,
+    slug: string,
+  ): Promise<void> {
+    await this.resourceManager.unbindResource({ agentId, kind, slug });
   }
 
   getLastMessagePreview(sessionId: number): string | null {

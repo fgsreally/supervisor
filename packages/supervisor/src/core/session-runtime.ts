@@ -13,20 +13,14 @@ import type {
   AgentResourceCommandInfo,
   AgentResourceCommandSource,
 } from "../resources/agent-resource.js";
-import { Extension, createExtensionDatabase } from "../extension-system/index.js";
-import { buildExtensionDeps } from "../extension-system/extension-deps.js";
-import { getAgentHomeDir } from "../agent/agent-paths.js";
-import { activatePackagedTools, listEnabledPackagedToolIds } from "../tools/loader.js";
+import { Extension } from "../extension-system/index.js";
+import { activatePackagedTools } from "../tools/loader.js";
 import { isPackagedToolId } from "../tools/catalog.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { SessionManager } from "./session-manager.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
-import {
-  ensureProjectDir,
-  ensureSessionDir,
-  getProjectDir,
-  getSessionDir,
-} from "./session-files.js";
+import { Context } from "./context.js";
+import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
 
 interface HarnessSessionTree {
   buildContext(): Promise<{ messages: AgentMessage[] }>;
@@ -128,69 +122,18 @@ export class SupervisorSessionRuntime {
   async initExtensions(
     agentId: number,
     agentName: string,
-    providerId: number,
-    modelId: string,
     cwd: string,
     db: SupervisorDb,
     manager: SessionManager,
-    systemPrompt?: string,
   ): Promise<void> {
     const session = this.getSession();
     if (session?.projectId == null) throw new Error(`Session ${this.id} has no project`);
     await ensureProjectDir(session.projectId);
     await ensureSessionDir(session.projectId, this.id);
-    const extDb = createExtensionDatabase({
-      sessionId: this.id,
-      query: async (sql, params) => {
-        const stmt = db.db.prepare(sql);
-        return stmt.all(...params) as any[];
-      },
-      queryOne: async (sql, params) => {
-        const stmt = db.db.prepare(sql);
-        return stmt.get(...params) as any;
-      },
-      sqlite: db.db,
-    });
-
-    const extensionRef: { current: Extension | null } = { current: null };
-    const deps = buildExtensionDeps({
-      runtime: this,
-      manager,
-      db,
-      sessionId: this.id,
-      projectId: session.projectId,
-      listSessionTools: () =>
-        Extension.mergeToolInfos(
-          this.harness.agent.state.tools ?? [],
-          extensionRef.current?.getAllTools() ?? [],
-        ),
-      emitExtensionEvent: (event) => extensionRef.current?.emit(event as any),
-    });
-    const sessionMeta =
-      typeof session.meta === "string"
-        ? (JSON.parse(session.meta) as Record<string, unknown>)
-        : ((session.meta as Record<string, unknown> | undefined) ?? {});
-    const options = {
-      sessionId: this.id,
-      parentSessionId: session.parentId,
-      sessionMeta,
-      cwd,
-      sessionDir: getSessionDir(session.projectId, this.id),
-      projectDir: getProjectDir(session.projectId),
-      agent: {
-        id: agentId,
-        name: agentName,
-        providerId,
-        modelId,
-        systemPrompt,
-      },
-      db: extDb,
-      deps,
-    };
-
-    const extension = new Extension(options);
+    const context = new Context({ sessionManager: manager, db, sessionRuntime: this });
+    const extension = new Extension(context);
     this._extension = extension;
-    extensionRef.current = extension;
+    await extension.initialize();
 
     const currentSession = this.getSession();
     await extension.emit({
@@ -213,8 +156,7 @@ export class SupervisorSessionRuntime {
     }
 
     const toolSlugs = db.listAgentResourceSlugs(agentId, "tool");
-    const legacyToolIds = listEnabledPackagedToolIds(getAgentHomeDir(String(agentId)));
-    const packagedToolIds = [...new Set([...toolSlugs.filter(isPackagedToolId), ...legacyToolIds])];
+    const packagedToolIds = toolSlugs.filter(isPackagedToolId);
     await activatePackagedTools(extension, {
       cwd,
       sessionId: this.id,
@@ -235,6 +177,10 @@ export class SupervisorSessionRuntime {
    */
   collectExtensionTools(): AgentTool[] {
     return this._extension?.collectTools() ?? [];
+  }
+
+  async deactivateExtension(extensionId: string): Promise<boolean> {
+    return (await this._extension?.unload(extensionId)) ?? false;
   }
 
   /**

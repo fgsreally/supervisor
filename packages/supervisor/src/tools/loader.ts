@@ -1,13 +1,7 @@
-import { existsSync, readdirSync, writeFileSync, mkdirSync } from "node:fs";
-import { basename, join } from "node:path";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Extension } from "../extension-system/extension.js";
-import {
-  activatePackagedTool,
-  isPackagedToolId,
-  PACKAGED_TOOL_IDS,
-  type PackagedToolId,
-} from "./catalog.js";
+import { activatePackagedTool, PACKAGED_TOOL_IDS, type PackagedToolId } from "./catalog.js";
 
 /** Directory containing supervisor-shipped packaged tools. */
 export function getPackagedToolsDir(): string {
@@ -21,47 +15,6 @@ export function listPackagedToolIds(): PackagedToolId[] {
 
 export function getPackagedToolDir(id: PackagedToolId): string {
   return join(getPackagedToolsDir(), id);
-}
-
-/**
- * List packaged tools enabled for an agent.
- * New layout: `<agentHome>/tools/<id>` marker files.
- * Legacy: `<agentHome>/extensions/<id>` symlinks from the old packaged-extension layout.
- */
-export function listEnabledPackagedToolIds(agentHomeDir: string): PackagedToolId[] {
-  const enabled = new Set<PackagedToolId>();
-
-  const toolsDir = join(agentHomeDir, "tools");
-  if (existsSync(toolsDir)) {
-    for (const entry of readdirSync(toolsDir, { withFileTypes: true })) {
-      if (isPackagedToolId(entry.name)) {
-        enabled.add(entry.name);
-      }
-    }
-  }
-
-  const extensionsDir = join(agentHomeDir, "extensions");
-  if (existsSync(extensionsDir)) {
-    for (const entry of readdirSync(extensionsDir, { withFileTypes: true })) {
-      if (isPackagedToolId(entry.name)) {
-        enabled.add(entry.name);
-      }
-    }
-  }
-
-  return [...enabled];
-}
-
-export function enablePackagedToolForAgent(agentHomeDir: string, toolId: PackagedToolId): string {
-  const toolsDir = join(agentHomeDir, "tools");
-  mkdirSync(toolsDir, { recursive: true });
-  const marker = join(toolsDir, toolId);
-  writeFileSync(marker, `${toolId}\n`, "utf-8");
-  return marker;
-}
-
-export function isLegacyPackagedToolExtensionDir(dirPath: string): boolean {
-  return isPackagedToolId(basename(dirPath));
 }
 
 export async function activatePackagedTools(

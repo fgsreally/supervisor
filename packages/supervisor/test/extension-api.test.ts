@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { Type } from "typebox";
+import { ContextDb } from "../src/core/context.js";
+import { Type } from "../src/extension-system/schema.js";
 import { defineExtension } from "../src/extension-system/define-extension.js";
 import { Extension } from "../src/extension-system/extension.js";
 import { createEventBus } from "../src/extension-system/extension-deps.js";
 import { ToolPolicy } from "../src/extension-system/tool-policy.js";
 import type { RuntimeOptions } from "../src/extension-system/types.js";
+import { createExtensionTestContext } from "./extension-context-fixture.js";
 
 function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.fn> }) {
   const eventBus = createEventBus();
@@ -16,7 +18,6 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
     projectDir: process.cwd(),
     agent: { id: 1, name: "test", providerId: 1, modelId: "test-model" },
     db: {
-      sessions: { get: async () => undefined, childrenOf: async () => [] },
       sqlite: undefined,
       getMessages: async () => [],
       getMessageById: async () => undefined,
@@ -42,6 +43,7 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
       appendEntry: async () => "entry-1",
       sendMessage: async () => {},
       sendUserMessage: async () => {},
+      sendParentMsg: async () => {},
       continueTurn: overrides?.continueTurn ?? vi.fn(async () => {}),
       setActiveTools: vi.fn(async () => {}),
       getContextUsage: async () => ({ tokens: 42 }),
@@ -100,6 +102,27 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
 }
 
 describe("extension api", () => {
+  it("ctx.db exposes raw parameterized SQL", () => {
+    const statement = {
+      all: vi.fn(() => [{ id: 1 }]),
+      get: vi.fn(() => ({ id: 1 })),
+      run: vi.fn(() => ({ changes: 1 })),
+    };
+    const prepare = vi.fn(() => statement);
+    const db = new ContextDb({ prepare });
+
+    expect(db.query<{ id: number }>("SELECT id FROM sessions WHERE id = ?", [1])).toEqual([
+      { id: 1 },
+    ]);
+    expect(db.queryOne<{ id: number }>("SELECT id FROM agents WHERE id = ?", [1])).toEqual({
+      id: 1,
+    });
+    expect(db.execute("UPDATE sessions SET status = ? WHERE id = ?", ["idle", 1])).toEqual({
+      changes: 1,
+    });
+    expect(prepare).toHaveBeenCalledTimes(3);
+  });
+
   it("ToolPolicy blocks edit outside allowed plan file path", () => {
     const policy = ToolPolicy.readonly()
       .allowTool("edit")
@@ -110,7 +133,7 @@ describe("extension api", () => {
   });
 
   it("session.tools.beforeUse can block tool calls", async () => {
-    const runtime = new Extension(createRuntimeOptions());
+    const runtime = new Extension(createExtensionTestContext(createRuntimeOptions()));
     runtime.services.tools.beforeUse(() => ({ allow: false, reason: "blocked by extension" }));
 
     const result = await runtime.checkToolBeforeCall("tc-1", "edit", { file_path: "/a.ts" });
@@ -119,7 +142,7 @@ describe("extension api", () => {
   });
 
   it("inject appends boundary messages", () => {
-    const runtime = new Extension(createRuntimeOptions());
+    const runtime = new Extension(createExtensionTestContext(createRuntimeOptions()));
     runtime.services.inject.schedule({ variant: "goal", content: "stay focused" });
     const out = runtime.applyTurnInjections([
       { role: "user", content: [{ type: "text", text: "hi" }], timestamp: Date.now() },
@@ -134,13 +157,15 @@ describe("extension api", () => {
 
   it("flow.continue queues a continuation turn", async () => {
     const continueTurn = vi.fn(async () => {});
-    const runtime = new Extension(createRuntimeOptions({ continueTurn }));
+    const runtime = new Extension(
+      createExtensionTestContext(createRuntimeOptions({ continueTurn })),
+    );
 
     await runtime.load(
       defineExtension({
         name: "flow-test",
         setup(ctx) {
-          void ctx.runtime.flow.continue({
+          void ctx.flow.continue({
             prompt: "keep going",
             origin: "goal_continuation",
             dedupeKey: "goal:1",
@@ -156,7 +181,7 @@ describe("extension api", () => {
   });
 
   it("Extension.wrapTools returns error when blocked", async () => {
-    const runtime = new Extension(createRuntimeOptions());
+    const runtime = new Extension(createExtensionTestContext(createRuntimeOptions()));
     runtime.services.tools.setPolicy(ToolPolicy.readonly());
 
     const [tool] = runtime.wrapTools([
@@ -188,7 +213,7 @@ describe("extension api", () => {
         approvalId = event.approvalId;
       }
     }) as RuntimeOptions["deps"]["broadcast"];
-    const runtime = new Extension(options);
+    const runtime = new Extension(createExtensionTestContext(options));
     const { submitApprovalResolution } =
       await import("../src/extension-system/extension-session-services.js");
 
@@ -205,14 +230,16 @@ describe("extension api", () => {
   });
 
   it("每个 Agent 的 Extension 工具注册表彼此隔离", async () => {
-    const first = new Extension(createRuntimeOptions());
-    const second = new Extension({ ...createRuntimeOptions(), sessionId: 2 });
+    const first = new Extension(createExtensionTestContext(createRuntimeOptions()));
+    const second = new Extension(
+      createExtensionTestContext({ ...createRuntimeOptions(), sessionId: 2 }),
+    );
 
     await first.load(
       defineExtension({
         name: "isolated-extension",
         setup(ctx) {
-          ctx.agent.tools.register({
+          ctx.agent.registerTool({
             name: "isolated_tool",
             description: "只属于第一个 Agent",
             parameters: Type.Object({}),
@@ -230,14 +257,14 @@ describe("extension api", () => {
   });
 
   it("clear 统一执行 cleanup 并清空扩展工具", async () => {
-    const extension = new Extension(createRuntimeOptions());
+    const extension = new Extension(createExtensionTestContext(createRuntimeOptions()));
     const cleanup = vi.fn();
 
     await extension.load(
       defineExtension({
         name: "cleanup-extension",
         setup(ctx) {
-          ctx.agent.tools.register({
+          ctx.agent.registerTool({
             name: "cleanup_tool",
             description: "用于验证清理",
             parameters: Type.Object({}),
@@ -255,5 +282,32 @@ describe("extension api", () => {
 
     expect(cleanup).toHaveBeenCalledOnce();
     expect(extension.getTool("cleanup_tool")).toBeUndefined();
+  });
+
+  it("unload 只清理当前 Session 中指定扩展的资源", async () => {
+    const extension = new Extension(createExtensionTestContext(createRuntimeOptions()));
+    const cleanup = vi.fn(async () => {});
+
+    await extension.load(
+      defineExtension({
+        name: "removable-extension",
+        setup(ctx) {
+          ctx.agent.registerTool({
+            name: "removable_tool",
+            description: "removed with its extension",
+            parameters: Type.Object({}),
+            async execute() {
+              return { content: [{ type: "text", text: "ok" }] };
+            },
+          });
+          return cleanup;
+        },
+      }),
+      "/tmp/removable-extension.ts",
+    );
+
+    await expect(extension.unload("removable-extension")).resolves.toBe(true);
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(extension.getTool("removable_tool")).toBeUndefined();
   });
 });

@@ -507,14 +507,14 @@ export const useAgentStore = defineStore("agent", () => {
     }
   }
 
-  async function linkAgentResource(id: string, kind: api.AgentResourceKind, path: string) {
+  async function bindAgentResource(id: string, kind: api.CatalogResourceKind, sourcePath: string) {
     root.clearError();
     try {
-      const result = await api.linkAgentResource(id, kind, path);
+      const result = await api.bindAgentResourceBySourcePath(id, kind, sourcePath);
       await fetchAgentResources(id);
       return result;
     } catch (err) {
-      root.setError(err instanceof Error ? err.message : "Failed to link resource");
+      root.setError(err instanceof Error ? err.message : "Failed to bind resource");
       throw err;
     }
   }
@@ -538,7 +538,7 @@ export const useAgentStore = defineStore("agent", () => {
     fetchAgentResources,
     fetchAgentSystemMd,
     updateAgentSystemMd,
-    linkAgentResource,
+    bindAgentResource,
     setCurrentAgent,
   };
 });

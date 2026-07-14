@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SupervisorDb } from "../src/db.js";
 import { ExtensionModuleRegistry } from "../src/resources/extension-registry.js";
-import { ResourceService } from "../src/resources/resource-service.js";
-import { ensureGlobalResourceDirs } from "../src/agent/agent-paths.js";
+import { ResourceManager } from "../src/resources/resource-manager.js";
+import { ensureGlobalResourceDirs } from "../src/resources/resource-paths.js";
 
 let db: SupervisorDb;
-let service: ResourceService;
+let manager: ResourceManager;
 let tmpDir: string;
 let originalHome: string | undefined;
 let originalUserProfile: string | undefined;
@@ -23,7 +23,7 @@ beforeEach(() => {
   ensureGlobalResourceDirs();
   db = new SupervisorDb(join(tmpDir, "test.db"));
   const registry = new ExtensionModuleRegistry();
-  service = new ResourceService({
+  manager = new ResourceManager({
     db,
     extensionRegistry: registry,
     ensureCatalog: async () => {},
@@ -39,7 +39,7 @@ afterEach(() => {
   else process.env.USERPROFILE = originalUserProfile;
 });
 
-describe("ResourceService", () => {
+describe("ResourceManager", () => {
   it("installs prompt, binds to agent, and uninstalls when unbound", async () => {
     const providerId = db.insertProvider({
       slug: "test",
@@ -55,12 +55,12 @@ describe("ResourceService", () => {
     const promptSrc = join(tmpDir, "hello.md");
     writeFileSync(promptSrc, "# Hello\n", "utf8");
 
-    const installed = await service.installResource({ kind: "prompt", source: promptSrc });
+    const installed = await manager.installResource({ kind: "prompt", source: promptSrc });
     expect(installed.resource.kind).toBe("prompt");
     expect(installed.resource.slug).toBe("hello");
     expect(existsSync(installed.resource.sourcePath!)).toBe(true);
 
-    const binding = service.bindResource({
+    const binding = manager.bindResource({
       agentId: agent.id,
       kind: "prompt",
       slug: "hello",
@@ -68,16 +68,16 @@ describe("ResourceService", () => {
     expect(binding.agentId).toBe(agent.id);
     expect(binding.resourceId).toBe(installed.resource.id);
 
-    const bindings = service.listAgentBindings(agent.id, "prompt");
+    const bindings = manager.listAgentBindings(agent.id, "prompt");
     expect(bindings).toHaveLength(1);
 
-    service.unbindResource({ agentId: agent.id, resourceId: installed.resource.id });
-    await service.uninstallResource("prompt", "hello");
+    await manager.unbindResource({ agentId: agent.id, resourceId: installed.resource.id });
+    await manager.uninstallResource("prompt", "hello");
     expect(db.getResourceByKindSlug("prompt", "hello")).toBeUndefined();
   });
 
   it("registerTool creates DB-only resource", () => {
-    const tool = service.registerTool("read", { name: "Read" });
+    const tool = manager.registerTool("read", { name: "Read" });
     expect(tool.kind).toBe("tool");
     expect(tool.slug).toBe("read");
     expect(tool.sourcePath).toBeNull();
@@ -96,8 +96,36 @@ describe("ResourceService", () => {
     });
     const promptSrc = join(tmpDir, "bound.md");
     writeFileSync(promptSrc, "# Bound\n", "utf8");
-    const installed = await service.installResource({ kind: "prompt", source: promptSrc });
-    service.bindResource({ agentId: agent.id, resourceId: installed.resource.id });
-    await expect(service.uninstallResource("prompt", "bound")).rejects.toThrow(/still linked/);
+    const installed = await manager.installResource({ kind: "prompt", source: promptSrc });
+    manager.bindResource({ agentId: agent.id, resourceId: installed.resource.id });
+    await expect(manager.uninstallResource("prompt", "bound")).rejects.toThrow(/still bound/);
+  });
+
+  it("deactivates an extension after it is unbound from an agent", async () => {
+    const providerId = db.insertProvider({
+      slug: "extension-test",
+      name: "Extension Test",
+      api_type: "openai",
+    });
+    const agent = db.insertAgent({ name: "Agent", provider_id: providerId });
+    const extension = db.upsertResource({
+      kind: "extension",
+      slug: "test-extension",
+      source_path: null,
+    });
+    const deactivated: Array<[number, string]> = [];
+    const extensionManager = new ResourceManager({
+      db,
+      extensionRegistry: new ExtensionModuleRegistry(),
+      ensureCatalog: async () => {},
+      deactivateAgentExtension: async (agentId, slug) => {
+        deactivated.push([agentId, slug]);
+      },
+    });
+    extensionManager.bindResource({ agentId: agent.id, resourceId: extension.id });
+
+    await extensionManager.unbindResource({ agentId: agent.id, resourceId: extension.id });
+
+    expect(deactivated).toEqual([[agent.id, "test-extension"]]);
   });
 });

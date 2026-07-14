@@ -5,28 +5,20 @@
  */
 
 // Core
-export { defineExtension, defineExtensionAsync } from "./define-extension.js";
+export { defineExtension } from "./define-extension.js";
 export { Extension, type AgentExtensionModule } from "./extension.js";
+export { Type, type Static, type TSchema } from "./schema.js";
 
 // Loader
 export {
-  collectExtensionPaths,
-  discoverAndLoadExtensions,
-  discoverExtensionsInDir,
-  filterExtensionInfosByDir,
-  getExtensionDirectories,
-  getPackagedExtensionPath,
-  getPackagedExtensionsDir,
-  getSupervisorAgentToolsExtensionPath,
   listExtensionInfosInDirectories,
-  listExtensionsInDirectories,
-  listPackagedExtensionPaths,
   loadExtension,
+  loadExtensionModule,
   loadExtensions,
   resolveExtensionEntries,
 } from "./loader.js";
 export type { ExtensionEntryInfo } from "./loader.js";
-export { createExtensionDatabase } from "./runtime.js";
+export { createExtensionDatabase } from "./extension-deps.js";
 export { ToolPolicy, matchGlob, extractFilePaths, isWriteTool } from "./tool-policy.js";
 export { submitApprovalResolution, cancelPendingApprovals } from "./extension-session-services.js";
 export type {
@@ -48,7 +40,6 @@ export type {
   EventHandlerContext,
   // Utils
   ExecResult,
-  ExtensionInstance,
   // Context
   ExtensionContext,
   ExtensionDatabase,
@@ -70,17 +61,7 @@ export type {
   SearchResult,
   SpawnSessionRequest,
   SpawnSessionResult,
-  SupervisorAgentFacade,
   SupervisorProjectFacade,
-  SupervisorRuntimeFacade,
-  SupervisorSessionFacade,
-  SupervisorSessionMembersFacade,
-  SupervisorSessionMessagesFacade,
-  SupervisorSessionMetaFacade,
-  SupervisorSessionRuntimeFacade,
-  SupervisorSessionToolSetFacade,
-  SupervisorSystemFacade,
-  SupervisorToolRegistryFacade,
   SupervisorUiFacade,
   TurnFlowFacade,
   TurnInjectorFacade,

@@ -8,7 +8,7 @@ Pi Supervisor 由两个包组成：
 │  ─────────────────────────  │  HTTP  │  ──────────────────────  │
 │  Pinia store               │ ←────→ │  Hono HTTP API           │
 │  api/api.ts (axios-like)   │        │  SessionManager          │
-│  Chat / Settings / Resources│        │  ExtensionRuntime        │
+│  Chat / Settings / Resources│        │  SessionExtensionHost    │
 └────────────────────────────┘        │  MCP Client              │
                                        │  SQLite (supervisor.db)  │
                                        └──────────────────────────┘
@@ -20,20 +20,20 @@ Pi Supervisor 由两个包组成：
 
 ### 核心模块
 
-| 模块             | 路径                              | 职责                                          |
-| ---------------- | --------------------------------- | --------------------------------------------- |
-| SessionManager   | `src/core/session-manager.ts:371` | 创建、fork、clone、kill、complete、checkpoint |
-| SessionRuntime   | `src/core/session-runtime.ts:133` | prompt / steer / follow-up / abort            |
-| SessionStorage   | `src/core/session-storage.ts:12`  | SQLite 持久化消息树                           |
-| SupervisorDb     | `src/db/db.ts:96`                 | schema、迁移、FTS5 全文搜索                   |
-| ExtensionRuntime | `src/extension-system/runtime.ts` | 加载扩展、事件分发、工具注入                  |
-| MCP Client       | `src/mcp/mcp-client-manager.ts`   | Stdio + SSE MCP 服务器连接                    |
-| Compaction       | `src/core/compaction/rolling.ts`  | 按上下文用量执行滚动压缩                      |
+| 模块                 | 路径                                 | 职责                                          |
+| -------------------- | ------------------------------------ | --------------------------------------------- |
+| SessionManager       | `src/core/session-manager.ts:371`    | 创建、fork、clone、kill、complete、checkpoint |
+| SessionRuntime       | `src/core/session-runtime.ts:133`    | prompt / steer / follow-up / abort            |
+| SessionStorage       | `src/core/session-storage.ts:12`     | SQLite 持久化消息树                           |
+| SupervisorDb         | `src/db/db.ts:96`                    | schema、迁移、FTS5 全文搜索                   |
+| SessionExtensionHost | `src/core/session-extension/host.ts` | 激活扩展、事件分发、工具注入                  |
+| MCP Extension        | `src/extension/builtin/mcp/index.ts` | Stdio + SSE MCP 服务器连接与工具注册          |
+| Compaction           | `src/core/compaction/rolling.ts`     | 按上下文用量执行滚动压缩                      |
 
 ### 数据存储
 
 - SQLite：`~/.pi/supervisor/supervisor.db`（schema 在 `src/db/db.ts:96-152`）
-- Agent 工作目录：`~/.pi/supervisor/agents/<agent-id>/`（`src/agent/agent-paths.ts`）
+- Agent 工作目录：`~/.pi/supervisor/agents/<agent-id>/`（`src/agent/index.ts`）
 
 ## 前端：`@earendil-works/pi-supervisor-ui`
 

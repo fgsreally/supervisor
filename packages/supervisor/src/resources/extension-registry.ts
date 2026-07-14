@@ -1,6 +1,5 @@
-import { requireExtensionEntry } from "../extension-system/extension-entry.js";
-import { loadExtensionModule } from "../extension-system/loader.js";
-import type { ExtensionDefinition } from "../extension-system/types.js";
+import { loadExtensionModule, requireExtensionEntry } from "../extension/index.js";
+import type { ExtensionDefinition } from "../extension/index.js";
 import type { SupervisorDb } from "../db/db.js";
 
 export interface LoadedExtensionModule {
@@ -13,7 +12,7 @@ export interface LoadedExtensionModule {
 
 /**
  * 进程级扩展模块导入缓存。
- * 每个 slug 只导入一次；每个 Agent 的 Extension 实例只执行 setup()。
+ * 每个 slug 只导入一次；每个 SessionExtensionHost 只执行一次 setup()。
  */
 export class ExtensionModuleRegistry {
 	private readonly modules = new Map<string, LoadedExtensionModule>();

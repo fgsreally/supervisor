@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
-import { ensureAgentHome, getAgentHomeDir } from "../agent/agent-paths.js";
+import { ensureAgentHome, getAgentHomeDir } from "../agent/index.js";
 import { encryptApiKey, decryptApiKey } from "../utils/encrypt.js";
 import type {
   AgentResourceBinding,

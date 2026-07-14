@@ -1,14 +1,10 @@
 import { readFileSync } from "node:fs";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Agent } from "../types.js";
 import type { SourceInfo } from "../utils/source-info.js";
 import type { SupervisorDb } from "../db/db.js";
 import { loadAgentSessionResources } from "./agent-resources.js";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.js";
 import { formatSkillsForPrompt, type Skill } from "./skills.js";
-import { McpClientManager } from "../mcp/mcp-client-manager.js";
-import { loadMcpConfigFile } from "../mcp/mcp-config-loader.js";
-import type { McpServerConfigType } from "../mcp/mcp-types.js";
 
 /** Resource 可提供的动态斜杠命令来源。 */
 export type AgentResourceCommandSource = "prompt" | "skill";
@@ -27,7 +23,7 @@ export interface AgentResourceCommandInfo {
 
 /** 创建单个 Agent 资源管理器所需的上下文。 */
 export interface AgentResourceOptions {
-  /** 当前会话 ID，用于隔离 MCP 连接。 */
+  /** 当前会话 ID。 */
   sessionId: number;
   /** 当前会话实际绑定的 Agent ID。 */
   agentId: number;
@@ -41,7 +37,7 @@ export interface AgentResourceOptions {
 
 /**
  * 与单个运行中 Agent 绑定的非扩展资源管理器。
- * Skill、Prompt Template、SYSTEM.md 和 MCP 的加载、使用及清理都由它统一负责。
+ * Skill、Prompt Template 和 SYSTEM.md 的加载、使用及清理都由它统一负责。
  */
 export class AgentResource {
   /** 当前会话 ID。 */
@@ -68,10 +64,7 @@ export class AgentResource {
   /** 从 Agent 主目录加载的 SYSTEM.md 内容。 */
   private loadedSystemMd = "";
 
-  /** 当前 Agent 独占的 MCP 客户端管理器。 */
-  private mcpManager: McpClientManager | null = null;
-
-  /** 记录资源是否已完成加载，避免重复建立 MCP 连接。 */
+  /** 记录资源是否已完成加载，避免重复读取。 */
   private loaded = false;
 
   /** 保存 Agent 上下文，但不立即执行文件读取或网络连接。 */
@@ -98,8 +91,8 @@ export class AgentResource {
     return this.loadedSystemMd;
   }
 
-  /** 加载 Skill、Prompt Template、SYSTEM.md，并连接该 Agent 绑定的 MCP 服务。 */
-  async load(): Promise<void> {
+  /** 加载 Skill、Prompt Template 和 SYSTEM.md。 */
+  load(): void {
     if (this.loaded) return;
 
     const resources = loadAgentSessionResources(this.db, this.agent, this.cwd);
@@ -107,9 +100,6 @@ export class AgentResource {
     this.loadedPromptTemplates = resources.promptTemplates;
     this.loadedSystemMd = resources.systemMd;
 
-    const mcpConfigs = this.loadBoundMcpConfigs();
-    this.mcpManager = new McpClientManager(mcpConfigs);
-    await this.mcpManager.connectAll();
     this.loaded = true;
   }
 
@@ -143,37 +133,12 @@ export class AgentResource {
     return [...skillCommands, ...templateCommands];
   }
 
-  /** 返回当前 Agent 已连接 MCP 服务提供的工具。 */
-  getMcpTools(): AgentTool[] {
-    return this.mcpManager?.getTools() ?? [];
-  }
-
-  /** 断开 MCP 服务并清除当前 Agent 已加载的全部非扩展资源。 */
-  async clear(): Promise<void> {
-    await this.mcpManager?.disconnectAll();
-    this.mcpManager = null;
+  /** 清除当前 Agent 已加载的非扩展资源。 */
+  clear(): void {
     this.loadedSkills = [];
     this.loadedPromptTemplates = [];
     this.loadedSystemMd = "";
     this.loaded = false;
-  }
-
-  /** 从数据库绑定的 MCP JSON 文件合并服务配置。 */
-  private loadBoundMcpConfigs(): Record<string, McpServerConfigType> | undefined {
-    const bindings = this.db.listAgentResources(this.agentId, "mcp");
-    if (bindings.length === 0) return undefined;
-
-    const servers: Record<string, McpServerConfigType> = {};
-    for (const binding of bindings) {
-      const sourcePath = binding.resource?.sourcePath;
-      if (!sourcePath) continue;
-      const config = loadMcpConfigFile(sourcePath);
-      if (!config) continue;
-      for (const [name, server] of Object.entries(config.servers)) {
-        if (!server.disabled) servers[name] = server;
-      }
-    }
-    return servers;
   }
 
   /** 将 /skill:name 命令替换成包含 Skill 正文和参数的模型输入。 */

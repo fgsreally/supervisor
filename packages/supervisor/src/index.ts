@@ -30,7 +30,7 @@ export function startSupervisor(options: SupervisorOptions = {}): {
   };
 }
 
-export { ensureAgentHome, getAgentHomeDir, getSupervisorAgentsRoot } from "./agent/agent-paths.js";
+export { ensureAgentHome, getAgentHomeDir, getSupervisorAgentsRoot } from "./agent/index.js";
 export type { AgentResources, AgentToolInfo, ResourceLayer } from "./resources/agent-resources.js";
 export {
   loadAgentSessionResources,
@@ -40,11 +40,8 @@ export {
 export { SupervisorDb } from "./db/db.js";
 export { createDefaultTools } from "./utils/default-tools.js";
 export { activatePackagedTools, getPackagedToolDir, listPackagedToolIds } from "./tools/index.js";
-export { defineExtension } from "./extension-system/define-extension.js";
-export { Type, type Static, type TSchema } from "./extension-system/schema.js";
-export { Extension } from "./extension-system/extension.js";
-export type { AgentExtensionModule } from "./extension-system/extension.js";
-export { loadExtension, loadExtensions } from "./extension-system/loader.js";
+export { defineExtension, Type, type Static, type TSchema } from "./extension/index.js";
+export { loadExtension, loadExtensions } from "./extension/index.js";
 export type {
   ExtensionContext,
   SpawnSessionRequest,
@@ -52,19 +49,12 @@ export type {
   SupervisorProjectFacade,
   SupervisorUiFacade,
   ToolDefinition,
-} from "./extension-system/types.js";
+} from "./extension/index.js";
 export { createHttpServer } from "./http/http-server.js";
 export { extractMessageSearchFields } from "./db/message-search.js";
 export { copyMessagesWithInheritance } from "./core/session-branch.js";
 export type { SessionOutputListener } from "./core/session-manager.js";
 export { SessionManager } from "./core/session-manager.js";
-export {
-  Context,
-  ContextAgent,
-  ContextDb,
-  ContextSession,
-  type ContextDependencies,
-} from "./core/context.js";
 export {
   ResourceManager,
   type BindResourceInput,
@@ -80,8 +70,8 @@ export {
   type AgentResourceOptions,
 } from "./resources/agent-resource.js";
 export type { AgentResourceBinding, Resource, ResourceKind } from "./resources/types.js";
-export type { SupervisorSessionEvent, SupervisorSessionState } from "./core/session-runtime.js";
-export { SupervisorSessionRuntime } from "./core/session-runtime.js";
+export type { SessionEvent, SessionState } from "./core/session-runtime.js";
+export { SessionRuntime } from "./core/session-runtime.js";
 export { formatSkillsForPrompt, loadSkills, loadSkillsFromDir } from "./resources/skills.js";
 export type { SessionSpawner } from "./spawn/session-spawner.js";
 export type {

@@ -21,7 +21,7 @@ import {
   getAgentHomeDir,
   readAgentHomeSystemPrompt,
   writeAgentHomeSystemPrompt,
-} from "../agent/agent-paths.js";
+} from "../agent/index.js";
 import { getDefaultCwd } from "../config/default-cwd.js";
 import { initializeResourceCatalog } from "../resources/catalog-sync.js";
 import { ExtensionModuleRegistry } from "../resources/extension-registry.js";
@@ -36,12 +36,9 @@ import {
   resolveAgentTools,
   skillsToResourceInfo,
 } from "../resources/agent-resources.js";
-import { assertAgentUserSpawnable } from "../agent/internal-agents.js";
-import {
-  type ApprovalResult,
-  cancelPendingApprovals,
-  submitApprovalResolution,
-} from "../extension-system/extension-session-services.js";
+import { assertAgentUserSpawnable } from "../agent/index.js";
+import { cancelPendingApprovals, submitApprovalResolution } from "./session-extension/index.js";
+import type { ApprovalResult } from "../extension/index.js";
 import {
   type AskAnswer,
   cancelPendingAsks,
@@ -56,7 +53,7 @@ import {
 import { appendContextFilesToSystemPrompt } from "./context-files.js";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
-import { listExtensionInfosInDirectories } from "../extension-system/loader.js";
+import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "../resources/prompt-templates.js";
 import { appendReadOrchestrationHint } from "../resources/system-prompts.js";
 import { copyMessagesWithInheritance } from "./session-branch.js";
@@ -66,7 +63,7 @@ import {
   rewindSessionToCheckpoint,
 } from "./session-checkpoint.js";
 import { commitSessionChanges } from "./session-git-hooks.js";
-import { SupervisorSessionRuntime, type SupervisorSessionState } from "./session-runtime.js";
+import { SessionRuntime, type SessionState } from "./session-runtime.js";
 import { SQLiteSessionStorage, toSessionMessageResponse } from "./session-storage.js";
 import { ensureSessionDir, removeProjectDirSync, removeSessionDirSync } from "./session-files.js";
 import { runShadowHook } from "../shadow/hook.js";
@@ -161,7 +158,7 @@ function parseSessionMeta<T = Record<string, unknown>>(meta: string | Record<str
 export class SessionManager {
   private db: SupervisorDb;
   private modelRegistry: ModelRegistry;
-  private runtimes = new Map<number, SupervisorSessionRuntime>();
+  private runtimes = new Map<number, SessionRuntime>();
   private turnTrackers = new Map<number, TurnFileTracker>();
   private outputListeners = new Map<number, Set<SessionOutputListener>>();
   private sessionToolConfigs = new Map<number, SessionToolConfig>();
@@ -337,7 +334,7 @@ export class SessionManager {
     return appendReadOrchestrationHint(base);
   }
 
-  private setupRuntime(sessionId: number, runtime: SupervisorSessionRuntime): void {
+  private setupRuntime(sessionId: number, runtime: SessionRuntime): void {
     this.runtimes.set(sessionId, runtime);
     const existing = this.db.get(sessionId) as unknown as Session | undefined;
     const existingMeta = existing?.meta ?? {};
@@ -410,7 +407,7 @@ export class SessionManager {
     return { provider, modelId, systemPrompt, toolsPreset };
   }
 
-  private async restoreRuntime(id: number): Promise<SupervisorSessionRuntime> {
+  private async restoreRuntime(id: number): Promise<SessionRuntime> {
     const session = rowToSession(this.db.get(id)!);
     if (!session) throw new Error(`Session ${id} not found`);
     if (
@@ -448,7 +445,7 @@ export class SessionManager {
       session.cwd,
       config.toolsPreset,
     );
-    const tools = this.mergeAgentTools(sessionTools, resource.getMcpTools());
+    const tools = sessionTools;
 
     const systemPrompt =
       config.systemPrompt.length > 0
@@ -471,7 +468,7 @@ export class SessionManager {
     });
     await harness.setThinkingLevel(session.thinkingLevel);
 
-    const runtime = new SupervisorSessionRuntime({
+    const runtime = new SessionRuntime({
       session,
       harness,
       resource,
@@ -503,7 +500,7 @@ export class SessionManager {
     return runtime;
   }
 
-  private async getOrRestoreRuntime(id: number): Promise<SupervisorSessionRuntime> {
+  private async getOrRestoreRuntime(id: number): Promise<SessionRuntime> {
     const runtime = this.runtimes.get(id);
     if (runtime) return runtime;
     return this.restoreRuntime(id);
@@ -594,7 +591,7 @@ export class SessionManager {
       toolsPreset,
       options.tools,
     );
-    const tools = this.mergeAgentTools(sessionTools, resource.getMcpTools());
+    const tools = sessionTools;
 
     const baseSystemPrompt = options.systemPrompt ?? "";
     const systemPrompt = this.buildSystemPrompt(
@@ -628,7 +625,7 @@ export class SessionManager {
     };
     this.db.updateMeta(activeSession.id, { runtimeConfig });
 
-    const runtime = new SupervisorSessionRuntime({
+    const runtime = new SessionRuntime({
       session: activeSession,
       harness,
       resource,
@@ -846,7 +843,7 @@ export class SessionManager {
     this.db.updateThinkingLevel(id, level);
   }
 
-  async getState(id: number): Promise<SupervisorSessionState> {
+  async getState(id: number): Promise<SessionState> {
     return (await this.getOrRestoreRuntime(id)).getState();
   }
 
@@ -1382,7 +1379,7 @@ export class SessionManager {
     return this.db.getLastMessagePreview(sessionId);
   }
 
-  getRuntime(id: number): SupervisorSessionRuntime {
+  getRuntime(id: number): SessionRuntime {
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
     return runtime;

@@ -1,7 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
-import { readExtensionPackageJson } from "../extension-system/extension-entry.js";
-import { listExtensionInfosInDirectories } from "../extension-system/loader.js";
+import { listExtensionInfosInDirectories, readExtensionPackageJson } from "../extension/index.js";
 import type { SupervisorDb } from "../db/db.js";
 import { getGlobalResourceDirs } from "./resource-paths.js";
 

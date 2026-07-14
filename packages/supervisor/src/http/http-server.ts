@@ -7,9 +7,12 @@ import { isAbsolute, normalize, resolve, sep } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import { getSupervisorAgentsRoot } from "../agent/agent-paths.js";
-import { assertAgentUserSpawnable, isBuiltinAgent } from "../agent/internal-agents.js";
-import type { ExtensionEvent } from "../extension-system/types.js";
+import {
+  assertAgentUserSpawnable,
+  getSupervisorAgentsRoot,
+  isBuiltinAgent,
+} from "../agent/index.js";
+import type { ExtensionEvent } from "../extension/index.js";
 import type { SessionManager } from "../core/session-manager.js";
 import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-manager.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";

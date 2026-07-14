@@ -9,12 +9,10 @@ import {
   isAgentUserSpawnable,
   isBuiltinAgent,
   loadPackagedAgentPrompt,
-} from "../src/agent/internal-agents.js";
+} from "../src/agent/index.js";
 import { SupervisorDb } from "../src/db.js";
-import { Extension } from "../src/extension-system/extension.js";
-import { createEventBus } from "../src/extension-system/extension-deps.js";
-import type { RuntimeOptions } from "../src/extension-system/types.js";
-import { createExtensionTestContext } from "./extension-context-fixture.js";
+import { createEventBus, SessionExtensionHost } from "../src/core/session-extension/index.js";
+import { createExtensionTestContext, type RuntimeOptions } from "./extension-context-fixture.js";
 
 let db: SupervisorDb;
 let tmpDir: string;
@@ -159,7 +157,9 @@ describe("packaged agents", () => {
   });
 
   it("shadow-child extension bans edit and write tools", async () => {
-    const runtime = new Extension(createExtensionTestContext(createShadowRuntimeOptions()));
+    const runtime = new SessionExtensionHost(
+      createExtensionTestContext(createShadowRuntimeOptions()),
+    );
     await runtime.initialize();
     const edit = await runtime.checkToolBeforeCall("tc-1", "edit", { file_path: "a.ts" });
     const write = await runtime.checkToolBeforeCall("tc-2", "write", { file_path: "a.ts" });

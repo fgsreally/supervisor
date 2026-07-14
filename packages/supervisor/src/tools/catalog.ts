@@ -1,5 +1,5 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { Extension } from "../extension-system/extension.js";
+import type { SessionExtensionHost } from "../core/session-extension/index.js";
 
 export const PACKAGED_TOOL_IDS = [
   "ask",
@@ -25,7 +25,7 @@ export interface PackagedToolContext {
 export interface PackagedToolActivation {
   tools: AgentTool[];
   cleanup?: () => void | Promise<void>;
-  attachHooks?: (extension: Extension) => void;
+  attachHooks?: (extension: SessionExtensionHost) => void;
   pausing?: { message: string };
 }
 

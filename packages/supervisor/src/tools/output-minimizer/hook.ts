@@ -1,8 +1,8 @@
-import type { ExtensionEvent } from "../../extension-system/types.js";
-import type { Extension } from "../../extension-system/extension.js";
+import type { ExtensionEvent } from "../../extension/index.js";
+import type { SessionExtensionHost } from "../../core/session-extension/index.js";
 import { minimizeOutput } from "./minimizer.js";
 
-export function attachOutputMinimizerHook(extension: Extension): void {
+export function attachOutputMinimizerHook(extension: SessionExtensionHost): void {
   extension.on("tool.after_call", (event: Extract<ExtensionEvent, { type: "tool.after_call" }>) => {
     if (event.result.isError || event.name !== "bash" || typeof event.setResult !== "function") {
       return;

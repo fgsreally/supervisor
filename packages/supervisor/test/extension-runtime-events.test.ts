@@ -2,12 +2,10 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createEventBus } from "../src/extension-system/extension-deps.js";
-import { Extension } from "../src/extension-system/extension.js";
-import { defineExtension } from "../src/extension-system/define-extension.js";
-import { loadExtensions } from "../src/extension-system/loader.js";
-import type { RuntimeOptions } from "../src/extension-system/types.js";
-import { createExtensionTestContext } from "./extension-context-fixture.js";
+import { createEventBus, SessionExtensionHost } from "../src/core/session-extension/index.js";
+import { defineExtension } from "../src/extension/index.js";
+import { loadExtensions } from "../src/extension/index.js";
+import { createExtensionTestContext, type RuntimeOptions } from "./extension-context-fixture.js";
 
 function createRuntimeOptions(sessionId = 1): RuntimeOptions & { finishedSessions: number[] } {
   const eventBus = createEventBus();
@@ -119,7 +117,7 @@ function createRuntimeOptions(sessionId = 1): RuntimeOptions & { finishedSession
 
 describe("extension runtime events", () => {
   it("delivers system events registered via ctx.on", async () => {
-    const runtime = new Extension(createExtensionTestContext(createRuntimeOptions()));
+    const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
     let seen = 0;
 
     await runtime.load(
@@ -151,7 +149,7 @@ describe("extension runtime events", () => {
   });
 
   it("exposes project-owned and session-owned directories to extensions", async () => {
-    const runtime = new Extension(createExtensionTestContext(createRuntimeOptions()));
+    const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
     let seenDir = "";
     let seenProjectDir = "";
 
@@ -171,7 +169,7 @@ describe("extension runtime events", () => {
   });
 
   it("exposes core session object helpers", async () => {
-    const runtime = new Extension(createExtensionTestContext(createRuntimeOptions()));
+    const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
     let sessionId = 0;
     let isMain = false;
     let isChild = true;
@@ -200,8 +198,10 @@ describe("extension runtime events", () => {
   });
 
   it("registers subagent tool only on main sessions", async () => {
-    const mainRuntime = new Extension(createExtensionTestContext(createRuntimeOptions()));
-    const childRuntime = new Extension(
+    const mainRuntime = new SessionExtensionHost(
+      createExtensionTestContext(createRuntimeOptions()),
+    );
+    const childRuntime = new SessionExtensionHost(
       createExtensionTestContext({
         ...createRuntimeOptions(2),
         parentSessionId: 1,
@@ -216,7 +216,7 @@ describe("extension runtime events", () => {
 
   it("spawns child sessions through the session instance", async () => {
     const options = createRuntimeOptions();
-    const runtime = new Extension(createExtensionTestContext(options));
+    const runtime = new SessionExtensionHost(createExtensionTestContext(options));
     await runtime.initialize();
     const result = await runtime.executeTool(
       "spawn_agent",

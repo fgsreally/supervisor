@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { loadExtensions } from "../src/extension-system/loader.js";
+import { loadExtensions } from "../src/extension/index.js";
 
 describe("supervisor: extension loader", () => {
   it("loads explicit extension paths", async () => {

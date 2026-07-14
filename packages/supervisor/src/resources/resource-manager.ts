@@ -6,7 +6,7 @@ import {
   type InstallResult,
   uninstallGlobalExtension,
   updateGlobalExtension,
-} from "../extension-system/extension-installer.js";
+} from "./extension-installer.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { ExtensionModuleRegistry } from "./extension-registry.js";
 import type { AgentResourceBinding, Resource, ResourceKind } from "./types.js";

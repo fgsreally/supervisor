@@ -1,22 +1,117 @@
 import type { TSchema } from "typebox";
-import { Context, ContextDb } from "../src/core/context.js";
 import {
-  ExtensionSessionServices,
-  type ApprovalRequest,
-  type ContinueTurnOptions,
-  type ScheduleInjectionInput,
-  type ToolGuardHandler,
-  type ToolResultHandler,
-} from "../src/extension-system/extension-session-services.js";
-import type { ToolPolicy } from "../src/extension-system/tool-policy.js";
+  Context,
+  ContextDb,
+  SessionExtensionServices,
+  type ToolPolicy,
+} from "../src/core/session-extension/index.js";
 import type {
+  ApprovalRequest,
   BroadcastEvent,
+  ContinueTurnOptions,
+  EventBus,
   EventHandlerContext,
+  ExecResult,
+  ExtensionDatabase,
   ExtensionEvent,
-  RuntimeOptions,
+  MemberAgentInfo,
+  ScheduleInjectionInput,
+  SessionInfo,
+  SessionResultSummary,
+  SpawnSessionRequest,
+  SpawnSessionResult,
   ToolDefinition,
+  ToolGuardHandler,
   ToolInfo,
-} from "../src/extension-system/types.js";
+  ToolResultHandler,
+} from "../src/extension/index.js";
+
+export interface RuntimeOptions {
+  sessionId: number;
+  parentSessionId?: number | null;
+  sessionMeta?: Record<string, unknown>;
+  cwd: string;
+  sessionDir: string;
+  projectDir: string;
+  agent: {
+    id: number;
+    name: string;
+    providerId: number;
+    modelId: string;
+    systemPrompt?: string;
+  };
+  db: ExtensionDatabase;
+  deps: {
+    appendEntry: <T>(customType: string, data: T) => Promise<string>;
+    sendMessage: (message: {
+      role: "custom";
+      customType: string;
+      content: string;
+      display?: boolean;
+      details?: unknown;
+      triggerTurn?: boolean;
+    }) => Promise<void>;
+    sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
+    sendParentMsg: (content: string, options?: { level?: number }) => Promise<void>;
+    getSessionDir: () => Promise<string>;
+    getProjectDir: () => Promise<string>;
+    getMemberAgentsByTag: (tag: string) => Promise<MemberAgentInfo[]>;
+    getMemberAgentsByRole: (role: string) => Promise<MemberAgentInfo[]>;
+    spawnSession: (request: SpawnSessionRequest) => Promise<SpawnSessionResult>;
+    waitForSessionIdle: (sessionId: number, options?: { timeoutMs?: number }) => Promise<void>;
+    getSessionResultSummary: (
+      sessionId: number,
+      options?: { maxChars?: number },
+    ) => Promise<SessionResultSummary>;
+    finishSession: (sessionId: number) => Promise<void>;
+    pausing: <T>(reason: string, work: Promise<T> | (() => Promise<T>)) => Promise<T>;
+    setSessionMeta: (meta: Record<string, unknown>) => Promise<void>;
+    patchSessionMeta: (patch: Record<string, unknown>) => Promise<Record<string, unknown>>;
+    setMessageMeta: (messageId: string, meta: Record<string, unknown>) => Promise<void>;
+    patchMessageMeta: (
+      messageId: string,
+      patch: Record<string, unknown>,
+    ) => Promise<Record<string, unknown>>;
+    setLabel: (entryId: string, label: string | undefined) => Promise<void>;
+    isIdle: () => boolean;
+    isStreaming: () => boolean;
+    getSignal: () => AbortSignal | undefined;
+    abort: () => void;
+    waitForIdle: () => Promise<void>;
+    fork: (entryId: string, options?: { position?: "before" | "at" }) => Promise<SessionInfo>;
+    switchSession: (sessionId: number) => Promise<void>;
+    navigateTree: (
+      entryId: string,
+      options?: { summarize?: boolean; customInstructions?: string },
+    ) => Promise<void>;
+    compact: (options?: { customInstructions?: string }) => Promise<{
+      summary: string;
+      firstKeptEntryId: string;
+      tokensBefore: number;
+    }>;
+    setModel: (provider: string, modelId: string) => Promise<void>;
+    setThinkingLevel: (level: "none" | "low" | "medium" | "high") => void;
+    getThinkingLevel: () => "none" | "low" | "medium" | "high";
+    getModel: () => { provider: string; id: string; contextWindow: number } | undefined;
+    listSessionTools: () => ToolInfo[];
+    emitExtensionEvent: (event: ExtensionEvent) => void | Promise<void>;
+    exec: (
+      command: string,
+      args: string[],
+      options?: { cwd?: string; timeout?: number; signal?: AbortSignal },
+    ) => Promise<ExecResult>;
+    log: (
+      level: "debug" | "info" | "warn" | "error",
+      message: string,
+      meta?: Record<string, unknown>,
+    ) => void;
+    broadcast: (event: BroadcastEvent) => void;
+    eventBus: EventBus;
+    continueTurn: (content: string, options?: { source?: string }) => Promise<void>;
+    setActiveTools: (names: string[]) => Promise<void>;
+    getContextUsage: () => Promise<{ tokens: number | null }>;
+  };
+}
 
 interface TestExtensionHost {
   emit(event: ExtensionEvent): void | Promise<void>;
@@ -35,7 +130,7 @@ interface TestExtensionHost {
 
 /** Build a Context-shaped test fixture without restoring the removed callback constructor API. */
 export function createExtensionTestContext(options: RuntimeOptions): Context {
-  const services = new ExtensionSessionServices({
+  const services = new SessionExtensionServices({
     sessionId: options.sessionId,
     deps: {
       continueTurn: options.deps.continueTurn,
@@ -193,7 +288,6 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
     },
     log: options.deps.log,
     exec: options.deps.exec,
-    getRuntimeOptions: () => options,
   };
 
   return context as unknown as Context;

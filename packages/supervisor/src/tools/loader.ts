@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Extension } from "../extension-system/extension.js";
+import type { SessionExtensionHost } from "../core/session-extension/index.js";
 import { activatePackagedTool, PACKAGED_TOOL_IDS, type PackagedToolId } from "./catalog.js";
 
 /** Directory containing supervisor-shipped packaged tools. */
@@ -18,7 +18,7 @@ export function getPackagedToolDir(id: PackagedToolId): string {
 }
 
 export async function activatePackagedTools(
-  extension: Extension,
+  extension: SessionExtensionHost,
   options: { cwd: string; sessionId: number; toolIds: PackagedToolId[] },
 ): Promise<() => Promise<void>> {
   const cleanups: Array<() => void | Promise<void>> = [];

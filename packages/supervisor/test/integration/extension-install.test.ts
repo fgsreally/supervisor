@@ -31,10 +31,10 @@ describe("extension installation and discovery", () => {
 
   it("installs a local extension into global catalog and discovers it", async () => {
     const { installExtensionToGlobal, uninstallGlobalExtension } = await import(
-      `${MODULE_BASE}/extension-system/extension-installer.js`
+      `${MODULE_BASE}/resources/extension-installer.js`
     );
     const { listExtensionInfosInDirectories } = await import(
-      `${MODULE_BASE}/extension-system/loader.js`
+      `${MODULE_BASE}/extension/loader.js`
     );
     const { getGlobalResourceDirs } = await import(`${MODULE_BASE}/resources/resource-paths.js`);
 
@@ -81,7 +81,7 @@ describe("extension installation and discovery", () => {
 
   it("update requires package.json repository field", async () => {
     const { installExtensionToGlobal, uninstallGlobalExtension, updateGlobalExtension } =
-      await import(`${MODULE_BASE}/extension-system/extension-installer.js`);
+      await import(`${MODULE_BASE}/resources/extension-installer.js`);
 
     const srcRoot = mkdtempSync(join(tmpdir(), "pi-ext-src-"));
     writeFileSync(

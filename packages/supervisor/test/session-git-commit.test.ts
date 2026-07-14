@@ -8,7 +8,7 @@ import { SupervisorDb } from "../src/db/db.js";
 import { getGitStatusPorcelain, parseSessionGitMeta } from "../src/git/git-worktree.js";
 import { handleSessionLifecycleAgentEnd } from "../src/session-lifecycle.js";
 import { commitSessionChanges } from "../src/core/session-git-hooks.js";
-import type { SupervisorSessionRuntime } from "../src/core/session-runtime.js";
+import type { SessionRuntime } from "../src/core/session-runtime.js";
 
 let db: SupervisorDb;
 let tmpDir: string;
@@ -97,7 +97,7 @@ describe("supervisor: explicit commit", () => {
         agent: { state: { model: null, messages: [] } },
         session: {},
       },
-    } as unknown as SupervisorSessionRuntime;
+    } as unknown as SessionRuntime;
 
     handleSessionLifecycleAgentEnd(session.id, runtime, event, db);
     await new Promise((resolve) => setTimeout(resolve, 100));

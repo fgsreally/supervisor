@@ -1,5 +1,5 @@
 import type { AgentHarnessEvent } from "@earendil-works/pi-agent-core";
-import { findPackagedAgentId } from "../agent/internal-agents.js";
+import { findPackagedAgentId } from "../agent/index.js";
 import type { SessionManager } from "../core/session-manager.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { Session } from "../types.js";

@@ -80,7 +80,6 @@ describe("AgentResource", () => {
     await resource.clear();
     expect(resource.skills).toHaveLength(0);
     expect(resource.promptTemplates).toHaveLength(0);
-    expect(resource.getMcpTools()).toHaveLength(0);
   });
 
   it("每个 AgentResource 实例的加载状态彼此隔离", async () => {

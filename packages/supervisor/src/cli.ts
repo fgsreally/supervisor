@@ -3,7 +3,7 @@ import { parseArgs } from "node:util";
 import { serve } from "@hono/node-server";
 import prompts from "prompts";
 import { BUILT_IN_PROVIDERS } from "./providers/built-in-providers.js";
-import { ensureBuiltinAssistant, ensurePackagedAgents } from "./agent/internal-agents.js";
+import { ensureBuiltinAssistant, ensurePackagedAgents } from "./agent/index.js";
 import { SupervisorDb } from "./db/db.js";
 import { getDefaultCwd, resolveWorkspacePath, setDefaultCwd } from "./config/default-cwd.js";
 import { createHttpServer } from "./http/http-server.js";

@@ -6,7 +6,7 @@ import "./mock-agent-harness.js";
 import { SupervisorDb } from "../src/db.js";
 import { SessionManager } from "../src/session-manager.js";
 import { SQLiteSessionStorage } from "../src/session-storage.js";
-import { ensurePackagedAgents, findPackagedAgentId } from "../src/agent/internal-agents.js";
+import { ensurePackagedAgents, findPackagedAgentId } from "../src/agent/index.js";
 import { MockAgentHarness } from "./mock-agent-harness.js";
 
 let db: SupervisorDb;
@@ -26,7 +26,7 @@ afterEach(async () => {
   rmSync(tmpDir, { recursive: true, force: true });
 });
 
-describe("supervisor: SupervisorSessionRuntime", () => {
+describe("supervisor: SessionRuntime", () => {
   it("wraps AgentHarness prompt and state", async () => {
     const inst = await manager.spawn({ cwd: "/proj" });
     const runtime = manager.getRuntime(inst.id);
@@ -114,7 +114,9 @@ describe("supervisor: SupervisorSessionRuntime", () => {
     expect(shadowAgentId).toBeDefined();
 
     const parent = await manager.spawn({ cwd: "/proj", agentId: undefined });
-    MockAgentHarness.instances[0]!.agent.emit({ type: "agent_start" } as import("@earendil-works/pi-agent-core").AgentEvent);
+    MockAgentHarness.instances[0]!.agent.emit({
+      type: "agent_start",
+    } as import("@earendil-works/pi-agent-core").AgentEvent);
 
     const shadowChild = await manager.spawn({
       parentId: parent.id,
@@ -136,7 +138,10 @@ describe("supervisor: SupervisorSessionRuntime", () => {
 
     expect(manager.peekSessionInput(parent.id)?.message).toBe("security issue");
     MockAgentHarness.instances[0]!.agent.prompt.mockClear();
-    MockAgentHarness.instances[0]!.agent.emit({ type: "agent_end", messages: [] } as import("@earendil-works/pi-agent-core").AgentEvent);
+    MockAgentHarness.instances[0]!.agent.emit({
+      type: "agent_end",
+      messages: [],
+    } as import("@earendil-works/pi-agent-core").AgentEvent);
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(MockAgentHarness.instances[0]!.agent.prompt).toHaveBeenCalledWith("security issue");
   });

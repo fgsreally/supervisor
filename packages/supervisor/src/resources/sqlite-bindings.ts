@@ -1,4 +1,4 @@
-import type { ExtensionSqliteDatabase } from "../extension-system/types.js";
+import type { ExtensionSqliteDatabase } from "../extension/index.js";
 import type { ResourceKind } from "./types.js";
 
 export function listAgentResourcePathsFromSqlite(

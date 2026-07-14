@@ -13,13 +13,13 @@ import type {
   AgentResourceCommandInfo,
   AgentResourceCommandSource,
 } from "../resources/agent-resource.js";
-import { Extension } from "../extension-system/index.js";
+import { SessionExtensionHost } from "./session-extension/index.js";
 import { activatePackagedTools } from "../tools/loader.js";
 import { isPackagedToolId } from "../tools/catalog.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { SessionManager } from "./session-manager.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
-import { Context } from "./context.js";
+import { Context } from "./session-extension/index.js";
 import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
 
 interface HarnessSessionTree {
@@ -41,7 +41,7 @@ export type SlashCommandSource = AgentResourceCommandSource;
 
 export type SlashCommandInfo = AgentResourceCommandInfo;
 
-export interface SupervisorSessionState {
+export interface SessionState {
   id: number;
   sessionId: string | null;
   cwd: string;
@@ -56,7 +56,7 @@ export interface SupervisorSessionState {
   leafId: string | null;
 }
 
-export interface SupervisorSessionRuntimeOptions {
+export interface SessionRuntimeOptions {
   session: Session;
   harness: AgentHarness;
   resource: AgentResource;
@@ -65,12 +65,10 @@ export interface SupervisorSessionRuntimeOptions {
   getMessages: () => Promise<SessionTreeEntry[]>;
 }
 
-export type SupervisorSessionEvent = AgentHarnessEvent;
-export type SupervisorSessionEventListener = (
-  event: SupervisorSessionEvent,
-) => void | Promise<void>;
+export type SessionEvent = AgentHarnessEvent;
+export type SessionEventListener = (event: SessionEvent) => void | Promise<void>;
 
-export class SupervisorSessionRuntime {
+export class SessionRuntime {
   readonly id: number;
   readonly harness: AgentHarness;
   /** 与当前运行中 Agent 唯一绑定的非扩展资源管理器。 */
@@ -78,12 +76,12 @@ export class SupervisorSessionRuntime {
 
   private getSession: () => Session | undefined;
   private getMessagesForSession: () => Promise<SessionTreeEntry[]>;
-  private listeners = new Set<SupervisorSessionEventListener>();
+  private listeners = new Set<SessionEventListener>();
   private storage?: SQLiteSessionStorage;
   /** 与当前运行中 Agent 会话唯一绑定的 Extension 实例。 */
-  private _extension: Extension | null = null;
+  private _extension: SessionExtensionHost | null = null;
 
-  constructor(options: SupervisorSessionRuntimeOptions) {
+  constructor(options: SessionRuntimeOptions) {
     this.id = options.session.id;
     this.harness = options.harness;
     this.resource = options.resource;
@@ -97,13 +95,13 @@ export class SupervisorSessionRuntime {
     });
   }
 
-  private async emit(event: SupervisorSessionEvent): Promise<void> {
+  private async emit(event: SessionEvent): Promise<void> {
     for (const listener of this.listeners) {
       await listener(event);
     }
   }
 
-  subscribe(listener: SupervisorSessionEventListener): () => void {
+  subscribe(listener: SessionEventListener): () => void {
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -112,7 +110,7 @@ export class SupervisorSessionRuntime {
 
   // ==================== Extension Runtime ====================
 
-  get extension(): Extension | null {
+  get extension(): SessionExtensionHost | null {
     return this._extension;
   }
 
@@ -131,7 +129,7 @@ export class SupervisorSessionRuntime {
     await ensureProjectDir(session.projectId);
     await ensureSessionDir(session.projectId, this.id);
     const context = new Context({ sessionManager: manager, db, sessionRuntime: this });
-    const extension = new Extension(context);
+    const extension = new SessionExtensionHost(context);
     this._extension = extension;
     await extension.initialize();
 
@@ -309,7 +307,7 @@ export class SupervisorSessionRuntime {
     return this.getMessagesForSession();
   }
 
-  async getState(): Promise<SupervisorSessionState> {
+  async getState(): Promise<SessionState> {
     const session = this.getSession();
     if (!session) throw new Error(`Session ${this.id} not found`);
     const messages = await this.getMessagesForSession();

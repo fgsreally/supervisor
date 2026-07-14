@@ -19,7 +19,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { hasPendingAsks } from "../../tools/ask/tool.js";
 import type { SupervisorDb } from "../../db/db.js";
-import type { SupervisorSessionRuntime } from "../session-runtime.js";
+import type { SessionRuntime } from "../session-runtime.js";
 import { compactWithUtilityModel, resolveTaggedModelAuth } from "../../utils/utility-llm.js";
 
 const overflowRecoveryAttempted = new Set<string>();
@@ -68,7 +68,7 @@ function resetOverflowRecovery(sessionId: string, assistantMessage: AssistantMes
   }
 }
 
-async function resumeQueuedMessages(runtime: SupervisorSessionRuntime): Promise<void> {
+async function resumeQueuedMessages(runtime: SessionRuntime): Promise<void> {
   const agent = runtime.harness.agent as {
     hasQueuedMessages?: () => boolean;
     continue?: () => Promise<void>;
@@ -86,7 +86,7 @@ async function resumeQueuedMessages(runtime: SupervisorSessionRuntime): Promise<
 
 async function runCompaction(
   sessionId: string,
-  runtime: SupervisorSessionRuntime,
+	runtime: SessionRuntime,
   db: Pick<SupervisorDb, "listProviders" | "listModelsByProvider" | "getProvider">,
   meta: Record<string, unknown>,
   options: { overflowRetry: boolean },
@@ -136,7 +136,7 @@ async function runCompaction(
  */
 export async function maybeRunRollingCompaction(
   sessionId: string,
-  runtime: SupervisorSessionRuntime,
+	runtime: SessionRuntime,
   event: Extract<AgentHarnessEvent, { type: "agent_end" }>,
   meta: Record<string, unknown>,
   db: Pick<SupervisorDb, "listProviders" | "listModelsByProvider" | "getProvider">,

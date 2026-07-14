@@ -12,7 +12,7 @@ import {
 } from "./git/git-worktree.js";
 import { maybeRunRollingCompaction } from "./core/compaction/rolling.js";
 import { isDefaultSessionName, maybeAutoNameSession } from "./core/session-git-hooks.js";
-import type { SupervisorSessionRuntime } from "./core/session-runtime.js";
+import type { SessionRuntime } from "./core/session-runtime.js";
 import type { Session, SessionRow, SpawnSessionOptions } from "./types.js";
 
 export type SessionLifecycleDb = Pick<
@@ -95,7 +95,7 @@ export async function prepareSessionLifecycleSpawn(
 
 export function handleSessionLifecycleAgentEnd(
   sessionId: number,
-  runtime: SupervisorSessionRuntime,
+  runtime: SessionRuntime,
   event: AgentHarnessEvent,
   db: SessionLifecycleDb,
 ): void {

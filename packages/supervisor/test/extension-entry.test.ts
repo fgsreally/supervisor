@@ -6,7 +6,7 @@ import {
 	requireExtensionEntry,
 	resolveExtensionEntry,
 	resolveExtensionEntries,
-} from "../src/extension-system/extension-entry.js";
+} from "../src/extension/index.js";
 
 describe("extension entry resolution", () => {
 	it("uses package.json main when present", () => {

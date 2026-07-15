@@ -5,11 +5,11 @@ import type { PackagedAgentKind } from "./registry.js";
 
 export function getPackagedAgentsDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  const dir = join(here, "../../../agents");
-  if (!existsSync(dir)) {
-    throw new Error(`Packaged agents directory not found: ${dir}`);
+  const candidates = [join(here, "../../../agents"), join(here, "../agents")];
+  for (const dir of candidates) {
+    if (existsSync(dir)) return dir;
   }
-  return dir;
+  throw new Error(`Packaged agents directory not found: ${candidates.join(", ")}`);
 }
 
 export function loadBuiltinAgentPrompt(kind: PackagedAgentKind | "assistant"): string {

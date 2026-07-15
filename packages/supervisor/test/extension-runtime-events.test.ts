@@ -2,7 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { createEventBus, SessionExtensionHost } from "../src/core/session-extension/index.js";
+import { createEventBus, SessionExtensionHost } from "../src/extension/runtime/index.js";
 import { defineExtension } from "../src/extension/index.js";
 import { loadExtensions } from "../src/extension/index.js";
 import { createExtensionTestContext, type RuntimeOptions } from "./extension-context-fixture.js";
@@ -44,7 +44,6 @@ function createRuntimeOptions(sessionId = 1): RuntimeOptions & { finishedSession
       appendEntry: async () => "entry-1",
       sendMessage: async () => {},
       sendUserMessage: async () => {},
-      sendParentMsg: async () => {},
       getSessionDir: async () => tmpdir(),
       getProjectDir: async () => tmpdir(),
       getMemberAgentsByTag: async () => [],
@@ -236,9 +235,6 @@ describe("extension runtime events", () => {
       agentName: "child",
       result: "child result",
       truncated: false,
-      resultUrl: "pi-supervisor://sessions/2/result",
-      messagesUrl: "pi-supervisor://sessions/2/messages",
-      traceUrl: "pi-supervisor://sessions/2/branch",
     });
     expect(options.finishedSessions).toEqual([2]);
   });

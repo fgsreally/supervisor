@@ -1,10 +1,5 @@
 import { Type, type Static } from "typebox";
 import type { ExtensionContext, ExtensionDefinition } from "../../types.js";
-import {
-  listSupervisorResources,
-  readSupervisorResource,
-  sessionResourceUrl,
-} from "../../../resources/protocol/index.js";
 
 const spawnAgentSchema = Type.Object({
   subagent_type: Type.Optional(
@@ -66,32 +61,7 @@ const spawnAgentSchema = Type.Object({
   ),
 });
 
-const readResourceSchema = Type.Object({
-  url: Type.String({
-    description:
-      "pi-supervisor resource URL, for example pi-supervisor://sessions/34/messages or pi-supervisor://agents/7/skills/deploy",
-  }),
-  limit: Type.Optional(Type.Number({ description: "Maximum rows for list resources." })),
-});
-
-const listResourcesSchema = Type.Object({
-  kind: Type.Optional(
-    Type.String({
-      description:
-        "Optional filter by resource kind prefix, e.g. skill, session-child, shadow-member.",
-    }),
-  ),
-});
-
 type SpawnAgentParams = Static<typeof spawnAgentSchema>;
-type ReadResourceParams = Static<typeof readResourceSchema>;
-type ListResourcesParams = Static<typeof listResourcesSchema>;
-
-const resourceUrls = (sessionId: number) => ({
-  resultUrl: sessionResourceUrl(sessionId, "result"),
-  messagesUrl: sessionResourceUrl(sessionId, "messages"),
-  traceUrl: sessionResourceUrl(sessionId, "branch"),
-});
 
 function pickAgent(
   agents: Awaited<ReturnType<ExtensionContext["agent"]["findByRole"]>>,
@@ -110,42 +80,6 @@ function pickAgent(
 export default {
   name: "subagent",
   setup(ctx) {
-    ctx.agent.registerTool({
-      name: "list_supervisor_resources",
-      description:
-        "List pi-supervisor:// resources the current agent can read in this session " +
-        "(skills, prompts, child sessions, shadow collaborators, spawned members). " +
-        "Use read_supervisor_resource with a returned url to fetch content.",
-      parameters: listResourcesSchema,
-      async execute(params: ListResourcesParams) {
-        const catalog = await listSupervisorResources(ctx);
-        const kind = params.kind?.trim();
-        const resources = kind
-          ? catalog.resources.filter((entry) => entry.kind.startsWith(kind))
-          : catalog.resources;
-        const result = { ...catalog, resources };
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          details: result,
-        };
-      },
-    });
-
-    ctx.agent.registerTool({
-      name: "read_supervisor_resource",
-      description:
-        "Read a pi-supervisor:// resource URL. Supports session messages/results, agent skills/prompts, " +
-        "and agent summaries. Only the current session, its children, and linked member agents are readable.",
-      parameters: readResourceSchema,
-      async execute(params: ReadResourceParams) {
-        const result = await readSupervisorResource(ctx, params.url, { limit: params.limit });
-        return {
-          content: [{ type: "text", text: JSON.stringify(result, null, 2) }],
-          details: result,
-        };
-      },
-    });
-
     ctx.agent.registerTool({
       name: "spawn_agent",
       description:
@@ -183,10 +117,8 @@ export default {
             },
           },
         });
-        const urls = resourceUrls(result.sessionId);
-
         if (params.run_in_background) {
-          const details = { ...result, ...urls, description: params.description };
+          const details = { ...result, description: params.description };
           return {
             content: [{ type: "text", text: JSON.stringify(details) }],
             details,
@@ -205,7 +137,6 @@ export default {
           status: summary.status,
           result: summary.result,
           truncated: summary.truncated,
-          ...urls,
           description: params.description,
         };
         return {

@@ -11,7 +11,6 @@ import type {
   ResourceRow,
   AgentResourceRow,
 } from "../resources/types.js";
-import { isResourceKind } from "../resources/types.js";
 import type {
   Agent,
   AgentRow,
@@ -301,71 +300,9 @@ export class SupervisorDb {
       CREATE INDEX IF NOT EXISTS idx_agent_resources_resource ON agent_resources(resource_id);
     `);
     this.ensureMessageFts();
-    this.ensureAgentIsInternalColumn();
-    this.migrateLegacyInternalAgents();
 
     // Initialize default providers from environment variables
     this.initializeDefaultProviders();
-  }
-
-  private ensureAgentIsInternalColumn(): void {
-    const columns = this.db.prepare("PRAGMA table_info(agents)").all() as Array<{ name: string }>;
-    if (columns.some((column) => column.name === "is_internal")) return;
-    this.db.exec(`ALTER TABLE agents ADD COLUMN is_internal INTEGER NOT NULL DEFAULT 0`);
-  }
-
-  /** Normalize legacy built-in Agent metadata to two boolean flags. */
-  private migrateLegacyInternalAgents(): void {
-    const rows = this.db.prepare("SELECT id, name, meta, is_internal FROM agents").all() as Array<{
-      id: number;
-      name: string;
-      meta: string;
-      is_internal: number;
-    }>;
-    for (const row of rows) {
-      const meta = JSON.parse(row.meta) as Record<string, unknown>;
-      let nextMeta = meta;
-      let isInternal = Boolean(row.is_internal) || Boolean(meta.internal);
-      let name = row.name;
-
-      const packagedKind =
-        meta.packagedKind === "shadow" || meta.packagedKind === "intro"
-          ? meta.packagedKind
-          : meta.internalKind === "shadow"
-            ? "shadow"
-            : meta.internalKind === "resource-manager"
-              ? "intro"
-              : undefined;
-
-      if (packagedKind) {
-        const userSpawnable = packagedKind === "intro";
-        nextMeta = { builtin: true, userSpawnable };
-        isInternal = !userSpawnable;
-        if (packagedKind === "intro" && name === "Resource Manager") name = "Intro";
-      } else if ("internal" in meta) {
-        nextMeta = { ...meta };
-        delete nextMeta.internal;
-      }
-
-      const sets: string[] = [];
-      const params: unknown[] = [];
-      if (isInternal !== Boolean(row.is_internal)) {
-        sets.push("is_internal = ?");
-        params.push(isInternal ? 1 : 0);
-      }
-      if (name !== row.name) {
-        sets.push("name = ?");
-        params.push(name);
-      }
-      if (JSON.stringify(nextMeta) !== row.meta) {
-        sets.push("meta = ?");
-        params.push(JSON.stringify(nextMeta));
-      }
-      if (sets.length === 0) continue;
-      sets.push("updated_at = ?");
-      params.push(Date.now(), row.id);
-      this.db.prepare(`UPDATE agents SET ${sets.join(", ")} WHERE id = ?`).run(...params);
-    }
   }
 
   private projectNameFromCwd(cwd: string): string {
@@ -643,13 +580,10 @@ export class SupervisorDb {
     const id = Number(result.lastInsertRowid);
     const resolvedHomeDir = homeDir ?? getAgentHomeDir(id);
     ensureAgentHome(id, resolvedHomeDir);
-    if (!homeDir) {
-      this.db.prepare("UPDATE agents SET home_dir = ? WHERE id = ?").run(resolvedHomeDir, id);
-    }
     return rowToAgent({
       ...full,
       id,
-      home_dir: resolvedHomeDir,
+      home_dir: homeDir ?? null,
       system_prompt: null,
     } as AgentRow & { system_prompt: null });
   }

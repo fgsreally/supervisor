@@ -1,5 +1,5 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { SessionExtensionHost } from "../core/session-extension/index.js";
+import type { SessionExtensionHost } from "../extension/runtime/index.js";
 
 export const PACKAGED_TOOL_IDS = [
   "ask",

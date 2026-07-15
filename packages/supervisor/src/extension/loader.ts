@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti/static";
 import type { ExtensionDefinition, LoadExtensionResult, LoadExtensionsResult } from "./types.js";
 
-export const VALID_ENTRY_EXT = new Set([".ts", ".js", ".mts", ".mjs"]);
+const VALID_ENTRY_EXT = new Set([".ts", ".js", ".mts", ".mjs"]);
 
 export interface ExtensionPackageJson {
   name?: string;
@@ -104,8 +104,6 @@ export interface ExtensionEntryInfo {
   version: string | null;
   /** Description from package.json (if available). */
   description: string | null;
-  /** Always false — only directory extensions are supported. */
-  isFlatFile: boolean;
 }
 
 function buildEntryInfo(entryPath: string, rootDir: string): ExtensionEntryInfo {
@@ -119,7 +117,6 @@ function buildEntryInfo(entryPath: string, rootDir: string): ExtensionEntryInfo 
     name: pkg?.name ?? null,
     version: pkg?.version ?? null,
     description: pkg?.description ?? null,
-    isFlatFile: false,
   };
 }
 

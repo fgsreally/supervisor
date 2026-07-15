@@ -2,10 +2,10 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { promptResourceHandler } from "../src/agent/prompt-resource.js";
 import { SupervisorDb } from "../src/db.js";
-import { ExtensionModuleRegistry } from "../src/resources/extension-registry.js";
+import { indexResourceHandlers } from "../src/resources/handler.js";
 import { ResourceManager } from "../src/resources/resource-manager.js";
-import { ensureGlobalResourceDirs } from "../src/resources/resource-paths.js";
 
 let db: SupervisorDb;
 let manager: ResourceManager;
@@ -20,12 +20,10 @@ beforeEach(() => {
   originalUserProfile = process.env.USERPROFILE;
   process.env.HOME = tmpDir;
   process.env.USERPROFILE = tmpDir;
-  ensureGlobalResourceDirs();
   db = new SupervisorDb(join(tmpDir, "test.db"));
-  const registry = new ExtensionModuleRegistry();
   manager = new ResourceManager({
     db,
-    extensionRegistry: registry,
+    handlers: indexResourceHandlers([promptResourceHandler]),
     ensureCatalog: async () => {},
   });
 });
@@ -76,13 +74,6 @@ describe("ResourceManager", () => {
     expect(db.getResourceByKindSlug("prompt", "hello")).toBeUndefined();
   });
 
-  it("registerTool creates DB-only resource", () => {
-    const tool = manager.registerTool("read", { name: "Read" });
-    expect(tool.kind).toBe("tool");
-    expect(tool.slug).toBe("read");
-    expect(tool.sourcePath).toBeNull();
-  });
-
   it("refuses uninstall when resource is still bound", async () => {
     const providerId = db.insertProvider({
       slug: "test2",
@@ -116,11 +107,16 @@ describe("ResourceManager", () => {
     const deactivated: Array<[number, string]> = [];
     const extensionManager = new ResourceManager({
       db,
-      extensionRegistry: new ExtensionModuleRegistry(),
+      handlers: indexResourceHandlers([
+        {
+          kind: "extension",
+          discover: () => [],
+          onUnbind: async (agentId, slug) => {
+            deactivated.push([agentId, slug]);
+          },
+        },
+      ]),
       ensureCatalog: async () => {},
-      deactivateAgentExtension: async (agentId, slug) => {
-        deactivated.push([agentId, slug]);
-      },
     });
     extensionManager.bindResource({ agentId: agent.id, resourceId: extension.id });
 

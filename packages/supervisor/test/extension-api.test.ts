@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { ContextDb } from "../src/core/session-extension/index.js";
+import { ContextDb } from "../src/extension/runtime/index.js";
 import { defineExtension, Type } from "../src/extension/index.js";
-import { createEventBus, SessionExtensionHost, ToolPolicy } from "../src/core/session-extension/index.js";
+import {
+  createEventBus,
+  SessionExtensionHost,
+  ToolPolicy,
+} from "../src/extension/runtime/index.js";
 import { createExtensionTestContext, type RuntimeOptions } from "./extension-context-fixture.js";
 
 function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.fn> }) {
@@ -39,7 +43,6 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
       appendEntry: async () => "entry-1",
       sendMessage: async () => {},
       sendUserMessage: async () => {},
-      sendParentMsg: async () => {},
       continueTurn: overrides?.continueTurn ?? vi.fn(async () => {}),
       setActiveTools: vi.fn(async () => {}),
       getContextUsage: async () => ({ tokens: 42 }),
@@ -210,7 +213,7 @@ describe("extension api", () => {
       }
     }) as RuntimeOptions["deps"]["broadcast"];
     const runtime = new SessionExtensionHost(createExtensionTestContext(options));
-    const { submitApprovalResolution } = await import("../src/core/session-extension/index.js");
+    const { submitApprovalResolution } = await import("../src/extension/runtime/index.js");
 
     const promise = runtime.services.uiApproval.requestApproval({
       kind: "plan_review",

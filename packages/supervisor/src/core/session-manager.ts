@@ -24,20 +24,19 @@ import {
 } from "../agent/index.js";
 import { getDefaultCwd } from "../config/default-cwd.js";
 import { initializeResourceCatalog } from "../resources/catalog-sync.js";
-import { ExtensionModuleRegistry } from "../resources/extension-registry.js";
+import { ExtensionModuleRegistry } from "../extension/registry.js";
 import { ResourceManager } from "../resources/resource-manager.js";
-import { ensureGlobalResourceDirs, getGlobalResourceDirs } from "../resources/resource-paths.js";
-import { AgentResource } from "../resources/agent-resource.js";
-import type { ResourceKind } from "../resources/types.js";
+import { ensureGlobalResourceRoot } from "../resources/resource-paths.js";
+import { AgentResource } from "../agent/runtime-resources.js";
 import {
   promptsToResourceInfo,
   type ResourceLayer,
   resolveAgentResources,
   resolveAgentTools,
   skillsToResourceInfo,
-} from "../resources/agent-resources.js";
+} from "../agent/resource-resolver.js";
 import { assertAgentUserSpawnable } from "../agent/index.js";
-import { cancelPendingApprovals, submitApprovalResolution } from "./session-extension/index.js";
+import { cancelPendingApprovals, submitApprovalResolution } from "../extension/runtime/index.js";
 import type { ApprovalResult } from "../extension/index.js";
 import {
   type AskAnswer,
@@ -49,24 +48,24 @@ import {
   finalizeSessionLifecycleGit,
   handleSessionLifecycleAgentEnd,
   prepareSessionLifecycleSpawn,
-} from "../session-lifecycle.js";
-import { appendContextFilesToSystemPrompt } from "./context-files.js";
+} from "./session-lifecycle.js";
+import { appendContextFilesToSystemPrompt } from "../agent/context-files.js";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
-import { loadPromptTemplates } from "../resources/prompt-templates.js";
-import { appendReadOrchestrationHint } from "../resources/system-prompts.js";
-import { copyMessagesWithInheritance } from "./session-branch.js";
+import { loadPromptTemplates } from "../agent/prompt-templates.js";
+import { appendReadOrchestrationHint } from "../agent/system-prompts.js";
+import { copyMessagesWithInheritance } from "./session-history.js";
 import {
   createSessionCheckpoint,
   listSessionCheckpoints,
   rewindSessionToCheckpoint,
-} from "./session-checkpoint.js";
-import { commitSessionChanges } from "./session-git-hooks.js";
+} from "./session-history.js";
+import { commitSessionChanges } from "./session-lifecycle.js";
 import { SessionRuntime, type SessionState } from "./session-runtime.js";
 import { SQLiteSessionStorage, toSessionMessageResponse } from "./session-storage.js";
 import { ensureSessionDir, removeProjectDirSync, removeSessionDirSync } from "./session-files.js";
-import { runShadowHook } from "../shadow/hook.js";
+import { runShadow } from "../extension/builtin/shadow/index.js";
 import {
   DEFAULT_SESSION_INPUT_LEVEL,
   type SessionInputDisposition,
@@ -74,15 +73,17 @@ import {
   type SessionQueuedInput,
   shouldInterruptSessionInput,
 } from "./session-input-queue.js";
-import { loadSkills } from "../resources/skills.js";
+import { loadSkills } from "../agent/skills.js";
+import { getGlobalSkillsDirectory } from "../agent/skill-resource.js";
+import { getGlobalPromptsDirectory } from "../agent/prompt-resource.js";
+import { getGlobalExtensionsDirectory } from "../extension/resource.js";
+import { createResourceHandlers } from "../config/resource-handlers.js";
 import { resolveModelWithProviderOverrides } from "../utils/model-utils.js";
-import type { SessionSpawner } from "../spawn/session-spawner.js";
-import type { SpawnAgentToolProvider } from "../spawn/spawn-agent-tool-provider.js";
 import {
   handleAgentEventForTurnFiles,
   mergeTurnIntoMeta,
   TurnFileTracker,
-} from "../git/turn-file-tracker.js";
+} from "./turn-file-tracker.js";
 import type {
   Agent,
   AgentWithSystemMd,
@@ -162,9 +163,9 @@ export class SessionManager {
   private turnTrackers = new Map<number, TurnFileTracker>();
   private outputListeners = new Map<number, Set<SessionOutputListener>>();
   private sessionToolConfigs = new Map<number, SessionToolConfig>();
-  private spawnAgentToolProviders: SpawnAgentToolProvider[] = [];
   private readonly sessionInputQueues = new SessionInputQueue();
   private readonly extensionRegistry = new ExtensionModuleRegistry();
+  private readonly resourceHandlers: ReturnType<typeof createResourceHandlers>;
   private readonly resourceManager: ResourceManager;
   private resourcesInitialized = false;
 
@@ -173,18 +174,22 @@ export class SessionManager {
     const agentDir = join(homedir(), ".pi", "agent");
     const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
     this.modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
-    this.resourceManager = new ResourceManager({
+    this.resourceHandlers = createResourceHandlers({
       db: this.db,
       extensionRegistry: this.extensionRegistry,
-      ensureCatalog: () => this.ensureResourceCatalog(),
       deactivateAgentExtension: (agentId, slug) => this.deactivateAgentExtension(agentId, slug),
+    });
+    this.resourceManager = new ResourceManager({
+      db: this.db,
+      handlers: this.resourceHandlers,
+      ensureCatalog: () => this.ensureResourceCatalog(),
     });
     void this.ensureResourceCatalog();
   }
 
   async ensureResourceCatalog(): Promise<void> {
     if (this.resourcesInitialized) return;
-    initializeResourceCatalog(this.db);
+    initializeResourceCatalog(this.db, this.resourceHandlers.values());
     await this.extensionRegistry.refresh(this.db);
     this.resourcesInitialized = true;
   }
@@ -232,11 +237,6 @@ export class SessionManager {
     return this.modelRegistry;
   }
 
-  /** Register spawn tools from another package (e.g. SDD). Merged into every session with an agentId. */
-  registerSpawnAgentToolProvider(provider: SpawnAgentToolProvider): void {
-    this.spawnAgentToolProviders.push(provider);
-  }
-
   private getAgentForSession(agentId: number | null) {
     return agentId ? this.db.getAgent(agentId) : undefined;
   }
@@ -250,7 +250,7 @@ export class SessionManager {
     return [...merged.values()];
   }
 
-  private async assembleSessionTools(
+  private assembleSessionTools(
     sessionId: number,
     agentId: number | null,
     cwd: string,
@@ -259,29 +259,7 @@ export class SessionManager {
   ): Promise<AgentTool[]> {
     const baseTools = overrideTools ?? createDefaultTools(cwd, toolsPreset);
     this.sessionToolConfigs.set(sessionId, { cwd, agentId, toolsPreset, overrideTools });
-    const tools = [...baseTools];
-
-    const spawner: SessionSpawner = {
-      getSession: (id) => this.get(id),
-      getAgent: (id) => this.getAgent(id),
-      spawn: (opts) => this.spawn(opts),
-    };
-
-    for (const provider of this.spawnAgentToolProviders) {
-      const extra = await provider.createTools({
-        parentSessionId: sessionId,
-        agentId,
-        cwd,
-        spawner,
-      });
-      tools.push(...extra);
-    }
-
-    const deduped = new Map<string, AgentTool>();
-    for (const tool of tools) {
-      deduped.set(tool.name, tool);
-    }
-    return [...deduped.values()];
+    return baseTools;
   }
 
   async resolveAgentResources(agentId: number, cwd: string) {
@@ -359,7 +337,7 @@ export class SessionManager {
           if (!hasPendingAsks(sessionId)) {
             await this.drainSessionInputQueue(sessionId);
           }
-          await runShadowHook(this, this.db, sessionId, event);
+          await runShadow(this, this.db, sessionId, event);
         })().catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
           console.error(`shadow hook failed [${sessionId}]:`, message);
@@ -439,7 +417,7 @@ export class SessionManager {
     const storage = new SQLiteSessionStorage(this.db, session.id);
     const harnessSession = new AgentSession(storage);
     const env = new NodeExecutionEnv({ cwd: session.cwd });
-    const sessionTools = await this.assembleSessionTools(
+    const sessionTools = this.assembleSessionTools(
       session.id,
       session.agentId,
       session.cwd,
@@ -526,18 +504,13 @@ export class SessionManager {
   /**
    * Spawn an embedded agent (AgentHarness + SQLite session).
    * Resources (skills/prompts/extensions) follow session.agentId — main or child session.
-   * Optional tools from registerSpawnAgentToolProvider() are merged when agentId is set.
    */
   async spawn(options: SpawnSessionOptions = {}): Promise<Session> {
     const agentInDb = this.getAgentForSession(options.agentId ?? null);
     if (options.agentId && !agentInDb) {
       throw new Error(`Agent ${options.agentId} not found`);
     }
-    const isInternalShadowRun =
-      options.meta != null &&
-      typeof options.meta === "object" &&
-      typeof (options.meta as Record<string, unknown>).shadowOf === "number";
-    if (agentInDb && !isInternalShadowRun) {
+    if (agentInDb) {
       assertAgentUserSpawnable(agentInDb, options.agentId);
     }
 
@@ -584,7 +557,7 @@ export class SessionManager {
     });
     await resource.load();
 
-    const sessionTools = await this.assembleSessionTools(
+    const sessionTools = this.assembleSessionTools(
       activeSession.id,
       activeSession.agentId,
       activeSession.cwd,
@@ -1289,14 +1262,11 @@ export class SessionManager {
    * Agent access is controlled by database resource bindings.
    */
   resolveGlobalResources(): ResourceLayer {
-    ensureGlobalResourceDirs();
-    initializeResourceCatalog(this.db);
-    const globalRoot = ensureGlobalResourceDirs();
-    const {
-      skills: globalSkillsDir,
-      prompts: globalPromptsDir,
-      extensions: globalExtDir,
-    } = getGlobalResourceDirs();
+    initializeResourceCatalog(this.db, this.resourceHandlers.values());
+    const globalRoot = ensureGlobalResourceRoot();
+    const globalSkillsDir = getGlobalSkillsDirectory();
+    const globalPromptsDir = getGlobalPromptsDirectory();
+    const globalExtDir = getGlobalExtensionsDirectory();
 
     const { skills } = loadSkills({
       cwd: globalRoot,
@@ -1321,18 +1291,9 @@ export class SessionManager {
         name: info.name,
         version: info.version,
         description: info.description,
-        isFlatFile: info.isFlatFile,
         files: [],
       })),
     };
-  }
-
-  listResources(kind?: ResourceKind) {
-    return this.resourceManager.listResources(kind);
-  }
-
-  listAgentResourceBindings(agentId: number, kind?: ResourceKind) {
-    return this.resourceManager.listAgentBindings(agentId, kind);
   }
 
   private async deactivateAgentExtension(agentId: number, slug: string): Promise<void> {
@@ -1341,38 +1302,6 @@ export class SessionManager {
       .filter(([sessionId]) => this._getSession(sessionId)?.agentId === agentId)
       .map(([, runtime]) => runtime);
     await Promise.all(activeRuntimes.map((runtime) => runtime.deactivateExtension(extensionId)));
-  }
-
-  async installExtension(source: string) {
-    return this.resourceManager.installResource({ kind: "extension", source });
-  }
-
-  async uninstallExtension(slug: string): Promise<void> {
-    await this.resourceManager.uninstallResource("extension", slug);
-  }
-
-  async updateExtension(slug: string) {
-    return this.resourceManager.updateExtension(slug);
-  }
-
-  bindAgentResourceById(agentId: number, resourceId: number): void {
-    this.resourceManager.bindResource({ agentId, resourceId });
-  }
-
-  bindAgentResourceBySlug(agentId: number, kind: ResourceKind, slug: string): void {
-    this.resourceManager.bindResource({ agentId, kind, slug });
-  }
-
-  async unbindAgentResourceById(agentId: number, resourceId: number): Promise<void> {
-    await this.resourceManager.unbindResource({ agentId, resourceId });
-  }
-
-  async unbindAgentResourceBySlug(
-    agentId: number,
-    kind: ResourceKind,
-    slug: string,
-  ): Promise<void> {
-    await this.resourceManager.unbindResource({ agentId, kind, slug });
   }
 
   getLastMessagePreview(sessionId: number): string | null {

@@ -11,7 +11,7 @@
 
 ## 接入点
 
-当前 rolling compaction 由 `src/session-lifecycle.ts` 在 `agent_end` 后调用。它不是 agent 可调用工具，也不依赖工具扩展强制加载。
+当前 rolling compaction 由 `src/core/session-lifecycle.ts` 在 `agent_end` 后调用。它不是 agent 可调用工具，也不依赖工具扩展强制加载。
 
 ## 工具输出压缩
 

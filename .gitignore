@@ -23,5 +23,6 @@ out.jsonl
 todo.md
 plans/
 compaction-results/
+test-results/
 .pi/hf-sessions/
 .pi/hf-sessions-backup/

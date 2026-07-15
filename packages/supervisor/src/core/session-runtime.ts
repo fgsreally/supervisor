@@ -12,14 +12,14 @@ import type {
   AgentResource,
   AgentResourceCommandInfo,
   AgentResourceCommandSource,
-} from "../resources/agent-resource.js";
-import { SessionExtensionHost } from "./session-extension/index.js";
+} from "../agent/runtime-resources.js";
+import { SessionExtensionHost } from "../extension/runtime/index.js";
 import { activatePackagedTools } from "../tools/loader.js";
 import { isPackagedToolId } from "../tools/catalog.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { SessionManager } from "./session-manager.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
-import { Context } from "./session-extension/index.js";
+import { Context } from "../extension/runtime/index.js";
 import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
 
 interface HarnessSessionTree {

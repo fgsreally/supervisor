@@ -5,9 +5,9 @@ import { join } from "node:path";
 import type { AgentHarnessEvent } from "@earendil-works/pi-agent-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SupervisorDb } from "../src/db/db.js";
-import { getGitStatusPorcelain, parseSessionGitMeta } from "../src/git/git-worktree.js";
-import { handleSessionLifecycleAgentEnd } from "../src/session-lifecycle.js";
-import { commitSessionChanges } from "../src/core/session-git-hooks.js";
+import { getGitStatusPorcelain, parseSessionGitMeta } from "../src/utils/git.js";
+import { handleSessionLifecycleAgentEnd } from "../src/core/session-lifecycle.js";
+import { commitSessionChanges } from "../src/core/session-lifecycle.js";
 import type { SessionRuntime } from "../src/core/session-runtime.js";
 
 let db: SupervisorDb;

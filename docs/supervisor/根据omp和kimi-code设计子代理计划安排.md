@@ -336,68 +336,10 @@ finished session 仍然能被 UI 展示、搜索、审计。
 finished session 默认不再注入交互工具，不再接收普通 prompt，除非显式 unarchive/reopen。
 ```
 
-### 9. 通过 URL/schema 查看子代理内部过程
+### 9. 不引入内部资源 URL 协议
 
-父代理不应该只能拿到最终 result。它还应该能在需要时自行查看子代理的内部执行过程，但这种查看不应该把所有 child messages 自动塞进父上下文。
-
-参考 omp 的资源 URL 思路，可以给子代理暴露可读资源 URL。
-
-不要使用裸的 `supervisor://`。这个 scheme 太宽，后续 supervisor 还会有 project、agent、tool、provider、extension 等资源，裸 scheme 容易让资源边界变得含糊。建议使用明确的产品级资源 scheme：
-
-示例：
-
-```text
-pi-supervisor://sessions/34
-pi-supervisor://sessions/34/messages
-pi-supervisor://sessions/34/branch
-pi-supervisor://sessions/34/result
-pi-supervisor://sessions/34/tool-calls
-```
-
-以后扩展到其他资源时也能保持同一套命名空间：
-
-```text
-pi-supervisor://projects/1
-pi-supervisor://agents/7
-pi-supervisor://sessions/34/messages?limit=50
-pi-supervisor://sessions/34/messages?after=<entryId>
-```
-
-父代理工具结果可以返回：
-
-```json
-{
-  "sessionId": 34,
-  "status": "running",
-  "resultUrl": "pi-supervisor://sessions/34/result",
-  "messagesUrl": "pi-supervisor://sessions/34/messages",
-  "traceUrl": "pi-supervisor://sessions/34/branch"
-}
-```
-
-LLM 后续如果需要细节，可以主动读取：
-
-```text
-read_resource("pi-supervisor://sessions/34/messages")
-```
-
-好处：
-
-```text
-父代理默认只拿摘要，保持上下文干净。
-需要追查时，LLM 可以按需读取 child session 的完整过程。
-UI、日志、LLM 都使用同一套资源标识。
-resume、审计、错误排查都能直接定位到具体子 session。
-```
-
-实现边界：
-
-```text
-URL 只是一种读取入口，不改变数据归属。
-child messages 仍然属于 child session。
-读取 URL 时应检查 parent/child 授权关系。
-资源内容需要支持截断、分页和摘要，避免一次性塞爆上下文。
-```
+不提供 `pi-supervisor://`、`list_supervisor_resources` 或 `read_supervisor_resource`。
+内置 Agent 通过已有资源能力直接查看所需内容，子代理工具只负责创建子 Session 并返回状态和结果。
 
 ## 暂停做
 
@@ -881,5 +823,3 @@ UI 能看到父子 session。
 - background 子 session 不会因为父 turn 结束而丢失。
 - 子代理运行时，前端可以实时看到 child session 的消息流和状态变化。
 - 一次性子代理完成后可以标记为 `finished`，长期子代理可以保持 `idle` 并允许后续 resume。
-- 父工具结果包含 child session 的可读资源 URL，例如 `messagesUrl` / `resultUrl` / `traceUrl`。
-- LLM 可以通过 `pi-supervisor://sessions/:id/...` 这类 URL 按需查看子代理内部执行过程。

@@ -5,7 +5,7 @@ import {
   getPackagedPromptsDir,
   loadPromptTemplate,
   renderPromptTemplate,
-} from "../src/resources/system-prompts.js";
+} from "../src/agent/system-prompts.js";
 
 describe("supervisor: system-prompts", () => {
   it("loads templates from packaged prompts directory", () => {

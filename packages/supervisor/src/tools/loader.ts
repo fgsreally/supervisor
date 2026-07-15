@@ -1,6 +1,6 @@
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { SessionExtensionHost } from "../core/session-extension/index.js";
+import type { SessionExtensionHost } from "../extension/runtime/index.js";
 import { activatePackagedTool, PACKAGED_TOOL_IDS, type PackagedToolId } from "./catalog.js";
 
 /** Directory containing supervisor-shipped packaged tools. */

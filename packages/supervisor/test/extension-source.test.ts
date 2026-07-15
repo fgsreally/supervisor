@@ -3,7 +3,7 @@ import {
   parseExtensionSource,
   parseGithubUrl,
   repositoryToGitSource,
-} from "../src/resources/extension-installer.js";
+} from "../src/extension/installer.js";
 
 describe("extension source parsing", () => {
   it("parses plain GitHub repo URLs", () => {

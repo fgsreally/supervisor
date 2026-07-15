@@ -129,7 +129,6 @@ export interface ExtensionResourceInfo {
   name: string | null;
   version: string | null;
   description: string | null;
-  isFlatFile: boolean;
   files: ExtensionFileInfo[];
 }
 
@@ -137,9 +136,6 @@ export interface ExtensionFileInfo {
   relativePath: string;
   content: string;
 }
-
-/** @deprecated use ExtensionResourceInfo. Kept for backwards-compat with UI references. */
-export type ExtensionPathInfo = ExtensionResourceInfo;
 
 export interface ResourceLayer {
   skills: SkillInfo[];
@@ -1049,9 +1045,7 @@ export interface InstallCatalogResourceRequest {
 
 export interface InstallCatalogResourceResult {
   resource: CatalogResource;
-  rootDir?: string;
-  entryPath?: string;
-  installCommand?: "pnpm" | "npm" | "none";
+  details?: Record<string, unknown>;
   binding?: AgentResourceBinding;
 }
 
@@ -1152,11 +1146,16 @@ export async function listExtensions(): Promise<ExtensionResourceInfo[]> {
 /** Install extension from npm:<spec>, git:<url>, or local path. */
 export async function installExtension(source: string): Promise<ExtensionInstallResult> {
   const result = await installCatalogResource({ kind: "extension", source });
+  const details = result.details ?? {};
   return {
     id: result.resource.slug,
-    rootDir: result.rootDir ?? result.resource.sourcePath ?? "",
-    entryPath: result.entryPath ?? "",
-    installCommand: result.installCommand ?? "none",
+    rootDir:
+      typeof details.rootDir === "string" ? details.rootDir : (result.resource.sourcePath ?? ""),
+    entryPath: typeof details.entryPath === "string" ? details.entryPath : "",
+    installCommand:
+      details.installCommand === "pnpm" || details.installCommand === "npm"
+        ? details.installCommand
+        : "none",
   };
 }
 

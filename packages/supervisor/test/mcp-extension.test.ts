@@ -20,6 +20,6 @@ describe("builtin MCP extension", () => {
       agent: { id: 7 },
     } as unknown as ExtensionContext);
     expect(prepare).toHaveBeenCalledOnce();
-    expect(all).toHaveBeenCalledWith(7, "mcp");
+    expect(all).toHaveBeenCalledWith(7);
   });
 });

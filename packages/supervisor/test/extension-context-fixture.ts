@@ -4,7 +4,7 @@ import {
   ContextDb,
   SessionExtensionServices,
   type ToolPolicy,
-} from "../src/core/session-extension/index.js";
+} from "../src/extension/runtime/index.js";
 import type {
   ApprovalRequest,
   BroadcastEvent,
@@ -52,7 +52,6 @@ export interface RuntimeOptions {
       triggerTurn?: boolean;
     }) => Promise<void>;
     sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
-    sendParentMsg: (content: string, options?: { level?: number }) => Promise<void>;
     getSessionDir: () => Promise<string>;
     getProjectDir: () => Promise<string>;
     getMemberAgentsByTag: (tag: string) => Promise<MemberAgentInfo[]>;
@@ -203,7 +202,6 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
       appendEntry: options.deps.appendEntry,
       sendMessage: options.deps.sendMessage,
       sendUserMessage: options.deps.sendUserMessage,
-      sendParentMsg: options.deps.sendParentMsg,
       pausing: options.deps.pausing,
       spawn: options.deps.spawnSession,
       waitForResult: async (

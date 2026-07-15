@@ -13,48 +13,48 @@ export const DEFAULT_PARENT_MESSAGE_LEVEL = 0;
 export const SESSION_INPUT_INTERRUPT_LEVEL = 90;
 
 export interface SessionQueuedInput {
-	message: string;
-	level: number;
-	source: string | null;
-	enqueuedAt: number;
-	images?: ImageContent[];
+  message: string;
+  level: number;
+  source: string | null;
+  enqueuedAt: number;
+  images?: ImageContent[];
 }
 
 export type SessionInputDisposition = "interrupt" | "queued" | "drained";
 
 function compareQueuedInputs(a: SessionQueuedInput, b: SessionQueuedInput): number {
-	if (b.level !== a.level) return b.level - a.level;
-	return a.enqueuedAt - b.enqueuedAt;
+  if (b.level !== a.level) return b.level - a.level;
+  return a.enqueuedAt - b.enqueuedAt;
 }
 
 export class SessionInputQueue {
-	private readonly queues = new Map<number, SessionQueuedInput[]>();
+  private readonly queues = new Map<number, SessionQueuedInput[]>();
 
-	enqueue(sessionId: number, entry: SessionQueuedInput): void {
-		const queue = this.queues.get(sessionId) ?? [];
-		queue.push(entry);
-		queue.sort(compareQueuedInputs);
-		this.queues.set(sessionId, queue);
-	}
+  enqueue(sessionId: number, entry: SessionQueuedInput): void {
+    const queue = this.queues.get(sessionId) ?? [];
+    queue.push(entry);
+    queue.sort(compareQueuedInputs);
+    this.queues.set(sessionId, queue);
+  }
 
-	dequeue(sessionId: number): SessionQueuedInput | undefined {
-		const queue = this.queues.get(sessionId);
-		if (!queue || queue.length === 0) return undefined;
-		const next = queue.shift()!;
-		if (queue.length === 0) this.queues.delete(sessionId);
-		else this.queues.set(sessionId, queue);
-		return next;
-	}
+  dequeue(sessionId: number): SessionQueuedInput | undefined {
+    const queue = this.queues.get(sessionId);
+    if (!queue || queue.length === 0) return undefined;
+    const next = queue.shift()!;
+    if (queue.length === 0) this.queues.delete(sessionId);
+    else this.queues.set(sessionId, queue);
+    return next;
+  }
 
-	peek(sessionId: number): SessionQueuedInput | undefined {
-		return this.queues.get(sessionId)?.[0];
-	}
+  peek(sessionId: number): SessionQueuedInput | undefined {
+    return this.queues.get(sessionId)?.[0];
+  }
 
-	size(sessionId: number): number {
-		return this.queues.get(sessionId)?.length ?? 0;
-	}
+  size(sessionId: number): number {
+    return this.queues.get(sessionId)?.length ?? 0;
+  }
 }
 
 export function shouldInterruptSessionInput(level: number): boolean {
-	return level >= SESSION_INPUT_INTERRUPT_LEVEL;
+  return level >= SESSION_INPUT_INTERRUPT_LEVEL;
 }

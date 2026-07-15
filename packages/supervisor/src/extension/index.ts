@@ -1,7 +1,7 @@
 import type { ExtensionDefinition } from "./types.js";
 
 export { Type, type Static, type TSchema } from "typebox";
-export { mcpExtension, shadowAgentExtension, subagentExtension } from "./builtin/index.js";
+export { mcpExtension, shadowExtension, subagentExtension } from "./builtin/index.js";
 
 /** Define and validate an extension. */
 export function defineExtension(definition: ExtensionDefinition): ExtensionDefinition {

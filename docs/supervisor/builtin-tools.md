@@ -24,4 +24,4 @@ supervisor 核心默认只提供 pi 原生 4 个工具：
 
 ## 非工具逻辑
 
-`src/session-lifecycle.ts` 保留会话生命周期逻辑，例如 git worktree、agent end 后的自动命名、结束时 git 合并。这些不是 agent 可调用工具。
+`src/core/session-lifecycle.ts` 保留会话生命周期逻辑，例如 git worktree、agent end 后的自动命名、结束时 git 合并。这些不是 agent 可调用工具。

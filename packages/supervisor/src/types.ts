@@ -1,5 +1,5 @@
 import type { AgentTool, SessionMetadata, SessionTreeEntry } from "@earendil-works/pi-agent-core";
-import type { SessionBranchType } from "./core/session-branch.js";
+import type { SessionBranchType } from "./core/session-history.js";
 
 /** Runtime shape of SQLiteSessionStorage.getMetadata() in supervisor. */
 export interface SupervisorHarnessMetadata extends SessionMetadata {

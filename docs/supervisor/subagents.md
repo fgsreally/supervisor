@@ -262,11 +262,6 @@ extension tool:
 - `SessionManager.abort()`：可选地取消 foreground children。
 - `http-server.ts`：补充 `/subagents` 语义 API。
 
-保留：
-
-- `src/spawn/spawn-agent-tool-provider.ts` 作为外部编排 SPI。
-- `docs/supervisor/examples/db-spawn-agent-tool-provider.ts` 作为兼容示例。
-
 清理：
 
 - `src/extensions/spawn-agent-tool.ts` 与新设计重叠且注释编码损坏。实现第一期时应删除或迁移其有效逻辑，避免两个同名工具并存。
@@ -276,7 +271,7 @@ extension tool:
 - 不改 `messages.parent_id` 语义；它仍是 session 内 entry 链，不是 session 树。
 - 不把父 session 的历史复制到子 session；spawn 是新任务上下文，fork/clone 才复制历史。
 - 不改变根 session git worktree 生命周期；子代理默认共享父 `cwd`。
-- 不默认注入外部包的 `SpawnAgentToolProvider`；内建 `Agent` 工具只由 supervisor 自己控制。
+- 子代理工具由 supervisor 的内置扩展统一提供，不开放额外的 spawn provider 注册入口。
 - 不要求 UI 立即支持复杂 swarm；第一期只需要 children/tree 能看见子 session。
 
 ## 分阶段实现

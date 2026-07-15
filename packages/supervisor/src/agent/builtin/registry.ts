@@ -5,29 +5,26 @@ import type { SupervisorDb } from "../../db/db.js";
 import type { Agent } from "../../types.js";
 import { getDefaultCwd } from "../../config/default-cwd.js";
 import type { SessionManager } from "../../core/session-manager.js";
-import { ensureGlobalResourceDirs } from "../../resources/resource-paths.js";
-import { loadPromptTemplate } from "../../resources/system-prompts.js";
+import { getGlobalSkillsDirectory } from "../skill-resource.js";
+import { loadPromptTemplate } from "../system-prompts.js";
 import { loadBuiltinAgentPrompt, loadPackagedAgentPrompt } from "./prompts.js";
 
 export const PACKAGED_AGENT_KINDS = ["shadow", "intro"] as const;
 export type PackagedAgentKind = (typeof PACKAGED_AGENT_KINDS)[number];
-
-export const INTERNAL_AGENT_KINDS = ["shadow"] as const;
-export type InternalAgentKind = (typeof INTERNAL_AGENT_KINDS)[number];
 
 const PACKAGED_AGENT_LABELS: Record<
   PackagedAgentKind,
   {
     name: string;
     description: string;
-    toolsPreset: "readonly" | "coding";
+    toolsPreset: "readonly" | "coding" | "none";
     userSpawnable: boolean;
   }
 > = {
   shadow: {
     name: "Shadow",
-    description: "Internal shadow collaborator: memory, security review, parent messaging",
-    toolsPreset: "readonly",
+    description: "Silent shadow observer for session memory and lightweight guidance",
+    toolsPreset: "none",
     userSpawnable: false,
   },
   intro: {
@@ -40,12 +37,8 @@ const PACKAGED_AGENT_LABELS: Record<
 
 export interface AgentMetaRecord {
   builtin?: boolean;
-  userSpawnable?: boolean;
-}
-
-interface LegacyAgentMetaRecord extends AgentMetaRecord {
   packagedKind?: PackagedAgentKind;
-  internalKind?: string;
+  userSpawnable?: boolean;
 }
 
 export function parseAgentMeta(agent: Pick<Agent, "meta"> | undefined): AgentMetaRecord {
@@ -79,19 +72,10 @@ export function findPackagedAgentId(db: SupervisorDb, kind: PackagedAgentKind): 
   const label = PACKAGED_AGENT_LABELS[kind];
   for (const agent of db.listAgents()) {
     const meta = parseAgentMeta(agent);
+    if (meta.packagedKind === kind) return agent.id;
     if (meta.builtin && agent.name === label.name) return agent.id;
-
-    const legacyMeta = meta as LegacyAgentMetaRecord;
-    if (legacyMeta.packagedKind === kind) return agent.id;
-    if (kind === "shadow" && legacyMeta.internalKind === "shadow") return agent.id;
-    if (kind === "intro" && legacyMeta.internalKind === "resource-manager") return agent.id;
   }
   return undefined;
-}
-
-/** @deprecated use findPackagedAgentId */
-export function findInternalAgentId(db: SupervisorDb, kind: InternalAgentKind): number | undefined {
-  return findPackagedAgentId(db, kind);
 }
 
 function pickProvider(db: SupervisorDb): { providerId: number; modelId: string } | null {
@@ -108,33 +92,7 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
   const label = PACKAGED_AGENT_LABELS[kind];
   const isInternal = !label.userSpawnable;
 
-  if (existing !== undefined) {
-    const agent = db.getAgent(existing);
-    if (agent) {
-      const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
-      ensureAgentHome(agent.id, homeDir);
-      writeAgentHomeSystemPrompt(homeDir, loadPackagedAgentPrompt(kind));
-      const meta = parseAgentMeta(agent);
-      if (
-        agent.isInternal !== isInternal ||
-        agent.name !== label.name ||
-        agent.toolsPreset !== label.toolsPreset ||
-        meta.builtin !== true ||
-        meta.userSpawnable !== label.userSpawnable
-      ) {
-        db.updateAgent(existing, {
-          name: label.name,
-          description: label.description,
-          is_internal: isInternal ? 1 : 0,
-          meta: {
-            builtin: true,
-            userSpawnable: label.userSpawnable,
-          },
-        });
-      }
-    }
-    return existing;
-  }
+  if (existing !== undefined) return existing;
 
   const providerPick = pickProvider(db);
   if (!providerPick) return undefined;
@@ -148,10 +106,11 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
     is_internal: isInternal,
     meta: {
       builtin: true,
+      packagedKind: kind,
       userSpawnable: label.userSpawnable,
     },
   });
-  const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
+  const homeDir = getAgentHomeDir(agent.id);
   ensureAgentHome(agent.id, homeDir);
   writeAgentHomeSystemPrompt(homeDir, loadPackagedAgentPrompt(kind));
   return agent.id;
@@ -165,16 +124,6 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
       console.warn(`[pi-supervisor] No provider configured - skipping packaged agent: ${kind}`);
     }
   }
-}
-
-/** @deprecated use ensurePackagedAgents */
-export function ensureInternalAgents(db: SupervisorDb): void {
-  ensurePackagedAgents(db);
-}
-
-export function isShadowChildSessionMeta(meta: Record<string, unknown> | undefined): boolean {
-  if (!meta) return false;
-  return typeof meta.shadowOf === "number";
 }
 
 const BUILTIN_ASSISTANT_NAME = "Pi 助手";
@@ -197,7 +146,7 @@ function findBuiltinAssistantSessionId(db: SupervisorDb, agentId: number): numbe
 }
 
 function installBuiltinAssistantSkill(db: SupervisorDb, agentId: number): void {
-  const skillDir = join(ensureGlobalResourceDirs(), "skills", "supervisor-guide");
+  const skillDir = join(getGlobalSkillsDirectory(), "supervisor-guide");
   mkdirSync(skillDir, { recursive: true });
   const skillPath = join(skillDir, "SKILL.md");
   if (!existsSync(skillPath)) {
@@ -222,6 +171,7 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
 
   const existingId = findBuiltinAssistantId(db);
   let agent = existingId === undefined ? undefined : db.getAgent(existingId);
+  let created = false;
   if (!agent) {
     agent = db.insertAgent({
       name: BUILTIN_ASSISTANT_NAME,
@@ -231,19 +181,15 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
       tools_preset: "coding",
       meta: { builtin: true, userSpawnable: true },
     });
-  } else {
-    const meta = parseAgentMeta(agent);
-    if (meta.builtin !== true || meta.userSpawnable !== true) {
-      agent = db.updateAgent(agent.id, {
-        meta: { builtin: true, userSpawnable: true },
-      });
-    }
+    created = true;
   }
 
-  const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
-  ensureAgentHome(agent.id, homeDir);
-  writeAgentHomeSystemPrompt(homeDir, BUILTIN_ASSISTANT_PROMPT);
-  installBuiltinAssistantSkill(db, agent.id);
+  if (created) {
+    const homeDir = getAgentHomeDir(agent.id);
+    ensureAgentHome(agent.id, homeDir);
+    writeAgentHomeSystemPrompt(homeDir, BUILTIN_ASSISTANT_PROMPT);
+    installBuiltinAssistantSkill(db, agent.id);
+  }
 
   let sessionId = findBuiltinAssistantSessionId(db, agent.id);
   if (sessionId === undefined) {

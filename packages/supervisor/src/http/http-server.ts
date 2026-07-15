@@ -15,6 +15,7 @@ import {
 import type { ExtensionEvent } from "../extension/index.js";
 import type { SessionManager } from "../core/session-manager.js";
 import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-manager.js";
+import { isResourceKind } from "../resources/types.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";
 import type { Model, Provider, SessionStatus } from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
@@ -819,7 +820,6 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // POST /sessions/:id/shadow-message — deliver a shadow collaborator result as a user message
   // POST /sessions/:id/abort — abort current work without deleting the runtime
   app.post("/sessions/:id/abort", async (c) => {
     try {
@@ -1244,8 +1244,8 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const kind = c.req.query("kind");
       const resources =
-        kind && ["extension", "skill", "prompt", "mcp", "tool"].includes(kind)
-          ? manager.resources.listResources(kind as import("../resources/types.js").ResourceKind)
+        kind && isResourceKind(kind)
+          ? manager.resources.listResources(kind)
           : manager.resources.listResources();
       return c.json(resources);
     } catch (e: unknown) {
@@ -1294,14 +1294,11 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (typeof kind !== "string" || typeof slug !== "string") {
       return jsonError(c, 400, "kind and slug are required");
     }
-    if (!["extension", "skill", "prompt", "mcp", "tool"].includes(kind)) {
+    if (!isResourceKind(kind)) {
       return jsonError(c, 400, "invalid kind");
     }
     try {
-      await manager.resources.uninstallResource(
-        kind as import("../resources/types.js").ResourceKind,
-        slug,
-      );
+      await manager.resources.uninstallResource(kind, slug);
       return c.json({ ok: true });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -1317,9 +1314,7 @@ export function createHttpServer(manager: SessionManager): Hono {
       const kind = c.req.query("kind");
       const bindings = manager.resources.listAgentBindings(
         agentId,
-        kind && ["extension", "skill", "prompt", "mcp", "tool"].includes(kind)
-          ? (kind as import("../resources/types.js").ResourceKind)
-          : undefined,
+        kind && isResourceKind(kind) ? kind : undefined,
       );
       return c.json(bindings);
     } catch (e: unknown) {
@@ -1396,7 +1391,7 @@ export function createHttpServer(manager: SessionManager): Hono {
   app.post("/extensions/:id/update", async (c) => {
     const id = c.req.param("id");
     try {
-      const result = await manager.resources.updateExtension(id);
+      const result = await manager.resources.updateResource("extension", id);
       return c.json(result);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);

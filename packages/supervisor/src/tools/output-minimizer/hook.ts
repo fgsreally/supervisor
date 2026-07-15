@@ -1,5 +1,5 @@
 import type { ExtensionEvent } from "../../extension/index.js";
-import type { SessionExtensionHost } from "../../core/session-extension/index.js";
+import type { SessionExtensionHost } from "../../extension/runtime/index.js";
 import { minimizeOutput } from "./minimizer.js";
 
 export function attachOutputMinimizerHook(extension: SessionExtensionHost): void {

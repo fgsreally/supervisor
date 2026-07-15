@@ -86,7 +86,7 @@ async function resumeQueuedMessages(runtime: SessionRuntime): Promise<void> {
 
 async function runCompaction(
   sessionId: string,
-	runtime: SessionRuntime,
+  runtime: SessionRuntime,
   db: Pick<SupervisorDb, "listProviders" | "listModelsByProvider" | "getProvider">,
   meta: Record<string, unknown>,
   options: { overflowRetry: boolean },
@@ -136,7 +136,7 @@ async function runCompaction(
  */
 export async function maybeRunRollingCompaction(
   sessionId: string,
-	runtime: SessionRuntime,
+  runtime: SessionRuntime,
   event: Extract<AgentHarnessEvent, { type: "agent_end" }>,
   meta: Record<string, unknown>,
   db: Pick<SupervisorDb, "listProviders" | "listModelsByProvider" | "getProvider">,

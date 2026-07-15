@@ -26,7 +26,7 @@ Pi Supervisor 由两个包组成：
 | SessionRuntime       | `src/core/session-runtime.ts:133`    | prompt / steer / follow-up / abort            |
 | SessionStorage       | `src/core/session-storage.ts:12`     | SQLite 持久化消息树                           |
 | SupervisorDb         | `src/db/db.ts:96`                    | schema、迁移、FTS5 全文搜索                   |
-| SessionExtensionHost | `src/core/session-extension/host.ts` | 激活扩展、事件分发、工具注入                  |
+| SessionExtensionHost | `src/extension/runtime/host.ts`      | 激活扩展、事件分发、工具注入                  |
 | MCP Extension        | `src/extension/builtin/mcp/index.ts` | Stdio + SSE MCP 服务器连接与工具注册          |
 | Compaction           | `src/core/compaction/rolling.ts`     | 按上下文用量执行滚动压缩                      |
 

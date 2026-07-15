@@ -2,7 +2,7 @@
 import { parseArgs } from "node:util";
 import { serve } from "@hono/node-server";
 import prompts from "prompts";
-import { BUILT_IN_PROVIDERS } from "./providers/built-in-providers.js";
+import { BUILT_IN_PROVIDERS } from "./config/built-in-providers.js";
 import { ensureBuiltinAssistant, ensurePackagedAgents } from "./agent/index.js";
 import { SupervisorDb } from "./db/db.js";
 import { getDefaultCwd, resolveWorkspacePath, setDefaultCwd } from "./config/default-cwd.js";
@@ -166,10 +166,11 @@ async function run() {
           process.exit(1);
         }
         const result = await manager.resources.installResource({ kind: "extension", source });
+        const details = result.details ?? {};
         console.log(`Installed: ${result.resource.slug}`);
-        console.log(`  rootDir: ${result.rootDir}`);
-        console.log(`  entry:   ${result.entryPath}`);
-        console.log(`  deps:    ${result.installCommand}`);
+        console.log(`  rootDir: ${String(details.rootDir ?? "")}`);
+        console.log(`  entry:   ${String(details.entryPath ?? "")}`);
+        console.log(`  deps:    ${String(details.installCommand ?? "none")}`);
         db.close();
         break;
       }
@@ -180,11 +181,12 @@ async function run() {
           console.error("Usage: pi-supervisor extensions update <id>");
           process.exit(1);
         }
-        const result = await manager.resources.updateExtension(id);
+        const result = await manager.resources.updateResource("extension", id);
+        const details = result.details ?? {};
         console.log(`Updated: ${result.resource.slug}`);
-        console.log(`  rootDir: ${result.rootDir}`);
-        console.log(`  entry:   ${result.entryPath}`);
-        console.log(`  deps:    ${result.installCommand}`);
+        console.log(`  rootDir: ${String(details.rootDir ?? "")}`);
+        console.log(`  entry:   ${String(details.entryPath ?? "")}`);
+        console.log(`  deps:    ${String(details.installCommand ?? "none")}`);
         db.close();
         break;
       }

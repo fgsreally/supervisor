@@ -146,7 +146,6 @@ export interface ExtensionSession {
     triggerTurn?: boolean;
   }): Promise<void>;
   sendUserMessage(content: string, options?: { source?: string }): Promise<void>;
-  sendParentMsg(content: string, options?: { level?: number }): Promise<void>;
   pausing<T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T>;
   spawn(request: SpawnSessionRequest): Promise<SpawnSessionResult>;
   waitForResult(

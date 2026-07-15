@@ -31,12 +31,7 @@ export function startSupervisor(options: SupervisorOptions = {}): {
 }
 
 export { ensureAgentHome, getAgentHomeDir, getSupervisorAgentsRoot } from "./agent/index.js";
-export type { AgentResources, AgentToolInfo, ResourceLayer } from "./resources/agent-resources.js";
-export {
-  loadAgentSessionResources,
-  resolveAgentResources,
-  resolveAgentTools,
-} from "./resources/agent-resources.js";
+export type { AgentResources, AgentToolInfo, ResourceLayer } from "./agent/resource-resolver.js";
 export { SupervisorDb } from "./db/db.js";
 export { createDefaultTools } from "./utils/default-tools.js";
 export { activatePackagedTools, getPackagedToolDir, listPackagedToolIds } from "./tools/index.js";
@@ -52,7 +47,7 @@ export type {
 } from "./extension/index.js";
 export { createHttpServer } from "./http/http-server.js";
 export { extractMessageSearchFields } from "./db/message-search.js";
-export { copyMessagesWithInheritance } from "./core/session-branch.js";
+export { copyMessagesWithInheritance } from "./core/session-history.js";
 export type { SessionOutputListener } from "./core/session-manager.js";
 export { SessionManager } from "./core/session-manager.js";
 export {
@@ -64,21 +59,21 @@ export {
   type ResourceManagerDeps,
 } from "./resources/resource-manager.js";
 export {
+  indexResourceHandlers,
+  type ResourceDescriptor,
+  type ResourceHandler,
+  type ResourceInstallOutput,
+  type ResourceInstallRequest,
+} from "./resources/handler.js";
+export {
   AgentResource,
   type AgentResourceCommandInfo,
   type AgentResourceCommandSource,
   type AgentResourceOptions,
-} from "./resources/agent-resource.js";
+} from "./agent/runtime-resources.js";
 export type { AgentResourceBinding, Resource, ResourceKind } from "./resources/types.js";
 export type { SessionEvent, SessionState } from "./core/session-runtime.js";
 export { SessionRuntime } from "./core/session-runtime.js";
-export { formatSkillsForPrompt, loadSkills, loadSkillsFromDir } from "./resources/skills.js";
-export type { SessionSpawner } from "./spawn/session-spawner.js";
-export type {
-  SpawnAgentRequest,
-  SpawnAgentResult,
-  SpawnAgentToolContext,
-} from "./spawn/spawn-agent-tool-provider.js";
-export { SpawnAgentToolProvider } from "./spawn/spawn-agent-tool-provider.js";
-export type { TurnFileChanges, TurnRecord } from "./git/turn-file-tracker.js";
+export { formatSkillsForPrompt, loadSkills, loadSkillsFromDir } from "./agent/skills.js";
+export type { TurnFileChanges, TurnRecord } from "./core/turn-file-tracker.js";
 export type * from "./types.js";

@@ -2,25 +2,32 @@
   "name": "@earendil-works/pi-supervisor",
   "version": "0.1.0",
   "description": "Supervisor for managing multiple pi agent sessions",
-  "type": "module",
-  "main": "./dist/index.mjs",
   "bin": {
     "pi-supervisor": "./dist/cli.mjs"
   },
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/types.d.mts",
   "exports": {
     ".": {
       "types": "./dist/types.d.mts",
       "import": "./dist/index.mjs"
     },
+    "./testing/ai": {
+      "types": "./dist/testing/ai/index.d.mts",
+      "import": "./dist/testing/ai/index.mjs"
+    },
     "./package.json": "./package.json"
   },
-  "types": "./dist/types.d.mts",
   "scripts": {
     "clean": "shx rm -rf dist",
     "dev": "tsdown --watch",
     "serve:playground": "node dist/cli.mjs serve --port 3030 --cwd ../../playground --db ../../playground/.supervisor/supervisor.db",
     "build": "tsdown",
-    "test": "vitest --run"
+    "test": "vitest --run --config vitest.config.ts",
+    "test:unit": "vitest --run --config vitest.config.ts",
+    "test:ai": "vitest --run --config vitest.ai.config.ts",
+    "test:all": "pnpm run test:unit && pnpm run test:ai"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "^0.74.0",

@@ -1,29 +1,16 @@
-import { cpSync, existsSync, rmSync, statSync } from "node:fs";
-import { basename, extname, isAbsolute, join, resolve } from "node:path";
-import { ensureGlobalResourceDirs, getGlobalResourceDirs } from "./resource-paths.js";
-import {
-  installExtensionToGlobal,
-  type InstallResult,
-  uninstallGlobalExtension,
-  updateGlobalExtension,
-} from "./extension-installer.js";
 import type { SupervisorDb } from "../db/db.js";
-import type { ExtensionModuleRegistry } from "./extension-registry.js";
+import type { ResourceHandler, ResourceInstallOutput } from "./handler.js";
 import type { AgentResourceBinding, Resource, ResourceKind } from "./types.js";
 import { isResourceKind } from "./types.js";
 
 export interface ResourceManagerDeps {
   db: SupervisorDb;
-  extensionRegistry: ExtensionModuleRegistry;
+  handlers: ReadonlyMap<ResourceKind, ResourceHandler>;
   ensureCatalog: () => Promise<void>;
-  deactivateAgentExtension?: (agentId: number, slug: string) => Promise<void>;
 }
 
-export type InstallableResourceKind = "extension" | "skill" | "prompt" | "mcp";
-
 export interface InstallResourceInput {
-  kind: InstallableResourceKind;
-  /** npm:/git:/local path for extension; filesystem path for skill/prompt/mcp */
+  kind: ResourceKind;
   source: string;
   slug?: string;
   name?: string;
@@ -32,9 +19,7 @@ export interface InstallResourceInput {
 
 export interface InstallResourceResult {
   resource: Resource;
-  rootDir?: string;
-  entryPath?: string;
-  installCommand?: InstallResult["installCommand"];
+  details?: Record<string, unknown>;
 }
 
 export type BindResourceInput =
@@ -51,95 +36,10 @@ export interface InstallAndBindInput extends InstallResourceInput {
 }
 
 function assertAgentExists(db: SupervisorDb, agentId: number): void {
-  if (!db.getAgent(agentId)) {
-    throw new Error(`Agent not found: ${agentId}`);
-  }
+  if (!db.getAgent(agentId)) throw new Error(`Agent not found: ${agentId}`);
 }
 
-function resolveSourcePath(source: string): string {
-  const absolute = isAbsolute(source) ? source : resolve(process.cwd(), source);
-  if (!existsSync(absolute)) {
-    throw new Error(`Source not found: ${absolute}`);
-  }
-  return absolute;
-}
-
-function installLocalToGlobal(
-  kind: "skill" | "prompt" | "mcp",
-  source: string,
-  slug?: string,
-): { slug: string; path: string } {
-  ensureGlobalResourceDirs();
-  const dirs = getGlobalResourceDirs();
-  const absoluteSource = resolveSourcePath(source);
-
-  switch (kind) {
-    case "skill": {
-      const stat = statSync(absoluteSource);
-      if (!stat.isDirectory()) {
-        throw new Error("Skill source must be a directory");
-      }
-      const targetSlug = slug ?? basename(absoluteSource);
-      const targetPath = join(dirs.skills, targetSlug);
-      if (existsSync(targetPath)) {
-        rmSync(targetPath, { recursive: true, force: true });
-      }
-      cpSync(absoluteSource, targetPath, { recursive: true });
-      return { slug: targetSlug, path: resolve(targetPath) };
-    }
-    case "prompt": {
-      const stat = statSync(absoluteSource);
-      if (!stat.isFile() || extname(absoluteSource) !== ".md") {
-        throw new Error("Prompt source must be a .md file");
-      }
-      const targetSlug = slug ?? basename(absoluteSource, ".md");
-      const targetPath = join(dirs.prompts, `${targetSlug}.md`);
-      cpSync(absoluteSource, targetPath);
-      return { slug: targetSlug, path: resolve(targetPath) };
-    }
-    case "mcp": {
-      const stat = statSync(absoluteSource);
-      if (!stat.isFile() || extname(absoluteSource) !== ".json") {
-        throw new Error("MCP source must be a .json file");
-      }
-      const targetSlug = slug ?? basename(absoluteSource, ".json");
-      const targetPath = join(dirs.mcp, `${targetSlug}.json`);
-      cpSync(absoluteSource, targetPath);
-      return { slug: targetSlug, path: resolve(targetPath) };
-    }
-  }
-}
-
-function removeGlobalResourceFromDisk(kind: ResourceKind, slug: string): void {
-  const dirs = getGlobalResourceDirs();
-  switch (kind) {
-    case "extension":
-      uninstallGlobalExtension(slug);
-      return;
-    case "skill": {
-      const target = join(dirs.skills, slug);
-      if (existsSync(target)) rmSync(target, { recursive: true, force: true });
-      return;
-    }
-    case "prompt": {
-      const target = join(dirs.prompts, `${slug}.md`);
-      if (existsSync(target)) rmSync(target, { force: true });
-      return;
-    }
-    case "mcp": {
-      const target = join(dirs.mcp, `${slug}.json`);
-      if (existsSync(target)) rmSync(target, { force: true });
-      return;
-    }
-    case "tool":
-      return;
-  }
-}
-
-/**
- * Unified resource catalog operations: install to global disk, register in DB, bind to agents.
- * Used by SessionManager, HTTP API, and CLI.
- */
+/** Generic catalog, installation, and Agent-binding coordinator. */
 export class ResourceManager {
   constructor(private readonly deps: ResourceManagerDeps) {}
 
@@ -157,29 +57,22 @@ export class ResourceManager {
 
   async installResource(input: InstallResourceInput): Promise<InstallResourceResult> {
     await this.deps.ensureCatalog();
+    const handler = this.requireHandler(input.kind, "install");
+    if (!handler.install) throw new Error(`Resource kind is not installable: ${input.kind}`);
+    const installed = await handler.install({ source: input.source, slug: input.slug });
+    const result = this.saveInstalledResource(input.kind, installed, input);
+    await handler.onCatalogUpdated?.(result.resource.slug);
+    return result;
+  }
 
-    if (input.kind === "extension") {
-      const result = installExtensionToGlobal(input.source);
-      const resource = this.deps.db.upsertResource({
-        kind: "extension",
-        slug: result.id,
-        name: input.name ?? result.id,
-        description: input.description,
-        source_path: result.rootDir,
-      });
-      await this.deps.extensionRegistry.reload(this.deps.db, result.id);
-      return { resource, ...result };
-    }
-
-    const installed = installLocalToGlobal(input.kind, input.source, input.slug);
-    const resource = this.deps.db.upsertResource({
-      kind: input.kind,
-      slug: installed.slug,
-      name: input.name ?? installed.slug,
-      description: input.description,
-      source_path: installed.path,
-    });
-    return { resource };
+  async updateResource(kind: ResourceKind, slug: string): Promise<InstallResourceResult> {
+    await this.deps.ensureCatalog();
+    const handler = this.requireHandler(kind, "update");
+    if (!handler.update) throw new Error(`Resource kind is not updateable: ${kind}`);
+    const updated = await handler.update(slug);
+    const result = this.saveInstalledResource(kind, updated);
+    await handler.onCatalogUpdated?.(result.resource.slug);
+    return result;
   }
 
   async uninstallResource(kind: ResourceKind, slug: string): Promise<void> {
@@ -187,79 +80,41 @@ export class ResourceManager {
     if (resource) {
       try {
         this.deps.db.deleteResource(resource.id);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
         throw new Error(`Cannot uninstall ${kind}/${slug}: ${message}`);
       }
     }
-
-    if (kind === "extension" || existsGlobalResourceOnDisk(kind, slug)) {
-      removeGlobalResourceFromDisk(kind, slug);
-    }
-
-    if (kind === "extension") {
-      await this.deps.extensionRegistry.reload(this.deps.db, slug);
-    }
-  }
-
-  async updateExtension(slug: string): Promise<InstallResourceResult> {
-    await this.deps.ensureCatalog();
-    const result = updateGlobalExtension(slug);
-    const resource = this.deps.db.upsertResource({
-      kind: "extension",
-      slug: result.id,
-      name: result.id,
-      source_path: result.rootDir,
-    });
-    await this.deps.extensionRegistry.reload(this.deps.db, result.id);
-    return { resource, ...result };
-  }
-
-  registerTool(
-    slug: string,
-    options?: { name?: string; description?: string; meta?: Record<string, unknown> },
-  ): Resource {
-    return this.deps.db.upsertResource({
-      kind: "tool",
-      slug,
-      name: options?.name ?? slug,
-      description: options?.description,
-      source_path: null,
-      meta: options?.meta,
-    });
+    await this.deps.handlers.get(kind)?.uninstall?.(slug);
   }
 
   bindResource(input: BindResourceInput): AgentResourceBinding {
     assertAgentExists(this.deps.db, input.agentId);
-
-    if (!("kind" in input)) {
-      const resource = this.deps.db.getResource(input.resourceId);
-      if (!resource) throw new Error(`Resource not found: ${input.resourceId}`);
-      return this.deps.db.bindAgentResource(input.agentId, input.resourceId, {
-        priority: input.priority,
-      });
+    const resource =
+      "kind" in input
+        ? this.deps.db.getResourceByKindSlug(input.kind, input.slug)
+        : this.deps.db.getResource(input.resourceId);
+    if (!resource) {
+      const identity = "kind" in input ? `${input.kind}/${input.slug}` : input.resourceId;
+      throw new Error(`Resource not found: ${identity}`);
     }
-
-    const resource = this.deps.db.getResourceByKindSlug(input.kind, input.slug);
-    if (!resource) throw new Error(`Resource not found: ${input.kind}/${input.slug}`);
     return this.deps.db.bindAgentResource(input.agentId, resource.id, {
       priority: input.priority,
     });
   }
 
   async unbindResource(input: UnbindResourceInput): Promise<void> {
-    let extensionSlug: string | undefined;
-    if (!("kind" in input)) {
-      const resource = this.deps.db.getResource(input.resourceId);
-      if (resource?.kind === "extension") extensionSlug = resource.slug;
-      this.deps.db.unbindAgentResource(input.agentId, input.resourceId);
-    } else {
-      if (input.kind === "extension") extensionSlug = input.slug;
+    const resource =
+      "kind" in input
+        ? this.deps.db.getResourceByKindSlug(input.kind, input.slug)
+        : this.deps.db.getResource(input.resourceId);
+    if ("kind" in input) {
       this.deps.db.unbindAgentResourceBySlug(input.agentId, input.kind, input.slug);
+    } else {
+      this.deps.db.unbindAgentResource(input.agentId, input.resourceId);
     }
-    if (extensionSlug) {
-      await this.deps.deactivateAgentExtension?.(input.agentId, extensionSlug);
-    }
+    if (resource)
+      await this.deps.handlers.get(resource.kind)?.onUnbind?.(input.agentId, resource.slug);
   }
 
   async installAndBind(
@@ -267,43 +122,44 @@ export class ResourceManager {
   ): Promise<InstallResourceResult & { binding: AgentResourceBinding }> {
     const { agentId, priority, ...installInput } = input;
     const installed = await this.installResource(installInput);
-    const binding = this.bindResource({
-      agentId,
-      resourceId: installed.resource.id,
-      priority,
-    });
+    const binding = this.bindResource({ agentId, resourceId: installed.resource.id, priority });
     return { ...installed, binding };
   }
-}
 
-function existsGlobalResourceOnDisk(kind: ResourceKind, slug: string): boolean {
-  const dirs = getGlobalResourceDirs();
-  switch (kind) {
-    case "extension":
-      return existsSync(join(dirs.extensions, slug));
-    case "skill":
-      return existsSync(join(dirs.skills, slug));
-    case "prompt":
-      return existsSync(join(dirs.prompts, `${slug}.md`));
-    case "mcp":
-      return existsSync(join(dirs.mcp, `${slug}.json`));
-    case "tool":
-      return false;
+  private requireHandler(kind: ResourceKind, operation: string): ResourceHandler {
+    const handler = this.deps.handlers.get(kind);
+    if (!handler) throw new Error(`No ${operation} handler registered for resource kind: ${kind}`);
+    return handler;
+  }
+
+  private saveInstalledResource(
+    kind: ResourceKind,
+    installed: ResourceInstallOutput,
+    overrides?: Pick<InstallResourceInput, "name" | "description">,
+  ): InstallResourceResult {
+    const resource = this.deps.db.upsertResource({
+      kind,
+      slug: installed.slug,
+      name: overrides?.name ?? installed.name,
+      description: overrides?.description ?? installed.description,
+      source_path: installed.sourcePath,
+      version: installed.version,
+      meta: installed.meta,
+    });
+    return { resource, details: installed.details };
   }
 }
 
 export function parseInstallResourceBody(body: Record<string, unknown>): InstallResourceInput {
-  const kind = body.kind;
-  const source = body.source;
-  if (typeof kind !== "string" || !isResourceKind(kind) || kind === "tool") {
-    throw new Error("kind must be extension, skill, prompt, or mcp");
+  if (typeof body.kind !== "string" || !isResourceKind(body.kind)) {
+    throw new Error("invalid resource kind");
   }
-  if (typeof source !== "string" || !source.trim()) {
+  if (typeof body.source !== "string" || !body.source.trim()) {
     throw new Error("source is required");
   }
   return {
-    kind,
-    source: source.trim(),
+    kind: body.kind,
+    source: body.source.trim(),
     slug: typeof body.slug === "string" ? body.slug : undefined,
     name: typeof body.name === "string" ? body.name : undefined,
     description: typeof body.description === "string" ? body.description : undefined,
@@ -322,9 +178,7 @@ export function parseBindResourceBody(
     };
   }
   if (typeof body.kind === "string" && typeof body.slug === "string") {
-    if (!isResourceKind(body.kind)) {
-      throw new Error("invalid resource kind");
-    }
+    if (!isResourceKind(body.kind)) throw new Error("invalid resource kind");
     return {
       agentId,
       kind: body.kind,

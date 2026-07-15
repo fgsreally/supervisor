@@ -31,12 +31,10 @@ describe("extension installation and discovery", () => {
 
   it("installs a local extension into global catalog and discovers it", async () => {
     const { installExtensionToGlobal, uninstallGlobalExtension } = await import(
-      `${MODULE_BASE}/resources/extension-installer.js`
+      `${MODULE_BASE}/extension/installer.js`
     );
-    const { listExtensionInfosInDirectories } = await import(
-      `${MODULE_BASE}/extension/loader.js`
-    );
-    const { getGlobalResourceDirs } = await import(`${MODULE_BASE}/resources/resource-paths.js`);
+    const { listExtensionInfosInDirectories } = await import(`${MODULE_BASE}/extension/loader.js`);
+    const { getGlobalExtensionsDirectory } = await import(`${MODULE_BASE}/extension/resource.js`);
 
     const srcRoot = mkdtempSync(join(tmpdir(), "pi-ext-src-"));
     writeFileSync(
@@ -61,7 +59,7 @@ describe("extension installation and discovery", () => {
     expect(existsSync(result.rootDir)).toBe(true);
     expect(existsSync(result.entryPath)).toBe(true);
 
-    const globalExtDir = getGlobalResourceDirs().extensions;
+    const globalExtDir = getGlobalExtensionsDirectory();
     const infos = listExtensionInfosInDirectories([globalExtDir]);
     expect(infos.length).toBeGreaterThanOrEqual(1);
 
@@ -71,7 +69,6 @@ describe("extension installation and discovery", () => {
     expect(found!.version).toBe("1.2.3");
     expect(found!.description).toBe("A sample extension for testing");
     expect(found!.fileName).toBe("index.ts");
-    expect(found!.isFlatFile).toBe(false);
 
     uninstallGlobalExtension(result.id);
     expect(existsSync(result.rootDir)).toBe(false);
@@ -81,7 +78,7 @@ describe("extension installation and discovery", () => {
 
   it("update requires package.json repository field", async () => {
     const { installExtensionToGlobal, uninstallGlobalExtension, updateGlobalExtension } =
-      await import(`${MODULE_BASE}/resources/extension-installer.js`);
+      await import(`${MODULE_BASE}/extension/installer.js`);
 
     const srcRoot = mkdtempSync(join(tmpdir(), "pi-ext-src-"));
     writeFileSync(

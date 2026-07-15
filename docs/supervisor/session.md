@@ -49,14 +49,14 @@ Runtime 层在 `src/core/session-runtime.ts:133-148` 提供 `prompt / steer / fo
 
 ## Git 集成
 
-`src/core/session-git-hooks.ts:57-118`：
+`src/core/session-lifecycle.ts:57-118`：
 
 - 会话结束时自动 commit 工作目录的变更
 - 利用 utility LLM 自动生成会话标题（`maybeAutoNameSession`）
 
 ## Checkpoint / Rewind
 
-`src/core/session-checkpoint.ts:38-133`：
+`src/core/session-history.ts:38-133`：
 
 - `createCheckpoint` 记录当前 leaf id + 当前 git ref
 - `rewind` 恢复到指定 checkpoint：消息树修剪（不删除原数据）+ git stash 恢复

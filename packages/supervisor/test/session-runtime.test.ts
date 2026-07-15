@@ -6,7 +6,6 @@ import "./mock-agent-harness.js";
 import { SupervisorDb } from "../src/db.js";
 import { SessionManager } from "../src/session-manager.js";
 import { SQLiteSessionStorage } from "../src/session-storage.js";
-import { ensurePackagedAgents, findPackagedAgentId } from "../src/agent/index.js";
 import { MockAgentHarness } from "./mock-agent-harness.js";
 
 let db: SupervisorDb;
@@ -65,84 +64,5 @@ describe("supervisor: SessionRuntime", () => {
     });
 
     expect(runtime.getLastAssistantText()).toBe("done");
-  });
-
-  it("shadow child send_parent_msg delivers to parent session", async () => {
-    const providerId = db.insertProvider({
-      slug: "test-provider",
-      name: "Test Provider",
-      api_type: "anthropic-messages",
-    });
-    db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6", name: "Sonnet" });
-    ensurePackagedAgents(db);
-    const shadowAgentId = findPackagedAgentId(db, "shadow");
-    expect(shadowAgentId).toBeDefined();
-
-    const parent = await manager.spawn({ cwd: "/proj", agentId: undefined });
-    const shadowChild = await manager.spawn({
-      parentId: parent.id,
-      agentId: shadowAgentId,
-      cwd: "/proj",
-      meta: { shadowOf: parent.id, hidden: true },
-    });
-    const shadowRuntime = manager.getRuntime(shadowChild.id);
-
-    await shadowRuntime.extension!.executeTool(
-      "send_parent_msg",
-      { message: "security issue", level: 80 },
-      {
-        toolCallId: "shadow-1",
-        session: { id: String(shadowChild.id), cwd: "/proj" },
-        reportProgress: () => {},
-      },
-    );
-
-    // Parent is idle — submitSessionInput drains immediately
-    expect(manager.peekSessionInput(parent.id)).toBeUndefined();
-    expect(MockAgentHarness.instances[0]!.agent.prompt).toHaveBeenCalledWith("security issue");
-  });
-
-  it("shadow child send_parent_msg queues when parent is busy", async () => {
-    const providerId = db.insertProvider({
-      slug: "test-provider",
-      name: "Test Provider",
-      api_type: "anthropic-messages",
-    });
-    db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6", name: "Sonnet" });
-    ensurePackagedAgents(db);
-    const shadowAgentId = findPackagedAgentId(db, "shadow");
-    expect(shadowAgentId).toBeDefined();
-
-    const parent = await manager.spawn({ cwd: "/proj", agentId: undefined });
-    MockAgentHarness.instances[0]!.agent.emit({
-      type: "agent_start",
-    } as import("@earendil-works/pi-agent-core").AgentEvent);
-
-    const shadowChild = await manager.spawn({
-      parentId: parent.id,
-      agentId: shadowAgentId,
-      cwd: "/proj",
-      meta: { shadowOf: parent.id, hidden: true },
-    });
-    const shadowRuntime = manager.getRuntime(shadowChild.id);
-
-    await shadowRuntime.extension!.executeTool(
-      "send_parent_msg",
-      { message: "security issue", level: 80 },
-      {
-        toolCallId: "shadow-2",
-        session: { id: String(shadowChild.id), cwd: "/proj" },
-        reportProgress: () => {},
-      },
-    );
-
-    expect(manager.peekSessionInput(parent.id)?.message).toBe("security issue");
-    MockAgentHarness.instances[0]!.agent.prompt.mockClear();
-    MockAgentHarness.instances[0]!.agent.emit({
-      type: "agent_end",
-      messages: [],
-    } as import("@earendil-works/pi-agent-core").AgentEvent);
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    expect(MockAgentHarness.instances[0]!.agent.prompt).toHaveBeenCalledWith("security issue");
   });
 });

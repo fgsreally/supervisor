@@ -123,7 +123,7 @@ packages/supervisor/
 | `runtime-resources.ts` | 单个运行中 Agent 的 Skill、Prompt 与命令状态                                                            |
 | `resource-resolver.ts` | 解析 Agent 已绑定资源、扩展工具与最终工具列表                                                           |
 
-`src/testing/ai/` 通过 `@earendil-works/pi-supervisor/testing/ai` 提供真实 Coding Agent 场景执行、裁判评分、A/B 比较与测试产物能力。公共 API 不依赖具体测试框架。
+`src/testing/ai/` 通过 `@earendil-works/pi-supervisor/test` 提供真实 Coding Agent 场景执行、裁判评分、A/B 比较与测试产物能力。公共 API 不依赖具体测试框架。
 
 ---
 

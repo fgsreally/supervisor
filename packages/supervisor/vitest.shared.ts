@@ -8,7 +8,7 @@ const src = resolve(directory, "src");
 export default defineConfig({
   resolve: {
     alias: {
-      "@earendil-works/pi-supervisor/testing/ai": resolve(src, "testing/ai/index.ts"),
+      "@earendil-works/pi-supervisor/test": resolve(src, "testing/ai/index.ts"),
       "../src/db.js": resolve(src, "db/db.ts"),
       "../src/http-server.js": resolve(src, "http/http-server.ts"),
       "../src/session-manager.js": resolve(src, "core/session-manager.ts"),

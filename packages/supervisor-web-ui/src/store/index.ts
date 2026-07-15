@@ -84,7 +84,7 @@ export const useSessionStore = defineStore("session", () => {
   });
 
   const getSessionsByAgentId = computed(() => (agentId: string) => {
-    return sessions.value.filter((s) => s.agentId === agentId && !s.parentId);
+    return sessions.value.filter((s) => s.agentId === agentId && s.showInSessionList);
   });
 
   const currentSession = computed(() => {
@@ -170,8 +170,30 @@ export const useSessionStore = defineStore("session", () => {
     root.clearError();
     try {
       await api.deleteSession(id);
-      sessions.value = sessions.value.filter((s) => s.id !== id);
-      delete messages.value[id];
+      const removedIds = new Set([id]);
+      let changed = true;
+      while (changed) {
+        changed = false;
+        for (const session of sessions.value) {
+          if (
+            session.parentId &&
+            removedIds.has(session.parentId) &&
+            (session.branchType === "subagent" || session.branchType === "btw") &&
+            !removedIds.has(session.id)
+          ) {
+            removedIds.add(session.id);
+            changed = true;
+          }
+        }
+      }
+      sessions.value = sessions.value
+        .filter((session) => !removedIds.has(session.id))
+        .map((session) =>
+          session.parentId && removedIds.has(session.parentId)
+            ? { ...session, parentId: null }
+            : session,
+        );
+      for (const removedId of removedIds) delete messages.value[removedId];
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to delete session");
       throw err;
@@ -247,6 +269,18 @@ export const useSessionStore = defineStore("session", () => {
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to clone session");
+      throw err;
+    }
+  }
+
+  async function createBtwSession(id: string) {
+    root.clearError();
+    try {
+      const session = await api.createBtwSession(id);
+      sessions.value.unshift(session);
+      return session;
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to create BTW session");
       throw err;
     }
   }
@@ -347,6 +381,7 @@ export const useSessionStore = defineStore("session", () => {
     sendPrompt,
     forkSession,
     cloneSession,
+    createBtwSession,
     killSession,
     completeSession,
     createCheckpoint,

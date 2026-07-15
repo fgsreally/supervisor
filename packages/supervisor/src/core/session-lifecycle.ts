@@ -27,6 +27,7 @@ import {
   generateSessionTitle,
   resolveTaggedModelAuth,
 } from "../utils/utility-llm.js";
+import { normalizeSessionBranchType } from "./session-history.js";
 
 export type SessionLifecycleDb = Pick<
   SupervisorDb,
@@ -53,7 +54,9 @@ function rowToSession(row: SessionRow): Session {
     cwd: row.cwd,
     leafId: row.leaf_id,
     agentId: row.agent_id,
-    branchType: row.branch_type as Session["branchType"],
+    branchType: normalizeSessionBranchType(row.branch_type),
+    showInSessionList: row.show_in_session_list !== 0,
+    contextLeafId: row.context_leaf_id ?? null,
     createdAt: new Date(row.created_at),
     lastActiveAt: new Date(row.last_active_at),
     meta: typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta,

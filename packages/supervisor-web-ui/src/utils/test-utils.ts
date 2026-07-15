@@ -22,6 +22,8 @@ export function createMockSession(overrides: Partial<Session> = {}): Session {
     leafId: null,
     agentId: null,
     branchType: null,
+    showInSessionList: true,
+    contextLeafId: null,
     createdAt: new Date().toISOString(),
     lastActiveAt: new Date().toISOString(),
     meta: { name: "Test Session" },

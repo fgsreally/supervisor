@@ -348,7 +348,7 @@ onMounted(() => {
   ])
     .then(() => {
       if (route.path === "/" || route.path === "") {
-        const firstSession = sessionStore.sessions.find((s) => !s.parentId);
+        const firstSession = sessionStore.sessions.find((s) => s.showInSessionList);
         if (firstSession) activeSessionId.value = firstSession.id;
         void router.replace(firstSession ? `/chat/${firstSession.id}` : "/chat");
       } else {
@@ -407,7 +407,7 @@ function selectSession(id: string) {
 
 function onSessionDelete(id: string) {
   if (activeSessionId.value !== id) return;
-  const next = sessionStore.sessions.find((s) => !s.parentId);
+  const next = sessionStore.sessions.find((s) => s.showInSessionList);
   activeSessionId.value = next?.id ?? null;
   if (isMobile.value && !next) mobilePage.value = "list";
   pushRoute();
@@ -554,7 +554,9 @@ function viewProvider(providerId: string) {
 async function openChatFromContact(id: string) {
   if (id.startsWith("new:")) {
     const agentId = id.slice(4);
-    const sessions = sessionStore.sessions.filter((s) => s.agentId === agentId && !s.parentId);
+    const sessions = sessionStore.sessions.filter(
+      (s) => s.agentId === agentId && s.showInSessionList,
+    );
     if (sessions.length > 0) {
       activeSessionId.value = sessions[0].id;
     } else {

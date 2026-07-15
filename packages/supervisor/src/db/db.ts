@@ -33,7 +33,13 @@ import { getProjectDir } from "../core/session-files.js";
 const DEFAULT_DB_PATH = join(homedir(), ".pi", "supervisor.db");
 
 function rowToSession(row: SessionRow): SessionRow {
-  return { ...row, meta: JSON.parse(row.meta) as any };
+  return {
+    ...row,
+    branch_type: row.branch_type === "spawn" ? "subagent" : row.branch_type,
+    show_in_session_list: row.show_in_session_list ?? 1,
+    context_leaf_id: row.context_leaf_id ?? null,
+    meta: JSON.parse(row.meta) as any,
+  };
 }
 
 function rowToProject(row: ProjectRow): Project {
@@ -227,6 +233,8 @@ export class SupervisorDb {
 				leaf_id       TEXT,
 				agent_id      INTEGER REFERENCES agents(id) ON DELETE SET NULL,
 				branch_type   TEXT,
+				show_in_session_list INTEGER NOT NULL DEFAULT 1,
+				context_leaf_id TEXT,
 				created_at    INTEGER NOT NULL,
 				last_active_at INTEGER NOT NULL,
 				meta          TEXT NOT NULL DEFAULT '{}'
@@ -249,6 +257,8 @@ export class SupervisorDb {
       CREATE INDEX IF NOT EXISTS idx_members_session ON members(session_id);
       CREATE INDEX IF NOT EXISTS idx_members_agent ON members(agent_id);
 		`);
+
+    this.ensureSessionChildColumns();
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -303,6 +313,31 @@ export class SupervisorDb {
 
     // Initialize default providers from environment variables
     this.initializeDefaultProviders();
+  }
+
+  private ensureSessionChildColumns(): void {
+    const columns = this.db.pragma("table_info(sessions)") as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+    if (!names.has("show_in_session_list")) {
+      this.db.exec(
+        "ALTER TABLE sessions ADD COLUMN show_in_session_list INTEGER NOT NULL DEFAULT 1",
+      );
+      this.db.exec(`
+        UPDATE sessions
+        SET show_in_session_list = CASE
+          WHEN parent_id IS NULL OR branch_type IN ('fork', 'clone') THEN 1
+          ELSE 0
+        END
+      `);
+    }
+    if (!names.has("context_leaf_id")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN context_leaf_id TEXT");
+    }
+    this.db.exec(`
+      UPDATE sessions
+      SET branch_type = 'subagent'
+      WHERE branch_type = 'spawn';
+    `);
   }
 
   private projectNameFromCwd(cwd: string): string {
@@ -374,6 +409,8 @@ export class SupervisorDb {
       | "leaf_id"
       | "agent_id"
       | "branch_type"
+      | "show_in_session_list"
+      | "context_leaf_id"
       | "thinking_level"
     > & {
       created_at?: number;
@@ -381,6 +418,8 @@ export class SupervisorDb {
       leaf_id?: string | null;
       agent_id?: number | null;
       branch_type?: SessionBranchType | null;
+      show_in_session_list?: number;
+      context_leaf_id?: string | null;
       thinking_level?: "none" | "low" | "medium" | "high";
     },
   ): SessionRow {
@@ -398,6 +437,8 @@ export class SupervisorDb {
       leaf_id: row.leaf_id ?? null,
       agent_id: row.agent_id ?? null,
       branch_type: row.branch_type ?? null,
+      show_in_session_list: row.show_in_session_list ?? 1,
+      context_leaf_id: row.context_leaf_id ?? null,
       ...row,
       thinking_level:
         row.thinking_level === "low" ||
@@ -408,8 +449,8 @@ export class SupervisorDb {
     };
     const result = this.db
       .prepare(
-        `INSERT INTO sessions (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, created_at, last_active_at, meta)
-				 VALUES (@project_id, @parent_id, @session_id, @pid, @status, @thinking_level, @cwd, @leaf_id, @agent_id, @branch_type, @created_at, @last_active_at, @meta)`,
+        `INSERT INTO sessions (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, show_in_session_list, context_leaf_id, created_at, last_active_at, meta)
+				 VALUES (@project_id, @parent_id, @session_id, @pid, @status, @thinking_level, @cwd, @leaf_id, @agent_id, @branch_type, @show_in_session_list, @context_leaf_id, @created_at, @last_active_at, @meta)`,
       )
       .run(full);
     return rowToSession({ ...full, id: Number(result.lastInsertRowid) });
@@ -427,6 +468,7 @@ export class SupervisorDb {
     parentId?: number | null;
     cwd?: string;
     projectId?: number;
+    showInSessionList?: boolean;
   }): SessionRow[] {
     let sql = "SELECT * FROM sessions WHERE 1=1";
     const params: any[] = [];
@@ -441,6 +483,10 @@ export class SupervisorDb {
     if (filter?.projectId !== undefined) {
       sql += " AND project_id = ?";
       params.push(filter.projectId);
+    }
+    if (filter?.showInSessionList !== undefined) {
+      sql += " AND show_in_session_list = ?";
+      params.push(filter.showInSessionList ? 1 : 0);
     }
     sql += " ORDER BY created_at DESC";
     const rows = this.db.prepare(sql).all(...params) as SessionRow[];

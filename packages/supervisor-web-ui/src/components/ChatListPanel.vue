@@ -165,12 +165,14 @@ function filterSessions(list: UISession[]): UISession[] {
 
 const uiSessions = computed(() => sessionStore.sessions.map(toUISession));
 const filtered = computed(() => filterSessions(uiSessions.value));
+const listVisible = computed(() => filtered.value.filter((session) => session.showInSessionList));
 
-const rootsToShow = computed(() =>
-  filtered.value
-    .filter((s) => !s.parentId)
-    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()),
-);
+const rootsToShow = computed(() => {
+  const visibleIds = new Set(listVisible.value.map((session) => session.id));
+  return listVisible.value
+    .filter((session) => !session.parentId || !visibleIds.has(session.parentId))
+    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
+});
 
 function isPinnedRoot(session: UISession): boolean {
   return !!session.pinned || session.meta.builtin === true;
@@ -190,7 +192,7 @@ const workspaceGroups = computed(() => {
 });
 
 function childrenOf(parentId: string): UISession[] {
-  return filtered.value
+  return listVisible.value
     .filter((s) => s.parentId === parentId)
     .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
 }

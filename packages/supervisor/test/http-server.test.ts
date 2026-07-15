@@ -93,6 +93,21 @@ describe("supervisor: HTTP server", () => {
     expect(children[0].parentId).toBe(parentId);
   });
 
+  it("POST /sessions/:id/btw creates a hidden BTW child", async () => {
+    const { id: parentId } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
+      id: string;
+    };
+    const res = await req("POST", `/sessions/${parentId}/btw`, {});
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual(
+      expect.objectContaining({
+        parentId,
+        branchType: "btw",
+        showInSessionList: false,
+      }),
+    );
+  });
+
   it("GET /sessions/:id/messages returns session entries", async () => {
     const { id } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
       id: string;

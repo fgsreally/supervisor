@@ -20,7 +20,7 @@ export type SessionStatus =
   | "error"
   | "stopped";
 export type ToolsPreset = "coding" | "readonly" | "none";
-export type SessionBranchType = "spawn" | "fork" | "clone";
+export type SessionBranchType = "subagent" | "fork" | "clone" | "btw";
 
 // ============ Domain Types ============
 
@@ -52,6 +52,8 @@ export interface Session {
   leafId: string | null;
   agentId: string | null;
   branchType: SessionBranchType | null;
+  showInSessionList: boolean;
+  contextLeafId: string | null;
   createdAt: string; // ISO date
   lastActiveAt: string; // ISO date
   meta: Record<string, unknown>;
@@ -446,6 +448,8 @@ interface RawSession {
   leafId: string | null;
   agentId: number | null;
   branchType: SessionBranchType | null;
+  showInSessionList?: boolean;
+  contextLeafId?: string | null;
   createdAt: string;
   lastActiveAt: string;
   meta: Record<string, unknown>;
@@ -459,6 +463,10 @@ function mapSession(raw: RawSession): Session {
     projectId: raw.projectId === null ? null : String(raw.projectId),
     parentId: raw.parentId === null ? null : String(raw.parentId),
     agentId: raw.agentId === null ? null : String(raw.agentId),
+    showInSessionList:
+      raw.showInSessionList ??
+      (raw.parentId === null || raw.branchType === "fork" || raw.branchType === "clone"),
+    contextLeafId: raw.contextLeafId ?? null,
   };
 }
 
@@ -770,6 +778,12 @@ export async function forkSession(id: string, options?: ForkSessionRequest): Pro
 /** Clone a session completely. */
 export async function cloneSession(id: string): Promise<Session> {
   const session = await postJson<RawSession>(`/sessions/${id}/clone`, {});
+  return mapSession(session);
+}
+
+/** Create a child that inherits a frozen context snapshot without copying messages. */
+export async function createBtwSession(id: string): Promise<Session> {
+  const session = await postJson<RawSession>(`/sessions/${id}/btw`, {});
   return mapSession(session);
 }
 

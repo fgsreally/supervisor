@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SupervisorDb } from "../src/db.js";
-import { SQLiteSessionStorage } from "../src/session-storage.js";
+import { BtwSessionStorage, SQLiteSessionStorage } from "../src/core/session-storage.js";
 
 let db: SupervisorDb;
 let tmpDir: string;
@@ -167,5 +167,43 @@ describe("supervisor: SQLiteSessionStorage", () => {
 
     const stored = await storage.getStoredMessages();
     expect(stored[0]?.source).toBe("sidecar-a");
+  });
+
+  it("overlays a frozen parent path while keeping BTW messages isolated", async () => {
+    const parent = new SQLiteSessionStorage(db, sessionA);
+    const contextId = await parent.createEntryId();
+    await parent.appendEntry({
+      id: contextId,
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: { role: "user", content: "parent context", timestamp: Date.now() },
+    });
+
+    const btw = new BtwSessionStorage(db, sessionB, sessionA, contextId);
+    expect((await btw.getEntries()).map((entry) => entry.id)).toEqual([contextId]);
+
+    const laterParentId = await parent.createEntryId();
+    await parent.appendEntry({
+      id: laterParentId,
+      parentId: contextId,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: { role: "assistant", content: "later parent reply", timestamp: Date.now() },
+    });
+
+    const childId = await btw.createEntryId();
+    await btw.appendEntry({
+      id: childId,
+      parentId: contextId,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: { role: "user", content: "btw question", timestamp: Date.now() },
+    });
+
+    expect((await btw.getEntries()).map((entry) => entry.id)).toEqual([contextId, childId]);
+    expect(
+      (await new SQLiteSessionStorage(db, sessionB).getEntries()).map((entry) => entry.id),
+    ).toEqual([childId]);
   });
 });

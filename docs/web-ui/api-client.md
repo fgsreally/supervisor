@@ -48,6 +48,7 @@
 | `promptSession(id, data)`      | `POST /sessions/:id/prompt`（SSE） |
 | `forkSession(id)`              | `POST /sessions/:id/fork`          |
 | `cloneSession(id)`             | `POST /sessions/:id/clone`         |
+| `createBtwSession(id)`         | `POST /sessions/:id/btw`           |
 | `killSession(id)`              | `POST /sessions/:id/kill`          |
 | `completeSession(id)`          | `POST /sessions/:id/complete`      |
 | `getSessionState(id)`          | `GET /sessions/:id/state`          |

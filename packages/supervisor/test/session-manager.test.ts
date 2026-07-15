@@ -12,10 +12,6 @@ import { getSessionDir } from "../src/core/session-files.js";
 
 const SPAWN_OPTS = { cwd: "/proj" };
 
-async function flushLifecycle(): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, 200));
-}
-
 let db: SupervisorDb;
 let manager: SessionManager;
 let tmpDir: string;
@@ -40,6 +36,20 @@ describe("supervisor: SessionManager", () => {
     expect(inst.pid).toBeNull();
     expect(inst.meta).toEqual({ phase: "brainstorm" });
     expect(MockAgentHarness.instances).toHaveLength(0);
+  });
+
+  it("classifies child sessions and controls main-list visibility", () => {
+    const parent = manager.create({ cwd: "/proj" });
+    const subagent = manager.create({ parentId: parent.id, cwd: parent.cwd });
+    const btw = manager.createBtw(parent.id);
+
+    expect(parent.branchType).toBeNull();
+    expect(parent.showInSessionList).toBe(true);
+    expect(subagent.branchType).toBe("subagent");
+    expect(subagent.showInSessionList).toBe(false);
+    expect(btw.branchType).toBe("btw");
+    expect(btw.showInSessionList).toBe(false);
+    expect(btw.contextLeafId).toBe(parent.leafId);
   });
 
   it("spawn() creates AgentHarness and marks instance idle when no instructions", async () => {

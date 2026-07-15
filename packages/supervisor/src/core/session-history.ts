@@ -7,7 +7,14 @@ import type { SessionRow, SessionCheckpoint } from "../types.js";
 
 const CHECKPOINTS_META_KEY = "checkpoints";
 
-export type SessionBranchType = "spawn" | "fork" | "clone";
+export type SessionBranchType = "subagent" | "fork" | "clone" | "btw";
+
+export function normalizeSessionBranchType(value: string | null): SessionBranchType | null {
+  if (value === "spawn") return "subagent";
+  return value === "subagent" || value === "fork" || value === "clone" || value === "btw"
+    ? value
+    : null;
+}
 type InheritableEntry = SessionTreeEntry & { source?: string | null };
 
 /** Copy a message branch with new ids while preserving its parent chain. */

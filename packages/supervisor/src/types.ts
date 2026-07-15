@@ -31,6 +31,8 @@ export interface SessionRow {
   leaf_id: string | null;
   agent_id: number | null;
   branch_type: string | null;
+  show_in_session_list?: number;
+  context_leaf_id?: string | null;
   created_at: number;
   last_active_at: number;
   meta: string;
@@ -47,8 +49,11 @@ export interface Session {
   cwd: string;
   leafId: string | null;
   agentId: number | null;
-  /** Built-in: how this session branched from parent_id. */
+  /** How this child session was created. Root sessions use null. */
   branchType: SessionBranchType | null;
+  showInSessionList: boolean;
+  /** BTW context snapshot in the parent session. */
+  contextLeafId: string | null;
   createdAt: Date;
   lastActiveAt: Date;
   /** User/orchestrator extensions only. */
@@ -62,6 +67,7 @@ export interface CreateSessionOptions {
   meta?: Record<string, unknown>;
   agentId?: number | null;
   branchType?: SessionBranchType | null;
+  contextLeafId?: string | null;
 }
 
 export interface ProjectRow {

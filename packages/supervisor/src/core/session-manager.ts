@@ -56,6 +56,7 @@ import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "../agent/prompt-templates.js";
 import { appendReadOrchestrationHint } from "../agent/system-prompts.js";
 import { copyMessagesWithInheritance } from "./session-history.js";
+import { normalizeSessionBranchType } from "./session-history.js";
 import {
   createSessionCheckpoint,
   listSessionCheckpoints,
@@ -63,7 +64,11 @@ import {
 } from "./session-history.js";
 import { commitSessionChanges } from "./session-lifecycle.js";
 import { SessionRuntime, type SessionState } from "./session-runtime.js";
-import { SQLiteSessionStorage, toSessionMessageResponse } from "./session-storage.js";
+import {
+  createRuntimeSessionStorage,
+  SQLiteSessionStorage,
+  toSessionMessageResponse,
+} from "./session-storage.js";
 import { ensureSessionDir, removeProjectDirSync, removeSessionDirSync } from "./session-files.js";
 import { runShadow } from "../extension/builtin/shadow/index.js";
 import {
@@ -145,7 +150,9 @@ function rowToSession(row: SessionRow): Session {
     cwd: row.cwd,
     leafId: row.leaf_id,
     agentId: row.agent_id,
-    branchType: row.branch_type as Session["branchType"],
+    branchType: normalizeSessionBranchType(row.branch_type),
+    showInSessionList: row.show_in_session_list !== 0,
+    contextLeafId: row.context_leaf_id ?? null,
     createdAt: new Date(row.created_at),
     lastActiveAt: new Date(row.last_active_at),
     meta: typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta,
@@ -218,7 +225,9 @@ export class SessionManager {
       cwd: row.cwd,
       leafId: row.leaf_id,
       agentId: row.agent_id,
-      branchType: row.branch_type as any,
+      branchType: normalizeSessionBranchType(row.branch_type),
+      showInSessionList: row.show_in_session_list !== 0,
+      contextLeafId: row.context_leaf_id ?? null,
       createdAt: new Date(row.created_at),
       lastActiveAt: new Date(row.last_active_at),
       meta: parseSessionMeta(row.meta),
@@ -414,7 +423,7 @@ export class SessionManager {
     });
     await resource.load();
 
-    const storage = new SQLiteSessionStorage(this.db, session.id);
+    const storage = createRuntimeSessionStorage(this.db, session);
     const harnessSession = new AgentSession(storage);
     const env = new NodeExecutionEnv({ cwd: session.cwd });
     const sessionTools = this.assembleSessionTools(
@@ -486,6 +495,9 @@ export class SessionManager {
 
   /** Create a DB record only, no embedded agent. */
   create(options: CreateSessionOptions = {}): Session {
+    const branchType = options.parentId == null ? null : (options.branchType ?? "subagent");
+    const showInSessionList =
+      options.parentId == null || branchType === "fork" || branchType === "clone";
     const row = this.db.insert({
       parent_id: options.parentId ?? null,
       project_id: this.resolveProjectId(options),
@@ -495,7 +507,9 @@ export class SessionManager {
       thinking_level: "none",
       cwd: options.cwd ?? getDefaultCwd(),
       agent_id: options.agentId ?? null,
-      branch_type: options.branchType ?? null,
+      branch_type: branchType,
+      show_in_session_list: showInSessionList ? 1 : 0,
+      context_leaf_id: branchType === "btw" ? (options.contextLeafId ?? null) : null,
       meta: JSON.stringify(options.meta ?? {}),
     });
     return rowToSession(row);
@@ -516,7 +530,7 @@ export class SessionManager {
 
     const session = this.create({
       ...options,
-      branchType: options.parentId ? "spawn" : null,
+      branchType: options.parentId ? "subagent" : null,
     });
 
     const activeSession = await prepareSessionLifecycleSpawn(
@@ -541,7 +555,7 @@ export class SessionManager {
       throw new Error(`Model ${modelId} from provider ${provider} not found`);
     }
 
-    const storage = new SQLiteSessionStorage(this.db, activeSession.id);
+    const storage = createRuntimeSessionStorage(this.db, activeSession);
     const harnessSession = new AgentSession(storage);
     const env = new NodeExecutionEnv({ cwd: activeSession.cwd });
 
@@ -1008,6 +1022,11 @@ export class SessionManager {
   }
 
   delete(id: number): void {
+    for (const child of this.children(id)) {
+      if (child.branchType === "subagent" || child.branchType === "btw") {
+        this.delete(child.id);
+      }
+    }
     const session = this._getSession(id);
     const runtime = this.runtimes.get(id);
     if (runtime) {
@@ -1021,6 +1040,24 @@ export class SessionManager {
   }
 
   // ============ Session Tree Methods ============
+
+  createBtw(id: number): Session {
+    const parent = this._getSession(id);
+    if (!parent) throw new Error(`Session ${id} not found`);
+    const runtimeConfig = parent.meta.runtimeConfig;
+    return this.create({
+      projectId: parent.projectId,
+      parentId: parent.id,
+      cwd: parent.cwd,
+      agentId: parent.agentId,
+      branchType: "btw",
+      contextLeafId: parent.leafId,
+      meta:
+        runtimeConfig && typeof runtimeConfig === "object"
+          ? { runtimeConfig, name: "By the way" }
+          : { name: "By the way" },
+    });
+  }
 
   async fork(
     id: number,

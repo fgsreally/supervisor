@@ -1096,6 +1096,18 @@ export function createHttpServer(manager: SessionManager): Hono {
     return c.json({ ok: true });
   });
 
+  // POST /sessions/:id/btw - create a hidden child with a frozen parent context
+  app.post("/sessions/:id/btw", (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      return c.json(manager.createBtw(id), 201);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 404, message);
+    }
+  });
+
   // POST /sessions/:id/fork — fork session from a message
   app.post("/sessions/:id/fork", async (c) => {
     const body = await c.req.json().catch(() => ({}));

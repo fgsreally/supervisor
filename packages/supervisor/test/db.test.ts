@@ -80,6 +80,13 @@ describe("supervisor: SupervisorDb", () => {
     expect(db.list({ parentId: root.id })).toHaveLength(1);
   });
 
+  it("filters sessions by main-list visibility", () => {
+    insertSession(db, { show_in_session_list: 1 });
+    insertSession(db, { show_in_session_list: 0 });
+    expect(db.list({ showInSessionList: true })).toHaveLength(1);
+    expect(db.list({ showInSessionList: false })).toHaveLength(1);
+  });
+
   it("returns children in creation order", () => {
     const root = insertSession(db, { status: "running" });
     const c1 = insertSession(db, { parent_id: root.id, status: "running" });

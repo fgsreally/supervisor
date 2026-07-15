@@ -3,8 +3,13 @@
     <Transition name="chat-menu">
       <div v-if="open" class="fixed inset-0 z-50 flex justify-end" @click.self="emit('close')">
         <div class="absolute inset-0 bg-black/20" />
-        <aside class="chat-session-menu relative w-full max-w-[300px] h-full flex flex-col" @click.stop>
-          <header class="chat-session-menu__header h-14 flex items-center justify-between px-4 border-b shrink-0">
+        <aside
+          class="chat-session-menu relative w-full max-w-[300px] h-full flex flex-col"
+          @click.stop
+        >
+          <header
+            class="chat-session-menu__header h-14 flex items-center justify-between px-4 border-b shrink-0"
+          >
             <span class="text-[15px] font-medium">聊天信息</span>
             <button type="button" class="chat-session-menu__close" @click="emit('close')">
               <X class="w-5 h-5" />
@@ -20,16 +25,49 @@
                   >
                     {{ agentInitial }}
                   </div>
-                  <span class="text-[11px] text-center truncate w-full chat-session-menu__muted">{{ agentName }}</span>
+                  <span class="text-[11px] text-center truncate w-full chat-session-menu__muted">{{
+                    agentName
+                  }}</span>
                 </div>
               </div>
               <p v-if="gitBranch" class="mt-4 text-[12px] chat-session-menu__muted break-all">
                 分支：<code class="text-[11px]">{{ gitBranch }}</code>
               </p>
-              <p v-if="sessionStatus === 'finish'" class="mt-3 text-[13px] text-[#07c160]">会话已完成</p>
+              <p v-if="sessionStatus === 'finish'" class="mt-3 text-[13px] text-[#07c160]">
+                会话已完成
+              </p>
               <p v-else-if="sessionStatus === 'error'" class="mt-3 text-[13px] text-[#fa5151]">
                 合并失败，worktree 已保留
               </p>
+            </section>
+
+            <button
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('btw')"
+            >
+              <span>顺便问一下</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <section v-if="childSessions.length" class="border-b chat-session-menu__section">
+              <div class="px-5 pt-4 pb-2 text-[12px] chat-session-menu__muted">子会话</div>
+              <button
+                v-for="child in childSessions"
+                :key="child.id"
+                type="button"
+                class="chat-session-menu__row w-full flex items-center justify-between gap-3 px-5 py-3 text-left transition-colors"
+                @click="emit('navigate', child.id)"
+              >
+                <span class="min-w-0">
+                  <span class="block truncate text-[14px]">{{ childName(child) }}</span>
+                  <span class="block text-[11px] chat-session-menu__muted">
+                    {{ child.branchType ? BRANCH_LABELS[child.branchType] : "子会话" }} ·
+                    {{ child.status }}
+                  </span>
+                </span>
+                <ChevronRight class="w-4 h-4 shrink-0 chat-session-menu__chevron" />
+              </button>
             </section>
 
             <button
@@ -90,7 +128,9 @@
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
-            <div class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section">
+            <div
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
               <span class="text-[15px]">消息免打扰</span>
               <button
                 type="button"
@@ -107,7 +147,9 @@
               </button>
             </div>
 
-            <div class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section">
+            <div
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
               <span class="text-[15px]">显示思考过程</span>
               <button
                 type="button"
@@ -131,33 +173,42 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ChevronRight, X } from 'lucide-vue-next'
+import { computed } from "vue";
+import { ChevronRight, X } from "lucide-vue-next";
+import type { Session } from "@/api";
+import { BRANCH_LABELS } from "@/utils/session-branch";
 
 const props = defineProps<{
-  open: boolean
-  agentName: string
-  muted: boolean
-  showThinking: boolean
-  sessionStatus?: string
-  gitBranch?: string | null
-  canComplete?: boolean
-  canCheckpoint?: boolean
-}>()
+  open: boolean;
+  agentName: string;
+  muted: boolean;
+  showThinking: boolean;
+  sessionStatus?: string;
+  gitBranch?: string | null;
+  canComplete?: boolean;
+  canCheckpoint?: boolean;
+  childSessions: Array<Pick<Session, "id" | "status" | "branchType" | "meta">>;
+}>();
 
 const emit = defineEmits<{
-  close: []
-  search: []
-  log: []
-  complete: []
-  checkpoint: []
-  rewind: []
-  commit: []
-  'update:muted': [value: boolean]
-  'update:showThinking': [value: boolean]
-}>()
+  close: [];
+  search: [];
+  log: [];
+  complete: [];
+  checkpoint: [];
+  rewind: [];
+  commit: [];
+  btw: [];
+  navigate: [sessionId: string];
+  "update:muted": [value: boolean];
+  "update:showThinking": [value: boolean];
+}>();
 
-const agentInitial = computed(() => props.agentName.charAt(0).toUpperCase() || 'A')
+const agentInitial = computed(() => props.agentName.charAt(0).toUpperCase() || "A");
+
+function childName(child: { id: string; meta: Record<string, unknown> }): string {
+  return typeof child.meta.name === "string" ? child.meta.name : `Session ${child.id}`;
+}
 </script>
 
 <style scoped>
@@ -175,7 +226,9 @@ const agentInitial = computed(() => props.agentName.charAt(0).toUpperCase() || '
   padding: 6px;
   border-radius: 6px;
   color: var(--app-text-muted);
-  transition: background-color 0.15s, color 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .chat-session-menu__close:hover {

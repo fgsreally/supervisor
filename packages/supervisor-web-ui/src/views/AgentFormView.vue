@@ -1,6 +1,8 @@
 <template>
   <div class="agent-form-view flex flex-col flex-1 min-w-0 basis-0 h-full w-full overflow-hidden">
-    <div class="agent-form-header h-14 md:h-16 border-b flex items-center px-3 md:px-6 shrink-0 gap-3">
+    <div
+      class="agent-form-header h-14 md:h-16 border-b flex items-center px-3 md:px-6 shrink-0 gap-3"
+    >
       <button
         v-if="showBack"
         type="button"
@@ -12,7 +14,11 @@
       <div class="flex-1 min-w-0">
         <div class="text-[16px] font-medium agent-form-title">添加智能代理</div>
       </div>
-      <button type="button" class="agent-form-cancel-btn shrink-0 px-3 py-1.5 rounded-md border text-[13px]" @click="emit('cancel')">
+      <button
+        type="button"
+        class="agent-form-cancel-btn shrink-0 px-3 py-1.5 rounded-md border text-[13px]"
+        @click="emit('cancel')"
+      >
         取消
       </button>
       <button
@@ -29,29 +35,50 @@
       <section class="agent-form-card rounded-lg p-4 space-y-4 max-w-xl">
         <label class="block text-[13px]">
           <span class="agent-form-label mb-1 block">名称</span>
-          <input v-model="draft.name" type="text" placeholder="例如 文档助手" class="agent-form-input w-full px-3 py-2 rounded-md" />
+          <input
+            v-model="draft.name"
+            type="text"
+            placeholder="例如 文档助手"
+            class="agent-form-input w-full px-3 py-2 rounded-md"
+          />
         </label>
 
         <label class="block text-[13px]">
           <span class="agent-form-label mb-1 block">ID（可选）</span>
-          <input v-model="draft.id" type="text" placeholder="留空则自动生成" class="agent-form-input w-full px-3 py-2 rounded-md font-mono" />
+          <input
+            v-model="draft.id"
+            type="text"
+            placeholder="留空则自动生成"
+            class="agent-form-input w-full px-3 py-2 rounded-md font-mono"
+          />
         </label>
 
         <label class="block text-[13px]">
           <span class="agent-form-label mb-1 block">描述</span>
-          <textarea v-model="draft.description" rows="2" class="agent-form-input w-full px-3 py-2 rounded-md resize-y min-h-[4rem]" />
+          <textarea
+            v-model="draft.description"
+            rows="2"
+            class="agent-form-input w-full px-3 py-2 rounded-md resize-y min-h-[4rem]"
+          />
         </label>
 
         <label class="block text-[13px]">
           <span class="agent-form-label mb-1 block">模型服务</span>
-          <select v-model="draft.providerId" class="agent-form-input w-full px-3 py-2 rounded-md" @change="onProviderChange">
+          <select
+            v-model="draft.providerId"
+            class="agent-form-input w-full px-3 py-2 rounded-md"
+            @change="onProviderChange"
+          >
             <option v-for="p in providerOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </label>
 
         <label class="block text-[13px]">
           <span class="agent-form-label mb-1 block">模型</span>
-          <select v-model="draft.modelId" class="agent-form-input w-full px-3 py-2 rounded-md font-mono text-[12px]">
+          <select
+            v-model="draft.modelId"
+            class="agent-form-input w-full px-3 py-2 rounded-md font-mono text-[12px]"
+          >
             <option v-for="m in modelOptions" :key="m.id" :value="m.id">{{ m.id }}</option>
           </select>
         </label>
@@ -75,64 +102,64 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { ChevronLeft } from 'lucide-vue-next'
-import type { ToolsPreset } from '@/api'
-import { useAgentStore, useProviderStore } from '@/store'
-import { providerToUI } from '@/utils/provider-ui'
+import { computed, ref, watch } from "vue";
+import { ChevronLeft } from "lucide-vue-next";
+import type { ToolsPreset } from "@/api";
+import { useAgentStore, useProviderStore } from "@/store";
+import { providerToUI } from "@/utils/provider-ui";
 
-defineProps<{ showBack?: boolean }>()
+defineProps<{ showBack?: boolean }>();
 
-const emit = defineEmits<{ cancel: []; saved: [id: string] }>()
+const emit = defineEmits<{ cancel: []; saved: [id: string] }>();
 
-const agentStore = useAgentStore()
-const providerStore = useProviderStore()
-const saving = ref(false)
+const agentStore = useAgentStore();
+const providerStore = useProviderStore();
+const saving = ref(false);
 
 const draft = ref({
-  id: '',
-  name: '',
-  description: '',
-  providerId: '',
-  modelId: '',
-  toolsPreset: 'coding' as ToolsPreset,
-})
+  id: "",
+  name: "",
+  description: "",
+  providerId: "",
+  modelId: "",
+  toolsPreset: "coding" as ToolsPreset,
+});
 
 const providerOptions = computed(() =>
   providerStore.providers.map((p) => providerToUI(p, providerStore.models[p.id] ?? [])),
-)
+);
 
 const modelOptions = computed(() => {
-  const p = providerOptions.value.find((x) => x.id === draft.value.providerId)
-  return p?.models ?? []
-})
+  const p = providerOptions.value.find((x) => x.id === draft.value.providerId);
+  return p?.models ?? [];
+});
 
 watch(
   providerOptions,
   (list) => {
     if (!draft.value.providerId && list[0]) {
-      draft.value.providerId = list[0].id
-      draft.value.modelId = list[0].models[0]?.id || ''
+      draft.value.providerId = list[0].id;
+      draft.value.modelId = list[0].models[0]?.id || "";
     }
   },
   { immediate: true },
-)
+);
 
 const canSave = computed(
   () => !!draft.value.name.trim() && !!draft.value.providerId && !!draft.value.modelId,
-)
+);
 
 function onProviderChange() {
-  const p = providerOptions.value.find((x) => x.id === draft.value.providerId)
-  if (!p) return
+  const p = providerOptions.value.find((x) => x.id === draft.value.providerId);
+  if (!p) return;
   if (!p.models.some((m) => m.id === draft.value.modelId)) {
-    draft.value.modelId = p.models[0]?.id || ''
+    draft.value.modelId = p.models[0]?.id || "";
   }
 }
 
 async function save() {
-  if (!canSave.value || saving.value) return
-  saving.value = true
+  if (!canSave.value || saving.value) return;
+  saving.value = true;
   try {
     const agent = await agentStore.createAgent({
       id: draft.value.id.trim() || undefined,
@@ -141,10 +168,10 @@ async function save() {
       providerId: draft.value.providerId,
       modelId: draft.value.modelId,
       toolsPreset: draft.value.toolsPreset,
-    })
-    emit('saved', agent.id)
+    });
+    emit("saved", agent.id);
   } finally {
-    saving.value = false
+    saving.value = false;
   }
 }
 </script>

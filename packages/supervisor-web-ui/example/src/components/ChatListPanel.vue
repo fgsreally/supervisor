@@ -10,7 +10,10 @@
       <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">聊天</h1>
     </div>
 
-    <div class="px-3 py-2 shrink-0 border-b" style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)">
+    <div
+      class="px-3 py-2 shrink-0 border-b"
+      style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
+    >
       <div class="relative">
         <Search class="w-4 h-4 absolute left-2.5 top-2" style="color: var(--app-text-muted)" />
         <input
@@ -73,7 +76,9 @@
         </template>
       </template>
 
-      <div v-else class="py-12 text-center text-sm" style="color: var(--app-text-muted)">无匹配会话</div>
+      <div v-else class="py-12 text-center text-sm" style="color: var(--app-text-muted)">
+        无匹配会话
+      </div>
     </div>
 
     <SessionAgentPicker
@@ -93,133 +98,141 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { ChevronRight, Plus, Search } from 'lucide-vue-next'
-import type { MockSession } from '../mock/app-data'
-import { getAgentById, groupSessionsByWorkspace, mockStore, addSession, deleteSession } from '../mock/store'
-import SessionListItem from './SessionListItem.vue'
-import SessionListSubtree from './SessionListSubtree.vue'
-import SessionAgentPicker from './SessionAgentPicker.vue'
-import SessionListContextMenu from './SessionListContextMenu.vue'
+import { computed, ref } from "vue";
+import { ChevronRight, Plus, Search } from "lucide-vue-next";
+import type { MockSession } from "../mock/app-data";
+import {
+  getAgentById,
+  groupSessionsByWorkspace,
+  mockStore,
+  addSession,
+  deleteSession,
+} from "../mock/store";
+import SessionListItem from "./SessionListItem.vue";
+import SessionListSubtree from "./SessionListSubtree.vue";
+import SessionAgentPicker from "./SessionAgentPicker.vue";
+import SessionListContextMenu from "./SessionListContextMenu.vue";
 
 const props = defineProps<{
-  activeId: string
-  width?: number
-}>()
+  activeId: string;
+  width?: number;
+}>();
 
 const panelStyle = computed(() => {
-  if (props.width == null) return undefined
-  return { width: `${props.width}px` }
-})
+  if (props.width == null) return undefined;
+  return { width: `${props.width}px` };
+});
 
 const emit = defineEmits<{
-  select: [id: string]
-  delete: [id: string]
-}>()
+  select: [id: string];
+  delete: [id: string];
+}>();
 
-const query = ref('')
-const collapsedWorkspaceIds = ref<Set<string>>(new Set())
-const agentPickerWorkspaceId = ref<string | null>(null)
-const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null)
+const query = ref("");
+const collapsedWorkspaceIds = ref<Set<string>>(new Set());
+const agentPickerWorkspaceId = ref<string | null>(null);
+const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null);
 
 function filterSessions(list: MockSession[]): MockSession[] {
-  const q = query.value.trim().toLowerCase()
-  if (!q) return list
+  const q = query.value.trim().toLowerCase();
+  if (!q) return list;
   return list.filter(
     (s) =>
       s.meta.name.toLowerCase().includes(q) ||
       s.lastMessagePreview.toLowerCase().includes(q) ||
       s.meta.description?.toLowerCase().includes(q),
-  )
+  );
 }
 
-const filtered = computed(() => filterSessions(mockStore.sessions))
+const filtered = computed(() => filterSessions(mockStore.sessions));
 
 const rootsToShow = computed(() =>
   filtered.value
     .filter((s) => !s.parentId)
     .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()),
-)
+);
 
 const workspaceGroups = computed(() => {
-  const groups = groupSessionsByWorkspace(rootsToShow.value)
+  const groups = groupSessionsByWorkspace(rootsToShow.value);
   return groups.map((g) => ({
     ...g,
-    sessions: g.sessions.sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()),
-  }))
-})
+    sessions: g.sessions.sort(
+      (a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime(),
+    ),
+  }));
+});
 
 function childrenOf(parentId: string): MockSession[] {
   return filtered.value
     .filter((s) => s.parentId === parentId)
-    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime())
+    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
 }
 
 function isWorkspaceCollapsed(workspaceId: string): boolean {
-  return collapsedWorkspaceIds.value.has(workspaceId)
+  return collapsedWorkspaceIds.value.has(workspaceId);
 }
 
 function toggleWorkspaceCollapse(workspaceId: string) {
-  const next = new Set(collapsedWorkspaceIds.value)
-  if (next.has(workspaceId)) next.delete(workspaceId)
-  else next.add(workspaceId)
-  collapsedWorkspaceIds.value = next
+  const next = new Set(collapsedWorkspaceIds.value);
+  if (next.has(workspaceId)) next.delete(workspaceId);
+  else next.add(workspaceId);
+  collapsedWorkspaceIds.value = next;
 }
 
 function openAgentPicker(workspaceId: string) {
-  agentPickerWorkspaceId.value = workspaceId
+  agentPickerWorkspaceId.value = workspaceId;
 }
 
 function closeAgentPicker() {
-  agentPickerWorkspaceId.value = null
+  agentPickerWorkspaceId.value = null;
 }
 
 function openContextMenu(sessionId: string, pos: { x: number; y: number }) {
-  const menuWidth = 120
-  const menuHeight = 40
-  const x = Math.min(pos.x, window.innerWidth - menuWidth - 8)
-  const y = Math.min(pos.y, window.innerHeight - menuHeight - 8)
-  contextMenu.value = { sessionId, x: Math.max(8, x), y: Math.max(8, y) }
+  const menuWidth = 120;
+  const menuHeight = 40;
+  const x = Math.min(pos.x, window.innerWidth - menuWidth - 8);
+  const y = Math.min(pos.y, window.innerHeight - menuHeight - 8);
+  contextMenu.value = { sessionId, x: Math.max(8, x), y: Math.max(8, y) };
 }
 
 function closeContextMenu() {
-  contextMenu.value = null
+  contextMenu.value = null;
 }
 
 function confirmDeleteSession() {
-  const target = contextMenu.value
-  closeContextMenu()
-  if (!target) return
-  if (!window.confirm('确定删除该会话？子会话也会一并删除。')) return
-  deleteSession(target.sessionId)
-  emit('delete', target.sessionId)
+  const target = contextMenu.value;
+  closeContextMenu();
+  if (!target) return;
+  if (!window.confirm("确定删除该会话？子会话也会一并删除。")) return;
+  deleteSession(target.sessionId);
+  emit("delete", target.sessionId);
 }
 
 function onAgentPicked(agentId: string) {
-  const workspaceId = agentPickerWorkspaceId.value
-  closeAgentPicker()
-  if (!workspaceId) return
+  const workspaceId = agentPickerWorkspaceId.value;
+  closeAgentPicker();
+  if (!workspaceId) return;
 
-  const agent = getAgentById(agentId)
-  const id = `session-${workspaceId}-${agentId}-${Date.now()}`
+  const agent = getAgentById(agentId);
+  const id = `session-${workspaceId}-${agentId}-${Date.now()}`;
   addSession({
     id,
     workspaceId,
     agentId,
-    status: 'idle',
+    status: "idle",
     lastActiveAt: new Date().toISOString(),
     meta: {
       name: agent?.name ?? agentId,
-      description: '',
+      description: "",
     },
-    lastMessagePreview: '',
-  })
+    lastMessagePreview: "",
+  });
 
-  const next = new Set(collapsedWorkspaceIds.value)
-  next.delete(workspaceId)
-  collapsedWorkspaceIds.value = next
+  const next = new Set(collapsedWorkspaceIds.value);
+  next.delete(workspaceId);
+  collapsedWorkspaceIds.value = next;
 
-  emit('select', id)
+  emit("select", id);
 }
 </script>
 
@@ -255,7 +268,9 @@ function onAgentPicked(agentId: string) {
   padding: 4px;
   border-radius: 4px;
   color: var(--app-text-muted);
-  transition: color 0.15s, background-color 0.15s;
+  transition:
+    color 0.15s,
+    background-color 0.15s;
 }
 
 .section-action-btn:hover {

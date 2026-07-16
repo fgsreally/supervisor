@@ -3,7 +3,9 @@
     class="hidden md:flex w-16 flex-col items-center py-5 shrink-0 border-r"
     style="background: var(--app-nav-bg); border-color: var(--app-nav-border)"
   >
-    <div class="w-9 h-9 bg-[#07c160] rounded-md flex items-center justify-center text-white font-bold text-base shadow-sm mb-6">
+    <div
+      class="w-9 h-9 bg-[#07c160] rounded-md flex items-center justify-center text-white font-bold text-base shadow-sm mb-6"
+    >
       Pi
     </div>
 
@@ -43,28 +45,37 @@
 </template>
 
 <script setup lang="ts">
-import { Cloud, FolderOpen, MessageSquare, Moon, Search, Settings, Sun, Users } from 'lucide-vue-next'
-import { useAppTheme } from '../composables/use-app-theme'
+import {
+  Cloud,
+  FolderOpen,
+  MessageSquare,
+  Moon,
+  Search,
+  Settings,
+  Sun,
+  Users,
+} from "lucide-vue-next";
+import { useAppTheme } from "../composables/use-app-theme";
 
-const { isDark, toggleDark } = useAppTheme()
+const { isDark, toggleDark } = useAppTheme();
 
-export type MainTab = 'chat' | 'contacts' | 'providers' | 'resources' | 'settings' | 'search'
+export type MainTab = "chat" | "contacts" | "providers" | "resources" | "settings" | "search";
 
 defineProps<{
-  tab: MainTab
-}>()
+  tab: MainTab;
+}>();
 
 defineEmits<{
-  'update:tab': [tab: MainTab]
-}>()
+  "update:tab": [tab: MainTab];
+}>();
 
 const navItems = [
-  { id: 'chat' as const, icon: MessageSquare, title: '聊天' },
-  { id: 'contacts' as const, icon: Users, title: '智能代理' },
-  { id: 'providers' as const, icon: Cloud, title: '模型' },
-  { id: 'resources' as const, icon: FolderOpen, title: '资源' },
-  { id: 'search' as const, icon: Search, title: '搜索' },
-]
+  { id: "chat" as const, icon: MessageSquare, title: "聊天" },
+  { id: "contacts" as const, icon: Users, title: "智能代理" },
+  { id: "providers" as const, icon: Cloud, title: "模型" },
+  { id: "resources" as const, icon: FolderOpen, title: "资源" },
+  { id: "search" as const, icon: Search, title: "搜索" },
+];
 </script>
 
 <style scoped>

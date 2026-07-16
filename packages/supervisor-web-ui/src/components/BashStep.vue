@@ -17,29 +17,29 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Terminal, Eye, Loader2 } from 'lucide-vue-next'
+import { computed } from "vue";
+import { Terminal, Eye, Loader2 } from "lucide-vue-next";
 
 const props = defineProps<{
-  command: string
-  intent?: string
-  resultContent?: Array<{ type: string; text: string }>
-  pending?: boolean
-  isError?: boolean
-}>()
+  command: string;
+  intent?: string;
+  resultContent?: Array<{ type: string; text: string }>;
+  pending?: boolean;
+  isError?: boolean;
+}>();
 
-defineEmits<{ open: [] }>()
+defineEmits<{ open: [] }>();
 
-const hasResult = computed(() => !!props.resultContent?.length)
-const clickable = computed(() => hasResult.value && !props.pending)
+const hasResult = computed(() => !!props.resultContent?.length);
+const clickable = computed(() => hasResult.value && !props.pending);
 
 const statusClass = computed(() => {
-  if (props.pending || !hasResult.value) return 'bash-step--pending'
-  if (props.isError) return 'bash-step--error'
-  return 'bash-step--done'
-})
+  if (props.pending || !hasResult.value) return "bash-step--pending";
+  if (props.isError) return "bash-step--error";
+  return "bash-step--done";
+});
 
-const displayText = computed(() => props.intent?.trim() || props.command)
+const displayText = computed(() => props.intent?.trim() || props.command);
 </script>
 
 <style scoped>

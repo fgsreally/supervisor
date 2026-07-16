@@ -40,21 +40,21 @@ nub install
 
 ## Common scripts
 
-| Command                | Description                                  |
-| ---------------------- | -------------------------------------------- |
-| `nub run build`        | Build the supervisor package                 |
-| `nub run dev`          | Start the web UI dev server (Vite, :5173)    |
-| `nub run dev:supervisor` | Watch-build the supervisor package         |
-| `nub run lint`         | Lint with oxlint                             |
-| `nub run lint:fix`     | Apply safe lint fixes via oxlint            |
-| `nub run format`       | Format source with oxfmt                     |
-| `nub run format:check` | Check formatting without writing            |
-| `nub run check`        | Run lint + format check + per-package check |
-| `nub run test`         | Run tests across all packages               |
-| `nub run serve`        | Launch the supervisor server on :3030       |
-| `nub run docs:dev`     | Start VitePress docs dev server (:5173)      |
-| `nub run docs:build`   | Build VitePress docs to `docs/.vitepress/dist` |
-| `nub run docs:preview` | Preview built docs                          |
+| Command                  | Description                                    |
+| ------------------------ | ---------------------------------------------- |
+| `nub run build`          | Build the supervisor package                   |
+| `nub run dev`            | Start the web UI dev server (Vite, :5173)      |
+| `nub run dev:supervisor` | Watch-build the supervisor package             |
+| `nub run lint`           | Lint with oxlint                               |
+| `nub run lint:fix`       | Apply safe lint fixes via oxlint               |
+| `nub run format`         | Format source with oxfmt                       |
+| `nub run format:check`   | Check formatting without writing               |
+| `nub run check`          | Run lint + format check + per-package check    |
+| `nub run test`           | Run tests across all packages                  |
+| `nub run serve`          | Launch the supervisor server on :3030          |
+| `nub run docs:dev`       | Start VitePress docs dev server (:5173)        |
+| `nub run docs:build`     | Build VitePress docs to `docs/.vitepress/dist` |
+| `nub run docs:preview`   | Preview built docs                             |
 
 You can also use `pnpm` directly as a fallback since `nub` is pnpm-compatible.
 

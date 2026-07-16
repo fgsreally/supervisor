@@ -4,7 +4,7 @@
       <div>
         <div class="text-[14px] font-medium provider-model-table__title">模型</div>
         <div class="text-[12px] provider-model-table__subtitle mt-0.5">
-          {{ editable ? '增删改查' : '查看模型能力标签与启用状态' }}
+          {{ editable ? "增删改查" : "查看模型能力标签与启用状态" }}
         </div>
       </div>
       <button
@@ -48,17 +48,9 @@
             <td class="px-4 py-2.5 font-mono provider-model-table__title">{{ model.id }}</td>
             <td class="px-4 py-2.5 provider-model-table__title">{{ model.name }}</td>
             <td class="px-4 py-2.5">
-              <span
-                v-if="model.tags.length === 0"
-                class="provider-model-table__subtitle"
-              >
-                —
-              </span>
-              <span
-                v-else
-                class="provider-model-table__subtitle font-mono"
-              >
-                {{ model.tags.join(', ') }}
+              <span v-if="model.tags.length === 0" class="provider-model-table__subtitle"> — </span>
+              <span v-else class="provider-model-table__subtitle font-mono">
+                {{ model.tags.join(", ") }}
               </span>
             </td>
             <td class="px-4 py-2.5 text-right font-mono provider-model-table__subtitle">
@@ -91,7 +83,10 @@
       </table>
     </div>
 
-    <div v-if="models.length === 0" class="px-4 py-10 text-center text-[13px] provider-model-table__subtitle">
+    <div
+      v-if="models.length === 0"
+      class="px-4 py-10 text-center text-[13px] provider-model-table__subtitle"
+    >
       暂无模型，请添加
     </div>
 
@@ -107,65 +102,65 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import ModelMultimodalIcon from './ModelMultimodalIcon.vue'
-import ProviderModelEditor from './ProviderModelEditor.vue'
-import ProviderAvatar from './ProviderAvatar.vue'
-import type { UIProvider, UIProviderModel } from '@/types/ui'
-import { formatTokenCount } from '../utils/format-tokens'
+import { ref } from "vue";
+import ModelMultimodalIcon from "./ModelMultimodalIcon.vue";
+import ProviderModelEditor from "./ProviderModelEditor.vue";
+import ProviderAvatar from "./ProviderAvatar.vue";
+import type { UIProvider, UIProviderModel } from "@/types/ui";
+import { formatTokenCount } from "../utils/format-tokens";
 
 const props = withDefaults(
   defineProps<{
-    models: UIProviderModel[]
-    provider?: Pick<UIProvider, 'id' | 'name' | 'icon'>
-    editable?: boolean
+    models: UIProviderModel[];
+    provider?: Pick<UIProvider, "id" | "name" | "icon">;
+    editable?: boolean;
   }>(),
   { editable: false },
-)
+);
 
 const emit = defineEmits<{
-  'update:models': [models: UIProviderModel[]]
-}>()
+  "update:models": [models: UIProviderModel[]];
+}>();
 
-const editorOpen = ref(false)
-const editorMode = ref<'create' | 'edit'>('create')
-const editingModel = ref<UIProviderModel | null>(null)
+const editorOpen = ref(false);
+const editorMode = ref<"create" | "edit">("create");
+const editingModel = ref<UIProviderModel | null>(null);
 
 function openCreate() {
-  editorMode.value = 'create'
-  editingModel.value = null
-  editorOpen.value = true
+  editorMode.value = "create";
+  editingModel.value = null;
+  editorOpen.value = true;
 }
 
 function openEdit(model: UIProviderModel) {
-  editorMode.value = 'edit'
-  editingModel.value = model
-  editorOpen.value = true
+  editorMode.value = "edit";
+  editingModel.value = model;
+  editorOpen.value = true;
 }
 
 function closeEditor() {
-  editorOpen.value = false
-  editingModel.value = null
+  editorOpen.value = false;
+  editingModel.value = null;
 }
 
 function onEditorSave(model: UIProviderModel) {
-  if (editorMode.value === 'create') {
-    emit('update:models', [...props.models, model])
+  if (editorMode.value === "create") {
+    emit("update:models", [...props.models, model]);
   } else {
     emit(
-      'update:models',
+      "update:models",
       props.models.map((m) => (m.id === editingModel.value?.id ? model : m)),
-    )
+    );
   }
-  closeEditor()
+  closeEditor();
 }
 
 function removeModel(modelId: string) {
-  if (!confirm(`删除模型 ${modelId}？`)) return
+  if (!confirm(`删除模型 ${modelId}？`)) return;
   emit(
-    'update:models',
+    "update:models",
     props.models.filter((m) => m.id !== modelId),
-  )
+  );
 }
 </script>
 

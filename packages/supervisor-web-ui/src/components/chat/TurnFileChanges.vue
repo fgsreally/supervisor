@@ -1,10 +1,6 @@
 <template>
   <div class="turn-files mt-2">
-    <button
-      type="button"
-      class="turn-files-toggle"
-      @click="expanded = !expanded"
-    >
+    <button type="button" class="turn-files-toggle" @click="expanded = !expanded">
       <span class="turn-files-badge">{{ badgeText }}</span>
       <ChevronDown
         class="w-3 h-3 turn-files-chevron"
@@ -38,27 +34,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
-import { ChevronDown, FileEdit, Plus, Trash2 } from 'lucide-vue-next'
+import { ref, computed } from "vue";
+import { ChevronDown, FileEdit, Plus, Trash2 } from "lucide-vue-next";
 
 export interface TurnFileChangesData {
-  added?: string[]
-  modified?: string[]
-  deleted?: string[]
+  added?: string[];
+  modified?: string[];
+  deleted?: string[];
 }
 
 const props = defineProps<{
-  files: TurnFileChangesData
-}>()
+  files: TurnFileChangesData;
+}>();
 
-const expanded = ref(false)
+const expanded = ref(false);
 
 const totalCount = computed(() => {
-  const f = props.files
-  return (f.added?.length ?? 0) + (f.modified?.length ?? 0) + (f.deleted?.length ?? 0)
-})
+  const f = props.files;
+  return (f.added?.length ?? 0) + (f.modified?.length ?? 0) + (f.deleted?.length ?? 0);
+});
 
-const badgeText = computed(() => `文件变更 ${totalCount.value} 个`)
+const badgeText = computed(() => `文件变更 ${totalCount.value} 个`);
 </script>
 
 <style scoped>

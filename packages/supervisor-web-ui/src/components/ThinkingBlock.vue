@@ -3,30 +3,33 @@
     <button type="button" class="thinking-block__toggle" @click="expanded = !expanded">
       <Brain class="thinking-block__icon" />
       <span class="thinking-block__preview">{{ preview }}</span>
-      <ChevronDown class="thinking-block__chevron" :class="{ 'thinking-block__chevron--open': expanded }" />
+      <ChevronDown
+        class="thinking-block__chevron"
+        :class="{ 'thinking-block__chevron--open': expanded }"
+      />
     </button>
     <div v-if="expanded" class="thinking-block__body">
-      <p class="thinking-block__text">{{ content + (streaming ? '▍' : '') }}</p>
+      <p class="thinking-block__text">{{ content + (streaming ? "▍" : "") }}</p>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Brain, ChevronDown } from 'lucide-vue-next'
+import { computed, ref } from "vue";
+import { Brain, ChevronDown } from "lucide-vue-next";
 
 const props = defineProps<{
-  content: string
-  streaming?: boolean
-}>()
+  content: string;
+  streaming?: boolean;
+}>();
 
-const expanded = ref(false)
+const expanded = ref(false);
 
 const preview = computed(() => {
-  const oneLine = props.content.replace(/\s+/g, ' ').trim()
-  if (!oneLine) return props.streaming ? '思考中…' : '…'
-  return oneLine.length > 56 ? `${oneLine.slice(0, 53)}…` : oneLine
-})
+  const oneLine = props.content.replace(/\s+/g, " ").trim();
+  if (!oneLine) return props.streaming ? "思考中…" : "…";
+  return oneLine.length > 56 ? `${oneLine.slice(0, 53)}…` : oneLine;
+});
 </script>
 
 <style scoped>

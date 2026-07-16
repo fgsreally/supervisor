@@ -6,9 +6,9 @@ import { realpathSync } from "node:fs";
  * not exist yet), so that callers never crash on missing filesystem entries.
  */
 export function canonicalizePath(path: string): string {
-	try {
-		return realpathSync(path);
-	} catch {
-		return path;
-	}
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
 }

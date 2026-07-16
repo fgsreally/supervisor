@@ -267,13 +267,12 @@ export class HindsightSessionState {
     };
   }
 
-  async reflectTool(
-    query: string,
-    context?: string,
-    signal?: AbortSignal,
-  ): Promise<string> {
+  async reflectTool(query: string, context?: string, signal?: AbortSignal): Promise<string> {
     if (this.mode === "local") {
-      const records = recallLocalByQuery(this.projectDir, context?.trim() ? `${query} ${context}` : query);
+      const records = recallLocalByQuery(
+        this.projectDir,
+        context?.trim() ? `${query} ${context}` : query,
+      );
       if (records.length === 0) {
         return "No relevant information found to reflect on.";
       }

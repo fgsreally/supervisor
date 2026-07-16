@@ -29,28 +29,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed } from "vue";
 
 const props = defineProps<{
-  label?: string
-  modelValue: string | number | boolean
-  type?: 'text' | 'number' | 'textarea' | 'select'
-  placeholder?: string
-  rows?: number
-  options?: Array<{ value: string; label: string }>
-}>()
+  label?: string;
+  modelValue: string | number | boolean;
+  type?: "text" | "number" | "textarea" | "select";
+  placeholder?: string;
+  rows?: number;
+  options?: Array<{ value: string; label: string }>;
+}>();
 
-const emit = defineEmits<{ 'update:modelValue': [value: string | number | boolean] }>()
+const emit = defineEmits<{ "update:modelValue": [value: string | number | boolean] }>();
 
-const stringValue = computed(() => String(props.modelValue))
+const stringValue = computed(() => String(props.modelValue));
 
 function onInput(e: Event) {
-  const el = e.target as HTMLInputElement | HTMLTextAreaElement
-  emit('update:modelValue', props.type === 'number' ? Number(el.value) : el.value)
+  const el = e.target as HTMLInputElement | HTMLTextAreaElement;
+  emit("update:modelValue", props.type === "number" ? Number(el.value) : el.value);
 }
 
 function onSelect(e: Event) {
-  emit('update:modelValue', (e.target as HTMLSelectElement).value)
+  emit("update:modelValue", (e.target as HTMLSelectElement).value);
 }
 </script>
 

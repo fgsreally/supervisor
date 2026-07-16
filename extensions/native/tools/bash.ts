@@ -3,10 +3,7 @@ import { resolve } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import {
-  loadPiNativesBindings,
-  type MinimizerResult,
-} from "../pi-natives-loader.js";
+import { loadPiNativesBindings, type MinimizerResult } from "../pi-natives-loader.js";
 import { buildMinimizerOptions } from "../utils/minimizer-options.js";
 
 const BASH_INTENT_ERROR =

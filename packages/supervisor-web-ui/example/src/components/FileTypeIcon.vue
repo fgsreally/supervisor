@@ -5,20 +5,20 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Icon } from '@iconify/vue'
-import { fileIconName, fileIconNameFromPath, type FileIconKind } from '../utils/file-type-icon'
+import { computed } from "vue";
+import { Icon } from "@iconify/vue";
+import { fileIconName, fileIconNameFromPath, type FileIconKind } from "../utils/file-type-icon";
 
 const props = defineProps<{
-  path?: string
-  kind?: FileIconKind
-  isDirectory?: boolean
-}>()
+  path?: string;
+  kind?: FileIconKind;
+  isDirectory?: boolean;
+}>();
 
 const iconName = computed(() => {
-  if (props.kind) return fileIconName(props.kind)
-  return fileIconNameFromPath(props.path ?? '', props.isDirectory)
-})
+  if (props.kind) return fileIconName(props.kind);
+  return fileIconNameFromPath(props.path ?? "", props.isDirectory);
+});
 </script>
 
 <style scoped>

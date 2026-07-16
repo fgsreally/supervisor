@@ -2,7 +2,12 @@
   <div v-if="images.length" class="pending-images">
     <div v-for="img in images" :key="img.id" class="pending-images__item">
       <img :src="img.previewUrl" :alt="img.name" class="pending-images__thumb" />
-      <button type="button" class="pending-images__remove" title="移除" @click="emit('remove', img.id)">
+      <button
+        type="button"
+        class="pending-images__remove"
+        title="移除"
+        @click="emit('remove', img.id)"
+      >
         <X class="w-3 h-3" />
       </button>
     </div>
@@ -10,14 +15,14 @@
 </template>
 
 <script setup lang="ts">
-import { X } from 'lucide-vue-next'
-import type { PendingChatImage } from '@/types/chat-compose'
+import { X } from "lucide-vue-next";
+import type { PendingChatImage } from "@/types/chat-compose";
 
 defineProps<{
-  images: PendingChatImage[]
-}>()
+  images: PendingChatImage[];
+}>();
 
-const emit = defineEmits<{ remove: [id: string] }>()
+const emit = defineEmits<{ remove: [id: string] }>();
 </script>
 
 <style scoped>

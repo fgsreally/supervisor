@@ -46,7 +46,9 @@
         />
 
         <div v-else-if="group.type === 'system'" class="flex justify-center px-4">
-          <span class="text-[12px] text-center" style="color: var(--app-text-muted)">{{ group.content }}</span>
+          <span class="text-[12px] text-center" style="color: var(--app-text-muted)">{{
+            group.content
+          }}</span>
         </div>
       </div>
     </template>
@@ -73,140 +75,164 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick } from 'vue'
-import { Loader2 } from 'lucide-vue-next'
-import type { ChatCompactionEntry } from '@/types/chat-entry'
-import type { ChatUserFileAttachment } from '@/types/chat-entry'
+import { ref, nextTick } from "vue";
+import { Loader2 } from "lucide-vue-next";
+import type { ChatCompactionEntry } from "@/types/chat-entry";
+import type { ChatUserFileAttachment } from "@/types/chat-entry";
 import {
   isGroupedAssistantGroup,
   isDisplayGroupInherited,
   type DisplayGroup,
-} from '@/utils/flatten-messages'
-import { messageTextContent } from '@/utils/message-content'
-import { formatListTime } from '@/utils/format-time'
-import UserMessageRow from './UserMessageRow.vue'
-import AssistantMessageGroup from './AssistantMessageGroup.vue'
-import CompactionBanner from '../CompactionBanner.vue'
+} from "@/utils/flatten-messages";
+import { messageTextContent } from "@/utils/message-content";
+import { formatListTime } from "@/utils/format-time";
+import UserMessageRow from "./UserMessageRow.vue";
+import AssistantMessageGroup from "./AssistantMessageGroup.vue";
+import CompactionBanner from "../CompactionBanner.vue";
 
 const props = defineProps<{
-  sessionId: string
-  groups: DisplayGroup[]
-  showThinkingBlocks: boolean
-  isStreaming: boolean
-  streamingGroupId: string | null
-  showStreamingPlaceholder: boolean
-  streamingTimeLabel: string
-  searchOpen: boolean
-  searchQuery: string
-  assistantAvatarLabel?: string
-}>()
+  sessionId: string;
+  groups: DisplayGroup[];
+  showThinkingBlocks: boolean;
+  isStreaming: boolean;
+  streamingGroupId: string | null;
+  showStreamingPlaceholder: boolean;
+  streamingTimeLabel: string;
+  searchOpen: boolean;
+  searchQuery: string;
+  assistantAvatarLabel?: string;
+}>();
 
 const emit = defineEmits<{
-  'open-tool': [toolName: string, callArgs?: Record<string, unknown>, result?: Array<{ type: string; text: string }>]
-  'open-bash': [command: string, result?: Array<{ type: string; text: string }>, intent?: string]
-  navigate: [sessionId: string]
-  'open-compaction': [entry: ChatCompactionEntry]
-  answered: []
-}>()
+  "open-tool": [
+    toolName: string,
+    callArgs?: Record<string, unknown>,
+    result?: Array<{ type: string; text: string }>,
+  ];
+  "open-bash": [command: string, result?: Array<{ type: string; text: string }>, intent?: string];
+  navigate: [sessionId: string];
+  "open-compaction": [entry: ChatCompactionEntry];
+  answered: [];
+}>();
 
-const containerRef = ref<HTMLElement | null>(null)
+const containerRef = ref<HTMLElement | null>(null);
 
 function messageRowClass(group: DisplayGroup): string {
-  const pad = 'py-2 md:py-3 px-3 md:px-5'
-  return isDisplayGroupInherited(group) ? `${pad} chat-row-inherited` : `${pad} chat-row`
+  const pad = "py-2 md:py-3 px-3 md:px-5";
+  return isDisplayGroupInherited(group) ? `${pad} chat-row-inherited` : `${pad} chat-row`;
 }
 
 function showBranchDivider(groupIndex: number): boolean {
-  const groups = props.groups
-  const current = groups[groupIndex]
-  const prev = groups[groupIndex - 1]
-  if (!current || isDisplayGroupInherited(current)) return false
-  if (groupIndex === 0) return false
-  return !!prev && isDisplayGroupInherited(prev)
+  const groups = props.groups;
+  const current = groups[groupIndex];
+  const prev = groups[groupIndex - 1];
+  if (!current || isDisplayGroupInherited(current)) return false;
+  if (groupIndex === 0) return false;
+  return !!prev && isDisplayGroupInherited(prev);
 }
 
 function messageTimeLabel(group: DisplayGroup): string {
-  const createdAt = 'createdAt' in group ? group.createdAt : undefined
+  const createdAt = "createdAt" in group ? group.createdAt : undefined;
   if (createdAt && createdAt > 1_000_000_000_000) {
-    return formatListTime(new Date(createdAt).toISOString())
+    return formatListTime(new Date(createdAt).toISOString());
   }
-  const raw = Number.parseInt(group.id, 10)
+  const raw = Number.parseInt(group.id, 10);
   if (Number.isFinite(raw) && raw > 1_000_000_000_000) {
-    return formatListTime(new Date(raw).toISOString())
+    return formatListTime(new Date(raw).toISOString());
   }
-  return new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function isUserFileMessage(group: DisplayGroup): boolean {
-  if (group.type !== 'message' || group.message?.role !== 'user') return false
-  const content = group.message.content
-  return typeof content === 'object' && content !== null && !Array.isArray(content) && content.type === 'file'
+  if (group.type !== "message" || group.message?.role !== "user") return false;
+  const content = group.message.content;
+  return (
+    typeof content === "object" &&
+    content !== null &&
+    !Array.isArray(content) &&
+    content.type === "file"
+  );
 }
 
 function userFileAttachment(group: DisplayGroup): ChatUserFileAttachment | null {
-  if (!isUserFileMessage(group) || group.type !== 'message') return null
-  const content = group.message?.content
-  if (typeof content !== 'object' || content === null || Array.isArray(content) || content.type !== 'file') return null
-  return content
+  if (!isUserFileMessage(group) || group.type !== "message") return null;
+  const content = group.message?.content;
+  if (
+    typeof content !== "object" ||
+    content === null ||
+    Array.isArray(content) ||
+    content.type !== "file"
+  )
+    return null;
+  return content;
 }
 
 function userText(group: DisplayGroup): string {
-  if (group.type !== 'message') return ''
-  return messageTextContent(group.message?.content)
+  if (group.type !== "message") return "";
+  return messageTextContent(group.message?.content);
 }
 
 function groupMatchesSearch(group: DisplayGroup, q: string): boolean {
-  if (group.type === 'message' && group.message) {
-    const content = group.message.content
-    if (typeof content === 'object' && content !== null && !Array.isArray(content) && content.type === 'file') {
-      return content.name.toLowerCase().includes(q)
+  if (group.type === "message" && group.message) {
+    const content = group.message.content;
+    if (
+      typeof content === "object" &&
+      content !== null &&
+      !Array.isArray(content) &&
+      content.type === "file"
+    ) {
+      return content.name.toLowerCase().includes(q);
     }
-    if (typeof content === 'string') return content.toLowerCase().includes(q)
+    if (typeof content === "string") return content.toLowerCase().includes(q);
     if (Array.isArray(content)) {
-      return content.some((p) => p.type === 'text' && p.text.toLowerCase().includes(q))
+      return content.some((p) => p.type === "text" && p.text.toLowerCase().includes(q));
     }
   }
-  if (group.type === 'grouped_assistant') {
+  if (group.type === "grouped_assistant") {
     return group.pieces.some(
-      (p) => (p.kind === 'text' && p.text.toLowerCase().includes(q)) || (p.kind === 'thinking' && p.text.toLowerCase().includes(q)),
-    )
+      (p) =>
+        (p.kind === "text" && p.text.toLowerCase().includes(q)) ||
+        (p.kind === "thinking" && p.text.toLowerCase().includes(q)),
+    );
   }
-  if (group.type === 'compaction') return group.summary.toLowerCase().includes(q)
-  if (group.type === 'system') return group.content.toLowerCase().includes(q)
-  return false
+  if (group.type === "compaction") return group.summary.toLowerCase().includes(q);
+  if (group.type === "system") return group.content.toLowerCase().includes(q);
+  return false;
 }
 
 function isSearchHit(group: DisplayGroup): boolean {
-  const q = props.searchQuery.trim().toLowerCase()
-  return props.searchOpen && !!q && groupMatchesSearch(group, q)
+  const q = props.searchQuery.trim().toLowerCase();
+  return props.searchOpen && !!q && groupMatchesSearch(group, q);
 }
 
-function assistantDisplayPieces(group: Extract<DisplayGroup, { type: 'grouped_assistant' }>) {
-  return group.pieces.filter((piece) => props.showThinkingBlocks || piece.kind !== 'thinking')
+function assistantDisplayPieces(group: Extract<DisplayGroup, { type: "grouped_assistant" }>) {
+  return group.pieces.filter((piece) => props.showThinkingBlocks || piece.kind !== "thinking");
 }
 
-function shouldRenderAssistantGroup(group: Extract<DisplayGroup, { type: 'grouped_assistant' }>): boolean {
-  if (assistantDisplayPieces(group).length > 0) return true
-  if (!props.isStreaming || props.streamingGroupId !== group.id) return false
+function shouldRenderAssistantGroup(
+  group: Extract<DisplayGroup, { type: "grouped_assistant" }>,
+): boolean {
+  if (assistantDisplayPieces(group).length > 0) return true;
+  if (!props.isStreaming || props.streamingGroupId !== group.id) return false;
   const hasPendingTool = group.pieces.some(
-    (p) => (p.kind === 'bash' || p.kind === 'toolStep') && !p.result,
-  )
-  if (hasPendingTool) return true
-  const lastPiece = group.pieces[group.pieces.length - 1]
-  if (!lastPiece) return true
-  if (lastPiece.kind === 'text') return false
-  if (lastPiece.kind === 'thinking' && !props.showThinkingBlocks) return true
-  return false
+    (p) => (p.kind === "bash" || p.kind === "toolStep") && !p.result,
+  );
+  if (hasPendingTool) return true;
+  const lastPiece = group.pieces[group.pieces.length - 1];
+  if (!lastPiece) return true;
+  if (lastPiece.kind === "text") return false;
+  if (lastPiece.kind === "thinking" && !props.showThinkingBlocks) return true;
+  return false;
 }
 
 async function scrollToBottom() {
-  await nextTick()
+  await nextTick();
   if (containerRef.value) {
-    containerRef.value.scrollTop = containerRef.value.scrollHeight
+    containerRef.value.scrollTop = containerRef.value.scrollHeight;
   }
 }
 
-defineExpose({ scrollToBottom, containerRef })
+defineExpose({ scrollToBottom, containerRef });
 </script>
 
 <style scoped>

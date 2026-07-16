@@ -1,8 +1,5 @@
 <template>
-  <div
-    class="tool-activity-bar"
-    :class="statusClass"
-  >
+  <div class="tool-activity-bar" :class="statusClass">
     <div
       class="tool-activity-bar__inner"
       :class="{ 'tool-activity-bar__inner--clickable': clickable }"
@@ -30,7 +27,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed } from "vue";
 import {
   Terminal,
   FileText,
@@ -42,62 +39,62 @@ import {
   Loader2,
   ArrowRightCircle,
   MessageCircleQuestion,
-} from 'lucide-vue-next'
-import { isSkillReadPath, toolCallSummary, toolResultSummary } from '../utils/tool-display'
-import { isAskToolName } from '../utils/ask-tool'
+} from "lucide-vue-next";
+import { isSkillReadPath, toolCallSummary, toolResultSummary } from "../utils/tool-display";
+import { isAskToolName } from "../utils/ask-tool";
 
 const props = defineProps<{
-  toolName: string
-  callArgs?: Record<string, unknown>
-  resultContent?: Array<{ type: string; text: string }>
-  showNavigate?: boolean
-  pending?: boolean
-  isError?: boolean
-}>()
+  toolName: string;
+  callArgs?: Record<string, unknown>;
+  resultContent?: Array<{ type: string; text: string }>;
+  showNavigate?: boolean;
+  pending?: boolean;
+  isError?: boolean;
+}>();
 
-defineEmits<{ open: []; navigate: [] }>()
+defineEmits<{ open: []; navigate: [] }>();
 
-const hasResult = computed(() => !!props.resultContent?.length)
+const hasResult = computed(() => !!props.resultContent?.length);
 const clickable = computed(
   () => hasResult.value && !props.pending && !isAskToolName(props.toolName),
-)
+);
 
 const statusClass = computed(() => {
-  if (props.pending || !hasResult.value) return 'tool-activity-bar--pending'
-  if (props.isError) return 'tool-activity-bar--error'
-  return 'tool-activity-bar--done'
-})
+  if (props.pending || !hasResult.value) return "tool-activity-bar--pending";
+  if (props.isError) return "tool-activity-bar--error";
+  return "tool-activity-bar--done";
+});
 
 const summary = computed(() => {
-  const call = toolCallSummary(props.toolName, props.callArgs)
-  if (!hasResult.value) return call
-  if (props.isError) return `${call} · 失败`
-  return `${call} · ${toolResultSummary(props.toolName, props.resultContent)}`
-})
+  const call = toolCallSummary(props.toolName, props.callArgs);
+  if (!hasResult.value) return call;
+  if (props.isError) return `${call} · 失败`;
+  return `${call} · ${toolResultSummary(props.toolName, props.resultContent)}`;
+});
 
 const isSkillLoad = computed(() => {
-  if (props.toolName !== 'read') return false
-  const path = typeof props.callArgs?.path === 'string' ? props.callArgs.path : ''
-  return isSkillReadPath(path)
-})
+  if (props.toolName !== "read") return false;
+  const path = typeof props.callArgs?.path === "string" ? props.callArgs.path : "";
+  return isSkillReadPath(path);
+});
 
 const icon = computed(() => {
-  if (isAskToolName(props.toolName)) return MessageCircleQuestion
+  if (isAskToolName(props.toolName)) return MessageCircleQuestion;
   switch (props.toolName) {
-    case 'read':
-      return FileText
-    case 'write':
-      return FilePlus
-    case 'edit':
-      return PencilLine
-    case 'bash':
-      return Terminal
-    case 'spawn_agent':
-      return Users
+    case "read":
+      return FileText;
+    case "write":
+      return FilePlus;
+    case "edit":
+      return PencilLine;
+    case "bash":
+      return Terminal;
+    case "spawn_agent":
+      return Users;
     default:
-      return Wrench
+      return Wrench;
   }
-})
+});
 </script>
 
 <style scoped>

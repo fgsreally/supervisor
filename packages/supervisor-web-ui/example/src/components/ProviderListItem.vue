@@ -13,32 +13,38 @@
 
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-2">
-        <span class="text-[13px] font-medium truncate provider-list-item__name">{{ provider.name }}</span>
+        <span class="text-[13px] font-medium truncate provider-list-item__name">{{
+          provider.name
+        }}</span>
         <span
           class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium provider-list-item__badge"
-          :class="provider.isEnabled ? 'provider-list-item__badge--on' : 'provider-list-item__badge--off'"
+          :class="
+            provider.isEnabled ? 'provider-list-item__badge--on' : 'provider-list-item__badge--off'
+          "
         >
-          {{ provider.isEnabled ? 'enabled' : 'disabled' }}
+          {{ provider.isEnabled ? "enabled" : "disabled" }}
         </span>
       </div>
-      <div class="text-[11px] truncate mt-0.5 provider-list-item__meta">{{ provider.activeModelId }}</div>
+      <div class="text-[11px] truncate mt-0.5 provider-list-item__meta">
+        {{ provider.activeModelId }}
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { MockProvider } from '../mock/providers'
-import { providerAvatarClass } from '../utils/avatar-class'
+import { computed } from "vue";
+import type { MockProvider } from "../mock/providers";
+import { providerAvatarClass } from "../utils/avatar-class";
 
 const props = defineProps<{
-  provider: MockProvider
-  active?: boolean
-}>()
+  provider: MockProvider;
+  active?: boolean;
+}>();
 
-defineEmits<{ select: [id: string] }>()
+defineEmits<{ select: [id: string] }>();
 
-const avatarClass = computed(() => providerAvatarClass(props.provider.id))
+const avatarClass = computed(() => providerAvatarClass(props.provider.id));
 </script>
 
 <style scoped>

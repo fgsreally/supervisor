@@ -27,158 +27,158 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import * as api from '@/api'
-import { useAgentStore } from '@/store'
-import { useResizableHeight } from '../composables/use-resizable-height'
-import type { ChatSendPayload, PendingChatImage } from '@/types/chat-compose'
+import { computed, ref, watch } from "vue";
+import * as api from "@/api";
+import { useAgentStore } from "@/store";
+import { useResizableHeight } from "../composables/use-resizable-height";
+import type { ChatSendPayload, PendingChatImage } from "@/types/chat-compose";
 import {
   promptsFromAgentResources,
   skillsFromAgentResources,
   type PromptAutocompleteEntry,
   type SkillAutocompleteEntry,
   type WorkspaceFileEntry,
-} from '../utils/chat-autocomplete'
-import ChatComposer from './ChatComposer.vue'
-import ChatInputToolbar, { type ChatToolbarAction } from './ChatInputToolbar.vue'
-import ChatPendingImages from './ChatPendingImages.vue'
-import ResizeHandle from './ResizeHandle.vue'
+} from "../utils/chat-autocomplete";
+import ChatComposer from "./ChatComposer.vue";
+import ChatInputToolbar, { type ChatToolbarAction } from "./ChatInputToolbar.vue";
+import ChatPendingImages from "./ChatPendingImages.vue";
+import ResizeHandle from "./ResizeHandle.vue";
 
-const TOOLBAR_HEIGHT = 40
+const TOOLBAR_HEIGHT = 40;
 
 const props = defineProps<{
-  modelValue: string
-  workspaceId: string
-  agentId?: string
-  disabled?: boolean
-  placeholder?: string
-}>()
+  modelValue: string;
+  workspaceId: string;
+  agentId?: string;
+  disabled?: boolean;
+  placeholder?: string;
+}>();
 
 const emit = defineEmits<{
-  'update:modelValue': [value: string]
-  send: [payload: ChatSendPayload]
-}>()
+  "update:modelValue": [value: string];
+  send: [payload: ChatSendPayload];
+}>();
 
-const agentStore = useAgentStore()
-const workspaceFiles = ref<WorkspaceFileEntry[]>([])
-const skills = ref<SkillAutocompleteEntry[]>([])
-const prompts = ref<PromptAutocompleteEntry[]>([])
-const pendingImages = ref<PendingChatImage[]>([])
+const agentStore = useAgentStore();
+const workspaceFiles = ref<WorkspaceFileEntry[]>([]);
+const skills = ref<SkillAutocompleteEntry[]>([]);
+const prompts = ref<PromptAutocompleteEntry[]>([]);
+const pendingImages = ref<PendingChatImage[]>([]);
 
 const text = computed({
   get: () => props.modelValue,
-  set: (value: string) => emit('update:modelValue', value),
-})
+  set: (value: string) => emit("update:modelValue", value),
+});
 
 const canSend = computed(
   () => (!!text.value.trim() || pendingImages.value.length > 0) && !props.disabled,
-)
+);
 
 const { height: panelHeight, startResize } = useResizableHeight({
   defaultHeight: 128,
   minHeight: 96,
   maxHeight: 320,
-  storageKey: 'pi-example-chat-input-height',
-})
+  storageKey: "pi-example-chat-input-height",
+});
 
-const editorHeight = computed(() => Math.max(40, panelHeight.value - TOOLBAR_HEIGHT))
+const editorHeight = computed(() => Math.max(40, panelHeight.value - TOOLBAR_HEIGHT));
 
-const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null)
+const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null);
 
 async function loadAutocompleteData() {
-  const cwd = props.workspaceId.trim()
+  const cwd = props.workspaceId.trim();
   if (cwd) {
     try {
-      workspaceFiles.value = await api.listWorkspaceFiles(cwd)
+      workspaceFiles.value = await api.listWorkspaceFiles(cwd);
     } catch {
-      workspaceFiles.value = []
+      workspaceFiles.value = [];
     }
   } else {
-    workspaceFiles.value = []
+    workspaceFiles.value = [];
   }
 
   if (props.agentId) {
     try {
-      await agentStore.fetchAgentResources(props.agentId, cwd || undefined)
-      const res = agentStore.agentResources[props.agentId]
-      skills.value = skillsFromAgentResources(props.agentId, res)
-      prompts.value = promptsFromAgentResources(props.agentId, res)
+      await agentStore.fetchAgentResources(props.agentId, cwd || undefined);
+      const res = agentStore.agentResources[props.agentId];
+      skills.value = skillsFromAgentResources(props.agentId, res);
+      prompts.value = promptsFromAgentResources(props.agentId, res);
     } catch {
-      skills.value = []
-      prompts.value = []
+      skills.value = [];
+      prompts.value = [];
     }
   } else {
-    skills.value = []
+    skills.value = [];
   }
 }
 
 watch(
   () => [props.workspaceId, props.agentId] as const,
   () => {
-    void loadAutocompleteData()
+    void loadAutocompleteData();
   },
   { immediate: true },
-)
+);
 
 function onToolbarAction(action: ChatToolbarAction) {
   switch (action) {
-    case 'attach':
-      composerRef.value?.insertTrigger('@')
-      break
-    case 'skill':
-      composerRef.value?.insertTrigger('/')
-      break
-    case 'emoji':
-    case 'screenshot':
-    case 'voice':
-      composerRef.value?.focus()
-      break
+    case "attach":
+      composerRef.value?.insertTrigger("@");
+      break;
+    case "skill":
+      composerRef.value?.insertTrigger("/");
+      break;
+    case "emoji":
+    case "screenshot":
+    case "voice":
+      composerRef.value?.focus();
+      break;
   }
 }
 
 function addPendingImage(file: File) {
-  if (!file.type.startsWith('image/')) return
-  const reader = new FileReader()
+  if (!file.type.startsWith("image/")) return;
+  const reader = new FileReader();
   reader.onload = () => {
-    const result = reader.result
-    if (typeof result !== 'string') return
-    const comma = result.indexOf(',')
-    const data = comma >= 0 ? result.slice(comma + 1) : result
+    const result = reader.result;
+    if (typeof result !== "string") return;
+    const comma = result.indexOf(",");
+    const data = comma >= 0 ? result.slice(comma + 1) : result;
     pendingImages.value.push({
       id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: file.name || 'image.png',
+      name: file.name || "image.png",
       mimeType: file.type,
       previewUrl: result,
       data,
-    })
-  }
-  reader.readAsDataURL(file)
+    });
+  };
+  reader.readAsDataURL(file);
 }
 
 function removePendingImage(id: string) {
-  const item = pendingImages.value.find((img) => img.id === id)
-  if (item?.previewUrl.startsWith('blob:')) {
-    URL.revokeObjectURL(item.previewUrl)
+  const item = pendingImages.value.find((img) => img.id === id);
+  if (item?.previewUrl.startsWith("blob:")) {
+    URL.revokeObjectURL(item.previewUrl);
   }
-  pendingImages.value = pendingImages.value.filter((img) => img.id !== id)
+  pendingImages.value = pendingImages.value.filter((img) => img.id !== id);
 }
 
 function clearPendingImages() {
   for (const img of pendingImages.value) {
-    if (img.previewUrl.startsWith('blob:')) URL.revokeObjectURL(img.previewUrl)
+    if (img.previewUrl.startsWith("blob:")) URL.revokeObjectURL(img.previewUrl);
   }
-  pendingImages.value = []
+  pendingImages.value = [];
 }
 
 function focus() {
-  composerRef.value?.focus()
+  composerRef.value?.focus();
 }
 
 function clearAfterSend() {
-  clearPendingImages()
+  clearPendingImages();
 }
 
-defineExpose({ focus, clearAfterSend })
+defineExpose({ focus, clearAfterSend });
 </script>
 
 <style scoped>

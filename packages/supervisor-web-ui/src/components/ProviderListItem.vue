@@ -14,12 +14,16 @@
 
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-2">
-        <span class="text-[13px] font-medium truncate provider-list-item__name">{{ provider.name }}</span>
+        <span class="text-[13px] font-medium truncate provider-list-item__name">{{
+          provider.name
+        }}</span>
         <span
           class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium provider-list-item__badge"
-          :class="provider.isEnabled ? 'provider-list-item__badge--on' : 'provider-list-item__badge--off'"
+          :class="
+            provider.isEnabled ? 'provider-list-item__badge--on' : 'provider-list-item__badge--off'
+          "
         >
-          {{ provider.isEnabled ? 'enabled' : 'disabled' }}
+          {{ provider.isEnabled ? "enabled" : "disabled" }}
         </span>
       </div>
       <div class="text-[11px] truncate mt-0.5 provider-list-item__meta">
@@ -30,15 +34,15 @@
 </template>
 
 <script setup lang="ts">
-import type { UIProvider } from '@/types/ui'
-import ProviderAvatar from './ProviderAvatar.vue'
+import type { UIProvider } from "@/types/ui";
+import ProviderAvatar from "./ProviderAvatar.vue";
 
 const props = defineProps<{
-  provider: UIProvider
-  active?: boolean
-}>()
+  provider: UIProvider;
+  active?: boolean;
+}>();
 
-defineEmits<{ select: [id: string]; contextmenu: [event: MouseEvent] }>()
+defineEmits<{ select: [id: string]; contextmenu: [event: MouseEvent] }>();
 </script>
 
 <style scoped>

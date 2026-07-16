@@ -63,14 +63,15 @@ node packages/supervisor/dist/cli.mjs extensions remove <agent-id> <id>
 
 ## 通用选项
 
-| 选项 | 说明 |
-|---|---|
-| `-p, --port <port>` | HTTP server 端口，默认 3030 |
-| `--db <path>` | SQLite 数据库路径，默认 `~/.pi/supervisor.db` |
-| `--<extension-flag>` | 扩展注册的 CLI flag（见扩展文档） |
-| `-h, --help` | 显示帮助 |
+| 选项                 | 说明                                          |
+| -------------------- | --------------------------------------------- |
+| `-p, --port <port>`  | HTTP server 端口，默认 3030                   |
+| `--db <path>`        | SQLite 数据库路径，默认 `~/.pi/supervisor.db` |
+| `--<extension-flag>` | 扩展注册的 CLI flag（见扩展文档）             |
+| `-h, --help`         | 显示帮助                                      |
 
 ::: warning 残留问题
+
 - `print "<prompt>"` 单次对话命令、`rpc` 模式、`models set-default` 命令在原 SUPERVISOR.md / TUTORIAL.md 描述里出现过，但当前 `cli.ts` 没实现。如需这些命令需要补丁。
 - `POST /sessions/:id/commands` 后端返回 501，扩展命令路由未挂钩。详见 [Supervisor 已知未实装功能](/supervisor/known-gaps)。
-:::
+  :::

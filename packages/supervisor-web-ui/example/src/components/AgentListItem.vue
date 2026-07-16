@@ -26,27 +26,31 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { MockAgent } from '../mock/agents'
-import { agentAvatarClass } from '../utils/avatar-class'
+import { computed } from "vue";
+import type { MockAgent } from "../mock/agents";
+import { agentAvatarClass } from "../utils/avatar-class";
 
 const props = defineProps<{
-  agent: MockAgent
-  active?: boolean
-}>()
+  agent: MockAgent;
+  active?: boolean;
+}>();
 
-defineEmits<{ select: [id: string] }>()
+defineEmits<{ select: [id: string] }>();
 
-const avatarClass = computed(() => agentAvatarClass(props.agent.id))
+const avatarClass = computed(() => agentAvatarClass(props.agent.id));
 
 const presetLabel = computed(() => {
   switch (props.agent.toolsPreset) {
-    case 'coding': return 'coding'
-    case 'readonly': return 'readonly'
-    case 'none': return 'no tools'
-    default: return props.agent.toolsPreset
+    case "coding":
+      return "coding";
+    case "readonly":
+      return "readonly";
+    case "none":
+      return "no tools";
+    default:
+      return props.agent.toolsPreset;
   }
-})
+});
 </script>
 
 <style scoped>

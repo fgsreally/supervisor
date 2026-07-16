@@ -4,8 +4,8 @@ import { getModel, type Api, type KnownProvider, type Model } from "@earendil-wo
  * Minimal provider shape needed for model override resolution.
  */
 interface ProviderLike {
-	baseUrl: string | null;
-	apiType: string;
+  baseUrl: string | null;
+  apiType: string;
 }
 
 /**
@@ -17,25 +17,26 @@ interface ProviderLike {
  * Returns undefined when neither pi-ai nor the DB has a match.
  */
 export function resolveModelWithProviderOverrides(
-	db: { getProvider: (id: number) => ProviderLike | undefined },
-	providerId: number,
-	modelId: string,
+  db: { getProvider: (id: number) => ProviderLike | undefined },
+  providerId: number,
+  modelId: string,
 ): Model<Api> | undefined {
-	const providerConfig = db.getProvider(providerId);
-	if (!providerConfig) return undefined;
+  const providerConfig = db.getProvider(providerId);
+  if (!providerConfig) return undefined;
 
-	const model = getModel(providerConfig.apiType as KnownProvider, modelId as never);
-	if (!model) return undefined;
+  const model = getModel(providerConfig.apiType as KnownProvider, modelId as never);
+  if (!model) return undefined;
 
-	const needsOverride =
-		providerConfig.baseUrl != null || (providerConfig.apiType != null && providerConfig.apiType !== model.api);
-	if (!needsOverride) return model;
+  const needsOverride =
+    providerConfig.baseUrl != null ||
+    (providerConfig.apiType != null && providerConfig.apiType !== model.api);
+  if (!needsOverride) return model;
 
-	return {
-		...model,
-		...(providerConfig.baseUrl != null ? { baseUrl: providerConfig.baseUrl } : {}),
-		...(providerConfig.apiType != null && providerConfig.apiType !== model.api
-			? { api: providerConfig.apiType as never }
-			: {}),
-	};
+  return {
+    ...model,
+    ...(providerConfig.baseUrl != null ? { baseUrl: providerConfig.baseUrl } : {}),
+    ...(providerConfig.apiType != null && providerConfig.apiType !== model.api
+      ? { api: providerConfig.apiType as never }
+      : {}),
+  };
 }

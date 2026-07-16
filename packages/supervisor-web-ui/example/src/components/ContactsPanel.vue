@@ -3,18 +3,20 @@
     class="h-full w-full flex flex-col shrink-0 min-w-0"
     :style="{ ...panelStyle, background: 'var(--app-list-bg)' }"
   >
-    <div class="h-16 flex items-center px-4 shrink-0 border-b" style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)">
+    <div
+      class="h-16 flex items-center px-4 shrink-0 border-b"
+      style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
+    >
       <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">Agent</h1>
-      <button
-        type="button"
-        class="list-header-btn"
-        title="新建 Agent"
-      >
+      <button type="button" class="list-header-btn" title="新建 Agent">
         <UserPlus class="w-5 h-5" />
       </button>
     </div>
 
-    <div class="px-3 py-2 shrink-0 border-b" style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)">
+    <div
+      class="px-3 py-2 shrink-0 border-b"
+      style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
+    >
       <div class="relative">
         <Search class="w-4 h-4 absolute left-2.5 top-2" style="color: var(--app-text-muted)" />
         <input
@@ -42,7 +44,11 @@
         />
       </template>
 
-      <div v-if="!filteredGroups.length" class="py-12 text-center text-sm" style="color: var(--app-text-muted)">
+      <div
+        v-if="!filteredGroups.length"
+        class="py-12 text-center text-sm"
+        style="color: var(--app-text-muted)"
+      >
         无匹配 Agent
       </div>
     </div>
@@ -50,28 +56,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Search, UserPlus } from 'lucide-vue-next'
-import { getAgentsByCategory, type MockAgent } from '../mock/agents'
-import AgentListItem from './AgentListItem.vue'
+import { computed, ref } from "vue";
+import { Search, UserPlus } from "lucide-vue-next";
+import { getAgentsByCategory, type MockAgent } from "../mock/agents";
+import AgentListItem from "./AgentListItem.vue";
 
 const props = defineProps<{
-  activeId: string
-  width?: number
-}>()
+  activeId: string;
+  width?: number;
+}>();
 
 const panelStyle = computed(() => {
-  if (props.width == null) return undefined
-  return { width: `${props.width}px` }
-})
+  if (props.width == null) return undefined;
+  return { width: `${props.width}px` };
+});
 
-defineEmits<{ select: [id: string] }>()
+defineEmits<{ select: [id: string] }>();
 
-const query = ref('')
+const query = ref("");
 
 const filteredGroups = computed(() => {
-  const q = query.value.trim().toLowerCase()
-  if (!q) return getAgentsByCategory()
+  const q = query.value.trim().toLowerCase();
+  if (!q) return getAgentsByCategory();
 
   return getAgentsByCategory()
     .map((g) => ({
@@ -83,8 +89,8 @@ const filteredGroups = computed(() => {
           a.id.toLowerCase().includes(q),
       ),
     }))
-    .filter((g) => g.agents.length > 0)
-})
+    .filter((g) => g.agents.length > 0);
+});
 </script>
 
 <style scoped>
@@ -114,4 +120,3 @@ const filteredGroups = computed(() => {
   color: var(--app-text-secondary);
 }
 </style>
-

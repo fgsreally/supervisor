@@ -13,12 +13,12 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronRight } from 'lucide-vue-next'
+import { ChevronRight } from "lucide-vue-next";
 
 defineProps<{
-  label: string
-  hint?: string
-}>()
+  label: string;
+  hint?: string;
+}>();
 </script>
 
 <style scoped>

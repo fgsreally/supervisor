@@ -10,14 +10,14 @@
 
 <script setup lang="ts">
 defineProps<{
-  modelValue: string
-  placeholder?: string
-  mono?: boolean
-}>()
+  modelValue: string;
+  placeholder?: string;
+  mono?: boolean;
+}>();
 
-const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
+const emit = defineEmits<{ "update:modelValue": [value: string] }>();
 
 function onInput(e: Event) {
-  emit('update:modelValue', (e.target as HTMLTextAreaElement).value)
+  emit("update:modelValue", (e.target as HTMLTextAreaElement).value);
 }
 </script>

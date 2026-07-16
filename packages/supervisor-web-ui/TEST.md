@@ -12,6 +12,7 @@ src/
 ```
 
 运行单元测试:
+
 ```bash
 npm test              # 运行一次
 npm run test:watch    # 监听模式
@@ -25,6 +26,7 @@ e2e/
 ```
 
 运行 E2E 测试:
+
 ```bash
 npm run test:e2e      # 运行 E2E 测试
 ```
@@ -34,6 +36,7 @@ npm run test:e2e      # 运行 E2E 测试
 ### Store 测试 (12 个测试)
 
 ✅ Session Store
+
 - fetchSessions - 获取会话列表
 - fetchSession - 获取单个会话
 - createSession - 创建会话
@@ -41,11 +44,13 @@ npm run test:e2e      # 运行 E2E 测试
 - updateSessionMeta - 更新会话元数据
 
 ✅ Agent Store
+
 - fetchAgents - 获取 Agent 列表
 - fetchAgentResources - 获取 Agent 资源
 - updateAgentSystemMd - 更新系统提示词
 
 ✅ Provider Store
+
 - fetchProviders - 获取 Provider 列表（带 activeModelId 映射）
 - createProvider - 创建 Provider
 - deleteProvider - 删除 Provider
@@ -73,11 +78,11 @@ npm run test:e2e      # 运行 E2E 测试
 使用 `createMock*` 工厂函数创建测试数据:
 
 ```typescript
-import { createMockSession, createMockAgent, createMockProvider } from '@/utils/test-utils'
+import { createMockSession, createMockAgent, createMockProvider } from "@/utils/test-utils";
 
-const session = createMockSession({ status: 'running' })
-const agent = createMockAgent({ name: 'Test Agent' })
-const provider = createMockProvider({ apiType: 'openai-compatible' })
+const session = createMockSession({ status: "running" });
+const agent = createMockAgent({ name: "Test Agent" });
+const provider = createMockProvider({ apiType: "openai-compatible" });
 ```
 
 ## Mock API
@@ -85,18 +90,19 @@ const provider = createMockProvider({ apiType: 'openai-compatible' })
 使用 `vi.mock` 模拟 API 调用:
 
 ```typescript
-vi.mock('@/api', () => ({
+vi.mock("@/api", () => ({
   listSessions: vi.fn(),
   getSession: vi.fn(),
   // ...
-}))
+}));
 
-vi.mocked(api.listSessions).mockResolvedValue([mockSession])
+vi.mocked(api.listSessions).mockResolvedValue([mockSession]);
 ```
 
 ## E2E 测试环境
 
 启动测试环境:
+
 ```bash
 # 1. 启动 Supervisor 后端
 cd packages/supervisor
@@ -113,6 +119,7 @@ npm run test:e2e
 ## 持续集成
 
 建议在 CI 中运行:
+
 ```bash
 npm run check    # TypeScript 类型检查
 npm test         # 单元测试

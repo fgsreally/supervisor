@@ -23,35 +23,35 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { MockSession } from '../mock/app-data'
-import SessionListItem from './SessionListItem.vue'
-import SessionListSubtree from './SessionListSubtree.vue'
+import { computed } from "vue";
+import type { MockSession } from "../mock/app-data";
+import SessionListItem from "./SessionListItem.vue";
+import SessionListSubtree from "./SessionListSubtree.vue";
 
 const props = defineProps<{
-  parentId: string
-  depth: number
-  activeId: string
-  sessions: MockSession[]
-  ancestorOpenDepths?: number[]
-}>()
+  parentId: string;
+  depth: number;
+  activeId: string;
+  sessions: MockSession[];
+  ancestorOpenDepths?: number[];
+}>();
 
 defineEmits<{
-  select: [id: string]
-  'context-menu': [payload: { sessionId: string; x: number; y: number }]
-}>()
+  select: [id: string];
+  "context-menu": [payload: { sessionId: string; x: number; y: number }];
+}>();
 
 const children = computed(() =>
   props.sessions
     .filter((s) => s.parentId === props.parentId)
     .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()),
-)
+);
 
-const ancestorOpenDepths = computed(() => props.ancestorOpenDepths ?? [])
+const ancestorOpenDepths = computed(() => props.ancestorOpenDepths ?? []);
 
 function nextAncestorDepths(idx: number): number[] {
-  const result = [...ancestorOpenDepths.value]
-  if (idx !== children.value.length - 1) result.push(props.depth)
-  return result
+  const result = [...ancestorOpenDepths.value];
+  if (idx !== children.value.length - 1) result.push(props.depth);
+  return result;
 }
 </script>

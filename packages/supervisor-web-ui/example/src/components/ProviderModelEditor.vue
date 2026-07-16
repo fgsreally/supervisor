@@ -7,9 +7,13 @@
     <div class="w-full sm:max-w-lg bg-white rounded-t-xl sm:rounded-xl shadow-xl overflow-hidden">
       <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
         <div class="text-[16px] font-medium text-gray-900">
-          {{ mode === 'create' ? '添加模型' : '编辑模型' }}
+          {{ mode === "create" ? "添加模型" : "编辑模型" }}
         </div>
-        <button type="button" class="p-1 rounded-md text-gray-500 hover:bg-gray-100" @click="emit('cancel')">
+        <button
+          type="button"
+          class="p-1 rounded-md text-gray-500 hover:bg-gray-100"
+          @click="emit('cancel')"
+        >
           <X class="w-5 h-5" />
         </button>
       </div>
@@ -46,7 +50,9 @@
               step="1000"
               class="w-full px-3 py-2 border border-gray-200 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
             />
-            <span class="text-[11px] text-gray-400 mt-1 block">≈ {{ formatTokenCount(draft.contextWindow) }}</span>
+            <span class="text-[11px] text-gray-400 mt-1 block"
+              >≈ {{ formatTokenCount(draft.contextWindow) }}</span
+            >
           </label>
           <label class="block text-[13px]">
             <span class="text-gray-500 mb-1 block">最大输出 (tokens)</span>
@@ -57,12 +63,20 @@
               step="256"
               class="w-full px-3 py-2 border border-gray-200 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
             />
-            <span class="text-[11px] text-gray-400 mt-1 block">≈ {{ formatTokenCount(draft.maxTokens) }}</span>
+            <span class="text-[11px] text-gray-400 mt-1 block"
+              >≈ {{ formatTokenCount(draft.maxTokens) }}</span
+            >
           </label>
         </div>
 
-        <label class="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50">
-          <input v-model="draft.supportsMultimodal" type="checkbox" class="rounded border-gray-300" />
+        <label
+          class="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50"
+        >
+          <input
+            v-model="draft.supportsMultimodal"
+            type="checkbox"
+            class="rounded border-gray-300"
+          />
           <ModelMultimodalIcon :supports-multimodal="draft.supportsMultimodal" />
           <div>
             <div class="text-[13px] text-gray-900">支持图像输入</div>
@@ -93,57 +107,57 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { X } from 'lucide-vue-next'
-import ModelMultimodalIcon from './ModelMultimodalIcon.vue'
-import type { MockProviderModel } from '../mock/providers'
-import { createEmptyProviderModel } from '../mock/providers'
-import { formatTokenCount } from '../utils/format-tokens'
+import { computed, ref, watch } from "vue";
+import { X } from "lucide-vue-next";
+import ModelMultimodalIcon from "./ModelMultimodalIcon.vue";
+import type { MockProviderModel } from "../mock/providers";
+import { createEmptyProviderModel } from "../mock/providers";
+import { formatTokenCount } from "../utils/format-tokens";
 
 const props = defineProps<{
-  open: boolean
-  mode: 'create' | 'edit'
-  model?: MockProviderModel | null
-  existingIds?: string[]
-}>()
+  open: boolean;
+  mode: "create" | "edit";
+  model?: MockProviderModel | null;
+  existingIds?: string[];
+}>();
 
 const emit = defineEmits<{
-  cancel: []
-  save: [model: MockProviderModel]
-}>()
+  cancel: [];
+  save: [model: MockProviderModel];
+}>();
 
-const draft = ref<MockProviderModel>(createEmptyProviderModel())
+const draft = ref<MockProviderModel>(createEmptyProviderModel());
 
 watch(
   () => [props.open, props.mode, props.model] as const,
   ([open, mode, model]) => {
-    if (!open) return
-    if (mode === 'edit' && model) {
-      draft.value = { ...model }
+    if (!open) return;
+    if (mode === "edit" && model) {
+      draft.value = { ...model };
     } else {
-      draft.value = createEmptyProviderModel()
+      draft.value = createEmptyProviderModel();
     }
   },
   { immediate: true },
-)
+);
 
 const canSave = computed(() => {
-  const id = draft.value.id.trim()
-  if (!id) return false
-  if (draft.value.contextWindow <= 0 || draft.value.maxTokens <= 0) return false
-  if (props.mode === 'create' && props.existingIds?.includes(id)) return false
-  return true
-})
+  const id = draft.value.id.trim();
+  if (!id) return false;
+  if (draft.value.contextWindow <= 0 || draft.value.maxTokens <= 0) return false;
+  if (props.mode === "create" && props.existingIds?.includes(id)) return false;
+  return true;
+});
 
 function save() {
-  if (!canSave.value) return
-  const id = draft.value.id.trim()
-  emit('save', {
+  if (!canSave.value) return;
+  const id = draft.value.id.trim();
+  emit("save", {
     id,
     name: draft.value.name.trim() || id,
     contextWindow: draft.value.contextWindow,
     maxTokens: draft.value.maxTokens,
     supportsMultimodal: draft.value.supportsMultimodal,
-  })
+  });
 }
 </script>

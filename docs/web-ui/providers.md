@@ -8,14 +8,14 @@
 
 ## 组件
 
-| 组件 | 作用 |
-|---|---|
-| `ProviderAvatar.vue` | Provider 图标（支持 URL 图片） |
-| `ProviderListItem.vue` | Provider 列表项 |
-| `ProviderModelEditor.vue` | Model 编辑 |
-| `ProviderModelTable.vue` | Model 表格 |
-| `ModelMultimodalIcon.vue` | 多模态能力图标 |
-| `SessionAgentPicker.vue` | 创建会话时选择 agent 的 picker |
+| 组件                      | 作用                           |
+| ------------------------- | ------------------------------ |
+| `ProviderAvatar.vue`      | Provider 图标（支持 URL 图片） |
+| `ProviderListItem.vue`    | Provider 列表项                |
+| `ProviderModelEditor.vue` | Model 编辑                     |
+| `ProviderModelTable.vue`  | Model 表格                     |
+| `ModelMultimodalIcon.vue` | 多模态能力图标                 |
+| `SessionAgentPicker.vue`  | 创建会话时选择 agent 的 picker |
 
 ## Store
 

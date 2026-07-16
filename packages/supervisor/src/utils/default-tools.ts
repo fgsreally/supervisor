@@ -95,10 +95,7 @@ export function createDefaultTools(
   const merged = resolveToolsOptions(cwd, options);
   switch (preset) {
     case "coding":
-      return wrapTools([
-        ...createCodingTools(cwd, merged),
-        ...createExplorationTools(cwd, merged),
-      ]);
+      return wrapTools([...createCodingTools(cwd, merged), ...createExplorationTools(cwd, merged)]);
     case "readonly":
       return wrapTools(createReadOnlyTools(cwd, merged));
     case "none":

@@ -19,7 +19,7 @@
         :disabled="!canConfirm || submitting"
         @click="submitAnswers"
       >
-        {{ submitting ? '提交中…' : '确认' }}
+        {{ submitting ? "提交中…" : "确认" }}
       </button>
     </template>
 
@@ -37,75 +37,72 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import AskStepOption from './AskStepOption.vue'
-import ToolActivityBar from '../ToolActivityBar.vue'
-import {
-  parseAskQuestions,
-  type AskOption,
-} from '@/utils/ask-tool'
-import * as api from '@/api'
+import { computed, reactive, ref } from "vue";
+import AskStepOption from "./AskStepOption.vue";
+import ToolActivityBar from "../ToolActivityBar.vue";
+import { parseAskQuestions, type AskOption } from "@/utils/ask-tool";
+import * as api from "@/api";
 
 const props = defineProps<{
-  sessionId: string
-  toolCallId: string
-  callArgs?: Record<string, unknown>
-  resultContent?: Array<{ type: string; text: string }>
-  pending?: boolean
-  isError?: boolean
-}>()
+  sessionId: string;
+  toolCallId: string;
+  callArgs?: Record<string, unknown>;
+  resultContent?: Array<{ type: string; text: string }>;
+  pending?: boolean;
+  isError?: boolean;
+}>();
 
-const emit = defineEmits<{ answered: [] }>()
+const emit = defineEmits<{ answered: [] }>();
 
-const submitting = ref(false)
-const selections = reactive<Record<string, string>>({})
-const selectionLabels = reactive<Record<string, string>>({})
+const submitting = ref(false);
+const selections = reactive<Record<string, string>>({});
+const selectionLabels = reactive<Record<string, string>>({});
 
-const questions = computed(() => parseAskQuestions(props.callArgs))
+const questions = computed(() => parseAskQuestions(props.callArgs));
 
 const showPending = computed(
   () =>
     !!props.pending ||
     (questions.value.length > 0 && !props.resultContent?.length && !props.isError),
-)
+);
 
 const showDoneBar = computed(
   () => !showPending.value && !!props.resultContent?.length && !props.isError,
-)
+);
 
-const allAnswered = computed(() =>
-  questions.value.length > 0 && questions.value.every((q) => !!selections[q.id]),
-)
+const allAnswered = computed(
+  () => questions.value.length > 0 && questions.value.every((q) => !!selections[q.id]),
+);
 
 const canConfirm = computed(() => {
   if (questions.value.length === 1) {
-    return !!selections[questions.value[0]!.id]
+    return !!selections[questions.value[0]!.id];
   }
-  return allAnswered.value
-})
+  return allAnswered.value;
+});
 
 async function submitAnswers() {
-  if (submitting.value || !showPending.value || !canConfirm.value) return
-  submitting.value = true
+  if (submitting.value || !showPending.value || !canConfirm.value) return;
+  submitting.value = true;
   try {
     const answers = questions.value.map((q) => ({
       id: q.id,
       value: selections[q.id],
       label: selectionLabels[q.id] ?? selections[q.id],
-    }))
-    await api.submitAskAnswer(props.sessionId, props.toolCallId, answers)
-    emit('answered')
+    }));
+    await api.submitAskAnswer(props.sessionId, props.toolCallId, answers);
+    emit("answered");
   } catch (err) {
-    console.error('ask answer failed:', err)
+    console.error("ask answer failed:", err);
   } finally {
-    submitting.value = false
+    submitting.value = false;
   }
 }
 
 function onSelect(questionId: string, option: AskOption) {
-  if (submitting.value || !showPending.value) return
-  selections[questionId] = option.value
-  selectionLabels[questionId] = option.label
+  if (submitting.value || !showPending.value) return;
+  selections[questionId] = option.value;
+  selectionLabels[questionId] = option.label;
 }
 </script>
 
@@ -164,7 +161,9 @@ function onSelect(questionId: string, option: AskOption) {
   font-weight: 500;
   line-height: 1.3;
   cursor: pointer;
-  transition: opacity 0.15s, filter 0.15s;
+  transition:
+    opacity 0.15s,
+    filter 0.15s;
 }
 
 .ask-step__confirm:hover:not(:disabled) {
@@ -185,7 +184,7 @@ function onSelect(questionId: string, option: AskOption) {
 </style>
 
 <style>
-[data-theme='dark'] .ask-step__list {
+[data-theme="dark"] .ask-step__list {
   --ask-list-bg: var(--app-settings-card, #2a2a2a);
   --ask-list-border: var(--app-border, #383838);
   --ask-option-divider: var(--app-border, #383838);

@@ -22,7 +22,11 @@
     </div>
 
     <div v-else-if="tab === 'skills'" class="px-4 py-3 space-y-4">
-      <div v-for="skill in skillItems" :key="skill.id" class="border border-gray-100 rounded-lg overflow-hidden">
+      <div
+        v-for="skill in skillItems"
+        :key="skill.id"
+        class="border border-gray-100 rounded-lg overflow-hidden"
+      >
         <div class="px-3 py-2 bg-gray-50 flex items-start gap-2">
           <SkillListItem :skill="skill" />
           <ResourceLayerBadge :layer="skill.layer" />
@@ -39,13 +43,17 @@
             <ResourceContentView
               :content="getSkillFileContent(skill, expandedSkillFile[skill.id]!)"
               kind="skills"
-              :language="getSkillFileLanguage(findSkillFileName(skill, expandedSkillFile[skill.id]!))"
+              :language="
+                getSkillFileLanguage(findSkillFileName(skill, expandedSkillFile[skill.id]!))
+              "
               :fill="false"
             />
           </div>
         </div>
       </div>
-      <div v-if="skillItems.length === 0" class="py-6 text-center text-[13px] text-gray-400">暂无</div>
+      <div v-if="skillItems.length === 0" class="py-6 text-center text-[13px] text-gray-400">
+        暂无
+      </div>
     </div>
 
     <div v-else class="px-4 py-3 space-y-3">
@@ -59,65 +67,67 @@
           <ResourceLayerBadge :layer="r.layer" />
         </div>
         <div class="min-h-[10rem]">
-          <ResourceContentView
-            :content="r.content"
-            :kind="r.kind"
-            :fill="false"
-          />
+          <ResourceContentView :content="r.content" :kind="r.kind" :fill="false" />
         </div>
       </div>
-      <div v-if="fileItems.length === 0" class="py-6 text-center text-[13px] text-gray-400">暂无</div>
+      <div v-if="fileItems.length === 0" class="py-6 text-center text-[13px] text-gray-400">
+        暂无
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
-import AgentConfigPanel from './AgentConfigPanel.vue'
-import AgentSystemPromptPanel from './AgentSystemPromptPanel.vue'
-import ResourceContentView from './ResourceContentView.vue'
-import ResourceFileListItem from './ResourceFileListItem.vue'
-import ResourceLayerBadge from './ResourceLayerBadge.vue'
-import SkillFileTree from './SkillFileTree.vue'
-import SkillListItem from './SkillListItem.vue'
-import { getLinkedResourcesForAgent, type MockSkillItem, type ResourceKind } from '../mock/resources'
-import { getSkillFileLanguage, isFileItem, isSkillItem } from '../mock/resource-utils'
+import { computed, reactive, ref } from "vue";
+import AgentConfigPanel from "./AgentConfigPanel.vue";
+import AgentSystemPromptPanel from "./AgentSystemPromptPanel.vue";
+import ResourceContentView from "./ResourceContentView.vue";
+import ResourceFileListItem from "./ResourceFileListItem.vue";
+import ResourceLayerBadge from "./ResourceLayerBadge.vue";
+import SkillFileTree from "./SkillFileTree.vue";
+import SkillListItem from "./SkillListItem.vue";
+import {
+  getLinkedResourcesForAgent,
+  type MockSkillItem,
+  type ResourceKind,
+} from "../mock/resources";
+import { getSkillFileLanguage, isFileItem, isSkillItem } from "../mock/resource-utils";
 
 const props = defineProps<{
-  agentId: string
-}>()
+  agentId: string;
+}>();
 
-type MobileTab = 'config' | 'system' | ResourceKind
+type MobileTab = "config" | "system" | ResourceKind;
 
-const tab = ref<MobileTab>('config')
-const expandedSkillFile = reactive<Record<string, string | null>>({})
+const tab = ref<MobileTab>("config");
+const expandedSkillFile = reactive<Record<string, string | null>>({});
 
 const tabs = [
-  { id: 'config' as const, label: 'Config' },
-  { id: 'system' as const, label: 'System' },
-  { id: 'skills' as const, label: 'Skills' },
-  { id: 'extensions' as const, label: 'Ext' },
-  { id: 'prompts' as const, label: 'Templates' },
-]
+  { id: "config" as const, label: "Config" },
+  { id: "system" as const, label: "System" },
+  { id: "skills" as const, label: "Skills" },
+  { id: "extensions" as const, label: "Ext" },
+  { id: "prompts" as const, label: "Templates" },
+];
 
-const linked = computed(() => getLinkedResourcesForAgent(props.agentId))
+const linked = computed(() => getLinkedResourcesForAgent(props.agentId));
 
-const skillItems = computed(() => linked.value.filter(isSkillItem))
+const skillItems = computed(() => linked.value.filter(isSkillItem));
 
 const fileItems = computed(() => {
-  if (tab.value === 'skills' || tab.value === 'config' || tab.value === 'system') return []
-  return linked.value.filter((r) => r.kind === tab.value).filter(isFileItem)
-})
+  if (tab.value === "skills" || tab.value === "config" || tab.value === "system") return [];
+  return linked.value.filter((r) => r.kind === tab.value).filter(isFileItem);
+});
 
 function onSkillFileSelect(skillId: string, fileId: string) {
-  expandedSkillFile[skillId] = fileId
+  expandedSkillFile[skillId] = fileId;
 }
 
 function getSkillFileContent(skill: MockSkillItem, fileId: string): string {
-  return skill.files.find((f) => f.id === fileId)?.content ?? ''
+  return skill.files.find((f) => f.id === fileId)?.content ?? "";
 }
 
 function findSkillFileName(skill: MockSkillItem, fileId: string): string {
-  return skill.files.find((f) => f.id === fileId)?.fileName ?? ''
+  return skill.files.find((f) => f.id === fileId)?.fileName ?? "";
 }
 </script>

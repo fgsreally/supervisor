@@ -24,77 +24,87 @@
             :is-directory="item.isDirectory"
             class="mt-0.5"
           />
-          <Sparkles v-else class="w-4 h-4 shrink-0 mt-0.5 autocomplete-icon autocomplete-icon--skill" />
+          <Sparkles
+            v-else
+            class="w-4 h-4 shrink-0 mt-0.5 autocomplete-icon autocomplete-icon--skill"
+          />
           <div class="min-w-0 flex-1">
-            <div class="text-[13px] truncate autocomplete-label" :class="item.trigger === 'at' ? 'font-mono' : ''">
+            <div
+              class="text-[13px] truncate autocomplete-label"
+              :class="item.trigger === 'at' ? 'font-mono' : ''"
+            >
               {{ displayLabel(item) }}
             </div>
-            <div v-if="item.description" class="text-[11px] truncate mt-0.5 autocomplete-desc">{{ item.description }}</div>
+            <div v-if="item.description" class="text-[11px] truncate mt-0.5 autocomplete-desc">
+              {{ item.description }}
+            </div>
           </div>
         </li>
       </ul>
-      <div class="px-3 py-1.5 border-t text-[10px] autocomplete-footer">↑↓ 选择 · Tab/Enter 确认 · Ctrl+Enter 换行 · Esc 关闭</div>
+      <div class="px-3 py-1.5 border-t text-[10px] autocomplete-footer">
+        ↑↓ 选择 · Tab/Enter 确认 · Ctrl+Enter 换行 · Esc 关闭
+      </div>
     </div>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Sparkles } from 'lucide-vue-next'
-import type { ChatAutocompleteItem } from '../utils/chat-autocomplete'
-import { getFileBaseName } from '../utils/file-type-icon'
-import FileTypeIcon from './FileTypeIcon.vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { Sparkles } from "lucide-vue-next";
+import type { ChatAutocompleteItem } from "../utils/chat-autocomplete";
+import { getFileBaseName } from "../utils/file-type-icon";
+import FileTypeIcon from "./FileTypeIcon.vue";
 
 const props = defineProps<{
-  open: boolean
-  items: ChatAutocompleteItem[]
-  selectedIndex: number
-  anchorEl: HTMLElement | null
-}>()
+  open: boolean;
+  items: ChatAutocompleteItem[];
+  selectedIndex: number;
+  anchorEl: HTMLElement | null;
+}>();
 
 const emit = defineEmits<{
-  select: [item: ChatAutocompleteItem]
-}>()
+  select: [item: ChatAutocompleteItem];
+}>();
 
 const popupStyle = ref<Record<string, string>>({
-  visibility: 'hidden',
-})
+  visibility: "hidden",
+});
 
 function updatePosition() {
-  const el = props.anchorEl
-  if (!el) return
-  const rect = el.getBoundingClientRect()
+  const el = props.anchorEl;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
   popupStyle.value = {
     left: `${rect.left + 4}px`,
     width: `${Math.max(220, rect.width - 8)}px`,
     bottom: `${window.innerHeight - rect.top + 4}px`,
-    zIndex: '200',
-    visibility: 'visible',
-  }
+    zIndex: "200",
+    visibility: "visible",
+  };
 }
 
 watch(
   () => [props.open, props.items.length, props.anchorEl] as const,
   async ([open]) => {
-    if (!open) return
-    await nextTick()
-    updatePosition()
+    if (!open) return;
+    await nextTick();
+    updatePosition();
   },
-)
+);
 
 onMounted(() => {
-  window.addEventListener('scroll', updatePosition, true)
-  window.addEventListener('resize', updatePosition)
-})
+  window.addEventListener("scroll", updatePosition, true);
+  window.addEventListener("resize", updatePosition);
+});
 
 onBeforeUnmount(() => {
-  window.removeEventListener('scroll', updatePosition, true)
-  window.removeEventListener('resize', updatePosition)
-})
+  window.removeEventListener("scroll", updatePosition, true);
+  window.removeEventListener("resize", updatePosition);
+});
 
 function displayLabel(item: ChatAutocompleteItem): string {
-  if (item.trigger === 'slash') return item.label.replace(/^\//, '')
-  return getFileBaseName(item.label.replace(/\/$/, ''))
+  if (item.trigger === "slash") return item.label.replace(/^\//, "");
+  return getFileBaseName(item.label.replace(/\/$/, ""));
 }
 </script>
 

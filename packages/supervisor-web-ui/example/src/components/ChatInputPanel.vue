@@ -23,63 +23,63 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useResizableHeight } from '../composables/use-resizable-height'
-import ChatComposer from './ChatComposer.vue'
-import ChatInputToolbar, { type ChatToolbarAction } from './ChatInputToolbar.vue'
-import ResizeHandle from './ResizeHandle.vue'
+import { computed, ref } from "vue";
+import { useResizableHeight } from "../composables/use-resizable-height";
+import ChatComposer from "./ChatComposer.vue";
+import ChatInputToolbar, { type ChatToolbarAction } from "./ChatInputToolbar.vue";
+import ResizeHandle from "./ResizeHandle.vue";
 
-const TOOLBAR_HEIGHT = 40
+const TOOLBAR_HEIGHT = 40;
 
 const props = defineProps<{
-  modelValue: string
-  workspaceId: string
-  agentId?: string
-  disabled?: boolean
-}>()
+  modelValue: string;
+  workspaceId: string;
+  agentId?: string;
+  disabled?: boolean;
+}>();
 
 const emit = defineEmits<{
-  'update:modelValue': [value: string]
-  send: []
-}>()
+  "update:modelValue": [value: string];
+  send: [];
+}>();
 
 const text = computed({
   get: () => props.modelValue,
-  set: (value: string) => emit('update:modelValue', value),
-})
+  set: (value: string) => emit("update:modelValue", value),
+});
 
 const { height: panelHeight, startResize } = useResizableHeight({
   defaultHeight: 128,
   minHeight: 96,
   maxHeight: 320,
-  storageKey: 'pi-example-chat-input-height',
-})
+  storageKey: "pi-example-chat-input-height",
+});
 
-const editorHeight = computed(() => Math.max(40, panelHeight.value - TOOLBAR_HEIGHT))
+const editorHeight = computed(() => Math.max(40, panelHeight.value - TOOLBAR_HEIGHT));
 
-const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null)
+const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null);
 
 function onToolbarAction(action: ChatToolbarAction) {
   switch (action) {
-    case 'attach':
-      composerRef.value?.insertTrigger('@')
-      break
-    case 'skill':
-      composerRef.value?.insertTrigger('/')
-      break
-    case 'emoji':
-    case 'screenshot':
-    case 'voice':
-      composerRef.value?.focus()
-      break
+    case "attach":
+      composerRef.value?.insertTrigger("@");
+      break;
+    case "skill":
+      composerRef.value?.insertTrigger("/");
+      break;
+    case "emoji":
+    case "screenshot":
+    case "voice":
+      composerRef.value?.focus();
+      break;
   }
 }
 
 function focus() {
-  composerRef.value?.focus()
+  composerRef.value?.focus();
 }
 
-defineExpose({ focus })
+defineExpose({ focus });
 </script>
 
 <style scoped>

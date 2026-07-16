@@ -230,7 +230,12 @@ export class HindsightApi {
     );
   }
 
-  async #request<T>(method: string, path: string, operation: string, opts?: RequestOptions): Promise<T> {
+  async #request<T>(
+    method: string,
+    path: string,
+    operation: string,
+    opts?: RequestOptions,
+  ): Promise<T> {
     let url = `${this.#baseUrl}${path}`;
     if (opts?.query) {
       const qs = buildQueryString(opts.query);

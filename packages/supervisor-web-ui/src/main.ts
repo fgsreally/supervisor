@@ -17,9 +17,9 @@ app.use(router);
 app.mount("#app");
 
 window.addEventListener(
-	"click",
-	() => {
-		void requestNotificationPermission();
-	},
-	{ once: true },
+  "click",
+  () => {
+    void requestNotificationPermission();
+  },
+  { once: true },
 );

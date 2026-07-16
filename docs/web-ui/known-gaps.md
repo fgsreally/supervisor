@@ -45,12 +45,12 @@
 
 ## 总结
 
-| 问题 | 严重度 | 根源 |
-|---|---|---|
-| 中止 / Steer / Follow-up 按钮 | 中 | 后端已做完，UI 未加 |
-| Slash 命令 UI | 中 | 后端 501（命令路由未挂钩），UI 未加 |
-| Extension 管理 UI | 低 | 后端框架完整，UI 未做 |
-| Thinking Level 切换 | 低 | 后端可能需要适配，UI 未加 |
-| Turn File Tracking 面板 | 低 | 已有组件 `TurnFileChanges.vue`，可复用 |
-| E2E 缺少 data-testid | 低 | 影响 CI 冒烟 |
-| store/session.ts deprecated | 低 | 不影响使用 |
+| 问题                          | 严重度 | 根源                                   |
+| ----------------------------- | ------ | -------------------------------------- |
+| 中止 / Steer / Follow-up 按钮 | 中     | 后端已做完，UI 未加                    |
+| Slash 命令 UI                 | 中     | 后端 501（命令路由未挂钩），UI 未加    |
+| Extension 管理 UI             | 低     | 后端框架完整，UI 未做                  |
+| Thinking Level 切换           | 低     | 后端可能需要适配，UI 未加              |
+| Turn File Tracking 面板       | 低     | 已有组件 `TurnFileChanges.vue`，可复用 |
+| E2E 缺少 data-testid          | 低     | 影响 CI 冒烟                           |
+| store/session.ts deprecated   | 低     | 不影响使用                             |

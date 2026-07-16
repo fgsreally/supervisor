@@ -22,17 +22,17 @@ pnpm install
 
 ## 配置（环境变量）
 
-| 变量 | 说明 | 默认 |
-|------|------|------|
-| `HINDSIGHT_API_URL` | Hindsight API 根地址 | 未设置则走本地 jsonl |
-| `HINDSIGHT_API_TOKEN` | Bearer token | - |
-| `HINDSIGHT_BANK_ID` | Bank 名称 | `default` |
-| `HINDSIGHT_BANK_ID_PREFIX` | Bank 前缀 | `supervisor` |
-| `HINDSIGHT_SCOPING` | `global` / `per-project` / `per-project-tagged` | `per-project-tagged` |
-| `HINDSIGHT_AUTO_RECALL` | 首 turn 自动 recall | `true` |
-| `HINDSIGHT_AUTO_RETAIN` | 周期性自动 retain | `true` |
-| `HINDSIGHT_RETAIN_EVERY_N_TURNS` | 自动 retain 间隔（用户轮次） | `3` |
-| `HINDSIGHT_LOCAL_FALLBACK` | API 未配置时启用本地 jsonl | `true` |
+| 变量                             | 说明                                            | 默认                 |
+| -------------------------------- | ----------------------------------------------- | -------------------- |
+| `HINDSIGHT_API_URL`              | Hindsight API 根地址                            | 未设置则走本地 jsonl |
+| `HINDSIGHT_API_TOKEN`            | Bearer token                                    | -                    |
+| `HINDSIGHT_BANK_ID`              | Bank 名称                                       | `default`            |
+| `HINDSIGHT_BANK_ID_PREFIX`       | Bank 前缀                                       | `supervisor`         |
+| `HINDSIGHT_SCOPING`              | `global` / `per-project` / `per-project-tagged` | `per-project-tagged` |
+| `HINDSIGHT_AUTO_RECALL`          | 首 turn 自动 recall                             | `true`               |
+| `HINDSIGHT_AUTO_RETAIN`          | 周期性自动 retain                               | `true`               |
+| `HINDSIGHT_RETAIN_EVERY_N_TURNS` | 自动 retain 间隔（用户轮次）                    | `3`                  |
+| `HINDSIGHT_LOCAL_FALLBACK`       | API 未配置时启用本地 jsonl                      | `true`               |
 
 完整列表见 `config.ts`（对齐 omp `hindsight.*` 语义）。
 

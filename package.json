@@ -2,13 +2,13 @@
   "name": "supervisor-standalone",
   "version": "0.1.0",
   "private": true,
-  "type": "module",
   "workspaces": [
     "packages/*",
     "extensions/*"
   ],
+  "type": "module",
   "scripts": {
-    "clean": "pnpm run clean --filter \"./packages/*\" --if-present",
+    "clean": "pnpm --filter \"./packages/*\" --if-present run clean",
     "build": "pnpm --filter @earendil-works/pi-supervisor run build",
     "dev": "pnpm --filter @earendil-works/pi-supervisor-ui run dev",
     "dev:supervisor": "pnpm run build && pnpm --filter @earendil-works/pi-supervisor run serve:playground",
@@ -17,8 +17,8 @@
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt .",
     "format:check": "oxfmt --check .",
-    "check": "oxlint . && oxfmt --check . && pnpm run check --filter \"./packages/*\" --if-present",
-    "test": "pnpm run test --filter \"./packages/*\" --if-present",
+    "check": "oxlint . && oxfmt --check . && pnpm --filter \"./packages/*\" --if-present run check",
+    "test": "pnpm --filter \"./packages/*\" --if-present run test",
     "serve": "node packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground --db playground/.supervisor/supervisor.db",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",

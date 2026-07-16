@@ -1,4 +1,3 @@
-
 # Context File: {{path}}
 
 {{content}}

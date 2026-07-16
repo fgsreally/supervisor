@@ -1,5 +1,8 @@
 <template>
-  <div v-if="resource" class="resource-detail-view flex flex-col flex-1 min-w-0 basis-0 h-full w-full overflow-hidden">
+  <div
+    v-if="resource"
+    class="resource-detail-view flex flex-col flex-1 min-w-0 basis-0 h-full w-full overflow-hidden"
+  >
     <div class="flex flex-col md:flex-row flex-1 min-h-0 min-w-0">
       <aside
         class="resource-detail-aside shrink-0 w-full md:w-64 lg:w-72 flex flex-col border-b md:border-b-0 md:border-r min-h-0"
@@ -26,17 +29,23 @@
 
           <div v-if="resourcePath">
             <div class="resource-detail-subtitle text-[13px] mb-1">路径</div>
-            <div class="text-[11px] font-mono truncate resource-detail-path">{{ resourcePath }}</div>
+            <div class="text-[11px] font-mono truncate resource-detail-path">
+              {{ resourcePath }}
+            </div>
           </div>
 
           <div>
             <div class="resource-detail-subtitle text-[13px] mb-1">描述</div>
-            <div class="resource-detail-desc text-[13px] leading-relaxed whitespace-pre-wrap">{{ resource.description || '—' }}</div>
+            <div class="resource-detail-desc text-[13px] leading-relaxed whitespace-pre-wrap">
+              {{ resource.description || "—" }}
+            </div>
           </div>
 
           <div v-if="isSkill">
             <div class="resource-detail-subtitle text-[13px] mb-2">文件</div>
-            <div class="max-h-64 overflow-y-auto custom-scrollbar border rounded p-1 resource-detail-tree-wrap">
+            <div
+              class="max-h-64 overflow-y-auto custom-scrollbar border rounded p-1 resource-detail-tree-wrap"
+            >
               <SkillFileTree
                 :files="skillFiles"
                 :selected-file-id="selectedFileId"
@@ -48,8 +57,12 @@
       </aside>
 
       <section class="flex flex-col flex-1 min-w-0 basis-0 min-h-0 overflow-hidden">
-        <div class="resource-detail-header h-14 shrink-0 border-b flex items-center px-6 justify-between">
-          <span class="text-[15px] resource-detail-subtitle font-mono truncate">{{ contentTitle }}</span>
+        <div
+          class="resource-detail-header h-14 shrink-0 border-b flex items-center px-6 justify-between"
+        >
+          <span class="text-[15px] resource-detail-subtitle font-mono truncate">{{
+            contentTitle
+          }}</span>
         </div>
         <div class="resource-detail-content-wrap flex-1 min-h-0 min-w-0 overflow-hidden">
           <ResourceContentView
@@ -65,97 +78,98 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { ChevronLeft } from 'lucide-vue-next'
-import ResourceContentView from '../components/ResourceContentView.vue'
-import SkillFileTree from '../components/SkillFileTree.vue'
-import { getResourceById } from '../mock/resources'
-import { getSkillFileLanguage, isFileItem, isSkillItem } from '../mock/resource-utils'
+import { computed, ref, watch } from "vue";
+import { ChevronLeft } from "lucide-vue-next";
+import ResourceContentView from "../components/ResourceContentView.vue";
+import SkillFileTree from "../components/SkillFileTree.vue";
+import { getResourceById } from "../mock/resources";
+import { getSkillFileLanguage, isFileItem, isSkillItem } from "../mock/resource-utils";
 
 const props = defineProps<{
-  resourceId: string | null
-  showBack?: boolean
-}>()
+  resourceId: string | null;
+  showBack?: boolean;
+}>();
 
-const emit = defineEmits<{ back: [] }>()
+const emit = defineEmits<{ back: [] }>();
 
-const resource = computed(() =>
-  props.resourceId ? getResourceById(props.resourceId) : undefined,
-)
+const resource = computed(() => (props.resourceId ? getResourceById(props.resourceId) : undefined));
 
 const isSkill = computed(() => {
-  const r = resource.value
-  return r ? isSkillItem(r) : false
-})
+  const r = resource.value;
+  return r ? isSkillItem(r) : false;
+});
 
 const skillFiles = computed(() => {
-  const r = resource.value
-  return r && isSkillItem(r) ? r.files : []
-})
+  const r = resource.value;
+  return r && isSkillItem(r) ? r.files : [];
+});
 
 const resourcePath = computed(() => {
-  const r = resource.value
-  if (!r) return ''
-  if (isSkillItem(r) && r.layer === 'global' && r.rootPath) return r.rootPath
-  if (isFileItem(r) && r.layer === 'global' && r.path) return r.path
-  return ''
-})
+  const r = resource.value;
+  if (!r) return "";
+  if (isSkillItem(r) && r.layer === "global" && r.rootPath) return r.rootPath;
+  if (isFileItem(r) && r.layer === "global" && r.path) return r.path;
+  return "";
+});
 
-const selectedFileId = ref<string | null>(null)
+const selectedFileId = ref<string | null>(null);
 
 watch(
   () => props.resourceId,
   () => {
-    const r = resource.value
+    const r = resource.value;
     if (r && isSkillItem(r)) {
-      selectedFileId.value = r.files[0]?.id ?? null
+      selectedFileId.value = r.files[0]?.id ?? null;
     } else {
-      selectedFileId.value = null
+      selectedFileId.value = null;
     }
   },
   { immediate: true },
-)
+);
 
 const selectedFile = computed(() => {
-  const id = selectedFileId.value
-  if (!id) return undefined
-  return skillFiles.value.find((f) => f.id === id)
-})
+  const id = selectedFileId.value;
+  if (!id) return undefined;
+  return skillFiles.value.find((f) => f.id === id);
+});
 
 const activeContent = computed(() => {
-  const r = resource.value
-  if (!r) return undefined
-  if (isSkillItem(r)) return selectedFile.value?.content ?? ''
-  if (isFileItem(r)) return r.content
-  return ''
-})
+  const r = resource.value;
+  if (!r) return undefined;
+  if (isSkillItem(r)) return selectedFile.value?.content ?? "";
+  if (isFileItem(r)) return r.content;
+  return "";
+});
 
 const activeLanguage = computed(() => {
-  const file = selectedFile.value
-  if (file) return getSkillFileLanguage(file.fileName)
-  return undefined
-})
+  const file = selectedFile.value;
+  if (file) return getSkillFileLanguage(file.fileName);
+  return undefined;
+});
 
 const contentTitle = computed(() => {
-  const r = resource.value
-  if (!r) return ''
-  if (isSkillItem(r)) return selectedFile.value?.fileName ?? r.name
+  const r = resource.value;
+  if (!r) return "";
+  if (isSkillItem(r)) return selectedFile.value?.fileName ?? r.name;
   if (isFileItem(r)) {
-    const base = r.fileName.split('/').pop() ?? r.fileName
-    return base
+    const base = r.fileName.split("/").pop() ?? r.fileName;
+    return base;
   }
-  return ''
-})
+  return "";
+});
 
 const kindLabel = computed(() => {
   switch (resource.value?.kind) {
-    case 'skills': return 'Skill'
-    case 'extensions': return 'Extension'
-    case 'prompts': return 'Prompt 模板'
-    default: return '—'
+    case "skills":
+      return "Skill";
+    case "extensions":
+      return "Extension";
+    case "prompts":
+      return "Prompt 模板";
+    default:
+      return "—";
   }
-})
-
+});
 </script>
 
 <style scoped>

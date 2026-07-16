@@ -300,10 +300,9 @@ interface SqliteStatement<TParams extends unknown[], TResult> {
 
 ```ts
 const rows = ctx.db.sqlite
-  .prepare<
-    [number],
-    { id: number; status: string }
-  >("SELECT id, status FROM sessions WHERE parent_id = ? ORDER BY created_at DESC")
+  .prepare<[number], { id: number; status: string }>(
+    "SELECT id, status FROM sessions WHERE parent_id = ? ORDER BY created_at DESC",
+  )
   .all(ctx.session.id);
 ```
 

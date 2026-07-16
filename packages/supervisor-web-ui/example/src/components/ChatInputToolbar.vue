@@ -63,25 +63,25 @@
 </template>
 
 <script setup lang="ts">
-import { AudioLines, FolderOpen, Mic, Scissors, Smile, Sparkles } from 'lucide-vue-next'
+import { AudioLines, FolderOpen, Mic, Scissors, Smile, Sparkles } from "lucide-vue-next";
 
-export type ChatToolbarAction = 'emoji' | 'skill' | 'attach' | 'screenshot' | 'voice'
+export type ChatToolbarAction = "emoji" | "skill" | "attach" | "screenshot" | "voice";
 
 defineProps<{
-  disabled?: boolean
-  canSend?: boolean
-}>()
+  disabled?: boolean;
+  canSend?: boolean;
+}>();
 
 const emit = defineEmits<{
-  action: [action: ChatToolbarAction]
-  send: []
-}>()
+  action: [action: ChatToolbarAction];
+  send: [];
+}>();
 
 const leftButtons = [
-  { id: 'emoji' as const, icon: Smile, title: '表情' },
-  { id: 'skill' as const, icon: Sparkles, title: '技能' },
-  { id: 'attach' as const, icon: FolderOpen, title: '发送文件' },
-]
+  { id: "emoji" as const, icon: Smile, title: "表情" },
+  { id: "skill" as const, icon: Sparkles, title: "技能" },
+  { id: "attach" as const, icon: FolderOpen, title: "发送文件" },
+];
 </script>
 
 <style scoped>
@@ -92,7 +92,9 @@ const leftButtons = [
 .toolbar-icon-btn {
   padding: 6px;
   border-radius: 8px;
-  transition: background-color 0.15s, color 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .toolbar-icon-btn:hover:not(:disabled) {
@@ -118,7 +120,9 @@ const leftButtons = [
   font-weight: 400;
   background: var(--app-send-disabled-bg);
   color: var(--app-send-disabled-text);
-  transition: background-color 0.15s, color 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .send-btn--active {

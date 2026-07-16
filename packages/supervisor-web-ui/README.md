@@ -17,27 +17,27 @@ npm run dev
 
 微调聊天界面时，优先改对应组件，避免直接改 `ChatView.vue` 大文件。
 
-| 区域 | 组件路径 | 说明 |
-|------|----------|------|
-| 聊天页容器 | `src/views/ChatView.vue` | 会话状态、SSE 流、输入框编排 |
-| 聊天顶栏 | `src/components/chat/ChatViewHeader.vue` | 标题、Agent 链接、状态、菜单 |
-| 聊天内搜索 | `src/components/chat/ChatSearchBar.vue` | 消息全文搜索条 |
-| 消息列表 | `src/components/chat/ChatMessageList.vue` | 滚动区、分支分隔、系统/压缩条 |
-| **用户气泡** | `src/components/chat/UserMessageRow.vue` | 用户消息、文件气泡、时间戳 |
-| **AI 气泡** | `src/components/chat/AssistantMessageGroup.vue` | 助手消息组：思考、Markdown、工具 |
-| **工具渲染分发** | `src/components/chat/ToolStepRenderer.vue` | 按工具类型路由到具体渲染器 |
-| ask 工具（选择题） | `src/components/chat/AskStep.vue` | 执行中：选项列表；完成后：仅显示选中项 |
-| ask 选项按钮 | `src/components/chat/AskStepOption.vue` | 单个选择题选项样式 |
-| bash 工具 | `src/components/BashStep.vue` | 终端命令步骤 |
-| 通用工具条 | `src/components/ToolActivityBar.vue` | read/write/spawn 等默认工具 UI |
-| 思考块 | `src/components/ThinkingBlock.vue` | 可折叠思考过程（偏好存 localStorage） |
-| Markdown 正文 | `src/components/MarkdownContent.vue` | AI 文本 Markdown 渲染 |
-| 用户富文本 | `src/components/ChatRichText.vue` | 用户消息内联格式 |
-| 压缩横幅 | `src/components/CompactionBanner.vue` | 上下文压缩条目 |
-| 输入框 | `src/components/ChatInputPanel.vue` | `@` 文件、`/` skill/prompt、图片粘贴 |
-| **左侧会话行** | `src/components/SessionListItem.vue` | 单个会话：头像、预览、未读 |
-| 会话子树 | `src/components/SessionListSubtree.vue` | 子会话缩进树 |
-| 会话列表面板 | `src/components/ChatListPanel.vue` | 置顶区 + 工作区分组列表 |
+| 区域               | 组件路径                                        | 说明                                   |
+| ------------------ | ----------------------------------------------- | -------------------------------------- |
+| 聊天页容器         | `src/views/ChatView.vue`                        | 会话状态、SSE 流、输入框编排           |
+| 聊天顶栏           | `src/components/chat/ChatViewHeader.vue`        | 标题、Agent 链接、状态、菜单           |
+| 聊天内搜索         | `src/components/chat/ChatSearchBar.vue`         | 消息全文搜索条                         |
+| 消息列表           | `src/components/chat/ChatMessageList.vue`       | 滚动区、分支分隔、系统/压缩条          |
+| **用户气泡**       | `src/components/chat/UserMessageRow.vue`        | 用户消息、文件气泡、时间戳             |
+| **AI 气泡**        | `src/components/chat/AssistantMessageGroup.vue` | 助手消息组：思考、Markdown、工具       |
+| **工具渲染分发**   | `src/components/chat/ToolStepRenderer.vue`      | 按工具类型路由到具体渲染器             |
+| ask 工具（选择题） | `src/components/chat/AskStep.vue`               | 执行中：选项列表；完成后：仅显示选中项 |
+| ask 选项按钮       | `src/components/chat/AskStepOption.vue`         | 单个选择题选项样式                     |
+| bash 工具          | `src/components/BashStep.vue`                   | 终端命令步骤                           |
+| 通用工具条         | `src/components/ToolActivityBar.vue`            | read/write/spawn 等默认工具 UI         |
+| 思考块             | `src/components/ThinkingBlock.vue`              | 可折叠思考过程（偏好存 localStorage）  |
+| Markdown 正文      | `src/components/MarkdownContent.vue`            | AI 文本 Markdown 渲染                  |
+| 用户富文本         | `src/components/ChatRichText.vue`               | 用户消息内联格式                       |
+| 压缩横幅           | `src/components/CompactionBanner.vue`           | 上下文压缩条目                         |
+| 输入框             | `src/components/ChatInputPanel.vue`             | `@` 文件、`/` skill/prompt、图片粘贴   |
+| **左侧会话行**     | `src/components/SessionListItem.vue`            | 单个会话：头像、预览、未读             |
+| 会话子树           | `src/components/SessionListSubtree.vue`         | 子会话缩进树                           |
+| 会话列表面板       | `src/components/ChatListPanel.vue`              | 置顶区 + 工作区分组列表                |
 
 ### ask 工具
 

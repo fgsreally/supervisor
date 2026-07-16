@@ -178,7 +178,11 @@ export async function retainLocalFacts(
   return writes.length;
 }
 
-export function recallLocalByQuery(projectDir: string, query: string, limit = 10): HindsightRecord[] {
+export function recallLocalByQuery(
+  projectDir: string,
+  query: string,
+  limit = 10,
+): HindsightRecord[] {
   const terms = query
     .toLowerCase()
     .split(/\s+/)

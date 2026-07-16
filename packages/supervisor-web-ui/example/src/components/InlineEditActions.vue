@@ -29,12 +29,12 @@
 
 <script setup lang="ts">
 defineProps<{
-  editing: boolean
-}>()
+  editing: boolean;
+}>();
 
 const emit = defineEmits<{
-  edit: []
-  cancel: []
-  done: []
-}>()
+  edit: [];
+  cancel: [];
+  done: [];
+}>();
 </script>

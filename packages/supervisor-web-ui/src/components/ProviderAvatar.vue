@@ -10,25 +10,27 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Icon } from '@iconify/vue'
-import { providerAvatarClass } from '@/utils/avatar-class'
-import { resolveProviderIcon } from '@/constants/providers'
+import { computed } from "vue";
+import { Icon } from "@iconify/vue";
+import { providerAvatarClass } from "@/utils/avatar-class";
+import { resolveProviderIcon } from "@/constants/providers";
 
 const props = defineProps<{
-  providerId: string
-  providerName: string
-  icon?: string | null
-}>()
+  providerId: string;
+  providerName: string;
+  icon?: string | null;
+}>();
 
-const resolvedIcon = computed(() => resolveProviderIcon(props.providerId, props.providerName, props.icon ?? null))
+const resolvedIcon = computed(() =>
+  resolveProviderIcon(props.providerId, props.providerName, props.icon ?? null),
+);
 const isImageUrl = computed(() => {
-  const icon = resolvedIcon.value
-  if (!icon) return false
-  return icon.startsWith('http://') || icon.startsWith('https://') || icon.startsWith('data:')
-})
-const initial = computed(() => props.providerName.trim().slice(0, 1).toUpperCase() || '?')
-const fallbackClass = computed(() => providerAvatarClass(props.providerId))
+  const icon = resolvedIcon.value;
+  if (!icon) return false;
+  return icon.startsWith("http://") || icon.startsWith("https://") || icon.startsWith("data:");
+});
+const initial = computed(() => props.providerName.trim().slice(0, 1).toUpperCase() || "?");
+const fallbackClass = computed(() => providerAvatarClass(props.providerId));
 </script>
 
 <style scoped>

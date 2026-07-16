@@ -8,54 +8,54 @@ import * as api from "@/api";
  * This file is kept for backward compatibility
  */
 export const useSessionStore = defineStore("session", () => {
-	const sessions = ref<Session[]>([]);
-	const loading = ref(false);
+  const sessions = ref<Session[]>([]);
+  const loading = ref(false);
 
-	const fetchSessions = async () => {
-		loading.value = true;
-		try {
-			sessions.value = await api.listSessions();
-		} finally {
-			loading.value = false;
-		}
-	};
+  const fetchSessions = async () => {
+    loading.value = true;
+    try {
+      sessions.value = await api.listSessions();
+    } finally {
+      loading.value = false;
+    }
+  };
 
-	// Group by workspace (cwd)
-	const groupedSessions = computed(() => {
-		const groups: Record<string, Session[]> = {};
-		sessions.value.forEach((s) => {
-			const cwd = s.cwd || "Unknown Workspace";
-			if (!groups[cwd]) groups[cwd] = [];
-			groups[cwd].push(s);
-		});
-		return groups;
-	});
+  // Group by workspace (cwd)
+  const groupedSessions = computed(() => {
+    const groups: Record<string, Session[]> = {};
+    sessions.value.forEach((s) => {
+      const cwd = s.cwd || "Unknown Workspace";
+      if (!groups[cwd]) groups[cwd] = [];
+      groups[cwd].push(s);
+    });
+    return groups;
+  });
 
-	// Build tree to show main agent and subagents
-	const sessionTree = computed(() => {
-		const map = new Map<string, Session & { children: any[] }>();
-		const roots: any[] = [];
+  // Build tree to show main agent and subagents
+  const sessionTree = computed(() => {
+    const map = new Map<string, Session & { children: any[] }>();
+    const roots: any[] = [];
 
-		sessions.value.forEach((s) => {
-			map.set(s.id, { ...s, children: [] });
-		});
+    sessions.value.forEach((s) => {
+      map.set(s.id, { ...s, children: [] });
+    });
 
-		sessions.value.forEach((s) => {
-			if (s.parentId && map.has(s.parentId)) {
-				map.get(s.parentId)!.children.push(map.get(s.id));
-			} else {
-				roots.push(map.get(s.id));
-			}
-		});
+    sessions.value.forEach((s) => {
+      if (s.parentId && map.has(s.parentId)) {
+        map.get(s.parentId)!.children.push(map.get(s.id));
+      } else {
+        roots.push(map.get(s.id));
+      }
+    });
 
-		return roots;
-	});
+    return roots;
+  });
 
-	return {
-		sessions,
-		loading,
-		fetchSessions,
-		groupedSessions,
-		sessionTree,
-	};
+  return {
+    sessions,
+    loading,
+    fetchSessions,
+    groupedSessions,
+    sessionTree,
+  };
 });

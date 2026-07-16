@@ -1,5 +1,7 @@
 <template>
-  <div class="inline-block self-start max-w-full w-fit rounded-md border border-gray-700 overflow-hidden text-xs font-mono shadow-sm">
+  <div
+    class="inline-block self-start max-w-full w-fit rounded-md border border-gray-700 overflow-hidden text-xs font-mono shadow-sm"
+  >
     <button
       type="button"
       class="inline-flex w-auto bg-[#2d2d2d] text-gray-100 px-3 py-2.5 items-start gap-2 text-left transition-colors"
@@ -21,18 +23,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Terminal, Eye } from 'lucide-vue-next'
+import { computed } from "vue";
+import { Terminal, Eye } from "lucide-vue-next";
 
 const props = defineProps<{
-  command: string
-  intent?: string
-  resultContent?: Array<{ type: string; text: string }>
-}>()
+  command: string;
+  intent?: string;
+  resultContent?: Array<{ type: string; text: string }>;
+}>();
 
-defineEmits<{ open: [] }>()
+defineEmits<{ open: [] }>();
 
-const hasResult = computed(() => !!props.resultContent?.length)
+const hasResult = computed(() => !!props.resultContent?.length);
 
-const displayText = computed(() => props.intent?.trim() || props.command)
+const displayText = computed(() => props.intent?.trim() || props.command);
 </script>

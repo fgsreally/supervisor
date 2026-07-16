@@ -13,12 +13,7 @@
             class="global-search-input"
             @keydown.enter="doSearch"
           />
-          <button
-            v-if="query"
-            type="button"
-            class="global-search-clear"
-            @click="query = ''"
-          >
+          <button v-if="query" type="button" class="global-search-clear" @click="query = ''">
             <X class="w-4 h-4" />
           </button>
         </div>
@@ -79,82 +74,82 @@
 </template>
 
 <script setup lang="ts">
-import { ref, nextTick, watch } from 'vue'
-import { Loader2, Search, X } from 'lucide-vue-next'
-import { searchMessages, type MessageSearchHit } from '@/api'
-import { useSessionStore } from '@/store'
+import { ref, nextTick, watch } from "vue";
+import { Loader2, Search, X } from "lucide-vue-next";
+import { searchMessages, type MessageSearchHit } from "@/api";
+import { useSessionStore } from "@/store";
 
 const props = defineProps<{
-  open: boolean
-}>()
+  open: boolean;
+}>();
 
 const emit = defineEmits<{
-  close: []
-  navigate: [sessionId: string]
-}>()
+  close: [];
+  navigate: [sessionId: string];
+}>();
 
-const query = ref('')
-const roleFilter = ref('')
-const results = ref<MessageSearchHit[]>([])
-const loading = ref(false)
-const searched = ref(false)
-const inputRef = ref<HTMLInputElement | null>(null)
+const query = ref("");
+const roleFilter = ref("");
+const results = ref<MessageSearchHit[]>([]);
+const loading = ref(false);
+const searched = ref(false);
+const inputRef = ref<HTMLInputElement | null>(null);
 
-const sessionStore = useSessionStore()
+const sessionStore = useSessionStore();
 
 watch(
   () => props.open,
   (open) => {
     if (open) {
-      query.value = ''
-      results.value = []
-      searched.value = false
-      loading.value = false
-      void nextTick(() => inputRef.value?.focus())
+      query.value = "";
+      results.value = [];
+      searched.value = false;
+      loading.value = false;
+      void nextTick(() => inputRef.value?.focus());
     }
   },
-)
+);
 
 function roleLabel(role: string | null): string {
-  if (role === 'user') return '用户'
-  if (role === 'assistant') return '助手'
-  return role ?? '未知'
+  if (role === "user") return "用户";
+  if (role === "assistant") return "助手";
+  return role ?? "未知";
 }
 
 function roleBadgeClass(role: string | null): string {
-  if (role === 'user') return 'global-search-badge--user'
-  if (role === 'assistant') return 'global-search-badge--assistant'
-  return ''
+  if (role === "user") return "global-search-badge--user";
+  if (role === "assistant") return "global-search-badge--assistant";
+  return "";
 }
 
 function sessionName(sessionId: string): string {
-  const s = sessionStore.getSessionById(sessionId)
-  if (s?.meta?.name && typeof s.meta.name === 'string') return s.meta.name
-  return `Session ${sessionId.substring(0, 8)}`
+  const s = sessionStore.getSessionById(sessionId);
+  if (s?.meta?.name && typeof s.meta.name === "string") return s.meta.name;
+  return `Session ${sessionId.substring(0, 8)}`;
 }
 
 async function doSearch() {
-  const q = query.value.trim()
-  if (!q) return
+  const q = query.value.trim();
+  if (!q) return;
 
-  loading.value = true
-  searched.value = true
+  loading.value = true;
+  searched.value = true;
 
   try {
     results.value = await searchMessages(q, {
       role: roleFilter.value || undefined,
       limit: 50,
-    })
+    });
   } catch {
-    results.value = []
+    results.value = [];
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
 
 function goToSession(sessionId: string) {
-  emit('navigate', sessionId)
-  emit('close')
+  emit("navigate", sessionId);
+  emit("close");
 }
 </script>
 

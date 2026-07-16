@@ -9,9 +9,9 @@
 </template>
 
 <script setup lang="ts">
-import { Image } from 'lucide-vue-next'
+import { Image } from "lucide-vue-next";
 
 defineProps<{
-  supportsMultimodal: boolean
-}>()
+  supportsMultimodal: boolean;
+}>();
 </script>

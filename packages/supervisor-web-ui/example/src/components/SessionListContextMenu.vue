@@ -25,15 +25,15 @@
 
 <script setup lang="ts">
 defineProps<{
-  open: boolean
-  x: number
-  y: number
-}>()
+  open: boolean;
+  x: number;
+  y: number;
+}>();
 
 const emit = defineEmits<{
-  close: []
-  delete: []
-}>()
+  close: [];
+  delete: [];
+}>();
 </script>
 
 <style scoped>

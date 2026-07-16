@@ -3,7 +3,11 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { loadPiNativesBindings, type AstFindMatch, type SummaryResult } from "../pi-natives-loader.js";
+import {
+  loadPiNativesBindings,
+  type AstFindMatch,
+  type SummaryResult,
+} from "../pi-natives-loader.js";
 import { prependSuffixNotice, resolveReadablePath } from "../utils/path-resolve.js";
 
 const AST_TIMEOUT_MS = 30_000;
@@ -15,15 +19,15 @@ const astGrepSchema = Type.Object({
   }),
   path: Type.Optional(
     Type.String({
-      description: "File or directory. Required for summary/edit; optional for search (defaults to workspace).",
+      description:
+        "File or directory. Required for summary/edit; optional for search (defaults to workspace).",
     }),
   ),
   maxResults: Type.Optional(Type.Number({ description: "Max results (default 20)." })),
   action: Type.Optional(
-    Type.Union(
-      [Type.Literal("search"), Type.Literal("summary"), Type.Literal("edit")],
-      { description: 'Mode: "search" (default), "summary", or "edit".' },
-    ),
+    Type.Union([Type.Literal("search"), Type.Literal("summary"), Type.Literal("edit")], {
+      description: 'Mode: "search" (default), "summary", or "edit".',
+    }),
   ),
   rewrite: Type.Optional(
     Type.String({ description: "Replacement text for action=edit (supports $$VAR / $$$VAR)." }),
@@ -134,12 +138,18 @@ export function createNativeAstGrepTool(sessionCwd: string): AgentTool {
 
         const lines: string[] = [];
         if (result.applied) {
-          lines.push(`Applied ${result.totalReplacements} replacement(s) across ${result.filesTouched} file(s).`);
+          lines.push(
+            `Applied ${result.totalReplacements} replacement(s) across ${result.filesTouched} file(s).`,
+          );
         } else {
-          lines.push(`Dry-run preview: ${result.totalReplacements} replacement(s) across ${result.filesTouched} file(s).`);
+          lines.push(
+            `Dry-run preview: ${result.totalReplacements} replacement(s) across ${result.filesTouched} file(s).`,
+          );
         }
         for (const change of result.changes.slice(0, limit)) {
-          lines.push(`${change.path}:${change.startLine}  ${change.before.trim()} -> ${change.after.trim()}`);
+          lines.push(
+            `${change.path}:${change.startLine}  ${change.before.trim()} -> ${change.after.trim()}`,
+          );
         }
         if (result.changes.length > limit) {
           lines.push(`[${result.changes.length - limit} more changes not shown]`);
@@ -149,7 +159,9 @@ export function createNativeAstGrepTool(sessionCwd: string): AgentTool {
         }
 
         return {
-          content: [{ type: "text", text: prependSuffixNotice(lines.join("\n"), suffixResolution) }],
+          content: [
+            { type: "text", text: prependSuffixNotice(lines.join("\n"), suffixResolution) },
+          ],
           details: {
             engine: "pi-natives",
             mode: "edit",
@@ -159,9 +171,7 @@ export function createNativeAstGrepTool(sessionCwd: string): AgentTool {
         };
       }
 
-      const searchPath = pathParam?.trim()
-        ? resolve(sessionCwd, pathParam.trim())
-        : sessionCwd;
+      const searchPath = pathParam?.trim() ? resolve(sessionCwd, pathParam.trim()) : sessionCwd;
       if (pathParam?.trim() && !existsSync(searchPath)) {
         throw new Error(`Path not found: ${pathParam}`);
       }
@@ -179,7 +189,12 @@ export function createNativeAstGrepTool(sessionCwd: string): AgentTool {
           ? `\nParse errors: ${result.parseErrors.join("; ")}`
           : "";
         return {
-          content: [{ type: "text", text: `No AST matches found for pattern "${trimmedPattern}".${errors}` }],
+          content: [
+            {
+              type: "text",
+              text: `No AST matches found for pattern "${trimmedPattern}".${errors}`,
+            },
+          ],
           details: { engine: "pi-natives", matchCount: 0 },
         };
       }

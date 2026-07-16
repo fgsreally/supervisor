@@ -25,8 +25,12 @@
           >
             {{ agent.name.substring(0, 1).toUpperCase() }}
           </div>
-          <h2 class="mt-4 text-xl font-medium px-6 text-center contact-detail-title">{{ agent.name }}</h2>
-          <p class="text-sm mt-2 px-6 text-center leading-relaxed contact-detail-subtitle">{{ agent.description }}</p>
+          <h2 class="mt-4 text-xl font-medium px-6 text-center contact-detail-title">
+            {{ agent.name }}
+          </h2>
+          <p class="text-sm mt-2 px-6 text-center leading-relaxed contact-detail-subtitle">
+            {{ agent.description }}
+          </p>
         </div>
 
         <div class="mt-2 contact-detail-card border-y text-[15px]">
@@ -59,7 +63,9 @@
 
     <!-- PC -->
     <div class="hidden md:flex flex-col h-full min-h-0">
-      <div class="min-h-[5rem] py-4 border-b flex items-center px-6 shrink-0 gap-4 contact-detail-header">
+      <div
+        class="min-h-[5rem] py-4 border-b flex items-center px-6 shrink-0 gap-4 contact-detail-header"
+      >
         <div
           class="w-11 h-11 rounded-md flex items-center justify-center text-white font-semibold shrink-0 shadow-sm text-lg"
           :class="avatarClass"
@@ -67,8 +73,12 @@
           {{ agent.name.substring(0, 1).toUpperCase() }}
         </div>
         <div class="flex-1 min-w-0 py-0.5">
-          <div class="text-[17px] font-medium truncate leading-snug contact-detail-title">{{ agent.name }}</div>
-          <div class="text-[13px] truncate mt-1 leading-snug contact-detail-subtitle">{{ agent.description }}</div>
+          <div class="text-[17px] font-medium truncate leading-snug contact-detail-title">
+            {{ agent.name }}
+          </div>
+          <div class="text-[13px] truncate mt-1 leading-snug contact-detail-subtitle">
+            {{ agent.description }}
+          </div>
         </div>
       </div>
 
@@ -98,74 +108,69 @@
           </div>
         </template>
 
-        <AgentResourceBrowser
-          v-else
-          class="flex-1 min-h-0"
-          :agent-id="agentId"
-          :kind="rightTab"
-        />
+        <AgentResourceBrowser v-else class="flex-1 min-h-0" :agent-id="agentId" :kind="rightTab" />
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import AgentConfigPanel from '../components/AgentConfigPanel.vue'
-import AgentSystemPromptPanel from '../components/AgentSystemPromptPanel.vue'
-import AgentResourceBrowser from '../components/AgentResourceBrowser.vue'
-import MobileResourceTabs from '../components/MobileResourceTabs.vue'
-import ProviderAvatar from '../components/ProviderAvatar.vue'
-import { useAgentStore, useProviderStore } from '@/store'
-import type { UIResourceKind } from '@/types/ui'
-import { providerToUI } from '@/utils/provider-ui'
-import { agentAvatarClass } from '../utils/avatar-class'
+import { computed, ref, watch } from "vue";
+import { ChevronLeft, ChevronRight } from "lucide-vue-next";
+import AgentConfigPanel from "../components/AgentConfigPanel.vue";
+import AgentSystemPromptPanel from "../components/AgentSystemPromptPanel.vue";
+import AgentResourceBrowser from "../components/AgentResourceBrowser.vue";
+import MobileResourceTabs from "../components/MobileResourceTabs.vue";
+import ProviderAvatar from "../components/ProviderAvatar.vue";
+import { useAgentStore, useProviderStore } from "@/store";
+import type { UIResourceKind } from "@/types/ui";
+import { providerToUI } from "@/utils/provider-ui";
+import { agentAvatarClass } from "../utils/avatar-class";
 
-type AgentTab = 'config' | 'system' | UIResourceKind
+type AgentTab = "config" | "system" | UIResourceKind;
 
 const props = defineProps<{
-  agentId: string
-  showBack?: boolean
-}>()
+  agentId: string;
+  showBack?: boolean;
+}>();
 
 const emit = defineEmits<{
-  'open-chat': [id: string]
-  'view-provider': [providerId: string]
-  back: []
-}>()
+  "open-chat": [id: string];
+  "view-provider": [providerId: string];
+  back: [];
+}>();
 
-const agentStore = useAgentStore()
-const providerStore = useProviderStore()
+const agentStore = useAgentStore();
+const providerStore = useProviderStore();
 
-const agent = computed(() => agentStore.getAgentById(props.agentId) ?? null)
+const agent = computed(() => agentStore.getAgentById(props.agentId) ?? null);
 
-const rightTab = ref<AgentTab>('config')
+const rightTab = ref<AgentTab>("config");
 
 const rightTabs = [
-  { id: 'config' as const, label: 'Config' },
-  { id: 'system' as const, label: 'System Prompt' },
-  { id: 'skills' as const, label: 'Skills' },
-  { id: 'extensions' as const, label: 'Extensions' },
-  { id: 'prompts' as const, label: 'Prompts' },
-]
+  { id: "config" as const, label: "Config" },
+  { id: "system" as const, label: "System Prompt" },
+  { id: "skills" as const, label: "Skills" },
+  { id: "extensions" as const, label: "Extensions" },
+  { id: "prompts" as const, label: "Prompts" },
+];
 
 watch(
   () => props.agentId,
   () => {
-    rightTab.value = 'config'
+    rightTab.value = "config";
   },
-)
+);
 
 const provider = computed(() => {
-  const a = agent.value
-  if (!a) return undefined
-  const p = providerStore.getProviderById(a.providerId)
-  if (!p) return undefined
-  return providerToUI(p, providerStore.models[p.id] ?? [])
-})
+  const a = agent.value;
+  if (!a) return undefined;
+  const p = providerStore.getProviderById(a.providerId);
+  if (!p) return undefined;
+  return providerToUI(p, providerStore.models[p.id] ?? []);
+});
 
-const avatarClass = computed(() => agentAvatarClass(props.agentId))
+const avatarClass = computed(() => agentAvatarClass(props.agentId));
 </script>
 
 <style scoped>

@@ -73,7 +73,9 @@ export function createNativeWebFetchTool(): AgentTool {
 
         if (!response.ok) {
           return {
-            content: [{ type: "text", text: `HTTP ${response.status} ${response.statusText} for ${url}` }],
+            content: [
+              { type: "text", text: `HTTP ${response.status} ${response.statusText} for ${url}` },
+            ],
             isError: true,
           };
         }

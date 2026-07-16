@@ -11,11 +11,11 @@
 </template>
 
 <script setup lang="ts">
-import type { ChatCompactionEntry } from '@/types/chat-entry'
+import type { ChatCompactionEntry } from "@/types/chat-entry";
 
 defineProps<{
-  entry: ChatCompactionEntry
-}>()
+  entry: ChatCompactionEntry;
+}>();
 
-defineEmits<{ open: [] }>()
+defineEmits<{ open: [] }>();
 </script>

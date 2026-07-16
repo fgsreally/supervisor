@@ -1,9 +1,9 @@
-import { createApp } from 'vue'
-import App from './App.vue'
-import { initAppTheme } from './composables/use-app-theme'
-import './style.css'
+import { createApp } from "vue";
+import App from "./App.vue";
+import { initAppTheme } from "./composables/use-app-theme";
+import "./style.css";
 
-initAppTheme()
+initAppTheme();
 
-const app = createApp(App)
-app.mount('#app')
+const app = createApp(App);
+app.mount("#app");

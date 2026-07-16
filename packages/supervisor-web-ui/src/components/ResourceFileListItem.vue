@@ -12,15 +12,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { UIFileItem } from '@/types/ui'
-import { getFileBaseName } from '@/utils/resource-utils'
+import { computed } from "vue";
+import type { UIFileItem } from "@/types/ui";
+import { getFileBaseName } from "@/utils/resource-utils";
 
 const props = defineProps<{
-  item: UIFileItem
-}>()
+  item: UIFileItem;
+}>();
 
-const label = computed(() => getFileBaseName(props.item.fileName))
+const label = computed(() => getFileBaseName(props.item.fileName));
 </script>
 
 <style scoped>

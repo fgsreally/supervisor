@@ -12,9 +12,9 @@
 </template>
 
 <script setup lang="ts">
-import type { MockSkillItem } from '../mock/resources'
+import type { MockSkillItem } from "../mock/resources";
 
 defineProps<{
-  skill: MockSkillItem
-}>()
+  skill: MockSkillItem;
+}>();
 </script>

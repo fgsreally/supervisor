@@ -1,9 +1,9 @@
 import { sumNumbers } from "./calculator.js";
 
 function assertEqual(actual: number, expected: number, message: string): void {
-	if (actual !== expected) {
-		throw new Error(`${message}: expected ${expected}, got ${actual}`);
-	}
+  if (actual !== expected) {
+    throw new Error(`${message}: expected ${expected}, got ${actual}`);
+  }
 }
 
 assertEqual(sumNumbers([1, 2, 3]), 6, "sums finite numbers");

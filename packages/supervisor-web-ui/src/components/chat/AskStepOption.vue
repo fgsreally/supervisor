@@ -24,15 +24,15 @@
 </template>
 
 <script setup lang="ts">
-import type { AskOption } from '@/utils/ask-tool'
+import type { AskOption } from "@/utils/ask-tool";
 
 defineProps<{
-  question: { options: AskOption[] }
-  selectedValue?: string
-  disabled?: boolean
-}>()
+  question: { options: AskOption[] };
+  selectedValue?: string;
+  disabled?: boolean;
+}>();
 
-const emit = defineEmits<{ select: [option: AskOption] }>()
+const emit = defineEmits<{ select: [option: AskOption] }>();
 </script>
 
 <style scoped>
@@ -102,7 +102,9 @@ const emit = defineEmits<{ select: [option: AskOption] }>()
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: border-color 0.12s, background-color 0.12s;
+  transition:
+    border-color 0.12s,
+    background-color 0.12s;
 }
 
 .ask-option--selected .ask-option__radio {

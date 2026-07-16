@@ -1,6 +1,10 @@
 <template>
-  <div class="provider-detail-view flex flex-col flex-1 min-w-0 basis-0 h-full w-full overflow-hidden">
-    <div class="provider-detail-header h-14 md:h-16 border-b flex items-center px-3 md:px-6 shrink-0 gap-3">
+  <div
+    class="provider-detail-view flex flex-col flex-1 min-w-0 basis-0 h-full w-full overflow-hidden"
+  >
+    <div
+      class="provider-detail-header h-14 md:h-16 border-b flex items-center px-3 md:px-6 shrink-0 gap-3"
+    >
       <button
         v-if="showBack"
         type="button"
@@ -16,7 +20,9 @@
         class="w-10 h-10"
       />
       <div class="flex-1 min-w-0">
-        <div class="text-[16px] font-medium truncate provider-detail-title">{{ provider.name }}</div>
+        <div class="text-[16px] font-medium truncate provider-detail-title">
+          {{ provider.name }}
+        </div>
         <div class="text-[12px] truncate font-mono mt-0.5 provider-detail-subtitle">
           {{ provider.models.length }} models
         </div>
@@ -25,7 +31,7 @@
         class="shrink-0 px-2 py-0.5 rounded text-xs font-medium provider-detail-pill"
         :class="provider.isEnabled ? 'provider-detail-pill--on' : 'provider-detail-pill--off'"
       >
-        {{ provider.isEnabled ? 'enabled' : 'disabled' }}
+        {{ provider.isEnabled ? "enabled" : "disabled" }}
       </span>
       <button
         type="button"
@@ -53,20 +59,23 @@
           </div>
           <div>
             <div class="provider-detail-subtitle mb-1">Base URL</div>
-            <div class="provider-detail-title font-mono break-all">{{ provider.baseUrl || '（默认）' }}</div>
+            <div class="provider-detail-title font-mono break-all">
+              {{ provider.baseUrl || "（默认）" }}
+            </div>
           </div>
         </div>
       </section>
 
-      <ProviderModelTable
-        :models="provider.models"
-        :provider="provider"
-      />
+      <ProviderModelTable :models="provider.models" :provider="provider" />
 
       <section class="provider-detail-card rounded-lg border overflow-hidden">
-        <div class="px-4 py-3 border-b provider-detail-divider text-[14px] font-medium provider-detail-title">
+        <div
+          class="px-4 py-3 border-b provider-detail-divider text-[14px] font-medium provider-detail-title"
+        >
           使用此 Provider 的 Agent
-          <span class="ml-2 text-[12px] font-normal provider-detail-subtitle">{{ linkedAgents.length }}</span>
+          <span class="ml-2 text-[12px] font-normal provider-detail-subtitle">{{
+            linkedAgents.length
+          }}</span>
         </div>
         <ul v-if="linkedAgents.length" class="divide-y provider-detail-divider">
           <li v-for="agent in linkedAgents" :key="agent.id">
@@ -82,50 +91,58 @@
                 {{ agent.name.substring(0, 1).toUpperCase() }}
               </div>
               <div class="flex-1 min-w-0">
-                <div class="text-[14px] font-medium provider-detail-title truncate">{{ agent.name }}</div>
-                <div class="text-[12px] provider-detail-subtitle truncate mt-0.5">{{ agent.description }}</div>
+                <div class="text-[14px] font-medium provider-detail-title truncate">
+                  {{ agent.name }}
+                </div>
+                <div class="text-[12px] provider-detail-subtitle truncate mt-0.5">
+                  {{ agent.description }}
+                </div>
               </div>
               <ChevronRight class="w-4 h-4 provider-detail-subtitle shrink-0" />
             </button>
           </li>
         </ul>
-        <div v-else class="px-4 py-6 text-[13px] provider-detail-subtitle text-center">暂无 Agent 绑定</div>
+        <div v-else class="px-4 py-6 text-[13px] provider-detail-subtitle text-center">
+          暂无 Agent 绑定
+        </div>
       </section>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ChevronLeft, ChevronRight } from 'lucide-vue-next'
-import ProviderModelTable from '../components/ProviderModelTable.vue'
-import ProviderAvatar from '../components/ProviderAvatar.vue'
-import type { UIProvider } from '@/types/ui'
-import { PROVIDER_API_TYPES } from '@/constants/providers'
-import { useAgentStore } from '@/store'
-import { agentAvatarClass } from '../utils/avatar-class'
+import { computed } from "vue";
+import { ChevronLeft, ChevronRight } from "lucide-vue-next";
+import ProviderModelTable from "../components/ProviderModelTable.vue";
+import ProviderAvatar from "../components/ProviderAvatar.vue";
+import type { UIProvider } from "@/types/ui";
+import { PROVIDER_API_TYPES } from "@/constants/providers";
+import { useAgentStore } from "@/store";
+import { agentAvatarClass } from "../utils/avatar-class";
 
 const props = defineProps<{
-  provider: UIProvider
-  showBack?: boolean
-}>()
+  provider: UIProvider;
+  showBack?: boolean;
+}>();
 
 const emit = defineEmits<{
-  back: []
-  edit: []
-  'manage-models': []
-  'view-agent': [agentId: string]
-}>()
+  back: [];
+  edit: [];
+  "manage-models": [];
+  "view-agent": [agentId: string];
+}>();
 
-const agentStore = useAgentStore()
+const agentStore = useAgentStore();
 
 const linkedAgents = computed(() =>
   agentStore.agents.filter((a) => a.providerId === props.provider.id),
-)
+);
 
 const apiTypeLabel = computed(
-  () => PROVIDER_API_TYPES.find((t) => t.value === props.provider.apiType)?.label ?? props.provider.apiType,
-)
+  () =>
+    PROVIDER_API_TYPES.find((t) => t.value === props.provider.apiType)?.label ??
+    props.provider.apiType,
+);
 </script>
 
 <style scoped>

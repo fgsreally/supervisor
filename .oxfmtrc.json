@@ -3,9 +3,5 @@
   "indentStyle": "tab",
   "indentWidth": 3,
   "lineWidth": 120,
-  "ignorePatterns": [
-    "**/node_modules/**",
-    "**/dist/**",
-    "**/*.generated.ts"
-  ]
+  "ignorePatterns": ["**/node_modules/**", "**/dist/**", "**/*.generated.ts"]
 }

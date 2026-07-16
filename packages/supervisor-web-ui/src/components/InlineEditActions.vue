@@ -1,17 +1,10 @@
 <template>
   <div class="inline-flex items-center gap-1.5 shrink-0">
-    <button
-      v-if="!editing"
-      type="button"
-      class="inline-edit-btn"
-      @click="emit('edit')"
-    >
+    <button v-if="!editing" type="button" class="inline-edit-btn" @click="emit('edit')">
       编辑
     </button>
     <template v-else>
-      <button type="button" class="inline-edit-btn" @click="emit('cancel')">
-        取消
-      </button>
+      <button type="button" class="inline-edit-btn" @click="emit('cancel')">取消</button>
       <button type="button" class="inline-edit-btn inline-edit-btn--primary" @click="emit('done')">
         完成
       </button>
@@ -21,14 +14,14 @@
 
 <script setup lang="ts">
 defineProps<{
-  editing: boolean
-}>()
+  editing: boolean;
+}>();
 
 const emit = defineEmits<{
-  edit: []
-  cancel: []
-  done: []
-}>()
+  edit: [];
+  cancel: [];
+  done: [];
+}>();
 </script>
 
 <style scoped>
@@ -40,7 +33,10 @@ const emit = defineEmits<{
   border: 1px solid var(--app-btn-secondary-border);
   color: var(--app-btn-secondary-text);
   background: transparent;
-  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .inline-edit-btn:hover {

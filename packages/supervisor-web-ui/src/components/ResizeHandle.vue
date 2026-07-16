@@ -12,18 +12,18 @@
 <script setup lang="ts">
 withDefaults(
   defineProps<{
-    orientation: 'horizontal' | 'vertical'
-    label?: string
+    orientation: "horizontal" | "vertical";
+    label?: string;
   }>(),
   {
-    label: '调整大小',
+    label: "调整大小",
   },
-)
+);
 
-const emit = defineEmits<{ start: [event: PointerEvent] }>()
+const emit = defineEmits<{ start: [event: PointerEvent] }>();
 
 function onStart(e: PointerEvent) {
-  emit('start', e)
+  emit("start", e);
 }
 </script>
 

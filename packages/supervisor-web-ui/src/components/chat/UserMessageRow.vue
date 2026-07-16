@@ -21,16 +21,16 @@
 </template>
 
 <script setup lang="ts">
-import ChatFileBubble from '../ChatFileBubble.vue'
-import ChatRichText from '../ChatRichText.vue'
-import type { ChatUserFileAttachment } from '@/types/chat-entry'
+import ChatFileBubble from "../ChatFileBubble.vue";
+import ChatRichText from "../ChatRichText.vue";
+import type { ChatUserFileAttachment } from "@/types/chat-entry";
 
 defineProps<{
-  text: string
-  file?: ChatUserFileAttachment | null
-  timeLabel: string
-  searchHit?: boolean
-}>()
+  text: string;
+  file?: ChatUserFileAttachment | null;
+  timeLabel: string;
+  searchHit?: boolean;
+}>();
 </script>
 
 <style scoped>

@@ -4,7 +4,11 @@
       <template #default="{ node, stat }">
         <div
           class="skill-tree-row flex items-center gap-1 min-w-0 py-0.5 pr-2 rounded-sm transition-colors"
-          :class="node.fileId && node.fileId === selectedFileId ? 'skill-tree-row--selected' : 'skill-tree-row--idle'"
+          :class="
+            node.fileId && node.fileId === selectedFileId
+              ? 'skill-tree-row--selected'
+              : 'skill-tree-row--idle'
+          "
         >
           <button
             v-if="node.children?.length"
@@ -12,7 +16,10 @@
             class="shrink-0 w-4 h-4 flex items-center justify-center skill-tree-toggle"
             @click.stop="stat.open = !stat.open"
           >
-            <ChevronRight class="w-3 h-3 transition-transform" :class="stat.open ? 'rotate-90' : ''" />
+            <ChevronRight
+              class="w-3 h-3 transition-transform"
+              :class="stat.open ? 'rotate-90' : ''"
+            />
           </button>
           <span v-else class="w-4 shrink-0" />
           <button
@@ -32,34 +39,34 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { BaseTree } from '@he-tree/vue'
-import '@he-tree/vue/style/default.css'
-import { ChevronRight, FileText, Folder } from 'lucide-vue-next'
-import type { UISkillFile } from '@/types/ui'
-import { buildSkillFileTree, type SkillTreeNode } from '../utils/skill-file-tree'
+import { ref, watch } from "vue";
+import { BaseTree } from "@he-tree/vue";
+import "@he-tree/vue/style/default.css";
+import { ChevronRight, FileText, Folder } from "lucide-vue-next";
+import type { UISkillFile } from "@/types/ui";
+import { buildSkillFileTree, type SkillTreeNode } from "../utils/skill-file-tree";
 
 const props = defineProps<{
-  files: UISkillFile[]
-  selectedFileId: string | null
-}>()
+  files: UISkillFile[];
+  selectedFileId: string | null;
+}>();
 
 const emit = defineEmits<{
-  select: [fileId: string]
-}>()
+  select: [fileId: string];
+}>();
 
-const treeNodes = ref<SkillTreeNode[]>([])
+const treeNodes = ref<SkillTreeNode[]>([]);
 
 watch(
   () => props.files,
   (files) => {
-    treeNodes.value = buildSkillFileTree(files)
+    treeNodes.value = buildSkillFileTree(files);
   },
   { immediate: true },
-)
+);
 
 function onNodeClick(node: SkillTreeNode) {
-  if (node.fileId) emit('select', node.fileId)
+  if (node.fileId) emit("select", node.fileId);
 }
 </script>
 

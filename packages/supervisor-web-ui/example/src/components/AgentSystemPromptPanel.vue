@@ -19,7 +19,10 @@
         fill
         @update:content="onSystemMdChange"
       />
-      <div v-else class="h-full min-h-[200px] overflow-y-auto custom-scrollbar text-[15px] leading-relaxed text-gray-800">
+      <div
+        v-else
+        class="h-full min-h-[200px] overflow-y-auto custom-scrollbar text-[15px] leading-relaxed text-gray-800"
+      >
         <MarkdownContent :content="agent.systemMd || '（空）'" prose />
       </div>
     </div>
@@ -27,48 +30,48 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import CodeMirrorView from './CodeMirrorView.vue'
-import InlineEditActions from './InlineEditActions.vue'
-import MarkdownContent from './MarkdownContent.vue'
-import { getAgentById } from '../mock/agents'
+import { computed, ref, watch } from "vue";
+import CodeMirrorView from "./CodeMirrorView.vue";
+import InlineEditActions from "./InlineEditActions.vue";
+import MarkdownContent from "./MarkdownContent.vue";
+import { getAgentById } from "../mock/agents";
 
 const props = defineProps<{
-  agentId: string
-}>()
+  agentId: string;
+}>();
 
-const agent = computed(() => getAgentById(props.agentId))
-const editing = ref(false)
-const snapshot = ref<string | null>(null)
+const agent = computed(() => getAgentById(props.agentId));
+const editing = ref(false);
+const snapshot = ref<string | null>(null);
 
 watch(
   () => props.agentId,
   () => {
-    editing.value = false
-    snapshot.value = null
+    editing.value = false;
+    snapshot.value = null;
   },
-)
+);
 
 function startEdit() {
-  snapshot.value = agent.value?.systemMd ?? ''
-  editing.value = true
+  snapshot.value = agent.value?.systemMd ?? "";
+  editing.value = true;
 }
 
 function cancelEdit() {
-  const a = agent.value
-  if (a && snapshot.value !== null) a.systemMd = snapshot.value
-  editing.value = false
-  snapshot.value = null
+  const a = agent.value;
+  if (a && snapshot.value !== null) a.systemMd = snapshot.value;
+  editing.value = false;
+  snapshot.value = null;
 }
 
 function finishEdit() {
-  editing.value = false
-  snapshot.value = null
+  editing.value = false;
+  snapshot.value = null;
 }
 
 function onSystemMdChange(content: string) {
-  const a = agent.value
-  if (!a) return
-  a.systemMd = content
+  const a = agent.value;
+  if (!a) return;
+  a.systemMd = content;
 }
 </script>

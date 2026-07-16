@@ -55,82 +55,82 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ChevronLeft, MoreHorizontal, X } from 'lucide-vue-next'
+import { computed } from "vue";
+import { ChevronLeft, MoreHorizontal, X } from "lucide-vue-next";
 
 /** UI-facing session phase (overrides backend idle while streaming / waiting on ask). */
 export type ChatHeaderStatus =
-  | 'starting'
-  | 'running'
-  | 'waiting_user'
-  | 'idle'
-  | 'error'
-  | 'stopped'
-  | 'finish'
+  | "starting"
+  | "running"
+  | "waiting_user"
+  | "idle"
+  | "error"
+  | "stopped"
+  | "finish";
 
 const props = defineProps<{
-  title: string
-  titleReadonly?: boolean
-  agentName?: string | null
-  agentId?: string
-  statusKey: ChatHeaderStatus | string
-  showBack?: boolean
-  searchOpen?: boolean
-}>()
+  title: string;
+  titleReadonly?: boolean;
+  agentName?: string | null;
+  agentId?: string;
+  statusKey: ChatHeaderStatus | string;
+  showBack?: boolean;
+  searchOpen?: boolean;
+}>();
 
 const emit = defineEmits<{
-  back: []
-  'view-agent': [agentId: string]
-  'open-menu': []
-  'close-search': []
-  'save-title': []
-  'update:title': [value: string]
-}>()
+  back: [];
+  "view-agent": [agentId: string];
+  "open-menu": [];
+  "close-search": [];
+  "save-title": [];
+  "update:title": [value: string];
+}>();
 
 function onTitleInput(event: Event) {
-  emit('update:title', (event.target as HTMLInputElement).value)
+  emit("update:title", (event.target as HTMLInputElement).value);
 }
 
 const statusLabel = computed(() => {
   switch (props.statusKey) {
-    case 'starting':
-      return '启动中'
-    case 'running':
-      return '生成中'
-    case 'waiting_user':
-      return '等待你操作'
-    case 'idle':
-      return '空闲'
-    case 'finish':
-      return '已完成'
-    case 'error':
-      return '错误'
-    case 'stopped':
-      return '已停止'
+    case "starting":
+      return "启动中";
+    case "running":
+      return "生成中";
+    case "waiting_user":
+      return "等待你操作";
+    case "idle":
+      return "空闲";
+    case "finish":
+      return "已完成";
+    case "error":
+      return "错误";
+    case "stopped":
+      return "已停止";
     default:
-      return props.statusKey
+      return props.statusKey;
   }
-})
+});
 
 const statusBadgeClass = computed(() => {
   switch (props.statusKey) {
-    case 'starting':
-      return 'bg-blue-100 text-blue-800'
-    case 'running':
-      return 'bg-yellow-100 text-yellow-800 animate-pulse'
-    case 'waiting_user':
-      return 'bg-orange-100 text-orange-800'
-    case 'idle':
-    case 'finish':
-      return 'bg-green-100 text-green-800'
-    case 'error':
-      return 'bg-red-100 text-red-800'
-    case 'stopped':
-      return 'bg-gray-200 text-gray-800'
+    case "starting":
+      return "bg-blue-100 text-blue-800";
+    case "running":
+      return "bg-yellow-100 text-yellow-800 animate-pulse";
+    case "waiting_user":
+      return "bg-orange-100 text-orange-800";
+    case "idle":
+    case "finish":
+      return "bg-green-100 text-green-800";
+    case "error":
+      return "bg-red-100 text-red-800";
+    case "stopped":
+      return "bg-gray-200 text-gray-800";
     default:
-      return 'bg-gray-200 text-gray-800'
+      return "bg-gray-200 text-gray-800";
   }
-})
+});
 </script>
 
 <style scoped>

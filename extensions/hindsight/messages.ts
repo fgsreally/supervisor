@@ -26,8 +26,7 @@ export function extractTextContent(content: unknown): string {
 export function entriesToHindsightMessages(entries: MessageEntry[]): HindsightMessage[] {
   return entries
     .filter(
-      (entry) =>
-        entry.type === "message" && (entry.role === "user" || entry.role === "assistant"),
+      (entry) => entry.type === "message" && (entry.role === "user" || entry.role === "assistant"),
     )
     .map((entry) => ({
       role: entry.role!,

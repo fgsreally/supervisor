@@ -14,52 +14,52 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import ChatTagChip from './ChatTagChip.vue'
-import { findChatTokens } from '../utils/chat-token-patterns'
+import { computed } from "vue";
+import ChatTagChip from "./ChatTagChip.vue";
+import { findChatTokens } from "../utils/chat-token-patterns";
 import {
-	getFileBaseName,
-	getFileIconKind,
-	getFilePathFromToken,
-	getSkillNameFromToken,
-	type FileIconKind,
-} from '../utils/file-type-icon'
+  getFileBaseName,
+  getFileIconKind,
+  getFilePathFromToken,
+  getSkillNameFromToken,
+  type FileIconKind,
+} from "../utils/file-type-icon";
 
 const props = defineProps<{
-  content: string
-}>()
+  content: string;
+}>();
 
-type TextPart = { kind: 'text'; text: string }
-type FileTagPart = { kind: 'file'; label: string; fileIconKind: FileIconKind }
-type SkillTagPart = { kind: 'skill'; label: string }
-type ContentPart = TextPart | FileTagPart | SkillTagPart
+type TextPart = { kind: "text"; text: string };
+type FileTagPart = { kind: "file"; label: string; fileIconKind: FileIconKind };
+type SkillTagPart = { kind: "skill"; label: string };
+type ContentPart = TextPart | FileTagPart | SkillTagPart;
 
 const parts = computed((): ContentPart[] => {
-  const text = props.content
-  const tokens = findChatTokens(text)
-  if (tokens.length === 0) return [{ kind: 'text', text }]
+  const text = props.content;
+  const tokens = findChatTokens(text);
+  if (tokens.length === 0) return [{ kind: "text", text }];
 
-  const result: ContentPart[] = []
-  let cursor = 0
+  const result: ContentPart[] = [];
+  let cursor = 0;
   for (const token of tokens) {
     if (token.from > cursor) {
-      result.push({ kind: 'text', text: text.slice(cursor, token.from) })
+      result.push({ kind: "text", text: text.slice(cursor, token.from) });
     }
-    if (token.kind === 'file') {
-      const path = getFilePathFromToken(token.text)
+    if (token.kind === "file") {
+      const path = getFilePathFromToken(token.text);
       result.push({
-        kind: 'file',
+        kind: "file",
         label: getFileBaseName(path),
         fileIconKind: getFileIconKind(path),
-      })
+      });
     } else {
-      result.push({ kind: 'skill', label: getSkillNameFromToken(token.text) })
+      result.push({ kind: "skill", label: getSkillNameFromToken(token.text) });
     }
-    cursor = token.to
+    cursor = token.to;
   }
   if (cursor < text.length) {
-    result.push({ kind: 'text', text: text.slice(cursor) })
+    result.push({ kind: "text", text: text.slice(cursor) });
   }
-  return result
-})
+  return result;
+});
 </script>

@@ -32,35 +32,39 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { RenderPiece } from '@/utils/flatten-messages'
-import { spawnChildSessionId } from '@/utils/flatten-messages'
-import { isAskToolName } from '@/utils/ask-tool'
-import AskStep from './AskStep.vue'
-import BashStep from '../BashStep.vue'
-import ToolActivityBar from '../ToolActivityBar.vue'
+import { computed } from "vue";
+import type { RenderPiece } from "@/utils/flatten-messages";
+import { spawnChildSessionId } from "@/utils/flatten-messages";
+import { isAskToolName } from "@/utils/ask-tool";
+import AskStep from "./AskStep.vue";
+import BashStep from "../BashStep.vue";
+import ToolActivityBar from "../ToolActivityBar.vue";
 
 const props = defineProps<{
-  sessionId: string
-  piece: Extract<RenderPiece, { kind: 'bash' | 'toolStep' }>
-  allPieces: RenderPiece[]
-  pending?: boolean
-  isError?: boolean
-}>()
+  sessionId: string;
+  piece: Extract<RenderPiece, { kind: "bash" | "toolStep" }>;
+  allPieces: RenderPiece[];
+  pending?: boolean;
+  isError?: boolean;
+}>();
 
 const emit = defineEmits<{
-  'open-tool': [toolName: string, callArgs?: Record<string, unknown>, result?: Array<{ type: string; text: string }>]
-  'open-bash': [command: string, result?: Array<{ type: string; text: string }>, intent?: string]
-  navigate: [sessionId: string]
-  answered: []
-}>()
+  "open-tool": [
+    toolName: string,
+    callArgs?: Record<string, unknown>,
+    result?: Array<{ type: string; text: string }>,
+  ];
+  "open-bash": [command: string, result?: Array<{ type: string; text: string }>, intent?: string];
+  navigate: [sessionId: string];
+  answered: [];
+}>();
 
 const isAsk = computed(
-  () => props.piece.kind === 'toolStep' && isAskToolName(props.piece.toolName),
-)
+  () => props.piece.kind === "toolStep" && isAskToolName(props.piece.toolName),
+);
 
 const childSessionId = computed(() => {
-  if (props.piece.kind !== 'toolStep') return undefined
-  return spawnChildSessionId(props.allPieces, props.piece.callId)
-})
+  if (props.piece.kind !== "toolStep") return undefined;
+  return spawnChildSessionId(props.allPieces, props.piece.callId);
+});
 </script>

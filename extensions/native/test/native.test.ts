@@ -67,9 +67,9 @@ describe("@earendil-works/supervisor-native", () => {
     if (!isPiNativesAvailable()) return;
 
     const tool = createNativeBashTool(process.cwd());
-    await expect(tool.execute("test-call", { command: "echo x" }, undefined, undefined)).rejects.toThrow(
-      /intent/i,
-    );
+    await expect(
+      tool.execute("test-call", { command: "echo x" }, undefined, undefined),
+    ).rejects.toThrow(/intent/i);
   });
 
   it("finds files via native glob", async () => {

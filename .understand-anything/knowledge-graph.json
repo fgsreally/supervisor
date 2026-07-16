@@ -2,24 +2,8 @@
   "version": "1.0.0",
   "project": {
     "name": "supervisor-standalone",
-    "languages": [
-      "typescript",
-      "vue",
-      "json",
-      "css",
-      "html",
-      "markdown",
-      "yaml",
-      "javascript"
-    ],
-    "frameworks": [
-      "Vue 3",
-      "Vite",
-      "Hono",
-      "Pinia",
-      "CodeMirror",
-      "VitePress"
-    ],
+    "languages": ["typescript", "vue", "json", "css", "html", "markdown", "yaml", "javascript"],
+    "frameworks": ["Vue 3", "Vite", "Hono", "Pinia", "CodeMirror", "VitePress"],
     "description": "Supervisor backend (SQLite + Hono multi-session agent runtime) + Web UI (Vue 3 + Vite)",
     "analyzedAt": "2026-07-06T04:01:44.957807+00:00",
     "gitCommitHash": "(no commits)"
@@ -31,14 +15,7 @@
       "name": "App.vue",
       "filePath": "packages/supervisor-web-ui/src/App.vue",
       "summary": "Root shell component acting as the main orchestrator for the entire UI. Manages responsive layout (desktop sidebar vs. mobile bottom nav), tab routing (chat/contacts/providers/resources/settings/search), panel visibility (list panel + main content area), and cross-panel navigation state (activeSessionId, activeAgentId, activeProviderId, activeResourceId). Composes ShellNav, ChatListPanel, ContactsPanel, ProvidersPanel, ResourcesPanel, SettingsPanel, SearchView, ChatView, ContactDetailView, AgentFormView, ProviderFormView, ProviderDetailView, ResourceDetailView, GlobalSearchModal, and EmptyPlaceholder. On mount, fetches all initial data via stores and resolves initial route. Handles mobilePage state ('list' vs 'detail') for mobile view switching.",
-      "tags": [
-        "root",
-        "layout",
-        "orchestrator",
-        "shell",
-        "navigation",
-        "responsive"
-      ],
+      "tags": ["root", "layout", "orchestrator", "shell", "navigation", "responsive"],
       "complexity": "complex"
     },
     {
@@ -47,13 +24,7 @@
       "name": "main.ts",
       "filePath": "packages/supervisor-web-ui/src/main.ts",
       "summary": "Application entry point. Initializes theme (initAppTheme), registers PWA service worker, creates Vue app with Pinia and Vue Router, mounts to #app. Sets up a one-time click listener to request notification permission.",
-      "tags": [
-        "entry-point",
-        "bootstrap",
-        "pwa",
-        "pinia",
-        "router"
-      ],
+      "tags": ["entry-point", "bootstrap", "pwa", "pinia", "router"],
       "complexity": "simple"
     },
     {
@@ -62,12 +33,7 @@
       "name": "router/index.ts",
       "filePath": "packages/supervisor-web-ui/src/router/index.ts",
       "summary": "Vue Router configuration with createWebHistory. Defines 7 routes: / -> redirect to /chat, /chat/:sessionId?, /contacts/:agentId?, /providers/:providerId?, /resources/:resourceId?, /settings, /search. Routes use empty placeholder components (App.vue handles actual rendering). Exports tabFromRoute() and idFromRoute() utilities for route parameter extraction.",
-      "tags": [
-        "router",
-        "routes",
-        "navigation",
-        "vue-router"
-      ],
+      "tags": ["router", "routes", "navigation", "vue-router"],
       "complexity": "simple"
     },
     {
@@ -94,13 +60,7 @@
       "name": "views/ProviderFormView.vue",
       "filePath": "packages/supervisor-web-ui/src/views/ProviderFormView.vue",
       "summary": "Provider create/edit form. Supports three modes: new provider (with preset buttons), edit existing provider, and models-only management. Renders ProviderModelTable for model CRUD, basic info section (name, id, icon, enabled), and connection config (apiType radio group, baseUrl). Handles data synchronization via syncModels() which diffs existing vs. new model lists and issues create/update/delete calls accordingly. CanSave computed validates name, id, and model entries.",
-      "tags": [
-        "form",
-        "provider",
-        "crud",
-        "model-management",
-        "presets"
-      ],
+      "tags": ["form", "provider", "crud", "model-management", "presets"],
       "complexity": "moderate"
     },
     {
@@ -109,14 +69,7 @@
       "name": "views/ContactDetailView.vue",
       "filePath": "packages/supervisor-web-ui/src/views/ContactDetailView.vue",
       "summary": "Agent (contact) detail view with mobile and desktop layouts. Desktop shows avatar header, tab bar (Config/System Prompt/Skills/Extensions/Prompts), and tab content area with AgentConfigPanel, AgentSystemPromptPanel, or AgentResourceBrowser. Mobile shows avatar, description, linked provider row (navigable to ProviderDetailView), and MobileResourceTabs. Computes provider from agent's providerId via providerStore.",
-      "tags": [
-        "agent",
-        "detail",
-        "config",
-        "system-prompt",
-        "resource-browser",
-        "tabs"
-      ],
+      "tags": ["agent", "detail", "config", "system-prompt", "resource-browser", "tabs"],
       "complexity": "moderate"
     },
     {
@@ -125,12 +78,7 @@
       "name": "views/ProviderDetailView.vue",
       "filePath": "packages/supervisor-web-ui/src/views/ProviderDetailView.vue",
       "summary": "Provider detail/read-only view. Displays header with avatar, name, model count, enabled/disabled pill, edit/manage-models buttons. Shows configuration section (API type, base URL), ProviderModelTable for model listing, and linked agents section filtering agentStore by providerId. Each linked agent row navigates to ContactDetailView.",
-      "tags": [
-        "provider",
-        "detail",
-        "read-only",
-        "linked-agents"
-      ],
+      "tags": ["provider", "detail", "read-only", "linked-agents"],
       "complexity": "simple"
     },
     {
@@ -139,14 +87,7 @@
       "name": "views/AgentFormView.vue",
       "filePath": "packages/supervisor-web-ui/src/views/AgentFormView.vue",
       "summary": "Agent creation form. Fields for name, optional id, description, provider (select from providerStore), model (filtered by selected provider), and tools preset (coding/readonly/none). Uses providerToUI to build provider+model options. Watches providerOptions to auto-select first provider/model on load. On save, calls agentStore.createAgent and emits 'saved' with new agent id.",
-      "tags": [
-        "agent",
-        "form",
-        "create",
-        "provider-select",
-        "model-select",
-        "tools-preset"
-      ],
+      "tags": ["agent", "form", "create", "provider-select", "model-select", "tools-preset"],
       "complexity": "simple"
     },
     {
@@ -155,13 +96,7 @@
       "name": "views/ResourceDetailView.vue",
       "filePath": "packages/supervisor-web-ui/src/views/ResourceDetailView.vue",
       "summary": "Resource detail view with sidebar/main split layout. Sidebar shows resource type label (Skill/Extension/Prompt Template), file path, description, and SkillFileTree for skill-type resources. Main content area renders ResourceContentView with syntax-highlighted content. Handles three resource kinds: skills (with multi-file tree navigation), extensions, and prompts. Uses resourceStore and resources-ui utility for data.",
-      "tags": [
-        "resource",
-        "detail",
-        "skill-tree",
-        "code-viewer",
-        "sidebar-layout"
-      ],
+      "tags": ["resource", "detail", "skill-tree", "code-viewer", "sidebar-layout"],
       "complexity": "simple"
     },
     {
@@ -170,13 +105,7 @@
       "name": "views/SearchView.vue",
       "filePath": "packages/supervisor-web-ui/src/views/SearchView.vue",
       "summary": "Global search view with two tabs: sessions and messages. Session search is computed client-side from sessionStore.sessions (filtering by name/lastMessagePreview, excluding child sessions). Message search iterates sessionStore.messages to find text matches with snippet extraction and highlighting. Results display with highlighted keywords and navigation to /chat/:sessionId. Supports Ctrl+F / Cmd+F keyboard shortcut to focus input.",
-      "tags": [
-        "search",
-        "sessions",
-        "messages",
-        "highlight",
-        "debounced"
-      ],
+      "tags": ["search", "sessions", "messages", "highlight", "debounced"],
       "complexity": "moderate"
     },
     {
@@ -203,14 +132,7 @@
       "name": "api/api.ts",
       "filePath": "packages/supervisor-web-ui/src/api/api.ts",
       "summary": "HTTP API client layer. Re-exports types from upstream packages and defines domain types (Session, Agent, Provider, Model, SessionTreeEntry, etc.). Implements fetchJson, postJson, patchJson, putJson, deleteRequest utilities with error handling. Session API includes CRUD, streaming (promptSession with SSE reader, subscribeSessionEvents), checkpoint/rewind/commit/fork/clone, meta management, and message search. Agent API covers CRUD, resources, system MD, meta. Provider API covers CRUD, model CRUD. Additional APIs for session logs, global resources, file content, workspace files, and health check.",
-      "tags": [
-        "api-client",
-        "http",
-        "sse",
-        "streaming",
-        "crud",
-        "types"
-      ],
+      "tags": ["api-client", "http", "sse", "streaming", "crud", "types"],
       "complexity": "moderate"
     },
     {
@@ -219,10 +141,7 @@
       "name": "api/index.ts",
       "filePath": "packages/supervisor-web-ui/src/api/index.ts",
       "summary": "Barrel file that re-exports everything from api/api.ts.",
-      "tags": [
-        "barrel",
-        "re-export"
-      ],
+      "tags": ["barrel", "re-export"],
       "complexity": "simple"
     },
     {
@@ -231,12 +150,7 @@
       "name": "types/index.ts",
       "filePath": "packages/supervisor-web-ui/src/types/index.ts",
       "summary": "Domain and UI type definitions extending upstream types. Defines SessionUiState (pinned, muted, unread, workspaceId, name, description) and SessionWithUiState. Defines AgentUiState (category) and AgentWithUiState with DEFAULT_AGENT_CATEGORIES. Defines ProviderWithUiState, ModelWithDisplay. Resource types: ResourceKind, ResourceLayer, ResourceItemBase, SkillFile, SkillResourceItem, ExtensionResourceItem, PromptResourceItem, Workspace. Message types: UserMessageContent, ChatAutocompleteContext, ChatAutocompleteItem. ViewMode, AppState, ThemeSettings.",
-      "tags": [
-        "types",
-        "domain-models",
-        "ui-types",
-        "resources"
-      ],
+      "tags": ["types", "domain-models", "ui-types", "resources"],
       "complexity": "simple"
     },
     {
@@ -245,12 +159,7 @@
       "name": "types/chat-entry.ts",
       "filePath": "packages/supervisor-web-ui/src/types/chat-entry.ts",
       "summary": "Chat entry type definitions for the UI rendering pipeline. Defines ChatEntryBase, chat content parts (ChatToolPart, ChatThinkingPart, ChatTextPart, ChatUserFileAttachment), and the ChatEntry union type (system/message/toolResult/compaction) which drives message list rendering.",
-      "tags": [
-        "types",
-        "chat",
-        "message-parts",
-        "display-pipeline"
-      ],
+      "tags": ["types", "chat", "message-parts", "display-pipeline"],
       "complexity": "simple"
     },
     {
@@ -259,11 +168,7 @@
       "name": "types/chat-compose.ts",
       "filePath": "packages/supervisor-web-ui/src/types/chat-compose.ts",
       "summary": "Minimal type definitions for chat input composition. Defines PendingChatImage (with id, name, mimeType, previewUrl, data) and ChatSendPayload (text + images array).",
-      "tags": [
-        "types",
-        "chat-input",
-        "image-upload"
-      ],
+      "tags": ["types", "chat-input", "image-upload"],
       "complexity": "simple"
     },
     {
@@ -272,13 +177,7 @@
       "name": "types/ui.ts",
       "filePath": "packages/supervisor-web-ui/src/types/ui.ts",
       "summary": "UI-specific type definitions for display components. Defines UIWorkspace, UISession (flat session row for list panels), UIProviderModel, UIProvider (merged provider+models), UIResourceKind, UIResourceLayer, UISkillFile, UIResourceItemBase, UISkillItem, UIFileItem, and the UIResourceItem union type.",
-      "tags": [
-        "types",
-        "ui-models",
-        "display",
-        "provider",
-        "resource"
-      ],
+      "tags": ["types", "ui-models", "display", "provider", "resource"],
       "complexity": "simple"
     },
     {
@@ -287,14 +186,7 @@
       "name": "style.css",
       "filePath": "packages/supervisor-web-ui/src/style.css",
       "summary": "Global stylesheet with Tailwind CSS import, light/dark theme CSS custom properties (200+ variables), and base element resets. Light theme follows WeChat PC color scheme with green accent (#07c160). Dark theme uses dark grays and muted colors. Defines custom-scrollbar, tool bar states (border-bg-done-hover), status colors, bubble styles, code block colors, popup/CM editor variables, and mobile bottom nav styles.",
-      "tags": [
-        "styles",
-        "tailwind",
-        "dark-mode",
-        "light-mode",
-        "theme",
-        "css-variables"
-      ],
+      "tags": ["styles", "tailwind", "dark-mode", "light-mode", "theme", "css-variables"],
       "complexity": "simple"
     },
     {
@@ -303,11 +195,7 @@
       "name": "env.d.ts",
       "filePath": "packages/supervisor-web-ui/src/env.d.ts",
       "summary": "TypeScript environment declarations. References Vite client types and vite-plugin-pwa types. Declares .vue module type for TypeScript support.",
-      "tags": [
-        "typescript",
-        "vite",
-        "declarations"
-      ],
+      "tags": ["typescript", "vite", "declarations"],
       "complexity": "simple"
     },
     {
@@ -316,12 +204,7 @@
       "name": "config/workspace.ts",
       "filePath": "packages/supervisor-web-ui/src/config/workspace.ts",
       "summary": "Workspace configuration utilities. getDefaultWorkspaceCwd() resolves workspace directory from VITE_WORKSPACE_CWD env var, localStorage fallback (pi-supervisor-last-cwd), or hardcoded default path. rememberCwd() persists the last used cwd to localStorage.",
-      "tags": [
-        "config",
-        "workspace",
-        "cwd",
-        "localStorage"
-      ],
+      "tags": ["config", "workspace", "cwd", "localStorage"],
       "complexity": "simple"
     },
     {
@@ -330,13 +213,7 @@
       "id": "file:packages/supervisor/src/index.ts",
       "name": "index.ts",
       "summary": "Public entry point and package barrel. Exports startSupervisor(options) which wires SupervisorDb + SessionManager + Hono HTTP server together and returns {manager, stop}. Re-exports the full public API surface: agent paths/resources, SupervisorDb, createDefaultTools, extension loader/types, createHttpServer, extractMessageSearchFields, copyMessagesWithInheritance, SessionManager, SupervisorSessionRuntime, formatSkillsForPrompt/loadSkills, SessionSpawner, SpawnAgentToolProvider, TurnFileChanges/TurnRecord, and `export type * from ./types.js`.",
-      "tags": [
-        "entry",
-        "barrel",
-        "public-api",
-        "startSupervisor",
-        "supervisor"
-      ],
+      "tags": ["entry", "barrel", "public-api", "startSupervisor", "supervisor"],
       "type": "file"
     },
     {
@@ -421,15 +298,7 @@
       "id": "file:packages/supervisor/src/core/session-storage.ts",
       "name": "session-storage.ts",
       "summary": "Implements SessionStorage from pi-agent-core for SQLite. SQLiteSessionStorage constructor takes SupervisorDb + sessionId. Methods: getMetadata/getHarnessMetadata, getLeafId/setLeafId, createEntryId (randomUUID), appendEntry (INSERT into messages with FTS extraction via extractMessageSearchFields), getEntry, findEntries (filtered by type), getLabel (scans label entries), getPathToRoot (walks parent_id chain in-memory), getEntries/getStoredMessages (via db.getMessageRows). AppendEntryOptions has meta + isOld. Helpers: rowToStoredMessage, toSessionMessageResponse.",
-      "tags": [
-        "core",
-        "sqlite",
-        "session-storage",
-        "messages",
-        "fts",
-        "tree-walk",
-        "implements"
-      ],
+      "tags": ["core", "sqlite", "session-storage", "messages", "fts", "tree-walk", "implements"],
       "type": "file"
     },
     {
@@ -438,14 +307,7 @@
       "id": "file:packages/supervisor/src/core/session-branch.ts",
       "name": "session-branch.ts",
       "summary": "Fork/clone message inheritance helper. Exports SessionBranchType = spawn|fork|clone and copyMessagesWithInheritance(storage, entries) which deep-copies SessionTreeEntry[] with new randomUUID ids and remapped parentId chain, marking isOld=true. Used by SessionManager.fork (slice up to point) and SessionManager.clone (full list). Only 27 lines.",
-      "tags": [
-        "core-util",
-        "branch",
-        "fork",
-        "clone",
-        "inheritance",
-        "deep-copy"
-      ],
+      "tags": ["core-util", "branch", "fork", "clone", "inheritance", "deep-copy"],
       "type": "file"
     },
     {
@@ -454,14 +316,7 @@
       "id": "file:packages/supervisor/src/core/session-checkpoint.ts",
       "name": "session-checkpoint.ts",
       "summary": "Checkpoint/rewind subsystem. Stores checkpoints in session.meta.checkpoints. parseCheckpoints validates (id/entryId/createdAt required) and sorts by createdAt. assertSessionIdle rejects running/waiting_user sessions. createSessionCheckpoint captures leaf_id, creates git snapshot (createGitSnapshot), persists via updateMeta. rewindSessionToCheckpoint restores git snapshot (restoreGitSnapshot), appends audit entry (customType:checkpoint-rewind), sets leaf_id back to checkpoint.entryId, invokes reloadRuntime callback.",
-      "tags": [
-        "core",
-        "checkpoint",
-        "rewind",
-        "snapshot",
-        "git",
-        "branch-restore"
-      ],
+      "tags": ["core", "checkpoint", "rewind", "snapshot", "git", "branch-restore"],
       "type": "file"
     },
     {
@@ -470,14 +325,7 @@
       "id": "file:packages/supervisor/src/core/session-git-hooks.ts",
       "name": "session-git-hooks.ts",
       "summary": "Git integration for session completion and auto-naming. findLastAssistantText/findFirstUserText extract text from messages. isDefaultSessionName detects placeholders (New chat, Session xxxx, nameDefault). commitSessionChanges parses git meta, bails if no porcelain changes, generates message via generateCommitMessage (utility LLM, tag:commit-message, fallback pi: session {shortId}), runs commitAll, stores lastCommit. maybeAutoNameSession generates title via generateSessionTitle (tag:session-title) when default name. Depends on git/git-worktree.js and utility-llm.js.",
-      "tags": [
-        "core",
-        "git-hooks",
-        "commit",
-        "title",
-        "auto-name",
-        "utility-llm"
-      ],
+      "tags": ["core", "git-hooks", "commit", "title", "auto-name", "utility-llm"],
       "type": "file"
     },
     {
@@ -486,14 +334,7 @@
       "id": "file:packages/supervisor/src/core/session-log-file.ts",
       "name": "session-log-file.ts",
       "summary": "Per-session JSONL log at ~/.pi/supervisor/logs/{sessionId}/session.log. SessionLogFile class with promise-chain writeQueue for thread-safe writes. Methods: init (mkdir), log(level,message,tags,meta) appends {t,l,m} JSON, close, readAll (returns LogEntry[], empty on missing file), destroy (rm -rf). Level: debug|info|warn|error. Only file in batch with zero intra-package imports (uses only node:fs/promises, node:path, node:os).",
-      "tags": [
-        "core-util",
-        "logging",
-        "jsonl",
-        "per-session",
-        "thread-safe",
-        "write-queue"
-      ],
+      "tags": ["core-util", "logging", "jsonl", "per-session", "thread-safe", "write-queue"],
       "type": "file"
     },
     {
@@ -519,15 +360,7 @@
       "id": "file:packages/supervisor/src/agent/agent-resources.ts",
       "name": "agent-resources.ts",
       "summary": "Loads and resolves agent-scoped resources (skills, prompts, extensions) for sessions and the agent-detail API. loadAgentSessionResources returns skills+promptTemplates+systemMd from agent home only (no project). resolveAgentResources produces an AgentResources view filtered to the agent home layer plus default tools from the toolsPreset (coding/readonly/none). Also exposes listExtensionPathsFromDirs and helpers (skillsToResourceInfo, promptsToResourceInfo) for API serialization. Imports default-tools lazily at the bottom of the file (avoiding top-level cycles).",
-      "tags": [
-        "agent",
-        "resources",
-        "skills",
-        "prompts",
-        "extensions",
-        "layers",
-        "session"
-      ],
+      "tags": ["agent", "resources", "skills", "prompts", "extensions", "layers", "session"],
       "type": "file"
     },
     {
@@ -556,15 +389,7 @@
       "id": "file:packages/supervisor/src/agent/builtin-assistant.ts",
       "name": "builtin-assistant.ts",
       "summary": "Auto-creates the built-in Pi assistant agent (id pi-assistant, name Pi 助手) and a pinned session pi-assistant-session on startup. Writes a Chinese-language system prompt describing config/migration/skill-installation responsibilities. Installs a supervisor-guide skill into the global skills catalog and symlinks it into the assistant agent home via installBuiltinSkill. pickProvider selects the first enabled provider+model; if none, warns and skips. Updates session meta (name, pinned, builtin) and triggers manager.spawn if the session is new (non-blocking, errors logged).",
-      "tags": [
-        "builtin",
-        "assistant",
-        "auto-bootstrap",
-        "agent",
-        "session",
-        "skill",
-        "guide"
-      ],
+      "tags": ["builtin", "assistant", "auto-bootstrap", "agent", "session", "skill", "guide"],
       "type": "file"
     },
     {
@@ -573,13 +398,7 @@
       "id": "file:packages/supervisor/src/agent/context-files.ts",
       "name": "context-files.ts",
       "summary": "Discovers AGENTS.md/CLAUDE.md context files by walking from session cwd up to filesystem root plus ~/.pi/agent. De-duplicates by path with a seen set, prepending per-directory context (outer dirs come first). appendContextFilesToSystemPrompt concatenates a Context File section at the end of the base system prompt. Checks four filename variants: AGENTS.md, AGENTS.MD, CLAUDE.md, CLAUDE.MD.",
-      "tags": [
-        "context",
-        "system-prompt",
-        "agents-md",
-        "claude-md",
-        "filesystem-walk"
-      ],
+      "tags": ["context", "system-prompt", "agents-md", "claude-md", "filesystem-walk"],
       "type": "file"
     },
     {
@@ -643,13 +462,7 @@
       "id": "file:packages/supervisor/src/db/message-search.ts",
       "name": "message-search.ts",
       "summary": "Extracts MessageSearchFields { messageRole, searchText } from a SessionTreeEntry for FTS indexing. For 'message' entries extracts role and concatenates text parts from array content (skips non-text parts); for 'compaction' entries uses summary trimmed; for 'custom_message' entries uses display flag and extracts text from custom content. Returns null fields when no extractable text. Used by db.ts backfill and message insert trigger logic.",
-      "tags": [
-        "fts",
-        "search",
-        "messages",
-        "extraction",
-        "indexing"
-      ],
+      "tags": ["fts", "search", "messages", "extraction", "indexing"],
       "type": "file"
     },
     {
@@ -683,14 +496,7 @@
       "id": "file:packages/supervisor/src/http/workspace-files.ts",
       "name": "workspace-files.ts",
       "summary": "Walks a directory tree (max 8 depth, max 800 files) skipping node_modules, .git, dist, build, .pi, .cursor, coverage, .next, .nuxt. Returns relative POSIX-style paths with trailing '/' for directories. Sorted alphabetically. Used by @-autocomplete via GET /workspace/files.",
-      "tags": [
-        "workspace",
-        "files",
-        "autocomplete",
-        "filesystem",
-        "walk",
-        "ignore-dirs"
-      ],
+      "tags": ["workspace", "files", "autocomplete", "filesystem", "walk", "ignore-dirs"],
       "type": "file"
     },
     {
@@ -734,14 +540,7 @@
       "id": "file:packages/supervisor/src/builtin-edit-tool.ts",
       "name": "builtin-edit-tool.ts",
       "summary": "Multi-patch exact-string replacement edit tool. Accepts edits[] or legacy single oldText/newText+anchors. For each edit, collects all match positions, filters by beforeText/afterText anchors within a configurable window (default 2400 chars), and selects by 1-based occurrence. Throws on missing target, anchor mismatch, ambiguous matches without disambiguator, and out-of-range occurrence. Writes only if content changed. Returns changed flag and edit count.",
-      "tags": [
-        "edit",
-        "tool",
-        "file-editing",
-        "patch",
-        "anchors",
-        "disambiguation"
-      ],
+      "tags": ["edit", "tool", "file-editing", "patch", "anchors", "disambiguation"],
       "type": "file"
     },
     {
@@ -770,15 +569,7 @@
       "id": "file:packages/supervisor/src/builtin-read-tool.ts",
       "name": "builtin-read-tool.ts",
       "summary": "Pattern-based precise file reader. Two modes: (1) range mode renders line-range [offset, offset+limit-1] with trailing file-length hint; (2) pattern mode with regex/ignoreCase support: with occurrence returns match+context lines, with single match returns directly, with multiple matches returns numbered listing clipped at maxMatches (180-char snippets). Defaults: offset=1, limit=200, context=2, maxMatches=20. Throws if offset past EOF.",
-      "tags": [
-        "read",
-        "tool",
-        "file-reading",
-        "pattern",
-        "regex",
-        "context",
-        "occurrence"
-      ],
+      "tags": ["read", "tool", "file-reading", "pattern", "regex", "context", "occurrence"],
       "type": "file"
     },
     {
@@ -787,11 +578,7 @@
       "name": "Extension System Entry (index.ts)",
       "filePath": "packages/supervisor/src/extensions/index.ts",
       "summary": "Public barrel file that re-exports all extension system symbols: defineExtension, CommandRegistry, Loader functions, ExtensionRuntime, and all type exports. This is the public API surface of the extension system. Imports from define-extension.ts, http-commands.ts, loader.ts, runtime.ts, and types.ts.",
-      "tags": [
-        "extension-system",
-        "barrel-export",
-        "public-api"
-      ],
+      "tags": ["extension-system", "barrel-export", "public-api"],
       "complexity": "moderate"
     },
     {
@@ -800,12 +587,7 @@
       "name": "defineExtension DSL",
       "filePath": "packages/supervisor/src/extensions/define-extension.ts",
       "summary": "Provides `defineExtension()` and `defineExtensionAsync()` factory functions that wrap an ExtensionDefinition object with validation (checks name is non-empty string, setup is a function). The async variant accepts a factory function for deferred/lazy initialization. Both return the definition unchanged after validation. Used by third-party extension authors as the public API entry point, typically via the `@earendil-works/pi-supervisor` package alias.",
-      "tags": [
-        "extension-system",
-        "DSL",
-        "validation",
-        "public-api"
-      ],
+      "tags": ["extension-system", "DSL", "validation", "public-api"],
       "complexity": "moderate"
     },
     {
@@ -814,13 +596,7 @@
       "name": "Extension Loader",
       "filePath": "packages/supervisor/src/extensions/loader.ts",
       "summary": "Extension discovery and loading system. Discovers extension files (.ts, .js, .mts, .mjs) in agent home directories (`<agentHomeDir>/extensions`) and project-local directories (`.pi/supervisor/extensions`). Uses `jiti` (JIT import) for TypeScript module loading with aliases for `@earendil-works/pi-supervisor` and typebox packages. Validates each loaded module has `name` (string) and `setup` (function). Built-in extension (`builtin-extension/index.ts`) is always loaded first. Provides: `discoverExtensionsInDir()`, `collectExtensionPaths()`, `loadExtension()`, `loadExtensions()`, `discoverAndLoadExtensions()`.",
-      "tags": [
-        "extension-system",
-        "loader",
-        "discovery",
-        "jiti",
-        "module-resolution"
-      ],
+      "tags": ["extension-system", "loader", "discovery", "jiti", "module-resolution"],
       "complexity": "moderate"
     },
     {
@@ -829,14 +605,7 @@
       "name": "ExtensionRuntime",
       "filePath": "packages/supervisor/src/extensions/runtime.ts",
       "summary": "Core extension runtime class (859 lines). Manages: (1) Extension lifecycle -- `loadExtension()` calls definition.setup(ctx) and stores cleanup handlers; `unloadAll()` runs all cleanups. (2) Event system -- `on()`/`emit()` for typed ExtensionEvent dispatch to registered handlers. (3) Tool/command registry -- ExtensionRegistry holds tools and commands registered by extensions. (4) Tool/command execution -- `executeTool()` and `executeCommand()` delegate to registered definitions. (5) ExtensionContext creation -- `createExtensionContext()` builds the context passed to each extension's setup(), providing access to session info, database, data writing, event binding, tool/command registration, session control, model control, exec, logging, and broadcasting. Also includes `createExtensionDatabase()` which wraps raw SQL queries into a typed ExtensionDatabase API (getMessages, getMessageTree, searchMessages, getCustomEntries, getSessionMeta, etc.) scoped to a session ID. Depends on `RuntimeOptions` including the `deps` dependency injection object.",
-      "tags": [
-        "extension-system",
-        "runtime",
-        "event-system",
-        "registry",
-        "database",
-        "lifecycle"
-      ],
+      "tags": ["extension-system", "runtime", "event-system", "registry", "database", "lifecycle"],
       "complexity": "moderate"
     },
     {
@@ -845,12 +614,7 @@
       "name": "Tool Adapter (toolInfoToAgentTool)",
       "filePath": "packages/supervisor/src/extensions/tool-adapter.ts",
       "summary": "Thin adapter (25 lines) that converts an extension `ToolInfo` into an `AgentTool` for the AgentHarness. The `toolInfoToAgentTool()` function wraps the tool's execute function to delegate to `ExtensionRuntime.executeTool()`, bridging the extension tool system with the pi-agent-core harness. Uses partial session context (empty id/cwd) and stub reportProgress.",
-      "tags": [
-        "extension-system",
-        "adapter",
-        "bridge",
-        "agent-harness"
-      ],
+      "tags": ["extension-system", "adapter", "bridge", "agent-harness"],
       "complexity": "moderate"
     },
     {
@@ -859,13 +623,7 @@
       "name": "HTTP Command Registry",
       "filePath": "packages/supervisor/src/extensions/http-commands.ts",
       "summary": "HTTP command routing layer for extensions. `createCommandRegistry()` creates a session-scoped command registry that maps (sessionId, name) -> CommandDefinition. The `getHandler()` method generates an HTTP handler function that validates params via TypeBox Value.Parse, creates a CommandContext, and executes the command handler. `createCommandRouter()` provides Express-style routing helpers: `listCommands()` (GET /sessions/:id/commands) and `executeCommand()` (POST /sessions/:id/commands/:name). Supports notifications via a `notify` callback.",
-      "tags": [
-        "extension-system",
-        "http",
-        "commands",
-        "routing",
-        "validation"
-      ],
+      "tags": ["extension-system", "http", "commands", "routing", "validation"],
       "complexity": "moderate"
     },
     {
@@ -874,13 +632,7 @@
       "name": "Extension Types Definition",
       "filePath": "packages/supervisor/src/extensions/types.ts",
       "summary": "Central type definitions (901 lines) for the entire extension system. Defines: ExtensionDefinition, ExtensionContext (the full API surface available to extensions), ExtensionDatabase (read-only query interface), all ExtensionEvent union members (session lifecycle, message flow, agent state, tool execution, compaction, model change, HTTP/WebSocket, extension system events), ToolDefinition/ToolInfo/ToolExecutionContext, CommandDefinition/CommandContext/CommandResult, SessionInfo, MessageEntry/MessageNode, SearchResult, ExecResult, EventBus, BroadcastEvent, LoadedExtension/LoadExtensionResult, ExtensionRegistry, RuntimeOptions, DbAdapterOptions, and more. Every extension system file imports from here.",
-      "tags": [
-        "extension-system",
-        "types",
-        "interfaces",
-        "unions",
-        "schema"
-      ],
+      "tags": ["extension-system", "types", "interfaces", "unions", "schema"],
       "complexity": "moderate"
     },
     {
@@ -889,13 +641,7 @@
       "name": "Extension Dependency Injection (buildExtensionDeps)",
       "filePath": "packages/supervisor/src/extensions/extension-deps.ts",
       "summary": "Builds the `RuntimeOptions.deps` object that bridges the extension runtime to the real supervisor core (SupervisorSessionRuntime, SessionManager, SupervisorDb). Provides real implementations for all deps methods: appendEntry (INSERT INTO messages with SQL), sendMessage/sendUserMessage (write to DB + optionally trigger agent prompt via runtime.prompt()), fork (delegates to manager.fork()), compact (delegates to runtime.compact()), setModel (delegates to runtime.setModel()), exec (via execCommand utility), and an EventBus implementation built on Node.js EventEmitter. Many methods have stub implementations: switchSession (no-op), navigateTree (TODO), setActiveTools (no-op), broadcast (TODO), getSignal (returns undefined).",
-      "tags": [
-        "extension-system",
-        "dependency-injection",
-        "bridge",
-        "event-bus",
-        "sql"
-      ],
+      "tags": ["extension-system", "dependency-injection", "bridge", "event-bus", "sql"],
       "complexity": "moderate"
     },
     {
@@ -904,13 +650,7 @@
       "name": "Read Tool (createBuiltinReadTool)",
       "filePath": "packages/supervisor/src/extensions/read.ts",
       "summary": "Built-in `read_pattern` tool for the AgentHarness. Provides three modes: (1) range mode -- read a line range from a file with offset/limit; (2) pattern mode -- grep-like search inside a single file with context lines; (3) search_and_read mode -- cross-file grep via shell `find` + `grep` exec, returning structured results grouped by file. Normalizes line endings, clamps bounds, clips long lines. Falls back gracefully (no matches, empty files).",
-      "tags": [
-        "extension-system",
-        "tool",
-        "read",
-        "grep",
-        "file-reading"
-      ],
+      "tags": ["extension-system", "tool", "read", "grep", "file-reading"],
       "complexity": "moderate"
     },
     {
@@ -919,14 +659,7 @@
       "name": "Edit Tool (createBuiltinEditTool)",
       "filePath": "packages/supervisor/src/extensions/edit.ts",
       "summary": "Built-in `edit` tool for exact-string file replacement. Supports both single oldText/newText and multi-edit `edits[]` array. Uses beforeText/afterText context anchors to disambiguate multiple occurrences. Optional `requireApproval` mode that creates a PendingEditApproval and waits for user confirmation via the edit-approval module. Creates git snapshots before edits (best-effort). Computes and logs a unified diff preview. Applies changes via writeFile.",
-      "tags": [
-        "extension-system",
-        "tool",
-        "edit",
-        "file-modification",
-        "approval",
-        "diff"
-      ],
+      "tags": ["extension-system", "tool", "edit", "file-modification", "approval", "diff"],
       "complexity": "moderate"
     },
     {
@@ -935,13 +668,7 @@
       "name": "Ask Tool (createAskTool)",
       "filePath": "packages/supervisor/src/extensions/ask.ts",
       "summary": "Built-in `ask` tool that presents multiple-choice questions to the user and waits for answers. Each question has an id, label, prompt, options array, and optional allowOther. Questions are stored in a pendingBySession map keyed by (sessionId, toolCallId). The tool blocks on a Promise that resolves when the user submits answers via `submitAskAnswer()`. Supports cancellation via AbortSignal. Hooks notify the UI when questions are pending or resolved.",
-      "tags": [
-        "extension-system",
-        "tool",
-        "ask",
-        "user-input",
-        "promise-blocking"
-      ],
+      "tags": ["extension-system", "tool", "ask", "user-input", "promise-blocking"],
       "complexity": "moderate"
     },
     {
@@ -967,12 +694,7 @@
       "name": "Read Orchestration Hint",
       "filePath": "packages/supervisor/src/extensions/read-orchestration.ts",
       "summary": "Two-phase reading strategy guidance injected into system prompts. Provides: (1) `READ_ORCHESTRATION_HINT` constant -- a text block describing the two-phase approach (grep/lsp to locate, then read with offset/limit). (2) `appendReadOrchestrationHint()` -- appends the hint to a system prompt, avoiding duplicates. (3) Helper types and functions for the search_and_read workflow: `SearchMatch` interface, `suggestReadRange()` for computing offset/limit around a line, `formatGrepResultsToSearchSuggestion()` for structured output formatting, `buildReadSuggestionForMatch()` for building a read payload from a match.",
-      "tags": [
-        "extension-system",
-        "utility",
-        "system-prompt",
-        "reading-strategy"
-      ],
+      "tags": ["extension-system", "utility", "system-prompt", "reading-strategy"],
       "complexity": "moderate"
     },
     {
@@ -998,14 +720,7 @@
       "name": "Output Minimizer (minimizeOutput)",
       "filePath": "packages/supervisor/src/extensions/output-minimizer.ts",
       "summary": "Shell command output minimizer ported from oh-my-pi's Rust output minimizer. Applies pipeline stages: (1) match_output -- detect known patterns and short-circuit with one-line summary. (2) strip_lines -- remove lines matching regex patterns (progress, timestamps). (3) keep_lines -- only keep lines matching certain patterns. (4) replace -- regex text substitution. (5) head/tail -- keep first/last N lines. Has 11 built-in filters for: git log, git diff, git status, npm, cargo build, cargo test, pytest, docker build, make, npx, go test. Each filter is command-scoped (matchCommand + optional matchSubcommand). Includes a demoMinimizer() test harness.",
-      "tags": [
-        "extension-system",
-        "utility",
-        "output-minimizer",
-        "shell",
-        "port",
-        "omp"
-      ],
+      "tags": ["extension-system", "utility", "output-minimizer", "shell", "port", "omp"],
       "complexity": "moderate"
     },
     {
@@ -1014,13 +729,7 @@
       "name": "Rolling Compaction (maybeRunRollingCompaction)",
       "filePath": "packages/supervisor/src/extensions/rolling-compaction.ts",
       "summary": "Automatic context window compaction after each agent run. Checks if compression is needed based on: (1) context overflow -- if assistant message indicates the provider returned a context overflow error, recovers by removing the last assistant message and running compaction with overflow retry. (2) Token threshold -- calculates context tokens from usage data (calculateContextTokens) or estimates (estimateContextTokens), compares against context window and compaction settings. Uses `compactWithUtilityModel()` when a tagged 'summary' model is configured, otherwise falls back to `runtime.compact()`. Prevents double-compaction with compactingSessions Set and overflowRecoveryAttempted Set. Skips compaction when there are pending ask questions.",
-      "tags": [
-        "extension-system",
-        "utility",
-        "compaction",
-        "context-window",
-        "overflow-recovery"
-      ],
+      "tags": ["extension-system", "utility", "compaction", "context-window", "overflow-recovery"],
       "complexity": "moderate"
     },
     {
@@ -1029,13 +738,7 @@
       "name": "Edit Approval Safety Net",
       "filePath": "packages/supervisor/src/extensions/edit-approval.ts",
       "summary": "Safety mechanism for the edit tool requiring user confirmation before applying changes. Mirrors the ask-tool pattern: pending approvals indexed by (sessionId, toolCallId) in a Map<string, Map<string, PendingEditApproval>>. Provides: `storePendingEditApproval()`, `getPendingEditApproval()`, `submitEditApproval()`, `cancelPendingEditApprovals()`. Hooks notify UI when approval is pending or resolved. The PendingEditApproval includes filePath, originalContent, modifiedContent, diff, and resolve/reject callbacks. Called from edit.ts when requireApproval=true.",
-      "tags": [
-        "extension-system",
-        "safety",
-        "approval",
-        "edit",
-        "user-confirmation"
-      ],
+      "tags": ["extension-system", "safety", "approval", "edit", "user-confirmation"],
       "complexity": "moderate"
     },
     {
@@ -1044,13 +747,7 @@
       "name": "Review Agent (buildReviewPrompt) [partial]",
       "filePath": "packages/supervisor/src/extensions/review.ts",
       "summary": "Partial implementation of a side-channel approval system where a reviewer agent reviews all tool calls from a conversation turn. Currently only has `buildReviewPrompt()` which constructs a prompt from agent_end messages, listing all tool_use blocks with their inputs. The prompt asks the reviewer to respond with a JSON object (approved, reason, issues). The actual reviewer invocation and approval integration is not implemented -- this is a skeleton/fragment.",
-      "tags": [
-        "extension-system",
-        "utility",
-        "review",
-        "approval",
-        "incomplete"
-      ],
+      "tags": ["extension-system", "utility", "review", "approval", "incomplete"],
       "complexity": "moderate"
     },
     {
@@ -1059,14 +756,7 @@
       "name": "Hindsight Memory System [buggy]",
       "filePath": "packages/supervisor/src/extensions/hindsight.ts",
       "summary": "Cross-session project memory system ported from oh-my-pi. Core flow (from omp hindsight design): agent_start -> recall (query project memories and inject into system prompt), agent_end -> retain (compress conversation to facts, write to hindsight DB table). Implements: `getProjectUrl()` -- finds git root or uses dir name as project identifier. `formatHindsightBlock()` -- formats memories as `<memories>` blocks for system prompt injection. `extractFactsFromMessages()` -- extracts sentences from assistant messages, filters out tool-related text, deduplicates, and writes to hindsight table via `db.insertHindsight()`. `recallHindsight()` -- queries and formats recent memories. BUG: Uses `require('node:fs')` synchronous require inside async function.",
-      "tags": [
-        "extension-system",
-        "utility",
-        "memory",
-        "hindsight",
-        "omp-port",
-        "buggy"
-      ],
+      "tags": ["extension-system", "utility", "memory", "hindsight", "omp-port", "buggy"],
       "complexity": "moderate"
     },
     {
@@ -1075,14 +765,7 @@
       "name": "Spawn Agent Tool (createSpawnAgentTool) [broken]",
       "filePath": "packages/supervisor/src/extensions/spawn-agent-tool.ts",
       "summary": "Attempted `spawn_agent` tool that would let an agent spawn child agents based on members table role='spawned'. Defines `SpawnAgentSessionSpi` interface for the SessionManager SPI (spawn, listMemberAgentIdsByRole, getAgent). The tool validates the agent exists and is in the allowed spawned list, then calls spi.spawn(). Marked as [broken] because: (1) the `spawn` method signature is checked but the SPI contract is only partially typed; (2) there is no integration showing how this SPI is wired into the actual session manager; (3) the `spawned` role concept exists in design but may not be implemented in the actual members table/DAL.",
-      "tags": [
-        "extension-system",
-        "tool",
-        "spawn",
-        "agent",
-        "broken",
-        "incomplete"
-      ],
+      "tags": ["extension-system", "tool", "spawn", "agent", "broken", "incomplete"],
       "complexity": "moderate"
     },
     {
@@ -1091,12 +774,7 @@
       "name": "ext-framework/index.ts (DEAD DUPLICATE of extensions/index.ts)",
       "filePath": "packages/supervisor/src/ext-framework/index.ts",
       "summary": "EXACT DUPLICATE of extensions/index.ts (barrel file). Contains identical re-exports from define-extension.js, http-commands.js, loader.js, runtime.js, and types.js. The ext-framework directory is a dead leftover from an earlier iteration of the extension system, with 14 files that are duplicates of their counterparts in extensions/. The active code uses only the extensions/ directory.",
-      "tags": [
-        "extension-system",
-        "dead-code",
-        "duplicate",
-        "barrel-export"
-      ],
+      "tags": ["extension-system", "dead-code", "duplicate", "barrel-export"],
       "complexity": "moderate"
     },
     {
@@ -1105,12 +783,7 @@
       "name": "model-utils.ts",
       "filePath": "packages/supervisor/src/utils/model-utils.ts",
       "summary": "Resolves model configurations from the pi-ai built-in registry with provider-level overrides (baseUrl, apiType). The single exported function resolveModelWithProviderOverrides takes a DB provider lookup, provider string, and modelId; returns a Model with overridden baseUrl/apiType when the DB provider differs from the pi-ai hardcoded defaults. Returns undefined when no match exists in pi-ai registry.",
-      "tags": [
-        "model",
-        "provider",
-        "override",
-        "resolution"
-      ],
+      "tags": ["model", "provider", "override", "resolution"],
       "complexity": "simple"
     },
     {
@@ -1119,14 +792,7 @@
       "name": "utility-llm.ts",
       "filePath": "packages/supervisor/src/utils/utility-llm.ts",
       "summary": "Utility LLM call functions for internal tasks: session title generation, git commit message generation, and context window compaction. Exports resolveUtilityModelConfig to read utilityProvider/utilityModelId from supervisor settings, and resolveTaggedModelAuth to find a model whose tags match a task tag (summary, commit-message, session-title, review). The compactWithUtilityModel function wraps pi-agent-core's compact() with custom instructions support. All completions use completeSimple with typed prompt formatting.",
-      "tags": [
-        "llm",
-        "utility",
-        "compaction",
-        "title",
-        "commit",
-        "completion"
-      ],
+      "tags": ["llm", "utility", "compaction", "title", "commit", "completion"],
       "complexity": "moderate"
     },
     {
@@ -1135,13 +801,7 @@
       "name": "default-tools.ts",
       "filePath": "packages/supervisor/src/utils/default-tools.ts",
       "summary": "Default toolset preset for coding-agent sessions. Provides createDefaultTools(cwd, preset, options) which returns AgentTool[] for three presets: 'coding' (read, bash, edit, write, grep, find, ls), 'readonly' (grep, find, ls without mutation tools), or 'none' (empty). Wraps bash tool to require a non-empty intent field via assertBashIntent. Resolves shell path and command prefix from project-level settings via SettingsManager. Mirrors pi interactive's tool configuration approach.",
-      "tags": [
-        "tools",
-        "coding-agent",
-        "bash",
-        "preset",
-        "settings"
-      ],
+      "tags": ["tools", "coding-agent", "bash", "preset", "settings"],
       "complexity": "moderate"
     },
     {
@@ -1150,11 +810,7 @@
       "name": "event-bus.ts",
       "filePath": "packages/supervisor/src/utils/event-bus.ts",
       "summary": "Simple typed event bus built on Node.js EventEmitter. Exposes emit, on (returns unsubscribe function), and clear methods. Handlers are wrapped in async try/catch to prevent uncaught rejections. The on() method wraps the raw handler for safe error isolation per channel.",
-      "tags": [
-        "events",
-        "emitter",
-        "pubsub"
-      ],
+      "tags": ["events", "emitter", "pubsub"],
       "complexity": "simple"
     },
     {
@@ -1163,13 +819,7 @@
       "name": "exec.ts",
       "filePath": "packages/supervisor/src/utils/exec.ts",
       "summary": "Shell command execution utility using child_process.spawn. The execCommand function runs a command with args, cwd, optional AbortSignal, and timeout. Implements a two-phase kill: SIGTERM first, then SIGKILL after 5 seconds if the process hasn't exited. Returns stdout, stderr, exit code, and a killed flag. Does not use shell:true for security. Handles signal cleanup on close/error events.",
-      "tags": [
-        "exec",
-        "spawn",
-        "shell",
-        "process",
-        "timeout"
-      ],
+      "tags": ["exec", "spawn", "shell", "process", "timeout"],
       "complexity": "moderate"
     },
     {
@@ -1178,12 +828,7 @@
       "name": "supervisor-settings.ts",
       "filePath": "packages/supervisor/src/utils/supervisor-settings.ts",
       "summary": "Persistent settings manager for the supervisor runtime. Reads/writes a JSON settings file at ~/.pi/supervisor/settings.json. Exports SupervisorSettings interface with utilityProvider and utilityModelId fields. readSupervisorSettings merges with defaults on parse failure; writeSupervisorSettings patches and persists.",
-      "tags": [
-        "settings",
-        "config",
-        "persistence",
-        "json"
-      ],
+      "tags": ["settings", "config", "persistence", "json"],
       "complexity": "simple"
     },
     {
@@ -1192,12 +837,7 @@
       "name": "diagnostics.ts",
       "filePath": "packages/supervisor/src/utils/diagnostics.ts",
       "summary": "Type definitions for resource diagnostics. Defines ResourceCollision (extension/skill/prompt/theme conflicts with winner/loser paths/sources) and ResourceDiagnostic (warning/error/collision with optional path and collision detail). Types only, no runtime logic.",
-      "tags": [
-        "diagnostics",
-        "types",
-        "resource",
-        "collision"
-      ],
+      "tags": ["diagnostics", "types", "resource", "collision"],
       "complexity": "simple"
     },
     {
@@ -1206,11 +846,7 @@
       "name": "paths.ts",
       "filePath": "packages/supervisor/src/utils/paths.ts",
       "summary": "Path canonicalization utility. Exports canonicalizePath which resolves a path to its real filesystem form via realpathSync, with a try/catch fallback returning the raw path when resolution fails (e.g. the target does not exist yet). Prevents crashes on missing filesystem entries.",
-      "tags": [
-        "path",
-        "canonicalize",
-        "filesystem"
-      ],
+      "tags": ["path", "canonicalize", "filesystem"],
       "complexity": "simple"
     },
     {
@@ -1219,12 +855,7 @@
       "name": "frontmatter.ts",
       "filePath": "packages/supervisor/src/utils/frontmatter.ts",
       "summary": "YAML frontmatter parser for markdown-like content delimited by --- separators. Parses frontmatter into a typed record using the yaml library, normalizes CRLF/CR to LF. Exports parseFrontmatter (returns { frontmatter, body }) and stripFrontmatter (returns body only). Returns empty frontmatter object when no valid frontmatter is found.",
-      "tags": [
-        "frontmatter",
-        "yaml",
-        "parsing",
-        "markdown"
-      ],
+      "tags": ["frontmatter", "yaml", "parsing", "markdown"],
       "complexity": "simple"
     },
     {
@@ -1233,11 +864,7 @@
       "name": "source-info.ts",
       "filePath": "packages/supervisor/src/utils/source-info.ts",
       "summary": "Type definitions and a factory for source metadata tracking. Defines SourceScope (user/agent/project/temporary), SourceOrigin (package/top-level), and SourceInfo interface (path, source, scope, origin, baseDir). Exports createSyntheticSourceInfo factory with defaults scope=temporary, origin=top-level.",
-      "tags": [
-        "types",
-        "source",
-        "metadata"
-      ],
+      "tags": ["types", "source", "metadata"],
       "complexity": "simple"
     },
     {
@@ -1246,14 +873,7 @@
       "name": "git-worktree.ts",
       "filePath": "packages/supervisor/src/git/git-worktree.ts",
       "summary": "Git worktree management for session isolation. Creates per-session git worktrees at .pi/supervisor/worktrees/{sessionId} with branch name pi/session-{8-char-id}. Provides functions: findGitRoot, getDefaultBranch, createSessionWorktree, commitAll (auto-commit), createGitSnapshot / restoreGitSnapshot (stash-style snapshots without mutation), mergeSessionBranch (merge back to base with --no-ff), removeSessionWorktree (force remove). Also exports parseSessionGitMeta to reconstruct SessionGitMeta from stored metadata. Uses execFile with increased maxBuffer (10MB) for git operations.",
-      "tags": [
-        "git",
-        "worktree",
-        "session",
-        "branch",
-        "merge",
-        "snapshot"
-      ],
+      "tags": ["git", "worktree", "session", "branch", "merge", "snapshot"],
       "complexity": "complex"
     },
     {
@@ -1262,13 +882,7 @@
       "name": "turn-file-tracker.ts",
       "filePath": "packages/supervisor/src/git/turn-file-tracker.ts",
       "summary": "Per-agent-turn file change tracker. The TurnFileTracker class listens to agent events (agent_start, tool_execution_start, tool_execution_end, agent_end) to record which files were added, modified, or deleted during a turn. Tracks edit/write tools directly (checking pre-existence for write to distinguish add vs modify) and parses bash commands (rm, mv, cp) for file changes. Exports normalizeFilePath (project-relative normalization), mergeTurnIntoMeta (append turn to session meta), and handleAgentEventForTurnFiles (event-driven state machine).",
-      "tags": [
-        "file",
-        "tracking",
-        "turn",
-        "changes",
-        "agent"
-      ],
+      "tags": ["file", "tracking", "turn", "changes", "agent"],
       "complexity": "moderate"
     },
     {
@@ -1277,11 +891,7 @@
       "name": "index.ts (mcp)",
       "filePath": "packages/supervisor/src/mcp/index.ts",
       "summary": "Barrel re-export file for the MCP module. Re-exports McpClientManager, createMcpToolsForSession, disconnectMcpServers, getMcpManager, removeMcpManager, loadMcpConfig, getActiveMcpServers, mcpToolToAgentTool, McpConfig/McpServerConfigType/McpServerStatus types, and TypeBox schemas (McpConfigSchema, McpServerConfig, McpStdioServerConfig, McpSseServerConfig).",
-      "tags": [
-        "mcp",
-        "barrel",
-        "export"
-      ],
+      "tags": ["mcp", "barrel", "export"],
       "complexity": "simple"
     },
     {
@@ -1290,13 +900,7 @@
       "name": "mcp-client-manager.ts",
       "filePath": "packages/supervisor/src/mcp/mcp-client-manager.ts",
       "summary": "MCP client lifecycle manager. The McpClientManager class connects to configured MCP servers (stdio or SSE), lists their tools, and wraps them as AgentTools. Uses a module-level Map<string, McpClientManager> keyed by sessionId for lifecycle tracking. Implements singleton connection pattern via connectPromise to deduplicate concurrent connectAll calls. Each server's tools are cached and rebuilt on getTools(). Exports createMcpToolsForSession (factory for session-scoped MCP tools) and disconnectMcpServers (cleanup). Failed connections are stored with error state rather than thrown. SSE transport uses SSEClientTransport with URL; stdio uses StdioClientTransport with command/args/env.",
-      "tags": [
-        "mcp",
-        "client",
-        "lifecycle",
-        "tools",
-        "session"
-      ],
+      "tags": ["mcp", "client", "lifecycle", "tools", "session"],
       "complexity": "complex"
     },
     {
@@ -1305,12 +909,7 @@
       "name": "mcp-config-loader.ts",
       "filePath": "packages/supervisor/src/mcp/mcp-config-loader.ts",
       "summary": "MCP configuration loader from agent home directory. Reads mcp.json at ~/.pi/supervisor/agents/{agentId}/mcp.json, resolves ${env:VAR_NAME} placeholders in all string values recursively, and returns structured McpConfig with server definitions. Exports loadMcpConfig (returns null on missing/parse errors) and getActiveMcpServers (filters out disabled servers). Unrecognized server config fields are passed through via the general object resolution.",
-      "tags": [
-        "mcp",
-        "config",
-        "env",
-        "json"
-      ],
+      "tags": ["mcp", "config", "env", "json"],
       "complexity": "simple"
     },
     {
@@ -1319,13 +918,7 @@
       "name": "mcp-extension.ts",
       "filePath": "packages/supervisor/src/mcp/mcp-extension.ts",
       "summary": "MCP server integration as a pi supervisor extension. Uses defineExtension to create an 'mcp' extension that on session.start connects to all configured MCP servers via McpClientManager, wraps each tool as a ToolDefinition, and registers them with ctx.registerTool. On session.end, disconnects all servers. Cleanup on extension unload also disconnects. Uses type cast for the ToolDefinition compatibility layer between AgentTool and the extension framework.",
-      "tags": [
-        "mcp",
-        "extension",
-        "plugin",
-        "session",
-        "lifecycle"
-      ],
+      "tags": ["mcp", "extension", "plugin", "session", "lifecycle"],
       "complexity": "moderate"
     },
     {
@@ -1334,13 +927,7 @@
       "name": "mcp-tool.ts",
       "filePath": "packages/supervisor/src/mcp/mcp-tool.ts",
       "summary": "MCP tool-to-AgentTool adapter. Converts MCP tool definitions (name, description, inputSchema) into supervisor AgentTool instances. Tool names are prefixed with serverName (format: {serverName}__{toolName}). Includes a JSON Schema to TypeBox converter (jsonSchemaToTypeBox) supporting string/enum, number, integer, boolean, array, and object types with required/optional handling. The execute wrapper forwards calls to MCP server via the provided callTool callback and normalizes the response into AgentTool result format with content array and error handling. Falls back to Type.Unknown() for unsupported schema types.",
-      "tags": [
-        "mcp",
-        "tool",
-        "adapter",
-        "schema",
-        "typebox"
-      ],
+      "tags": ["mcp", "tool", "adapter", "schema", "typebox"],
       "complexity": "moderate"
     },
     {
@@ -1349,13 +936,7 @@
       "name": "mcp-types.ts",
       "filePath": "packages/supervisor/src/mcp/mcp-types.ts",
       "summary": "MCP configuration and status type definitions using TypeBox. Defines McpStdioServerConfig (type, command, args, env, timeoutMs, disabled) and McpSseServerConfig (type, url, headers, timeoutMs, disabled) schemas, combined into McpServerConfig union. McpConfigSchema wraps a record of server configs with optional sessionDefaults. Runtime types: McpServerConfigType (Static union), McpConfig interface, and McpServerStatus interface for UI display.",
-      "tags": [
-        "mcp",
-        "types",
-        "schema",
-        "typebox",
-        "config"
-      ],
+      "tags": ["mcp", "types", "schema", "typebox", "config"],
       "complexity": "simple"
     },
     {
@@ -1364,12 +945,7 @@
       "name": "session-spawner.ts",
       "filePath": "packages/supervisor/src/spawn/session-spawner.ts",
       "summary": "Abstract SessionSpawner interface for child session creation. Defines three methods: getSession (lookup by ID), getAgent (lookup by ID), and spawn (create a child session from SpawnSessionOptions). This is the minimal surface passed to SpawnAgentToolProvider via context.",
-      "tags": [
-        "spawn",
-        "session",
-        "interface",
-        "abstract"
-      ],
+      "tags": ["spawn", "session", "interface", "abstract"],
       "complexity": "simple"
     },
     {
@@ -1378,13 +954,7 @@
       "name": "spawn-agent-tool-provider.ts",
       "filePath": "packages/supervisor/src/spawn/spawn-agent-tool-provider.ts",
       "summary": "Abstract base class for the spawn_agent tool. Defines SpawnAgentRequest (agentId, instructions, meta) and SpawnAgentResult (sessionId, status, agentId, name) types, and SpawnAgentToolContext (parentSessionId, agentId, cwd, spawner). The SpawnAgentToolProvider abstract class requires subclasses to implement spawn(context, request), and provides createTools(context) which builds a single spawn_agent AgentTool with TypeBox-validated parameters. The tool returns JSON-stringified SpawnAgentResult.",
-      "tags": [
-        "spawn",
-        "agent",
-        "tool",
-        "abstract",
-        "parent-child"
-      ],
+      "tags": ["spawn", "agent", "tool", "abstract", "parent-child"],
       "complexity": "moderate"
     },
     {
@@ -1393,12 +963,7 @@
       "name": "session-runtime.ts (top-level)",
       "filePath": "packages/supervisor/src/session-runtime.ts",
       "summary": "DEAD CODE — duplicate of core/session-runtime.ts. Contains SupervisorSessionRuntime class with session lifecycle operations (prompt, abort, compact, setModel, setTools), slash command resolution (skills, prompt templates), and message retrieval. Also includes support types (SupervisorSessionState, SupervisorSessionEvent, SlashCommandInfo). The file at this path is a historical artifact that should not be imported; the canonical version lives at core/session-runtime.ts.",
-      "tags": [
-        "dead-code",
-        "duplicate",
-        "session",
-        "runtime"
-      ],
+      "tags": ["dead-code", "duplicate", "session", "runtime"],
       "complexity": "complex"
     },
     {
@@ -1407,12 +972,7 @@
       "name": "read-orchestration.ts",
       "filePath": "packages/supervisor/src/read-orchestration.ts",
       "summary": "Static two-phase read orchestration hint injected into coding session system prompts. Exports READ_ORCHESTRATION_HINT constant encouraging agents to: 1) Locate with grep/lsp, 2) Read with offset/limit around the target line. Exports appendReadOrchestrationHint function that appends the hint to a system prompt string, avoiding duplicate injection.",
-      "tags": [
-        "read",
-        "orchestration",
-        "prompt",
-        "system-prompt"
-      ],
+      "tags": ["read", "orchestration", "prompt", "system-prompt"],
       "complexity": "simple"
     },
     {
@@ -1421,10 +981,7 @@
       "name": "hindsight-memory.ts",
       "filePath": "packages/supervisor/src/hindsight-memory.ts",
       "summary": "EMPTY FILE — placeholder with no code content. Intended for future hindsight/reflection memory functionality.",
-      "tags": [
-        "empty",
-        "placeholder"
-      ],
+      "tags": ["empty", "placeholder"],
       "complexity": "moderate"
     }
   ],
@@ -2348,19 +1905,13 @@
       "id": "layer:git",
       "name": "Git Integration",
       "description": "Per-session git worktrees, snapshots, merges, and per-turn file change tracking.",
-      "nodeIds": [
-        "file:git-worktree",
-        "file:turn-file-tracker"
-      ]
+      "nodeIds": ["file:git-worktree", "file:turn-file-tracker"]
     },
     {
       "id": "layer:spawn",
       "name": "Spawn Framework",
       "description": "Abstract SessionSpawner interface and SpawnAgentToolProvider base for subagent-spawning extensions.",
-      "nodeIds": [
-        "file:session-spawner",
-        "file:spawn-agent-tool-provider"
-      ]
+      "nodeIds": ["file:session-spawner", "file:spawn-agent-tool-provider"]
     },
     {
       "id": "layer:utils",
@@ -2400,10 +1951,7 @@
       "order": 2,
       "title": "后端入口与 CLI",
       "description": "index.ts 导出 startSupervisor()（将 SupervisorDb + SessionManager + Hono 绑定为一个 HTTP 服务）。cli.ts 是可选的命令行入口，提供 serve/providers/models/extensions 子命令。",
-      "nodeIds": [
-        "file:packages/supervisor/src/index.ts",
-        "file:packages/supervisor/src/cli.ts"
-      ]
+      "nodeIds": ["file:packages/supervisor/src/index.ts", "file:packages/supervisor/src/cli.ts"]
     },
     {
       "order": 3,
@@ -2418,9 +1966,7 @@
       "order": 4,
       "title": "会话生命周期中枢",
       "description": "SessionManager（948 行）是整个系统的核心：spawn/prompt/abort/steer/fork/clone/kill/complete 会话，管理 checkpoint、commit、模型选择、工具注册、扩展加载。所有核心操作汇聚于此。",
-      "nodeIds": [
-        "file:packages/supervisor/src/core/session-manager.ts"
-      ]
+      "nodeIds": ["file:packages/supervisor/src/core/session-manager.ts"]
     },
     {
       "order": 5,
@@ -2479,9 +2025,7 @@
       "order": 10,
       "title": "Git 集成",
       "description": "git-worktree.ts 为每个会话创建隔离的工作目录。turn-file-tracker.ts 分析 agent 事件追踪文件改动。session-git-hooks.ts 自动生成 commit message。",
-      "nodeIds": [
-        "file:packages/supervisor/src/core/session-git-hooks.ts"
-      ]
+      "nodeIds": ["file:packages/supervisor/src/core/session-git-hooks.ts"]
     },
     {
       "order": 11,
@@ -2493,28 +2037,19 @@
       "order": 12,
       "title": "前端 Shell 与路由",
       "description": "App.vue（600 行）是响应式 Shell，支持桌面侧栏和移动底栏布局。router/index.ts 定义了 6 条路由（chat/contacts/providers/resources/settings/search）。",
-      "nodeIds": [
-        "file:src/App.vue",
-        "file:src/main.ts",
-        "file:src/types/index.ts"
-      ]
+      "nodeIds": ["file:src/App.vue", "file:src/main.ts", "file:src/types/index.ts"]
     },
     {
       "order": 13,
       "title": "前端存储层",
       "description": "store/index.ts（753 行）包含 5 个 Pinia store（Root/Session/Agent/Provider/Resource），通过 api/api.ts（882 行）调用后端 HTTP API。",
-      "nodeIds": [
-        "file:src/types/index.ts",
-        "file:src/api/api.ts"
-      ]
+      "nodeIds": ["file:src/types/index.ts", "file:src/api/api.ts"]
     },
     {
       "order": 14,
       "title": "Chat 视图",
       "description": "ChatView.vue（570 行）是核心交互界面，集成消息列表（ChatMessageList）、输入框（ChatComposer + ChatInputPanel）、会话菜单（ChatSessionMenu）、日志面板（SessionLogPanel）。",
-      "nodeIds": [
-        "file:src/views/ChatView.vue"
-      ]
+      "nodeIds": ["file:src/views/ChatView.vue"]
     }
   ]
 }

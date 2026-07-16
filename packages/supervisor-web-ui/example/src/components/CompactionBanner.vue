@@ -11,11 +11,11 @@
 </template>
 
 <script setup lang="ts">
-import type { MockCompactionEntry } from '../mock/types'
+import type { MockCompactionEntry } from "../mock/types";
 
 defineProps<{
-  entry: MockCompactionEntry
-}>()
+  entry: MockCompactionEntry;
+}>();
 
-defineEmits<{ open: [] }>()
+defineEmits<{ open: [] }>();
 </script>

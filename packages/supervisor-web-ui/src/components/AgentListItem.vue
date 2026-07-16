@@ -20,34 +20,40 @@
           {{ presetLabel }}
         </span>
       </div>
-      <div class="text-[11px] truncate mt-0.5 agent-list-item__desc">{{ agent.description ?? '' }}</div>
+      <div class="text-[11px] truncate mt-0.5 agent-list-item__desc">
+        {{ agent.description ?? "" }}
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useAgentStore } from '@/store'
-import { agentAvatarClass } from '../utils/avatar-class'
-import type { Agent } from '@/api'
+import { computed } from "vue";
+import { useAgentStore } from "@/store";
+import { agentAvatarClass } from "../utils/avatar-class";
+import type { Agent } from "@/api";
 
 const props = defineProps<{
-  agent: Agent
-  active?: boolean
-}>()
+  agent: Agent;
+  active?: boolean;
+}>();
 
-defineEmits<{ select: [id: string] }>()
+defineEmits<{ select: [id: string] }>();
 
-const avatarClass = computed(() => agentAvatarClass(props.agent.id))
+const avatarClass = computed(() => agentAvatarClass(props.agent.id));
 
 const presetLabel = computed(() => {
   switch (props.agent.toolsPreset) {
-    case 'coding': return 'coding'
-    case 'readonly': return 'readonly'
-    case 'none': return 'no tools'
-    default: return props.agent.toolsPreset
+    case "coding":
+      return "coding";
+    case "readonly":
+      return "readonly";
+    case "none":
+      return "no tools";
+    default:
+      return props.agent.toolsPreset;
   }
-})
+});
 </script>
 
 <style scoped>

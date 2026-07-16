@@ -12,11 +12,11 @@
 </template>
 
 <script setup lang="ts">
-import type { UISkillItem } from '@/types/ui'
+import type { UISkillItem } from "@/types/ui";
 
 defineProps<{
-  skill: UISkillItem
-}>()
+  skill: UISkillItem;
+}>();
 </script>
 
 <style scoped>

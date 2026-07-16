@@ -3,8 +3,13 @@
     <Transition name="chat-menu">
       <div v-if="open" class="fixed inset-0 z-50 flex justify-end" @click.self="emit('close')">
         <div class="absolute inset-0 bg-black/20" />
-        <aside class="chat-session-menu relative w-full max-w-[300px] h-full flex flex-col" @click.stop>
-          <header class="chat-session-menu__header h-14 flex items-center justify-between px-4 border-b shrink-0">
+        <aside
+          class="chat-session-menu relative w-full max-w-[300px] h-full flex flex-col"
+          @click.stop
+        >
+          <header
+            class="chat-session-menu__header h-14 flex items-center justify-between px-4 border-b shrink-0"
+          >
             <span class="text-[15px] font-medium">聊天信息</span>
             <button type="button" class="chat-session-menu__close" @click="emit('close')">
               <X class="w-5 h-5" />
@@ -20,7 +25,9 @@
                   >
                     {{ agentInitial }}
                   </div>
-                  <span class="text-[11px] text-center truncate w-full chat-session-menu__muted">{{ agentName }}</span>
+                  <span class="text-[11px] text-center truncate w-full chat-session-menu__muted">{{
+                    agentName
+                  }}</span>
                 </div>
               </div>
             </section>
@@ -34,7 +41,9 @@
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
-            <div class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section">
+            <div
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
               <span class="text-[15px]">消息免打扰</span>
               <button
                 type="button"
@@ -58,22 +67,22 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { ChevronRight, X } from 'lucide-vue-next'
+import { computed } from "vue";
+import { ChevronRight, X } from "lucide-vue-next";
 
 const props = defineProps<{
-  open: boolean
-  agentName: string
-  muted: boolean
-}>()
+  open: boolean;
+  agentName: string;
+  muted: boolean;
+}>();
 
 const emit = defineEmits<{
-  close: []
-  search: []
-  'update:muted': [value: boolean]
-}>()
+  close: [];
+  search: [];
+  "update:muted": [value: boolean];
+}>();
 
-const agentInitial = computed(() => props.agentName.charAt(0).toUpperCase() || 'A')
+const agentInitial = computed(() => props.agentName.charAt(0).toUpperCase() || "A");
 </script>
 
 <style scoped>
@@ -91,7 +100,9 @@ const agentInitial = computed(() => props.agentName.charAt(0).toUpperCase() || '
   padding: 6px;
   border-radius: 6px;
   color: var(--app-text-muted);
-  transition: background-color 0.15s, color 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
 }
 
 .chat-session-menu__close:hover {

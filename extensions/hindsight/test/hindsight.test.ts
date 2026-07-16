@@ -35,7 +35,9 @@ describe("@earendil-works/supervisor-hindsight", () => {
   it("retains and recalls local jsonl memories", async () => {
     const dir = mkdtempSync(join(tmpdir(), "hindsight-ext-"));
     try {
-      await retainLocalFacts(dir, "session-1", [{ content: "The project uses SQLite for persistence." }]);
+      await retainLocalFacts(dir, "session-1", [
+        { content: "The project uses SQLite for persistence." },
+      ]);
       await extractFactsFromMessages(
         [
           {

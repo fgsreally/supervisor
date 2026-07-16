@@ -54,66 +54,70 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import { Loader2 } from 'lucide-vue-next'
-import type { DisplayGroup, RenderPiece } from '@/utils/flatten-messages'
-import MarkdownContent from '../MarkdownContent.vue'
-import ThinkingBlock from '../ThinkingBlock.vue'
-import ToolStepRenderer from './ToolStepRenderer.vue'
+import { computed } from "vue";
+import { Loader2 } from "lucide-vue-next";
+import type { DisplayGroup, RenderPiece } from "@/utils/flatten-messages";
+import MarkdownContent from "../MarkdownContent.vue";
+import ThinkingBlock from "../ThinkingBlock.vue";
+import ToolStepRenderer from "./ToolStepRenderer.vue";
 
 const props = defineProps<{
-  sessionId: string
-  group: Extract<DisplayGroup, { type: 'grouped_assistant' }>
-  showThinkingBlocks: boolean
-  isStreaming: boolean
-  streamingGroupId: string | null
-  timeLabel: string
-  searchHit?: boolean
-  avatarLabel?: string
-}>()
+  sessionId: string;
+  group: Extract<DisplayGroup, { type: "grouped_assistant" }>;
+  showThinkingBlocks: boolean;
+  isStreaming: boolean;
+  streamingGroupId: string | null;
+  timeLabel: string;
+  searchHit?: boolean;
+  avatarLabel?: string;
+}>();
 
 const emit = defineEmits<{
-  'open-tool': [toolName: string, callArgs?: Record<string, unknown>, result?: Array<{ type: string; text: string }>]
-  'open-bash': [command: string, result?: Array<{ type: string; text: string }>, intent?: string]
-  navigate: [sessionId: string]
-  answered: []
-}>()
+  "open-tool": [
+    toolName: string,
+    callArgs?: Record<string, unknown>,
+    result?: Array<{ type: string; text: string }>,
+  ];
+  "open-bash": [command: string, result?: Array<{ type: string; text: string }>, intent?: string];
+  navigate: [sessionId: string];
+  answered: [];
+}>();
 
 const displayPieces = computed(() =>
   props.group.pieces
     .map((piece, index) => ({ piece, index }))
-    .filter(({ piece }) => props.showThinkingBlocks || piece.kind !== 'thinking'),
-)
+    .filter(({ piece }) => props.showThinkingBlocks || piece.kind !== "thinking"),
+);
 
 const isActiveStreamGroup = computed(
   () => props.isStreaming && props.streamingGroupId === props.group.id,
-)
+);
 
 function isStreamingPiece(pieceIndex: number): boolean {
-  if (!isActiveStreamGroup.value) return false
-  const piece = props.group.pieces[pieceIndex]
-  return piece?.kind === 'text' || piece?.kind === 'thinking'
+  if (!isActiveStreamGroup.value) return false;
+  const piece = props.group.pieces[pieceIndex];
+  return piece?.kind === "text" || piece?.kind === "thinking";
 }
 
 function isToolPiecePending(piece: RenderPiece): boolean {
-  if (piece.kind === 'bash' || piece.kind === 'toolStep') return !piece.result
-  return false
+  if (piece.kind === "bash" || piece.kind === "toolStep") return !piece.result;
+  return false;
 }
 
 const showThinking = computed(() => {
-  if (!isActiveStreamGroup.value) return false
+  if (!isActiveStreamGroup.value) return false;
   const hasPendingTool = props.group.pieces.some(
-    (p) => (p.kind === 'bash' || p.kind === 'toolStep') && !p.result,
-  )
-  if (hasPendingTool) return false
+    (p) => (p.kind === "bash" || p.kind === "toolStep") && !p.result,
+  );
+  if (hasPendingTool) return false;
 
-  const lastPiece = props.group.pieces[props.group.pieces.length - 1]
-  if (!lastPiece) return true
-  if (lastPiece.kind === 'text') return false
-  if (lastPiece.kind === 'thinking' && !props.showThinkingBlocks) return true
-  if (lastPiece.kind === 'bash' || lastPiece.kind === 'toolStep') return !!lastPiece.result
-  return false
-})
+  const lastPiece = props.group.pieces[props.group.pieces.length - 1];
+  if (!lastPiece) return true;
+  if (lastPiece.kind === "text") return false;
+  if (lastPiece.kind === "thinking" && !props.showThinkingBlocks) return true;
+  if (lastPiece.kind === "bash" || lastPiece.kind === "toolStep") return !!lastPiece.result;
+  return false;
+});
 </script>
 
 <style scoped>

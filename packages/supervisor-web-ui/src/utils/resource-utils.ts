@@ -1,44 +1,44 @@
 import type { UIFileItem, UIResourceItem, UISkillFile, UISkillItem } from "@/types/ui";
 
 export function isSkillItem(item: UIResourceItem): item is UISkillItem {
-	return item.kind === "skills";
+  return item.kind === "skills";
 }
 
 export function isFileItem(item: UIResourceItem): item is UIFileItem {
-	return item.kind === "extensions" || item.kind === "prompts";
+  return item.kind === "extensions" || item.kind === "prompts";
 }
 
 export function getFileBaseName(fileName: string): string {
-	const base = fileName.split(/[/\\]/).pop() ?? fileName;
-	const lastDot = base.lastIndexOf(".");
-	if (lastDot <= 0) return base;
-	return base.slice(0, lastDot);
+  const base = fileName.split(/[/\\]/).pop() ?? fileName;
+  const lastDot = base.lastIndexOf(".");
+  if (lastDot <= 0) return base;
+  return base.slice(0, lastDot);
 }
 
 export function getResourceEntryLabel(item: UIResourceItem): string {
-	if (isSkillItem(item)) return item.name;
-	return getFileBaseName(item.fileName);
+  if (isSkillItem(item)) return item.name;
+  return getFileBaseName(item.fileName);
 }
 
 export function getResourcePreviewContent(item: UIResourceItem): string {
-	if (isSkillItem(item)) {
-		const manifest = item.files.find((f) => f.fileName === "SKILL.md") ?? item.files[0];
-		return manifest?.content ?? "";
-	}
-	return item.content;
+  if (isSkillItem(item)) {
+    const manifest = item.files.find((f) => f.fileName === "SKILL.md") ?? item.files[0];
+    return manifest?.content ?? "";
+  }
+  return item.content;
 }
 
 export function getSkillFileLanguage(fileName: string): "markdown" | "typescript" {
-	const lower = fileName.toLowerCase();
-	if (lower.endsWith(".ts") || lower.endsWith(".js")) return "typescript";
-	return "markdown";
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".ts") || lower.endsWith(".js")) return "typescript";
+  return "markdown";
 }
 
 export function resourceEntryPath(item: UIResourceItem): string {
-	if (isSkillItem(item)) return item.rootPath ?? "";
-	return item.path;
+  if (isSkillItem(item)) return item.rootPath ?? "";
+  return item.path;
 }
 
 export function findSkillFile(skill: UISkillItem, fileId: string): UISkillFile | undefined {
-	return skill.files.find((f) => f.id === fileId);
+  return skill.files.find((f) => f.id === fileId);
 }

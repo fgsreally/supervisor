@@ -43,10 +43,7 @@ export type PiNativesBindings = {
   applyBashFixups: (command: string) => BashFixupResult;
   astGrep: (options: AstFindOptions) => Promise<AstFindResult>;
   astEdit: (options: AstReplaceOptions) => Promise<AstReplaceResult>;
-  htmlToMarkdown: (
-    html: string,
-    options?: HtmlToMarkdownOptions | null,
-  ) => Promise<string>;
+  htmlToMarkdown: (html: string, options?: HtmlToMarkdownOptions | null) => Promise<string>;
   listWorkspace: (options: ListWorkspaceOptions) => Promise<ListWorkspaceResult>;
   invalidateFsScanCache: (path?: string | null) => void;
 };
@@ -76,13 +73,7 @@ export type {
 };
 
 /** Platforms that omp publishes prebuilt `.node` binaries for. */
-const SUPPORTED_PLATFORMS = [
-  "linux-x64",
-  "linux-arm64",
-  "darwin-x64",
-  "darwin-arm64",
-  "win32-x64",
-];
+const SUPPORTED_PLATFORMS = ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64"];
 
 const REQUIRED_BINDINGS: Array<keyof PiNativesBindings> = [
   "executeShell",

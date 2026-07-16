@@ -18,25 +18,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import { Search } from 'lucide-vue-next'
+import { ref } from "vue";
+import { Search } from "lucide-vue-next";
 
 defineProps<{
-  query: string
-  hitCount: number
-}>()
+  query: string;
+  hitCount: number;
+}>();
 
-const emit = defineEmits<{ 'update:query': [value: string] }>()
+const emit = defineEmits<{ "update:query": [value: string] }>();
 
-const inputRef = ref<HTMLInputElement | null>(null)
+const inputRef = ref<HTMLInputElement | null>(null);
 
 function onInput(event: Event) {
-  emit('update:query', (event.target as HTMLInputElement).value)
+  emit("update:query", (event.target as HTMLInputElement).value);
 }
 
 function focus() {
-  inputRef.value?.focus()
+  inputRef.value?.focus();
 }
 
-defineExpose({ focus })
+defineExpose({ focus });
 </script>

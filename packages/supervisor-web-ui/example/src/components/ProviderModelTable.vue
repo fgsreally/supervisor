@@ -1,10 +1,12 @@
 <template>
   <section class="provider-model-table rounded-lg border overflow-hidden">
-    <div class="px-4 py-3 border-b provider-model-table__divider flex items-center justify-between gap-3">
+    <div
+      class="px-4 py-3 border-b provider-model-table__divider flex items-center justify-between gap-3"
+    >
       <div>
         <div class="text-[14px] font-medium provider-model-table__title">模型</div>
         <div class="text-[12px] provider-model-table__subtitle mt-0.5">
-          {{ editable ? '增删改查（mock 内存）' : '点击行设为 active' }}
+          {{ editable ? "增删改查（mock 内存）" : "点击行设为 active" }}
         </div>
       </div>
       <button
@@ -81,7 +83,10 @@
       </table>
     </div>
 
-    <div v-if="models.length === 0" class="px-4 py-10 text-center text-[13px] provider-model-table__subtitle">
+    <div
+      v-if="models.length === 0"
+      class="px-4 py-10 text-center text-[13px] provider-model-table__subtitle"
+    >
       暂无模型，请添加
     </div>
 
@@ -97,71 +102,71 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-import ModelMultimodalIcon from './ModelMultimodalIcon.vue'
-import ProviderModelEditor from './ProviderModelEditor.vue'
-import type { MockProviderModel } from '../mock/providers'
-import { formatTokenCount } from '../utils/format-tokens'
+import { ref } from "vue";
+import ModelMultimodalIcon from "./ModelMultimodalIcon.vue";
+import ProviderModelEditor from "./ProviderModelEditor.vue";
+import type { MockProviderModel } from "../mock/providers";
+import { formatTokenCount } from "../utils/format-tokens";
 
 const props = withDefaults(
   defineProps<{
-    models: MockProviderModel[]
-    activeModelId?: string
-    editable?: boolean
-    showActive?: boolean
+    models: MockProviderModel[];
+    activeModelId?: string;
+    editable?: boolean;
+    showActive?: boolean;
   }>(),
   { editable: false, showActive: true },
-)
+);
 
 const emit = defineEmits<{
-  'update:models': [models: MockProviderModel[]]
-  'set-active': [modelId: string]
-}>()
+  "update:models": [models: MockProviderModel[]];
+  "set-active": [modelId: string];
+}>();
 
-const editorOpen = ref(false)
-const editorMode = ref<'create' | 'edit'>('create')
-const editingModel = ref<MockProviderModel | null>(null)
+const editorOpen = ref(false);
+const editorMode = ref<"create" | "edit">("create");
+const editingModel = ref<MockProviderModel | null>(null);
 
 function onRowClick(modelId: string) {
-  if (!props.showActive || props.editable) return
-  emit('set-active', modelId)
+  if (!props.showActive || props.editable) return;
+  emit("set-active", modelId);
 }
 
 function openCreate() {
-  editorMode.value = 'create'
-  editingModel.value = null
-  editorOpen.value = true
+  editorMode.value = "create";
+  editingModel.value = null;
+  editorOpen.value = true;
 }
 
 function openEdit(model: MockProviderModel) {
-  editorMode.value = 'edit'
-  editingModel.value = model
-  editorOpen.value = true
+  editorMode.value = "edit";
+  editingModel.value = model;
+  editorOpen.value = true;
 }
 
 function closeEditor() {
-  editorOpen.value = false
-  editingModel.value = null
+  editorOpen.value = false;
+  editingModel.value = null;
 }
 
 function onEditorSave(model: MockProviderModel) {
-  if (editorMode.value === 'create') {
-    emit('update:models', [...props.models, model])
+  if (editorMode.value === "create") {
+    emit("update:models", [...props.models, model]);
   } else {
     emit(
-      'update:models',
+      "update:models",
       props.models.map((m) => (m.id === editingModel.value?.id ? model : m)),
-    )
+    );
   }
-  closeEditor()
+  closeEditor();
 }
 
 function removeModel(modelId: string) {
-  if (!confirm(`删除模型 ${modelId}？`)) return
+  if (!confirm(`删除模型 ${modelId}？`)) return;
   emit(
-    'update:models',
+    "update:models",
     props.models.filter((m) => m.id !== modelId),
-  )
+  );
 }
 </script>
 

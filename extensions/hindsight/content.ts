@@ -46,7 +46,10 @@ export function formatCurrentTime(now: Date = new Date()): string {
   return `${y}-${m}-${d} ${h}:${min}`;
 }
 
-export function sliceLastTurnsByUserBoundary(messages: HindsightMessage[], turns: number): HindsightMessage[] {
+export function sliceLastTurnsByUserBoundary(
+  messages: HindsightMessage[],
+  turns: number,
+): HindsightMessage[] {
   if (messages.length === 0 || turns <= 0) return [];
 
   let userTurnsSeen = 0;
@@ -166,9 +169,6 @@ export function prepareRetentionTranscript(
   return formatRetentionMessages(targetMessages);
 }
 
-export function formatMemoriesBlock(
-  preamble: string,
-  formattedResults: string,
-): string {
+export function formatMemoriesBlock(preamble: string, formattedResults: string): string {
   return `<memories>\n${preamble}\nCurrent time: ${formatCurrentTime()} UTC\n\n${formattedResults}\n</memories>`;
 }

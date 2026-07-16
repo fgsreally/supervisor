@@ -18,15 +18,15 @@
 
 ## 扩展系统当前能做什么（边界）
 
-| 能力 | API / 事件 |
-|------|------------|
-| 注册工具 | `ctx.registerTool` / `ctx.agent.tools.register` |
+| 能力          | API / 事件                                                           |
+| ------------- | -------------------------------------------------------------------- |
+| 注册工具      | `ctx.registerTool` / `ctx.agent.tools.register`                      |
 | 拦截/改写工具 | `tool.before_call`（block、改 args）、`tool.after_call`（改 result） |
-| 会话钩子 | `session.start` / `session.end` / `agent.end` |
-| 压缩钩子 | `compact.before` / `compact.after` |
-| 持久化 | `appendEntry`、`ctx.db`、`getSessionDir()` |
-| 注入消息 | `sendUserMessage`、`sendMessage` |
-| 已有打包扩展 | read、edit、lsp、ask、ast-grep、output-minimizer、subagent |
+| 会话钩子      | `session.start` / `session.end` / `agent.end`                        |
+| 压缩钩子      | `compact.before` / `compact.after`                                   |
+| 持久化        | `appendEntry`、`ctx.db`、`getSessionDir()`                           |
+| 注入消息      | `sendUserMessage`、`sendMessage`                                     |
+| 已有打包扩展  | read、edit、lsp、ask、ast-grep、output-minimizer、subagent           |
 
 **较难单靠扩展完成（需核心或 UI）：** 工具并行调度、子代理 Inbox 总线、权限 Diff 弹窗、compaction prompt 本体、ACP/远程执行。
 
@@ -98,22 +98,22 @@
 
 ## 已确认（讨论通过后填入）
 
-| ID | 功能 | 实现方式 | 确认日期 | 备注 |
-|----|------|----------|----------|------|
-| | | | | |
+| ID  | 功能 | 实现方式 | 确认日期 | 备注 |
+| --- | ---- | -------- | -------- | ---- |
+|     |      |          |          |      |
 
 ---
 
 ## 明确不纳入（讨论后记录，避免重复争论）
 
 | 功能 | 原因 |
-|------|------|
-| | |
+| ---- | ---- |
+|      |      |
 
 ---
 
 ## 变更记录
 
-| 日期 | 说明 |
-|------|------|
+| 日期       | 说明                            |
+| ---------- | ------------------------------- |
 | 2026-07-09 | 改为讨论稿；清空预填 Phase 列表 |

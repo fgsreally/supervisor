@@ -22,7 +22,9 @@
         </div>
         <div class="flex-1 overflow-y-auto px-4 py-3 space-y-4 custom-scrollbar">
           <div v-for="(section, i) in sections" :key="i">
-            <div class="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">{{ section.label }}</div>
+            <div class="text-[10px] uppercase tracking-wide text-gray-400 mb-1.5">
+              {{ section.label }}
+            </div>
             <MarkdownContent
               v-if="section.markdown"
               :content="section.content"
@@ -31,7 +33,7 @@
             <pre
               v-else
               class="text-xs font-mono text-gray-800 whitespace-pre-wrap break-words bg-gray-50 rounded-md p-3 border border-gray-100"
-            >{{ section.content }}</pre>
+              >{{ section.content }}</pre>
           </div>
         </div>
       </div>
@@ -40,16 +42,16 @@
 </template>
 
 <script setup lang="ts">
-import { X } from 'lucide-vue-next'
-import MarkdownContent from './MarkdownContent.vue'
+import { X } from "lucide-vue-next";
+import MarkdownContent from "./MarkdownContent.vue";
 
-export type ToolDetailSection = { label: string; content: string; markdown?: boolean }
+export type ToolDetailSection = { label: string; content: string; markdown?: boolean };
 
 defineProps<{
-  open: boolean
-  title: string
-  sections: ToolDetailSection[]
-}>()
+  open: boolean;
+  title: string;
+  sections: ToolDetailSection[];
+}>();
 
-defineEmits<{ close: [] }>()
+defineEmits<{ close: [] }>();
 </script>

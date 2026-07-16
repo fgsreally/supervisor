@@ -9,7 +9,11 @@
       :class="hasResult ? 'bg-green-100/80 hover:bg-green-100' : 'bg-gray-100/80 hover:bg-gray-100'"
       @click="$emit('open')"
     >
-      <component :is="icon" class="w-3.5 h-3.5 shrink-0" :class="hasResult ? 'text-green-600' : 'text-gray-500'" />
+      <component
+        :is="icon"
+        class="w-3.5 h-3.5 shrink-0"
+        :class="hasResult ? 'text-green-600' : 'text-gray-500'"
+      />
       <span
         class="text-xs font-medium max-w-[min(100%,22rem)] truncate"
         :class="hasResult ? 'text-green-700' : 'text-gray-600'"
@@ -25,13 +29,16 @@
         <ArrowRightCircle class="w-3 h-3 mr-0.5" />
         查看子代理
       </button>
-      <Eye class="w-3.5 h-3.5 shrink-0 opacity-60" :class="hasResult ? 'text-green-600' : 'text-gray-400'" />
+      <Eye
+        class="w-3.5 h-3.5 shrink-0 opacity-60"
+        :class="hasResult ? 'text-green-600' : 'text-gray-400'"
+      />
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed } from "vue";
 import {
   Terminal,
   FileText,
@@ -41,40 +48,40 @@ import {
   Wrench,
   Eye,
   ArrowRightCircle,
-} from 'lucide-vue-next'
-import { toolCallSummary, toolResultSummary } from '../mock/tool-display'
+} from "lucide-vue-next";
+import { toolCallSummary, toolResultSummary } from "../mock/tool-display";
 
 const props = defineProps<{
-  toolName: string
-  callArgs?: Record<string, unknown>
-  resultContent?: Array<{ type: string; text: string }>
-  showNavigate?: boolean
-}>()
+  toolName: string;
+  callArgs?: Record<string, unknown>;
+  resultContent?: Array<{ type: string; text: string }>;
+  showNavigate?: boolean;
+}>();
 
-defineEmits<{ open: []; navigate: [] }>()
+defineEmits<{ open: []; navigate: [] }>();
 
-const hasResult = computed(() => !!props.resultContent?.length)
+const hasResult = computed(() => !!props.resultContent?.length);
 
 const summary = computed(() => {
-  const call = toolCallSummary(props.toolName, props.callArgs)
-  if (!hasResult.value) return call
-  return `${call} · ${toolResultSummary(props.toolName, props.resultContent)}`
-})
+  const call = toolCallSummary(props.toolName, props.callArgs);
+  if (!hasResult.value) return call;
+  return `${call} · ${toolResultSummary(props.toolName, props.resultContent)}`;
+});
 
 const icon = computed(() => {
   switch (props.toolName) {
-    case 'read':
-      return FileText
-    case 'write':
-      return FilePlus
-    case 'edit':
-      return PencilLine
-    case 'bash':
-      return Terminal
-    case 'spawn_agent':
-      return Users
+    case "read":
+      return FileText;
+    case "write":
+      return FilePlus;
+    case "edit":
+      return PencilLine;
+    case "bash":
+      return Terminal;
+    case "spawn_agent":
+      return Users;
     default:
-      return Wrench
+      return Wrench;
   }
-})
+});
 </script>

@@ -16,38 +16,38 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { MockUserFileAttachment } from '../mock/types'
+import { computed } from "vue";
+import type { MockUserFileAttachment } from "../mock/types";
 
 const props = defineProps<{
-  file: MockUserFileAttachment
-}>()
+  file: MockUserFileAttachment;
+}>();
 
 const iconLetter = computed(() => {
   switch (props.file.ext) {
-    case 'docx':
-      return 'W'
-    case 'pdf':
-      return 'P'
-    case 'xlsx':
-      return 'X'
+    case "docx":
+      return "W";
+    case "pdf":
+      return "P";
+    case "xlsx":
+      return "X";
     default:
-      return 'F'
+      return "F";
   }
-})
+});
 
 const iconClass = computed(() => {
   switch (props.file.ext) {
-    case 'docx':
-      return 'chat-file-bubble__icon--docx'
-    case 'pdf':
-      return 'chat-file-bubble__icon--pdf'
-    case 'xlsx':
-      return 'chat-file-bubble__icon--xlsx'
+    case "docx":
+      return "chat-file-bubble__icon--docx";
+    case "pdf":
+      return "chat-file-bubble__icon--pdf";
+    case "xlsx":
+      return "chat-file-bubble__icon--xlsx";
     default:
-      return 'chat-file-bubble__icon--generic'
+      return "chat-file-bubble__icon--generic";
   }
-})
+});
 </script>
 
 <style scoped>

@@ -39,28 +39,28 @@ App.vue:1
 
 ## 主要功能
 
-| 功能 | 实现状态 |
-|---|---|
-| 创建/删除/选择会话 | 完成 |
-| Fork / Clone 会话 | 完成 |
-| 发送消息（SSE 流式） | 完成 |
-| Ask-step（等待用户输入） | 完成 |
-| `@` 文件补全 + `/` skill/prompt 补全 | 完成 |
-| CodeMirror 代码编辑器（输入框 + 配置面板） | 完成 |
-| Provider / Model 增删改 | 完成 |
-| Agent 增删改 + SYSTEM.md 编辑 | 完成 |
-| 全局资源浏览（skills / prompts / extensions） | 完成 |
-| 资源链接到 Agent | 完成 |
-| 会话 checkpoint / rewind / commit | 完成 |
-| 会话日志查看（JSONL） | 完成 |
-| 搜索（全局搜索框） | 完成 |
-| 暗色主题 | 完成 |
-| 推送通知 | 完成（可设置 muted） |
-| PWA | 完成 |
-| **中止 / Steer / Follow-up** | **未实现** |
-| **Slash 命令执行** | **未实现** |
-| **Thinking Level 切换** | **未实现** |
-| **Extension 管理 UI** | **未实现** |
+| 功能                                          | 实现状态             |
+| --------------------------------------------- | -------------------- |
+| 创建/删除/选择会话                            | 完成                 |
+| Fork / Clone 会话                             | 完成                 |
+| 发送消息（SSE 流式）                          | 完成                 |
+| Ask-step（等待用户输入）                      | 完成                 |
+| `@` 文件补全 + `/` skill/prompt 补全          | 完成                 |
+| CodeMirror 代码编辑器（输入框 + 配置面板）    | 完成                 |
+| Provider / Model 增删改                       | 完成                 |
+| Agent 增删改 + SYSTEM.md 编辑                 | 完成                 |
+| 全局资源浏览（skills / prompts / extensions） | 完成                 |
+| 资源链接到 Agent                              | 完成                 |
+| 会话 checkpoint / rewind / commit             | 完成                 |
+| 会话日志查看（JSONL）                         | 完成                 |
+| 搜索（全局搜索框）                            | 完成                 |
+| 暗色主题                                      | 完成                 |
+| 推送通知                                      | 完成（可设置 muted） |
+| PWA                                           | 完成                 |
+| **中止 / Steer / Follow-up**                  | **未实现**           |
+| **Slash 命令执行**                            | **未实现**           |
+| **Thinking Level 切换**                       | **未实现**           |
+| **Extension 管理 UI**                         | **未实现**           |
 
 ## 组件统计
 

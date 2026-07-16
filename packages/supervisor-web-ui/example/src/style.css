@@ -2,198 +2,198 @@
 
 /* ========== Light (WeChat PC) ========== */
 :root,
-[data-theme='light'] {
-	color-scheme: light;
+[data-theme="light"] {
+  color-scheme: light;
 
-	--app-shell-bg: #f3f3f3;
-	--app-nav-bg: #dcdce1;
-	--app-nav-border: #dcdce1;
-	--app-nav-icon: #6b6b6b;
-	--app-nav-icon-active: #07c160;
-	--app-nav-hover: #d3d3d8;
-	--app-nav-active-bg: #d3d3d8;
+  --app-shell-bg: #f3f3f3;
+  --app-nav-bg: #dcdce1;
+  --app-nav-border: #dcdce1;
+  --app-nav-icon: #6b6b6b;
+  --app-nav-icon-active: #07c160;
+  --app-nav-hover: #d3d3d8;
+  --app-nav-active-bg: #d3d3d8;
 
-	--app-list-bg: #e3e3e5;
-	--app-list-header-bg: #e3e3e5;
-	--app-list-search-bg: #dcdce1;
-	--app-list-search-focus-bg: #ffffff;
-	--app-list-item-hover: #dcdce1;
-	--app-list-item-child-hover: #dcdce1;
-	--app-list-item-active: #c9c9cb;
-	--app-list-item-active-text: #191919;
-	--app-list-section-bg: #e3e3e5;
+  --app-list-bg: #e3e3e5;
+  --app-list-header-bg: #e3e3e5;
+  --app-list-search-bg: #dcdce1;
+  --app-list-search-focus-bg: #ffffff;
+  --app-list-item-hover: #dcdce1;
+  --app-list-item-child-hover: #dcdce1;
+  --app-list-item-active: #c9c9cb;
+  --app-list-item-active-text: #191919;
+  --app-list-section-bg: #e3e3e5;
 
-	--app-chat-bg: #fafafa;
-	--app-chat-header-bg: #fafafa;
-	--app-chat-message-bg: #fafafa;
-	--app-chat-message-inherited: #f0f0f0;
-	--app-chat-input-island-border: #e3e3e3;
+  --app-chat-bg: #fafafa;
+  --app-chat-header-bg: #fafafa;
+  --app-chat-message-bg: #fafafa;
+  --app-chat-message-inherited: #f0f0f0;
+  --app-chat-input-island-border: #e3e3e3;
 
-	--app-text-primary: #191919;
-	--app-text-secondary: #888888;
-	--app-text-muted: #b2b2b2;
-	--app-text-link: #576b95;
-	--app-toolbar-icon: #555555;
+  --app-text-primary: #191919;
+  --app-text-secondary: #888888;
+  --app-text-muted: #b2b2b2;
+  --app-text-link: #576b95;
+  --app-toolbar-icon: #555555;
 
-	--app-border: #e7e7e7;
-	--app-border-subtle: #ececec;
-	--app-divider: #e8e8e8;
-	--app-hover: #f0f0f0;
+  --app-border: #e7e7e7;
+  --app-border-subtle: #ececec;
+  --app-divider: #e8e8e8;
+  --app-hover: #f0f0f0;
 
-	--app-bubble-user: #9df29f;
-	--app-bubble-assistant: #f3f3f3;
-	--app-bubble-assistant-border: transparent;
-	--app-bubble-radius: 10px;
+  --app-bubble-user: #9df29f;
+  --app-bubble-assistant: #f3f3f3;
+  --app-bubble-assistant-border: transparent;
+  --app-bubble-radius: 10px;
 
-	--app-accent: #07c160;
-	--app-accent-hover: #06ad56;
-	--app-send-disabled-bg: #c9c9c9;
-	--app-send-disabled-text: #ffffff;
+  --app-accent: #07c160;
+  --app-accent-hover: #06ad56;
+  --app-send-disabled-bg: #c9c9c9;
+  --app-send-disabled-text: #ffffff;
 
-	--app-tag-file-bg: #e8f4fd;
-	--app-tag-file-fg: #576b95;
-	--app-tag-skill-bg: #e7f8ef;
-	--app-tag-skill-fg: #06ad56;
+  --app-tag-file-bg: #e8f4fd;
+  --app-tag-file-fg: #576b95;
+  --app-tag-skill-bg: #e7f8ef;
+  --app-tag-skill-fg: #06ad56;
 
-	--app-cm-bg: #ffffff;
-	--app-cm-text: #191919;
-	--app-cm-caret: #24292f;
-	--app-cm-gutter-bg: #f6f8fa;
-	--app-cm-gutter-fg: #8c959f;
-	--app-cm-gutter-border: #d0d7de;
-	--app-cm-active-line: #f6f8fa;
-	--app-cm-active-gutter: #eef1f4;
-	--app-popup-bg: #ffffff;
-	--app-popup-border: #d9d9d9;
-	--app-popup-hover: #f5f5f5;
-	--app-popup-selected: #ededed;
+  --app-cm-bg: #ffffff;
+  --app-cm-text: #191919;
+  --app-cm-caret: #24292f;
+  --app-cm-gutter-bg: #f6f8fa;
+  --app-cm-gutter-fg: #8c959f;
+  --app-cm-gutter-border: #d0d7de;
+  --app-cm-active-line: #f6f8fa;
+  --app-cm-active-gutter: #eef1f4;
+  --app-popup-bg: #ffffff;
+  --app-popup-border: #d9d9d9;
+  --app-popup-hover: #f5f5f5;
+  --app-popup-selected: #ededed;
 
-	--app-settings-bg: #f5f5f5;
-	--app-settings-card: #ffffff;
+  --app-settings-bg: #f5f5f5;
+  --app-settings-card: #ffffff;
 
-	--app-file-bubble-bg: #f2f2f2;
-	--app-file-bubble-name: #191919;
-	--app-file-bubble-size: #b2b2b2;
-	--app-file-bubble-footer-border: #e6e6e6;
-	--app-file-bubble-footer-text: #b2b2b2;
+  --app-file-bubble-bg: #f2f2f2;
+  --app-file-bubble-name: #191919;
+  --app-file-bubble-size: #b2b2b2;
+  --app-file-bubble-footer-border: #e6e6e6;
+  --app-file-bubble-footer-text: #b2b2b2;
 
-	--app-list-tree-line: #bfc6d1;
-	--app-list-status-ring: #e6e6e6;
-	--app-status-starting: #60a5fa;
-	--app-status-running: #22c55e;
-	--app-status-idle: #eab308;
-	--app-status-error: #ef4444;
-	--app-status-stopped: #9ca3af;
+  --app-list-tree-line: #bfc6d1;
+  --app-list-status-ring: #e6e6e6;
+  --app-status-starting: #60a5fa;
+  --app-status-running: #22c55e;
+  --app-status-idle: #eab308;
+  --app-status-error: #ef4444;
+  --app-status-stopped: #9ca3af;
 }
 
 /* ========== Dark ========== */
-[data-theme='dark'] {
-	color-scheme: dark;
+[data-theme="dark"] {
+  color-scheme: dark;
 
-	--app-shell-bg: #111111;
-	--app-nav-bg: #1f1f1f;
-	--app-nav-border: #2a2a2a;
-	--app-nav-icon: #9a9a9a;
-	--app-nav-icon-active: #07c160;
-	--app-nav-hover: #2c2c2c;
-	--app-nav-active-bg: #333333;
+  --app-shell-bg: #111111;
+  --app-nav-bg: #1f1f1f;
+  --app-nav-border: #2a2a2a;
+  --app-nav-icon: #9a9a9a;
+  --app-nav-icon-active: #07c160;
+  --app-nav-hover: #2c2c2c;
+  --app-nav-active-bg: #333333;
 
-	--app-list-bg: #262626;
-	--app-list-header-bg: #262626;
-	--app-list-search-bg: #333333;
-	--app-list-search-focus-bg: #3a3a3a;
-	--app-list-item-hover: #333333;
-	--app-list-item-child-hover: #303030;
-	--app-list-item-active: #19ac70;
-	--app-list-item-active-text: #ffffff;
-	--app-list-section-bg: #262626;
+  --app-list-bg: #262626;
+  --app-list-header-bg: #262626;
+  --app-list-search-bg: #333333;
+  --app-list-search-focus-bg: #3a3a3a;
+  --app-list-item-hover: #333333;
+  --app-list-item-child-hover: #303030;
+  --app-list-item-active: #19ac70;
+  --app-list-item-active-text: #ffffff;
+  --app-list-section-bg: #262626;
 
-	--app-chat-bg: #191919;
-	--app-chat-header-bg: #191919;
-	--app-chat-message-bg: #191919;
-	--app-chat-message-inherited: #222222;
-	--app-chat-input-island-border: #383838;
-	--app-toolbar-icon: #d0d0d0;
+  --app-chat-bg: #191919;
+  --app-chat-header-bg: #191919;
+  --app-chat-message-bg: #191919;
+  --app-chat-message-inherited: #222222;
+  --app-chat-input-island-border: #383838;
+  --app-toolbar-icon: #d0d0d0;
 
-	--app-text-primary: #e8e8e8;
-	--app-text-secondary: #9a9a9a;
-	--app-text-muted: #666666;
-	--app-text-link: #7d9ec7;
+  --app-text-primary: #e8e8e8;
+  --app-text-secondary: #9a9a9a;
+  --app-text-muted: #666666;
+  --app-text-link: #7d9ec7;
 
-	--app-border: #303030;
-	--app-border-subtle: #2a2a2a;
-	--app-divider: #333333;
-	--app-hover: #2a2a2a;
+  --app-border: #303030;
+  --app-border-subtle: #2a2a2a;
+  --app-divider: #333333;
+  --app-hover: #2a2a2a;
 
-	--app-bubble-user: #35d28d;
-	--app-bubble-assistant: #2a2a2a;
-	--app-bubble-assistant-border: #383838;
-	--app-bubble-radius: 10px;
+  --app-bubble-user: #35d28d;
+  --app-bubble-assistant: #2a2a2a;
+  --app-bubble-assistant-border: #383838;
+  --app-bubble-radius: 10px;
 
-	--app-accent: #07c160;
-	--app-accent-hover: #06ad56;
-	--app-send-disabled-bg: #333333;
-	--app-send-disabled-text: #666666;
+  --app-accent: #07c160;
+  --app-accent-hover: #06ad56;
+  --app-send-disabled-bg: #333333;
+  --app-send-disabled-text: #666666;
 
-	--app-tag-file-bg: #1e3348;
-	--app-tag-file-fg: #8ab4e8;
-	--app-tag-skill-bg: #1a3328;
-	--app-tag-skill-fg: #3ddc84;
+  --app-tag-file-bg: #1e3348;
+  --app-tag-file-fg: #8ab4e8;
+  --app-tag-skill-bg: #1a3328;
+  --app-tag-skill-fg: #3ddc84;
 
-	--app-cm-bg: #1e1e1e;
-	--app-cm-text: #e8e8e8;
-	--app-cm-caret: #e8e8e8;
-	--app-cm-gutter-bg: #252526;
-	--app-cm-gutter-fg: #858585;
-	--app-cm-gutter-border: #333333;
-	--app-cm-active-line: #2a2d2e;
-	--app-cm-active-gutter: #2a2d2e;
-	--app-popup-bg: #2a2a2a;
-	--app-popup-border: #404040;
-	--app-popup-hover: #333333;
-	--app-popup-selected: #383838;
+  --app-cm-bg: #1e1e1e;
+  --app-cm-text: #e8e8e8;
+  --app-cm-caret: #e8e8e8;
+  --app-cm-gutter-bg: #252526;
+  --app-cm-gutter-fg: #858585;
+  --app-cm-gutter-border: #333333;
+  --app-cm-active-line: #2a2d2e;
+  --app-cm-active-gutter: #2a2d2e;
+  --app-popup-bg: #2a2a2a;
+  --app-popup-border: #404040;
+  --app-popup-hover: #333333;
+  --app-popup-selected: #383838;
 
-	--app-settings-bg: #191919;
-	--app-settings-card: #262626;
+  --app-settings-bg: #191919;
+  --app-settings-card: #262626;
 
-	--app-file-bubble-bg: #2c2c2c;
-	--app-file-bubble-name: #e8e8e8;
-	--app-file-bubble-size: #8a8a8a;
-	--app-file-bubble-footer-border: #383838;
-	--app-file-bubble-footer-text: #8a8a8a;
+  --app-file-bubble-bg: #2c2c2c;
+  --app-file-bubble-name: #e8e8e8;
+  --app-file-bubble-size: #8a8a8a;
+  --app-file-bubble-footer-border: #383838;
+  --app-file-bubble-footer-text: #8a8a8a;
 
-	--app-list-tree-line: #4a4a4a;
-	--app-list-tree-line-active: #8de4be;
-	--app-list-status-ring: #262626;
-	--app-status-starting: #5eb3ff;
-	--app-status-running: #3ddc84;
-	--app-status-idle: #f0c040;
-	--app-status-error: #ff6b6b;
-	--app-status-stopped: #6b6b6b;
+  --app-list-tree-line: #4a4a4a;
+  --app-list-tree-line-active: #8de4be;
+  --app-list-status-ring: #262626;
+  --app-status-starting: #5eb3ff;
+  --app-status-running: #3ddc84;
+  --app-status-idle: #f0c040;
+  --app-status-error: #ff6b6b;
+  --app-status-stopped: #6b6b6b;
 }
 
 html,
 body,
 #app {
-	height: 100%;
-	width: 100%;
-	margin: 0;
-	padding: 0;
-	overflow: hidden;
-	background-color: var(--app-shell-bg);
-	color: var(--app-text-primary);
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--app-shell-bg);
+  color: var(--app-text-primary);
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-	width: 6px;
-	height: 6px;
+  width: 6px;
+  height: 6px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-	background: rgba(128, 128, 128, 0.35);
-	border-radius: 3px;
+  background: rgba(128, 128, 128, 0.35);
+  border-radius: 3px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-	background: transparent;
+  background: transparent;
 }

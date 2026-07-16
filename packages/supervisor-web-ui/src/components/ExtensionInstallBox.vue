@@ -15,14 +15,17 @@
       :disabled="installing || !source.trim()"
       @click="install"
     >
-      {{ installing ? '安装中...' : '安装到全局库' }}
+      {{ installing ? "安装中..." : "安装到全局库" }}
     </button>
 
     <div v-if="installError" class="extension-install-box__error mt-1.5 text-[11px]">
       {{ installError }}
     </div>
 
-    <ul v-if="installed.length" class="mt-2 flex flex-col gap-1 max-h-32 overflow-y-auto custom-scrollbar">
+    <ul
+      v-if="installed.length"
+      class="mt-2 flex flex-col gap-1 max-h-32 overflow-y-auto custom-scrollbar"
+    >
       <li
         v-for="item in installed"
         :key="item.id"
@@ -35,7 +38,7 @@
           :disabled="uninstallingId === item.id"
           @click="uninstall(item.id)"
         >
-          {{ uninstallingId === item.id ? '...' : '卸载' }}
+          {{ uninstallingId === item.id ? "..." : "卸载" }}
         </button>
       </li>
     </ul>
@@ -43,63 +46,63 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref } from "vue";
 import {
   installExtension,
   listExtensions,
   uninstallExtension,
   type ExtensionInstallResult,
   type ExtensionResourceInfo,
-} from '@/api'
+} from "@/api";
 
 const emit = defineEmits<{
-  installed: [id: string]
-  uninstalled: [id: string]
-}>()
+  installed: [id: string];
+  uninstalled: [id: string];
+}>();
 
-const source = ref('')
-const installing = ref(false)
-const installError = ref<string | null>(null)
-const uninstallingId = ref<string | null>(null)
-const installed = ref<ExtensionResourceInfo[]>([])
+const source = ref("");
+const installing = ref(false);
+const installError = ref<string | null>(null);
+const uninstallingId = ref<string | null>(null);
+const installed = ref<ExtensionResourceInfo[]>([]);
 
-onMounted(refresh)
+onMounted(refresh);
 
 async function refresh() {
   try {
-    installed.value = await listExtensions()
- } catch (err) {
-    installError.value = err instanceof Error ? err.message : String(err)
+    installed.value = await listExtensions();
+  } catch (err) {
+    installError.value = err instanceof Error ? err.message : String(err);
   }
 }
 
 async function install() {
-  const s = source.value.trim()
-  if (!s) return
-  installing.value = true
-  installError.value = null
+  const s = source.value.trim();
+  if (!s) return;
+  installing.value = true;
+  installError.value = null;
   try {
-    const result: ExtensionInstallResult = await installExtension(s)
-    source.value = ''
-    await refresh()
-    emit('installed', result.id)
+    const result: ExtensionInstallResult = await installExtension(s);
+    source.value = "";
+    await refresh();
+    emit("installed", result.id);
   } catch (err) {
-    installError.value = err instanceof Error ? err.message : String(err)
+    installError.value = err instanceof Error ? err.message : String(err);
   } finally {
-    installing.value = false
+    installing.value = false;
   }
 }
 
 async function uninstall(id: string) {
-  uninstallingId.value = id
+  uninstallingId.value = id;
   try {
-    await uninstallExtension(id)
-    await refresh()
-    emit('uninstalled', id)
+    await uninstallExtension(id);
+    await refresh();
+    emit("uninstalled", id);
   } catch (err) {
-    installError.value = err instanceof Error ? err.message : String(err)
+    installError.value = err instanceof Error ? err.message : String(err);
   } finally {
-    uninstallingId.value = null
+    uninstallingId.value = null;
   }
 }
 </script>

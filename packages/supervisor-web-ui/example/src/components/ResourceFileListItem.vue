@@ -12,17 +12,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
-import type { MockFileItem } from '../mock/resources'
-import { getFileBaseName } from '../mock/resource-utils'
+import { computed } from "vue";
+import type { MockFileItem } from "../mock/resources";
+import { getFileBaseName } from "../mock/resource-utils";
 
 const props = defineProps<{
-  item: MockFileItem
-}>()
+  item: MockFileItem;
+}>();
 
-const label = computed(() => getFileBaseName(props.item.fileName))
+const label = computed(() => getFileBaseName(props.item.fileName));
 
-const showPath = computed(() => props.item.layer === 'global')
+const showPath = computed(() => props.item.layer === "global");
 
-const path = computed(() => props.item.path)
+const path = computed(() => props.item.path);
 </script>

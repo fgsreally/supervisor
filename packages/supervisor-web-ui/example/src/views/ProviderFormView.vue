@@ -1,6 +1,10 @@
 <template>
-  <div class="provider-form-view flex flex-col flex-1 min-w-0 basis-0 h-full w-full overflow-hidden">
-    <div class="provider-form-header h-14 md:h-16 border-b flex items-center px-3 md:px-6 shrink-0 gap-3">
+  <div
+    class="provider-form-view flex flex-col flex-1 min-w-0 basis-0 h-full w-full overflow-hidden"
+  >
+    <div
+      class="provider-form-header h-14 md:h-16 border-b flex items-center px-3 md:px-6 shrink-0 gap-3"
+    >
       <button
         v-if="showBack"
         type="button"
@@ -11,7 +15,12 @@
       </button>
       <div class="flex-1 min-w-0">
         <div class="text-[16px] font-medium provider-form-title">{{ title }}</div>
-        <div v-if="providerId && !modelsOnly" class="text-[12px] provider-form-subtitle font-mono mt-0.5">{{ providerId }}</div>
+        <div
+          v-if="providerId && !modelsOnly"
+          class="text-[12px] provider-form-subtitle font-mono mt-0.5"
+        >
+          {{ providerId }}
+        </div>
       </div>
       <button
         type="button"
@@ -81,9 +90,18 @@
                 v-for="opt in PROVIDER_API_TYPES"
                 :key="opt.value"
                 class="flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer text-[13px] transition-colors"
-                :class="draft.apiType === opt.value ? 'provider-form-radio provider-form-radio--active' : 'provider-form-radio provider-form-radio--idle'"
+                :class="
+                  draft.apiType === opt.value
+                    ? 'provider-form-radio provider-form-radio--active'
+                    : 'provider-form-radio provider-form-radio--idle'
+                "
               >
-                <input v-model="draft.apiType" type="radio" :value="opt.value" class="accent-[#07c160]" />
+                <input
+                  v-model="draft.apiType"
+                  type="radio"
+                  :value="opt.value"
+                  class="accent-[#07c160]"
+                />
                 <span class="font-mono">{{ opt.value }}</span>
               </label>
             </div>
@@ -114,123 +132,128 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import { ChevronLeft } from 'lucide-vue-next'
-import ProviderModelTable from '../components/ProviderModelTable.vue'
-import type { MockProvider, MockProviderModel } from '../mock/providers'
-import { PROVIDER_API_TYPES, addProvider, getProviderById, updateProvider } from '../mock/providers'
+import { computed, ref, watch } from "vue";
+import { ChevronLeft } from "lucide-vue-next";
+import ProviderModelTable from "../components/ProviderModelTable.vue";
+import type { MockProvider, MockProviderModel } from "../mock/providers";
+import {
+  PROVIDER_API_TYPES,
+  addProvider,
+  getProviderById,
+  updateProvider,
+} from "../mock/providers";
 
 const props = defineProps<{
-  providerId?: string | null
-  showBack?: boolean
+  providerId?: string | null;
+  showBack?: boolean;
   /** 仅管理模型，不编辑 Provider 基本信息 */
-  modelsOnly?: boolean
-}>()
+  modelsOnly?: boolean;
+}>();
 
 const emit = defineEmits<{
-  cancel: []
-  saved: [id: string]
-}>()
+  cancel: [];
+  saved: [id: string];
+}>();
 
-const isNew = computed(() => !props.providerId)
+const isNew = computed(() => !props.providerId);
 
 const title = computed(() => {
-  if (props.modelsOnly) return '管理模型'
-  return isNew.value ? '添加 Provider' : '编辑 Provider'
-})
+  if (props.modelsOnly) return "管理模型";
+  return isNew.value ? "添加 Provider" : "编辑 Provider";
+});
 
 function emptyDraft(): MockProvider {
   return {
-    id: '',
-    name: '',
-    apiType: 'openai-compatible',
+    id: "",
+    name: "",
+    apiType: "openai-compatible",
     baseUrl: null,
-    activeModelId: '',
+    activeModelId: "",
     isEnabled: true,
     models: [],
-  }
+  };
 }
 
 function cloneProvider(p: MockProvider): MockProvider {
-  return JSON.parse(JSON.stringify(p)) as MockProvider
+  return JSON.parse(JSON.stringify(p)) as MockProvider;
 }
 
-const draft = ref<MockProvider>(emptyDraft())
+const draft = ref<MockProvider>(emptyDraft());
 
 watch(
   () => props.providerId,
   (id) => {
     if (id) {
-      const existing = getProviderById(id)
-      draft.value = existing ? cloneProvider(existing) : emptyDraft()
+      const existing = getProviderById(id);
+      draft.value = existing ? cloneProvider(existing) : emptyDraft();
     } else {
-      draft.value = emptyDraft()
+      draft.value = emptyDraft();
     }
   },
   { immediate: true },
-)
+);
 
 const baseUrlInput = computed({
-  get: () => draft.value.baseUrl ?? '',
+  get: () => draft.value.baseUrl ?? "",
   set: (v: string) => {
-    draft.value.baseUrl = v.trim() ? v.trim() : null
+    draft.value.baseUrl = v.trim() ? v.trim() : null;
   },
-})
+});
 
 const canSave = computed(() => {
   if (props.modelsOnly) {
-    return draft.value.models.length > 0 && !draft.value.models.some((m) => !m.id.trim())
+    return draft.value.models.length > 0 && !draft.value.models.some((m) => !m.id.trim());
   }
-  if (!draft.value.name.trim()) return false
-  if (isNew.value && !draft.value.id.trim()) return false
-  if (draft.value.models.length === 0) return false
-  if (draft.value.models.some((m) => !m.id.trim())) return false
-  return true
-})
+  if (!draft.value.name.trim()) return false;
+  if (isNew.value && !draft.value.id.trim()) return false;
+  if (draft.value.models.length === 0) return false;
+  if (draft.value.models.some((m) => !m.id.trim())) return false;
+  return true;
+});
 
 function onModelsUpdate(models: MockProviderModel[]) {
-  draft.value.models = models
+  draft.value.models = models;
   if (!draft.value.activeModelId || !models.some((m) => m.id === draft.value.activeModelId)) {
-    draft.value.activeModelId = models[0]?.id ?? ''
+    draft.value.activeModelId = models[0]?.id ?? "";
   }
 }
 
 function save() {
   if (props.modelsOnly) {
-    const id = props.providerId
-    if (!id || !canSave.value) return
+    const id = props.providerId;
+    if (!id || !canSave.value) return;
     updateProvider(id, {
       models: draft.value.models.map((m) => ({
         ...m,
         id: m.id.trim(),
         name: m.name.trim() || m.id.trim(),
       })),
-      activeModelId: draft.value.activeModelId || draft.value.models[0]?.id || '',
-    })
-    emit('saved', id)
-    return
+      activeModelId: draft.value.activeModelId || draft.value.models[0]?.id || "",
+    });
+    emit("saved", id);
+    return;
   }
 
-  if (!canSave.value) return
-  const payload = cloneProvider(draft.value)
-  payload.name = payload.name.trim()
-  payload.id = payload.id.trim()
+  if (!canSave.value) return;
+  const payload = cloneProvider(draft.value);
+  payload.name = payload.name.trim();
+  payload.id = payload.id.trim();
   payload.models = payload.models.map((m) => ({
     ...m,
     id: m.id.trim(),
     name: m.name.trim() || m.id.trim(),
-  }))
+  }));
   if (!payload.activeModelId || !payload.models.some((m) => m.id === payload.activeModelId)) {
-    payload.activeModelId = payload.models[0].id
+    payload.activeModelId = payload.models[0].id;
   }
 
   if (isNew.value) {
-    if (getProviderById(payload.id)) return
-    addProvider(payload)
+    if (getProviderById(payload.id)) return;
+    addProvider(payload);
   } else {
-    updateProvider(payload.id, payload)
+    updateProvider(payload.id, payload);
   }
-  emit('saved', payload.id)
+  emit("saved", payload.id);
 }
 </script>
 

@@ -9,11 +9,11 @@
 </template>
 
 <script setup lang="ts">
-import type { UIResourceLayer } from '@/types/ui'
+import type { UIResourceLayer } from "@/types/ui";
 
 defineProps<{
-  layer: UIResourceLayer
-}>()
+  layer: UIResourceLayer;
+}>();
 </script>
 
 <style scoped>

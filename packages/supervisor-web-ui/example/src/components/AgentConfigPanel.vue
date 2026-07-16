@@ -31,7 +31,9 @@
           class="agent-config-input w-full max-w-lg px-2.5 py-2 rounded border resize-y min-h-[4rem]"
           @input="onDescriptionInput"
         />
-        <div v-else class="agent-config-desc leading-relaxed max-w-2xl">{{ agent.description || '—' }}</div>
+        <div v-else class="agent-config-desc leading-relaxed max-w-2xl">
+          {{ agent.description || "—" }}
+        </div>
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl">
         <div>
@@ -78,129 +80,131 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
-import InlineEditActions from './InlineEditActions.vue'
-import { getAgentById } from '../mock/agents'
-import type { MockAgent } from '../mock/agents'
-import { getProviderById } from '../mock/providers'
-import { mockStore } from '../mock/store'
+import { computed, ref, watch } from "vue";
+import InlineEditActions from "./InlineEditActions.vue";
+import { getAgentById } from "../mock/agents";
+import type { MockAgent } from "../mock/agents";
+import { getProviderById } from "../mock/providers";
+import { mockStore } from "../mock/store";
 
 interface ConfigDraft {
-  name: string
-  description: string
-  providerId: string
-  modelId: string
-  toolsPreset: MockAgent['toolsPreset']
+  name: string;
+  description: string;
+  providerId: string;
+  modelId: string;
+  toolsPreset: MockAgent["toolsPreset"];
 }
 
 const props = defineProps<{
-  agentId: string
-}>()
+  agentId: string;
+}>();
 
-const agent = computed(() => getAgentById(props.agentId))
-const editing = ref(false)
-const snapshot = ref<ConfigDraft | null>(null)
+const agent = computed(() => getAgentById(props.agentId));
+const editing = ref(false);
+const snapshot = ref<ConfigDraft | null>(null);
 
-const providerOptions = computed(() => mockStore.providers)
+const providerOptions = computed(() => mockStore.providers);
 
 const selectedProvider = computed(() => {
-  const a = agent.value
-  return a ? getProviderById(a.providerId) : undefined
-})
+  const a = agent.value;
+  return a ? getProviderById(a.providerId) : undefined;
+});
 
-const modelOptions = computed(() => selectedProvider.value?.models ?? [])
+const modelOptions = computed(() => selectedProvider.value?.models ?? []);
 
 const modelId = computed(() => {
-  const a = agent.value
-  if (!a) return ''
+  const a = agent.value;
+  if (!a) return "";
   if (a.modelId && modelOptions.value.some((m) => m.id === a.modelId)) {
-    return a.modelId
+    return a.modelId;
   }
-  return selectedProvider.value?.activeModelId ?? modelOptions.value[0]?.id ?? ''
-})
+  return selectedProvider.value?.activeModelId ?? modelOptions.value[0]?.id ?? "";
+});
 
-const providerLabel = computed(() => selectedProvider.value?.name ?? agent.value?.providerId ?? '—')
+const providerLabel = computed(
+  () => selectedProvider.value?.name ?? agent.value?.providerId ?? "—",
+);
 
 watch(
   () => props.agentId,
   () => {
-    editing.value = false
-    snapshot.value = null
+    editing.value = false;
+    snapshot.value = null;
   },
-)
+);
 
 function captureDraft(): ConfigDraft | null {
-  const a = agent.value
-  if (!a) return null
+  const a = agent.value;
+  if (!a) return null;
   return {
     name: a.name,
     description: a.description,
     providerId: a.providerId,
     modelId: a.modelId,
     toolsPreset: a.toolsPreset,
-  }
+  };
 }
 
 function startEdit() {
-  snapshot.value = captureDraft()
-  editing.value = true
+  snapshot.value = captureDraft();
+  editing.value = true;
 }
 
 function cancelEdit() {
-  const a = agent.value
-  const s = snapshot.value
+  const a = agent.value;
+  const s = snapshot.value;
   if (a && s) {
-    a.name = s.name
-    a.description = s.description
-    a.providerId = s.providerId
-    a.modelId = s.modelId
-    a.toolsPreset = s.toolsPreset
+    a.name = s.name;
+    a.description = s.description;
+    a.providerId = s.providerId;
+    a.modelId = s.modelId;
+    a.toolsPreset = s.toolsPreset;
   }
-  editing.value = false
-  snapshot.value = null
+  editing.value = false;
+  snapshot.value = null;
 }
 
 function finishEdit() {
-  editing.value = false
-  snapshot.value = null
+  editing.value = false;
+  snapshot.value = null;
 }
 
 function onNameInput(e: Event) {
-  const a = agent.value
-  if (!a) return
-  a.name = (e.target as HTMLInputElement).value
+  const a = agent.value;
+  if (!a) return;
+  a.name = (e.target as HTMLInputElement).value;
 }
 
 function onDescriptionInput(e: Event) {
-  const a = agent.value
-  if (!a) return
-  a.description = (e.target as HTMLTextAreaElement).value
+  const a = agent.value;
+  if (!a) return;
+  a.description = (e.target as HTMLTextAreaElement).value;
 }
 
 function onProviderChange(e: Event) {
-  const a = agent.value
-  if (!a) return
-  a.providerId = (e.target as HTMLSelectElement).value
-  onProviderChangeSideEffects(a)
+  const a = agent.value;
+  if (!a) return;
+  a.providerId = (e.target as HTMLSelectElement).value;
+  onProviderChangeSideEffects(a);
 }
 
 function onModelChange(e: Event) {
-  const a = agent.value
-  if (!a) return
-  a.modelId = (e.target as HTMLSelectElement).value
+  const a = agent.value;
+  if (!a) return;
+  a.modelId = (e.target as HTMLSelectElement).value;
 }
 
 function onToolsPresetChange(e: Event) {
-  const a = agent.value
-  if (!a) return
-  a.toolsPreset = (e.target as HTMLSelectElement).value as MockAgent['toolsPreset']
+  const a = agent.value;
+  if (!a) return;
+  a.toolsPreset = (e.target as HTMLSelectElement).value as MockAgent["toolsPreset"];
 }
 
 function onProviderChangeSideEffects(a: MockAgent) {
-  const provider = getProviderById(a.providerId)
-  if (!provider) return
+  const provider = getProviderById(a.providerId);
+  if (!provider) return;
   if (!provider.models.some((m) => m.id === a.modelId)) {
-    a.modelId = provider.activeModelId || provider.models[0]?.id || ''
+    a.modelId = provider.activeModelId || provider.models[0]?.id || "";
   }
 }
 </script>

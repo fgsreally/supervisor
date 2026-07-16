@@ -8,8 +8,12 @@ const DEFAULT_LIMIT = 500;
 const LIST_TIMEOUT_MS = 5000;
 
 const lsSchema = Type.Object({
-  path: Type.Optional(Type.String({ description: "Directory to list (default: current directory)" })),
-  limit: Type.Optional(Type.Number({ description: "Maximum number of entries to return (default: 500)" })),
+  path: Type.Optional(
+    Type.String({ description: "Directory to list (default: current directory)" }),
+  ),
+  limit: Type.Optional(
+    Type.Number({ description: "Maximum number of entries to return (default: 500)" }),
+  ),
 });
 
 type LsParams = {

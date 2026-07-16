@@ -1,22 +1,10 @@
 <template>
   <Teleport to="body">
-    <div
-      v-if="open"
-      class="tool-detail-overlay"
-      @click.self="$emit('close')"
-    >
-      <div
-        class="tool-detail-dialog"
-        role="dialog"
-        aria-modal="true"
-      >
+    <div v-if="open" class="tool-detail-overlay" @click.self="$emit('close')">
+      <div class="tool-detail-dialog" role="dialog" aria-modal="true">
         <div class="tool-detail-header">
           <h3 class="tool-detail-title">{{ title }}</h3>
-          <button
-            type="button"
-            class="tool-detail-close"
-            @click="$emit('close')"
-          >
+          <button type="button" class="tool-detail-close" @click="$emit('close')">
             <X class="w-5 h-5" />
           </button>
         </div>
@@ -28,10 +16,7 @@
               :content="section.content"
               class="tool-detail-section-md"
             />
-            <pre
-              v-else
-              class="tool-detail-section-pre"
-            >{{ section.content }}</pre>
+            <pre v-else class="tool-detail-section-pre">{{ section.content }}</pre>
           </div>
         </div>
       </div>
@@ -40,18 +25,18 @@
 </template>
 
 <script setup lang="ts">
-import { X } from 'lucide-vue-next'
-import MarkdownContent from './MarkdownContent.vue'
+import { X } from "lucide-vue-next";
+import MarkdownContent from "./MarkdownContent.vue";
 
-export type ToolDetailSection = { label: string; content: string; markdown?: boolean }
+export type ToolDetailSection = { label: string; content: string; markdown?: boolean };
 
 defineProps<{
-  open: boolean
-  title: string
-  sections: ToolDetailSection[]
-}>()
+  open: boolean;
+  title: string;
+  sections: ToolDetailSection[];
+}>();
 
-defineEmits<{ close: [] }>()
+defineEmits<{ close: [] }>();
 </script>
 
 <style scoped>
@@ -102,7 +87,9 @@ defineEmits<{ close: [] }>()
   padding: 0.25rem;
   border-radius: 0.375rem;
   color: var(--app-text-muted);
-  transition: color 0.15s, background 0.15s;
+  transition:
+    color 0.15s,
+    background 0.15s;
 }
 
 .tool-detail-close:hover {

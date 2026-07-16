@@ -9,9 +9,9 @@
 </template>
 
 <script setup lang="ts">
-import type { ResourceLayer } from '../mock/resources'
+import type { ResourceLayer } from "../mock/resources";
 
 defineProps<{
-  layer: ResourceLayer
-}>()
+  layer: ResourceLayer;
+}>();
 </script>

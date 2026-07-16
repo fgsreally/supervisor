@@ -5,6 +5,7 @@
 ## ~~1. CLI 入口缺失（影响最大）~~ **已修复**
 
 ~~**症状**：
+
 - `package.json` 声明 `bin: dist/cli.js` 和 `main: dist/index.js`
 - SUPERVISOR.md 在文件结构图列出 `src/cli.ts`、`src/index.ts`（含 `startSupervisor()`）、`src/rpc-mode.ts`、`src/rpc-types.ts`~~
 
@@ -17,6 +18,7 @@
 **症状**：`POST /sessions/:id/commands` 端点在 `src/http/http-server.ts:697-700` 显式返回 501。
 
 **实际**：
+
 - `src/extensions/http-commands.ts` 提供了 `createCommandRegistry()` / `createCommandRouter()`
 - 扩展可以通过 `ctx.commands.register(name, handler)` 注册命令
 - 但 http-server 的 commands 路由没有调用 `createCommandRouter`，所以扩展注册的命令对外不可达
@@ -26,6 +28,7 @@
 **症状**：`POST /sessions/:id/commands` 端点在 `src/http/http-server.ts:697-700` 显式返回 501。
 
 **实际**：
+
 - `src/extensions/http-commands.ts` 提供了 `createCommandRegistry()` / `createCommandRouter()`
 - 扩展可以通过 `ctx.commands.register(name, handler)` 注册命令
 - 但 http-server 的 commands 路由没有调用 `createCommandRouter`，所以扩展注册的命令对外不可达
@@ -55,6 +58,7 @@
 **症状**：`src/ext-framework/` 整个目录与 `src/extensions/` 几乎一样（同名文件、同内容）。
 
 **实际**：
+
 - `src/ext-framework/index.ts` 的导出**没有任何 src 文件 import**
 - 实际生效的是 `src/extensions/`
 
@@ -82,14 +86,14 @@
 
 ## 总结
 
-| 问题 | 严重度 | 是否阻塞运行 |
-|---|---|---|
-| ~~CLI 入口缺失~~ | **~~高~~** | **~~是 — `pnpm run serve` 跑不起来~~** |
-| `/commands` 路由 501 | 中 | 否（功能缺失） |
-| hindsight 已迁至 extensions/hindsight | - | 否（需手动加载扩展） |
-| review 扩展未完成 | 低 | 否 |
-| spawn-agent 表缺失 | 中 | 否（不调用该工具就没事） |
-| ext-framework dead code | 低 | 否（占空间） |
-| session.ts / session-runtime.ts dead | 低 | 否 |
+| 问题                                  | 严重度     | 是否阻塞运行                           |
+| ------------------------------------- | ---------- | -------------------------------------- |
+| ~~CLI 入口缺失~~                      | **~~高~~** | **~~是 — `pnpm run serve` 跑不起来~~** |
+| `/commands` 路由 501                  | 中         | 否（功能缺失）                         |
+| hindsight 已迁至 extensions/hindsight | -          | 否（需手动加载扩展）                   |
+| review 扩展未完成                     | 低         | 否                                     |
+| spawn-agent 表缺失                    | 中         | 否（不调用该工具就没事）               |
+| ext-framework dead code               | 低         | 否（占空间）                           |
+| session.ts / session-runtime.ts dead  | 低         | 否                                     |
 
 ~~最高优先级是补 `src/cli.ts` 入口。~~ **已修复**：`src/cli.ts` 与 `src/index.ts` 已从 pi 仓库 git 历史恢复（commit `1dfd00e` 误删，从 `1dfd00e^` 检出后修复导入路径），CLI 可正常工作。其余问题都属于"功能不完整"但不阻塞构建。

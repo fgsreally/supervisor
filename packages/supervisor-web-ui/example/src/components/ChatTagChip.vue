@@ -1,5 +1,8 @@
 <template>
-  <span class="chat-tag-chip" :class="variant === 'file' ? 'chat-tag-chip--file' : 'chat-tag-chip--skill'">
+  <span
+    class="chat-tag-chip"
+    :class="variant === 'file' ? 'chat-tag-chip--file' : 'chat-tag-chip--skill'"
+  >
     <FileTypeIcon v-if="variant === 'file'" :kind="fileIconKind" class="chat-tag-chip-icon" />
     <Sparkles v-else class="chat-tag-chip-icon" />
     <span class="chat-tag-chip-label">{{ label }}</span>
@@ -7,15 +10,15 @@
 </template>
 
 <script setup lang="ts">
-import { Sparkles } from 'lucide-vue-next'
-import type { FileIconKind } from '../utils/file-type-icon'
-import FileTypeIcon from './FileTypeIcon.vue'
+import { Sparkles } from "lucide-vue-next";
+import type { FileIconKind } from "../utils/file-type-icon";
+import FileTypeIcon from "./FileTypeIcon.vue";
 
 defineProps<{
-	variant: 'file' | 'skill'
-	label: string
-	fileIconKind?: FileIconKind
-}>()
+  variant: "file" | "skill";
+  label: string;
+  fileIconKind?: FileIconKind;
+}>();
 </script>
 
 <style scoped>

@@ -2,11 +2,20 @@
   <div
     class="flex flex-col h-full shrink-0 min-w-0 border-r"
     :class="width == null ? 'w-full' : ''"
-    :style="{ ...(width != null ? { width: `${width}px` } : {}), background: 'var(--app-list-bg)', borderColor: 'var(--app-border)' }"
+    :style="{
+      ...(width != null ? { width: `${width}px` } : {}),
+      background: 'var(--app-list-bg)',
+      borderColor: 'var(--app-border)',
+    }"
   >
-    <div class="px-4 py-3 border-b" style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)">
+    <div
+      class="px-4 py-3 border-b"
+      style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
+    >
       <div class="text-[17px] font-medium mb-1" style="color: var(--app-text-primary)">资源</div>
-      <p class="text-[12px] mb-3" style="color: var(--app-text-secondary)">~/.pi/supervisor/global/</p>
+      <p class="text-[12px] mb-3" style="color: var(--app-text-secondary)">
+        ~/.pi/supervisor/global/
+      </p>
       <div class="flex gap-1">
         <button
           v-for="k in kinds"
@@ -33,7 +42,11 @@
         <div class="text-[14px] font-medium truncate resources-item__name">{{ item.name }}</div>
         <div class="text-[12px] mt-0.5 truncate resources-item__desc">{{ item.description }}</div>
       </div>
-      <div v-if="filteredItems.length === 0" class="px-4 py-8 text-center text-[13px]" style="color: var(--app-text-muted)">
+      <div
+        v-if="filteredItems.length === 0"
+        class="px-4 py-8 text-center text-[13px]"
+        style="color: var(--app-text-muted)"
+      >
         暂无资源
       </div>
     </div>
@@ -41,28 +54,28 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { useResourceStore } from '@/store'
-import { getResourcesByKind } from '@/utils/resources-ui'
-import type { UIResourceKind } from '@/types/ui'
+import { computed, ref } from "vue";
+import { useResourceStore } from "@/store";
+import { getResourcesByKind } from "@/utils/resources-ui";
+import type { UIResourceKind } from "@/types/ui";
 
 defineProps<{
-  activeId: string | null
-  width?: number
-}>()
+  activeId: string | null;
+  width?: number;
+}>();
 
-defineEmits<{ select: [id: string] }>()
+defineEmits<{ select: [id: string] }>();
 
-const resourceStore = useResourceStore()
-const kind = ref<UIResourceKind>('skills')
+const resourceStore = useResourceStore();
+const kind = ref<UIResourceKind>("skills");
 
 const kinds = [
-  { id: 'skills' as const, label: 'Skills' },
-  { id: 'extensions' as const, label: 'Ext' },
-  { id: 'prompts' as const, label: 'Prompt' },
-]
+  { id: "skills" as const, label: "Skills" },
+  { id: "extensions" as const, label: "Ext" },
+  { id: "prompts" as const, label: "Prompt" },
+];
 
-const filteredItems = computed(() => getResourcesByKind(resourceStore.resourceItems, kind.value))
+const filteredItems = computed(() => getResourcesByKind(resourceStore.resourceItems, kind.value));
 </script>
 
 <style scoped>

@@ -48,7 +48,7 @@ export interface UIProvider {
   models: UIProviderModel[];
 }
 
-export type UIResourceKind = "skills" | "extensions" | "prompts";
+export type UIResourceKind = "skills" | "extensions" | "prompts" | "mcp";
 export type UIResourceLayer = "global" | "agent";
 
 export interface UISkillFile {
@@ -73,7 +73,7 @@ export interface UISkillItem extends UIResourceItemBase {
 }
 
 export interface UIFileItem extends UIResourceItemBase {
-  kind: "extensions" | "prompts";
+  kind: "extensions" | "prompts" | "mcp";
   fileName: string;
   path: string;
   content: string;

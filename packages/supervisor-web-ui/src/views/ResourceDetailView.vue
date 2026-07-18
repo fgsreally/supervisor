@@ -84,7 +84,12 @@ import ResourceContentView from "../components/ResourceContentView.vue";
 import SkillFileTree from "../components/SkillFileTree.vue";
 import { useResourceStore } from "@/store";
 import { getResourceById } from "@/utils/resources-ui";
-import { getSkillFileLanguage, isFileItem, isSkillItem } from "@/utils/resource-utils";
+import {
+  getSkillFileLanguage,
+  isFileItem,
+  isSkillItem,
+  relativeSupervisorPath,
+} from "@/utils/resource-utils";
 
 const props = defineProps<{
   resourceId: string | null;
@@ -112,8 +117,12 @@ const skillFiles = computed(() => {
 const resourcePath = computed(() => {
   const r = resource.value;
   if (!r) return "";
-  if (isSkillItem(r) && r.layer === "global" && r.rootPath) return r.rootPath;
-  if (isFileItem(r) && r.layer === "global" && r.path) return r.path;
+  if (isSkillItem(r) && r.layer === "global" && r.rootPath) {
+    return relativeSupervisorPath(r.rootPath);
+  }
+  if (isFileItem(r) && r.layer === "global" && r.path) {
+    return relativeSupervisorPath(r.path);
+  }
   return "";
 });
 
@@ -171,6 +180,8 @@ const kindLabel = computed(() => {
       return "Extension";
     case "prompts":
       return "Prompt 模板";
+    case "mcp":
+      return "MCP 配置";
     default:
       return "—";
   }

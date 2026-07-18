@@ -9,6 +9,14 @@
     :is-error="isError"
     @answered="emit('answered')"
   />
+  <ExternalInteractionStep
+    v-else-if="isExternalInteraction && piece.kind === 'toolStep'"
+    :session-id="sessionId"
+    :args="piece.callArgs"
+    :result="piece.result?.content"
+    :pending="pending"
+    @resolved="emit('answered')"
+  />
   <BashStep
     v-else-if="piece.kind === 'bash'"
     :command="piece.command"
@@ -37,6 +45,7 @@ import type { RenderPiece } from "@/utils/flatten-messages";
 import { spawnChildSessionId } from "@/utils/flatten-messages";
 import { isAskToolName } from "@/utils/ask-tool";
 import AskStep from "./AskStep.vue";
+import ExternalInteractionStep from "./ExternalInteractionStep.vue";
 import BashStep from "../BashStep.vue";
 import ToolActivityBar from "../ToolActivityBar.vue";
 
@@ -61,6 +70,12 @@ const emit = defineEmits<{
 
 const isAsk = computed(
   () => props.piece.kind === "toolStep" && isAskToolName(props.piece.toolName),
+);
+const isExternalInteraction = computed(
+  () =>
+    props.piece.kind === "toolStep" &&
+    (props.piece.toolName === "external_interaction" ||
+      props.piece.callArgs?.externalInteraction === true),
 );
 
 const childSessionId = computed(() => {

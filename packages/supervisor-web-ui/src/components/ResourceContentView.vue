@@ -30,7 +30,7 @@ const emit = defineEmits<{ "update:content": [value: string] }>();
 
 const editorLanguage = computed<CodeMirrorLanguage>(() => {
   if (props.language) return props.language;
-  return props.kind === "extensions" ? "typescript" : "markdown";
+  return props.kind === "extensions" || props.kind === "mcp" ? "typescript" : "markdown";
 });
 
 function onContentUpdate(value: string) {

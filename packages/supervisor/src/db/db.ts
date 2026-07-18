@@ -13,6 +13,7 @@ import type {
 } from "../resources/types.js";
 import type {
   Agent,
+  AgentBackendType,
   AgentRow,
   Member,
   MemberAgent,
@@ -59,7 +60,9 @@ function rowToAgent(row: AgentRow): Agent {
     id: row.id,
     name: row.name,
     description: row.description,
+    icon: row.icon,
     providerId: row.provider_id,
+    backendType: row.backend_type ?? "native",
     modelId: row.model_id,
     toolsPreset: (row.tools_preset as "coding" | "readonly" | "none") || null,
     homeDir: row.home_dir ?? null,
@@ -199,7 +202,9 @@ export class SupervisorDb {
 				id            INTEGER PRIMARY KEY AUTOINCREMENT,
 				name          TEXT NOT NULL,
 				description   TEXT,
-				provider_id   INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+				icon          TEXT,
+				provider_id   INTEGER REFERENCES providers(id) ON DELETE SET NULL,
+				backend_type  TEXT NOT NULL DEFAULT 'native',
 				system_prompt TEXT,
 				tools_preset  TEXT,
 				extension_id  TEXT UNIQUE,
@@ -595,7 +600,9 @@ export class SupervisorDb {
   insertAgent(row: {
     name: string;
     description?: string | null;
-    provider_id: number;
+    icon?: string | null;
+    provider_id?: number | null;
+    backend_type?: AgentBackendType;
     model_id?: string | null;
     tools_preset?: string | null;
     home_dir?: string | null;
@@ -610,7 +617,9 @@ export class SupervisorDb {
       updated_at: now,
       name: row.name,
       description: row.description ?? null,
-      provider_id: row.provider_id,
+      icon: row.icon ?? null,
+      provider_id: row.provider_id ?? null,
+      backend_type: row.backend_type ?? "native",
       model_id: row.model_id ?? null,
       tools_preset: row.tools_preset ?? null,
       home_dir: homeDir ?? null,
@@ -619,13 +628,15 @@ export class SupervisorDb {
     };
     const result = this.db
       .prepare(
-        `INSERT INTO agents (name, description, provider_id, model_id, system_prompt, tools_preset, home_dir, is_internal, meta, created_at, updated_at)
-				 VALUES (@name, @description, @provider_id, @model_id, NULL, @tools_preset, @home_dir, @is_internal, @meta, @created_at, @updated_at)`,
+        `INSERT INTO agents (name, description, icon, provider_id, backend_type, model_id, system_prompt, tools_preset, home_dir, is_internal, meta, created_at, updated_at)
+				 VALUES (@name, @description, @icon, @provider_id, @backend_type, @model_id, NULL, @tools_preset, @home_dir, @is_internal, @meta, @created_at, @updated_at)`,
       )
       .run(full);
     const id = Number(result.lastInsertRowid);
-    const resolvedHomeDir = homeDir ?? getAgentHomeDir(id);
-    ensureAgentHome(id, resolvedHomeDir);
+    if (full.backend_type === "native") {
+      const resolvedHomeDir = homeDir ?? getAgentHomeDir(id);
+      ensureAgentHome(id, resolvedHomeDir);
+    }
     return rowToAgent({
       ...full,
       id,
@@ -641,7 +652,9 @@ export class SupervisorDb {
         AgentRow,
         | "name"
         | "description"
+        | "icon"
         | "provider_id"
+        | "backend_type"
         | "model_id"
         | "tools_preset"
         | "home_dir"
@@ -654,6 +667,7 @@ export class SupervisorDb {
     const sets: string[] = ["updated_at = ?"];
     const params: unknown[] = [Date.now()];
     for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) continue;
       if (k === "meta") {
         sets.push("meta = ?");
         params.push(JSON.stringify(v ?? {}));
@@ -902,7 +916,7 @@ export class SupervisorDb {
     const params: unknown[] = [Date.now()];
     for (const [k, v] of Object.entries(patch)) {
       sets.push(`${k} = ?`);
-      params.push(v);
+      params.push(k === "api_key" && typeof v === "string" && v ? encryptApiKey(v) : v);
     }
     params.push(id);
     this.db.prepare(`UPDATE providers SET ${sets.join(", ")} WHERE id = ?`).run(...params);
@@ -993,6 +1007,13 @@ export class SupervisorDb {
   }
 
   deleteModel(providerId: number, modelId: string): void {
+    const agents = this.db
+      .prepare("SELECT name FROM agents WHERE provider_id = ? AND model_id = ?")
+      .all(providerId, modelId) as Array<{ name: string }>;
+    if (agents.length > 0) {
+      const names = agents.map((agent) => agent.name).join(", ");
+      throw new Error(`Model "${modelId}" is in use by agent(s): ${names}`);
+    }
     this.db
       .prepare("DELETE FROM models WHERE provider_id = ? AND model_id = ?")
       .run(providerId, modelId);

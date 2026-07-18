@@ -37,7 +37,9 @@ export function createMockAgent(overrides: Partial<Agent> = {}): Agent {
     id: `agent-${Date.now()}`,
     name: "Test Agent",
     description: null,
+    icon: null,
     providerId: "test-provider",
+    backendType: "native",
     modelId: null,
     toolsPreset: "coding",
     homeDir: null,
@@ -69,6 +71,7 @@ export function createMockResourceLayer(overrides: Partial<ResourceLayer> = {}):
     skills: [],
     prompts: [],
     extensions: [],
+    mcp: [],
     ...overrides,
   };
 }

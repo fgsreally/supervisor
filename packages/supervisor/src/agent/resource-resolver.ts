@@ -12,6 +12,7 @@ import { createDefaultTools } from "../utils/default-tools.js";
 import { loadPromptTemplates, type PromptTemplate } from "./prompt-templates.js";
 import { loadSkills, type Skill } from "./skills.js";
 import type { Agent, ToolsPreset } from "../types.js";
+import type { Resource } from "../resources/types.js";
 
 interface ProbedTool {
   name: string;
@@ -192,10 +193,36 @@ export interface ExtensionFileInfo {
   content: string;
 }
 
+export interface McpResourceInfo {
+  id: string;
+  name: string;
+  description: string;
+  filePath: string;
+  content: string;
+}
+
 export interface ResourceLayer {
   skills: SkillInfo[];
   prompts: PromptTemplateInfo[];
   extensions: ExtensionResourceInfo[];
+  mcp: McpResourceInfo[];
+}
+
+export function mcpResourcesToInfo(resources: Resource[]): McpResourceInfo[] {
+  return resources.flatMap((resource) => {
+    if (resource.kind !== "mcp" || !resource.sourcePath || !existsSync(resource.sourcePath)) {
+      return [];
+    }
+    return [
+      {
+        id: resource.slug,
+        name: resource.name ?? resource.slug,
+        description: resource.description ?? "MCP server configuration",
+        filePath: resource.sourcePath,
+        content: readFileSync(resource.sourcePath, "utf-8"),
+      },
+    ];
+  });
 }
 
 export interface AgentToolInfo {
@@ -451,6 +478,9 @@ export async function resolveAgentResources(
       return info ? extensionEntryInfoToResourceInfo(info) : null;
     })
     .filter((e): e is ExtensionResourceInfo => e !== null);
+  const agentMcp = mcpResourcesToInfo(
+    bindings.flatMap((binding) => (binding.resource?.kind === "mcp" ? [binding.resource] : [])),
+  );
 
   const tools = await resolveAgentTools(db, agentId, cwd, extensionRegistry);
 
@@ -465,6 +495,7 @@ export async function resolveAgentResources(
         skills: agentSkills,
         prompts: agentPrompts,
         extensions: agentExtensions,
+        mcp: agentMcp,
       },
     },
   };

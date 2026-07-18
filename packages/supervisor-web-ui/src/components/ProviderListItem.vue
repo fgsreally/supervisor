@@ -1,7 +1,10 @@
 <template>
   <div
     class="provider-list-item cursor-pointer flex items-center gap-3 px-4 py-3 transition-colors relative"
-    :class="{ 'provider-list-item--active': active }"
+    :class="{
+      'provider-list-item--active': active,
+      'provider-list-item--disabled': !provider.isEnabled,
+    }"
     @click="$emit('select', provider.id)"
     @contextmenu.prevent="$emit('contextmenu', $event)"
   >
@@ -17,17 +20,10 @@
         <span class="text-[13px] font-medium truncate provider-list-item__name">{{
           provider.name
         }}</span>
-        <span
-          class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium provider-list-item__badge"
-          :class="
-            provider.isEnabled ? 'provider-list-item__badge--on' : 'provider-list-item__badge--off'
-          "
-        >
-          {{ provider.isEnabled ? "enabled" : "disabled" }}
-        </span>
+        <span v-if="!provider.isEnabled" class="provider-list-item__disabled-badge">已禁用</span>
       </div>
       <div class="text-[11px] truncate mt-0.5 provider-list-item__meta">
-        {{ provider.models.length }} models
+        {{ provider.models.length }} 个模型
       </div>
     </div>
   </div>
@@ -62,23 +58,22 @@ defineEmits<{ select: [id: string]; contextmenu: [event: MouseEvent] }>();
   color: var(--app-text-secondary);
 }
 
-.provider-list-item__badge--on {
-  background: color-mix(in srgb, var(--app-accent) 18%, transparent);
-  color: var(--app-accent);
+.provider-list-item--disabled .provider-avatar {
+  filter: grayscale(1);
+  opacity: 0.62;
 }
 
-.provider-list-item__badge--off {
-  background: color-mix(in srgb, var(--app-hover) 80%, transparent);
+.provider-list-item__disabled-badge {
+  flex: none;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--app-hover);
   color: var(--app-text-secondary);
+  font-size: 10px;
 }
 
 .provider-list-item--active .provider-list-item__name,
-.provider-list-item--active .provider-list-item__meta,
-.provider-list-item--active .provider-list-item__badge {
+.provider-list-item--active .provider-list-item__meta {
   color: var(--app-list-item-active-text);
-}
-
-.provider-list-item--active .provider-list-item__badge {
-  background: color-mix(in srgb, var(--app-list-item-active-text) 18%, transparent);
 }
 </style>

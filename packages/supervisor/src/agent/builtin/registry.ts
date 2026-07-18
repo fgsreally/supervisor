@@ -38,7 +38,14 @@ const PACKAGED_AGENT_LABELS: Record<
 export interface AgentMetaRecord {
   builtin?: boolean;
   packagedKind?: PackagedAgentKind;
+  externalKind?: "codex" | "claude" | "kimi";
   userSpawnable?: boolean;
+  external?: {
+    command: string;
+    args?: string[];
+    env?: Record<string, string>;
+    permissionPolicy?: "allow_once" | "reject_once";
+  };
 }
 
 export function parseAgentMeta(agent: Pick<Agent, "meta"> | undefined): AgentMetaRecord {
@@ -116,8 +123,58 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
   return agent.id;
 }
 
-/** Ensure shipped packaged agents (shadow + intro) exist in the database. */
+function ensureExternalAgent(
+  db: SupervisorDb,
+  spec: {
+    kind: "codex" | "claude" | "kimi";
+    name: string;
+    description: string;
+    command: string;
+    args?: string[];
+    icon: string;
+  },
+): void {
+  if (db.listAgents().some((agent) => parseAgentMeta(agent).externalKind === spec.kind)) return;
+  db.insertAgent({
+    name: spec.name,
+    description: spec.description,
+    icon: spec.icon,
+    provider_id: null,
+    backend_type: spec.kind,
+    tools_preset: "coding",
+    meta: {
+      builtin: true,
+      externalKind: spec.kind,
+      userSpawnable: true,
+      external: { command: spec.command, args: spec.args },
+    },
+  });
+}
+
+/** Ensure shipped native and external agents exist in the database. */
 export function ensurePackagedAgents(db: SupervisorDb): void {
+  ensureExternalAgent(db, {
+    kind: "codex",
+    name: "Codex",
+    description: "OpenAI Codex CLI connected through app-server",
+    command: "codex",
+    icon: "/icons/openai.svg",
+  });
+  ensureExternalAgent(db, {
+    kind: "claude",
+    name: "Claude Code",
+    description: "Claude Code CLI connected through stream-json",
+    command: "claude",
+    icon: "/icons/anthropic.svg",
+  });
+  ensureExternalAgent(db, {
+    kind: "kimi",
+    name: "Kimi Code",
+    description: "Kimi Code CLI connected through Agent Client Protocol",
+    command: "kimi",
+    args: ["acp"],
+    icon: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
+  });
   for (const kind of PACKAGED_AGENT_KINDS) {
     const id = ensurePackagedAgent(db, kind);
     if (id === undefined) {

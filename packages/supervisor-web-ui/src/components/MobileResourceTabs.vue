@@ -122,6 +122,7 @@ const tabs = [
   { id: "skills" as const, label: "Skills" },
   { id: "extensions" as const, label: "Ext" },
   { id: "prompts" as const, label: "Templates" },
+  { id: "mcp" as const, label: "MCP" },
 ];
 
 const linked = computed(() =>

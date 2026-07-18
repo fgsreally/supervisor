@@ -105,6 +105,26 @@ describe("supervisor: SessionManager", () => {
     expect(MockAgentHarness.instances[0]!.agent.prompt).toHaveBeenCalledWith("hello");
   });
 
+  it("prompt() rejects sessions bound to a disabled model provider", async () => {
+    const providerId = db.insertProvider({
+      slug: "disabled-provider",
+      name: "Disabled Provider",
+      api_type: "openai-compatible",
+      is_enabled: 0,
+    });
+    const agent = db.insertAgent({
+      name: "disabled provider agent",
+      provider_id: providerId,
+      model_id: "test-model",
+    });
+    const inst = manager.create({ cwd: "/proj", agentId: agent.id });
+
+    await expect(manager.prompt(inst.id, "hello")).rejects.toThrow(
+      'Model provider "Disabled Provider" is disabled',
+    );
+    expect(MockAgentHarness.instances).toHaveLength(0);
+  });
+
   it("headless controls delegate to the runtime harness", async () => {
     const inst = await manager.spawn(SPAWN_OPTS);
     manager.steer(inst.id, "change direction");

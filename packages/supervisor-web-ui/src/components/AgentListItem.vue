@@ -4,12 +4,12 @@
     :class="{ 'agent-list-item--active': active }"
     @click="$emit('select', agent.id)"
   >
-    <div
-      class="w-10 h-10 rounded-md flex items-center justify-center text-white font-semibold text-base shrink-0 shadow-sm"
-      :class="avatarClass"
-    >
-      {{ agent.name.substring(0, 1).toUpperCase() }}
-    </div>
+    <AgentAvatar
+      :agent-id="agent.id"
+      :agent-name="agent.name"
+      :icon="agent.icon"
+      class="w-10 h-10 text-base"
+    />
 
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-2">
@@ -30,8 +30,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useAgentStore } from "@/store";
-import { agentAvatarClass } from "../utils/avatar-class";
 import type { Agent } from "@/api";
+import AgentAvatar from "./AgentAvatar.vue";
 
 const props = defineProps<{
   agent: Agent;
@@ -39,8 +39,6 @@ const props = defineProps<{
 }>();
 
 defineEmits<{ select: [id: string] }>();
-
-const avatarClass = computed(() => agentAvatarClass(props.agent.id));
 
 const presetLabel = computed(() => {
   switch (props.agent.toolsPreset) {

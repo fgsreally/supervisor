@@ -21,6 +21,7 @@ import type { SessionManager } from "./session-manager.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
 import { Context } from "../extension/runtime/index.js";
 import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
+import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
 
 interface HarnessSessionTree {
   buildContext(): Promise<{ messages: AgentMessage[] }>;
@@ -68,7 +69,7 @@ export interface SessionRuntimeOptions {
 export type SessionEvent = AgentHarnessEvent;
 export type SessionEventListener = (event: SessionEvent) => void | Promise<void>;
 
-export class SessionRuntime {
+export class SessionRuntime implements ManagedSessionRuntime {
   readonly id: number;
   readonly harness: AgentHarness;
   /** 与当前运行中 Agent 唯一绑定的非扩展资源管理器。 */

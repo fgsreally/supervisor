@@ -142,6 +142,7 @@ async function run() {
   switch (command) {
     case "serve": {
       const port = Number(values.port);
+      process.env.PI_SUPERVISOR_URL = `http://127.0.0.1:${port}`;
       const workspaceCwd = getDefaultCwd();
       manager.createProject({ cwd: workspaceCwd });
       ensureBuiltinAssistant(db, manager);

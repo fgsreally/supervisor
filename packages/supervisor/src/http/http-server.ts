@@ -72,10 +72,14 @@ function parseIntegerId(value: string): number | null {
 function getAgentMutationError(
   manager: SessionManager,
   agentId: number,
+  options?: { allowExternalBuiltinConfig?: boolean },
 ): { status: 403 | 404; message: string } | null {
   const agent = manager.getAgent(agentId);
   if (!agent) return { status: 404, message: "agent not found" };
-  if (isBuiltinAgent(agent)) {
+  if (
+    isBuiltinAgent(agent) &&
+    !(options?.allowExternalBuiltinConfig && agent.backendType !== "native")
+  ) {
     return { status: 403, message: "built-in agents cannot be modified through HTTP" };
   }
   return null;
@@ -163,8 +167,21 @@ export function createHttpServer(manager: SessionManager): Hono {
       if (!body.name || typeof body.name !== "string") {
         return jsonError(c, 400, "name is required");
       }
-      if (typeof body.providerId !== "number") {
+      const backendType =
+        body.backendType === "codex" ||
+        body.backendType === "claude" ||
+        body.backendType === "kimi" ||
+        body.backendType === "acp"
+          ? body.backendType
+          : "native";
+      if (backendType === "native" && typeof body.providerId !== "number") {
         return jsonError(c, 400, "providerId is required");
+      }
+      if (
+        backendType === "acp" &&
+        (!body.meta?.external || typeof body.meta.external.command !== "string")
+      ) {
+        return jsonError(c, 400, "meta.external.command is required for ACP agents");
       }
       if (hasReservedAgentMeta(body.meta)) {
         return jsonError(c, 400, "builtin and userSpawnable are reserved Agent metadata");
@@ -173,7 +190,9 @@ export function createHttpServer(manager: SessionManager): Hono {
         {
           name: body.name,
           description: body.description,
-          provider_id: body.providerId,
+          icon: body.icon,
+          provider_id: backendType === "native" ? body.providerId : null,
+          backend_type: backendType,
           model_id: body.modelId,
           tools_preset: body.toolsPreset,
           home_dir: body.homeDir,
@@ -194,19 +213,26 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid agent id");
-      const mutationError = getAgentMutationError(manager, id);
+      const mutationError = getAgentMutationError(manager, id, {
+        allowExternalBuiltinConfig: true,
+      });
       if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
       if (hasReservedAgentMeta(body.meta)) {
         return jsonError(c, 400, "builtin and userSpawnable are reserved Agent metadata");
       }
+      const current = manager.getAgent(id);
       const agent = manager.updateAgent(id, {
         name: body.name,
         description: body.description,
+        icon: body.icon,
         provider_id: body.providerId,
         model_id: body.modelId,
         tools_preset: body.toolsPreset,
         home_dir: body.homeDir,
-        meta: body.meta,
+        meta:
+          body.meta && current
+            ? { ...current.meta, ...(body.meta as Record<string, unknown>) }
+            : undefined,
       });
       return c.json(agent);
     } catch (e: unknown) {
@@ -401,11 +427,15 @@ export function createHttpServer(manager: SessionManager): Hono {
       manager.deleteModel(providerId, modelId);
       return c.json({ ok: true });
     } catch (e) {
-      return jsonError(c, 404, e instanceof Error ? e.message : "model not found");
+      const message = e instanceof Error ? e.message : "model not found";
+      if (message.includes("is in use by agent")) {
+        return jsonError(c, 409, message);
+      }
+      return jsonError(c, 404, message);
     }
   });
 
-  // PATCH /providers/:id — supports { isEnabled, name, apiType, baseUrl }
+  // PATCH /providers/:id — supports provider configuration updates.
   app.patch("/providers/:id", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const id = parseInt(c.req.param("id"), 10);
@@ -419,6 +449,7 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (typeof body.apiType === "string") patch.api_type = body.apiType;
     if (typeof body.baseUrl === "string" || body.baseUrl === null) patch.base_url = body.baseUrl;
     if (typeof body.icon === "string" || body.icon === null) patch.icon = body.icon;
+    if (typeof body.apiKey === "string" || body.apiKey === null) patch.api_key = body.apiKey;
 
     manager.updateProvider(id, patch);
     const updated = manager.getProvider(id);
@@ -1241,6 +1272,48 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
+  // POST /sessions/:id/external-interactions/:interactionId/respond
+  app.post("/sessions/:id/external-interactions/:interactionId/respond", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const action = body.action;
+    if (!["approve", "approve_session", "deny", "cancel", "answer"].includes(action)) {
+      return jsonError(c, 400, "invalid interaction action");
+    }
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const ok = manager.submitExternalInteraction(id, c.req.param("interactionId"), {
+      action,
+      answers: body.answers,
+      optionId: body.optionId,
+    });
+    if (!ok) return jsonError(c, 404, "No pending external interaction for this id");
+    return c.json({ ok: true });
+  });
+
+  // Internal callback used by external CLI permission bridges.
+  app.post("/sessions/:id/external-interactions/request", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const body = await c.req.json().catch(() => ({}));
+    if (body.kind !== "approval" && body.kind !== "question") {
+      return jsonError(c, 400, "invalid interaction kind");
+    }
+    try {
+      const response = await manager.requestExternalInteraction(id, {
+        backend: typeof body.backend === "string" ? body.backend : "external",
+        kind: body.kind,
+        title: typeof body.title === "string" ? body.title : "外部 Agent 请求交互",
+        detail: typeof body.detail === "string" ? body.detail : undefined,
+        request: body.request,
+        questions: Array.isArray(body.questions) ? body.questions : undefined,
+        options: Array.isArray(body.options) ? body.options : undefined,
+      });
+      return c.json(response);
+    } catch (error) {
+      return jsonError(c, 409, error instanceof Error ? error.message : String(error));
+    }
+  });
+
   // GET /resources/global — global catalog (~/.pi/supervisor/global/)
   app.get("/resources/global", (c) => {
     try {
@@ -1424,6 +1497,31 @@ export function createHttpServer(manager: SessionManager): Hono {
   });
 
   // POST /upload/icons — upload provider icon
+  app.get("/uploaded-icons/:filename", async (c) => {
+    const filename = c.req.param("filename");
+    const match = filename.match(/^[0-9a-f-]+\.(png|jpe?g|webp|gif|svg)$/i);
+    if (!match) return jsonError(c, 404, "icon not found");
+    try {
+      const content = await readFile(join(getSupervisorAgentsRoot(), "icons", filename));
+      const contentTypes: Record<string, string> = {
+        png: "image/png",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        webp: "image/webp",
+        gif: "image/gif",
+        svg: "image/svg+xml",
+      };
+      return new Response(content, {
+        headers: {
+          "Content-Type": contentTypes[match[1].toLowerCase()] ?? "application/octet-stream",
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    } catch {
+      return jsonError(c, 404, "icon not found");
+    }
+  });
+
   app.post("/upload/icons", async (c) => {
     try {
       const body = await c.req.formData();
@@ -1432,11 +1530,21 @@ export function createHttpServer(manager: SessionManager): Hono {
         return jsonError(c, 400, "file is required");
       }
 
+      const allowedTypes: Record<string, string> = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/webp": "webp",
+        "image/gif": "gif",
+        "image/svg+xml": "svg",
+      };
+      const ext = allowedTypes[file.type];
+      if (!ext) return jsonError(c, 400, "unsupported image type");
+      if (file.size > 2 * 1024 * 1024) return jsonError(c, 400, "icon must not exceed 2 MB");
+
       const agentHome = getSupervisorAgentsRoot();
       const iconsDir = join(agentHome, "icons");
       mkdirSync(iconsDir, { recursive: true });
 
-      const ext = file.name.split(".").pop() || "png";
       const filename = `${randomUUID()}.${ext}`;
       const filepath = join(iconsDir, filename);
 
@@ -1444,7 +1552,7 @@ export function createHttpServer(manager: SessionManager): Hono {
       const buffer = Buffer.from(arrayBuffer);
       writeFileSync(filepath, buffer);
 
-      return c.json({ path: `/icons/${filename}` });
+      return c.json({ path: `/uploaded-icons/${filename}` });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 500, message);

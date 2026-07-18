@@ -66,7 +66,9 @@ export interface Agent {
   id: string;
   name: string;
   description: string | null;
-  providerId: string;
+  icon: string | null;
+  providerId: string | null;
+  backendType: "native" | "codex" | "claude" | "kimi" | "acp";
   modelId: string | null;
   toolsPreset: ToolsPreset | null;
   homeDir: string | null;
@@ -107,7 +109,7 @@ export interface Provider {
 
 // ============ Resource Types ============
 
-export type ResourceKind = "skills" | "extensions" | "prompts";
+export type ResourceKind = "skills" | "extensions" | "prompts" | "mcp";
 
 export interface SkillInfo {
   name: string;
@@ -139,10 +141,19 @@ export interface ExtensionFileInfo {
   content: string;
 }
 
+export interface McpResourceInfo {
+  id: string;
+  name: string;
+  description: string;
+  filePath: string;
+  content: string;
+}
+
 export interface ResourceLayer {
   skills: SkillInfo[];
   prompts: PromptTemplateInfo[];
   extensions: ExtensionResourceInfo[];
+  mcp: McpResourceInfo[];
 }
 
 export interface AgentResources {
@@ -307,7 +318,9 @@ export interface CreateAgentRequest {
   id?: string;
   name: string;
   description?: string;
-  providerId: string;
+  icon?: string | null;
+  backendType?: "native" | "codex" | "claude" | "kimi" | "acp";
+  providerId?: string;
   modelId?: string;
   toolsPreset?: ToolsPreset;
   homeDir?: string;
@@ -319,7 +332,9 @@ export interface CreateAgentRequest {
 export interface UpdateAgentRequest {
   name?: string;
   description?: string;
-  providerId?: string;
+  icon?: string | null;
+  backendType?: "native" | "codex" | "claude" | "kimi" | "acp";
+  providerId?: string | null;
   modelId?: string;
   toolsPreset?: ToolsPreset;
   homeDir?: string;
@@ -350,6 +365,7 @@ export interface UpdateProviderRequest {
   apiType?: string;
   baseUrl?: string | null;
   icon?: string | null;
+  apiKey?: string | null;
 }
 
 export interface CreateProviderRequest {
@@ -494,6 +510,13 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(`HTTP ${res.status}: ${err}`);
   }
   return res.json() as Promise<T>;
+}
+
+/** Upload an avatar image and return its public path. */
+export async function uploadIcon(file: File): Promise<{ path: string }> {
+  const body = new FormData();
+  body.append("file", file);
+  return fetchJson<{ path: string }>("/upload/icons", { method: "POST", body });
 }
 
 async function postJson<T>(path: string, body: unknown): Promise<T> {
@@ -737,6 +760,23 @@ export async function submitAskAnswer(
   return postJson<{ ok: boolean }>(`/sessions/${sessionId}/ask-answer`, { toolCallId, answers });
 }
 
+export interface ExternalInteractionResponse {
+  action: "approve" | "approve_session" | "deny" | "cancel" | "answer";
+  answers?: Record<string, string[]>;
+  optionId?: string;
+}
+
+export function respondToExternalInteraction(
+  sessionId: string,
+  interactionId: string,
+  response: ExternalInteractionResponse,
+): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(
+    `/sessions/${sessionId}/external-interactions/${encodeURIComponent(interactionId)}/respond`,
+    response,
+  );
+}
+
 /** Compact the session context with optional custom instructions. */
 export async function compactSession(
   id: string,
@@ -886,27 +926,44 @@ export function subscribeSessionEvents(
 
 // ============ Agent API ============
 
+type RawAgent = Omit<Agent, "id" | "providerId"> & {
+  id: number | string;
+  providerId: number | string | null;
+};
+
+function mapAgent(agent: RawAgent): Agent {
+  return {
+    ...agent,
+    id: String(agent.id),
+    providerId: agent.providerId == null ? null : String(agent.providerId),
+  };
+}
+
 /** List all agents. */
 export async function listAgents(): Promise<Agent[]> {
-  return fetchJson<Agent[]>("/agents");
+  return (await fetchJson<RawAgent[]>("/agents")).map(mapAgent);
 }
 
 /** Get a single agent by ID. */
 export async function getAgent(id: string): Promise<Agent> {
-  return fetchJson<Agent>(`/agents/${id}`);
+  return mapAgent(await fetchJson<RawAgent>(`/agents/${id}`));
 }
 
 /** Create a new agent. */
 export async function createAgent(options: CreateAgentRequest): Promise<Agent> {
-  const providerId = Number.parseInt(options.providerId, 10);
-  return postJson<Agent>("/agents", { ...options, providerId });
+  const providerId = options.providerId ? Number.parseInt(options.providerId, 10) : null;
+  return mapAgent(await postJson<RawAgent>("/agents", { ...options, providerId }));
 }
 
 /** Update an agent. */
 export async function updateAgent(id: string, patch: UpdateAgentRequest): Promise<Agent> {
   const providerId =
-    patch.providerId === undefined ? undefined : Number.parseInt(String(patch.providerId), 10);
-  return patchJson<Agent>(`/agents/${id}`, { ...patch, providerId });
+    patch.providerId === undefined
+      ? undefined
+      : patch.providerId === null
+        ? null
+        : Number.parseInt(String(patch.providerId), 10);
+  return mapAgent(await patchJson<RawAgent>(`/agents/${id}`, { ...patch, providerId }));
 }
 
 /** Delete an agent. */

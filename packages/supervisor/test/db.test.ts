@@ -145,6 +145,18 @@ describe("supervisor: SupervisorDb", () => {
     expect(merged).toEqual({ key: "value" });
   });
 
+  it("stores ACP agents without a provider", () => {
+    const agent = db.insertAgent({
+      name: "External",
+      backend_type: "acp",
+      provider_id: null,
+      meta: { external: { command: "example", args: ["acp"] } },
+    });
+    expect(agent.backendType).toBe("acp");
+    expect(agent.providerId).toBeNull();
+    expect(agent.homeDir).toBeNull();
+  });
+
   it("stores model context window and multimodal flags", () => {
     const providerId = db.insertProvider({
       slug: "openai",
@@ -159,5 +171,24 @@ describe("supervisor: SupervisorDb", () => {
     });
     expect(model.contextWindow).toBe(200000);
     expect(model.supportsMultimodal).toBe(true);
+  });
+
+  it("refuses to delete a model that is bound to an agent", () => {
+    const providerId = db.insertProvider({
+      slug: "anthropic",
+      name: "Anthropic",
+      api_type: "anthropic-messages",
+    });
+    db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6" });
+    db.insertAgent({
+      name: "Coding Agent",
+      provider_id: providerId,
+      model_id: "claude-sonnet-4-6",
+    });
+
+    expect(() => db.deleteModel(providerId, "claude-sonnet-4-6")).toThrow(
+      'Model "claude-sonnet-4-6" is in use by agent(s): Coding Agent',
+    );
+    expect(db.listModelsByProvider(providerId)).toHaveLength(1);
   });
 });

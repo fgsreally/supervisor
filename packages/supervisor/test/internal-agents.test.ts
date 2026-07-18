@@ -36,6 +36,30 @@ function configureModel(): void {
 }
 
 describe("packaged agents", () => {
+  it("registers Codex, Claude Code, and Kimi Code without requiring a provider", () => {
+    ensurePackagedAgents(db);
+    const external = db.listAgents().filter((agent) => agent.backendType !== "native");
+    expect(external).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Codex", backendType: "codex", providerId: null }),
+        expect.objectContaining({
+          name: "Claude Code",
+          backendType: "claude",
+          providerId: null,
+        }),
+        expect.objectContaining({
+          name: "Kimi Code",
+          backendType: "kimi",
+          providerId: null,
+          icon: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
+          meta: expect.objectContaining({
+            external: expect.objectContaining({ command: "kimi", args: ["acp"] }),
+          }),
+        }),
+      ]),
+    );
+  });
+
   it("loads packaged prompt.md files", () => {
     expect(loadPackagedAgentPrompt("shadow")).toContain("影子代理");
     expect(loadPackagedAgentPrompt("intro")).toContain("Intro");

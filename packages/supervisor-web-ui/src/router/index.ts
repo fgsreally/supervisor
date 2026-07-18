@@ -21,12 +21,22 @@ export function idFromRoute(route: RouteLocationNormalized): string | undefined 
   return parts[1] || undefined;
 }
 
+export function modelIdFromRoute(route: RouteLocationNormalized): string | undefined {
+  const value = route.params.modelId;
+  return typeof value === "string" ? value : undefined;
+}
+
 const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", redirect: "/chat" },
     { path: "/chat/:sessionId?", name: "chat", component: { template: "<div />" } },
     { path: "/contacts/:agentId?", name: "contacts", component: { template: "<div />" } },
+    {
+      path: "/providers/:providerId/models/:modelId",
+      name: "provider-model",
+      component: { template: "<div />" },
+    },
     { path: "/providers/:providerId?", name: "providers", component: { template: "<div />" } },
     { path: "/resources/:resourceId?", name: "resources", component: { template: "<div />" } },
     { path: "/settings", name: "settings", component: { template: "<div />" } },

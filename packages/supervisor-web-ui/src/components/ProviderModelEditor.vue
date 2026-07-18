@@ -1,17 +1,21 @@
 <template>
   <div
     v-if="open"
-    class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/30 p-0 sm:p-4"
+    class="provider-model-editor fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
     @click.self="emit('cancel')"
   >
-    <div class="w-full sm:max-w-lg bg-white rounded-t-xl sm:rounded-xl shadow-xl overflow-hidden">
-      <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <div class="text-[16px] font-medium text-gray-900">
+    <div
+      class="provider-model-editor__dialog w-full sm:max-w-lg rounded-t-lg sm:rounded-lg shadow-xl overflow-hidden"
+    >
+      <div
+        class="provider-model-editor__header px-5 py-4 border-b flex items-center justify-between"
+      >
+        <div class="provider-model-editor__title text-[16px] font-medium">
           {{ mode === "create" ? "添加模型" : "编辑模型" }}
         </div>
         <button
           type="button"
-          class="p-1 rounded-md text-gray-500 hover:bg-gray-100"
+          class="provider-model-editor__close p-1 rounded-md"
           @click="emit('cancel')"
         >
           <X class="w-5 h-5" />
@@ -20,57 +24,57 @@
 
       <div class="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
         <label class="block text-[13px]">
-          <span class="text-gray-500 mb-1 block">Model ID</span>
+          <span class="provider-model-editor__muted mb-1 block">Model ID</span>
           <input
             v-model="draft.id"
             type="text"
             :disabled="mode === 'edit'"
             placeholder="例如 gpt-4o"
-            class="w-full px-3 py-2 border border-gray-200 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-[#07c160]/50 disabled:bg-gray-50 disabled:text-gray-500"
+            class="provider-model-editor__input w-full px-3 py-2 border rounded-md font-mono focus:outline-none"
           />
         </label>
 
         <label class="block text-[13px]">
-          <span class="text-gray-500 mb-1 block">显示名称</span>
+          <span class="provider-model-editor__muted mb-1 block">显示名称</span>
           <input
             v-model="draft.name"
             type="text"
             placeholder="可选，默认同 Model ID"
-            class="w-full px-3 py-2 border border-gray-200 rounded-md focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
+            class="provider-model-editor__input w-full px-3 py-2 border rounded-md focus:outline-none"
           />
         </label>
 
         <div class="grid grid-cols-2 gap-3">
           <label class="block text-[13px]">
-            <span class="text-gray-500 mb-1 block">上下文上限 (tokens)</span>
+            <span class="provider-model-editor__muted mb-1 block">上下文上限 (tokens)</span>
             <input
               v-model.number="draft.contextWindow"
               type="number"
               min="1"
               step="1000"
-              class="w-full px-3 py-2 border border-gray-200 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
+              class="provider-model-editor__input w-full px-3 py-2 border rounded-md font-mono focus:outline-none"
             />
-            <span class="text-[11px] text-gray-400 mt-1 block"
+            <span class="provider-model-editor__muted text-[11px] mt-1 block"
               >≈ {{ formatTokenCount(draft.contextWindow) }}</span
             >
           </label>
           <label class="block text-[13px]">
-            <span class="text-gray-500 mb-1 block">最大输出 (tokens)</span>
+            <span class="provider-model-editor__muted mb-1 block">最大输出 (tokens)</span>
             <input
               v-model.number="draft.maxTokens"
               type="number"
               min="1"
               step="256"
-              class="w-full px-3 py-2 border border-gray-200 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
+              class="provider-model-editor__input w-full px-3 py-2 border rounded-md font-mono focus:outline-none"
             />
-            <span class="text-[11px] text-gray-400 mt-1 block"
+            <span class="provider-model-editor__muted text-[11px] mt-1 block"
               >≈ {{ formatTokenCount(draft.maxTokens) }}</span
             >
           </label>
         </div>
 
         <label
-          class="flex items-center gap-3 px-3 py-3 rounded-lg border border-gray-200 cursor-pointer hover:bg-gray-50"
+          class="provider-model-editor__option flex items-center gap-3 px-3 py-3 rounded-md border cursor-pointer"
         >
           <input
             v-model="draft.supportsMultimodal"
@@ -79,26 +83,26 @@
           />
           <ModelMultimodalIcon :supports-multimodal="draft.supportsMultimodal" />
           <div>
-            <div class="text-[13px] text-gray-900">支持图像输入</div>
-            <div class="text-[11px] text-gray-500">对应 pi Model.input 含 image</div>
+            <div class="provider-model-editor__title text-[13px]">支持图像输入</div>
+            <div class="provider-model-editor__muted text-[11px]">对应 pi Model.input 含 image</div>
           </div>
         </label>
 
         <label class="block text-[13px]">
-          <span class="text-gray-500 mb-1 block">标签（逗号分隔）</span>
+          <span class="provider-model-editor__muted mb-1 block">标签（逗号分隔）</span>
           <input
             v-model="tagsInput"
             type="text"
             placeholder="例如 summary,review,commit-message"
-            class="w-full px-3 py-2 border border-gray-200 rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
+            class="provider-model-editor__input w-full px-3 py-2 border rounded-md font-mono focus:outline-none"
           />
         </label>
       </div>
 
-      <div class="px-5 py-4 border-t border-gray-100 flex justify-end gap-2">
+      <div class="provider-model-editor__footer px-5 py-4 border-t flex justify-end gap-2">
         <button
           type="button"
-          class="px-4 py-2 text-[13px] rounded-md border border-gray-200 text-gray-700 hover:bg-gray-50"
+          class="provider-model-editor__cancel px-4 py-2 text-[13px] rounded-md border"
           @click="emit('cancel')"
         >
           取消
@@ -179,3 +183,57 @@ function save() {
   });
 }
 </script>
+
+<style scoped>
+.provider-model-editor {
+  background: rgb(0 0 0 / 42%);
+}
+
+.provider-model-editor__dialog {
+  background: var(--app-settings-card);
+  color: var(--app-text-primary);
+}
+
+.provider-model-editor__header,
+.provider-model-editor__footer,
+.provider-model-editor__option,
+.provider-model-editor__input {
+  border-color: var(--app-border);
+}
+
+.provider-model-editor__title {
+  color: var(--app-text-primary);
+}
+
+.provider-model-editor__muted,
+.provider-model-editor__close {
+  color: var(--app-text-secondary);
+}
+
+.provider-model-editor__close:hover,
+.provider-model-editor__option:hover,
+.provider-model-editor__cancel:hover {
+  background: var(--app-hover);
+  color: var(--app-text-primary);
+}
+
+.provider-model-editor__input {
+  background: var(--app-settings-card);
+  color: var(--app-text-primary);
+}
+
+.provider-model-editor__input:focus {
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-accent) 35%, transparent);
+}
+
+.provider-model-editor__input:disabled {
+  background: var(--app-hover);
+  color: var(--app-text-secondary);
+}
+
+.provider-model-editor__cancel {
+  border-color: var(--app-border);
+  color: var(--app-text-secondary);
+}
+</style>

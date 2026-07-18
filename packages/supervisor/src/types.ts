@@ -110,11 +110,16 @@ export interface SpawnSessionOptions extends CreateSessionOptions {
 }
 
 // ============ Agent Types ============
+export const AGENT_BACKEND_TYPES = ["native", "codex", "claude", "kimi", "acp"] as const;
+export type AgentBackendType = (typeof AGENT_BACKEND_TYPES)[number];
+
 export interface AgentRow {
   id: number;
   name: string;
   description: string | null;
-  provider_id: number;
+  icon: string | null;
+  provider_id: number | null;
+  backend_type: AgentBackendType;
   model_id: string | null;
   tools_preset: string | null;
   home_dir: string | null;
@@ -128,7 +133,9 @@ export interface Agent {
   id: number;
   name: string;
   description: string | null;
-  providerId: number;
+  icon: string | null;
+  providerId: number | null;
+  backendType: AgentBackendType;
   modelId: string | null;
   toolsPreset: ToolsPreset | null;
   homeDir: string | null;

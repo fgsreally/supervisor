@@ -1,7 +1,10 @@
 <template>
   <span
     class="provider-avatar inline-flex items-center justify-center rounded-md shrink-0 shadow-sm"
-    :class="resolvedIcon ? 'provider-avatar--icon' : fallbackClass"
+    :class="[
+      resolvedIcon ? 'provider-avatar--icon' : fallbackClass,
+      { 'provider-avatar--monochrome': isMonochrome },
+    ]"
   >
     <img v-if="isImageUrl" :src="resolvedIcon!" alt="" class="provider-avatar__img" />
     <Icon v-else-if="resolvedIcon" :icon="resolvedIcon" class="provider-avatar__icon" />
@@ -24,10 +27,21 @@ const props = defineProps<{
 const resolvedIcon = computed(() =>
   resolveProviderIcon(props.providerId, props.providerName, props.icon ?? null),
 );
+const isMonochrome = computed(() =>
+  ["/icons/openai.svg", "/icons/groq.svg", "/icons/moonshot.svg"].includes(
+    resolvedIcon.value ?? "",
+  ),
+);
 const isImageUrl = computed(() => {
   const icon = resolvedIcon.value;
   if (!icon) return false;
-  return icon.startsWith("http://") || icon.startsWith("https://") || icon.startsWith("data:");
+  return (
+    icon.startsWith("http://") ||
+    icon.startsWith("https://") ||
+    icon.startsWith("data:") ||
+    icon.startsWith("/") ||
+    icon.startsWith("./")
+  );
 });
 const initial = computed(() => props.providerName.trim().slice(0, 1).toUpperCase() || "?");
 const fallbackClass = computed(() => providerAvatarClass(props.providerId));
@@ -45,6 +59,10 @@ const fallbackClass = computed(() => providerAvatarClass(props.providerId));
   height: 18px;
   object-fit: contain;
   border-radius: 4px;
+}
+
+.provider-avatar--monochrome .provider-avatar__img {
+  filter: var(--app-monochrome-icon-filter);
 }
 
 .provider-avatar__icon {

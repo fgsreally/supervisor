@@ -12,10 +12,7 @@
       class="px-4 py-3 border-b"
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
-      <div class="text-[17px] font-medium mb-1" style="color: var(--app-text-primary)">资源</div>
-      <p class="text-[12px] mb-3" style="color: var(--app-text-secondary)">
-        ~/.pi/supervisor/global/
-      </p>
+      <div class="text-[17px] font-medium mb-3" style="color: var(--app-text-primary)">资源</div>
       <div class="flex gap-1">
         <button
           v-for="k in kinds"
@@ -73,6 +70,7 @@ const kinds = [
   { id: "skills" as const, label: "Skills" },
   { id: "extensions" as const, label: "Ext" },
   { id: "prompts" as const, label: "Prompt" },
+  { id: "mcp" as const, label: "MCP" },
 ];
 
 const filteredItems = computed(() => getResourcesByKind(resourceStore.resourceItems, kind.value));
@@ -111,6 +109,6 @@ const filteredItems = computed(() => getResourcesByKind(resourceStore.resourceIt
 }
 
 .resources-item--active .resources-item__desc {
-  color: #b7e9d3;
+  color: var(--app-list-item-active-secondary);
 }
 </style>

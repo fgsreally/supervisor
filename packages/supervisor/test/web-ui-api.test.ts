@@ -92,6 +92,19 @@ describe("supervisor: Web UI API compatibility", () => {
       expect(list.length).toBeGreaterThan(0);
       expect(list[0].apiKey).toBeNull();
     });
+
+    it("PATCH /providers/:id updates the encrypted API key without exposing it", async () => {
+      const createRes = await req("POST", "/providers", {
+        name: "Provider with key",
+        apiType: "openai-compatible",
+      });
+      const { id } = (await createRes.json()) as { id: string };
+
+      const updateRes = await req("PATCH", `/providers/${id}`, { apiKey: "updated-secret" });
+      expect(updateRes.status).toBe(200);
+      expect((await updateRes.json()) as { apiKey: null }).toMatchObject({ apiKey: null });
+      expect(db.getProvider(Number(id))?.apiKey).toBe("updated-secret");
+    });
   });
 
   describe("Agent management", () => {
@@ -147,6 +160,35 @@ describe("supervisor: Web UI API compatibility", () => {
       expect(body.id).toBeDefined();
       expect(body.name).toBe("Test Agent");
       expect(body.providerId).toBe(providerId);
+    });
+
+    it("POST /agents creates an isolated ACP agent without a provider", async () => {
+      const res = await req("POST", "/agents", {
+        name: "External ACP",
+        backendType: "acp",
+        meta: { external: { command: "example", args: ["acp"] } },
+      });
+      expect(res.status).toBe(201);
+      const agent = (await res.json()) as {
+        id: string;
+        backendType: string;
+        providerId: string | null;
+        homeDir: string | null;
+      };
+      expect(agent).toMatchObject({
+        backendType: "acp",
+        providerId: null,
+        homeDir: null,
+      });
+
+      const resources = (await (await req("GET", `/agents/${agent.id}/resources`)).json()) as {
+        homeDir: string;
+        tools: unknown[];
+        layers: { agent: Record<string, unknown[]> };
+      };
+      expect(resources.homeDir).toBe("");
+      expect(resources.tools).toEqual([]);
+      expect(resources.layers.agent).toEqual({ skills: [], prompts: [], extensions: [], mcp: [] });
     });
 
     it("GET /agents/:id/resources returns agent resources", async () => {
@@ -313,6 +355,30 @@ describe("supervisor: Web UI API compatibility", () => {
       const res = await req("DELETE", `/providers/${providerId}/models/test-model`);
       expect(res.status).toBe(200);
       expect(await res.json()).toEqual({ ok: true });
+    });
+
+    it("DELETE /providers/:id/models/:modelId returns 409 when agent uses model", async () => {
+      const providerRes = await req("POST", "/providers", {
+        name: "Test Provider",
+        apiType: "anthropic-messages",
+      });
+      const { id: providerId } = (await providerRes.json()) as { id: string };
+
+      await req("POST", `/providers/${providerId}/models`, {
+        modelId: "test-model",
+        name: "Test Model",
+      });
+
+      await req("POST", "/agents", {
+        name: "Bound Agent",
+        providerId: Number(providerId),
+        modelId: "test-model",
+      });
+
+      const res = await req("DELETE", `/providers/${providerId}/models/test-model`);
+      expect(res.status).toBe(409);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toContain("Bound Agent");
     });
   });
 

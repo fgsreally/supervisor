@@ -7,6 +7,17 @@ import { fileURLToPath } from "url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 const playgroundCwd = path.resolve(repoRoot, "playground");
+const backendTarget = "http://localhost:3030";
+
+function spaAwareProxy() {
+  return {
+    target: backendTarget,
+    changeOrigin: true,
+    bypass(req: { headers: { accept?: string } }) {
+      return req.headers.accept?.includes("text/html") ? "/index.html" : undefined;
+    },
+  };
+}
 
 export default defineConfig({
   plugins: [
@@ -60,8 +71,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/providers": {
-        target: "http://localhost:3030",
-        changeOrigin: true,
+        ...spaAwareProxy(),
       },
       "/projects": {
         target: "http://localhost:3030",
@@ -76,6 +86,13 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/resources": {
+        ...spaAwareProxy(),
+      },
+      "/upload": {
+        target: "http://localhost:3030",
+        changeOrigin: true,
+      },
+      "/uploaded-icons": {
         target: "http://localhost:3030",
         changeOrigin: true,
       },

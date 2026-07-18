@@ -240,7 +240,13 @@ async function bindGlobalItem(item: UIResourceItem) {
   const sourcePath = item.rootPath ?? resourceEntryPath(item);
   if (!sourcePath) return;
   const kind =
-    props.kind === "skills" ? "skill" : props.kind === "extensions" ? "extension" : "prompt";
+    props.kind === "skills"
+      ? "skill"
+      : props.kind === "extensions"
+        ? "extension"
+        : props.kind === "mcp"
+          ? "mcp"
+          : "prompt";
   await agentStore.bindAgentResource(props.agentId, kind, sourcePath);
   await reloadAgentItems(props.agentId);
   resetSelection();

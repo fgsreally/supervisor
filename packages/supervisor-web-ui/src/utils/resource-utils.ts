@@ -5,7 +5,7 @@ export function isSkillItem(item: UIResourceItem): item is UISkillItem {
 }
 
 export function isFileItem(item: UIResourceItem): item is UIFileItem {
-  return item.kind === "extensions" || item.kind === "prompts";
+  return item.kind === "extensions" || item.kind === "prompts" || item.kind === "mcp";
 }
 
 export function getFileBaseName(fileName: string): string {
@@ -37,6 +37,23 @@ export function getSkillFileLanguage(fileName: string): "markdown" | "typescript
 export function resourceEntryPath(item: UIResourceItem): string {
   if (isSkillItem(item)) return item.rootPath ?? "";
   return item.path;
+}
+
+export function relativeSupervisorPath(path: string): string {
+  const normalized = path.trim().replaceAll("\\", "/");
+  const withoutHome = normalized.replace(/^~\/\.pi\/supervisor\//i, "");
+  if (withoutHome !== normalized) return withoutHome.replace(/^global\//i, "");
+
+  const marker = "/.pi/supervisor/";
+  const markerIndex = normalized.toLowerCase().lastIndexOf(marker);
+  if (markerIndex >= 0) {
+    return normalized.slice(markerIndex + marker.length).replace(/^global\//i, "");
+  }
+
+  const globalMarker = "/global/";
+  const globalIndex = normalized.toLowerCase().lastIndexOf(globalMarker);
+  if (globalIndex >= 0) return normalized.slice(globalIndex + globalMarker.length);
+  return normalized;
 }
 
 export function findSkillFile(skill: UISkillItem, fileId: string): UISkillFile | undefined {

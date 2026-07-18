@@ -1,10 +1,12 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { isAbsolute, relative, resolve } from "node:path";
 import type { Agent } from "../types.js";
 import type { SourceInfo } from "../utils/source-info.js";
 import type { SupervisorDb } from "../db/db.js";
 import { loadAgentSessionResources } from "./resource-resolver.js";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.js";
 import { formatSkillsForPrompt, type Skill } from "./skills.js";
+import { stripFrontmatter } from "../utils/frontmatter.js";
 
 /** Resource 可提供的动态斜杠命令来源。 */
 export type AgentResourceCommandSource = "prompt" | "skill";
@@ -35,6 +37,24 @@ export interface AgentResourceOptions {
   agent?: Agent;
 }
 
+export interface SkillToolInput {
+  name: string;
+  arguments?: string;
+  path?: string;
+  line_start?: number;
+  line_end?: number;
+}
+
+export interface SkillToolResult {
+  text: string;
+  details: {
+    name: string;
+    operation: "activate" | "list" | "read";
+    path?: string;
+    baseDir: string;
+  };
+}
+
 /**
  * 与单个运行中 Agent 绑定的非扩展资源管理器。
  * Skill、Prompt Template 和 SYSTEM.md 的加载、使用及清理都由它统一负责。
@@ -57,6 +77,9 @@ export class AgentResource {
 
   /** 已加载的 Skill 列表。 */
   private loadedSkills: Skill[] = [];
+
+  /** 用户通过斜杠命令显式激活的 Skill。 */
+  private userActivatedSkills = new Set<string>();
 
   /** 已加载的 Prompt Template 列表。 */
   private loadedPromptTemplates: PromptTemplate[] = [];
@@ -108,6 +131,69 @@ export class AgentResource {
     return formatSkillsForPrompt(this.loadedSkills);
   }
 
+  /** 当前会话是否存在 Skill 资源。 */
+  hasSkills(): boolean {
+    return this.loadedSkills.length > 0;
+  }
+
+  /** 执行内置 skill 扩展的资源操作。 */
+  executeSkillTool(input: SkillToolInput): SkillToolResult {
+    const accessibleSkills = this.loadedSkills.filter(
+      (skill) => !skill.disableModelInvocation || this.userActivatedSkills.has(skill.name),
+    );
+    const skill = accessibleSkills.find((item) => item.name === input.name);
+    if (!skill) {
+      const available = accessibleSkills.map((item) => item.name).join(", ");
+      throw new Error(`Skill "${input.name}" not found. Available skills: ${available || "none"}`);
+    }
+
+    if (!input.path) {
+      return {
+        text: this.renderSkill(skill, input.arguments ?? ""),
+        details: { name: skill.name, operation: "activate", baseDir: skill.baseDir },
+      };
+    }
+
+    const target = this.resolveSkillResourcePath(skill, input.path);
+    const stats = statSync(target);
+    if (stats.isDirectory()) {
+      const entries = readdirSync(target, { withFileTypes: true })
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((entry) => `${entry.isDirectory() ? "directory" : "file"}\t${entry.name}`);
+      return {
+        text: entries.length > 0 ? entries.join("\n") : "(empty directory)",
+        details: {
+          name: skill.name,
+          operation: "list",
+          path: input.path,
+          baseDir: skill.baseDir,
+        },
+      };
+    }
+    if (!stats.isFile()) throw new Error(`Skill resource is not a regular file: ${input.path}`);
+
+    const content = readFileSync(target, "utf-8");
+    if (content.includes("\0")) throw new Error(`Skill resource is not a text file: ${input.path}`);
+    const lines = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+    const start = Math.max(1, Math.floor(input.line_start ?? 1));
+    const end = Math.min(lines.length, Math.floor(input.line_end ?? start + 499));
+    if (end < start) throw new Error("line_end must be greater than or equal to line_start");
+    const numbered = lines
+      .slice(start - 1, end)
+      .map((line, index) => `${start + index}: ${line}`)
+      .join("\n");
+    const suffix = end < lines.length ? `\n\n[${lines.length - end} more lines]` : "";
+    return {
+      text: numbered + suffix,
+      details: {
+        name: skill.name,
+        operation: "read",
+        path: input.path,
+        baseDir: skill.baseDir,
+      },
+    };
+  }
+
   /** 展开用户输入中的 /skill:name 或 Prompt Template 命令。 */
   expandPrompt(message: string): string {
     const skillExpanded = this.expandSkillCommand(message);
@@ -136,6 +222,7 @@ export class AgentResource {
   /** 清除当前 Agent 已加载的非扩展资源。 */
   clear(): void {
     this.loadedSkills = [];
+    this.userActivatedSkills.clear();
     this.loadedPromptTemplates = [];
     this.loadedSystemMd = "";
     this.loaded = false;
@@ -152,19 +239,42 @@ export class AgentResource {
     if (!skill) return message;
 
     try {
-      const rawContent = readFileSync(skill.filePath, "utf-8");
-      const body = this.stripFrontmatter(rawContent);
-      const block = `<skill name="${skill.name}" location="${skill.filePath}">\nReferences are relative to ${skill.baseDir}.\n\n${body}\n</skill>`;
-      return args ? `${block}\n\n${args}` : block;
+      this.userActivatedSkills.add(skill.name);
+      return this.renderSkill(skill, args);
     } catch {
       return message;
     }
   }
 
-  /** 去掉 Markdown 文件开头的 YAML frontmatter。 */
-  private stripFrontmatter(content: string): string {
-    if (!content.startsWith("---")) return content;
-    const end = content.indexOf("\n---", 3);
-    return end === -1 ? content : content.slice(end + 4).trim();
+  /** 由宿主读取并包装 Skill，模型无需知道 SKILL.md 的磁盘路径。 */
+  private renderSkill(skill: Skill, args: string): string {
+    const body = stripFrontmatter(readFileSync(skill.filePath, "utf-8"));
+    const attributes = args ? ` arguments="${escapeXml(args)}"` : "";
+    const argumentsBlock = args ? `\n\nARGUMENTS: ${args}` : "";
+    return `<skill_content name="${escapeXml(skill.name)}"${attributes}>\n${body}${argumentsBlock}\n\nThe skill entry instructions are now active. Bundled resources have not been loaded. Use the skill tool with name and a relative path to list or read them when needed.\n</skill_content>`;
   }
+
+  private resolveSkillResourcePath(skill: Skill, resourcePath: string): string {
+    if (isAbsolute(resourcePath)) throw new Error("Skill resource path must be relative");
+    const base = realpathSync(skill.baseDir);
+    const target = realpathSync(resolve(base, resourcePath));
+    const relativePath = relative(base, target);
+    if (
+      relativePath === ".." ||
+      relativePath.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) ||
+      isAbsolute(relativePath)
+    ) {
+      throw new Error("Skill resource path escapes the skill directory");
+    }
+    return target;
+  }
+}
+
+function escapeXml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
 }

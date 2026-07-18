@@ -21,7 +21,9 @@
   --app-list-item-child-hover: #dcdce1;
   --app-list-item-active: #c9c9cb;
   --app-list-item-active-text: #191919;
+  --app-list-item-active-secondary: #666666;
   --app-list-section-bg: #e3e3e5;
+  --app-monochrome-icon-filter: none;
 
   --app-chat-bg: #fafafa;
   --app-chat-header-bg: #fafafa;
@@ -130,7 +132,9 @@
   --app-list-item-child-hover: #303030;
   --app-list-item-active: #19ac70;
   --app-list-item-active-text: #ffffff;
+  --app-list-item-active-secondary: #c8c8c8;
   --app-list-section-bg: #262626;
+  --app-monochrome-icon-filter: invert(1);
 
   --app-chat-bg: #191919;
   --app-chat-header-bg: #191919;

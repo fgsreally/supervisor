@@ -46,6 +46,11 @@ export function toolCallSummary(name: string, args: Record<string, unknown> | un
     }
     case "spawn_agent":
       return `spawn ${args.agentId ?? "subagent"}`;
+    case "skill": {
+      const skillName = String(args.name ?? "skill");
+      const path = typeof args.path === "string" ? args.path.trim() : "";
+      return path ? `访问技能资源 ${skillName}/${path}` : `激活技能 ${skillName}`;
+    }
     default: {
       if (isAskToolName(name)) {
         const questions = parseAskQuestions(args);
@@ -85,6 +90,8 @@ export function toolResultSummary(
     }
     case "spawn_agent":
       return "子代理已启动";
+    case "skill":
+      return "技能资源已加载";
     default: {
       if (isAskToolName(name)) {
         const details = parseAskResultFromToolResult({ content: content ?? [] });
@@ -129,6 +136,16 @@ export function toolCallDetail(name: string, args: Record<string, unknown> | und
     }
     case "spawn_agent":
       return JSON.stringify(args, null, 2);
+    case "skill":
+      return [
+        `name: ${String(args.name ?? "")}`,
+        args.path != null ? `path: ${String(args.path)}` : null,
+        args.arguments != null ? `arguments: ${String(args.arguments)}` : null,
+        args.line_start != null ? `line_start: ${args.line_start}` : null,
+        args.line_end != null ? `line_end: ${args.line_end}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n");
     default:
       return JSON.stringify(args, null, 2);
   }
@@ -152,6 +169,8 @@ export function toolDetailLabel(name: string): string {
       return "终端输出";
     case "spawn_agent":
       return "子代理信息";
+    case "skill":
+      return "技能内容";
     default:
       return "详情";
   }

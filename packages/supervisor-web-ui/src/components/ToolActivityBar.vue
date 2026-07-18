@@ -39,6 +39,7 @@ import {
   Loader2,
   ArrowRightCircle,
   MessageCircleQuestion,
+  BookOpen,
 } from "lucide-vue-next";
 import { isSkillReadPath, toolCallSummary, toolResultSummary } from "../utils/tool-display";
 import { isAskToolName } from "../utils/ask-tool";
@@ -73,6 +74,7 @@ const summary = computed(() => {
 });
 
 const isSkillLoad = computed(() => {
+  if (props.toolName === "skill") return true;
   if (props.toolName !== "read") return false;
   const path = typeof props.callArgs?.path === "string" ? props.callArgs.path : "";
   return isSkillReadPath(path);
@@ -91,6 +93,8 @@ const icon = computed(() => {
       return Terminal;
     case "spawn_agent":
       return Users;
+    case "skill":
+      return BookOpen;
     default:
       return Wrench;
   }

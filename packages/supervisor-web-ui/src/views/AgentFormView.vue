@@ -33,6 +33,51 @@
 
     <div class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
       <section class="agent-form-card rounded-lg p-4 space-y-4 max-w-xl">
+        <div class="flex items-center gap-3">
+          <AgentAvatar
+            :agent-id="draft.id || draft.backendType"
+            :agent-name="draft.name || 'Agent'"
+            :icon="draft.icon"
+            class="w-12 h-12 text-lg"
+          />
+          <label class="block flex-1 text-[13px]">
+            <span class="agent-form-label mb-1 block">头像</span>
+            <div class="flex gap-2">
+              <input
+                v-model="draft.icon"
+                type="text"
+                placeholder="图片 URL 或 Iconify ID"
+                class="agent-form-input flex-1 min-w-0 px-3 py-2 rounded-md"
+              />
+              <input
+                ref="iconInput"
+                type="file"
+                accept="image/*,.svg"
+                class="hidden"
+                @change="onIconSelected"
+              />
+              <button
+                type="button"
+                class="agent-form-upload"
+                :disabled="uploading"
+                title="上传头像"
+                @click="iconInput?.click()"
+              >
+                <Upload class="w-4 h-4" />
+              </button>
+            </div>
+          </label>
+        </div>
+        <label class="block text-[13px]">
+          <span class="agent-form-label mb-1 block">运行后端</span>
+          <select v-model="draft.backendType" class="agent-form-input w-full px-3 py-2 rounded-md">
+            <option value="native">Supervisor</option>
+            <option value="codex">Codex</option>
+            <option value="claude">Claude Code</option>
+            <option value="kimi">Kimi Code</option>
+            <option value="acp">ACP 外部进程</option>
+          </select>
+        </label>
         <label class="block text-[13px]">
           <span class="agent-form-label mb-1 block">名称</span>
           <input
@@ -62,7 +107,7 @@
           />
         </label>
 
-        <label class="block text-[13px]">
+        <label v-if="draft.backendType === 'native'" class="block text-[13px]">
           <span class="agent-form-label mb-1 block">模型服务</span>
           <select
             v-model="draft.providerId"
@@ -73,7 +118,7 @@
           </select>
         </label>
 
-        <label class="block text-[13px]">
+        <label v-if="draft.backendType === 'native'" class="block text-[13px]">
           <span class="agent-form-label mb-1 block">模型</span>
           <select
             v-model="draft.modelId"
@@ -82,6 +127,27 @@
             <option v-for="m in modelOptions" :key="m.id" :value="m.id">{{ m.id }}</option>
           </select>
         </label>
+
+        <template v-if="draft.backendType !== 'native'">
+          <label class="block text-[13px]">
+            <span class="agent-form-label mb-1 block">命令</span>
+            <input
+              v-model="draft.command"
+              type="text"
+              :placeholder="commandPlaceholder"
+              class="agent-form-input w-full px-3 py-2 rounded-md font-mono"
+            />
+          </label>
+          <label class="block text-[13px]">
+            <span class="agent-form-label mb-1 block">命令行参数（每行一个）</span>
+            <textarea
+              v-model="draft.args"
+              rows="5"
+              placeholder="--model&#10;sonnet"
+              class="agent-form-input w-full px-3 py-2 rounded-md font-mono resize-y"
+            />
+          </label>
+        </template>
 
         <label class="block text-[13px]">
           <span class="agent-form-label mb-1 block">工具集</span>
@@ -103,10 +169,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronLeft } from "lucide-vue-next";
-import type { ToolsPreset } from "@/api";
+import { ChevronLeft, Upload } from "lucide-vue-next";
+import { uploadIcon, type ToolsPreset } from "@/api";
 import { useAgentStore, useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
+import AgentAvatar from "../components/AgentAvatar.vue";
 
 defineProps<{ showBack?: boolean }>();
 
@@ -115,14 +182,20 @@ const emit = defineEmits<{ cancel: []; saved: [id: string] }>();
 const agentStore = useAgentStore();
 const providerStore = useProviderStore();
 const saving = ref(false);
+const uploading = ref(false);
+const iconInput = ref<HTMLInputElement | null>(null);
 
 const draft = ref({
   id: "",
   name: "",
   description: "",
+  icon: "",
+  backendType: "native" as "native" | "codex" | "claude" | "kimi" | "acp",
   providerId: "",
   modelId: "",
   toolsPreset: "coding" as ToolsPreset,
+  command: "",
+  args: "",
 });
 
 const providerOptions = computed(() =>
@@ -145,15 +218,39 @@ watch(
   { immediate: true },
 );
 
-const canSave = computed(
-  () => !!draft.value.name.trim() && !!draft.value.providerId && !!draft.value.modelId,
-);
+const canSave = computed(() => {
+  if (!draft.value.name.trim()) return false;
+  if (draft.value.backendType !== "native") {
+    return draft.value.backendType !== "acp" || !!draft.value.command.trim();
+  }
+  return !!draft.value.providerId && !!draft.value.modelId;
+});
+
+const commandPlaceholder = computed(() => {
+  if (draft.value.backendType === "codex") return "例如 codex";
+  if (draft.value.backendType === "claude") return "例如 claude";
+  if (draft.value.backendType === "kimi") return "例如 kimi";
+  return "外部 Agent 命令";
+});
 
 function onProviderChange() {
   const p = providerOptions.value.find((x) => x.id === draft.value.providerId);
   if (!p) return;
   if (!p.models.some((m) => m.id === draft.value.modelId)) {
     draft.value.modelId = p.models[0]?.id || "";
+  }
+}
+
+async function onIconSelected(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  uploading.value = true;
+  try {
+    draft.value.icon = (await uploadIcon(file)).path;
+  } finally {
+    uploading.value = false;
+    input.value = "";
   }
 }
 
@@ -165,9 +262,24 @@ async function save() {
       id: draft.value.id.trim() || undefined,
       name: draft.value.name.trim(),
       description: draft.value.description.trim() || undefined,
-      providerId: draft.value.providerId,
-      modelId: draft.value.modelId,
+      icon: draft.value.icon.trim() || null,
+      backendType: draft.value.backendType,
+      providerId: draft.value.backendType === "native" ? draft.value.providerId : undefined,
+      modelId: draft.value.backendType === "native" ? draft.value.modelId : undefined,
       toolsPreset: draft.value.toolsPreset,
+      meta:
+        draft.value.backendType !== "native" && draft.value.command.trim()
+          ? {
+              external: {
+                command: draft.value.command.trim(),
+                args: draft.value.args
+                  .split(/\r?\n/)
+                  .map((arg) => arg.trim())
+                  .filter(Boolean),
+                permissionPolicy: "reject_once",
+              },
+            }
+          : undefined,
     });
     emit("saved", agent.id);
   } finally {
@@ -226,5 +338,22 @@ async function save() {
 
 .agent-form-hint {
   color: var(--app-text-muted);
+}
+
+.agent-form-upload {
+  flex: none;
+  width: 38px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-secondary);
+  background: var(--app-settings-bg);
+}
+
+.agent-form-upload:hover:not(:disabled) {
+  border-color: #07c160;
+  color: #07c160;
 }
 </style>

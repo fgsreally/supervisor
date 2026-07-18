@@ -14,17 +14,22 @@
         >
           <ChevronLeft class="w-5 h-5" />
         </button>
-        <div class="font-medium text-[17px] truncate contact-detail-title">{{ agent.name }}</div>
+        <div class="font-medium text-[17px] truncate contact-detail-title flex-1">
+          {{ agent.name }}
+        </div>
+        <button v-if="canEdit" type="button" class="wechat-secondary-btn" @click="editOpen = true">
+          编辑
+        </button>
       </div>
 
       <div class="flex-1 overflow-y-auto custom-scrollbar">
         <div class="contact-detail-card py-10 flex flex-col items-center border-b">
-          <div
-            class="w-20 h-20 rounded-xl flex items-center justify-center text-white text-3xl font-semibold shadow-md"
-            :class="avatarClass"
-          >
-            {{ agent.name.substring(0, 1).toUpperCase() }}
-          </div>
+          <AgentAvatar
+            :agent-id="agent.id"
+            :agent-name="agent.name"
+            :icon="agent.icon"
+            class="w-20 h-20 text-3xl"
+          />
           <h2 class="mt-4 text-xl font-medium px-6 text-center contact-detail-title">
             {{ agent.name }}
           </h2>
@@ -57,7 +62,10 @@
           </button>
         </div>
 
-        <MobileResourceTabs :agent-id="agentId" class="mt-2" />
+        <div v-if="isExternal" class="p-4">
+          <ExternalAgentDetails :agent="agent" />
+        </div>
+        <MobileResourceTabs v-else :agent-id="agentId" class="mt-2" />
       </div>
     </div>
 
@@ -66,12 +74,12 @@
       <div
         class="min-h-[5rem] py-4 border-b flex items-center px-6 shrink-0 gap-4 contact-detail-header"
       >
-        <div
-          class="w-11 h-11 rounded-md flex items-center justify-center text-white font-semibold shrink-0 shadow-sm text-lg"
-          :class="avatarClass"
-        >
-          {{ agent.name.substring(0, 1).toUpperCase() }}
-        </div>
+        <AgentAvatar
+          :agent-id="agent.id"
+          :agent-name="agent.name"
+          :icon="agent.icon"
+          class="w-11 h-11 text-lg"
+        />
         <div class="flex-1 min-w-0 py-0.5">
           <div class="text-[17px] font-medium truncate leading-snug contact-detail-title">
             {{ agent.name }}
@@ -80,9 +88,12 @@
             {{ agent.description }}
           </div>
         </div>
+        <button v-if="canEdit" type="button" class="wechat-secondary-btn" @click="editOpen = true">
+          编辑
+        </button>
       </div>
 
-      <div class="flex border-b shrink-0 contact-detail-tabs">
+      <div v-if="!isExternal" class="flex border-b shrink-0 contact-detail-tabs">
         <button
           v-for="t in rightTabs"
           :key="t.id"
@@ -95,7 +106,7 @@
         </button>
       </div>
 
-      <div class="flex-1 flex min-h-0 overflow-hidden">
+      <div v-if="!isExternal" class="flex-1 flex min-h-0 overflow-hidden">
         <template v-if="rightTab === 'config'">
           <div class="flex-1 overflow-auto p-5 min-h-0 contact-detail-content">
             <AgentConfigPanel :agent-id="agentId" />
@@ -110,7 +121,18 @@
 
         <AgentResourceBrowser v-else class="flex-1 min-h-0" :agent-id="agentId" :kind="rightTab" />
       </div>
+
+      <div v-else class="flex-1 overflow-y-auto custom-scrollbar p-6 contact-detail-content">
+        <ExternalAgentDetails :agent="agent" />
+      </div>
     </div>
+
+    <AgentEditDialog
+      :open="editOpen"
+      :agent-id="agentId"
+      @close="editOpen = false"
+      @saved="onAgentSaved"
+    />
   </div>
 </template>
 
@@ -122,10 +144,12 @@ import AgentSystemPromptPanel from "../components/AgentSystemPromptPanel.vue";
 import AgentResourceBrowser from "../components/AgentResourceBrowser.vue";
 import MobileResourceTabs from "../components/MobileResourceTabs.vue";
 import ProviderAvatar from "../components/ProviderAvatar.vue";
+import AgentAvatar from "../components/AgentAvatar.vue";
+import AgentEditDialog from "../components/AgentEditDialog.vue";
+import ExternalAgentDetails from "../components/ExternalAgentDetails.vue";
 import { useAgentStore, useProviderStore } from "@/store";
 import type { UIResourceKind } from "@/types/ui";
 import { providerToUI } from "@/utils/provider-ui";
-import { agentAvatarClass } from "../utils/avatar-class";
 
 type AgentTab = "config" | "system" | UIResourceKind;
 
@@ -146,6 +170,7 @@ const providerStore = useProviderStore();
 const agent = computed(() => agentStore.getAgentById(props.agentId) ?? null);
 
 const rightTab = ref<AgentTab>("config");
+const editOpen = ref(false);
 
 const rightTabs = [
   { id: "config" as const, label: "Config" },
@@ -153,6 +178,7 @@ const rightTabs = [
   { id: "skills" as const, label: "Skills" },
   { id: "extensions" as const, label: "Extensions" },
   { id: "prompts" as const, label: "Prompts" },
+  { id: "mcp" as const, label: "MCP" },
 ];
 
 watch(
@@ -164,13 +190,22 @@ watch(
 
 const provider = computed(() => {
   const a = agent.value;
-  if (!a) return undefined;
+  if (!a?.providerId) return undefined;
   const p = providerStore.getProviderById(a.providerId);
   if (!p) return undefined;
   return providerToUI(p, providerStore.models[p.id] ?? []);
 });
 
-const avatarClass = computed(() => agentAvatarClass(props.agentId));
+const isExternal = computed(() => agent.value?.backendType !== "native");
+const canEdit = computed(() => {
+  const value = agent.value;
+  if (!value) return false;
+  return value.backendType !== "native" || value.meta.builtin !== true;
+});
+
+function onAgentSaved() {
+  void agentStore.fetchAgent(props.agentId);
+}
 </script>
 
 <style scoped>
@@ -235,5 +270,18 @@ const avatarClass = computed(() => agentAvatarClass(props.agentId));
 
 .contact-detail-content {
   background: var(--app-settings-bg);
+}
+
+.wechat-secondary-btn {
+  padding: 7px 16px;
+  border: 1px solid var(--app-border);
+  border-radius: 6px;
+  background: var(--app-settings-card);
+  color: var(--app-text-primary);
+  font-size: 13px;
+}
+
+.wechat-secondary-btn:hover {
+  background: var(--app-hover);
 }
 </style>

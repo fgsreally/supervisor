@@ -32,12 +32,9 @@
               v-else-if="mainTab === 'providers'"
               class="h-full w-full"
               :active-id="activeProviderId ?? ''"
-              :active-model-id="activeModelId ?? ''"
               @select-provider="selectProvider"
               @add-provider="openProviderAdd"
-              @add-model="openAddModel"
-              @select-model="selectModel"
-              @delete-model="onDeleteModel"
+              @edit-provider="openProviderEditFor"
               @delete-provider="onDeleteProvider"
             />
             <ResourcesPanel
@@ -73,18 +70,42 @@
               @view-provider="viewProvider"
             />
             <ProviderFormView
-              v-else-if="mainTab === 'providers' && providerPage !== 'detail'"
-              :provider-id="providerPage === 'add' ? null : activeProviderId"
-              :models-only="providerPage === 'models'"
+              v-else-if="mainTab === 'providers' && providerPage === 'add'"
+              :provider-id="null"
               @cancel="closeProviderForm"
               @saved="onProviderSaved"
+            />
+            <ProviderModelFormView
+              v-else-if="
+                mainTab === 'providers' &&
+                activeProvider &&
+                activeProviderId &&
+                (providerPage === 'model-add' || providerPage === 'model-edit')
+              "
+              :provider-id="activeProviderId"
+              :provider-name="activeProvider.name"
+              :mode="providerPage === 'model-add' ? 'create' : 'edit'"
+              :model="activeProviderModelUi"
+              @cancel="closeModelForm"
+              @saved="onModelSaved"
+            />
+            <ProviderModelDetailView
+              v-else-if="mainTab === 'providers' && activeProvider && activeProviderModel"
+              :provider="activeProvider"
+              :model="activeProviderModel"
+              @edit="openModelEdit"
+              @deleted="deleteActiveModel"
             />
             <ProviderDetailView
               v-else-if="mainTab === 'providers' && activeProviderUi"
               :provider="activeProviderUi"
               @view-agent="viewAgent"
               @edit="openProviderEdit"
-              @manage-models="openProviderModels"
+              @add-model="openAddModel(activeProviderUi.id)"
+              @select-model="selectModelById"
+              @edit-model="editModelById"
+              @delete-model="deleteModelById"
+              @toggle-enabled="setProviderEnabled"
             />
             <ResourceDetailView
               v-else-if="mainTab === 'resources' && activeResourceId"
@@ -115,12 +136,9 @@
           <ProvidersPanel
             v-else-if="mainTab === 'providers'"
             :active-id="activeProviderId ?? ''"
-            :active-model-id="activeModelId ?? ''"
             @select-provider="selectProvider"
             @add-provider="openProviderAdd"
-            @add-model="openAddModel"
-            @select-model="selectModel"
-            @delete-model="onDeleteModel"
+            @edit-provider="openProviderEditFor"
             @delete-provider="onDeleteProvider"
           />
           <ResourcesPanel v-else :active-id="activeResourceId" @select="selectResource" />
@@ -151,12 +169,32 @@
             @view-provider="viewProvider"
           />
           <ProviderFormView
-            v-else-if="mainTab === 'providers' && providerPage !== 'detail'"
-            :provider-id="providerPage === 'add' ? null : activeProviderId"
-            :models-only="providerPage === 'models'"
+            v-else-if="mainTab === 'providers' && providerPage === 'add'"
+            :provider-id="null"
             :show-back="true"
             @cancel="closeProviderForm"
             @saved="onProviderSaved"
+          />
+          <ProviderModelFormView
+            v-else-if="
+              mainTab === 'providers' &&
+              activeProvider &&
+              activeProviderId &&
+              (providerPage === 'model-add' || providerPage === 'model-edit')
+            "
+            :provider-id="activeProviderId"
+            :provider-name="activeProvider.name"
+            :mode="providerPage === 'model-add' ? 'create' : 'edit'"
+            :model="activeProviderModelUi"
+            @cancel="closeModelForm"
+            @saved="onModelSaved"
+          />
+          <ProviderModelDetailView
+            v-else-if="mainTab === 'providers' && activeProvider && activeProviderModel"
+            :provider="activeProvider"
+            :model="activeProviderModel"
+            @edit="openModelEdit"
+            @deleted="deleteActiveModel"
           />
           <ProviderDetailView
             v-else-if="mainTab === 'providers' && activeProviderUi"
@@ -165,7 +203,11 @@
             @back="backToMobileList"
             @view-agent="viewAgent"
             @edit="openProviderEdit"
-            @manage-models="openProviderModels"
+            @add-model="openAddModel(activeProviderUi.id)"
+            @select-model="selectModelById"
+            @edit-model="editModelById"
+            @delete-model="deleteModelById"
+            @toggle-enabled="setProviderEnabled"
           />
           <ResourceDetailView
             v-else-if="mainTab === 'resources' && activeResourceId"
@@ -238,6 +280,12 @@
     </template>
 
     <GlobalSearchModal :open="searchOpen" @close="searchOpen = false" @navigate="selectSession" />
+    <ProviderEditDialog
+      :open="providerEditOpen"
+      :provider-id="providerEditId ?? ''"
+      @close="closeProviderEdit"
+      @saved="onProviderEditSaved"
+    />
   </div>
 </template>
 
@@ -260,12 +308,15 @@ import AgentFormView from "./views/AgentFormView.vue";
 import ResourceDetailView from "./views/ResourceDetailView.vue";
 import ProviderDetailView from "./views/ProviderDetailView.vue";
 import ProviderFormView from "./views/ProviderFormView.vue";
+import ProviderModelDetailView from "./views/ProviderModelDetailView.vue";
+import ProviderModelFormView from "./views/ProviderModelFormView.vue";
+import ProviderEditDialog from "./components/ProviderEditDialog.vue";
 import ChatView from "./views/ChatView.vue";
 import GlobalSearchModal from "./components/GlobalSearchModal.vue";
 import { useSessionStore, useAgentStore, useProviderStore, useResourceStore } from "./store";
 import { providerToUI } from "./utils/provider-ui";
 import { getDefaultWorkspaceCwd } from "./config/workspace";
-import { idFromRoute, tabFromRoute } from "./router";
+import { idFromRoute, modelIdFromRoute, tabFromRoute } from "./router";
 
 const { width: chatListWidth, startResize: startListResize } = useResizableWidth({
   defaultWidth: 288,
@@ -291,11 +342,13 @@ const activeResourceId = ref<string | null>(null);
 const isMobile = ref(false);
 const mobilePage = ref<"list" | "detail">("list");
 const searchOpen = ref(false);
-type ProviderPage = "detail" | "add" | "edit" | "models";
+type ProviderPage = "detail" | "add" | "model-add" | "model-edit";
 type AgentPage = "detail" | "add";
 
 const providerPage = ref<ProviderPage>("detail");
 const agentPage = ref<AgentPage>("detail");
+const providerEditOpen = ref(false);
+const providerEditId = ref<string | null>(null);
 
 function applyRoute() {
   const tab = tabFromRoute(route);
@@ -303,8 +356,11 @@ function applyRoute() {
   mainTab.value = tab;
   if (tab === "chat") activeSessionId.value = id ?? activeSessionId.value;
   else if (tab === "contacts") activeAgentId.value = id ?? activeAgentId.value;
-  else if (tab === "providers") activeProviderId.value = id ?? activeProviderId.value;
-  else if (tab === "resources") activeResourceId.value = id ?? activeResourceId.value;
+  else if (tab === "providers") {
+    activeProviderId.value = id ?? activeProviderId.value;
+    activeModelId.value = modelIdFromRoute(route) ?? null;
+    providerPage.value = "detail";
+  } else if (tab === "resources") activeResourceId.value = id ?? activeResourceId.value;
   if (id && tab !== "settings" && isMobile.value) mobilePage.value = "detail";
 }
 
@@ -315,8 +371,11 @@ function pushRoute() {
   } else if (tab === "contacts") {
     void router.push(activeAgentId.value ? `/contacts/${activeAgentId.value}` : "/contacts");
   } else if (tab === "providers") {
+    const providerPath = activeProviderId.value ? `/providers/${activeProviderId.value}` : null;
     void router.push(
-      activeProviderId.value ? `/providers/${activeProviderId.value}` : "/providers",
+      providerPath && activeModelId.value
+        ? `${providerPath}/models/${encodeURIComponent(activeModelId.value)}`
+        : (providerPath ?? "/providers"),
     );
   } else if (tab === "resources") {
     void router.push(
@@ -353,6 +412,16 @@ onMounted(() => {
         void router.replace(firstSession ? `/chat/${firstSession.id}` : "/chat");
       } else {
         applyRoute();
+        if (mainTab.value === "providers" && !activeProviderId.value) {
+          const first = providerStore.providers[0];
+          if (first) {
+            activeProviderId.value = first.id;
+            void providerStore.fetchModels(first.id);
+          }
+        }
+        if (mainTab.value === "resources" && !activeResourceId.value) {
+          activeResourceId.value = resourceStore.resourceItems[0]?.id ?? null;
+        }
       }
     })
     .catch(console.error);
@@ -381,6 +450,28 @@ const activeProviderUi = computed(() => {
   const p = activeProvider.value;
   if (!p) return null;
   return providerToUI(p, providerStore.models[p.id] ?? []);
+});
+
+const activeProviderModel = computed(() => {
+  if (!activeProviderId.value || !activeModelId.value) return null;
+  return (
+    (providerStore.models[activeProviderId.value] ?? []).find(
+      (model) => model.modelId === activeModelId.value,
+    ) ?? null
+  );
+});
+
+const activeProviderModelUi = computed(() => {
+  const model = activeProviderModel.value;
+  if (!model) return null;
+  return {
+    id: model.modelId,
+    name: model.name ?? model.modelId,
+    contextWindow: model.contextWindow,
+    maxTokens: model.maxTokens,
+    supportsMultimodal: model.supportsMultimodal,
+    tags: model.tags,
+  };
 });
 
 const chatSessionProps = computed(() => {
@@ -458,25 +549,93 @@ function selectModel(model: { providerId: string | null; modelId: string }) {
   pushRoute();
 }
 
+function selectModelById(modelId: string) {
+  if (!activeProviderId.value) return;
+  selectModel({ providerId: activeProviderId.value, modelId });
+}
+
 function openAddModel(providerId: string) {
   activeProviderId.value = providerId;
-  providerPage.value = "models";
+  activeModelId.value = null;
+  providerPage.value = "model-add";
   if (isMobile.value) mobilePage.value = "detail";
+  pushRoute();
 }
 
 function openProviderAdd() {
+  activeModelId.value = null;
   providerPage.value = "add";
   if (isMobile.value) mobilePage.value = "detail";
 }
 
 function openProviderEdit() {
-  providerPage.value = "edit";
+  if (!activeProviderId.value) return;
+  providerEditId.value = activeProviderId.value;
+  providerEditOpen.value = true;
+}
+
+function openProviderEditFor(providerId: string) {
+  activeProviderId.value = providerId;
+  activeModelId.value = null;
+  providerPage.value = "detail";
+  providerEditId.value = providerId;
+  providerEditOpen.value = true;
+  void providerStore.fetchModels(providerId);
   if (isMobile.value) mobilePage.value = "detail";
 }
 
-function openProviderModels() {
-  providerPage.value = "models";
+function closeProviderEdit() {
+  providerEditOpen.value = false;
+}
+
+async function onProviderEditSaved() {
+  if (providerEditId.value) {
+    await providerStore.fetchProviders();
+    await providerStore.fetchModels(providerEditId.value);
+  }
+  providerEditOpen.value = false;
+}
+
+function openModelEdit() {
+  if (!activeProviderModel.value) return;
+  providerPage.value = "model-edit";
   if (isMobile.value) mobilePage.value = "detail";
+}
+
+function editModelById(modelId: string) {
+  activeModelId.value = modelId;
+  openModelEdit();
+}
+
+async function deleteModelById(modelId: string) {
+  if (!activeProviderId.value) return;
+  await providerStore.deleteModel(activeProviderId.value, modelId);
+  if (activeModelId.value === modelId) activeModelId.value = null;
+}
+
+async function setProviderEnabled(enabled: boolean) {
+  if (!activeProviderId.value) return;
+  await providerStore.updateProvider(activeProviderId.value, { isEnabled: enabled });
+}
+
+function closeModelForm() {
+  providerPage.value = "detail";
+}
+
+async function onModelSaved(modelId: string) {
+  if (!activeProviderId.value) return;
+  activeModelId.value = modelId;
+  providerPage.value = "detail";
+  await providerStore.fetchModels(activeProviderId.value);
+  pushRoute();
+}
+
+async function deleteActiveModel() {
+  if (!activeProviderId.value || !activeModelId.value) return;
+  await providerStore.deleteModel(activeProviderId.value, activeModelId.value);
+  activeModelId.value = null;
+  providerPage.value = "detail";
+  pushRoute();
 }
 
 function closeProviderForm() {
@@ -491,16 +650,6 @@ async function onProviderSaved(id: string) {
   await providerStore.fetchProviders();
   await providerStore.fetchModels(id);
   if (isMobile.value) mobilePage.value = "detail";
-}
-
-async function onDeleteModel(model: import("@/api").Model) {
-  if (!activeProviderId.value) return;
-  try {
-    await providerStore.deleteModel(activeProviderId.value, model.modelId);
-    activeModelId.value = null;
-  } catch (err) {
-    // error handled by store
-  }
 }
 
 async function onDeleteProvider(id: string) {

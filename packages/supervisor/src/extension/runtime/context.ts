@@ -168,6 +168,8 @@ export class Context {
   readonly flow;
   readonly inject;
   readonly services: SessionExtensionServices;
+  /** Internal session resource bridge used by built-in extensions. */
+  readonly agentResource: SessionRuntime["resource"];
 
   private activeExtensionId: string | undefined;
   private extensionHost: ContextExtensionHost | undefined;
@@ -228,6 +230,7 @@ export class Context {
         broadcast: (event: Record<string, unknown>) => deps.broadcast(event as BroadcastEvent),
       },
     });
+    this.agentResource = sessionRuntime.resource;
 
     const sessionTools: ContextSessionTools = {
       setPolicy: (policy) => this.services.tools.setPolicy(policy),

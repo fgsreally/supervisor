@@ -8,6 +8,7 @@ import type { AgentMessage, AgentTool } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "typebox";
 import { Context } from "./context.js";
 import {
+  createSkillExtension,
   mcpExtension,
   subagentExtension,
   type EventHandlerContext,
@@ -65,6 +66,7 @@ export class SessionExtensionRuntime {
   }
 
   async loadBuiltinExtensions(): Promise<void> {
+    await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");
     await this.loadExtension(mcpExtension, "builtin:mcp");
     if (this.context.session.isMain) {
       await this.loadExtension(subagentExtension, "builtin:subagent");

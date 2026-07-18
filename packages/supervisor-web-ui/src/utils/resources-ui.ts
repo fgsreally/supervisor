@@ -15,7 +15,9 @@ export function parseResourceId(id: string): { kind: UIResourceKind; path: strin
   const idx = id.indexOf(":");
   if (idx <= 0) return null;
   const kind = id.slice(0, idx) as UIResourceKind;
-  if (kind !== "skills" && kind !== "extensions" && kind !== "prompts") return null;
+  if (kind !== "skills" && kind !== "extensions" && kind !== "prompts" && kind !== "mcp") {
+    return null;
+  }
   return { kind: id.slice(0, idx) as UIResourceKind, path: id.slice(idx + 1) };
 }
 
@@ -93,6 +95,19 @@ function layerToUiItems(
       content: ext.files.length > 0 ? ext.files[0].content : "",
     };
     items.push(item);
+  }
+  for (const mcp of layer.mcp ?? []) {
+    items.push({
+      id: resourceId("mcp", mcp.filePath),
+      kind: "mcp",
+      layer: resourceLayer,
+      name: mcp.name,
+      description: mcp.description,
+      agentIds: agentId ? [agentId] : undefined,
+      fileName: mcp.filePath.split(/[/\\]/).pop() ?? `${mcp.id}.json`,
+      path: mcp.filePath,
+      content: mcp.content,
+    });
   }
   return items;
 }

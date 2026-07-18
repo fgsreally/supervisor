@@ -1,3 +1,3 @@
 The following skills provide specialized instructions for specific tasks.
-Use the read tool to load a skill's file when the task matches its description.
-When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.
+Use the skill tool to load a skill when the task matches its description.
+After activation, use the same skill tool with a relative path to list or read bundled resources. Do not use the read or ls tools for files inside a skill.

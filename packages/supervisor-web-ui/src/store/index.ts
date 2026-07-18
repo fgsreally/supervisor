@@ -10,6 +10,7 @@ import { computed, reactive, ref } from "vue";
 import type {
   Agent,
   ExtensionResourceInfo,
+  McpResourceInfo,
   Model,
   Project,
   PromptTemplateInfo,
@@ -35,7 +36,8 @@ export interface Workspace {
 export type ResourceItem =
   | { kind: "skills"; info: SkillInfo }
   | { kind: "prompts"; info: PromptTemplateInfo }
-  | { kind: "extensions"; info: ExtensionResourceInfo };
+  | { kind: "extensions"; info: ExtensionResourceInfo }
+  | { kind: "mcp"; info: McpResourceInfo };
 
 // ============ Root Store ============
 
@@ -771,6 +773,7 @@ export const useResourceStore = defineStore("resource", () => {
       ...globalResources.value.skills.map((s) => ({ kind: "skills" as const, info: s })),
       ...globalResources.value.prompts.map((p) => ({ kind: "prompts" as const, info: p })),
       ...globalResources.value.extensions.map((e) => ({ kind: "extensions" as const, info: e })),
+      ...globalResources.value.mcp.map((m) => ({ kind: "mcp" as const, info: m })),
     ];
   });
 
@@ -783,6 +786,8 @@ export const useResourceStore = defineStore("resource", () => {
         return globalResources.value.prompts;
       case "extensions":
         return globalResources.value.extensions;
+      case "mcp":
+        return globalResources.value.mcp;
       default:
         return [];
     }

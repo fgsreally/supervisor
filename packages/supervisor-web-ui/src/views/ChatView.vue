@@ -87,7 +87,7 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onBeforeUnmount } from "vue";
-import { useSessionStore, useAgentStore } from "@/store";
+import { useSessionStore, useAgentStore, useProviderStore } from "@/store";
 import * as api from "@/api";
 import type { ChatCompactionEntry, ChatEntry } from "@/types/chat-entry";
 import {
@@ -140,6 +140,7 @@ const emit = defineEmits<{
 
 const sessionStore = useSessionStore();
 const agentStore = useAgentStore();
+const providerStore = useProviderStore();
 
 const agentName = computed(() => {
   if (!props.agentId) return null;
@@ -169,11 +170,19 @@ const showThinking = ref(false);
 
 const terminalStatuses = new Set(["finish", "error", "stopped"]);
 
+const providerDisabled = computed(() => {
+  if (!props.agentId) return false;
+  const providerId = agentStore.getAgentById(props.agentId)?.providerId;
+  if (!providerId) return false;
+  return providerStore.getProviderById(providerId)?.isEnabled === false;
+});
+
 const inputDisabled = computed(
-  () => isStreaming.value || terminalStatuses.has(props.session.status),
+  () => providerDisabled.value || isStreaming.value || terminalStatuses.has(props.session.status),
 );
 
 const inputPlaceholder = computed(() => {
+  if (providerDisabled.value) return "模型供应商已禁用，无法发送消息";
   if (props.session.status === "finish") return "会话已完成";
   if (props.session.status === "error") return "会话出错，请查看菜单中的合并状态";
   if (props.session.status === "stopped") return "会话已停止";

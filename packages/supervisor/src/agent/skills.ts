@@ -333,8 +333,8 @@ function loadSkillFromFile(
 }
 
 /**
- * Format skills for inclusion in a system prompt.
- * Uses XML format per Agent Skills standard.
+ * Format the skill index for inclusion in a system prompt.
+ * Full instructions are loaded by the dedicated skill tool.
  * See: https://agentskills.io/integrate-skills
  *
  * Skills with disableModelInvocation=true are excluded from the prompt
@@ -354,7 +354,6 @@ export function formatSkillsForPrompt(skills: Skill[]): string {
     lines.push("  <skill>");
     lines.push(`    <name>${escapeXml(skill.name)}</name>`);
     lines.push(`    <description>${escapeXml(skill.description)}</description>`);
-    lines.push(`    <location>${escapeXml(skill.filePath)}</location>`);
     lines.push("  </skill>");
   }
 

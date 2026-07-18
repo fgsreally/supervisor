@@ -30,6 +30,7 @@ import { ensureGlobalResourceRoot } from "../resources/resource-paths.js";
 import { AgentResource } from "../agent/runtime-resources.js";
 import {
   promptsToResourceInfo,
+  mcpResourcesToInfo,
   type ResourceLayer,
   resolveAgentResources,
   resolveAgentTools,
@@ -64,6 +65,14 @@ import {
 } from "./session-history.js";
 import { commitSessionChanges } from "./session-lifecycle.js";
 import { SessionRuntime, type SessionState } from "./session-runtime.js";
+import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
+import type {
+  ExternalInteractionRequest,
+  ExternalInteractionResponse,
+} from "./managed-session-runtime.js";
+import { AcpSessionRuntime } from "./external/acp-session-runtime.js";
+import { CodexSessionRuntime } from "./external/codex-session-runtime.js";
+import { ClaudeSessionRuntime } from "./external/claude-session-runtime.js";
 import {
   createRuntimeSessionStorage,
   SQLiteSessionStorage,
@@ -166,7 +175,7 @@ function parseSessionMeta<T = Record<string, unknown>>(meta: string | Record<str
 export class SessionManager {
   private db: SupervisorDb;
   private modelRegistry: ModelRegistry;
-  private runtimes = new Map<number, SessionRuntime>();
+  private runtimes = new Map<number, ManagedSessionRuntime>();
   private turnTrackers = new Map<number, TurnFileTracker>();
   private outputListeners = new Map<number, Set<SessionOutputListener>>();
   private sessionToolConfigs = new Map<number, SessionToolConfig>();
@@ -250,33 +259,37 @@ export class SessionManager {
     return agentId ? this.db.getAgent(agentId) : undefined;
   }
 
-  /** 按工具名称合并多组 Agent 工具，后传入的资源工具覆盖同名工具。 */
-  private mergeAgentTools(...groups: AgentTool[][]): AgentTool[] {
-    const merged = new Map<string, AgentTool>();
-    for (const tools of groups) {
-      for (const tool of tools) merged.set(tool.name, tool);
-    }
-    return [...merged.values()];
-  }
-
   private assembleSessionTools(
     sessionId: number,
     agentId: number | null,
     cwd: string,
     toolsPreset: "coding" | "readonly" | "none",
     overrideTools?: AgentTool[],
-  ): Promise<AgentTool[]> {
+  ): AgentTool[] {
     const baseTools = overrideTools ?? createDefaultTools(cwd, toolsPreset);
     this.sessionToolConfigs.set(sessionId, { cwd, agentId, toolsPreset, overrideTools });
     return baseTools;
   }
 
   async resolveAgentResources(agentId: number, cwd: string) {
+    const agent = this.db.getAgent(agentId);
+    if (agent?.backendType !== "native") {
+      return {
+        agentId,
+        homeDir: "",
+        systemMd: "",
+        toolsPreset: agent?.toolsPreset ?? null,
+        tools: [],
+        layers: { agent: { skills: [], prompts: [], extensions: [], mcp: [] } },
+      };
+    }
     await this.ensureResourceCatalog();
     return resolveAgentResources(this.db, agentId, cwd, this.extensionRegistry);
   }
 
   async resolveAgentTools(agentId: number, cwd: string) {
+    const agent = this.db.getAgent(agentId);
+    if (agent?.backendType !== "native") return [];
     await this.ensureResourceCatalog();
     return resolveAgentTools(this.db, agentId, cwd, this.extensionRegistry);
   }
@@ -321,7 +334,7 @@ export class SessionManager {
     return appendReadOrchestrationHint(base);
   }
 
-  private setupRuntime(sessionId: number, runtime: SessionRuntime): void {
+  private setupRuntime(sessionId: number, runtime: ManagedSessionRuntime): void {
     this.runtimes.set(sessionId, runtime);
     const existing = this.db.get(sessionId) as unknown as Session | undefined;
     const existingMeta = existing?.meta ?? {};
@@ -346,14 +359,18 @@ export class SessionManager {
           if (!hasPendingAsks(sessionId)) {
             await this.drainSessionInputQueue(sessionId);
           }
-          await runShadow(this, this.db, sessionId, event);
+          if (runtime instanceof SessionRuntime) {
+            await runShadow(this, this.db, sessionId, event);
+          }
         })().catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
           console.error(`shadow hook failed [${sessionId}]:`, message);
         });
       }
 
-      handleSessionLifecycleAgentEnd(sessionId, runtime, event, this.db);
+      if (runtime instanceof SessionRuntime) {
+        handleSessionLifecycleAgentEnd(sessionId, runtime, event, this.db);
+      }
 
       if (isTrackedAgentEvent(event)) {
         const tracker = this.turnTrackers.get(sessionId);
@@ -394,7 +411,16 @@ export class SessionManager {
     return { provider, modelId, systemPrompt, toolsPreset };
   }
 
-  private async restoreRuntime(id: number): Promise<SessionRuntime> {
+  private createExternalRuntime(session: Session, agent: Agent): Promise<ManagedSessionRuntime> {
+    const options = { db: this.db, session, agent };
+    if (agent.backendType === "codex") return CodexSessionRuntime.create(options);
+    if (agent.backendType === "claude") return ClaudeSessionRuntime.create(options);
+    if (agent.backendType === "kimi") return AcpSessionRuntime.create(options);
+    if (agent.backendType === "acp") return AcpSessionRuntime.create(options);
+    throw new Error(`Unsupported external Agent backend: ${agent.backendType}`);
+  }
+
+  private async restoreRuntime(id: number): Promise<ManagedSessionRuntime> {
     const session = rowToSession(this.db.get(id)!);
     if (!session) throw new Error(`Session ${id} not found`);
     if (
@@ -406,13 +432,20 @@ export class SessionManager {
       throw new Error(`Session ${id} is not resumable (status: ${session.status})`);
     }
 
+    const agent = this.getAgentForSession(session.agentId);
+    if (agent && agent.backendType !== "native") {
+      const runtime = await this.createExternalRuntime(session, agent);
+      this.setupRuntime(session.id, runtime);
+      this.db.updateStatus(session.id, "idle");
+      return runtime;
+    }
+
     const config = this.extractRuntimeConfig(session);
     const model = getModel(config.provider as KnownProvider, config.modelId as never);
     if (!model) {
       throw new Error(`Model ${config.modelId} from provider ${config.provider} not found`);
     }
 
-    const agent = this.getAgentForSession(session.agentId);
     await this.ensureResourceCatalog();
     const resource = new AgentResource({
       sessionId: session.id,
@@ -487,7 +520,7 @@ export class SessionManager {
     return runtime;
   }
 
-  private async getOrRestoreRuntime(id: number): Promise<SessionRuntime> {
+  private async getOrRestoreRuntime(id: number): Promise<ManagedSessionRuntime> {
     const runtime = this.runtimes.get(id);
     if (runtime) return runtime;
     return this.restoreRuntime(id);
@@ -541,13 +574,27 @@ export class SessionManager {
     );
     await ensureSessionDir(this.requireProjectId(activeSession), activeSession.id);
 
+    if (agentInDb && agentInDb.backendType !== "native") {
+      const runtime = await this.createExternalRuntime(activeSession, agentInDb);
+      this.setupRuntime(activeSession.id, runtime);
+      if (options.instructions) {
+        void runtime.prompt(options.instructions).catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`ACP agent prompt error [${activeSession.id}]:`, message);
+          this.db.updateStatus(activeSession.id, "error");
+        });
+      }
+      this.db.updateStatus(activeSession.id, options.instructions ? "running" : "idle");
+      return rowToSession(this.db.get(activeSession.id)!);
+    }
+
     const modelId = options.model ?? agentInDb?.modelId ?? DEFAULT_MODEL_ID;
+    const provider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
     let model =
-      agentInDb?.providerId !== undefined
+      agentInDb?.providerId != null
         ? resolveModelWithProviderOverrides(this.db, agentInDb.providerId, modelId)
         : undefined;
     if (!model) {
-      const provider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
       model = getModel(provider, modelId as never);
     }
 
@@ -671,7 +718,19 @@ export class SessionManager {
   ): Promise<void> {
     const session = this.db.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
+    this.assertSessionProviderEnabled(id);
     await (await this.getOrRestoreRuntime(id)).prompt(message, images, source);
+  }
+
+  private assertSessionProviderEnabled(sessionId: number): void {
+    const session = this.db.get(sessionId);
+    if (!session?.agent_id) return;
+    const agent = this.db.getAgent(session.agent_id);
+    if (!agent?.providerId) return;
+    const provider = this.db.getProvider(agent.providerId);
+    if (provider && !provider.isEnabled) {
+      throw new Error(`Model provider "${provider.name}" is disabled`);
+    }
   }
 
   async submitSessionInput(
@@ -771,12 +830,14 @@ export class SessionManager {
   }
 
   steer(id: number, message: string): void {
+    this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
     runtime.steer(message);
   }
 
   followUp(id: number, message: string, source?: string | null): void {
+    this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
     runtime.followUp(message, source);
@@ -794,6 +855,27 @@ export class SessionManager {
 
   submitApprovalResolution(sessionId: number, approvalId: string, result: ApprovalResult): boolean {
     return submitApprovalResolution(sessionId, approvalId, result);
+  }
+
+  submitExternalInteraction(
+    sessionId: number,
+    interactionId: string,
+    response: ExternalInteractionResponse,
+  ): boolean {
+    return (
+      this.runtimes.get(sessionId)?.resolveExternalInteraction?.(interactionId, response) ?? false
+    );
+  }
+
+  async requestExternalInteraction(
+    sessionId: number,
+    request: ExternalInteractionRequest,
+  ): Promise<ExternalInteractionResponse> {
+    const runtime = this.runtimes.get(sessionId);
+    if (!runtime?.requestExternalInteraction) {
+      throw new Error(`Session ${sessionId} does not accept external interaction requests`);
+    }
+    return runtime.requestExternalInteraction(request);
   }
 
   async compact(
@@ -940,6 +1022,9 @@ export class SessionManager {
   }
 
   private enrichAgentWithSystemMd(agent: Agent): AgentWithSystemMd {
+    if (agent.backendType !== "native") {
+      return { ...agent, homeDir: null, systemMd: "" };
+    }
     const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
     return { ...agent, homeDir, systemMd: readAgentHomeSystemPrompt(homeDir) };
   }
@@ -949,7 +1034,7 @@ export class SessionManager {
     options?: { systemMd?: string },
   ): AgentWithSystemMd {
     const agent = this.db.insertAgent(row);
-    if (options?.systemMd !== undefined) {
+    if (agent.backendType === "native" && options?.systemMd !== undefined) {
       const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
       writeAgentHomeSystemPrompt(homeDir, options.systemMd);
     }
@@ -964,6 +1049,9 @@ export class SessionManager {
   setAgentSystemMd(id: number, content: string): AgentWithSystemMd {
     const agent = this.db.getAgent(id);
     if (!agent) throw new Error(`Agent ${id} not found`);
+    if (agent.backendType !== "native") {
+      throw new Error("External agents manage their own system instructions");
+    }
     const homeDir = agent.homeDir ?? getAgentHomeDir(id);
     writeAgentHomeSystemPrompt(homeDir, content);
     return this.enrichAgentWithSystemMd(agent);
@@ -972,6 +1060,7 @@ export class SessionManager {
   getAgentSystemMd(id: number): string {
     const agent = this.db.getAgent(id);
     if (!agent) throw new Error(`Agent ${id} not found`);
+    if (agent.backendType !== "native") return "";
     const homeDir = agent.homeDir ?? getAgentHomeDir(id);
     return readAgentHomeSystemPrompt(homeDir);
   }
@@ -1330,6 +1419,7 @@ export class SessionManager {
         description: info.description,
         files: [],
       })),
+      mcp: mcpResourcesToInfo(this.db.listResources("mcp")),
     };
   }
 
@@ -1345,7 +1435,7 @@ export class SessionManager {
     return this.db.getLastMessagePreview(sessionId);
   }
 
-  getRuntime(id: number): SessionRuntime {
+  getRuntime(id: number): ManagedSessionRuntime {
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
     return runtime;

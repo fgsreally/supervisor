@@ -13,6 +13,7 @@ export const DEFAULT_PARENT_MESSAGE_LEVEL = 0;
 export const SESSION_INPUT_INTERRUPT_LEVEL = 90;
 
 export interface SessionQueuedInput {
+  id: string;
   message: string;
   level: number;
   source: string | null;
@@ -52,6 +53,10 @@ export class SessionInputQueue {
 
   size(sessionId: number): number {
     return this.queues.get(sessionId)?.length ?? 0;
+  }
+
+  list(sessionId: number): SessionQueuedInput[] {
+    return [...(this.queues.get(sessionId) ?? [])];
   }
 }
 

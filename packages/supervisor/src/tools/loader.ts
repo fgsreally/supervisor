@@ -19,7 +19,7 @@ export function getPackagedToolDir(id: PackagedToolId): string {
 
 export async function activatePackagedTools(
   extension: SessionExtensionHost,
-  options: { cwd: string; sessionId: number; toolIds: PackagedToolId[] },
+  options: { cwd: string; sessionId: number; sessionDir?: string; toolIds: PackagedToolId[] },
 ): Promise<() => Promise<void>> {
   const cleanups: Array<() => void | Promise<void>> = [];
 

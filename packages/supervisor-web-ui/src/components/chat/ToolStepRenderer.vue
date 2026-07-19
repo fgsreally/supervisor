@@ -26,6 +26,16 @@
     :is-error="isError"
     @open="emit('open-bash', piece.command, piece.result?.content, piece.intent)"
   />
+  <RecordingStep
+    v-else-if="isRecording && piece.kind === 'toolStep'"
+    :session-id="sessionId"
+    :tool-name="piece.toolName"
+    :call-args="piece.callArgs"
+    :result-content="piece.result?.content"
+    :pending="pending"
+    :is-error="isError"
+    @open="emit('open-tool', piece.toolName, piece.callArgs, piece.result?.content)"
+  />
   <ToolActivityBar
     v-else-if="piece.kind === 'toolStep'"
     :tool-name="piece.toolName"
@@ -47,6 +57,7 @@ import { isAskToolName } from "@/utils/ask-tool";
 import AskStep from "./AskStep.vue";
 import ExternalInteractionStep from "./ExternalInteractionStep.vue";
 import BashStep from "../BashStep.vue";
+import RecordingStep from "./RecordingStep.vue";
 import ToolActivityBar from "../ToolActivityBar.vue";
 
 const props = defineProps<{
@@ -76,6 +87,11 @@ const isExternalInteraction = computed(
     props.piece.kind === "toolStep" &&
     (props.piece.toolName === "external_interaction" ||
       props.piece.callArgs?.externalInteraction === true),
+);
+const isRecording = computed(
+  () =>
+    props.piece.kind === "toolStep" &&
+    ["browser", "desktop_recording"].includes(props.piece.toolName),
 );
 
 const childSessionId = computed(() => {

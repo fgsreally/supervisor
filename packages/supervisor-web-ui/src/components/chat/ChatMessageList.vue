@@ -21,6 +21,12 @@
           :file="userFileAttachment(group)"
           :time-label="messageTimeLabel(group)"
           :search-hit="isSearchHit(group)"
+          :delivery-state="group.deliveryState"
+        />
+        <MessageAssets
+          v-if="group.type === 'message' && group.message?.role === 'user' && group.assets?.length"
+          :session-id="sessionId"
+          :assets="group.assets"
         />
 
         <AssistantMessageGroup
@@ -37,6 +43,11 @@
           @open-bash="(cmd, result, intent) => emit('open-bash', cmd, result, intent)"
           @navigate="emit('navigate', $event)"
           @answered="emit('answered')"
+        />
+        <MessageAssets
+          v-if="group.type === 'grouped_assistant' && group.assets.length"
+          :session-id="sessionId"
+          :assets="group.assets"
         />
 
         <CompactionBanner
@@ -89,6 +100,7 @@ import { formatListTime } from "@/utils/format-time";
 import UserMessageRow from "./UserMessageRow.vue";
 import AssistantMessageGroup from "./AssistantMessageGroup.vue";
 import CompactionBanner from "../CompactionBanner.vue";
+import MessageAssets from "./MessageAssets.vue";
 
 const props = defineProps<{
   sessionId: string;
@@ -212,6 +224,7 @@ function assistantDisplayPieces(group: Extract<DisplayGroup, { type: "grouped_as
 function shouldRenderAssistantGroup(
   group: Extract<DisplayGroup, { type: "grouped_assistant" }>,
 ): boolean {
+  if (group.assets.length > 0) return true;
   if (assistantDisplayPieces(group).length > 0) return true;
   if (!props.isStreaming || props.streamingGroupId !== group.id) return false;
   const hasPendingTool = group.pieces.some(

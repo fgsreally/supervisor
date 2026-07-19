@@ -1,6 +1,20 @@
 /** Chat message tree entries used by the UI rendering pipeline. */
 
-export type ChatEntryBase = { isOld?: boolean; createdAt?: number };
+export type AssetScope = "project" | "agent" | "session";
+
+export interface MessageAsset {
+  scope: AssetScope;
+  path: string;
+  name?: string;
+  mediaType?: string;
+}
+
+export type ChatEntryBase = {
+  isOld?: boolean;
+  createdAt?: number;
+  assets?: MessageAsset[];
+  deliveryState?: "queued" | "failed";
+};
 
 export interface ChatToolPart {
   type: "toolCall";

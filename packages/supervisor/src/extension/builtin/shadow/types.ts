@@ -10,5 +10,6 @@ export interface ShadowProtocolResult {
   message?: string;
   urgency?: ShadowUrgency;
   suggestion?: string;
+  suggestedQuestions?: string[];
   title?: string;
 }

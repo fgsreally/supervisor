@@ -4,5 +4,5 @@ export {
   getShadowProtocolPrompt,
   parseShadowProtocolResponse,
 } from "./protocol.js";
-export { runShadow } from "./runner.js";
+export { runShadow, shadowUrgencyToLevel } from "./runner.js";
 export type { ShadowProtocolResult, ShadowUrgency } from "./types.js";

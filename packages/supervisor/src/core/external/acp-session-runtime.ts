@@ -26,6 +26,7 @@ import type { ManagedSessionRuntime } from "../managed-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
 import type { SessionState, SlashCommandInfo } from "../session-runtime.js";
 import { SQLiteSessionStorage } from "../session-storage.js";
+import { getExternalAgentConfig } from "./external-agent-config.js";
 
 export interface AcpAgentConfig {
   command: string;
@@ -37,28 +38,13 @@ export interface AcpAgentConfig {
 type Listener = (event: AgentHarnessEvent) => void | Promise<void>;
 
 function parseAcpConfig(agent: Agent): AcpAgentConfig {
-  const external = agent.meta.external;
-  if (!external || typeof external !== "object") {
-    throw new Error(`ACP agent ${agent.id} is missing meta.external configuration`);
-  }
-  const config = external as Record<string, unknown>;
-  if (typeof config.command !== "string" || config.command.trim().length === 0) {
-    throw new Error(`ACP agent ${agent.id} is missing meta.external.command`);
-  }
+  const config = getExternalAgentConfig(agent);
+  if (!config.command) throw new Error(`ACP agent ${agent.id} is missing meta.command`);
   return {
     command: config.command,
-    args: Array.isArray(config.args)
-      ? config.args.filter((value): value is string => typeof value === "string")
-      : [],
-    env:
-      config.env && typeof config.env === "object"
-        ? Object.fromEntries(
-            Object.entries(config.env).filter(
-              (entry): entry is [string, string] => typeof entry[1] === "string",
-            ),
-          )
-        : undefined,
-    permissionPolicy: config.permissionPolicy === "allow_once" ? "allow_once" : "reject_once",
+    args: config.args,
+    env: config.env,
+    permissionPolicy: agent.meta.permissionPolicy === "allow_once" ? "allow_once" : "reject_once",
   };
 }
 
@@ -376,11 +362,20 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
   }
 
   steer(message: string): void {
-    void this.prompt(message);
+    void (async () => {
+      if (this.running) {
+        await this.abort();
+        await this.running.catch(() => {});
+      }
+      await this.prompt(message);
+    })();
   }
 
   followUp(message: string, source?: string | null): void {
-    void this.prompt(message, undefined, source);
+    void (async () => {
+      await this.running?.catch(() => {});
+      await this.prompt(message, undefined, source);
+    })();
   }
 
   async abort(): Promise<void> {

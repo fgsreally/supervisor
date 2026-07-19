@@ -1,6 +1,9 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import { resolveApiKey } from "./credentials.js";
+import { scrapeFirecrawl } from "./firecrawl.js";
 import { htmlToText } from "./html.js";
 import { safeFetch } from "./ssrf.js";
+import { extractTavily } from "./tavily.js";
 
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -20,7 +23,13 @@ function clampTimeout(seconds: number | undefined): number {
   return Math.min(MAX_TIMEOUT_MS, Math.max(1_000, Math.floor(seconds * 1000)));
 }
 
-export function createWebFetchTool(): AgentTool {
+export function createWebFetchTool(options?: {
+  provider?: "native" | "tavily" | "firecrawl" | "native-then-tavily" | "native-then-firecrawl";
+  tavilyApiKeyEnv?: string;
+  firecrawlApiKeyEnv?: string;
+  tavilyApiKeyEncrypted?: string;
+  firecrawlApiKeyEncrypted?: string;
+}): AgentTool {
   return {
     name: "web_fetch",
     label: "web_fetch",
@@ -71,8 +80,44 @@ export function createWebFetchTool(): AgentTool {
       const timeout = setTimeout(() => controller.abort(), timeoutMs);
       const onAbort = () => controller.abort();
       signal?.addEventListener("abort", onAbort, { once: true });
+      let attemptedFallback = false;
 
       try {
+        const provider = options?.provider ?? "native";
+        const enhancedProvider = provider.endsWith("firecrawl") ? "firecrawl" : "tavily";
+        const extractEnhanced = async (): Promise<string> =>
+          enhancedProvider === "firecrawl"
+            ? scrapeFirecrawl(
+                url,
+                resolveApiKey(
+                  "Firecrawl",
+                  options?.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY",
+                  options?.firecrawlApiKeyEncrypted,
+                ),
+                controller.signal,
+              )
+            : extractTavily(
+                url,
+                options?.tavilyApiKeyEnv ?? "TAVILY_API_KEY",
+                options?.tavilyApiKeyEncrypted,
+                controller.signal,
+              );
+        const enhancedFallback = async (): Promise<AgentToolResult | undefined> => {
+          if (!provider.startsWith("native-then-")) return undefined;
+          attemptedFallback = true;
+          const text = await extractEnhanced();
+          return {
+            content: [{ type: "text", text: `Source: ${url}\n\n${text}` }],
+            details: { url, provider: enhancedProvider, fallback: true },
+          };
+        };
+        if (provider === "tavily" || provider === "firecrawl") {
+          const text = await extractEnhanced();
+          return {
+            content: [{ type: "text", text: `Source: ${url}\n\n${text}` }],
+            details: { url, provider },
+          };
+        }
         const response = await safeFetch(url, {
           method: "GET",
           headers: {
@@ -83,6 +128,8 @@ export function createWebFetchTool(): AgentTool {
         });
 
         if (!response.ok) {
+          const fallback = await enhancedFallback();
+          if (fallback) return fallback;
           return {
             content: [
               { type: "text", text: `HTTP ${response.status} ${response.statusText} for ${url}` },
@@ -119,6 +166,8 @@ export function createWebFetchTool(): AgentTool {
         } else if (contentType.includes("text/html") || body.trimStart().startsWith("<")) {
           text = htmlToText(body);
           if (!text.trim()) {
+            const fallback = await enhancedFallback();
+            if (fallback) return fallback;
             return {
               content: [
                 {
@@ -130,6 +179,8 @@ export function createWebFetchTool(): AgentTool {
             };
           }
         } else {
+          const fallback = await enhancedFallback();
+          if (fallback) return fallback;
           return {
             content: [
               {
@@ -147,6 +198,40 @@ export function createWebFetchTool(): AgentTool {
           details: { url, format: params.format ?? "markdown", bytes: buffer.byteLength },
         };
       } catch (error: unknown) {
+        if (
+          (options?.provider ?? "native").startsWith("native-then-") &&
+          !attemptedFallback &&
+          !controller.signal.aborted
+        ) {
+          try {
+            const fallbackProvider = (options?.provider ?? "").endsWith("firecrawl")
+              ? "firecrawl"
+              : "tavily";
+            const text =
+              fallbackProvider === "firecrawl"
+                ? await scrapeFirecrawl(
+                    url,
+                    resolveApiKey(
+                      "Firecrawl",
+                      options?.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY",
+                      options?.firecrawlApiKeyEncrypted,
+                    ),
+                    controller.signal,
+                  )
+                : await extractTavily(
+                    url,
+                    options?.tavilyApiKeyEnv ?? "TAVILY_API_KEY",
+                    options?.tavilyApiKeyEncrypted,
+                    controller.signal,
+                  );
+            return {
+              content: [{ type: "text", text: `Source: ${url}\n\n${text}` }],
+              details: { url, provider: fallbackProvider, fallback: true },
+            };
+          } catch {
+            // Preserve the native error below; it is usually more actionable.
+          }
+        }
         const message = error instanceof Error ? error.message : String(error);
         const isAbort = error instanceof Error && error.name === "AbortError";
         return {

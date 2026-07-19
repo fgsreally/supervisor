@@ -52,9 +52,7 @@ describe("packaged agents", () => {
           backendType: "kimi",
           providerId: null,
           icon: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
-          meta: expect.objectContaining({
-            external: expect.objectContaining({ command: "kimi", args: ["acp"] }),
-          }),
+          meta: expect.objectContaining({ command: "kimi", args: ["acp"] }),
         }),
       ]),
     );

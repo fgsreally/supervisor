@@ -2,6 +2,9 @@
   <div class="flex justify-end items-start gap-2">
     <div class="max-w-[75%] flex flex-col items-end min-w-0">
       <span class="chat-msg-time chat-msg-time--user">{{ timeLabel }}</span>
+      <span v-if="deliveryState" class="chat-msg-delivery" :class="deliveryState">
+        {{ deliveryState === "queued" ? "排队中" : "发送失败" }}
+      </span>
       <ChatFileBubble v-if="file" :file="file" class="relative" />
       <div
         v-else
@@ -30,6 +33,7 @@ defineProps<{
   file?: ChatUserFileAttachment | null;
   timeLabel: string;
   searchHit?: boolean;
+  deliveryState?: "queued" | "failed";
 }>();
 </script>
 
@@ -46,6 +50,16 @@ defineProps<{
 .chat-msg-time--user {
   align-self: flex-end;
   margin-right: 2px;
+}
+
+.chat-msg-delivery {
+  margin: 0 2px 4px 0;
+  color: var(--app-text-muted);
+  font-size: 11px;
+}
+
+.chat-msg-delivery.failed {
+  color: #dc2626;
 }
 
 .chat-avatar {

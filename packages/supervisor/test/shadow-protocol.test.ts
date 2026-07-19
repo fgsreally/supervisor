@@ -3,8 +3,20 @@ import {
   getShadowProtocolPrompt,
   parseShadowProtocolResponse,
 } from "../src/extension/builtin/shadow/protocol.js";
+import { shadowUrgencyToLevel } from "../src/extension/builtin/shadow/runner.js";
+import {
+  SESSION_INPUT_INTERRUPT_LEVEL,
+  shouldInterruptSessionInput,
+} from "../src/core/session-input-queue.js";
 
 describe("shadow XML protocol", () => {
+  it("maps critical messages to immediate intervention", () => {
+    const level = shadowUrgencyToLevel("critical");
+    expect(level).toBe(SESSION_INPUT_INTERRUPT_LEVEL);
+    expect(shouldInterruptSessionInput(level)).toBe(true);
+    expect(shouldInterruptSessionInput(shadowUrgencyToLevel("high"))).toBe(false);
+  });
+
   it("parses every supported field", () => {
     const result = parseShadowProtocolResponse(`
 \`\`\`xml
@@ -13,6 +25,10 @@ describe("shadow XML protocol", () => {
   <message>check the requirement</message>
   <urgency>high</urgency>
   <suggestion>Ask it to add a regression test</suggestion>
+  <suggested-questions>
+    <question>What should I test next?</question>
+    <question>Can this be deployed safely?</question>
+  </suggested-questions>
   <title>Shadow redesign</title>
 </shadow>
 \`\`\`
@@ -23,6 +39,7 @@ describe("shadow XML protocol", () => {
       message: "check the requirement",
       urgency: "high",
       suggestion: "Ask it to add a regression test",
+      suggestedQuestions: ["What should I test next?", "Can this be deployed safely?"],
       title: "Shadow redesign",
     });
   });
@@ -34,6 +51,7 @@ describe("shadow XML protocol", () => {
       message: undefined,
       urgency: undefined,
       suggestion: undefined,
+      suggestedQuestions: undefined,
       title: undefined,
     });
   });

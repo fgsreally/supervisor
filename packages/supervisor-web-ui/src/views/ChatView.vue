@@ -22,33 +22,82 @@
       ref="searchBarRef"
     />
 
-    <ChatMessageList
-      ref="messageListRef"
-      :session-id="session.id"
-      :groups="visibleGroups"
-      :show-thinking-blocks="showThinking"
-      :is-streaming="isStreaming"
-      :streaming-group-id="streamingAssistantId"
-      :show-streaming-placeholder="showStreamingPlaceholder"
-      :streaming-time-label="streamingTimeLabel"
-      :search-open="searchOpen"
-      :search-query="searchQuery"
-      :assistant-avatar-label="session.meta?.builtin ? 'π' : 'P'"
-      @open-tool="openToolDetail"
-      @open-bash="openBashDetail"
-      @open-compaction="openCompactionDetail"
-      @navigate="navigateToSubagent"
-      @answered="onAskAnswered"
-    />
+    <div v-if="taskCount" class="task-strip">
+      <button class="task-tag" type="button" @click="taskPaneOpen = !taskPaneOpen">
+        <span>任务视窗</span>
+        <span class="task-tag__types">{{ taskTypeSummary }}</span>
+        <span class="task-tag__count">{{ taskCount }}</span>
+      </button>
+    </div>
 
-    <ChatInputPanel
-      ref="inputPanelRef"
-      v-model="inputText"
-      :workspace-id="workspaceId"
-      :agent-id="agentId"
-      :disabled="inputDisabled"
-      :placeholder="inputPlaceholder"
-      @send="sendMessage"
+    <div class="chat-workspace">
+      <div class="chat-workspace__conversation">
+        <ChatMessageList
+          ref="messageListRef"
+          :session-id="session.id"
+          :groups="visibleGroups"
+          :show-thinking-blocks="showThinking"
+          :is-streaming="isStreaming"
+          :streaming-group-id="streamingAssistantId"
+          :show-streaming-placeholder="showStreamingPlaceholder"
+          :streaming-time-label="streamingTimeLabel"
+          :search-open="searchOpen"
+          :search-query="searchQuery"
+          :assistant-avatar-label="session.meta?.builtin ? 'π' : 'P'"
+          @open-tool="openToolDetail"
+          @open-bash="openBashDetail"
+          @open-compaction="openCompactionDetail"
+          @navigate="navigateToSubagent"
+          @answered="onAskAnswered"
+        />
+
+        <div v-if="suggestedQuestions.length" class="suggested-questions">
+          <span>你可能还想问</span>
+          <button
+            v-for="question in suggestedQuestions"
+            :key="question"
+            type="button"
+            @click="selectSuggestedQuestion(question)"
+          >
+            {{ question }}
+          </button>
+        </div>
+
+        <div v-if="isStreaming" class="streaming-send-mode">
+          <span>回复进行中，发送方式</span>
+          <select v-model="streamingSendMode">
+            <option value="steer">立即干预（中断当前回复）</option>
+            <option value="follow_up">轮后追加</option>
+          </select>
+        </div>
+
+        <ChatInputPanel
+          ref="inputPanelRef"
+          v-model="inputText"
+          :session-id="session.id"
+          :workspace-id="workspaceId"
+          :agent-id="agentId"
+          :disabled="inputDisabled"
+          :placeholder="inputPlaceholder"
+          @send="sendMessage"
+        />
+      </div>
+
+      <TaskWorkspacePanel
+        v-if="taskPaneOpen && taskCount"
+        :tasks="tasks"
+        :todos="activeTodos"
+        :selected-path="selectedTaskPath"
+        @select="selectedTaskPath = $event"
+        @close="taskPaneOpen = false"
+      />
+    </div>
+
+    <ExternalAgentCommandHost
+      ref="externalCommandHostRef"
+      :session-id="session.id"
+      :backend-type="agentBackendType"
+      @insert="insertExternalAgentText"
     />
 
     <ChatSessionMenu
@@ -104,11 +153,13 @@ import {
 import { buildToolModal, buildBashModal } from "../utils/tool-detail";
 import ToolDetailModal from "../components/ToolDetailModal.vue";
 import ChatInputPanel from "../components/ChatInputPanel.vue";
+import ExternalAgentCommandHost from "../components/external-agents/ExternalAgentCommandHost.vue";
 import ChatSessionMenu from "../components/ChatSessionMenu.vue";
 import SessionLogPanel from "../components/SessionLogPanel.vue";
 import ChatViewHeader from "../components/chat/ChatViewHeader.vue";
 import ChatSearchBar from "../components/chat/ChatSearchBar.vue";
 import ChatMessageList from "../components/chat/ChatMessageList.vue";
+import TaskWorkspacePanel from "../components/chat/TaskWorkspacePanel.vue";
 import type { ChatSendPayload } from "@/types/chat-compose";
 import { getShowThinking, setShowThinking } from "../composables/use-chat-session-prefs";
 import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-push-notifications";
@@ -122,11 +173,13 @@ const props = defineProps<{
     meta?: {
       name?: string;
       builtin?: boolean;
+      shadowSuggestedQuestions?: string[];
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
     };
     workspaceId?: string;
     pinned?: boolean;
     muted?: boolean;
+    currentTask?: string | null;
   };
   agentId?: string;
   showBack?: boolean;
@@ -146,9 +199,14 @@ const agentName = computed(() => {
   if (!props.agentId) return null;
   return agentStore.getAgentById(props.agentId)?.name ?? props.agentId;
 });
+const agentBackendType = computed(() =>
+  props.agentId ? agentStore.getAgentById(props.agentId)?.backendType : undefined,
+);
 
 const inputText = ref("");
+const suggestedQuestions = ref<string[]>([]);
 const inputPanelRef = ref<InstanceType<typeof ChatInputPanel> | null>(null);
+const externalCommandHostRef = ref<InstanceType<typeof ExternalAgentCommandHost> | null>(null);
 const messageListRef = ref<InstanceType<typeof ChatMessageList> | null>(null);
 const searchBarRef = ref<InstanceType<typeof ChatSearchBar> | null>(null);
 const sessionTitle = ref("");
@@ -157,16 +215,34 @@ const toolModal = ref<{ title: string; sections: { label: string; content: strin
   null,
 );
 const isStreaming = ref(false);
+const streamingSendMode = ref<"steer" | "follow_up">("follow_up");
 const streamingAssistantId = ref<string | null>(null);
 const sessionMenuOpen = ref(false);
 const showLogPanel = ref(false);
 const searchOpen = ref(false);
 const searchQuery = ref("");
+const tasks = ref<api.TaskArtifact[]>([]);
+const todos = ref<api.TodoItem[]>([]);
+const selectedTaskPath = ref<string | null>(null);
+const taskPaneOpen = ref(false);
 let streamCleanup: (() => void) | null = null;
+let shadowSuggestionCleanup: (() => void) | null = null;
 
 const workspaceId = computed(() => props.session.workspaceId ?? "");
 const sessionMuted = computed(() => !!props.session.muted);
 const showThinking = ref(false);
+const activeTodos = computed(() =>
+  todos.value.length > 0 && !todos.value.every((todo) => todo.status === "done") ? todos.value : [],
+);
+const taskCount = computed(() => tasks.value.length + (activeTodos.value.length ? 1 : 0));
+const taskTypeSummary = computed(() =>
+  [
+    ...new Set([
+      ...tasks.value.map((task) => ({ goal: "Goal", plan: "Plan" })[task.type]),
+      ...(activeTodos.value.length ? ["Todo"] : []),
+    ]),
+  ].join(" / "),
+);
 
 const terminalStatuses = new Set(["finish", "error", "stopped"]);
 
@@ -178,7 +254,7 @@ const providerDisabled = computed(() => {
 });
 
 const inputDisabled = computed(
-  () => providerDisabled.value || isStreaming.value || terminalStatuses.has(props.session.status),
+  () => providerDisabled.value || terminalStatuses.has(props.session.status),
 );
 
 const inputPlaceholder = computed(() => {
@@ -186,7 +262,8 @@ const inputPlaceholder = computed(() => {
   if (props.session.status === "finish") return "会话已完成";
   if (props.session.status === "error") return "会话出错，请查看菜单中的合并状态";
   if (props.session.status === "stopped") return "会话已停止";
-  if (isStreaming.value) return "正在回复…";
+  if (isStreaming.value)
+    return streamingSendMode.value === "steer" ? "输入立即干预内容" : "输入轮后追加内容";
   return "输入消息";
 });
 
@@ -243,9 +320,37 @@ function stopStreaming() {
 }
 
 async function reloadMessagesFromServer(sessionId: string) {
-  await sessionStore.fetchSessionMessages(sessionId);
+  const [, queuedInputs, nextTasks, nextTodos] = await Promise.all([
+    sessionStore.fetchSessionMessages(sessionId),
+    api.getQueuedSessionInputs(sessionId).catch(() => []),
+    api.getSessionTasks(sessionId).catch(() => []),
+    api.getSessionTodos(sessionId).catch(() => []),
+  ]);
   const entries = sessionStore.messages[sessionId] ?? [];
-  chatEntries.value = sessionTreeToChatEntries(entries);
+  chatEntries.value = [
+    ...sessionTreeToChatEntries(entries),
+    ...queuedInputs
+      .filter((input) => input.source === null)
+      .map((input) => {
+        const entry = createUserChatEntry(`queued-${input.id}`, input.message, "queued");
+        entry.createdAt = input.enqueuedAt;
+        return entry;
+      }),
+  ];
+  tasks.value = nextTasks;
+  todos.value = nextTodos;
+  const todoActive = nextTodos.length > 0 && !nextTodos.every((todo) => todo.status === "done");
+  const preferredPath = props.session.currentTask;
+  const selectionExists =
+    nextTasks.some((task) => task.path === selectedTaskPath.value) ||
+    (selectedTaskPath.value === "$todo" && todoActive);
+  if (!selectedTaskPath.value || !selectionExists) {
+    selectedTaskPath.value =
+      preferredPath && nextTasks.some((task) => task.path === preferredPath)
+        ? preferredPath
+        : (nextTasks[0]?.path ?? (todoActive ? "$todo" : null));
+  }
+  if (nextTasks.length === 0 && !todoActive) taskPaneOpen.value = false;
 }
 
 async function loadSessionMessages(sessionId: string) {
@@ -256,6 +361,34 @@ async function loadSessionMessages(sessionId: string) {
   searchOpen.value = false;
   searchQuery.value = "";
   sessionMenuOpen.value = false;
+  suggestedQuestions.value = Array.isArray(props.session.meta?.shadowSuggestedQuestions)
+    ? props.session.meta.shadowSuggestedQuestions.filter(
+        (question): question is string =>
+          typeof question === "string" && question.trim().length > 0,
+      )
+    : [];
+}
+
+function subscribeShadowSuggestions(sessionId: string) {
+  shadowSuggestionCleanup?.();
+  shadowSuggestionCleanup = api.subscribeSessionEvents(
+    sessionId,
+    (payload) => {
+      if (payload.type !== "agent" || payload.event?.type !== "shadow_suggestions") return;
+      suggestedQuestions.value = payload.event.questions;
+    },
+    (error) => console.error("Shadow suggestion events error:", error),
+  );
+}
+
+function selectSuggestedQuestion(question: string) {
+  inputText.value = question;
+  void nextTick(() => inputPanelRef.value?.focus());
+}
+
+function insertExternalAgentText(text: string) {
+  inputText.value = text;
+  void nextTick(() => inputPanelRef.value?.focus());
 }
 
 async function saveSessionTitle() {
@@ -376,6 +509,7 @@ async function scrollToBottom() {
 watch(
   () => props.session.id,
   (id) => {
+    subscribeShadowSuggestions(id);
     void loadSessionMessages(id).then(() => scrollToBottom());
   },
   { immediate: true },
@@ -383,6 +517,8 @@ watch(
 
 onBeforeUnmount(() => {
   stopStreaming();
+  shadowSuggestionCleanup?.();
+  shadowSuggestionCleanup = null;
 });
 
 const displayGroups = computed(() => buildDisplayGroups(chatEntries.value));
@@ -545,6 +681,7 @@ function attachToRunningSession() {
     props.session.id,
     (payload) => {
       if (payload.type !== "agent" || !payload.event) return;
+      if (payload.event.type === "shadow_suggestions") return;
       applyAgentEventToChatEntries(chatEntries.value, assistantId, payload.event);
       void scrollToBottom();
       if (payload.event.type === "agent_end") {
@@ -598,11 +735,128 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
 const sendMessage = (payload: ChatSendPayload) => {
   const text = payload.text.trim();
   if ((!text && !payload.images.length) || inputDisabled.value) return;
+  suggestedQuestions.value = [];
 
-  chatEntries.value.push(createUserChatEntry(Date.now().toString(), text || " "));
+  if (!payload.images.length && externalCommandHostRef.value?.handleCommand(text)) {
+    inputText.value = "";
+    inputPanelRef.value?.clearAfterSend();
+    return;
+  }
+
+  const userEntry = createUserChatEntry(
+    Date.now().toString(),
+    text || " ",
+    isStreaming.value && streamingSendMode.value === "follow_up" ? "queued" : undefined,
+  );
+  chatEntries.value.push(userEntry);
   inputText.value = "";
   inputPanelRef.value?.clearAfterSend();
   void scrollToBottom();
+  if (isStreaming.value) {
+    const images = payload.images.map((image) => ({ mimeType: image.mimeType, data: image.data }));
+    const send =
+      streamingSendMode.value === "steer"
+        ? api.steerSession(props.session.id, text, images)
+        : api.followUpSession(props.session.id, text, images);
+    void send
+      .then((result) => {
+        if ("disposition" in result && result.disposition !== "queued") {
+          userEntry.deliveryState = undefined;
+        }
+      })
+      .catch((error) => {
+        userEntry.deliveryState = "failed";
+        console.error("Send during streaming failed:", error);
+      });
+    return;
+  }
   void sendStreamReply(text, payload.images);
 };
 </script>
+
+<style scoped>
+.task-strip {
+  padding: 7px 12px 0;
+}
+
+.task-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--app-chat-input-island-border);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--app-chat-bg);
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.task-tag__types {
+  color: var(--app-text-muted);
+}
+
+.task-tag__count {
+  display: grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--app-chat-input-island-border);
+  font-size: 11px;
+}
+
+.chat-workspace {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1;
+}
+
+.chat-workspace__conversation {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.streaming-send-mode {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 4px 12px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.suggested-questions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+
+.suggested-questions button {
+  border: 1px solid var(--app-chat-input-island-border);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--app-chat-bg);
+  color: var(--app-text-primary);
+}
+
+.suggested-questions button:hover {
+  background: var(--app-hover);
+}
+
+.streaming-send-mode select {
+  border: 1px solid var(--app-chat-input-island-border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  background: var(--app-chat-bg);
+  color: inherit;
+}
+</style>

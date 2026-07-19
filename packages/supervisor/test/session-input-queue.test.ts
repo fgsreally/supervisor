@@ -11,18 +11,21 @@ describe("SessionInputQueue", () => {
     const queue = new SessionInputQueue();
     const base = Date.now();
     queue.enqueue(1, {
+      id: "low",
       message: "low",
       level: 10,
       source: null,
       enqueuedAt: base + 2,
     });
     queue.enqueue(1, {
+      id: "high",
       message: "high",
       level: 80,
       source: null,
       enqueuedAt: base + 1,
     });
     queue.enqueue(1, {
+      id: "mid",
       message: "mid",
       level: 50,
       source: null,

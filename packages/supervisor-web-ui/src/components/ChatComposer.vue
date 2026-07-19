@@ -41,6 +41,7 @@ const props = withDefaults(
     workspaceFiles?: Array<{ path: string; isDirectory: boolean }>;
     skills?: Array<{ name: string; description: string }>;
     prompts?: Array<{ name: string; description: string }>;
+    skillTrigger?: "slash" | "dollar";
     disabled?: boolean;
     editorHeight?: number;
     placeholder?: string;
@@ -49,6 +50,7 @@ const props = withDefaults(
     workspaceFiles: () => [],
     skills: () => [],
     prompts: () => [],
+    skillTrigger: "slash",
     disabled: false,
     editorHeight: 88,
     placeholder: "输入消息",
@@ -89,6 +91,7 @@ const suggestions = computed(() => {
     workspaceFiles: props.workspaceFiles,
     skills: props.skills,
     prompts: props.prompts,
+    skillTrigger: props.skillTrigger,
   });
 });
 
@@ -128,7 +131,11 @@ function applyItem(item: ChatAutocompleteItem) {
 
   const isDirectory = item.isDirectory ?? false;
   const insertion =
-    ctx.trigger === "slash" ? `/${item.value} ` : item.value + (isDirectory ? "" : " ");
+    ctx.trigger === "slash"
+      ? `/${item.value} `
+      : ctx.trigger === "skill"
+        ? `$${item.value} `
+        : item.value + (isDirectory ? "" : " ");
   const nextCursor = ctx.replaceStart + insertion.length;
 
   view.dispatch({

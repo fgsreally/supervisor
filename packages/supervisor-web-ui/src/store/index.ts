@@ -447,6 +447,20 @@ export const useAgentStore = defineStore("agent", () => {
     }
   }
 
+  async function detectExternalAgents() {
+    root.loading.agents = true;
+    root.clearError();
+    try {
+      agents.value = await api.detectExternalAgents();
+      return agents.value;
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to detect external agents");
+      throw err;
+    } finally {
+      root.loading.agents = false;
+    }
+  }
+
   async function fetchAgent(id: string) {
     root.clearError();
     try {
@@ -568,6 +582,7 @@ export const useAgentStore = defineStore("agent", () => {
     getAgentById,
     getAgentsByCategory,
     fetchAgents,
+    detectExternalAgents,
     fetchAgent,
     createAgent,
     updateAgent,

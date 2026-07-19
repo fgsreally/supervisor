@@ -18,13 +18,13 @@ export interface BrowserSession {
   dispose(): Promise<void>;
 }
 
-export function createBrowserSession(): BrowserSession {
+export function createBrowserSession(options?: { headless?: boolean }): BrowserSession {
   let browser: Browser | null = null;
   const tabs = new Map<string, Page>();
 
   async function ensureBrowser(): Promise<Browser> {
     if (!browser || !browser.connected) {
-      browser = await launchBrowser(true);
+      browser = await launchBrowser(options?.headless ?? true);
     }
     return browser;
   }

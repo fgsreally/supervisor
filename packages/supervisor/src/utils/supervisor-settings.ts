@@ -5,6 +5,22 @@ import { dirname, join } from "node:path";
 export interface SupervisorSettings {
   utilityProvider?: string;
   utilityModelId?: string;
+  browserMode?: "headless" | "headed";
+  webSearchProvider?: "duckduckgo" | "tavily" | "brave" | "serper" | "firecrawl";
+  webFetchProvider?:
+    | "native"
+    | "tavily"
+    | "firecrawl"
+    | "native-then-tavily"
+    | "native-then-firecrawl";
+  tavilyApiKeyEnv?: string;
+  braveApiKeyEnv?: string;
+  serperApiKeyEnv?: string;
+  firecrawlApiKeyEnv?: string;
+  tavilyApiKeyEncrypted?: string;
+  braveApiKeyEncrypted?: string;
+  serperApiKeyEncrypted?: string;
+  firecrawlApiKeyEncrypted?: string;
 }
 
 const DEFAULT_SETTINGS: SupervisorSettings = {};

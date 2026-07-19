@@ -1,5 +1,10 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
+import { searchBrave } from "./brave.js";
+import { resolveApiKey } from "./credentials.js";
 import { searchDuckDuckGo } from "./duckduckgo.js";
+import { searchFirecrawl } from "./firecrawl.js";
+import { searchSerper } from "./serper.js";
+import { searchTavily } from "./tavily.js";
 
 interface WebSearchParams {
   query: string;
@@ -11,7 +16,17 @@ function clampLimit(value: number | undefined): number {
   return Math.min(20, Math.max(1, Math.floor(value)));
 }
 
-export function createWebSearchTool(): AgentTool {
+export function createWebSearchTool(options?: {
+  provider?: "duckduckgo" | "tavily" | "brave" | "serper" | "firecrawl";
+  tavilyApiKeyEnv?: string;
+  braveApiKeyEnv?: string;
+  serperApiKeyEnv?: string;
+  firecrawlApiKeyEnv?: string;
+  tavilyApiKeyEncrypted?: string;
+  braveApiKeyEncrypted?: string;
+  serperApiKeyEncrypted?: string;
+  firecrawlApiKeyEncrypted?: string;
+}): AgentTool {
   return {
     name: "web_search",
     label: "web_search",
@@ -48,7 +63,57 @@ export function createWebSearchTool(): AgentTool {
 
       try {
         const limit = clampLimit(params.limit);
-        const results = await searchDuckDuckGo(query, limit, signal);
+        const provider = options?.provider ?? "duckduckgo";
+        let results;
+        switch (provider) {
+          case "tavily":
+            results = await searchTavily(
+              query,
+              limit,
+              options?.tavilyApiKeyEnv ?? "TAVILY_API_KEY",
+              options?.tavilyApiKeyEncrypted,
+              signal,
+            );
+            break;
+          case "brave":
+            results = await searchBrave(
+              query,
+              limit,
+              resolveApiKey(
+                "Brave",
+                options?.braveApiKeyEnv ?? "BRAVE_API_KEY",
+                options?.braveApiKeyEncrypted,
+              ),
+              signal,
+            );
+            break;
+          case "serper":
+            results = await searchSerper(
+              query,
+              limit,
+              resolveApiKey(
+                "Serper",
+                options?.serperApiKeyEnv ?? "SERPER_API_KEY",
+                options?.serperApiKeyEncrypted,
+              ),
+              signal,
+            );
+            break;
+          case "firecrawl":
+            results = await searchFirecrawl(
+              query,
+              limit,
+              resolveApiKey(
+                "Firecrawl",
+                options?.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY",
+                options?.firecrawlApiKeyEncrypted,
+              ),
+              signal,
+            );
+            break;
+          default:
+            results = await searchDuckDuckGo(query, limit, signal);
+        }
         if (results.length === 0) {
           return {
             content: [
@@ -79,7 +144,7 @@ export function createWebSearchTool(): AgentTool {
 
         return {
           content: [{ type: "text", text: lines.join("\n") }],
-          details: { query, count: results.length, results },
+          details: { query, provider, count: results.length, results },
         };
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);

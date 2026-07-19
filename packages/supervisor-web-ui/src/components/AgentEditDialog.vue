@@ -172,6 +172,8 @@ watch(
   ([open, value]) => {
     if (!open || !value) return;
     const external = value.meta.external as { command?: string; args?: string[] } | undefined;
+    const command = typeof value.meta.command === "string" ? value.meta.command : external?.command;
+    const args = Array.isArray(value.meta.args) ? value.meta.args : external?.args;
     Object.assign(draft, {
       name: value.name,
       description: value.description ?? "",
@@ -179,8 +181,8 @@ watch(
       providerId: value.providerId ?? "",
       modelId: value.modelId ?? "",
       toolsPreset: value.toolsPreset ?? "coding",
-      command: external?.command ?? "",
-      args: (external?.args ?? []).join("\n"),
+      command: command ?? "",
+      args: (args ?? []).join("\n"),
     });
   },
   { immediate: true },
@@ -225,14 +227,11 @@ async function save() {
         value.backendType === "native"
           ? undefined
           : {
-              external: {
-                ...(value.meta.external as Record<string, unknown> | undefined),
-                command: draft.command.trim(),
-                args: draft.args
-                  .split(/\r?\n/)
-                  .map((arg) => arg.trim())
-                  .filter(Boolean),
-              },
+              command: draft.command.trim(),
+              args: draft.args
+                .split(/\r?\n/)
+                .map((arg) => arg.trim())
+                .filter(Boolean),
             },
     });
     emit("saved");

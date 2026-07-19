@@ -9,8 +9,11 @@ import type { TSchema } from "typebox";
 import { Context } from "./context.js";
 import {
   createSkillExtension,
+  evalExtension,
   mcpExtension,
+  messageAssetsExtension,
   subagentExtension,
+  taskManagementExtension,
   type EventHandlerContext,
   type ExtensionDefinition,
   type ExtensionEvent,
@@ -66,8 +69,11 @@ export class SessionExtensionRuntime {
   }
 
   async loadBuiltinExtensions(): Promise<void> {
+    await this.loadExtension(evalExtension, "builtin:eval");
+    await this.loadExtension(taskManagementExtension, "builtin:task-management");
     await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");
     await this.loadExtension(mcpExtension, "builtin:mcp");
+    await this.loadExtension(messageAssetsExtension, "builtin:message-assets");
     if (this.context.session.isMain) {
       await this.loadExtension(subagentExtension, "builtin:subagent");
     }

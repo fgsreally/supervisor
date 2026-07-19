@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, normalize, resolve, sep } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
@@ -14,6 +14,9 @@ import {
 } from "../agent/index.js";
 import type { ExtensionEvent } from "../extension/index.js";
 import type { SessionManager } from "../core/session-manager.js";
+import { getProjectDir, getSessionDir } from "../core/session-files.js";
+import { activeTaskPaths, readTaskArtifact } from "../core/task-artifacts.js";
+import { parseSessionTodos } from "../core/session-todos.js";
 import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-manager.js";
 import { isResourceKind } from "../resources/types.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";
@@ -41,6 +44,37 @@ function toModelResponse(m: Model) {
 
 function jsonError(c: Context, status: 400 | 403 | 404 | 409 | 500 | 501, message: string) {
   return c.json({ error: message }, status);
+}
+
+const ASSET_CONTENT_TYPES: Record<string, string> = {
+  webm: "video/webm",
+  mp4: "video/mp4",
+  mov: "video/quicktime",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+  mp3: "audio/mpeg",
+  wav: "audio/wav",
+  ogg: "audio/ogg",
+  pdf: "application/pdf",
+  txt: "text/plain; charset=utf-8",
+};
+
+function assetContentType(path: string): string {
+  const extension = path.split(".").at(-1)?.toLowerCase() ?? "";
+  return ASSET_CONTENT_TYPES[extension] ?? "application/octet-stream";
+}
+
+async function readOwnedAsset(root: string, relativePath: string): Promise<Uint8Array | null> {
+  if (!relativePath || relativePath.includes("\0") || isAbsolute(relativePath)) return null;
+  const rootPath = await realpath(root).catch(() => null);
+  const candidate = await realpath(resolve(root, relativePath)).catch(() => null);
+  if (!rootPath || !candidate) return null;
+  if (candidate !== rootPath && !candidate.startsWith(`${rootPath}${sep}`)) return null;
+  return readFile(candidate).catch(() => null);
 }
 
 function collectRequestHeaders(c: Context): Record<string, string> {
@@ -90,6 +124,14 @@ function hasReservedAgentMeta(value: unknown): boolean {
   return "builtin" in value || "userSpawnable" in value;
 }
 
+function hasAgentManagedTaskMeta(value: Record<string, unknown>): boolean {
+  return (
+    Object.hasOwn(value, "tasks") ||
+    Object.hasOwn(value, "currentTask") ||
+    Object.hasOwn(value, "todos")
+  );
+}
+
 type PromptImageInput = { mimeType: string; data: string };
 
 function parsePromptImages(value: unknown): PromptImageInput[] | null | undefined {
@@ -123,7 +165,17 @@ export function createHttpServer(manager: SessionManager): Hono {
 
   app.get("/healthz", (c) => c.json({ ok: true }));
 
-  app.get("/settings", (c) => c.json(readSupervisorSettings()));
+  app.get("/settings", (c) => {
+    const settings = readSupervisorSettings();
+    const {
+      tavilyApiKeyEncrypted: _tavily,
+      braveApiKeyEncrypted: _brave,
+      serperApiKeyEncrypted: _serper,
+      firecrawlApiKeyEncrypted: _firecrawl,
+      ...safeSettings
+    } = settings;
+    return c.json(safeSettings);
+  });
 
   app.patch("/settings", async (c) => {
     const body = await c.req.json().catch(() => null);
@@ -141,6 +193,46 @@ export function createHttpServer(manager: SessionManager): Hono {
       }
       patch.utilityModelId = body.utilityModelId;
     }
+    if (body.browserMode !== undefined) {
+      if (body.browserMode !== "headless" && body.browserMode !== "headed") {
+        return jsonError(c, 400, "browserMode must be headless or headed");
+      }
+      patch.browserMode = body.browserMode;
+    }
+    if (body.webSearchProvider !== undefined) {
+      if (
+        !["duckduckgo", "tavily", "brave", "serper", "firecrawl"].includes(body.webSearchProvider)
+      ) {
+        return jsonError(c, 400, "invalid webSearchProvider");
+      }
+      patch.webSearchProvider = body.webSearchProvider;
+    }
+    if (body.webFetchProvider !== undefined) {
+      if (
+        !["native", "tavily", "firecrawl", "native-then-tavily", "native-then-firecrawl"].includes(
+          body.webFetchProvider,
+        )
+      ) {
+        return jsonError(c, 400, "invalid webFetchProvider");
+      }
+      patch.webFetchProvider = body.webFetchProvider;
+    }
+    if (body.tavilyApiKeyEnv !== undefined) {
+      if (
+        typeof body.tavilyApiKeyEnv !== "string" ||
+        !/^[A-Za-z_][A-Za-z0-9_]*$/.test(body.tavilyApiKeyEnv)
+      ) {
+        return jsonError(c, 400, "tavilyApiKeyEnv must be an environment variable name");
+      }
+      patch.tavilyApiKeyEnv = body.tavilyApiKeyEnv;
+    }
+    for (const field of ["braveApiKeyEnv", "serperApiKeyEnv", "firecrawlApiKeyEnv"] as const) {
+      if (body[field] === undefined) continue;
+      if (typeof body[field] !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(body[field])) {
+        return jsonError(c, 400, `${field} must be an environment variable name`);
+      }
+      patch[field] = body[field];
+    }
     return c.json(writeSupervisorSettings(patch));
   });
 
@@ -150,6 +242,8 @@ export function createHttpServer(manager: SessionManager): Hono {
   app.get("/agents", (c) => {
     return c.json(manager.listAgents());
   });
+
+  app.post("/agents/detect", (c) => c.json(manager.detectExternalAgents()));
 
   // GET /agents/:id
   app.get("/agents/:id", (c) => {
@@ -177,11 +271,13 @@ export function createHttpServer(manager: SessionManager): Hono {
       if (backendType === "native" && typeof body.providerId !== "number") {
         return jsonError(c, 400, "providerId is required");
       }
+      const legacyExternal = body.meta?.external as Record<string, unknown> | undefined;
       if (
         backendType === "acp" &&
-        (!body.meta?.external || typeof body.meta.external.command !== "string")
+        typeof body.meta?.command !== "string" &&
+        typeof legacyExternal?.command !== "string"
       ) {
-        return jsonError(c, 400, "meta.external.command is required for ACP agents");
+        return jsonError(c, 400, "meta.command is required for ACP agents");
       }
       if (hasReservedAgentMeta(body.meta)) {
         return jsonError(c, 400, "builtin and userSpawnable are reserved Agent metadata");
@@ -583,6 +679,80 @@ export function createHttpServer(manager: SessionManager): Hono {
     });
   });
 
+  app.get("/sessions/:id/recordings/:filename", async (c) => {
+    const id = Number(c.req.param("id"));
+    const filename = c.req.param("filename");
+    if (!Number.isFinite(id) || !/^[A-Za-z0-9._-]+\.webm$/.test(filename)) {
+      return jsonError(c, 404, "recording not found");
+    }
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "session not found");
+    if (session.projectId == null) return jsonError(c, 404, "session project not found");
+    try {
+      const content = await readFile(
+        join(getSessionDir(session.projectId, session.id), "recordings", filename),
+      );
+      return new Response(content, {
+        headers: { "Content-Type": "video/webm", "Cache-Control": "no-store" },
+      });
+    } catch {
+      return jsonError(c, 404, "recording not found");
+    }
+  });
+
+  // Assets referenced by message.meta.assets. The session determines which owned roots are visible.
+  app.get("/sessions/:id/assets/:scope/*", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "session not found");
+
+    const scope = c.req.param("scope");
+    let root: string | null = null;
+    if (scope === "session" && session.projectId != null) {
+      root = getSessionDir(session.projectId, session.id);
+    } else if (scope === "project" && session.projectId != null) {
+      root = getProjectDir(session.projectId);
+    } else if (scope === "agent" && session.agentId != null) {
+      const agent = manager.getAgent(session.agentId);
+      root = agent?.homeDir ?? join(getSupervisorAgentsRoot(), String(session.agentId));
+    }
+    if (!root) return jsonError(c, 404, "asset scope not found");
+
+    const relativePath = c.req.param("*");
+    const content = await readOwnedAsset(root, relativePath);
+    if (!content) return jsonError(c, 404, "asset not found");
+    return new Response(content, {
+      headers: {
+        "Content-Type": assetContentType(relativePath),
+        "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(relativePath.split("/").at(-1) ?? "asset")}`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  });
+
+  app.get("/sessions/:id/tasks", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session || session.projectId == null) return jsonError(c, 404, "session not found");
+    const artifacts = await Promise.all(
+      activeTaskPaths(session.meta).map((path) =>
+        readTaskArtifact(getSessionDir(session.projectId!, session.id), path),
+      ),
+    );
+    return c.json(artifacts.filter((artifact) => artifact !== null));
+  });
+
+  app.get("/sessions/:id/todos", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "session not found");
+    return c.json(parseSessionTodos(session.meta.todos));
+  });
+
   // GET /sessions/:id/children
   app.get("/sessions/:id/children", (c) => {
     const id = parseIntegerId(c.req.param("id"));
@@ -624,6 +794,13 @@ export function createHttpServer(manager: SessionManager): Hono {
   // POST /sessions  — spawn a new session
   app.post("/sessions", async (c) => {
     const body = await c.req.json().catch(() => ({}));
+    if (
+      body.meta &&
+      typeof body.meta === "object" &&
+      hasAgentManagedTaskMeta(body.meta as Record<string, unknown>)
+    ) {
+      return jsonError(c, 403, "tasks, currentTask, and todos are managed by the Agent");
+    }
     try {
       const parentId =
         body.parentId === undefined || body.parentId === null
@@ -822,9 +999,13 @@ export function createHttpServer(manager: SessionManager): Hono {
       return jsonError(c, 400, "invalid body, requires { message: string }");
     }
     try {
+      const images = parsePromptImages(body.images);
+      if (images === null) {
+        return jsonError(c, 400, "invalid images, expected [{ mimeType, data }]");
+      }
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
-      manager.steer(id, body.message);
+      await manager.steer(id, body.message, images);
       return c.json({ ok: true });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -840,14 +1021,34 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
     const source = parseOptionalSource(body.source);
     if (source === null) return jsonError(c, 400, "source must be a non-empty string");
+    const images = parsePromptImages(body.images);
+    if (images === null) {
+      return jsonError(c, 400, "invalid images, expected [{ mimeType, data }]");
+    }
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
-      manager.followUp(id, body.message, source);
-      return c.json({ ok: true });
+      const disposition = await manager.submitSessionInput(id, {
+        message: body.message,
+        source,
+        images,
+      });
+      return c.json({ ok: true, disposition });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 409, message);
+    }
+  });
+
+  // GET /sessions/:id/queued-inputs — list inputs waiting for their turn
+  app.get("/sessions/:id/queued-inputs", (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      return c.json(manager.listSessionInputs(id));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 404, message);
     }
   });
 
@@ -1006,6 +1207,56 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
+  app.get("/sessions/:id/external/codex/models", async (c) => {
+    try {
+      const sessionId = parseIntegerId(c.req.param("id"));
+      if (sessionId === null) return jsonError(c, 400, "invalid session id");
+      return c.json(await manager.listCodexModels(sessionId));
+    } catch (e: unknown) {
+      return jsonError(c, 409, e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  app.post("/sessions/:id/external/codex/settings", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.model !== "string" || !body.model.trim()) {
+      return jsonError(c, 400, "invalid body, requires { model: string, effort?: string }");
+    }
+    try {
+      const sessionId = parseIntegerId(c.req.param("id"));
+      if (sessionId === null) return jsonError(c, 400, "invalid session id");
+      await manager.updateCodexSettings(sessionId, {
+        model: body.model,
+        effort: typeof body.effort === "string" ? body.effort : undefined,
+      });
+      return c.json({ ok: true });
+    } catch (e: unknown) {
+      return jsonError(c, 409, e instanceof Error ? e.message : String(e));
+    }
+  });
+
+  app.post("/sessions/:id/external/codex/commands", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.command !== "string" || !body.command.trim()) {
+      return jsonError(c, 400, "invalid body, requires { command: string, argument?: string }");
+    }
+    try {
+      const sessionId = parseIntegerId(c.req.param("id"));
+      if (sessionId === null) return jsonError(c, 400, "invalid session id");
+      return c.json(
+        await manager.executeCodexCommand(
+          sessionId,
+          body.command.trim().toLowerCase(),
+          typeof body.argument === "string" && body.argument.trim()
+            ? body.argument.trim()
+            : undefined,
+        ),
+      );
+    } catch (e: unknown) {
+      return jsonError(c, 409, e instanceof Error ? e.message : String(e));
+    }
+  });
+
   // GET /sessions/:id/events — SSE stream of agent + supervisor events
   app.get("/sessions/:id/events", async (c) => {
     const sessionId = parseIntegerId(c.req.param("id"));
@@ -1084,6 +1335,9 @@ export function createHttpServer(manager: SessionManager): Hono {
   app.patch("/sessions/:id/meta", async (c) => {
     const body = await c.req.json().catch(() => null);
     if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
+    if (hasAgentManagedTaskMeta(body)) {
+      return jsonError(c, 403, "tasks, currentTask, and todos are managed by the Agent");
+    }
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
@@ -1098,9 +1352,18 @@ export function createHttpServer(manager: SessionManager): Hono {
   app.put("/sessions/:id/meta", async (c) => {
     const body = await c.req.json().catch(() => null);
     if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
+    if (hasAgentManagedTaskMeta(body)) {
+      return jsonError(c, 403, "tasks, currentTask, and todos are managed by the Agent");
+    }
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
-    manager.setMeta(id, body);
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "session not found");
+    const nextMeta = { ...body };
+    if (Object.hasOwn(session.meta, "tasks")) nextMeta.tasks = session.meta.tasks;
+    if (Object.hasOwn(session.meta, "currentTask")) nextMeta.currentTask = session.meta.currentTask;
+    if (Object.hasOwn(session.meta, "todos")) nextMeta.todos = session.meta.todos;
+    manager.setMeta(id, nextMeta);
     return c.json({ ok: true });
   });
 

@@ -17,6 +17,7 @@ import type {
   ToolInfo,
   MessageContent,
 } from "../index.js";
+import type { SessionTreeEntry } from "@earendil-works/pi-agent-core";
 
 type AgentContentMessage = Extract<AgentMessage, { role: "user" | "assistant" }>;
 
@@ -205,6 +206,33 @@ export class SessionExtensionHost {
     } catch {
       // 扩展可能仍在启动或已经停止，不能让扩展状态破坏 Agent 主流程。
     }
+  }
+
+  /** Dispatch a persisted message event with its stable storage entry id. */
+  async handleStoredEntry(entry: SessionTreeEntry): Promise<void> {
+    if (entry.type !== "message") return;
+    const message = entry.message as AgentMessage & {
+      role: string;
+      toolCallId?: string;
+      toolName?: string;
+      content?: unknown;
+      isError?: boolean;
+      details?: unknown;
+    };
+    if (message.role !== "toolResult") return;
+    await this.emit({
+      type: "message.tool_result",
+      toolCallId: message.toolCallId ?? "",
+      toolName: message.toolName,
+      result: {
+        content: message.content,
+        details: message.details,
+      },
+      isError: Boolean(message.isError),
+      messageId: entry.id,
+      entryId: entry.id,
+      timestamp: Date.now(),
+    });
   }
 
   /** 将 Agent 错误通知扩展，但不把扩展异常抛回 Agent 主流程。 */
@@ -400,18 +428,7 @@ export class SessionExtensionHost {
         },
       ];
     }
-    if (event.type === "tool_execution_end") {
-      return [
-        {
-          type: "message.tool_result",
-          toolCallId: event.toolCallId,
-          result: event.result,
-          isError: Boolean(event.isError),
-          entryId: "",
-          timestamp,
-        },
-      ];
-    }
+    if (event.type === "tool_execution_end") return [];
     if (event.type !== "agent_end") return [];
 
     const events: ExtensionEvent[] = [];

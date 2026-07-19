@@ -487,8 +487,10 @@ export type ExtensionEvent =
   | {
       type: "message.tool_result";
       toolCallId: string;
+      toolName?: string;
       result: unknown;
       isError: boolean;
+      messageId: string;
       entryId: string;
       timestamp: number;
     }
@@ -744,6 +746,20 @@ export interface MemberAgentInfo {
 // Message Types
 // ============================================================================
 
+/** A file owned by Supervisor and rendered below the message that references it. */
+export interface MessageAsset {
+  /** The dedicated directory that contains `path`. */
+  scope: "project" | "agent" | "session";
+  /** POSIX-style path relative to the selected scope directory. */
+  path: string;
+  name?: string;
+  mediaType?: string;
+}
+
+export interface MessageMeta extends Record<string, unknown> {
+  assets?: MessageAsset[];
+}
+
 export interface MessageEntry {
   id: string;
   entryId: string;
@@ -752,7 +768,7 @@ export interface MessageEntry {
   content?: string;
   customType?: string;
   parentId: string | null;
-  meta: Record<string, unknown>;
+  meta: MessageMeta;
   createdAt: number;
 }
 

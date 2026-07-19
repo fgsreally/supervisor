@@ -20,6 +20,23 @@ export type SessionStatus =
   | "error"
   | "stopped";
 export type ToolsPreset = "coding" | "readonly" | "none";
+
+export interface SupervisorSettings {
+  utilityProvider?: string;
+  utilityModelId?: string;
+  browserMode?: "headless" | "headed";
+  webSearchProvider?: "duckduckgo" | "tavily" | "brave" | "serper" | "firecrawl";
+  webFetchProvider?:
+    | "native"
+    | "tavily"
+    | "firecrawl"
+    | "native-then-tavily"
+    | "native-then-firecrawl";
+  tavilyApiKeyEnv?: string;
+  braveApiKeyEnv?: string;
+  serperApiKeyEnv?: string;
+  firecrawlApiKeyEnv?: string;
+}
 export type SessionBranchType = "subagent" | "fork" | "clone" | "btw";
 
 // ============ Domain Types ============
@@ -57,8 +74,22 @@ export interface Session {
   createdAt: string; // ISO date
   lastActiveAt: string; // ISO date
   meta: Record<string, unknown>;
+  currentTask: string | null;
   /** UI-specific: last message preview */
   lastMessagePreview?: string;
+}
+
+export interface TaskArtifact {
+  path: string;
+  type: "goal" | "plan";
+  title: string;
+  status: string;
+  content: string;
+}
+
+export interface TodoItem {
+  title: string;
+  status: "pending" | "in_progress" | "done";
 }
 
 /** Agent definition */
@@ -73,6 +104,11 @@ export interface Agent {
   toolsPreset: ToolsPreset | null;
   homeDir: string | null;
   meta: Record<string, unknown>;
+  available: boolean;
+  executablePath: string | null;
+  unavailableReason: string | null;
+  detectedVersion: string | null;
+  compatibility: "compatible" | "unknown" | "unavailable";
   createdAt: string;
   updatedAt: string;
 }
@@ -239,6 +275,16 @@ export interface SlashCommandInfo {
     name?: string;
     description?: string;
   };
+}
+
+export interface CodexModelInfo {
+  id: string;
+  model: string;
+  displayName: string;
+  description: string;
+  isDefault: boolean;
+  defaultReasoningEffort: string;
+  supportedReasoningEfforts: Array<{ reasoningEffort: string; description: string }>;
 }
 
 // ============ Session State Types ============
@@ -469,6 +515,7 @@ interface RawSession {
   createdAt: string;
   lastActiveAt: string;
   meta: Record<string, unknown>;
+  currentTask?: Session["currentTask"];
   lastMessagePreview?: string;
 }
 
@@ -483,6 +530,7 @@ function mapSession(raw: RawSession): Session {
       raw.showInSessionList ??
       (raw.parentId === null || raw.branchType === "fork" || raw.branchType === "clone"),
     contextLeafId: raw.contextLeafId ?? null,
+    currentTask: raw.currentTask ?? null,
   };
 }
 
@@ -533,6 +581,16 @@ async function patchJson<T>(path: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+export function getSupervisorSettings(): Promise<SupervisorSettings> {
+  return fetchJson<SupervisorSettings>("/settings");
+}
+
+export function updateSupervisorSettings(
+  patch: Partial<SupervisorSettings>,
+): Promise<SupervisorSettings> {
+  return patchJson<SupervisorSettings>("/settings", patch);
 }
 
 async function putJson<T>(path: string, body: unknown): Promise<T> {
@@ -737,13 +795,39 @@ export function promptSession(
 }
 
 /** Steer the active turn in a session. */
-export async function steerSession(id: string, message: string): Promise<{ ok: boolean }> {
-  return postJson<{ ok: boolean }>(`/sessions/${id}/steer`, { message });
+export async function steerSession(
+  id: string,
+  message: string,
+  images?: PromptImageInput[],
+): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(`/sessions/${id}/steer`, { message, images });
 }
 
 /** Enqueue a follow-up message for the next turn. */
-export async function followUpSession(id: string, message: string): Promise<{ ok: boolean }> {
-  return postJson<{ ok: boolean }>(`/sessions/${id}/follow-up`, { message });
+export type SessionInputDisposition = "interrupt" | "queued" | "drained";
+
+export interface QueuedSessionInput {
+  id: string;
+  message: string;
+  level: number;
+  source: string | null;
+  enqueuedAt: number;
+}
+
+export async function followUpSession(
+  id: string,
+  message: string,
+  images?: PromptImageInput[],
+): Promise<{ ok: boolean; disposition: SessionInputDisposition }> {
+  return postJson<{ ok: boolean; disposition: SessionInputDisposition }>(
+    `/sessions/${id}/follow-up`,
+    { message, images },
+  );
+}
+
+/** List inputs that have been accepted but have not started executing. */
+export async function getQueuedSessionInputs(id: string): Promise<QueuedSessionInput[]> {
+  return fetchJson<QueuedSessionInput[]>(`/sessions/${id}/queued-inputs`);
 }
 
 /** Abort the current work in a session. */
@@ -804,6 +888,16 @@ export async function getSessionMessages(id: string): Promise<SessionTreeEntry[]
   return fetchJson<SessionTreeEntry[]>(`/sessions/${id}/messages`);
 }
 
+/** Read the active Markdown task artifacts managed by the Agent. */
+export async function getSessionTasks(id: string): Promise<TaskArtifact[]> {
+  return fetchJson<TaskArtifact[]>(`/sessions/${id}/tasks`);
+}
+
+/** Read the structured todo state managed by the Agent. */
+export async function getSessionTodos(id: string): Promise<TodoItem[]> {
+  return fetchJson<TodoItem[]>(`/sessions/${id}/todos`);
+}
+
 /** Get the hierarchical tree structure of a session. */
 export async function getSessionTree(id: string): Promise<SessionTreeNode[]> {
   return fetchJson<SessionTreeNode[]>(`/sessions/${id}/tree`);
@@ -837,6 +931,28 @@ export async function getSessionCommands(id: string): Promise<SlashCommandInfo[]
   return fetchJson<SlashCommandInfo[]>(`/sessions/${id}/commands`);
 }
 
+export async function getCodexSessionModels(id: string): Promise<CodexModelInfo[]> {
+  return fetchJson<CodexModelInfo[]>(`/sessions/${id}/external/codex/models`);
+}
+
+export async function updateCodexSessionSettings(
+  id: string,
+  settings: { model: string; effort?: string },
+): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(`/sessions/${id}/external/codex/settings`, settings);
+}
+
+export async function executeCodexSessionCommand(
+  id: string,
+  command: string,
+  argument?: string,
+): Promise<Record<string, unknown>> {
+  return postJson<Record<string, unknown>>(`/sessions/${id}/external/codex/commands`, {
+    command,
+    argument,
+  });
+}
+
 /** Update session meta (merges with existing). */
 export async function updateSessionMeta(
   id: string,
@@ -866,9 +982,17 @@ export async function updateMessageMeta(
 }
 
 /** Subscribe to session events via SSE. */
+export interface ShadowSuggestionsEvent {
+  type: "shadow_suggestions";
+  questions: string[];
+  timestamp: number;
+}
+
+export type SessionStreamEvent = AgentEvent | ShadowSuggestionsEvent;
+
 export function subscribeSessionEvents(
   sessionId: string,
-  onEvent: (event: { type: string; event?: AgentEvent }) => void,
+  onEvent: (event: { type: string; event?: SessionStreamEvent }) => void,
   onError?: (error: Error) => void,
   onConnected?: () => void,
 ): () => void {
@@ -942,6 +1066,10 @@ function mapAgent(agent: RawAgent): Agent {
 /** List all agents. */
 export async function listAgents(): Promise<Agent[]> {
   return (await fetchJson<RawAgent[]>("/agents")).map(mapAgent);
+}
+
+export async function detectExternalAgents(): Promise<Agent[]> {
+  return (await postJson<RawAgent[]>("/agents/detect", {})).map(mapAgent);
 }
 
 /** Get a single agent by ID. */

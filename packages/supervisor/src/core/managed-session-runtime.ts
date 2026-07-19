@@ -14,8 +14,8 @@ export interface ManagedSessionRuntime {
   subscribe(listener: (event: AgentHarnessEvent) => void | Promise<void>): () => void;
   clear(): Promise<void>;
   prompt(message: string, images?: ImageContent[], source?: string | null): Promise<void>;
-  steer(message: string): void;
-  followUp(message: string, source?: string | null): void;
+  steer(message: string, images?: ImageContent[]): void | Promise<void>;
+  followUp(message: string, source?: string | null, images?: ImageContent[]): void;
   abort(): Promise<void>;
   waitForIdle(): Promise<void>;
   compact(customInstructions?: string): Promise<{

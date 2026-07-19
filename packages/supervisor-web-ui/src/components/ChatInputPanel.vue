@@ -11,6 +11,7 @@
         :workspace-files="workspaceFiles"
         :skills="skills"
         :prompts="prompts"
+        :skill-trigger="skillTrigger"
         :disabled="disabled"
         :placeholder="placeholder"
         @send="emit('send', { text, images: pendingImages })"
@@ -27,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import * as api from "@/api";
 import { useAgentStore } from "@/store";
 import { useResizableHeight } from "../composables/use-resizable-height";
@@ -48,6 +49,7 @@ const TOOLBAR_HEIGHT = 40;
 
 const props = defineProps<{
   modelValue: string;
+  sessionId?: string;
   workspaceId: string;
   agentId?: string;
   disabled?: boolean;
@@ -64,6 +66,19 @@ const workspaceFiles = ref<WorkspaceFileEntry[]>([]);
 const skills = ref<SkillAutocompleteEntry[]>([]);
 const prompts = ref<PromptAutocompleteEntry[]>([]);
 const pendingImages = ref<PendingChatImage[]>([]);
+let commandRefreshInFlight: Promise<void> | null = null;
+let lastCommandRefresh = 0;
+let commandRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+const isExternalAgent = computed(() => {
+  if (!props.agentId) return false;
+  return agentStore.getAgentById(props.agentId)?.backendType !== "native";
+});
+const skillTrigger = computed<"slash" | "dollar">(() =>
+  props.agentId && agentStore.getAgentById(props.agentId)?.backendType === "codex"
+    ? "dollar"
+    : "slash",
+);
 
 const text = computed({
   get: () => props.modelValue,
@@ -97,7 +112,10 @@ async function loadAutocompleteData() {
     workspaceFiles.value = [];
   }
 
-  if (props.agentId) {
+  if (props.agentId && isExternalAgent.value) {
+    skills.value = [];
+    await refreshExternalCommands(true);
+  } else if (props.agentId) {
     try {
       await agentStore.fetchAgentResources(props.agentId, cwd || undefined);
       const res = agentStore.agentResources[props.agentId];
@@ -112,12 +130,56 @@ async function loadAutocompleteData() {
   }
 }
 
+async function refreshExternalCommands(force = false) {
+  if (!isExternalAgent.value || !props.sessionId) return;
+  const sessionId = props.sessionId;
+  if (!force && Date.now() - lastCommandRefresh < 1000) return;
+  if (commandRefreshInFlight) return commandRefreshInFlight;
+  commandRefreshInFlight = (async () => {
+    try {
+      const commands = await api.getSessionCommands(sessionId);
+      skills.value = commands
+        .filter((command) => command.source === "skill")
+        .map((command) => ({ name: command.name, description: command.description }));
+      prompts.value = commands
+        .filter((command) => command.source !== "skill")
+        .map((command) => ({
+          name: command.name.replace(/^\//, ""),
+          description: command.description,
+        }));
+      lastCommandRefresh = Date.now();
+      if (commands.length === 0 && /(^|\s)\/[^\s]*$/.test(props.modelValue)) {
+        if (commandRetryTimer) clearTimeout(commandRetryTimer);
+        commandRetryTimer = setTimeout(() => void refreshExternalCommands(true), 750);
+      }
+    } catch {
+      prompts.value = [];
+    } finally {
+      commandRefreshInFlight = null;
+    }
+  })();
+  return commandRefreshInFlight;
+}
+
 watch(
-  () => [props.workspaceId, props.agentId] as const,
+  () => [props.sessionId, props.workspaceId, props.agentId] as const,
   () => {
     void loadAutocompleteData();
   },
   { immediate: true },
+);
+
+onBeforeUnmount(() => {
+  if (commandRetryTimer) clearTimeout(commandRetryTimer);
+});
+
+watch(
+  () => props.modelValue,
+  (value) => {
+    if (isExternalAgent.value && /(^|\s)\/[^\s]*$/.test(value)) {
+      void refreshExternalCommands();
+    }
+  },
 );
 
 function onToolbarAction(action: ChatToolbarAction) {

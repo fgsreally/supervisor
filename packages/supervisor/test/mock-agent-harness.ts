@@ -4,7 +4,7 @@ import { vi } from "vitest";
 const mocks = vi.hoisted(() => {
   class MockAgent {
     _listeners: Array<(event: AgentEvent) => void> = [];
-    prompt = vi.fn(async (_message: string) => {});
+    prompt = vi.fn(async (_message: string, _options?: unknown) => {});
     abort = vi.fn();
     waitForIdle = vi.fn(async () => {});
     state: {
@@ -37,8 +37,12 @@ const mocks = vi.hoisted(() => {
     static instances: MockAgentHarness[] = [];
     _listeners: Array<(event: AgentEvent) => void> = [];
     agent: MockAgent;
-    prompt = vi.fn(async (message: string) => {
-      await this.agent.prompt(message);
+    prompt = vi.fn(async (message: string, options?: unknown) => {
+      if (options === undefined) {
+        await this.agent.prompt(message);
+      } else {
+        await this.agent.prompt(message, options);
+      }
     });
     steer = vi.fn();
     followUp = vi.fn();

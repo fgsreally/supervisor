@@ -1,25 +1,72 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { SupervisorDb } from "../../db/db.js";
 import type { Agent, Session } from "../../types.js";
 import { ExternalSessionRuntime } from "./external-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
+import { getExternalAgentConfig } from "./external-agent-config.js";
 
 type JsonObject = Record<string, any>;
 
-function externalConfig(agent: Agent): { command: string; args: string[] } {
-  const external = agent.meta.external as { command?: unknown; args?: unknown } | undefined;
-  return {
-    command:
-      typeof external?.command === "string" && external.command.length > 0
-        ? external.command
-        : "codex",
-    args: Array.isArray(external?.args)
-      ? external.args.filter((value): value is string => typeof value === "string")
-      : [],
-  };
-}
+const CODEX_CLIENT_COMMANDS = [
+  ["model", "选择 Codex 模型和推理强度"],
+  ["compact", "压缩当前 Codex 上下文"],
+  ["status", "查看 Codex 会话状态"],
+  ["permissions", "查看或切换权限配置"],
+  ["skills", "查看可用 Skills"],
+  ["plan", "切换到 Plan 模式"],
+  ["fast", "启用快速服务层"],
+  ["personality", "切换 Codex 个性"],
+  ["mcp", "查看 MCP 服务状态"],
+  ["apps", "查看可用 Apps"],
+  ["plugins", "查看插件"],
+  ["hooks", "查看 Hooks"],
+  ["usage", "查看账户用量"],
+  ["review", "审查未提交改动"],
+  ["goal", "设置或查看目标"],
+  ["rename", "重命名 Codex 会话"],
+  ["agent", "查看或切换子 Agent"],
+  ["ps", "查看后台任务"],
+  ["stop", "停止后台任务"],
+  ["fork", "Fork 当前 Codex 会话"],
+] as const;
+
+const CODEX_BLOCKED_TUI_COMMANDS = [
+  "ide",
+  "keymap",
+  "vim",
+  "setup-default-sandbox",
+  "sandbox-add-read-dir",
+  "clear",
+  "archive",
+  "delete",
+  "copy",
+  "exit",
+  "experimental",
+  "approve",
+  "memories",
+  "import",
+  "feedback",
+  "init",
+  "logout",
+  "mention",
+  "app",
+  "side",
+  "btw",
+  "raw",
+  "resume",
+  "new",
+  "quit",
+  "debug-config",
+  "statusline",
+  "title",
+  "theme",
+  "pets",
+  "pet",
+] as const;
 
 export class CodexSessionRuntime extends ExternalSessionRuntime {
   private readonly child: ChildProcessWithoutNullStreams;
@@ -35,6 +82,19 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     string,
     { requestId: number; method: string; params: JsonObject }
   >();
+  private slashCommands: Array<{ name: string; description: string; source?: string }> = [
+    ...CODEX_CLIENT_COMMANDS.map(([name, description]) => ({
+      name,
+      description,
+      source: "client",
+    })),
+    ...CODEX_BLOCKED_TUI_COMMANDS.map((name) => ({
+      name,
+      description: "Codex TUI 命令；Web UI 尚未适配",
+      source: "client",
+    })),
+  ];
+  private readonly skills = new Map<string, { name: string; path: string }>();
 
   private constructor(options: {
     db: SupervisorDb;
@@ -68,10 +128,10 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     session: Session;
     agent: Agent;
   }): Promise<CodexSessionRuntime> {
-    const config = externalConfig(options.agent);
+    const config = getExternalAgentConfig(options.agent);
     const child = spawn(config.command, [...config.args, "app-server", "--stdio"], {
       cwd: options.session.cwd,
-      env: process.env,
+      env: { ...process.env, ...config.env },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -98,6 +158,7 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
             });
       runtime.threadId = response.thread.id;
       runtime.setExternalSessionId(runtime.threadId);
+      await runtime.refreshSkills().catch(() => {});
       return runtime;
     } catch (error) {
       child.kill();
@@ -118,6 +179,182 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
 
   private notify(method: string, params?: unknown): void {
     this.send(params === undefined ? { method } : { method, params });
+  }
+
+  private async refreshSkills(): Promise<void> {
+    const response = await this.request("skills/list", { cwds: [this.session.cwd] });
+    const skills = (response.data ?? []).flatMap((entry: JsonObject) => entry.skills ?? []);
+    this.skills.clear();
+    for (const skill of skills) {
+      if (
+        skill.enabled === false ||
+        typeof skill.name !== "string" ||
+        typeof skill.path !== "string"
+      )
+        continue;
+      this.skills.set(skill.name.toLowerCase(), { name: skill.name, path: skill.path });
+    }
+    this.slashCommands = [
+      ...CODEX_CLIENT_COMMANDS.map(([name, description]) => ({
+        name,
+        description,
+        source: "client",
+      })),
+      ...CODEX_BLOCKED_TUI_COMMANDS.map((name) => ({
+        name,
+        description: "Codex TUI 命令；Web UI 尚未适配",
+        source: "client",
+      })),
+      ...skills
+        .filter((skill: JsonObject) => skill.enabled !== false)
+        .map((skill: JsonObject) => ({
+          name: skill.name,
+          description: skill.shortDescription ?? skill.description ?? "Codex skill",
+          source: "skill",
+        })),
+    ];
+  }
+
+  private buildUserInput(message: string, images?: ImageContent[]): JsonObject[] {
+    const input: JsonObject[] = [{ type: "text", text: message, text_elements: [] }];
+    const seenSkills = new Set<string>();
+    for (const match of message.matchAll(/(?:^|\s)\$([\w.-]+)/g)) {
+      const skill = this.skills.get((match[1] ?? "").toLowerCase());
+      if (!skill || seenSkills.has(skill.path)) continue;
+      seenSkills.add(skill.path);
+      input.push({ type: "skill", name: skill.name, path: skill.path });
+    }
+
+    const seenMentions = new Set<string>();
+    for (const match of message.matchAll(/(?:^|\s)@(?:"([^"]+)"|([^\s]+))/g)) {
+      const name = (match[1] ?? match[2] ?? "").trim();
+      if (!name) continue;
+      const path = resolve(this.session.cwd, name);
+      if (!existsSync(path) || seenMentions.has(path)) continue;
+      seenMentions.add(path);
+      input.push({ type: "mention", name, path });
+    }
+
+    input.push(
+      ...(images ?? []).map((image) => ({
+        type: "image",
+        url: `data:${image.mimeType};base64,${image.data}`,
+      })),
+    );
+    return input;
+  }
+
+  async listModels(): Promise<JsonObject[]> {
+    const models: JsonObject[] = [];
+    let cursor: string | null = null;
+    do {
+      const response = await this.request("model/list", {
+        cursor,
+        limit: 100,
+        includeHidden: false,
+      });
+      models.push(...(response.data ?? []));
+      cursor = response.nextCursor ?? null;
+    } while (cursor);
+    return models;
+  }
+
+  async updateThreadSettings(settings: { model: string; effort?: string | null }): Promise<void> {
+    await this.request("thread/settings/update", {
+      threadId: this.threadId,
+      model: settings.model,
+      effort: settings.effort ?? undefined,
+    });
+  }
+
+  async executeClientCommand(command: string, argument?: string): Promise<JsonObject> {
+    switch (command) {
+      case "compact":
+        return this.request("thread/compact/start", { threadId: this.threadId });
+      case "status":
+        return this.request("thread/read", { threadId: this.threadId, includeTurns: false });
+      case "permissions":
+        if (argument) {
+          await this.request("thread/settings/update", {
+            threadId: this.threadId,
+            permissions: argument,
+          });
+          return { ok: true, selected: argument };
+        }
+        return this.request("permissionProfile/list", { cwd: this.session.cwd, limit: 100 });
+      case "skills":
+        return this.request("skills/list", { cwds: [this.session.cwd], forceReload: true });
+      case "plan": {
+        const status = await this.request("thread/read", {
+          threadId: this.threadId,
+          includeTurns: false,
+        });
+        const settings = status.thread?.settings ?? {};
+        await this.request("thread/settings/update", {
+          threadId: this.threadId,
+          collaborationMode: {
+            mode: "plan",
+            settings: {
+              model: settings.model ?? "",
+              reasoning_effort: settings.effort ?? null,
+              developer_instructions: null,
+            },
+          },
+        });
+        return { ok: true, mode: "plan" };
+      }
+      case "fast":
+        await this.request("thread/settings/update", {
+          threadId: this.threadId,
+          serviceTier: argument === "off" ? null : "fast",
+        });
+        return { ok: true, fast: argument !== "off" };
+      case "personality":
+        if (!argument || !["none", "friendly", "pragmatic"].includes(argument)) {
+          return { choices: ["none", "friendly", "pragmatic"] };
+        }
+        await this.request("thread/settings/update", {
+          threadId: this.threadId,
+          personality: argument,
+        });
+        return { ok: true, personality: argument };
+      case "mcp":
+        return this.request("mcpServerStatus/list", {
+          threadId: this.threadId,
+          detail: "full",
+          limit: 100,
+        });
+      case "apps":
+        return this.request("app/list", { threadId: this.threadId, limit: 100 });
+      case "plugins":
+        return this.request("plugin/list", { cwds: [this.session.cwd] });
+      case "hooks":
+        return this.request("hooks/list", { cwds: [this.session.cwd] });
+      case "usage":
+        return this.request("account/usage/read", {});
+      case "review":
+        return this.request("review/start", {
+          threadId: this.threadId,
+          target: argument
+            ? { type: "custom", instructions: argument }
+            : { type: "uncommittedChanges" },
+          delivery: "inline",
+        });
+      case "goal":
+        return argument
+          ? this.request("thread/goal/set", { threadId: this.threadId, objective: argument })
+          : this.request("thread/goal/get", { threadId: this.threadId });
+      case "rename":
+        if (!argument) throw new Error("/rename 需要会话名称");
+        await this.request("thread/name/set", { threadId: this.threadId, name: argument });
+        return { ok: true, name: argument };
+      default:
+        throw new Error(`Codex 命令 /${command} 尚未在 Web UI 中适配`);
+    }
+  }
+
+  getSlashCommands(): Array<{ name: string; description: string; source?: string }> {
+    return this.slashCommands;
   }
 
   private async handleLine(line: string): Promise<void> {
@@ -149,12 +386,17 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     method: string,
     params: JsonObject,
   ): Promise<void> {
-    const kind = method === "item/tool/requestUserInput" ? "question" : "approval";
+    const isMcpElicitation = method === "mcpServer/elicitation/request";
+    const kind =
+      method === "item/tool/requestUserInput" || (isMcpElicitation && params.mode !== "url")
+        ? "question"
+        : "approval";
     const supported =
       kind === "question" ||
       method === "item/commandExecution/requestApproval" ||
       method === "item/fileChange/requestApproval" ||
-      method === "item/permissions/requestApproval";
+      method === "item/permissions/requestApproval" ||
+      isMcpElicitation;
     if (!supported) {
       this.send({ id: requestId, result: { decision: "decline" } });
       return;
@@ -167,9 +409,13 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
       interactionId,
       backend: "codex",
       kind,
-      title: kind === "question" ? "Codex 需要你的回答" : "Codex 请求操作权限",
-      detail: params.reason ?? params.command ?? params.cwd ?? "",
-      questions: params.questions ?? [],
+      title: isMcpElicitation
+        ? `MCP ${params.serverName ?? ""} 请求输入`
+        : kind === "question"
+          ? "Codex 需要你的回答"
+          : "Codex 请求操作权限",
+      detail: params.message ?? params.reason ?? params.command ?? params.cwd ?? "",
+      questions: isMcpElicitation ? this.mcpElicitationQuestions(params) : (params.questions ?? []),
       request: params,
     });
   }
@@ -183,7 +429,17 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     this.interactions.delete(interactionId);
 
     let result: JsonObject;
-    if (pending.method === "item/tool/requestUserInput") {
+    if (pending.method === "mcpServer/elicitation/request") {
+      const accepted =
+        response.action === "approve" ||
+        response.action === "approve_session" ||
+        response.action === "answer";
+      result = {
+        action: response.action === "cancel" ? "cancel" : accepted ? "accept" : "decline",
+        content: accepted ? this.mcpElicitationContent(pending.params, response.answers) : null,
+        _meta: pending.params._meta ?? null,
+      };
+    } else if (pending.method === "item/tool/requestUserInput") {
       result = {
         answers: Object.fromEntries(
           Object.entries(response.answers ?? {}).map(([id, answers]) => [id, { answers }]),
@@ -209,6 +465,43 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     this.send({ id: pending.requestId, result });
     void this.endTool(interactionId, { action: response.action, answers: response.answers });
     return true;
+  }
+
+  private mcpElicitationQuestions(params: JsonObject): JsonObject[] {
+    if (params.mode === "url") return [];
+    const schema = params.requestedSchema;
+    const properties = schema?.properties ?? {};
+    const required = new Set(Array.isArray(schema?.required) ? schema.required : []);
+    return Object.entries(properties).map(([id, raw]) => {
+      const property = (raw ?? {}) as JsonObject;
+      const values = Array.isArray(property.enum) ? property.enum : [];
+      return {
+        id,
+        header: property.title ?? id,
+        question: property.description ?? property.title ?? id,
+        isOther: !values.length,
+        isSecret: property.format === "password",
+        required: required.has(id),
+        options: values.map((value: unknown) => ({ label: String(value), description: "" })),
+      };
+    });
+  }
+
+  private mcpElicitationContent(
+    params: JsonObject,
+    answers?: Record<string, string[]>,
+  ): JsonObject {
+    const properties = params.requestedSchema?.properties ?? {};
+    return Object.fromEntries(
+      Object.entries(answers ?? {}).map(([id, values]) => {
+        const value = values[0] ?? "";
+        const type = properties[id]?.type;
+        if (type === "boolean") return [id, value === "true"];
+        if (type === "integer") return [id, Number.parseInt(value, 10)];
+        if (type === "number") return [id, Number(value)];
+        return [id, value];
+      }),
+    );
   }
 
   private async handleNotification(method: string, params: JsonObject): Promise<void> {
@@ -272,13 +565,7 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     try {
       const response = await this.request("turn/start", {
         threadId: this.threadId,
-        input: [
-          { type: "text", text: message },
-          ...(images ?? []).map((image) => ({
-            type: "image",
-            url: `data:${image.mimeType};base64,${image.data}`,
-          })),
-        ],
+        input: this.buildUserInput(message, images),
       });
       this.activeTurnId = response.turn.id;
       await completion;
@@ -286,6 +573,18 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
       this.turnCompletion = undefined;
       throw error;
     }
+  }
+
+  override async steer(message: string, images?: ImageContent[]): Promise<void> {
+    if (!this.activeTurnId) {
+      await super.steer(message, images);
+      return;
+    }
+    await this.request("turn/steer", {
+      threadId: this.threadId,
+      expectedTurnId: this.activeTurnId,
+      input: this.buildUserInput(message, images),
+    });
   }
 
   protected async interruptExternal(): Promise<void> {

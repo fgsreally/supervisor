@@ -141,6 +141,42 @@ describe("supervisor: HTTP server", () => {
     expect(session.meta).toEqual({ fresh: true });
   });
 
+  it("keeps Agent-managed task metadata read-only over HTTP", async () => {
+    const create = await req("POST", "/sessions", {
+      cwd: "/tmp",
+      meta: { tasks: ["tasks/goal-1.md"] },
+    });
+    expect(create.status).toBe(403);
+
+    const { id } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
+      id: string;
+    };
+    manager.updateMeta(Number(id), {
+      tasks: ["tasks/goal-1.md"],
+      currentTask: "tasks/goal-1.md",
+      todos: [{ title: "inspect", status: "in_progress" }],
+    });
+
+    expect((await req("PATCH", `/sessions/${id}/meta`, { currentTask: null })).status).toBe(403);
+    expect((await req("PUT", `/sessions/${id}/meta`, { tasks: [] })).status).toBe(403);
+    expect((await req("PATCH", `/sessions/${id}/meta`, { todos: [] })).status).toBe(403);
+    expect((await req("PUT", `/sessions/${id}/meta`, { name: "renamed" })).status).toBe(200);
+
+    expect(await (await req("GET", `/sessions/${id}/todos`)).json()).toEqual([
+      { title: "inspect", status: "in_progress" },
+    ]);
+
+    const session = (await (await req("GET", `/sessions/${id}`)).json()) as {
+      meta: Record<string, unknown>;
+    };
+    expect(session.meta).toEqual({
+      name: "renamed",
+      tasks: ["tasks/goal-1.md"],
+      currentTask: "tasks/goal-1.md",
+      todos: [{ title: "inspect", status: "in_progress" }],
+    });
+  });
+
   it("POST /sessions/:id/prompt returns SSE stream for running instance", async () => {
     const { id } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
       id: string;

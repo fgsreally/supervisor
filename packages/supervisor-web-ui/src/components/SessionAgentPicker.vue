@@ -18,14 +18,25 @@
             class="agent-picker-modal__header flex items-center justify-between px-4 py-3 border-b shrink-0"
           >
             <h2 id="agent-picker-title" class="text-[15px] font-medium">选择 Agent</h2>
-            <button
-              type="button"
-              class="agent-picker-modal__close"
-              title="关闭"
-              @click="emit('close')"
-            >
-              <X class="w-5 h-5" />
-            </button>
+            <div class="flex items-center gap-1">
+              <button
+                type="button"
+                class="agent-picker-modal__close"
+                title="重新检测外部 Agent"
+                :disabled="detecting"
+                @click="detectAgents"
+              >
+                <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': detecting }" />
+              </button>
+              <button
+                type="button"
+                class="agent-picker-modal__close"
+                title="关闭"
+                @click="emit('close')"
+              >
+                <X class="w-5 h-5" />
+              </button>
+            </div>
           </header>
 
           <ul class="max-h-[min(60vh,420px)] overflow-y-auto custom-scrollbar py-1">
@@ -33,8 +44,10 @@
               v-for="agent in agents"
               :key="agent.id"
               role="option"
-              class="agent-picker-modal__item px-4 py-3 cursor-pointer flex items-center gap-3"
-              @click="emit('select', agent.id)"
+              class="agent-picker-modal__item px-4 py-3 flex items-center gap-3"
+              :class="agent.available ? 'cursor-pointer' : 'agent-picker-modal__item--disabled'"
+              :aria-disabled="!agent.available"
+              @click="agent.available && emit('select', agent.id)"
             >
               <div
                 class="w-10 h-10 rounded-md flex items-center justify-center text-white text-sm font-medium shrink-0"
@@ -45,7 +58,7 @@
               <div class="min-w-0 flex-1">
                 <div class="text-[14px] truncate">{{ agent.name }}</div>
                 <div class="text-[12px] truncate agent-picker-modal__desc">
-                  {{ agent.description }}
+                  {{ agent.available ? agent.description : agent.unavailableReason }}
                 </div>
               </div>
             </li>
@@ -57,8 +70,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { X } from "lucide-vue-next";
+import { computed, ref } from "vue";
+import { RefreshCw, X } from "lucide-vue-next";
 import { useAgentStore } from "@/store";
 import { agentAvatarClass } from "../utils/avatar-class";
 
@@ -73,6 +86,16 @@ const emit = defineEmits<{
 
 const agentStore = useAgentStore();
 const agents = computed(() => agentStore.agents);
+const detecting = ref(false);
+
+async function detectAgents() {
+  detecting.value = true;
+  try {
+    await agentStore.detectExternalAgents();
+  } finally {
+    detecting.value = false;
+  }
+}
 </script>
 
 <style scoped>
@@ -102,6 +125,11 @@ const agents = computed(() => agentStore.agents);
 
 .agent-picker-modal__item:hover {
   background: var(--app-popup-hover);
+}
+
+.agent-picker-modal__item--disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .agent-picker-modal__desc {

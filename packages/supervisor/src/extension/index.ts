@@ -3,9 +3,12 @@ import type { ExtensionDefinition } from "./types.js";
 export { Type, type Static, type TSchema } from "typebox";
 export {
   createSkillExtension,
+  evalExtension,
   mcpExtension,
+  messageAssetsExtension,
   shadowExtension,
   subagentExtension,
+  taskManagementExtension,
 } from "./builtin/index.js";
 
 /** Define and validate an extension. */

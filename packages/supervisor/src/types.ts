@@ -58,6 +58,8 @@ export interface Session {
   lastActiveAt: Date;
   /** User/orchestrator extensions only. */
   meta: Record<string, unknown>;
+  /** The task currently driving this session, mirrored from meta.currentTask. */
+  currentTask: string | null;
 }
 
 export interface CreateSessionOptions {
@@ -149,6 +151,11 @@ export interface Agent {
 /** Agent row plus SYSTEM.md content (not stored in DB). */
 export interface AgentWithSystemMd extends Agent {
   systemMd: string;
+  available: boolean;
+  executablePath: string | null;
+  unavailableReason: string | null;
+  detectedVersion: string | null;
+  compatibility: "compatible" | "unknown" | "unavailable";
 }
 
 export interface MemberRow {

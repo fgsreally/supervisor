@@ -9,10 +9,14 @@ When at least one field is necessary, respond with exactly one XML element:
   <message>A message for the parent agent</message>
   <urgency>normal</urgency>
   <suggestion>Suggested text for the user's input box</suggestion>
+  <suggested-questions>
+    <question>A likely useful next question from the user</question>
+    <question>Another distinct next question</question>
+  </suggested-questions>
   <title>A concise session title</title>
 </shadow>
 
-Every child element is optional. shadow-memory action must be append or replace. urgency applies only to message and must be low, normal, high, or critical. suggestion is only a draft for the user and is never sent to the parent agent. title is exceptional: emit it only when the current title is clearly wrong or meaningless and a stable topic has emerged; never emit title merely to rephrase or polish it. Routine conversation, acknowledgements, progress updates, and normally completed work should produce an empty response. Output XML only.`;
+Every child element is optional. shadow-memory action must be append or replace. urgency applies only to message and must be low, normal, high, or critical. suggestion is only a draft for the user's input box and is never sent to the parent agent. suggested-questions contains up to four short, distinct questions the user is reasonably likely to ask next; emit it only when the latest answer creates useful follow-up paths. title is exceptional: emit it only when the current title is clearly wrong or meaningless and a stable topic has emerged; never emit title merely to rephrase or polish it. Routine conversation and acknowledgements should normally produce an empty response, but a completed answer may still produce suggested-questions when they add clear value. Output XML only.`;
 
 function decodeXml(value: string): string {
   return value
@@ -42,6 +46,22 @@ function extractElement(xml: string, name: string): { attributes: string; conten
 function extractText(xml: string, name: string): string | undefined {
   const element = extractElement(xml, name);
   return element?.content || undefined;
+}
+
+function extractSuggestedQuestions(xml: string): string[] | undefined {
+  const container = extractElement(xml, "suggested-questions");
+  if (!container) return undefined;
+  const questions = [
+    ...container.content.matchAll(/<question(?:\s[^>]*)?>([\s\S]*?)<\/question>/gi),
+  ]
+    .map((match) =>
+      decodeXml(match[1] ?? "")
+        .replace(/\s+/g, " ")
+        .trim(),
+    )
+    .filter((question, index, all) => question.length > 0 && all.indexOf(question) === index)
+    .slice(0, 4);
+  return questions.length > 0 ? questions : undefined;
 }
 
 function parseUrgency(value: string | undefined): ShadowUrgency | undefined {
@@ -76,6 +96,7 @@ export function parseShadowProtocolResponse(text: string): ShadowProtocolResult 
     message: extractText(candidate, "message"),
     urgency: parseUrgency(extractText(candidate, "urgency")),
     suggestion: extractText(candidate, "suggestion"),
+    suggestedQuestions: extractSuggestedQuestions(candidate),
     title: extractText(candidate, "title"),
   };
 }

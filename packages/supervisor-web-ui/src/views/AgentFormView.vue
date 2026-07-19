@@ -270,14 +270,12 @@ async function save() {
       meta:
         draft.value.backendType !== "native" && draft.value.command.trim()
           ? {
-              external: {
-                command: draft.value.command.trim(),
-                args: draft.value.args
-                  .split(/\r?\n/)
-                  .map((arg) => arg.trim())
-                  .filter(Boolean),
-                permissionPolicy: "reject_once",
-              },
+              command: draft.value.command.trim(),
+              args: draft.value.args
+                .split(/\r?\n/)
+                .map((arg) => arg.trim())
+                .filter(Boolean),
+              permissionPolicy: "reject_once",
             }
           : undefined,
     });

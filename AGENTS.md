@@ -11,6 +11,14 @@
 
 根目录配置、文档（`docs/`）也在编辑范围内。
 
+## 资源与产物目录
+
+- 除非用户明确指定路径，否则不要把运行时资源、缓存、录制文件或其他产物写入工作目录。
+- 资源或能力绑定到 Agent 时，产物写入该 Agent 的专属目录。
+- 资源或能力绑定到 Project 时，产物写入该 Project 的专属目录。
+- 资源或能力绑定到 Session、由 Session 调用或只服务于单次会话时，产物写入该 Session 的专属目录。
+- 选择目录时遵循“最具体归属优先”：Session > Agent/Project；不得仅因工具拥有 `cwd` 就默认写入 `cwd`。
+
 ## 项目特征
 
 - Node.js >= 20.6.0，ESM（type: "module"）
@@ -22,14 +30,14 @@
 ## 构建命令
 
 ```
-pnpm install            # 安装依赖
-pnpm run build          # 构建 supervisor
-pnpm run check          # lint + format check + 类型检查
-pnpm run lint           # oxlint
-pnpm run format:check   # oxfmt 检查格式
-pnpm run test           # 运行测试
-pnpm docs:dev           # 启动 VitePress 文档
-pnpm docs:build         # 构建文档
+pnpm install
+pnpm run build
+pnpm run check
+pnpm run lint
+pnpm run format:check
+pnpm run test
+pnpm docs:dev
+pnpm docs:build
 ```
 
 ## Git 约定

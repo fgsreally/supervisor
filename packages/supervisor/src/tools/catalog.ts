@@ -1,5 +1,6 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { SessionExtensionHost } from "../extension/runtime/index.js";
+import { readSupervisorSettings } from "../utils/supervisor-settings.js";
 
 export const PACKAGED_TOOL_IDS = [
   "ask",
@@ -8,6 +9,8 @@ export const PACKAGED_TOOL_IDS = [
   "ast-grep",
   "web",
   "browser",
+  "computer-use",
+  "desktop-recording",
   "output-minimizer",
 ] as const;
 
@@ -20,6 +23,7 @@ export function isPackagedToolId(value: string): value is PackagedToolId {
 export interface PackagedToolContext {
   cwd: string;
   sessionId: number;
+  sessionDir?: string;
 }
 
 export interface PackagedToolActivation {
@@ -33,6 +37,7 @@ export async function activatePackagedTool(
   id: PackagedToolId,
   ctx: PackagedToolContext,
 ): Promise<PackagedToolActivation> {
+  const settings = readSupervisorSettings();
   switch (id) {
     case "ask": {
       const { createAskTool } = await import("./ask/tool.js");
@@ -59,12 +64,44 @@ export async function activatePackagedTool(
         import("./web/web-fetch-tool.js"),
       ]);
       return {
-        tools: [createWebSearchTool(), createWebFetchTool()],
+        tools: [
+          createWebSearchTool({
+            provider: settings.webSearchProvider,
+            tavilyApiKeyEnv: settings.tavilyApiKeyEnv,
+            braveApiKeyEnv: settings.braveApiKeyEnv,
+            serperApiKeyEnv: settings.serperApiKeyEnv,
+            firecrawlApiKeyEnv: settings.firecrawlApiKeyEnv,
+            tavilyApiKeyEncrypted: settings.tavilyApiKeyEncrypted,
+            braveApiKeyEncrypted: settings.braveApiKeyEncrypted,
+            serperApiKeyEncrypted: settings.serperApiKeyEncrypted,
+            firecrawlApiKeyEncrypted: settings.firecrawlApiKeyEncrypted,
+          }),
+          createWebFetchTool({
+            provider: settings.webFetchProvider,
+            tavilyApiKeyEnv: settings.tavilyApiKeyEnv,
+            firecrawlApiKeyEnv: settings.firecrawlApiKeyEnv,
+            tavilyApiKeyEncrypted: settings.tavilyApiKeyEncrypted,
+            firecrawlApiKeyEncrypted: settings.firecrawlApiKeyEncrypted,
+          }),
+        ],
       };
     }
     case "browser": {
       const { createBrowserTool } = await import("./browser/tool.js");
-      const { tool, cleanup } = createBrowserTool();
+      const { tool, cleanup } = createBrowserTool({
+        headless: settings.browserMode !== "headed",
+        cwd: ctx.cwd,
+        sessionDir: ctx.sessionDir,
+      });
+      return { tools: [tool], cleanup };
+    }
+    case "computer-use": {
+      const { createComputerUseTools } = await import("./computer-use/tool.js");
+      return await createComputerUseTools(ctx.cwd);
+    }
+    case "desktop-recording": {
+      const { createDesktopRecordingTool } = await import("./recording/tool.js");
+      const { tool, cleanup } = createDesktopRecordingTool(ctx.sessionDir ?? ctx.cwd);
       return { tools: [tool], cleanup };
     }
     case "output-minimizer": {

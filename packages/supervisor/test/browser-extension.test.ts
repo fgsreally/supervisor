@@ -17,4 +17,22 @@ describe("packaged supervisor tools", () => {
     });
     expect(activation.tools[0]?.name).toBe("browser");
   });
+
+  it("activates desktop recording", async () => {
+    const activation = await activatePackagedTool("desktop-recording", {
+      cwd: process.cwd(),
+      sessionId: 1,
+    });
+    expect(activation.tools[0]?.name).toBe("desktop_recording");
+  });
+
+  it("adapts pi-computer-use tools", async () => {
+    const activation = await activatePackagedTool("computer-use", {
+      cwd: process.cwd(),
+      sessionId: 1,
+    });
+    expect(activation.tools.map((tool) => tool.name)).toContain("find_roots");
+    expect(activation.tools.map((tool) => tool.name)).toContain("act_ui");
+    await activation.cleanup?.();
+  });
 });

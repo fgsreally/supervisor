@@ -152,12 +152,21 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     }
   }
 
-  steer(message: string): void {
-    void this.prompt(message);
+  steer(message: string, images?: ImageContent[]): void {
+    void (async () => {
+      if (this.running) {
+        await this.interruptExternal();
+        await this.running.catch(() => {});
+      }
+      await this.prompt(message, images);
+    })();
   }
 
-  followUp(message: string, source?: string | null): void {
-    void this.prompt(message, undefined, source);
+  followUp(message: string, source?: string | null, images?: ImageContent[]): void {
+    void (async () => {
+      await this.running?.catch(() => {});
+      await this.prompt(message, images, source);
+    })();
   }
 
   async abort(): Promise<void> {

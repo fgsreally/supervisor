@@ -2,6 +2,7 @@ import type { ChatEntry } from "@/types/chat-entry";
 import { askResultSummary, isAskToolName, parseAskResultFromToolResult } from "./ask-tool";
 import { isOldEntry } from "./session-branch";
 import { toolResultDetail } from "./tool-display";
+import type { MessageAsset } from "@/types/chat-entry";
 
 export type ToolResultEntry = Extract<ChatEntry, { type: "toolResult" }>;
 
@@ -33,6 +34,7 @@ export type DisplayGroup =
       createdAt?: number;
       /** True when message was copied from parent session (is_old). */
       inherited?: boolean;
+      assets: MessageAsset[];
     };
 
 function attachResult(pieces: RenderPiece[], result: ToolResultEntry) {
@@ -167,9 +169,9 @@ export function buildDisplayGroups(entries: ChatEntry[]): DisplayGroup[] {
   let current: Extract<DisplayGroup, { type: "grouped_assistant" }> | null = null;
 
   const flushAssistant = () => {
-    if (current && current.pieces.length > 0) {
+    if (current && (current.pieces.length > 0 || current.assets.length > 0)) {
       current.pieces = compactAssistantPieces(current.pieces);
-      if (current.pieces.length > 0) groups.push(current);
+      if (current.pieces.length > 0 || current.assets.length > 0) groups.push(current);
     }
     current = null;
   };
@@ -201,10 +203,12 @@ export function buildDisplayGroups(entries: ChatEntry[]): DisplayGroup[] {
           role: "assistant",
           pieces: [],
           createdAt: entry.createdAt,
+          assets: [],
         };
       }
       if (isOldEntry(entry)) current.inherited = true;
       attachResult(current.pieces, entry);
+      current.assets.push(...(entry.assets ?? []));
       continue;
     }
 
@@ -216,11 +220,13 @@ export function buildDisplayGroups(entries: ChatEntry[]): DisplayGroup[] {
           role: "assistant",
           pieces: [],
           createdAt: entry.createdAt,
+          assets: [],
         };
       }
       if (isOldEntry(entry)) current.inherited = true;
       if (entry.createdAt && !current.createdAt) current.createdAt = entry.createdAt;
       appendMessagePieces(current.pieces, entry);
+      current.assets.push(...(entry.assets ?? []));
     }
   }
 

@@ -70,6 +70,40 @@ function createRecords(
   };
 }
 
+function mockClaudeQuery({ prompt }: { prompt: AsyncIterable<any> }) {
+  const iterator = (async function* () {
+    yield {
+      type: "system",
+      subtype: "init",
+      session_id: "mock-claude-session",
+      slash_commands: ["status", "compact"],
+      uuid: "00000000-0000-4000-8000-000000000001",
+    };
+    for await (const _message of prompt) {
+      yield {
+        type: "stream_event",
+        session_id: "mock-claude-session",
+        event: {
+          type: "content_block_delta",
+          delta: { type: "text_delta", text: "claude reply" },
+        },
+      };
+      yield {
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        result: "claude reply",
+        session_id: "mock-claude-session",
+        uuid: "00000000-0000-4000-8000-000000000002",
+      };
+    }
+  })();
+  return Object.assign(iterator, {
+    interrupt: async () => {},
+    close: () => {},
+  }) as any;
+}
+
 describe("external CLI runtimes", () => {
   it("streams Codex app-server output and saves its thread id", async () => {
     const records = createRecords("codex", "mock-codex-app-server.mjs");
@@ -78,13 +112,40 @@ describe("external CLI runtimes", () => {
       await runtime.prompt("hello");
       const messages = await runtime.getMessages();
       expect(messages).toHaveLength(2);
-      expect(messages[1]).toMatchObject({
+      expect(
+        messages.find((entry) => entry.type === "message" && entry.message.role === "assistant"),
+      ).toMatchObject({
         type: "message",
         message: { role: "assistant", content: "codex reply" },
       });
       expect(db.get(runtime.id)?.meta).toMatchObject({
         externalSessionId: "mock-codex-thread",
       });
+      expect(runtime.getSlashCommands()).toEqual(
+        expect.arrayContaining([
+          { name: "model", description: "选择 Codex 模型和推理强度", source: "client" },
+          { name: "compact", description: "压缩当前 Codex 上下文", source: "client" },
+          { name: "review", description: "Review code", source: "skill" },
+        ]),
+      );
+      await expect(runtime.listModels()).resolves.toEqual([
+        expect.objectContaining({ model: "mock-model", displayName: "Mock model" }),
+      ]);
+      await expect(
+        runtime.updateThreadSettings({ model: "mock-model", effort: "medium" }),
+      ).resolves.toBeUndefined();
+      await expect(runtime.executeClientCommand("compact")).resolves.toEqual({});
+      await expect(runtime.executeClientCommand("status")).resolves.toMatchObject({
+        thread: { id: "mock-codex-thread" },
+      });
+      await expect(runtime.executeClientCommand("permissions")).resolves.toMatchObject({
+        data: [{ id: "workspace-write", allowed: true }],
+      });
+      await expect(runtime.executeClientCommand("plan")).resolves.toEqual({
+        ok: true,
+        mode: "plan",
+      });
+      await expect(runtime.executeClientCommand("clear")).rejects.toThrow("尚未在 Web UI 中适配");
     } finally {
       await runtime.clear();
     }
@@ -119,20 +180,82 @@ describe("external CLI runtimes", () => {
     }
   });
 
+  it("uses structured Codex skill, mention, image, and native turn steering inputs", async () => {
+    const records = createRecords("codex", "mock-codex-app-server.mjs");
+    const runtime = await CodexSessionRuntime.create({ db, ...records });
+    try {
+      await runtime.prompt("inspect input $review @.", [
+        { mimeType: "image/png", data: "aW1hZ2U=" },
+      ]);
+      expect(runtime.getLastAssistantText()).toContain('"type":"skill"');
+      expect(runtime.getLastAssistantText()).toContain('"name":"review"');
+      expect(runtime.getLastAssistantText()).toContain('"type":"mention"');
+      expect(runtime.getLastAssistantText()).toContain('"type":"image"');
+
+      const turn = runtime.prompt("hold for steer");
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      await runtime.steer("change direction", [{ mimeType: "image/png", data: "c3RlZXI=" }]);
+      await turn;
+      expect(runtime.getLastAssistantText()).toContain("steer:");
+      expect(runtime.getLastAssistantText()).toContain('"expectedTurnId":"mock-codex-turn"');
+      expect(runtime.getLastAssistantText()).toContain("data:image/png;base64,c3RlZXI=");
+    } finally {
+      await runtime.clear();
+    }
+  });
+
+  it("forwards Codex MCP form elicitations and returns typed content", async () => {
+    const records = createRecords("codex", "mock-codex-app-server.mjs");
+    const runtime = await CodexSessionRuntime.create({ db, ...records });
+    const events: any[] = [];
+    runtime.subscribe((event) => events.push(event));
+    try {
+      const turn = runtime.prompt("needs elicitation");
+      await expect
+        .poll(() => events.find((event) => event.toolCallId === "codex-901"))
+        .toMatchObject({
+          type: "tool_execution_start",
+          args: { kind: "question", backend: "codex" },
+        });
+      expect(
+        runtime.resolveExternalInteraction("codex-901", {
+          action: "answer",
+          answers: { days: ["3"], relaxed: ["true"] },
+        }),
+      ).toBe(true);
+      await turn;
+      expect(runtime.getLastAssistantText()).toContain(
+        '"action":"accept","content":{"days":3,"relaxed":true}',
+      );
+    } finally {
+      await runtime.clear();
+    }
+  });
+
   it("streams Claude Code output and saves its session id", async () => {
     const records = createRecords("claude", "mock-claude-stream.mjs");
-    const runtime = await ClaudeSessionRuntime.create({ db, ...records });
+    const runtime = await ClaudeSessionRuntime.create({
+      db,
+      ...records,
+      queryFactory: mockClaudeQuery as any,
+    });
     try {
       await runtime.prompt("hello");
       const messages = await runtime.getMessages();
       expect(messages).toHaveLength(2);
-      expect(messages[1]).toMatchObject({
+      expect(
+        messages.find((entry) => entry.type === "message" && entry.message.role === "assistant"),
+      ).toMatchObject({
         type: "message",
         message: { role: "assistant", content: "claude reply" },
       });
       expect(db.get(runtime.id)?.meta).toMatchObject({
         externalSessionId: "mock-claude-session",
       });
+      expect(runtime.getSlashCommands()).toEqual([
+        { name: "status", description: "" },
+        { name: "compact", description: "" },
+      ]);
     } finally {
       await runtime.clear();
     }
@@ -140,7 +263,11 @@ describe("external CLI runtimes", () => {
 
   it("holds Claude permission bridge requests until Supervisor responds", async () => {
     const records = createRecords("claude", "mock-claude-stream.mjs");
-    const runtime = await ClaudeSessionRuntime.create({ db, ...records });
+    const runtime = await ClaudeSessionRuntime.create({
+      db,
+      ...records,
+      queryFactory: mockClaudeQuery as any,
+    });
     const events: any[] = [];
     runtime.subscribe((event) => events.push(event));
     try {

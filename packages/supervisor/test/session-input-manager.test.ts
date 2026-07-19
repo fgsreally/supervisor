@@ -44,6 +44,9 @@ describe("session input queue", () => {
     });
     expect(disposition).toBe("queued");
     expect(manager.peekSessionInput(inst.id)?.message).toBe("queued note");
+    expect(manager.listSessionInputs(inst.id)).toMatchObject([
+      { message: "queued note", source: null },
+    ]);
     expect(harness.agent.prompt).not.toHaveBeenCalled();
 
     harness.agent.emit({ type: "agent_end", messages: [] } as AgentEvent);
@@ -51,6 +54,7 @@ describe("session input queue", () => {
 
     expect(harness.agent.prompt).toHaveBeenCalledWith("queued note");
     expect(manager.peekSessionInput(inst.id)).toBeUndefined();
+    expect(manager.listSessionInputs(inst.id)).toEqual([]);
   });
 
   it("interrupts an active turn for high-priority input", async () => {
@@ -65,5 +69,21 @@ describe("session input queue", () => {
     expect(disposition).toBe("interrupt");
     expect(harness.abort).toHaveBeenCalled();
     expect(harness.agent.prompt).toHaveBeenCalledWith("urgent stop");
+  });
+
+  it("keeps images attached while a queued input waits", async () => {
+    const inst = await manager.spawn(SPAWN_OPTS);
+    const harness = MockAgentHarness.instances[0]!;
+    harness.agent.emit({ type: "agent_start" } as AgentEvent);
+    const images = [{ mimeType: "image/png", data: "cXVldWVk" }];
+
+    await expect(
+      manager.submitSessionInput(inst.id, { message: "queued image", images }),
+    ).resolves.toBe("queued");
+    expect(manager.peekSessionInput(inst.id)?.images).toEqual(images);
+
+    harness.agent.emit({ type: "agent_end", messages: [] } as AgentEvent);
+    await flushLifecycle();
+    expect(harness.agent.prompt).toHaveBeenCalledWith("queued image", { images });
   });
 });

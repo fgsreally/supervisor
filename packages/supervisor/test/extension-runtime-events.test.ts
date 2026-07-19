@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -115,6 +115,79 @@ function createRuntimeOptions(sessionId = 1): RuntimeOptions & { finishedSession
 }
 
 describe("extension runtime events", () => {
+  it("emits persisted tool results with their stable message id", async () => {
+    const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
+    let seen: { messageId: string; entryId: string } | undefined;
+    await runtime.load(
+      defineExtension({
+        name: "stored-result-test",
+        setup(ctx) {
+          return ctx.on("message.tool_result", (event) => {
+            seen = { messageId: event.messageId, entryId: event.entryId };
+          });
+        },
+      }),
+      "/tmp/stored-result-test.ts",
+    );
+
+    await runtime.handleStoredEntry({
+      id: "result-entry-1",
+      parentId: "assistant-1",
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "browser",
+        content: [{ type: "text", text: "done" }],
+      },
+    } as any);
+
+    expect(seen).toEqual({ messageId: "result-entry-1", entryId: "result-entry-1" });
+  });
+
+  it("attaches completed recordings to tool result message assets", async () => {
+    const sessionDir = join(tmpdir(), "supervisor-message-assets-test");
+    const options = createRuntimeOptions();
+    options.sessionDir = sessionDir;
+    let patchedId = "";
+    let patched: Record<string, unknown> = {};
+    options.deps.patchMessageMeta = async (id, patch) => {
+      patchedId = id;
+      patched = patch;
+      return patch;
+    };
+    const runtime = new SessionExtensionHost(createExtensionTestContext(options));
+    await runtime.initialize();
+
+    await runtime.handleStoredEntry({
+      id: "recording-result-1",
+      parentId: "assistant-1",
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolCallId: "call-1",
+        toolName: "browser",
+        content: [{ type: "text", text: "Browser recording saved" }],
+        details: {
+          action: "stop_recording",
+          path: join(sessionDir, "recordings", "e2e.webm"),
+        },
+      },
+    } as any);
+
+    expect(patchedId).toBe("recording-result-1");
+    expect(patched).toEqual({
+      assets: [
+        {
+          scope: "session",
+          path: "recordings/e2e.webm",
+          name: "Browser recording",
+          mediaType: "video/webm",
+        },
+      ],
+    });
+  });
+
   it("delivers system events registered via ctx.on", async () => {
     const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
     let seen = 0;
@@ -211,6 +284,86 @@ describe("extension runtime events", () => {
 
     expect(mainRuntime.getTool("spawn_agent")).toBeDefined();
     expect(childRuntime.getTool("spawn_agent")).toBeUndefined();
+  });
+
+  it("runs eval code in a persistent session-owned JavaScript kernel", async () => {
+    const sessionDir = join(tmpdir(), `supervisor-eval-${Date.now()}`);
+    const options = createRuntimeOptions();
+    options.sessionDir = sessionDir;
+    const runtime = new SessionExtensionHost(createExtensionTestContext(options));
+    await runtime.initialize();
+    const executionContext = {
+      session: runtime.getToolExecutionSession(),
+      reportProgress: () => {},
+    };
+
+    const first = await runtime.executeTool(
+      "eval",
+      { language: "js", code: "var answer = 40" },
+      { ...executionContext, toolCallId: "eval-1" },
+    );
+    const second = await runtime.executeTool(
+      "eval",
+      { language: "js", code: "answer + 2" },
+      { ...executionContext, toolCallId: "eval-2" },
+    );
+
+    expect(first.isError).toBeFalsy();
+    expect(second.content).toEqual([{ type: "text", text: "42" }]);
+    expect(second.details).toMatchObject({ language: "js", runtimeDir: join(sessionDir, "eval") });
+    await runtime.unload("eval");
+  });
+
+  it("terminates a timed-out JavaScript worker and starts a fresh one", async () => {
+    const options = createRuntimeOptions();
+    options.sessionDir = join(tmpdir(), `supervisor-eval-timeout-${Date.now()}`);
+    const runtime = new SessionExtensionHost(createExtensionTestContext(options));
+    await runtime.initialize();
+    const session = runtime.getToolExecutionSession();
+    const timedOut = await runtime.executeTool(
+      "eval",
+      { language: "js", code: "while (true) {}", timeout: 1 },
+      { toolCallId: "eval-timeout", session, reportProgress: () => {} },
+    );
+    const recovered = await runtime.executeTool(
+      "eval",
+      { language: "js", code: "6 * 7" },
+      { toolCallId: "eval-recovered", session, reportProgress: () => {} },
+    );
+
+    expect(timedOut.isError).toBe(true);
+    expect(recovered.content).toEqual([{ type: "text", text: "42" }]);
+    await runtime.unload("eval");
+  });
+
+  it("persists todo, goal, plan, and current task in session metadata", async () => {
+    const sessionDir = join(tmpdir(), `supervisor-tasks-${Date.now()}`);
+    const options = createRuntimeOptions();
+    options.sessionDir = sessionDir;
+    const state: Record<string, unknown> = {};
+    options.db.getSessionMeta = async () => state;
+    options.deps.patchSessionMeta = async (patch) => Object.assign(state, patch);
+    const runtime = new SessionExtensionHost(createExtensionTestContext(options));
+    await runtime.initialize();
+    const session = runtime.getToolExecutionSession();
+    const run = (name: string, args: Record<string, unknown>, id: string) =>
+      runtime.executeTool(name, args, { toolCallId: id, session, reportProgress: () => {} });
+
+    await run("TodoList", { todos: [{ title: "inspect", status: "in_progress" }] }, "todo-1");
+    await run("Goal", { action: "create", objective: "all tests pass" }, "goal-1");
+    await run("EnterPlanMode", {}, "plan-1");
+
+    const tasks = state.tasks as string[];
+    expect(tasks).toHaveLength(2);
+    expect(state.todos).toEqual([{ title: "inspect", status: "in_progress" }]);
+    expect(state.currentTask).toBe(tasks[1]);
+    expect(tasks.map((path) => readFileSync(join(sessionDir, path), "utf8"))).toEqual([
+      expect.stringContaining("all tests pass"),
+      expect.stringContaining("# Implementation plan"),
+    ]);
+    await runtime.unload("task-management");
+    await runtime.unload("eval");
+    rmSync(sessionDir, { recursive: true, force: true });
   });
 
   it("spawns child sessions through the session instance", async () => {

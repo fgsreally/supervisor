@@ -1,15 +1,19 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
-import type { Page } from "puppeteer-core";
+import { mkdir } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve } from "node:path";
+import type { Page, ScreenRecorder } from "puppeteer-core";
+import ffmpeg from "@ffmpeg-installer/ffmpeg";
 import { createBrowserSession, type BrowserSession } from "./registry.js";
 
 const DEFAULT_TAB = "main";
 
 interface BrowserParams {
-  action: "open" | "close" | "run";
+  action: "open" | "close" | "run" | "start_recording" | "stop_recording";
   name?: string;
   url?: string;
   viewport?: { width: number; height: number };
   code?: string;
+  path?: string;
   timeout?: number;
   all?: boolean;
 }
@@ -77,18 +81,62 @@ async function runInPage(page: Page, code: string, timeoutMs: number): Promise<u
   ]);
 }
 
-export function createBrowserTool(): { tool: AgentTool; cleanup: () => Promise<void> } {
-  const session: BrowserSession = createBrowserSession();
+async function installRecordingCursor(page: Page): Promise<void> {
+  const install = () => {
+    if (document.getElementById("__supervisor_recording_cursor")) return;
+    const cursor = document.createElement("div");
+    cursor.id = "__supervisor_recording_cursor";
+    cursor.style.cssText =
+      "position:fixed;left:0;top:0;width:18px;height:18px;border:3px solid #ff3b30;border-radius:50%;background:rgba(255,255,255,.45);pointer-events:none;z-index:2147483647;transform:translate(-50%,-50%);transition:width .12s,height .12s,background .12s";
+    document.documentElement.appendChild(cursor);
+    document.addEventListener(
+      "pointermove",
+      (event) => {
+        cursor.style.left = `${event.clientX}px`;
+        cursor.style.top = `${event.clientY}px`;
+      },
+      true,
+    );
+    document.addEventListener(
+      "pointerdown",
+      () => {
+        cursor.style.width = "30px";
+        cursor.style.height = "30px";
+        cursor.style.background = "rgba(255,59,48,.45)";
+        setTimeout(() => {
+          cursor.style.width = "18px";
+          cursor.style.height = "18px";
+          cursor.style.background = "rgba(255,255,255,.45)";
+        }, 180);
+      },
+      true,
+    );
+  };
+  await page.evaluateOnNewDocument(install);
+  await page.evaluate(install);
+}
+
+export function createBrowserTool(options?: {
+  headless?: boolean;
+  cwd?: string;
+  sessionDir?: string;
+}): {
+  tool: AgentTool;
+  cleanup: () => Promise<void>;
+} {
+  const session: BrowserSession = createBrowserSession(options);
+  const recordings = new Map<string, { recorder: ScreenRecorder; path: string }>();
 
   const tool: AgentTool = {
     name: "browser",
     label: "browser",
     description:
-      "Control a headless Chromium browser. Stateful named tabs persist across calls.\n\n" +
+      `Control a ${options?.headless === false ? "headed" : "headless"} Chromium browser. Stateful named tabs persist across calls.\n\n` +
       "Actions:\n" +
       "- open: create or reuse a tab (default name 'main'), optionally navigate to url\n" +
       "- run: execute async JavaScript with `page` (puppeteer Page) and `tab` helpers in scope\n" +
       "- close: release a tab or all tabs (all=true)\n\n" +
+      "- start_recording / stop_recording: record the named tab to a WebM artifact\n\n" +
       "tab helpers: title(), url(), content(), text(selector), click(selector), type(selector, text), " +
       "fill(selector, value), screenshot() (returns base64 PNG), waitForSelector(selector), evaluate(fn)\n\n" +
       "Use for JS-rendered pages, login flows, and interactive browsing. For static pages prefer web_fetch.",
@@ -97,7 +145,7 @@ export function createBrowserTool(): { tool: AgentTool; cleanup: () => Promise<v
       properties: {
         action: {
           type: "string",
-          enum: ["open", "close", "run"],
+          enum: ["open", "close", "run", "start_recording", "stop_recording"],
           description: "Operation to perform.",
         },
         name: {
@@ -119,6 +167,10 @@ export function createBrowserTool(): { tool: AgentTool; cleanup: () => Promise<v
         code: {
           type: "string",
           description: "JavaScript body for action=run. Has page and tab in scope.",
+        },
+        path: {
+          type: "string",
+          description: "Optional .webm output path for start_recording.",
         },
         timeout: {
           type: "number",
@@ -207,6 +259,42 @@ export function createBrowserTool(): { tool: AgentTool; cleanup: () => Promise<v
           };
         }
 
+        if (params.action === "start_recording") {
+          if (recordings.has(tabName)) throw new Error(`tab "${tabName}" is already recording`);
+          let handle = session.getTab(tabName);
+          if (!handle) handle = await session.openTab(tabName, params.url, params.viewport);
+          const baseDir = options?.sessionDir ?? options?.cwd ?? process.cwd();
+          const safeTabName = tabName.replace(/[^A-Za-z0-9._-]+/g, "-");
+          const outputPath = params.path
+            ? isAbsolute(params.path)
+              ? params.path
+              : resolve(baseDir, params.path)
+            : join(baseDir, "recordings", `browser-${safeTabName}-${Date.now()}.webm`);
+          await mkdir(dirname(outputPath), { recursive: true });
+          await installRecordingCursor(handle.page);
+          const recorder = await handle.page.screencast({
+            path: outputPath as `${string}.webm`,
+            ffmpegPath: ffmpeg.path,
+            fps: 30,
+          });
+          recordings.set(tabName, { recorder, path: outputPath });
+          return {
+            content: [{ type: "text", text: `Browser recording started: ${outputPath}` }],
+            details: { action: "start_recording", name: tabName, path: outputPath },
+          };
+        }
+
+        if (params.action === "stop_recording") {
+          const recording = recordings.get(tabName);
+          if (!recording) throw new Error(`tab "${tabName}" is not recording`);
+          await recording.recorder.stop();
+          recordings.delete(tabName);
+          return {
+            content: [{ type: "text", text: `Browser recording saved: ${recording.path}` }],
+            details: { action: "stop_recording", name: tabName, path: recording.path },
+          };
+        }
+
         return {
           content: [{ type: "text", text: `Unknown action: ${String(params.action)}` }],
           isError: true,
@@ -223,6 +311,10 @@ export function createBrowserTool(): { tool: AgentTool; cleanup: () => Promise<v
 
   return {
     tool,
-    cleanup: () => session.dispose(),
+    cleanup: async () => {
+      for (const recording of recordings.values()) await recording.recorder.stop().catch(() => {});
+      recordings.clear();
+      await session.dispose();
+    },
   };
 }

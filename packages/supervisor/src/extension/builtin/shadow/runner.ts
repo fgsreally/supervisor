@@ -64,7 +64,7 @@ function extractAssistantText(content: Array<{ type: string; text?: string }>): 
     .trim();
 }
 
-function urgencyToLevel(urgency: ShadowUrgency | undefined): number {
+export function shadowUrgencyToLevel(urgency: ShadowUrgency | undefined): number {
   if (urgency === "normal") return 50;
   if (urgency === "high") return 80;
   if (urgency === "critical") return SESSION_INPUT_INTERRUPT_LEVEL;
@@ -125,6 +125,10 @@ export async function runShadow(
   if (!result) return;
   applyShadowMemoryUpdate(session.projectId, session.id, result.shadowMemory);
 
+  const suggestedQuestions = result.suggestedQuestions ?? [];
+  db.updateMeta(session.id, { shadowSuggestedQuestions: suggestedQuestions });
+  manager.publishShadowSuggestions(session.id, suggestedQuestions);
+
   const title = result.title?.replace(/\s+/g, " ").trim().slice(0, 80);
   if (title) db.updateMeta(session.id, { name: title });
 
@@ -132,7 +136,7 @@ export async function runShadow(
   if (message) {
     await manager.submitSessionInput(session.id, {
       message,
-      level: urgencyToLevel(result.urgency),
+      level: shadowUrgencyToLevel(result.urgency),
       source: `shadow:${shadowAgent.id}`,
     });
   }

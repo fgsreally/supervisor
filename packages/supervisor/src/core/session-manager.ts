@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
   type AgentEvent,
@@ -71,6 +72,7 @@ import type {
   ExternalInteractionResponse,
 } from "./managed-session-runtime.js";
 import { AcpSessionRuntime } from "./external/acp-session-runtime.js";
+import { externalAgentAvailability } from "./external/external-agent-config.js";
 import { CodexSessionRuntime } from "./external/codex-session-runtime.js";
 import { ClaudeSessionRuntime } from "./external/claude-session-runtime.js";
 import {
@@ -121,7 +123,14 @@ import type {
 const DEFAULT_PROVIDER: KnownProvider = "anthropic";
 const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
-export type SessionOutputListener = (sessionId: number, event: AgentHarnessEvent) => void;
+export type ShadowSuggestionsEvent = {
+  type: "shadow_suggestions";
+  questions: string[];
+  timestamp: number;
+};
+
+export type SessionOutputEvent = AgentHarnessEvent | ShadowSuggestionsEvent;
+export type SessionOutputListener = (sessionId: number, event: SessionOutputEvent) => void;
 
 interface RuntimeConfigSnapshot {
   provider: string;
@@ -148,6 +157,7 @@ interface SessionToolConfig {
 
 /** Convert a SessionRow to the Session type. */
 function rowToSession(row: SessionRow): Session {
+  const meta = typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta;
   return {
     id: row.id,
     projectId: row.project_id,
@@ -164,8 +174,13 @@ function rowToSession(row: SessionRow): Session {
     contextLeafId: row.context_leaf_id ?? null,
     createdAt: new Date(row.created_at),
     lastActiveAt: new Date(row.last_active_at),
-    meta: typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta,
+    meta,
+    currentTask: parseCurrentTask(meta.currentTask),
   };
+}
+
+function parseCurrentTask(value: unknown): Session["currentTask"] {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 /** Helper to parse session meta JSON when dealing with SessionRow from the DB layer. */
@@ -223,6 +238,7 @@ export class SessionManager {
   private _getSession(id: number): Session | undefined {
     const row = this.db.get(id);
     if (!row) return undefined;
+    const meta = parseSessionMeta(row.meta);
     return {
       id: row.id,
       projectId: row.project_id,
@@ -239,7 +255,8 @@ export class SessionManager {
       contextLeafId: row.context_leaf_id ?? null,
       createdAt: new Date(row.created_at),
       lastActiveAt: new Date(row.last_active_at),
-      meta: parseSessionMeta(row.meta),
+      meta,
+      currentTask: parseCurrentTask(meta.currentTask),
     };
   }
 
@@ -351,6 +368,10 @@ export class SessionManager {
     runtime.subscribe((event: AgentHarnessEvent) => {
       if (event.type === "agent_start") {
         this.db.updateStatus(sessionId, "running");
+        if (runtime instanceof SessionRuntime) {
+          this.db.updateMeta(sessionId, { shadowSuggestedQuestions: [] });
+          this.publishShadowSuggestions(sessionId, []);
+        }
       } else if (event.type === "agent_end") {
         if (!hasPendingAsks(sessionId)) {
           this.db.updateStatus(sessionId, "idle");
@@ -412,6 +433,9 @@ export class SessionManager {
   }
 
   private createExternalRuntime(session: Session, agent: Agent): Promise<ManagedSessionRuntime> {
+    const availability = externalAgentAvailability(agent);
+    if (!availability.available)
+      throw new Error(availability.unavailableReason ?? "外部 Agent 不可用");
     const options = { db: this.db, session, agent };
     if (agent.backendType === "codex") return CodexSessionRuntime.create(options);
     if (agent.backendType === "claude") return ClaudeSessionRuntime.create(options);
@@ -559,6 +583,12 @@ export class SessionManager {
     }
     if (agentInDb) {
       assertAgentUserSpawnable(agentInDb, options.agentId);
+      const availability = externalAgentAvailability(agentInDb);
+      if (!availability.available) {
+        throw new Error(
+          availability.unavailableReason ?? `Agent ${options.agentId} is unavailable`,
+        );
+      }
     }
 
     const session = this.create({
@@ -710,6 +740,17 @@ export class SessionManager {
     };
   }
 
+  publishShadowSuggestions(sessionId: number, questions: string[]): void {
+    const event: ShadowSuggestionsEvent = {
+      type: "shadow_suggestions",
+      questions,
+      timestamp: Date.now(),
+    };
+    for (const listener of this.outputListeners.get(sessionId) ?? []) {
+      listener(sessionId, event);
+    }
+  }
+
   async prompt(
     id: number,
     message: string,
@@ -744,6 +785,7 @@ export class SessionManager {
   ): Promise<SessionInputDisposition> {
     const level = input.level ?? DEFAULT_SESSION_INPUT_LEVEL;
     const entry: SessionQueuedInput = {
+      id: randomUUID(),
       message: input.message,
       level,
       source: input.source ?? null,
@@ -793,6 +835,11 @@ export class SessionManager {
     return this.sessionInputQueues.peek(sessionId);
   }
 
+  listSessionInputs(sessionId: number): SessionQueuedInput[] {
+    if (!this.db.get(sessionId)) throw new Error(`Session ${sessionId} not found`);
+    return this.sessionInputQueues.list(sessionId);
+  }
+
   async drainSessionInputQueue(sessionId: number): Promise<boolean> {
     const next = this.sessionInputQueues.dequeue(sessionId);
     if (!next) return false;
@@ -829,18 +876,18 @@ export class SessionManager {
     throw new Error(`Timed out waiting for session ${sessionId}`);
   }
 
-  steer(id: number, message: string): void {
+  async steer(id: number, message: string, images?: ImageContent[]): Promise<void> {
     this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
-    runtime.steer(message);
+    await runtime.steer(message, images);
   }
 
-  followUp(id: number, message: string, source?: string | null): void {
+  followUp(id: number, message: string, source?: string | null, images?: ImageContent[]): void {
     this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
-    runtime.followUp(message, source);
+    runtime.followUp(message, source, images);
   }
 
   async abort(id: number): Promise<void> {
@@ -1022,11 +1069,16 @@ export class SessionManager {
   }
 
   private enrichAgentWithSystemMd(agent: Agent): AgentWithSystemMd {
+    const availability = externalAgentAvailability(agent);
     if (agent.backendType !== "native") {
-      return { ...agent, homeDir: null, systemMd: "" };
+      return { ...agent, homeDir: null, systemMd: "", ...availability };
     }
     const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
-    return { ...agent, homeDir, systemMd: readAgentHomeSystemPrompt(homeDir) };
+    return { ...agent, homeDir, systemMd: readAgentHomeSystemPrompt(homeDir), ...availability };
+  }
+
+  detectExternalAgents(): AgentWithSystemMd[] {
+    return this.listAgents();
   }
 
   insertAgent(
@@ -1439,5 +1491,33 @@ export class SessionManager {
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
     return runtime;
+  }
+
+  async listCodexModels(id: number): Promise<Record<string, any>[]> {
+    const runtime = this.getRuntime(id);
+    if (!(runtime instanceof CodexSessionRuntime))
+      throw new Error("session is not a Codex session");
+    return runtime.listModels();
+  }
+
+  async updateCodexSettings(
+    id: number,
+    settings: { model: string; effort?: string | null },
+  ): Promise<void> {
+    const runtime = this.getRuntime(id);
+    if (!(runtime instanceof CodexSessionRuntime))
+      throw new Error("session is not a Codex session");
+    await runtime.updateThreadSettings(settings);
+  }
+
+  async executeCodexCommand(
+    id: number,
+    command: string,
+    argument?: string,
+  ): Promise<Record<string, any>> {
+    const runtime = this.getRuntime(id);
+    if (!(runtime instanceof CodexSessionRuntime))
+      throw new Error("session is not a Codex session");
+    return runtime.executeClientCommand(command, argument);
   }
 }

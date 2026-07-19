@@ -40,8 +40,11 @@ const backendLabel = computed(() => {
 });
 
 const command = computed(() => {
-  const external = props.agent.meta.external as { command?: string; args?: string[] } | undefined;
-  return [external?.command, ...(external?.args ?? [])].filter(Boolean).join(" ") || "-";
+  const legacy = props.agent.meta.external as { command?: string; args?: string[] } | undefined;
+  const command =
+    typeof props.agent.meta.command === "string" ? props.agent.meta.command : legacy?.command;
+  const args = Array.isArray(props.agent.meta.args) ? props.agent.meta.args : legacy?.args;
+  return [command, ...(args ?? [])].filter(Boolean).join(" ") || "-";
 });
 
 const resumeLabel = computed(() => {

@@ -1,144 +1,204 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
+import { spawn } from "node:child_process";
+import {
+  query,
+  type PermissionResult,
+  type CanUseTool,
+  type Query,
+  type SDKMessage,
+  type SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { SupervisorDb } from "../../db/db.js";
 import type { Agent, Session } from "../../types.js";
-import { ExternalSessionRuntime } from "./external-session-runtime.js";
 import type {
   ExternalInteractionRequest,
   ExternalInteractionResponse,
 } from "../managed-session-runtime.js";
+import type { SlashCommandInfo } from "../session-runtime.js";
+import { ExternalSessionRuntime } from "./external-session-runtime.js";
+import { getExternalAgentConfig, resolveExecutable } from "./external-agent-config.js";
 
 type JsonObject = Record<string, any>;
 
-function externalConfig(agent: Agent): { command: string; args: string[] } {
-  const external = agent.meta.external as { command?: unknown; args?: unknown } | undefined;
-  return {
-    command:
-      typeof external?.command === "string" && external.command.length > 0
-        ? external.command
-        : "claude",
-    args: Array.isArray(external?.args)
-      ? external.args.filter((value): value is string => typeof value === "string")
-      : [],
-  };
+class MessageQueue implements AsyncIterable<SDKUserMessage> {
+  private readonly values: SDKUserMessage[] = [];
+  private readonly waiters: Array<(value: IteratorResult<SDKUserMessage>) => void> = [];
+  private closed = false;
+
+  push(value: SDKUserMessage): void {
+    if (this.closed) throw new Error("Claude Code input is closed");
+    const waiter = this.waiters.shift();
+    if (waiter) waiter({ value, done: false });
+    else this.values.push(value);
+  }
+
+  close(): void {
+    this.closed = true;
+    for (const waiter of this.waiters.splice(0)) waiter({ value: undefined, done: true });
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+    return {
+      next: () => {
+        const value = this.values.shift();
+        if (value) return Promise.resolve({ value, done: false });
+        if (this.closed) return Promise.resolve({ value: undefined, done: true });
+        return new Promise((resolve) => this.waiters.push(resolve));
+      },
+    };
+  }
 }
 
 export class ClaudeSessionRuntime extends ExternalSessionRuntime {
-  private turnProcess: ChildProcessWithoutNullStreams | null = null;
-  private externalSessionId = "";
+  private readonly input = new MessageQueue();
+  private readonly query: Query;
+  private readonly reader: Promise<void>;
   private sawTextDelta = false;
+  private slashCommands: SlashCommandInfo[] = [];
+  private readonly streamedTools = new Map<number, { id: string; name: string; json: string }>();
+  private turnCompletion: { resolve: () => void; reject: (error: Error) => void } | undefined;
   private readonly interactions = new Map<
     string,
     { resolve: (response: ExternalInteractionResponse) => void }
   >();
 
-  private constructor(options: { db: SupervisorDb; session: Session; agent: Agent }) {
+  private constructor(options: {
+    db: SupervisorDb;
+    session: Session;
+    agent: Agent;
+    queryFactory?: typeof query;
+  }) {
     super(options);
+    const config = getExternalAgentConfig(options.agent);
+    const executable = resolveExecutable(config.command, { ...process.env, ...config.env });
+    if (!executable) throw new Error(`未找到用户安装的 Claude Code：${config.command}`);
     const savedId = options.session.meta?.externalSessionId;
-    this.externalSessionId = typeof savedId === "string" ? savedId : "";
+    this.query = (options.queryFactory ?? query)({
+      prompt: this.input,
+      options: {
+        cwd: options.session.cwd,
+        pathToClaudeCodeExecutable: executable,
+        env: { ...process.env, ...config.env },
+        includePartialMessages: true,
+        persistSession: true,
+        settingSources: ["user", "project", "local"],
+        resume: typeof savedId === "string" && savedId ? savedId : undefined,
+        canUseTool: (toolName, input, context) => this.handlePermission(toolName, input, context),
+        spawnClaudeCodeProcess: (spawnOptions) =>
+          spawn(executable, [...config.args, ...spawnOptions.args], {
+            cwd: spawnOptions.cwd,
+            env: spawnOptions.env,
+            stdio: ["pipe", "pipe", "pipe"],
+            windowsHide: true,
+          }),
+      },
+    });
+    this.reader = this.readMessages();
   }
 
   static async create(options: {
     db: SupervisorDb;
     session: Session;
     agent: Agent;
+    queryFactory?: typeof query;
   }): Promise<ClaudeSessionRuntime> {
     return new ClaudeSessionRuntime(options);
   }
 
   protected async runExternalTurn(message: string, images?: ImageContent[]): Promise<void> {
-    if (images?.length)
-      throw new Error("Claude Code stream-json driver does not support images yet");
-    const config = externalConfig(this.agent);
-    const supervisorUrl = process.env.PI_SUPERVISOR_URL;
-    const permissionArgs = supervisorUrl
-      ? [
-          "--mcp-config",
-          JSON.stringify({
-            mcpServers: {
-              supervisor: {
-                command: process.execPath,
-                args: [
-                  fileURLToPath(
-                    new URL("./core/external/claude-permission-bridge.mjs", import.meta.url),
-                  ),
-                  String(this.id),
-                  supervisorUrl,
-                ],
-              },
-            },
-          }),
-          "--permission-prompt-tool",
-          "mcp__supervisor__approve",
-          "--permission-mode",
-          "default",
-          "--append-system-prompt",
-          "When you need structured user input, call mcp__supervisor__ask and wait for its result instead of using AskUserQuestion.",
-        ]
-      : ["--permission-mode", "acceptEdits"];
-    const args = [
-      ...config.args,
-      "-p",
-      "--output-format",
-      "stream-json",
-      "--include-partial-messages",
-      ...permissionArgs,
-    ];
-    if (this.externalSessionId) args.push("--resume", this.externalSessionId);
-    const child = spawn(config.command, args, {
-      cwd: this.session.cwd,
-      env: process.env,
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    this.turnProcess = child;
+    if (this.turnCompletion) throw new Error(`Claude Code session ${this.id} is already running`);
     this.sawTextDelta = false;
-    child.stderr.setEncoding("utf8");
-    child.stderr.on("data", (chunk: string) => {
-      const detail = chunk.trim();
-      if (detail) console.error(`[claude:${this.id}] ${detail}`);
+    const completion = new Promise<void>((resolve, reject) => {
+      this.turnCompletion = { resolve, reject };
     });
-    const lines = createInterface({ input: child.stdout });
-    let processing = Promise.resolve();
-    lines.on("line", (line) => {
-      processing = processing.then(() => this.handleLine(line));
+    this.input.push({
+      type: "user",
+      parent_tool_use_id: null,
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: message },
+          ...(images ?? []).map((image) => ({
+            type: "image" as const,
+            source: {
+              type: "base64" as const,
+              media_type: image.mimeType,
+              data: image.data,
+            },
+          })),
+        ],
+      },
     });
-    child.stdin.end(message);
-
-    await new Promise<void>((resolve, reject) => {
-      child.once("error", reject);
-      child.once("exit", async (code, signal) => {
-        await processing;
-        this.turnProcess = null;
-        if (code === 0) resolve();
-        else reject(new Error(`Claude Code exited (${signal ?? code ?? "unknown"})`));
-      });
-    });
+    await completion;
   }
 
-  private async handleLine(line: string): Promise<void> {
-    let message: JsonObject;
+  private async readMessages(): Promise<void> {
     try {
-      message = JSON.parse(line) as JsonObject;
-    } catch {
+      for await (const message of this.query) await this.handleMessage(message);
+      this.turnCompletion?.reject(new Error("Claude Code process exited"));
+    } catch (error) {
+      this.turnCompletion?.reject(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      this.turnCompletion = undefined;
+    }
+  }
+
+  private async handleMessage(message: SDKMessage): Promise<void> {
+    const raw = message as JsonObject;
+    if (typeof raw.session_id === "string" && raw.session_id) {
+      this.setExternalSessionId(raw.session_id);
+    }
+    if (raw.type === "stream_event") {
+      await this.handleStreamEvent(raw.event);
       return;
     }
-    if (typeof message.session_id === "string" && message.session_id.length > 0) {
-      this.externalSessionId = message.session_id;
-      this.setExternalSessionId(message.session_id);
-    }
-    if (message.type === "stream_event") {
-      await this.handleStreamEvent(message.event);
+    if (raw.type === "system" && raw.subtype === "init" && Array.isArray(raw.slash_commands)) {
+      this.slashCommands = raw.slash_commands.map((name: string) => ({ name, description: "" }));
       return;
     }
-    if (message.type === "assistant") {
-      await this.handleAssistantMessage(message.message);
+    if (raw.type === "system" && raw.subtype === "commands_changed") {
+      this.slashCommands = (raw.commands ?? []).map((command: JsonObject) => ({
+        name: command.name,
+        description: command.description ?? "",
+      }));
       return;
     }
-    if (message.type === "user") await this.handleToolResults(message.message);
+    if (raw.type === "system" && raw.subtype === "task_started" && !raw.skip_transcript) {
+      await this.startTool(
+        `claude-task-${raw.task_id}`,
+        raw.subagent_type ?? raw.task_type ?? "Task",
+        {
+          description: raw.description,
+          prompt: raw.prompt,
+        },
+      );
+      return;
+    }
+    if (raw.type === "system" && raw.subtype === "task_notification" && !raw.skip_transcript) {
+      await this.endTool(
+        `claude-task-${raw.task_id}`,
+        { summary: raw.summary, outputFile: raw.output_file, usage: raw.usage },
+        raw.status === "failed",
+      );
+      return;
+    }
+    if (raw.type === "assistant") {
+      await this.handleAssistantMessage(raw.message);
+      return;
+    }
+    if (raw.type === "user") {
+      await this.handleToolResults(raw.message);
+      return;
+    }
+    if (raw.type === "result") {
+      const completion = this.turnCompletion;
+      this.turnCompletion = undefined;
+      if (!completion) return;
+      if (raw.is_error || raw.subtype !== "success") {
+        completion.reject(new Error(raw.result || "Claude Code turn failed"));
+      } else completion.resolve();
+    }
   }
 
   private async handleStreamEvent(event: JsonObject | undefined): Promise<void> {
@@ -146,18 +206,31 @@ export class ClaudeSessionRuntime extends ExternalSessionRuntime {
     if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
       this.sawTextDelta = true;
       await this.appendText(event.delta.text ?? "");
-      return;
-    }
-    if (event.type === "content_block_delta" && event.delta?.type === "thinking_delta") {
+    } else if (event.type === "content_block_delta" && event.delta?.type === "thinking_delta") {
       await this.appendThinking(event.delta.thinking ?? "");
-      return;
-    }
-    if (event.type === "content_block_start" && event.content_block?.type === "tool_use") {
-      await this.startTool(
-        event.content_block.id,
-        event.content_block.name,
-        event.content_block.input ?? {},
-      );
+    } else if (event.type === "content_block_start" && event.content_block?.type === "tool_use") {
+      this.streamedTools.set(event.index, {
+        id: event.content_block.id,
+        name: event.content_block.name,
+        json: Object.keys(event.content_block.input ?? {}).length
+          ? JSON.stringify(event.content_block.input)
+          : "",
+      });
+    } else if (event.type === "content_block_delta" && event.delta?.type === "input_json_delta") {
+      const tool = this.streamedTools.get(event.index);
+      if (tool) tool.json += event.delta.partial_json ?? "";
+    } else if (event.type === "content_block_stop") {
+      const tool = this.streamedTools.get(event.index);
+      if (tool) {
+        this.streamedTools.delete(event.index);
+        let input: unknown = {};
+        try {
+          input = tool.json ? JSON.parse(tool.json) : {};
+        } catch {
+          input = { rawInput: tool.json };
+        }
+        await this.startTool(tool.id, tool.name, input);
+      }
     }
   }
 
@@ -172,18 +245,67 @@ export class ClaudeSessionRuntime extends ExternalSessionRuntime {
   private async handleToolResults(message: JsonObject | undefined): Promise<void> {
     if (!Array.isArray(message?.content)) return;
     for (const block of message.content) {
-      if (block.type !== "tool_result") continue;
-      await this.endTool(block.tool_use_id, block.content, block.is_error === true);
+      if (block.type === "tool_result")
+        await this.endTool(block.tool_use_id, block.content, block.is_error === true);
     }
   }
 
+  private async handlePermission(
+    toolName: string,
+    input: Record<string, unknown>,
+    context: Parameters<CanUseTool>[2],
+  ): Promise<PermissionResult> {
+    const isQuestion = toolName === "AskUserQuestion" && Array.isArray(input.questions);
+    const response = await this.requestExternalInteraction({
+      backend: "claude",
+      kind: isQuestion ? "question" : "approval",
+      title: isQuestion
+        ? "Claude Code 请求输入"
+        : (context.title ?? `Claude Code 请求执行 ${toolName}`),
+      detail: [
+        context.displayName,
+        context.description,
+        context.decisionReason,
+        context.blockedPath,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      request: { toolName, input, ...context },
+      questions: isQuestion ? (input.questions as unknown[]) : undefined,
+    });
+    if (response.action === "approve" || response.action === "approve_session") {
+      return {
+        behavior: "allow",
+        updatedInput: input,
+        updatedPermissions: response.action === "approve_session" ? context.suggestions : undefined,
+      };
+    }
+    if (response.action === "answer") {
+      return {
+        behavior: "allow",
+        updatedInput: {
+          ...input,
+          answers: Object.fromEntries(
+            Object.entries(response.answers ?? {}).map(([key, values]) => [key, values.join(", ")]),
+          ),
+        },
+      };
+    }
+    return { behavior: "deny", message: response.action === "cancel" ? "用户取消" : "用户拒绝" };
+  }
+
   protected async interruptExternal(): Promise<void> {
-    this.turnProcess?.kill();
+    await this.query.interrupt();
   }
 
   protected async disposeExternal(): Promise<void> {
-    this.turnProcess?.kill();
-    this.turnProcess = null;
+    this.input.close();
+    this.query.close();
+    await this.reader.catch(() => {});
+  }
+
+  getSlashCommands(): SlashCommandInfo[] {
+    return this.slashCommands;
   }
 
   requestExternalInteraction(

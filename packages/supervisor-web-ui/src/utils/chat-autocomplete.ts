@@ -3,7 +3,7 @@ import { isTokenStart } from "./chat-token-patterns";
 import { type FileIconKind, getFileIconKind } from "./file-type-icon";
 import { fuzzyFilter } from "./fuzzy-filter";
 
-export type AutocompleteTrigger = "at" | "slash";
+export type AutocompleteTrigger = "at" | "slash" | "skill";
 
 export interface WorkspaceFileEntry {
   path: string;
@@ -91,6 +91,18 @@ function extractSlashPrefix(textBeforeCursor: string): string | null {
   return null;
 }
 
+function extractSkillPrefix(textBeforeCursor: string): string | null {
+  for (let i = textBeforeCursor.length - 1; i >= 0; i--) {
+    const ch = textBeforeCursor[i] ?? "";
+    if (ch === "$" && isTokenStart(textBeforeCursor, i)) {
+      const token = textBeforeCursor.slice(i);
+      return token.includes(" ") ? null : token;
+    }
+    if (PATH_DELIMITERS.has(ch)) break;
+  }
+  return null;
+}
+
 /** Detect active @ or / autocomplete at cursor. */
 export function getAutocompleteContext(
   text: string,
@@ -118,6 +130,16 @@ export function getAutocompleteContext(
     };
   }
 
+  const skillPrefix = extractSkillPrefix(textBeforeCursor);
+  if (skillPrefix) {
+    return {
+      trigger: "skill",
+      prefix: skillPrefix,
+      replaceStart: cursor - skillPrefix.length,
+      replaceEnd: cursor,
+    };
+  }
+
   return null;
 }
 
@@ -135,6 +157,7 @@ export function getAutocompleteSuggestions(
     workspaceFiles: WorkspaceFileEntry[];
     skills: SkillAutocompleteEntry[];
     prompts: PromptAutocompleteEntry[];
+    skillTrigger?: "slash" | "dollar";
   },
 ): ChatAutocompleteItem[] {
   if (context.trigger === "at") {
@@ -152,8 +175,19 @@ export function getAutocompleteSuggestions(
   }
 
   const query = context.prefix.slice(1);
+  if (context.trigger === "skill") {
+    if (options.skillTrigger !== "dollar") return [];
+    return fuzzyFilter(options.skills, query, (skill) => skill.name)
+      .slice(0, 12)
+      .map((skill) => ({
+        trigger: "skill" as const,
+        value: skill.name,
+        label: `$${skill.name}`,
+        description: skill.description,
+      }));
+  }
   const slashItems: ChatAutocompleteItem[] = [
-    ...options.skills.map((skill) => {
+    ...(options.skillTrigger === "dollar" ? [] : options.skills).map((skill) => {
       const commandName = `skill:${skill.name}`;
       return {
         trigger: "slash" as const,
@@ -202,8 +236,8 @@ export function applyAutocompleteCompletion(
   const before = text.slice(0, context.replaceStart);
   const after = text.slice(context.replaceEnd);
 
-  if (context.trigger === "slash") {
-    const insertion = `/${item.value} `;
+  if (context.trigger === "slash" || context.trigger === "skill") {
+    const insertion = `${context.trigger === "slash" ? "/" : "$"}${item.value} `;
     const next = before + insertion + after;
     return { text: next, cursor: before.length + insertion.length };
   }

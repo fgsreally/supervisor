@@ -9,6 +9,8 @@ import { getDefaultCwd, resolveWorkspacePath, setDefaultCwd } from "./config/def
 import { createHttpServer } from "./http/http-server.js";
 import { SessionManager } from "./core/session-manager.js";
 import type { Provider } from "./types.js";
+import { encryptApiKey } from "./utils/encrypt.js";
+import { readSupervisorSettings, writeSupervisorSettings } from "./utils/supervisor-settings.js";
 
 const KNOWN_CLI_OPTIONS = new Set(["port", "p", "db", "cwd", "h", "help"]);
 
@@ -107,6 +109,13 @@ Model Commands:
   models list <provider-id> List models for a provider
   models add                Add a model ID to a provider (interactive)
   models remove             Remove a model from a provider (interactive)
+
+Configuration Commands:
+  config                    Select a configuration section interactively
+  config show               Show current configuration
+  config web-search [provider]
+  config web-fetch [provider]
+  config browser [headless|headed]
 
 Extension Commands:
   extensions install <source>           Install from npm:<spec>, git:<url>, or local-path into global catalog
@@ -260,6 +269,145 @@ async function run() {
       showHelp();
       db.close();
       process.exit(1);
+      break;
+    }
+
+    case "config": {
+      const searchProviders = ["duckduckgo", "tavily", "brave", "serper", "firecrawl"] as const;
+      const fetchProviders = [
+        "native",
+        "tavily",
+        "firecrawl",
+        "native-then-tavily",
+        "native-then-firecrawl",
+      ] as const;
+      const browserModes = ["headless", "headed"] as const;
+      type CredentialProvider = "tavily" | "brave" | "serper" | "firecrawl";
+      const ensureApiKey = async (provider: CredentialProvider): Promise<void> => {
+        const current = readSupervisorSettings();
+        const envFields = {
+          tavily: "tavilyApiKeyEnv",
+          brave: "braveApiKeyEnv",
+          serper: "serperApiKeyEnv",
+          firecrawl: "firecrawlApiKeyEnv",
+        } as const;
+        const encryptedFields = {
+          tavily: "tavilyApiKeyEncrypted",
+          brave: "braveApiKeyEncrypted",
+          serper: "serperApiKeyEncrypted",
+          firecrawl: "firecrawlApiKeyEncrypted",
+        } as const;
+        const envDefaults = {
+          tavily: "TAVILY_API_KEY",
+          brave: "BRAVE_API_KEY",
+          serper: "SERPER_API_KEY",
+          firecrawl: "FIRECRAWL_API_KEY",
+        } as const;
+        const envName = current[envFields[provider]] ?? envDefaults[provider];
+        const configured = Boolean(process.env[envName] || current[encryptedFields[provider]]);
+        const answer = await prompts({
+          type: "password",
+          name: "apiKey",
+          message: `${provider} API key${configured ? " (leave blank to keep current)" : " (leave blank to skip)"}`,
+        });
+        const apiKey = typeof answer.apiKey === "string" ? answer.apiKey.trim() : "";
+        if (!apiKey) {
+          console.log(`${provider} API key unchanged.`);
+          return;
+        }
+        writeSupervisorSettings({ [encryptedFields[provider]]: encryptApiKey(apiKey) });
+        console.log(`${provider} API key saved encrypted.`);
+      };
+      let section = cmdArgs[0];
+
+      if (!section) {
+        const answer = await prompts({
+          type: "select",
+          name: "section",
+          message: "Select configuration section",
+          choices: [
+            { title: "Web Search", value: "web-search" },
+            { title: "Web Fetch", value: "web-fetch" },
+            { title: "Browser", value: "browser" },
+            { title: "Show current configuration", value: "show" },
+          ],
+        });
+        section = answer.section;
+      }
+
+      const settings = readSupervisorSettings();
+      if (section === "show") {
+        console.log(`Browser: ${settings.browserMode ?? "headless"}`);
+        console.log(`Web Search: ${settings.webSearchProvider ?? "duckduckgo"}`);
+        console.log(`Web Fetch: ${settings.webFetchProvider ?? "native"}`);
+        console.log(`Tavily key env: ${settings.tavilyApiKeyEnv ?? "TAVILY_API_KEY"}`);
+        console.log(`Brave key env: ${settings.braveApiKeyEnv ?? "BRAVE_API_KEY"}`);
+        console.log(`Serper key env: ${settings.serperApiKeyEnv ?? "SERPER_API_KEY"}`);
+        console.log(`Firecrawl key env: ${settings.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY"}`);
+      } else if (section === "web-search") {
+        let provider = cmdArgs[1];
+        if (!provider) {
+          const answer = await prompts({
+            type: "select",
+            name: "provider",
+            message: "Web Search provider",
+            choices: searchProviders.map((value) => ({ title: value, value })),
+            initial: Math.max(
+              0,
+              searchProviders.indexOf(settings.webSearchProvider ?? "duckduckgo"),
+            ),
+          });
+          provider = answer.provider;
+        }
+        if (!searchProviders.includes(provider as (typeof searchProviders)[number])) {
+          throw new Error(`Invalid Web Search provider: ${provider ?? ""}`);
+        }
+        writeSupervisorSettings({
+          webSearchProvider: provider as (typeof searchProviders)[number],
+        });
+        if (provider !== "duckduckgo") await ensureApiKey(provider as CredentialProvider);
+        console.log(`Web Search provider: ${provider}`);
+      } else if (section === "web-fetch") {
+        let provider = cmdArgs[1];
+        if (!provider) {
+          const answer = await prompts({
+            type: "select",
+            name: "provider",
+            message: "Web Fetch provider",
+            choices: fetchProviders.map((value) => ({ title: value, value })),
+            initial: Math.max(0, fetchProviders.indexOf(settings.webFetchProvider ?? "native")),
+          });
+          provider = answer.provider;
+        }
+        if (!fetchProviders.includes(provider as (typeof fetchProviders)[number])) {
+          throw new Error(`Invalid Web Fetch provider: ${provider ?? ""}`);
+        }
+        writeSupervisorSettings({ webFetchProvider: provider as (typeof fetchProviders)[number] });
+        if (provider !== "native") {
+          await ensureApiKey(provider.endsWith("firecrawl") ? "firecrawl" : "tavily");
+        }
+        console.log(`Web Fetch provider: ${provider}`);
+      } else if (section === "browser") {
+        let mode = cmdArgs[1];
+        if (!mode) {
+          const answer = await prompts({
+            type: "select",
+            name: "mode",
+            message: "Browser mode",
+            choices: browserModes.map((value) => ({ title: value, value })),
+            initial: settings.browserMode === "headed" ? 1 : 0,
+          });
+          mode = answer.mode;
+        }
+        if (!browserModes.includes(mode as (typeof browserModes)[number])) {
+          throw new Error(`Invalid browser mode: ${mode ?? ""}`);
+        }
+        writeSupervisorSettings({ browserMode: mode as (typeof browserModes)[number] });
+        console.log(`Browser mode: ${mode}`);
+      } else {
+        throw new Error(`Unknown configuration section: ${section ?? ""}`);
+      }
+      db.close();
       break;
     }
 

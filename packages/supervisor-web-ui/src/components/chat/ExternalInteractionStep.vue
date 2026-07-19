@@ -10,6 +10,15 @@
     </header>
 
     <div v-if="detail" class="external-interaction__detail">{{ detail }}</div>
+    <a
+      v-if="requestUrl"
+      class="external-interaction__url"
+      :href="requestUrl"
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      在浏览器中继续
+    </a>
     <details v-if="requestJson" class="external-interaction__request">
       <summary>查看请求详情</summary>
       <pre>{{ requestJson }}</pre>
@@ -93,6 +102,7 @@ interface Question {
   options?: QuestionOption[] | null;
   isOther?: boolean;
   isSecret?: boolean;
+  required?: boolean;
 }
 
 const props = defineProps<{
@@ -109,6 +119,12 @@ const interactionId = computed(() => String(props.args?.interactionId ?? ""));
 const kind = computed(() => (props.args?.kind === "question" ? "question" : "approval"));
 const title = computed(() => String(props.args?.title ?? "外部 Agent 请求交互"));
 const detail = computed(() => String(props.args?.detail ?? ""));
+const requestUrl = computed(() => {
+  const request = props.args?.request;
+  if (!request || typeof request !== "object" || !("url" in request)) return "";
+  const url = String(request.url ?? "");
+  return /^https?:\/\//i.test(url) ? url : "";
+});
 const backendLabel = computed(() => String(props.args?.backend ?? "external").toUpperCase());
 const questions = computed(
   () => (Array.isArray(props.args?.questions) ? props.args.questions : []) as Question[],
@@ -123,7 +139,7 @@ const requestJson = computed(() => {
   }
 });
 const canSubmitAnswers = computed(() =>
-  questions.value.every((question) => Boolean(answers[question.id])),
+  questions.value.every((question) => question.required === false || Boolean(answers[question.id])),
 );
 const resultLabel = computed(() => {
   const text = props.result?.find((item) => item.type === "text")?.text ?? "";
@@ -194,6 +210,12 @@ function submitAnswers() {
   margin-top: 10px;
   color: var(--app-text-secondary);
   font-size: 12px;
+}
+.external-interaction__url {
+  display: inline-block;
+  margin-top: 10px;
+  color: #07c160;
+  font-size: 13px;
 }
 .external-interaction__request summary {
   cursor: pointer;

@@ -134,7 +134,18 @@ function ensureExternalAgent(
     icon: string;
   },
 ): void {
-  if (db.listAgents().some((agent) => parseAgentMeta(agent).externalKind === spec.kind)) return;
+  const existing = db
+    .listAgents()
+    .find((agent) => parseAgentMeta(agent).externalKind === spec.kind);
+  if (existing) {
+    const meta = { ...existing.meta };
+    const legacy = meta.external as { command?: unknown; args?: unknown } | undefined;
+    if (legacy && typeof meta.command !== "string") meta.command = legacy.command;
+    if (legacy && !Array.isArray(meta.args)) meta.args = legacy.args;
+    delete meta.external;
+    db.updateAgent(existing.id, { meta });
+    return;
+  }
   db.insertAgent({
     name: spec.name,
     description: spec.description,
@@ -146,7 +157,8 @@ function ensureExternalAgent(
       builtin: true,
       externalKind: spec.kind,
       userSpawnable: true,
-      external: { command: spec.command, args: spec.args },
+      command: spec.command,
+      args: spec.args,
     },
   });
 }

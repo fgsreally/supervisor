@@ -2,6 +2,7 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { SessionTreeEntry } from "@/api";
 import type { ChatEntry, ChatThinkingPart, ChatToolPart } from "@/types/chat-entry";
 import { normalizeStreamingToolResult } from "./ask-tool";
+import type { MessageAsset } from "@/types/chat-entry";
 
 type ToolResultPayload = {
   toolCallId?: string;
@@ -11,11 +12,23 @@ type ToolResultPayload = {
   details?: unknown;
 };
 
+function messageAssets(meta: Record<string, unknown>): MessageAsset[] {
+  if (!Array.isArray(meta.assets)) return [];
+  return meta.assets.filter(
+    (asset): asset is MessageAsset =>
+      typeof asset === "object" &&
+      asset !== null &&
+      (asset.scope === "project" || asset.scope === "agent" || asset.scope === "session") &&
+      typeof asset.path === "string",
+  );
+}
+
 function toolResultChatEntry(
   entry: SessionTreeEntry,
   payload: ToolResultPayload,
 ): Extract<ChatEntry, { type: "toolResult" }> {
   const base = entry.isOld ? { isOld: true } : {};
+  const assets = messageAssets(entry.meta);
   return {
     ...base,
     id: entry.id,
@@ -26,6 +39,7 @@ function toolResultChatEntry(
     isError: payload.isError,
     ...(payload.details !== undefined ? { details: payload.details } : {}),
     createdAt: entry.createdAt,
+    ...(assets.length > 0 ? { assets } : {}),
   };
 }
 
@@ -48,7 +62,11 @@ export function sessionTreeToChatEntries(entries: SessionTreeEntry[]): ChatEntry
 }
 
 export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry {
-  const base = entry.isOld ? { isOld: true } : {};
+  const assets = messageAssets(entry.meta);
+  const base = {
+    ...(entry.isOld ? { isOld: true } : {}),
+    ...(assets.length > 0 ? { assets } : {}),
+  };
   if (entry.type === "system") {
     return {
       ...base,
@@ -101,11 +119,16 @@ export function createStreamingAssistantEntry(id: string): ChatEntry {
   };
 }
 
-export function createUserChatEntry(id: string, text: string): ChatEntry {
+export function createUserChatEntry(
+  id: string,
+  text: string,
+  deliveryState?: "queued" | "failed",
+): ChatEntry {
   return {
     id,
     type: "message",
     createdAt: Date.now(),
+    ...(deliveryState ? { deliveryState } : {}),
     message: { role: "user", content: text },
   };
 }

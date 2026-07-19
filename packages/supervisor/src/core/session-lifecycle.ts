@@ -43,6 +43,7 @@ export type SessionLifecycleDb = Pick<
 
 /** Convert a SessionRow to the Session type expected by callers. */
 function rowToSession(row: SessionRow): Session {
+  const meta = typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta;
   return {
     id: row.id,
     projectId: row.project_id,
@@ -59,7 +60,8 @@ function rowToSession(row: SessionRow): Session {
     contextLeafId: row.context_leaf_id ?? null,
     createdAt: new Date(row.created_at),
     lastActiveAt: new Date(row.last_active_at),
-    meta: typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta,
+    meta,
+    currentTask: typeof meta.currentTask === "string" ? meta.currentTask : null,
   };
 }
 

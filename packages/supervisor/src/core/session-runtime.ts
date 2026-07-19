@@ -90,6 +90,8 @@ export class SessionRuntime implements ManagedSessionRuntime {
     this.getSession = options.getSession;
     this.getMessagesForSession = options.getMessages;
 
+    this.storage?.onEntryAppended((entry) => this._extension?.handleStoredEntry(entry));
+
     this.harness.subscribe((event) => {
       void this.emit(event);
       void this._extension?.handleHarnessEvent(event);
@@ -128,7 +130,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
     const session = this.getSession();
     if (session?.projectId == null) throw new Error(`Session ${this.id} has no project`);
     await ensureProjectDir(session.projectId);
-    await ensureSessionDir(session.projectId, this.id);
+    const sessionDir = await ensureSessionDir(session.projectId, this.id);
     const context = new Context({ sessionManager: manager, db, sessionRuntime: this });
     const extension = new SessionExtensionHost(context);
     this._extension = extension;
@@ -159,6 +161,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
     await activatePackagedTools(extension, {
       cwd,
       sessionId: this.id,
+      sessionDir,
       toolIds: packagedToolIds,
     });
 
@@ -237,12 +240,21 @@ export class SessionRuntime implements ManagedSessionRuntime {
     }
   }
 
-  steer(message: string): void {
+  async steer(message: string, images?: ImageContent[]): Promise<void> {
+    if (images?.length) {
+      await this.harness.abort();
+      await this.harness.prompt(message, { images });
+      return;
+    }
     this.harness.steer(message);
   }
 
-  followUp(message: string, source?: string | null): void {
+  followUp(message: string, source?: string | null, images?: ImageContent[]): void {
     if (source !== undefined) this.storage?.queueUserMessageSource(source);
+    if (images?.length) {
+      void this.harness.waitForIdle().then(() => this.harness.prompt(message, { images }));
+      return;
+    }
     this.harness.followUp(message);
   }
 

@@ -23,6 +23,7 @@ export class SQLiteSessionStorage implements SessionStorage {
   private db: SupervisorDb;
   private sessionId: number;
   private pendingUserMessageSources: Array<{ source: string | null; consumed: boolean }> = [];
+  private entryListeners = new Set<(entry: SessionTreeEntry) => void | Promise<void>>();
 
   constructor(db: SupervisorDb, sessionId: number) {
     this.db = db;
@@ -56,6 +57,11 @@ export class SQLiteSessionStorage implements SessionStorage {
 
   async createEntryId(): Promise<string> {
     return randomUUID();
+  }
+
+  onEntryAppended(listener: (entry: SessionTreeEntry) => void | Promise<void>): () => void {
+    this.entryListeners.add(listener);
+    return () => this.entryListeners.delete(listener);
   }
 
   queueUserMessageSource(source?: string | null): () => void {
@@ -100,6 +106,7 @@ export class SQLiteSessionStorage implements SessionStorage {
         created_at: Date.now(),
       });
     await this.setLeafId(entry.id);
+    for (const listener of this.entryListeners) await listener(entry);
   }
 
   async getEntry(id: string): Promise<SessionTreeEntry | undefined> {

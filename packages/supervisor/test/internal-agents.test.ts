@@ -61,18 +61,22 @@ describe("packaged agents", () => {
   it("loads packaged prompt.md files", () => {
     expect(loadPackagedAgentPrompt("shadow")).toContain("影子代理");
     expect(loadPackagedAgentPrompt("intro")).toContain("Intro");
+    expect(loadPackagedAgentPrompt("btw")).toContain("只读侧问代理");
   });
 
-  it("marks shadow internal, tool-less, and intro user-spawnable", () => {
+  it("marks shadow and BTW internal while intro remains user-spawnable", () => {
     configureModel();
     ensurePackagedAgents(db);
     const shadowId = findPackagedAgentId(db, "shadow");
     const introId = findPackagedAgentId(db, "intro");
+    const btwId = findPackagedAgentId(db, "btw");
     expect(shadowId).toBeDefined();
     expect(introId).toBeDefined();
+    expect(btwId).toBeDefined();
 
     const shadow = db.getAgent(shadowId!);
     const intro = db.getAgent(introId!);
+    const btw = db.getAgent(btwId!);
     expect(shadow?.isInternal).toBe(true);
     expect(intro?.isInternal).toBe(false);
     expect(shadow?.meta).toEqual({
@@ -88,6 +92,8 @@ describe("packaged agents", () => {
     expect(shadow?.toolsPreset).toBe("none");
     expect(shadow?.homeDir).toBeNull();
     expect(intro?.toolsPreset).toBe("coding");
+    expect(btw?.toolsPreset).toBe("readonly");
+    expect(btw?.isInternal).toBe(true);
     expect(isBuiltinAgent(shadow)).toBe(true);
     expect(isBuiltinAgent(intro)).toBe(true);
     expect(isAgentUserSpawnable(shadow)).toBe(false);

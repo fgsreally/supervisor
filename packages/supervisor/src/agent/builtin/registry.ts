@@ -9,7 +9,7 @@ import { getGlobalSkillsDirectory } from "../skill-resource.js";
 import { loadPromptTemplate } from "../system-prompts.js";
 import { loadBuiltinAgentPrompt, loadPackagedAgentPrompt } from "./prompts.js";
 
-export const PACKAGED_AGENT_KINDS = ["shadow", "intro"] as const;
+export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro"] as const;
 export type PackagedAgentKind = (typeof PACKAGED_AGENT_KINDS)[number];
 
 const PACKAGED_AGENT_LABELS: Record<
@@ -25,6 +25,12 @@ const PACKAGED_AGENT_LABELS: Record<
     name: "Shadow",
     description: "Silent shadow observer for session memory and lightweight guidance",
     toolsPreset: "none",
+    userSpawnable: false,
+  },
+  btw: {
+    name: "BTW",
+    description: "Read-only side-question agent that follows the current parent context",
+    toolsPreset: "readonly",
     userSpawnable: false,
   },
   intro: {
@@ -191,6 +197,17 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
     const id = ensurePackagedAgent(db, kind);
     if (id === undefined) {
       console.warn(`[pi-supervisor] No provider configured - skipping packaged agent: ${kind}`);
+    } else if (kind === "btw") {
+      for (const session of db.list()) {
+        if (session.parentId !== null || db.listMemberAgentsByTag(session.id, "btw").length > 0)
+          continue;
+        db.upsertMember({
+          session_id: session.id,
+          agent_id: id,
+          role: "assistant",
+          tags: ["btw"],
+        });
+      }
     }
   }
 }

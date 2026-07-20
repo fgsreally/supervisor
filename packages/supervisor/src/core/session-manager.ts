@@ -38,6 +38,7 @@ import {
   skillsToResourceInfo,
 } from "../agent/resource-resolver.js";
 import { assertAgentUserSpawnable } from "../agent/index.js";
+import { findPackagedAgentId } from "../agent/index.js";
 import { cancelPendingApprovals, submitApprovalResolution } from "../extension/runtime/index.js";
 import type { ApprovalResult } from "../extension/index.js";
 import {
@@ -527,9 +528,16 @@ export class SessionManager {
     const tools = sessionTools;
 
     const systemPrompt =
-      config.systemPrompt.length > 0
-        ? config.systemPrompt
-        : this.buildSystemPrompt("", resource.getSkillsPrompt(), resource.systemMd, session.cwd);
+      session.branchType === "btw"
+        ? this.buildSystemPrompt(
+            BTW_SYSTEM_PROMPT,
+            resource.getSkillsPrompt(),
+            resource.systemMd,
+            session.cwd,
+          )
+        : config.systemPrompt.length > 0
+          ? config.systemPrompt
+          : this.buildSystemPrompt("", resource.getSkillsPrompt(), resource.systemMd, session.cwd);
 
     const harness = new AgentHarness({
       env,
@@ -604,7 +612,19 @@ export class SessionManager {
       context_leaf_id: branchType === "btw" ? (options.contextLeafId ?? null) : null,
       meta: JSON.stringify(options.meta ?? {}),
     });
-    return rowToSession(row);
+    const session = rowToSession(row);
+    if (session.parentId == null) {
+      const btwAgentId = findPackagedAgentId(this.db, "btw");
+      if (btwAgentId !== undefined) {
+        this.db.upsertMember({
+          session_id: session.id,
+          agent_id: btwAgentId,
+          role: "assistant",
+          tags: ["btw"],
+        });
+      }
+    }
+    return session;
   }
 
   /**
@@ -1294,36 +1314,26 @@ export class SessionManager {
   createBtw(id: number): Session {
     const parent = this._getSession(id);
     if (!parent) throw new Error(`Session ${id} not found`);
-    const parentRuntimeConfig =
-      parent.meta.runtimeConfig && typeof parent.meta.runtimeConfig === "object"
-        ? (parent.meta.runtimeConfig as Partial<RuntimeConfigSnapshot>)
-        : {};
+    const btwAgent =
+      this.db.listMemberAgentsByTag(parent.id, "btw")[0] ??
+      (() => {
+        const agentId = findPackagedAgentId(this.db, "btw");
+        return agentId === undefined ? undefined : this.db.getAgent(agentId);
+      })();
+    if (!btwAgent) throw new Error("BTW agent is not configured");
     const runtimeConfig: RuntimeConfigSnapshot = {
-      provider:
-        typeof parentRuntimeConfig.provider === "string"
-          ? parentRuntimeConfig.provider
-          : DEFAULT_PROVIDER,
-      modelId:
-        typeof parentRuntimeConfig.modelId === "string"
-          ? parentRuntimeConfig.modelId
-          : DEFAULT_MODEL_ID,
-      systemPrompt: [
-        typeof parentRuntimeConfig.systemPrompt === "string"
-          ? parentRuntimeConfig.systemPrompt
-          : "",
-        BTW_SYSTEM_PROMPT,
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
+      provider: DEFAULT_PROVIDER,
+      modelId: btwAgent.modelId ?? DEFAULT_MODEL_ID,
+      systemPrompt: BTW_SYSTEM_PROMPT,
       toolsPreset: "readonly",
     };
     return this.create({
       projectId: parent.projectId,
       parentId: parent.id,
       cwd: parent.cwd,
-      agentId: parent.agentId,
+      agentId: btwAgent.id,
       branchType: "btw",
-      contextLeafId: parent.leafId,
+      contextLeafId: null,
       meta: { runtimeConfig, name: "顺便问" },
     });
   }

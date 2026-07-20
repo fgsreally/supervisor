@@ -9,6 +9,7 @@ import { SupervisorDb } from "../src/db.js";
 import { SessionManager } from "../src/session-manager.js";
 import { MockAgentHarness } from "./mock-agent-harness.js";
 import { getSessionDir } from "../src/core/session-files.js";
+import { ensurePackagedAgents, findPackagedAgentId } from "../src/agent/index.js";
 
 const SPAWN_OPTS = { cwd: "/proj" };
 
@@ -39,6 +40,13 @@ describe("supervisor: SessionManager", () => {
   });
 
   it("classifies child sessions and controls main-list visibility", () => {
+    const providerId = db.insertProvider({
+      slug: "test-provider",
+      name: "Test Provider",
+      api_type: "anthropic-messages",
+    });
+    db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6" });
+    ensurePackagedAgents(db);
     const parent = manager.create({ cwd: "/proj" });
     const subagent = manager.create({ parentId: parent.id, cwd: parent.cwd });
     const btw = manager.createBtw(parent.id);
@@ -49,7 +57,9 @@ describe("supervisor: SessionManager", () => {
     expect(subagent.showInSessionList).toBe(false);
     expect(btw.branchType).toBe("btw");
     expect(btw.showInSessionList).toBe(false);
-    expect(btw.contextLeafId).toBe(parent.leafId);
+    expect(btw.contextLeafId).toBeNull();
+    expect(btw.agentId).toBe(findPackagedAgentId(db, "btw"));
+    expect(manager.listMemberAgentsByTag(parent.id, "btw")[0]?.id).toBe(btw.agentId);
     expect((btw.meta.runtimeConfig as { toolsPreset: string }).toolsPreset).toBe("readonly");
     expect((btw.meta.runtimeConfig as { systemPrompt: string }).systemPrompt).toContain(
       "strictly read-only",

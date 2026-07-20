@@ -185,7 +185,7 @@ describe("supervisor: SQLiteSessionStorage", () => {
     expect(stored?.origin).toBe("/review auth");
   });
 
-  it("overlays a frozen parent path while keeping BTW messages isolated", async () => {
+  it("overlays the current parent path while keeping BTW messages isolated", async () => {
     const parent = new SQLiteSessionStorage(db, sessionA);
     const contextId = await parent.createEntryId();
     await parent.appendEntry({
@@ -217,7 +217,11 @@ describe("supervisor: SQLiteSessionStorage", () => {
       message: { role: "user", content: "btw question", timestamp: Date.now() },
     });
 
-    expect((await btw.getEntries()).map((entry) => entry.id)).toEqual([contextId, childId]);
+    expect((await btw.getEntries()).map((entry) => entry.id)).toEqual([
+      contextId,
+      laterParentId,
+      childId,
+    ]);
     expect(
       (await new SQLiteSessionStorage(db, sessionB).getEntries()).map((entry) => entry.id),
     ).toEqual([childId]);

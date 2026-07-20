@@ -205,7 +205,7 @@ export class SQLiteSessionStorage implements SessionStorage {
 }
 
 /**
- * BTW sessions read a frozen path from their parent before their own entries.
+ * BTW sessions read the parent's current path before their own entries.
  * Writes are inherited from SQLiteSessionStorage and therefore remain isolated
  * in the child session.
  */
@@ -216,7 +216,7 @@ export class BtwSessionStorage extends SQLiteSessionStorage {
     db: SupervisorDb,
     sessionId: number,
     parentSessionId: number,
-    private readonly contextLeafId: string | null,
+    _contextLeafId: string | null,
     parentStorage?: SQLiteSessionStorage,
   ) {
     super(db, sessionId);
@@ -224,7 +224,7 @@ export class BtwSessionStorage extends SQLiteSessionStorage {
   }
 
   override async getLeafId(): Promise<string | null> {
-    return (await super.getLeafId()) ?? this.contextLeafId;
+    return (await super.getLeafId()) ?? this.parentStorage.getLeafId();
   }
 
   override async getEntry(id: string): Promise<SessionTreeEntry | undefined> {
@@ -242,8 +242,9 @@ export class BtwSessionStorage extends SQLiteSessionStorage {
 
   override async getPathToRoot(leafId: string | null): Promise<SessionTreeEntry[]> {
     if (!leafId) return [];
-    const parentPath = await this.parentStorage.getPathToRoot(this.contextLeafId);
-    if (leafId === this.contextLeafId) return parentPath;
+    const parentLeafId = await this.parentStorage.getLeafId();
+    const parentPath = await this.parentStorage.getPathToRoot(parentLeafId);
+    if (leafId === parentLeafId) return parentPath;
     return [...parentPath, ...(await super.getPathToRoot(leafId))];
   }
 

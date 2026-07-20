@@ -13,7 +13,12 @@ export interface ManagedSessionRuntime {
   readonly extension: SessionExtensionHost | null;
   subscribe(listener: (event: AgentHarnessEvent) => void | Promise<void>): () => void;
   clear(): Promise<void>;
-  prompt(message: string, images?: ImageContent[], source?: string | null): Promise<void>;
+  prompt(
+    message: string,
+    images?: ImageContent[],
+    source?: string | null,
+    origin?: string,
+  ): Promise<void>;
   steer(message: string, images?: ImageContent[]): void | Promise<void>;
   followUp(message: string, source?: string | null, images?: ImageContent[]): void;
   abort(): Promise<void>;

@@ -22,7 +22,13 @@
           :time-label="messageTimeLabel(group)"
           :search-hit="isSearchHit(group)"
           :delivery-state="group.deliveryState"
+          :slash-source="group.slashSource"
         />
+        <div v-else-if="group.type === 'slash'" class="slash-row">
+          <Terminal class="w-4 h-4 shrink-0" />
+          <span class="slash-tag">Custom</span>
+          <code>{{ group.content }}</code>
+        </div>
         <MessageAssets
           v-if="group.type === 'message' && group.message?.role === 'user' && group.assets?.length"
           :session-id="sessionId"
@@ -87,7 +93,7 @@
 
 <script setup lang="ts">
 import { ref, nextTick } from "vue";
-import { Loader2 } from "lucide-vue-next";
+import { Loader2, Terminal } from "lucide-vue-next";
 import type { ChatCompactionEntry } from "@/types/chat-entry";
 import type { ChatUserFileAttachment } from "@/types/chat-entry";
 import {
@@ -247,6 +253,27 @@ async function scrollToBottom() {
 
 defineExpose({ scrollToBottom, containerRef });
 </script>
+
+<style scoped>
+.slash-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 4px 16px;
+  padding: 8px 10px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 8px;
+  color: var(--app-text-secondary);
+  background: var(--app-hover);
+}
+
+.slash-tag {
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  background: var(--app-chat-bg);
+}
+</style>
 
 <style scoped>
 .chat-row {

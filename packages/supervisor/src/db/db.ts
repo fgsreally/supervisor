@@ -276,6 +276,7 @@ export class SupervisorDb {
         meta          TEXT NOT NULL DEFAULT '{}',
         is_old        INTEGER NOT NULL DEFAULT 0,
         source        TEXT,
+        origin        TEXT,
         message_role  TEXT,
         search_text   TEXT,
         created_at    INTEGER NOT NULL
@@ -314,6 +315,7 @@ export class SupervisorDb {
       CREATE INDEX IF NOT EXISTS idx_agent_resources_agent ON agent_resources(agent_id);
       CREATE INDEX IF NOT EXISTS idx_agent_resources_resource ON agent_resources(resource_id);
     `);
+    this.ensureMessageColumns();
     this.ensureMessageFts();
 
     // Initialize default providers from environment variables
@@ -343,6 +345,13 @@ export class SupervisorDb {
       SET branch_type = 'subagent'
       WHERE branch_type = 'spawn';
     `);
+  }
+
+  private ensureMessageColumns(): void {
+    const columns = this.db.pragma("table_info(messages)") as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === "origin")) {
+      this.db.exec("ALTER TABLE messages ADD COLUMN origin TEXT");
+    }
   }
 
   private projectNameFromCwd(cwd: string): string {

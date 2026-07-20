@@ -762,11 +762,12 @@ export class SessionManager {
     message: string,
     images?: ImageContent[],
     source?: string | null,
+    origin?: string,
   ): Promise<void> {
     const session = this.db.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
     this.assertSessionProviderEnabled(id);
-    await (await this.getOrRestoreRuntime(id)).prompt(message, images, source);
+    await (await this.getOrRestoreRuntime(id)).prompt(message, images, source, origin);
   }
 
   private assertSessionProviderEnabled(sessionId: number): void {
@@ -787,6 +788,7 @@ export class SessionManager {
       level?: number;
       source?: string | null;
       images?: ImageContent[];
+      origin?: string;
     },
   ): Promise<SessionInputDisposition> {
     const level = input.level ?? DEFAULT_SESSION_INPUT_LEVEL;
@@ -797,10 +799,11 @@ export class SessionManager {
       source: input.source ?? null,
       enqueuedAt: Date.now(),
       images: input.images,
+      origin: input.origin,
     };
 
     if (shouldInterruptSessionInput(level)) {
-      await this.interruptAndPrompt(id, entry.message, entry.images, entry.source);
+      await this.interruptAndPrompt(id, entry.message, entry.images, entry.source, entry.origin);
       return "interrupt";
     }
 
@@ -825,6 +828,7 @@ export class SessionManager {
     message: string,
     images?: ImageContent[],
     source?: string | null,
+    origin?: string,
   ): Promise<void> {
     if (this.runtimes.has(id)) {
       const runtime = this.runtimes.get(id)!;
@@ -834,7 +838,7 @@ export class SessionManager {
         await runtime.waitForIdle();
       }
     }
-    await this.prompt(id, message, images, source);
+    await this.prompt(id, message, images, source, origin);
   }
 
   peekSessionInput(sessionId: number): SessionQueuedInput | undefined {
@@ -849,7 +853,7 @@ export class SessionManager {
   async drainSessionInputQueue(sessionId: number): Promise<boolean> {
     const next = this.sessionInputQueues.dequeue(sessionId);
     if (!next) return false;
-    await this.prompt(sessionId, next.message, next.images, next.source);
+    await this.prompt(sessionId, next.message, next.images, next.source, next.origin);
     return true;
   }
 

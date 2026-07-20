@@ -43,6 +43,8 @@ export type SlashCommandSource = AgentResourceCommandSource | "extension" | stri
 export type SlashCommandInfo = Omit<AgentResourceCommandInfo, "source" | "sourceInfo"> & {
   source?: SlashCommandSource;
   sourceInfo?: AgentResourceCommandInfo["sourceInfo"];
+  icon?: string;
+  arguments?: { type: "none" } | { type: "text"; required?: boolean; placeholder?: string };
 };
 
 export interface SessionState {
@@ -222,7 +224,12 @@ export class SessionRuntime implements ManagedSessionRuntime {
     await this.resource.clear();
   }
 
-  async prompt(message: string, images?: ImageContent[], source?: string | null): Promise<void> {
+  async prompt(
+    message: string,
+    images?: ImageContent[],
+    source?: string | null,
+    origin?: string,
+  ): Promise<void> {
     const expanded = this.resource.expandPrompt(message);
     const ext = this._extension;
     if (ext) {
@@ -234,12 +241,25 @@ export class SessionRuntime implements ManagedSessionRuntime {
         timestamp: Date.now(),
       } as any);
     }
+    const slashName = message.startsWith("/") ? message.slice(1).split(/\s/, 1)[0] : undefined;
+    const slashSource = slashName
+      ? this.getSlashCommands().find((command) => command.name === slashName)?.source
+      : undefined;
+    const effectiveSource =
+      source ?? (expanded !== message && slashSource ? `slash:${slashSource}` : undefined);
     const cancelQueuedSource =
-      source === undefined ? undefined : this.storage?.queueUserMessageSource(source);
+      effectiveSource === undefined
+        ? undefined
+        : this.storage?.queueUserMessageSource(effectiveSource);
+    const effectiveOrigin = origin ?? (expanded !== message ? message : undefined);
+    const cancelQueuedOrigin = effectiveOrigin
+      ? this.storage?.queueUserMessageOrigin(effectiveOrigin)
+      : undefined;
     try {
       await this.harness.prompt(expanded, images?.length ? { images } : undefined);
     } finally {
       cancelQueuedSource?.();
+      cancelQueuedOrigin?.();
     }
   }
 
@@ -350,19 +370,27 @@ export class SessionRuntime implements ManagedSessionRuntime {
    */
   getSlashCommands(): SlashCommandInfo[] {
     const commands = new Map<string, SlashCommandInfo>();
-    for (const command of this.resource.getSlashCommands()) commands.set(command.name, command);
     for (const command of this._extension?.getAllCommands() ?? []) {
       commands.set(command.name, {
         name: command.name,
         description: command.description,
-        source: "extension",
+        source: command.definition.source ?? "custom",
+        icon: command.definition.icon,
+        arguments: command.definition.arguments ?? { type: "text", required: false },
       });
     }
     return [...commands.values()];
   }
 
   async executeSlashCommand(name: string, args: string): Promise<void> {
-    await this._extension?.executeCommand(name, args);
+    if (!this._extension) throw new Error("Extension runtime is unavailable");
+    const raw = `/${name}${args ? ` ${args}` : ""}`;
+    const result = await this._extension.executeCommand(name, args);
+    if (result.type === "prompt") {
+      await this.prompt(result.prompt, undefined, "slash:custom", raw);
+      return;
+    }
+    if (result.type === "error") throw new Error(result.message);
   }
 
   getLastAssistantText(): string | undefined {

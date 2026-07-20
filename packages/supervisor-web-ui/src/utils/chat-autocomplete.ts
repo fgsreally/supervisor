@@ -13,11 +13,13 @@ export interface WorkspaceFileEntry {
 export interface SkillAutocompleteEntry {
   name: string;
   description: string;
+  source?: "skill";
 }
 
 export interface PromptAutocompleteEntry {
   name: string;
   description: string;
+  source?: "prompt";
 }
 
 export interface ChatAutocompleteItem {
@@ -27,6 +29,7 @@ export interface ChatAutocompleteItem {
   trigger: AutocompleteTrigger;
   isDirectory?: boolean;
   fileIconKind?: FileIconKind;
+  source?: "skill" | "prompt";
 }
 
 export interface ChatAutocompleteContext {
@@ -188,18 +191,20 @@ export function getAutocompleteSuggestions(
   }
   const slashItems: ChatAutocompleteItem[] = [
     ...(options.skillTrigger === "dollar" ? [] : options.skills).map((skill) => {
-      const commandName = `skill:${skill.name}`;
+      const commandName = skill.name;
       return {
         trigger: "slash" as const,
         value: commandName,
         label: `/${commandName}`,
         description: skill.description,
+        source: "skill" as const,
       };
     }),
     ...options.prompts.map((prompt) => ({
       trigger: "slash" as const,
       value: prompt.name,
       label: `/${prompt.name}`,
+      source: "prompt" as const,
       description: prompt.description || "Prompt 模板",
     })),
   ];

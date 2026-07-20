@@ -66,6 +66,9 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
   const base = {
     ...(entry.isOld ? { isOld: true } : {}),
     ...(assets.length > 0 ? { assets } : {}),
+    ...(entry.source?.startsWith("slash:")
+      ? { slashSource: entry.source.slice(6) as "skill" | "prompt" | "custom" }
+      : {}),
   };
   if (entry.type === "system") {
     return {
@@ -91,6 +94,23 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
   const embeddedToolResult = toolResultFromMessageEntry(entry);
   if (embeddedToolResult) return embeddedToolResult;
 
+  if (
+    entry.type === "message" &&
+    entry.message?.role === "custom" &&
+    (entry.message.customType === "slash_input" || entry.message.customType === "slash_output")
+  ) {
+    const details = entry.message.details as { isError?: boolean } | undefined;
+    return {
+      ...base,
+      id: entry.id,
+      type: "slash",
+      direction: entry.message.customType === "slash_input" ? "input" : "output",
+      content: typeof entry.message.content === "string" ? entry.message.content : "",
+      isError: details?.isError,
+      createdAt: entry.createdAt,
+    };
+  }
+
   if (entry.type === "toolResult") {
     const content =
       (entry as SessionTreeEntry & { content?: Array<{ type: string; text: string }> }).content ??
@@ -106,7 +126,10 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
     id: entry.id,
     type: "message",
     createdAt: entry.createdAt,
-    message: entry.message ?? { role: "assistant", content: "" },
+    message:
+      entry.origin && entry.message?.role === "user"
+        ? { ...entry.message, content: entry.origin }
+        : (entry.message ?? { role: "assistant", content: "" }),
   };
 }
 

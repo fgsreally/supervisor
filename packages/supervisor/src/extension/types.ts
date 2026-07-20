@@ -151,7 +151,7 @@ export interface ExtensionSession {
     details?: unknown;
     triggerTurn?: boolean;
   }): Promise<void>;
-  sendUserMessage(content: string, options?: { source?: string }): Promise<void>;
+  sendUserMessage(content: string, options?: { source?: string; origin?: string }): Promise<void>;
   sendToChild(sessionId: number, content: string, options?: { source?: string }): Promise<void>;
   pausing<T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T>;
   spawn(request: SpawnSessionRequest): Promise<SpawnSessionResult>;
@@ -186,6 +186,8 @@ export interface ExtensionAgent {
   unregisterTool(name: string): void;
   registerCommand(name: string, definition: ExtensionCommandDefinition): void;
   unregisterCommand(name: string): void;
+  registerSlash(name: string, definition: ExtensionSlashDefinition): void;
+  unregisterSlash(name: string): void;
   listTools(): ToolInfo[];
   getTool(name: string): ToolInfo | undefined;
   findByTag(tag: string): Promise<MemberAgentInfo[]>;
@@ -195,16 +197,42 @@ export interface ExtensionAgent {
   getThinkingLevel(): "none" | "low" | "medium" | "high";
 }
 
-export interface ExtensionCommandDefinition {
+export type ExtensionSlashSource = "skill" | "prompt" | "custom";
+export type ExtensionSlashArguments =
+  | { type: "none" }
+  | { type: "text"; required?: boolean; placeholder?: string };
+export type ExtensionSlashResult =
+  | { type: "handled"; message?: string }
+  | { type: "prompt"; prompt: string }
+  | { type: "error"; message: string };
+
+interface ExtensionSlashBase {
   description?: string;
-  handler(args: string): void | Promise<void>;
+  source?: ExtensionSlashSource;
+  icon?: string;
+  arguments?: ExtensionSlashArguments;
 }
+
+export type ExtensionSlashDefinition = ExtensionSlashBase &
+  (
+    | { template: string | ((args: string) => string | Promise<string>); handler?: never }
+    | {
+        handler(
+          args: string,
+          context: { sessionId: number; cwd: string },
+        ): ExtensionSlashResult | void | Promise<ExtensionSlashResult | void>;
+        template?: never;
+      }
+  );
+
+/** @deprecated Use ExtensionSlashDefinition. */
+export type ExtensionCommandDefinition = ExtensionSlashDefinition;
 
 export interface ExtensionCommandInfo {
   name: string;
   description?: string;
   extensionName: string;
-  definition: ExtensionCommandDefinition;
+  definition: ExtensionSlashDefinition;
 }
 
 export interface ExtensionRawDatabase {

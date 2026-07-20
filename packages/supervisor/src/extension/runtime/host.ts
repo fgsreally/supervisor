@@ -269,7 +269,7 @@ export class SessionExtensionHost {
     return this.runtime.getAllCommands();
   }
 
-  executeCommand(name: string, args: string): Promise<void> {
+  executeCommand(name: string, args: string) {
     return this.runtime.executeCommand(name, args);
   }
 

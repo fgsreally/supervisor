@@ -27,7 +27,19 @@ export function createSkillExtension(resource?: AgentResource): ExtensionDefinit
   return {
     name: "skill",
     setup(ctx) {
-      if (!resource?.hasSkills()) return;
+      if (!resource) return;
+
+      for (const command of resource.getSlashCommands?.() ?? []) {
+        ctx.agent.registerSlash(command.name, {
+          source: command.source,
+          icon: command.source === "skill" ? "sparkles" : "file-text",
+          description: command.description,
+          arguments: { type: "text", required: false },
+          template: (args) => resource.expandPrompt(`/${command.name}${args ? ` ${args}` : ""}`),
+        });
+      }
+
+      if (!resource.hasSkills()) return;
 
       ctx.agent.registerTool({
         name: "skill",

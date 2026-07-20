@@ -53,6 +53,7 @@ export interface Project {
   cwd: string;
   workDir: string;
   meta: Record<string, unknown>;
+  origin?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -235,6 +236,8 @@ export interface SessionTreeEntry {
   isOld: boolean;
   /** User/orchestrator extensions only */
   meta: Record<string, unknown>;
+  origin?: string | null;
+  source?: string | null;
   createdAt: number;
   // For type='system'
   content?: string;
@@ -242,6 +245,8 @@ export interface SessionTreeEntry {
   message?: {
     role: string;
     content: string | TextPart[] | ToolCallPart[];
+    customType?: string;
+    details?: unknown;
   };
   // For type='toolResult'
   toolCallId?: string;
@@ -269,6 +274,8 @@ export interface SlashCommandInfo {
   description: string;
   /** Source of the command: skill, prompt, extension */
   source?: string;
+  icon?: string;
+  arguments?: { type: "none" } | { type: "text"; required?: boolean; placeholder?: string };
   /** Additional metadata */
   sourceInfo?: {
     path?: string;

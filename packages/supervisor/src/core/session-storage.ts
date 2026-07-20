@@ -23,6 +23,7 @@ export class SQLiteSessionStorage implements SessionStorage {
   private db: SupervisorDb;
   private sessionId: number;
   private pendingUserMessageSources: Array<{ source: string | null; consumed: boolean }> = [];
+  private pendingUserMessageOrigins: Array<{ origin: string; consumed: boolean }> = [];
   private entryListeners = new Set<(entry: SessionTreeEntry) => void | Promise<void>>();
 
   constructor(db: SupervisorDb, sessionId: number) {
@@ -74,6 +75,16 @@ export class SQLiteSessionStorage implements SessionStorage {
     };
   }
 
+  queueUserMessageOrigin(origin: string): () => void {
+    const item = { origin, consumed: false };
+    this.pendingUserMessageOrigins.push(item);
+    return () => {
+      if (item.consumed) return;
+      const index = this.pendingUserMessageOrigins.indexOf(item);
+      if (index !== -1) this.pendingUserMessageOrigins.splice(index, 1);
+    };
+  }
+
   private consumeQueuedSource(entry: SessionTreeEntry): string | null {
     if (entry.type !== "message" || entry.message.role !== "user") return null;
     const item = this.pendingUserMessageSources.shift();
@@ -82,15 +93,24 @@ export class SQLiteSessionStorage implements SessionStorage {
     return item.source;
   }
 
+  private consumeQueuedOrigin(entry: SessionTreeEntry): string | null {
+    if (entry.type !== "message" || entry.message.role !== "user") return null;
+    const item = this.pendingUserMessageOrigins.shift();
+    if (!item) return null;
+    item.consumed = true;
+    return item.origin;
+  }
+
   async appendEntry(entry: SessionTreeEntry, options: AppendEntryOptions = {}): Promise<void> {
     const { messageRole, searchText } = extractMessageSearchFields(entry);
     const source = Object.hasOwn(options, "source")
       ? (options.source ?? null)
       : this.consumeQueuedSource(entry);
+    const origin = this.consumeQueuedOrigin(entry);
     this.db.db
       .prepare(
-        `INSERT INTO messages (entry_id, session_id, parent_entry_id, type, payload, meta, is_old, source, message_role, search_text, created_at)
-         VALUES (@entry_id, @session_id, @parent_entry_id, @type, @payload, @meta, @is_old, @source, @message_role, @search_text, @created_at)`,
+        `INSERT INTO messages (entry_id, session_id, parent_entry_id, type, payload, meta, is_old, source, origin, message_role, search_text, created_at)
+         VALUES (@entry_id, @session_id, @parent_entry_id, @type, @payload, @meta, @is_old, @source, @origin, @message_role, @search_text, @created_at)`,
       )
       .run({
         entry_id: entry.id,
@@ -101,6 +121,7 @@ export class SQLiteSessionStorage implements SessionStorage {
         meta: JSON.stringify(options.meta ?? {}),
         is_old: options.isOld ? 1 : 0,
         source,
+        origin,
         message_role: messageRole,
         search_text: searchText,
         created_at: Date.now(),
@@ -174,6 +195,7 @@ export class SQLiteSessionStorage implements SessionStorage {
       meta: Record<string, unknown>;
       isOld: boolean;
       source: string | null;
+      origin: string | null;
       createdAt: number;
     }>
   > {
@@ -275,6 +297,7 @@ function rowToStoredMessage(row: MessageRow): {
   meta: Record<string, unknown>;
   isOld: boolean;
   source: string | null;
+  origin: string | null;
   createdAt: number;
 } {
   return {
@@ -282,6 +305,7 @@ function rowToStoredMessage(row: MessageRow): {
     meta: JSON.parse(row.meta),
     isOld: row.is_old === 1,
     source: row.source,
+    origin: row.origin,
     createdAt: row.created_at,
   };
 }
@@ -291,12 +315,14 @@ export function toSessionMessageResponse(stored: {
   meta: Record<string, unknown>;
   isOld: boolean;
   source: string | null;
+  origin: string | null;
   createdAt: number;
 }): SessionMessageResponse {
   return {
     ...stored.entry,
     isOld: stored.isOld,
     source: stored.source,
+    origin: stored.origin,
     meta: stored.meta,
     createdAt: stored.createdAt,
   };

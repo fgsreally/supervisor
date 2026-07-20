@@ -25,15 +25,17 @@
             class="mt-0.5"
           />
           <Sparkles
-            v-else
+            v-else-if="item.source === 'skill'"
             class="w-4 h-4 shrink-0 mt-0.5 autocomplete-icon autocomplete-icon--skill"
           />
+          <FileText v-else class="w-4 h-4 shrink-0 mt-0.5 autocomplete-icon" />
           <div class="min-w-0 flex-1">
             <div
               class="text-[13px] truncate autocomplete-label"
               :class="item.trigger === 'at' ? 'font-mono' : ''"
             >
               {{ displayLabel(item) }}
+              <span v-if="item.source" class="autocomplete-source">{{ item.source }}</span>
             </div>
             <div v-if="item.description" class="text-[11px] truncate mt-0.5 autocomplete-desc">
               {{ item.description }}
@@ -50,7 +52,7 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { Sparkles } from "lucide-vue-next";
+import { FileText, Sparkles } from "lucide-vue-next";
 import type { ChatAutocompleteItem } from "../utils/chat-autocomplete";
 import { getFileBaseName } from "../utils/file-type-icon";
 import FileTypeIcon from "./FileTypeIcon.vue";
@@ -137,6 +139,15 @@ function displayLabel(item: ChatAutocompleteItem): string {
 
 .autocomplete-desc {
   color: var(--app-text-secondary);
+}
+
+.autocomplete-source {
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  color: var(--app-text-secondary);
+  background: var(--app-hover);
 }
 
 .autocomplete-footer {

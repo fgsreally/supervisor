@@ -118,7 +118,10 @@ describe("extension api", () => {
       { name: "hello", description: "Say hello", extensionName: "command-test" },
     ]);
     await runtime.executeCommand("hello", "world");
-    expect(handler).toHaveBeenCalledWith("world");
+    expect(handler).toHaveBeenCalledWith("world", {
+      sessionId: 1,
+      cwd: process.cwd(),
+    });
   });
 
   it("ctx.db exposes raw parameterized SQL", () => {

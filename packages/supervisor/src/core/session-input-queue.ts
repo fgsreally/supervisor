@@ -17,6 +17,7 @@ export interface SessionQueuedInput {
   message: string;
   level: number;
   source: string | null;
+  origin?: string;
   enqueuedAt: number;
   images?: ImageContent[];
 }

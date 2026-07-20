@@ -197,13 +197,32 @@ export class AgentResource {
   /** 展开用户输入中的 /skill:name 或 Prompt Template 命令。 */
   expandPrompt(message: string): string {
     const skillExpanded = this.expandSkillCommand(message);
-    return expandPromptTemplate(skillExpanded, this.loadedPromptTemplates);
+    return this.expandFileMentions(expandPromptTemplate(skillExpanded, this.loadedPromptTemplates));
+  }
+
+  private expandFileMentions(message: string): string {
+    return message.replace(/(^|\s)@(?:"([^"]+)"|([^\s]+))/g, (match, prefix, quoted, plain) => {
+      const mentioned = String(quoted ?? plain ?? "");
+      try {
+        const root = realpathSync(this.cwd);
+        const target = realpathSync(resolve(root, mentioned));
+        const within = relative(root, target);
+        if (within.startsWith("..") || isAbsolute(within)) return match;
+        const stats = statSync(target);
+        if (!stats.isFile() || stats.size > 100_000) return match;
+        const content = readFileSync(target, "utf8");
+        if (content.includes("\0")) return match;
+        return `${prefix}<mentioned_file path="${escapeXml(mentioned)}">\n${content}\n</mentioned_file>`;
+      } catch {
+        return match;
+      }
+    });
   }
 
   /** 返回 Skill 和 Prompt Template 对应的动态斜杠命令。 */
   getSlashCommands(): AgentResourceCommandInfo[] {
     const skillCommands: AgentResourceCommandInfo[] = this.loadedSkills.map((skill) => ({
-      name: `skill:${skill.name}`,
+      name: skill.name,
       description: skill.description,
       source: "skill",
       sourceInfo: skill.sourceInfo,
@@ -230,10 +249,10 @@ export class AgentResource {
 
   /** 将 /skill:name 命令替换成包含 Skill 正文和参数的模型输入。 */
   private expandSkillCommand(message: string): string {
-    if (!message.startsWith("/skill:")) return message;
-
     const spaceIndex = message.indexOf(" ");
-    const skillName = spaceIndex === -1 ? message.slice(7) : message.slice(7, spaceIndex);
+    const token = spaceIndex === -1 ? message : message.slice(0, spaceIndex);
+    if (!token.startsWith("/")) return message;
+    const skillName = token.startsWith("/skill:") ? token.slice(7) : token.slice(1);
     const args = spaceIndex === -1 ? "" : message.slice(spaceIndex + 1);
     const skill = this.loadedSkills.find((item) => item.name === skillName);
     if (!skill) return message;

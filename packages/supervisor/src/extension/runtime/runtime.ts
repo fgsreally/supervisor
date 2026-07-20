@@ -266,10 +266,42 @@ export class SessionExtensionRuntime {
     return [...this.registry.commands.values()];
   }
 
-  async executeCommand(name: string, args: string): Promise<void> {
+  async executeCommand(name: string, args: string) {
     const command = this.registry.commands.get(name.replace(/^\//, "").toLowerCase());
     if (!command) throw new Error(`Slash command /${name} not found`);
-    await command.definition.handler(args);
+    const definition = command.definition;
+    if ("template" in definition && definition.template !== undefined) {
+      const prompt =
+        typeof definition.template === "function"
+          ? await definition.template(args)
+          : definition.template.replaceAll("$ARGUMENTS", args);
+      return { type: "prompt" as const, prompt };
+    }
+    const result = (await definition.handler(args, {
+      sessionId: this.context.session.id,
+      cwd: this.context.session.cwd,
+    })) ?? { type: "handled" as const };
+    if (result.type !== "prompt") {
+      const raw = `/${command.name}${args ? ` ${args}` : ""}`;
+      await this.context.session.sendMessage({
+        role: "custom",
+        customType: "slash_input",
+        content: raw,
+        display: true,
+        details: { name: command.name },
+      });
+      await this.context.session.sendMessage({
+        role: "custom",
+        customType: "slash_output",
+        content:
+          result.type === "error"
+            ? result.message
+            : (result.message ?? `/${command.name} completed`),
+        display: true,
+        details: { name: command.name, isError: result.type === "error" },
+      });
+    }
+    return result;
   }
 
   private removeExtensionResources(extensionId: string): void {

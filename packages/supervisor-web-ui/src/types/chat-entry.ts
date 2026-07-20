@@ -14,6 +14,7 @@ export type ChatEntryBase = {
   createdAt?: number;
   assets?: MessageAsset[];
   deliveryState?: "queued" | "failed";
+  slashSource?: "skill" | "prompt" | "custom";
 };
 
 export interface ChatToolPart {
@@ -55,6 +56,13 @@ export type ChatCompactionEntry = ChatEntryBase & {
 
 export type ChatEntry =
   | (ChatEntryBase & { id: string; type: "system"; content: string })
+  | (ChatEntryBase & {
+      id: string;
+      type: "slash";
+      direction: "input" | "output";
+      content: string;
+      isError?: boolean;
+    })
   | (ChatEntryBase & {
       id: string;
       type: "message";

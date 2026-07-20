@@ -5,6 +5,12 @@
       <span v-if="deliveryState" class="chat-msg-delivery" :class="deliveryState">
         {{ deliveryState === "queued" ? "排队中" : "发送失败" }}
       </span>
+      <span v-if="slashSource" class="slash-source-tag">
+        <Sparkles v-if="slashSource === 'skill'" class="w-3 h-3" />
+        <FileText v-else-if="slashSource === 'prompt'" class="w-3 h-3" />
+        <Terminal v-else class="w-3 h-3" />
+        {{ slashSource }}
+      </span>
       <ChatFileBubble v-if="file" :file="file" class="relative" />
       <div
         v-else
@@ -27,6 +33,7 @@
 import ChatFileBubble from "../ChatFileBubble.vue";
 import ChatRichText from "../ChatRichText.vue";
 import type { ChatUserFileAttachment } from "@/types/chat-entry";
+import { FileText, Sparkles, Terminal } from "lucide-vue-next";
 
 defineProps<{
   text: string;
@@ -34,6 +41,7 @@ defineProps<{
   timeLabel: string;
   searchHit?: boolean;
   deliveryState?: "queued" | "failed";
+  slashSource?: "skill" | "prompt" | "custom";
 }>();
 </script>
 
@@ -60,6 +68,18 @@ defineProps<{
 
 .chat-msg-delivery.failed {
   color: #dc2626;
+}
+
+.slash-source-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 2px 4px 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--app-text-secondary);
+  background: var(--app-hover);
+  font-size: 10px;
 }
 
 .chat-avatar {

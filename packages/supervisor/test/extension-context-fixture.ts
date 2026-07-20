@@ -132,11 +132,7 @@ interface TestExtensionHost {
     definition: ToolDefinition<TParams, TResult>,
   ): void;
   unregisterTool(extensionId: string, name: string): void;
-  registerCommand(
-    extensionId: string,
-    name: string,
-    definition: ExtensionCommandDefinition,
-  ): void;
+  registerCommand(extensionId: string, name: string, definition: ExtensionCommandDefinition): void;
   unregisterCommand(extensionId: string, name: string): void;
 }
 
@@ -252,6 +248,9 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
         requireHost().registerCommand(requireExtension(), name, definition),
       unregisterCommand: (name: string) =>
         requireHost().unregisterCommand(requireExtension(), name),
+      registerSlash: (name: string, definition: ExtensionCommandDefinition) =>
+        requireHost().registerCommand(requireExtension(), name, definition),
+      unregisterSlash: (name: string) => requireHost().unregisterCommand(requireExtension(), name),
       listTools: () => options.deps.listSessionTools(),
       getTool: (name: string) => options.deps.listSessionTools().find((tool) => tool.name === name),
       findByTag: options.deps.getMemberAgentsByTag,

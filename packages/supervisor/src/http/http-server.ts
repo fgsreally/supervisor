@@ -1216,14 +1216,16 @@ export function createHttpServer(manager: SessionManager): Hono {
       const sessionId = parseIntegerId(c.req.param("id"));
       if (sessionId === null) return jsonError(c, 400, "invalid session id");
       const runtime = manager.getRuntime(sessionId);
-      if (!runtime.executeSlashCommand) return jsonError(c, 409, "slash commands are not executable");
+      if (!runtime.executeSlashCommand)
+        return jsonError(c, 409, "slash commands are not executable");
       const command = body.command.trim().replace(/^\//, "").toLowerCase();
-      const available = runtime.getSlashCommands().some((item) => item.name === command);
+      const available = runtime.getSlashCommands().find((item) => item.name === command);
       if (!available) return jsonError(c, 404, `slash command /${command} not found`);
-      await runtime.executeSlashCommand(
-        command,
-        typeof body.argument === "string" ? body.argument.trim() : "",
-      );
+      const argument = typeof body.argument === "string" ? body.argument.trim() : "";
+      if (available.arguments?.type === "text" && available.arguments.required && !argument) {
+        return jsonError(c, 400, `slash command /${command} requires an argument`);
+      }
+      await runtime.executeSlashCommand(command, argument);
       return c.json({ ok: true });
     } catch (e: unknown) {
       return jsonError(c, 409, e instanceof Error ? e.message : String(e));

@@ -88,66 +88,75 @@ const taskManagementExtension: ExtensionDefinition = {
       execute: executeGoal,
     });
 
-    ctx.agent.registerCommand("goal", {
+    ctx.agent.registerSlash("goal", {
       description: "Create or inspect a persistent goal",
+      source: "custom",
+      icon: "target",
+      arguments: { type: "text", required: false, placeholder: "Describe the goal or action" },
       async handler(args) {
         const trimmed = args.trim();
         const [first = "", ...rest] = trimmed.split(/\s+/);
         const actions = new Set(["status", "pause", "resume", "complete", "blocked", "cancel"]);
         const action = actions.has(first) ? first : trimmed ? "create" : "status";
         const tail = actions.has(first) ? rest.join(" ") : trimmed;
-        await executeGoal({
+        const result = await executeGoal({
           action,
           objective: action === "create" ? tail : undefined,
           reason: action === "pause" || action === "blocked" ? tail || undefined : undefined,
         });
+        const text = result.content
+          .filter((item): item is { type: "text"; text: string } => item.type === "text")
+          .map((item) => item.text)
+          .join("\n");
+        if ("isError" in result && result.isError) return { type: "error", message: text };
+        return { type: "handled", message: text };
       },
     });
 
     async function executeGoal(params: { action: string; objective?: string; reason?: string }) {
-        const meta = await ctx.session.meta.get();
-        let path = activeTaskPaths(meta).find((item) => item.includes("/goal-"));
-        if (params.action === "create") {
-          if (!params.objective) throw new Error("objective is required");
-          if (path) throw new Error("An active Goal already exists");
-          path = taskArtifactPath("goal");
-          await writeTaskArtifact(ctx.session.dir, path, {
-            type: "goal",
-            title: params.objective.split("\n")[0]!.slice(0, 120),
-            status: "active",
-            body: `# Goal\n\n${params.objective}`,
-          });
-          await setActive(path);
-          return { content: [{ type: "text", text: `Goal created: ${path}` }], details: { path } };
-        }
-        if (!path)
-          return {
-            content: [{ type: "text", text: "No active Goal." }],
-            isError: params.action !== "status",
-          };
-        const artifact = await readTaskArtifact(ctx.session.dir, path);
-        if (!artifact)
-          return { content: [{ type: "text", text: "Goal file is missing." }], isError: true };
-        if (params.action === "status")
-          return { content: [{ type: "text", text: artifact.content }], details: { path } };
-        const status = {
-          pause: "paused",
-          resume: "active",
-          complete: "completed",
-          blocked: "blocked",
-          cancel: "cancelled",
-        }[params.action]!;
-        const body =
-          artifact.content.replace(/^---[\s\S]*?---\s*/m, "") +
-          (params.reason ? `\n\n## Status reason\n\n${params.reason}` : "");
+      const meta = await ctx.session.meta.get();
+      let path = activeTaskPaths(meta).find((item) => item.includes("/goal-"));
+      if (params.action === "create") {
+        if (!params.objective) throw new Error("objective is required");
+        if (path) throw new Error("An active Goal already exists");
+        path = taskArtifactPath("goal");
         await writeTaskArtifact(ctx.session.dir, path, {
           type: "goal",
-          title: artifact.title,
-          status,
-          body,
+          title: params.objective.split("\n")[0]!.slice(0, 120),
+          status: "active",
+          body: `# Goal\n\n${params.objective}`,
         });
-        if (status === "completed" || status === "cancelled") await finish(path);
-        return { content: [{ type: "text", text: `Goal ${status}: ${path}` }], details: { path } };
+        await setActive(path);
+        return { content: [{ type: "text", text: `Goal created: ${path}` }], details: { path } };
+      }
+      if (!path)
+        return {
+          content: [{ type: "text", text: "No active Goal." }],
+          isError: params.action !== "status",
+        };
+      const artifact = await readTaskArtifact(ctx.session.dir, path);
+      if (!artifact)
+        return { content: [{ type: "text", text: "Goal file is missing." }], isError: true };
+      if (params.action === "status")
+        return { content: [{ type: "text", text: artifact.content }], details: { path } };
+      const status = {
+        pause: "paused",
+        resume: "active",
+        complete: "completed",
+        blocked: "blocked",
+        cancel: "cancelled",
+      }[params.action]!;
+      const body =
+        artifact.content.replace(/^---[\s\S]*?---\s*/m, "") +
+        (params.reason ? `\n\n## Status reason\n\n${params.reason}` : "");
+      await writeTaskArtifact(ctx.session.dir, path, {
+        type: "goal",
+        title: artifact.title,
+        status,
+        body,
+      });
+      if (status === "completed" || status === "cancelled") await finish(path);
+      return { content: [{ type: "text", text: `Goal ${status}: ${path}` }], details: { path } };
     }
 
     ctx.agent.registerTool({

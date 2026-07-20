@@ -1,6 +1,19 @@
 <template>
   <div class="chat-input-toolbar flex items-center justify-between px-2 py-1.5 shrink-0">
     <div class="flex items-center gap-0.5">
+      <select
+        v-if="customCommands?.length"
+        class="slash-select"
+        title="Custom Slash"
+        :disabled="disabled"
+        value=""
+        @change="onSlashSelect"
+      >
+        <option value="" disabled>Slash</option>
+        <option v-for="command in customCommands" :key="command.name" :value="command.name">
+          /{{ command.name }}
+        </option>
+      </select>
       <button
         v-for="btn in leftButtons"
         :key="btn.id"
@@ -70,10 +83,12 @@ export type ChatToolbarAction = "emoji" | "skill" | "attach" | "screenshot" | "v
 defineProps<{
   disabled?: boolean;
   canSend?: boolean;
+  customCommands?: Array<{ name: string; description: string }>;
 }>();
 
 const emit = defineEmits<{
   action: [action: ChatToolbarAction];
+  slash: [name: string];
   send: [];
 }>();
 
@@ -82,6 +97,12 @@ const leftButtons = [
   { id: "skill" as const, icon: Sparkles, title: "技能" },
   { id: "attach" as const, icon: FolderOpen, title: "发送文件" },
 ];
+
+function onSlashSelect(event: Event) {
+  const select = event.target as HTMLSelectElement;
+  if (select.value) emit("slash", select.value);
+  select.value = "";
+}
 </script>
 
 <style scoped>
@@ -95,6 +116,16 @@ const leftButtons = [
   transition:
     background-color 0.15s,
     color 0.15s;
+}
+
+.slash-select {
+  max-width: 86px;
+  padding: 5px 7px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-size: 12px;
 }
 
 .toolbar-icon-btn:hover:not(:disabled) {

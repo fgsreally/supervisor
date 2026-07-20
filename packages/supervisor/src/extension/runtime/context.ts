@@ -95,7 +95,10 @@ interface ContextSessionOptions {
     details?: unknown;
     triggerTurn?: boolean;
   }) => Promise<void>;
-  sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
+  sendUserMessage: (
+    content: string,
+    options?: { source?: string; origin?: string },
+  ) => Promise<void>;
   sendToChild: (sessionId: number, content: string, options?: { source?: string }) => Promise<void>;
   pausing: <T>(reason: string, work: Promise<T> | (() => Promise<T>)) => Promise<T>;
   spawn: (request: SpawnSessionRequest) => Promise<SpawnSessionResult>;
@@ -162,11 +165,7 @@ interface ContextExtensionHost {
     definition: ToolDefinition<TParams, TResult>,
   ): void;
   unregisterTool(extensionId: string, name: string): void;
-  registerCommand(
-    extensionId: string,
-    name: string,
-    definition: ExtensionCommandDefinition,
-  ): void;
+  registerCommand(extensionId: string, name: string, definition: ExtensionCommandDefinition): void;
   unregisterCommand(extensionId: string, name: string): void;
 }
 
@@ -514,7 +513,7 @@ export class ContextSession {
   sendMessage(message: Parameters<ContextSessionOptions["sendMessage"]>[0]): Promise<void> {
     return this.options.sendMessage(message);
   }
-  sendUserMessage(content: string, options?: { source?: string }): Promise<void> {
+  sendUserMessage(content: string, options?: { source?: string; origin?: string }): Promise<void> {
     return this.options.sendUserMessage(content, options);
   }
   sendToChild(sessionId: number, content: string, options?: { source?: string }): Promise<void> {
@@ -586,6 +585,12 @@ export class ContextAgent {
   }
   unregisterCommand(name: string): void {
     this.options.unregisterCommand?.(name);
+  }
+  registerSlash(name: string, definition: ExtensionCommandDefinition): void {
+    this.registerCommand(name, definition);
+  }
+  unregisterSlash(name: string): void {
+    this.unregisterCommand(name);
   }
   listTools(): ToolInfo[] {
     return this.options.listTools();

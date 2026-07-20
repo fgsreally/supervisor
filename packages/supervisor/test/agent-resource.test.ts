@@ -71,11 +71,16 @@ describe("AgentResource", () => {
     expect(resource.skills).toHaveLength(1);
     expect(resource.promptTemplates).toHaveLength(1);
     expect(resource.getSlashCommands().map((command) => command.name)).toEqual([
-      "skill:review",
+      "review",
       "answer",
     ]);
     expect(resource.expandPrompt("/skill:review src/index.ts")).toContain("请检查代码。");
+    expect(resource.expandPrompt("/review src/index.ts")).toContain("请检查代码。");
     expect(resource.expandPrompt("/answer hello world")).toContain("回答：hello world");
+
+    expect(resource.expandPrompt("Inspect @answer.md")).toContain(
+      '<mentioned_file path="answer.md">',
+    );
 
     const result = resource.executeSkillTool({
       name: "review",

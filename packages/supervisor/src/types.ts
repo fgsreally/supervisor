@@ -211,6 +211,7 @@ export interface MessageRow {
   meta: string;
   is_old: number;
   source: string | null;
+  origin: string | null;
   message_role: string | null;
   search_text: string | null;
   created_at: number;
@@ -232,6 +233,8 @@ export type SessionMessageResponse = SessionTreeEntry & {
   isOld: boolean;
   /** Originating shadow collaborator agent id, null for normal user/main-agent messages. */
   source: string | null;
+  /** Original user input before slash/template expansion. */
+  origin: string | null;
   /** User/orchestrator extensions only. */
   meta: Record<string, unknown>;
   createdAt: number;

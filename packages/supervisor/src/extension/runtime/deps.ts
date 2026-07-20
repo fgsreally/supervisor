@@ -130,11 +130,15 @@ export function buildExtensionDeps(deps: {
       }
     },
 
-    sendUserMessage: async (content: string, options?: { source?: string; level?: number }) => {
+    sendUserMessage: async (
+      content: string,
+      options?: { source?: string; level?: number; origin?: string },
+    ) => {
       await manager.submitSessionInput(sessionId, {
         message: content,
         level: options?.level ?? DEFAULT_SESSION_INPUT_LEVEL,
         source: options?.source,
+        origin: options?.origin,
       });
     },
 
@@ -553,7 +557,10 @@ type RuntimeDeps = {
     details?: unknown;
     triggerTurn?: boolean;
   }) => Promise<void>;
-  sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
+  sendUserMessage: (
+    content: string,
+    options?: { source?: string; origin?: string },
+  ) => Promise<void>;
   sendToChild: (sessionId: number, content: string, options?: { source?: string }) => Promise<void>;
   getSessionDir: () => Promise<string>;
   getProjectDir: () => Promise<string>;

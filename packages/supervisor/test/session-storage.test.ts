@@ -169,6 +169,22 @@ describe("supervisor: SQLiteSessionStorage", () => {
     expect(stored[0]?.source).toBe("sidecar-a");
   });
 
+  it("stores the original input on the next expanded user message", async () => {
+    const storage = new SQLiteSessionStorage(db, sessionA);
+    storage.queueUserMessageOrigin("/review auth");
+    const entryId = await storage.createEntryId();
+    await storage.appendEntry({
+      id: entryId,
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: { role: "user", content: "Expanded review prompt", timestamp: Date.now() },
+    });
+
+    const [stored] = await storage.getStoredMessages();
+    expect(stored?.origin).toBe("/review auth");
+  });
+
   it("overlays a frozen parent path while keeping BTW messages isolated", async () => {
     const parent = new SQLiteSessionStorage(db, sessionA);
     const contextId = await parent.createEntryId();

@@ -20,7 +20,9 @@
       <ChatInputToolbar
         :disabled="disabled"
         :can-send="canSend"
+        :custom-commands="customCommands"
         @action="onToolbarAction"
+        @slash="onCustomSlash"
         @send="emit('send', { text, images: pendingImages })"
       />
     </div>
@@ -28,7 +30,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import * as api from "@/api";
 import { useAgentStore } from "@/store";
 import { useResizableHeight } from "../composables/use-resizable-height";
@@ -59,12 +61,14 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:modelValue": [value: string];
   send: [payload: ChatSendPayload];
+  slash: [name: string];
 }>();
 
 const agentStore = useAgentStore();
 const workspaceFiles = ref<WorkspaceFileEntry[]>([]);
 const skills = ref<SkillAutocompleteEntry[]>([]);
 const prompts = ref<PromptAutocompleteEntry[]>([]);
+const customCommands = ref<api.SlashCommandInfo[]>([]);
 const pendingImages = ref<PendingChatImage[]>([]);
 let commandRefreshInFlight: Promise<void> | null = null;
 let lastCommandRefresh = 0;
@@ -141,13 +145,20 @@ async function refreshSessionCommands(force = false) {
         .filter((command) => command.source === "skill")
         .map((command) => ({ name: command.name, description: command.description }));
       const commandPrompts = commands
-        .filter((command) => command.source !== "skill")
+        .filter((command) => command.source === "prompt")
         .map((command) => ({
           name: command.name.replace(/^\//, ""),
           description: command.description,
         }));
-      skills.value = [...skills.value.filter((item) => !commandSkills.some((c) => c.name === item.name)), ...commandSkills];
-      prompts.value = [...prompts.value.filter((item) => !commandPrompts.some((c) => c.name === item.name)), ...commandPrompts];
+      skills.value = [
+        ...skills.value.filter((item) => !commandSkills.some((c) => c.name === item.name)),
+        ...commandSkills,
+      ];
+      prompts.value = [
+        ...prompts.value.filter((item) => !commandPrompts.some((c) => c.name === item.name)),
+        ...commandPrompts,
+      ];
+      customCommands.value = commands.filter((command) => command.source === "custom");
       lastCommandRefresh = Date.now();
       if (commands.length === 0 && /(^|\s)\/[^\s]*$/.test(props.modelValue)) {
         if (commandRetryTimer) clearTimeout(commandRetryTimer);
@@ -197,6 +208,17 @@ function onToolbarAction(action: ChatToolbarAction) {
       composerRef.value?.focus();
       break;
   }
+}
+
+function onCustomSlash(name: string) {
+  const command = customCommands.value.find((item) => item.name === name);
+  if (!command) return;
+  if (command.arguments?.type === "none") {
+    emit("slash", name);
+    return;
+  }
+  text.value = `/${name} `;
+  void nextTick(() => composerRef.value?.focus());
 }
 
 function addPendingImage(file: File) {

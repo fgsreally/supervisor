@@ -81,6 +81,7 @@
           :disabled="inputDisabled"
           :placeholder="inputPlaceholder"
           @send="sendMessage"
+          @slash="executeCustomSlash"
         />
       </div>
 
@@ -752,7 +753,7 @@ const sendMessage = async (payload: ChatSendPayload) => {
   if (slash) {
     const commands = await api.getSessionCommands(props.session.id).catch(() => []);
     const command = commands.find(
-      (item) => item.source === "extension" && item.name === slash[1]!.toLowerCase(),
+      (item) => item.source === "custom" && item.name === slash[1]!.toLowerCase(),
     );
     if (command) {
       inputText.value = "";
@@ -797,6 +798,17 @@ const sendMessage = async (payload: ChatSendPayload) => {
   }
   void sendStreamReply(text, payload.images);
 };
+
+async function executeCustomSlash(name: string) {
+  try {
+    await api.executeSessionCommand(props.session.id, name);
+  } catch (error) {
+    console.error("Slash command failed:", error);
+  } finally {
+    await reloadMessagesFromServer(props.session.id);
+    await sessionStore.fetchSessions();
+  }
+}
 </script>
 
 <style scoped>

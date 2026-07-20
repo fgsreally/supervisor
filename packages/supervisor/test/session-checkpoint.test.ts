@@ -68,7 +68,7 @@ describe("supervisor: session-checkpoint", () => {
     expect(listed[0]?.id).toBe(checkpoint.id);
   });
 
-  it("alternating checkpoints rewind to correct leaves", async () => {
+  it("rewind removes later checkpoints and messages", async () => {
     const session = db.insert({
       project_id: null,
       parent_id: null,
@@ -103,8 +103,8 @@ describe("supervisor: session-checkpoint", () => {
     await rewindSessionToCheckpoint(db, session.id, cp1.id);
     expect(db.get(session.id)?.leaf_id).toBe(entry1);
 
-    await rewindSessionToCheckpoint(db, session.id, cp2.id);
-    expect(db.get(session.id)?.leaf_id).toBe(entry2);
+    await expect(rewindSessionToCheckpoint(db, session.id, cp2.id)).rejects.toThrow("not found");
+    expect(await storage.getEntry(entry2)).toBeUndefined();
   });
 
   it("rewind then append continues from restored leaf without breaking tree", async () => {
@@ -155,7 +155,7 @@ describe("supervisor: session-checkpoint", () => {
     expect(path.map((row) => row.id)).toEqual([entry1, entry3]);
   });
 
-  it("rewindToCheckpoint restores leaf and appends audit entry", async () => {
+  it("rewindToCheckpoint restores leaf and removes later entries", async () => {
     const session = db.insert({
       project_id: null,
       parent_id: null,
@@ -192,9 +192,6 @@ describe("supervisor: session-checkpoint", () => {
     expect(db.get(session.id)?.leaf_id).toBe(entry1);
 
     const messages = await storage.getStoredMessages();
-    const audit = messages.find(
-      (row) => row.entry.type === "custom" && row.entry.customType === "checkpoint-rewind",
-    );
-    expect(audit).toBeDefined();
+    expect(messages.map((row) => row.entry.id)).toEqual([entry1]);
   });
 });

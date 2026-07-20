@@ -1,7 +1,11 @@
 <template>
-  <div class="flex flex-col h-full w-full" style="background: var(--app-chat-bg)" v-if="session">
+  <div
+    class="relative flex flex-col h-full w-full"
+    style="background: var(--app-chat-bg)"
+    v-if="session"
+  >
     <ChatViewHeader
-      v-model:title="sessionTitle"
+      :title="sessionTitle"
       :title-readonly="!!session.meta?.builtin"
       :agent-name="agentName"
       :agent-id="agentId"
@@ -13,8 +17,44 @@
       @view-agent="emit('view-agent', $event)"
       @open-menu="sessionMenuOpen = true"
       @close-search="closeSearch"
-      @save-title="saveSessionTitle"
-    />
+    >
+      <template #actions>
+        <div class="desktop-session-actions">
+          <button class="chat-header-action" type="button" title="搜索消息" @click="openSearch">
+            <Search class="h-[17px] w-[17px]" />
+          </button>
+          <button
+            class="chat-header-action"
+            type="button"
+            title="查看会话日志"
+            @click="showLogPanel = true"
+          >
+            <ScrollText class="h-[17px] w-[17px]" />
+          </button>
+          <button
+            v-if="taskCount"
+            class="chat-header-action context-count"
+            type="button"
+            :title="`任务 · ${taskTypeSummary}`"
+            @click="taskPaneOpen = !taskPaneOpen"
+          >
+            <ClipboardList class="h-[17px] w-[17px]" /><span>{{ taskCount }}</span>
+          </button>
+          <SessionTimerStrip :timers="sessionTimers" />
+        </div>
+        <div class="mobile-session-actions">
+          <SessionTimerStrip :timers="sessionTimers" />
+          <button
+            class="chat-header-action"
+            type="button"
+            title="会话工具"
+            @click="sessionActionsOpen = true"
+          >
+            <SlidersHorizontal class="h-[18px] w-[18px]" />
+          </button>
+        </div>
+      </template>
+    </ChatViewHeader>
 
     <ChatSearchBar
       v-if="searchOpen"
@@ -22,14 +62,6 @@
       :hit-count="searchHitCount"
       ref="searchBarRef"
     />
-
-    <div v-if="taskCount" class="task-strip">
-      <button class="task-tag" type="button" @click="taskPaneOpen = !taskPaneOpen">
-        <span>任务视窗</span>
-        <span class="task-tag__types">{{ taskTypeSummary }}</span>
-        <span class="task-tag__count">{{ taskCount }}</span>
-      </button>
-    </div>
 
     <div class="chat-workspace">
       <div class="chat-workspace__conversation">
@@ -44,12 +76,15 @@
           :streaming-time-label="streamingTimeLabel"
           :search-open="searchOpen"
           :search-query="searchQuery"
-          :assistant-avatar-label="session.meta?.builtin ? 'π' : 'P'"
+          :assistant-avatar-label="session.meta?.builtin ? 'π' : sessionAvatarValue.text"
+          :assistant-avatar-color="sessionAvatarValue.color"
+          :rewindable-entry-ids="rewindableEntryIds"
           @open-tool="openToolDetail"
           @open-bash="openBashDetail"
           @open-compaction="openCompactionDetail"
           @navigate="navigateToSubagent"
           @answered="onAskAnswered"
+          @rewind="rewindToMessage"
         />
 
         <div v-if="suggestedQuestions.length" class="suggested-questions">
@@ -80,8 +115,13 @@
           :agent-id="agentId"
           :disabled="inputDisabled"
           :placeholder="inputPlaceholder"
+          :empty-state-title="modelMissing ? '需要先配置模型' : undefined"
+          :empty-state-description="modelMissing ? '选择模型后即可继续这段对话' : undefined"
+          :empty-state-action="modelMissing ? '选择模型' : undefined"
           @send="sendMessage"
           @slash="executeCustomSlash"
+          @empty-action="openModelPicker"
+          @btw="onCreateBtw"
         />
       </div>
 
@@ -93,6 +133,12 @@
         @select="selectedTaskPath = $event"
         @close="taskPaneOpen = false"
       />
+      <BtwSplitPanel
+        v-if="btwPanelOpen"
+        :parent-id="session.id"
+        :sessions="btwSessions"
+        @close="btwPanelOpen = false"
+      />
     </div>
 
     <ExternalAgentCommandHost
@@ -102,9 +148,56 @@
       @insert="insertExternalAgentText"
     />
 
+    <Teleport to="body">
+      <Transition name="mobile-actions">
+        <div
+          v-if="sessionActionsOpen"
+          class="mobile-actions-backdrop"
+          @click.self="sessionActionsOpen = false"
+        >
+          <section class="mobile-actions-sheet">
+            <div class="mobile-actions-handle" />
+            <div class="mobile-actions-grid">
+              <button type="button" @click="runMobileAction(openSearch)">
+                <Search /><span>搜索</span>
+              </button>
+              <button
+                type="button"
+                @click="
+                  runMobileAction(() => {
+                    showLogPanel = true;
+                  })
+                "
+              >
+                <ScrollText /><span>日志</span>
+              </button>
+              <button
+                v-if="taskCount"
+                type="button"
+                @click="
+                  runMobileAction(() => {
+                    taskPaneOpen = true;
+                  })
+                "
+              >
+                <ClipboardList /><span>任务</span>
+              </button>
+            </div>
+            <button class="mobile-actions-cancel" type="button" @click="sessionActionsOpen = false">
+              取消
+            </button>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
+
     <ChatSessionMenu
       :open="sessionMenuOpen"
       :agent-name="agentName ?? session.meta?.name ?? 'Agent'"
+      :session-title="sessionTitle"
+      :title-readonly="!!session.meta?.builtin"
+      :avatar-label="sessionAvatarValue.text"
+      :avatar-color="sessionAvatarValue.color"
       :muted="sessionMuted"
       :show-thinking="showThinking"
       :session-status="session.status"
@@ -123,7 +216,60 @@
       @navigate="navigateToSubagent"
       @update:muted="onMutedChange"
       @update:show-thinking="onShowThinkingChange"
+      @update:avatar="onAvatarChange"
+      @update:title="onSessionTitleChange"
     />
+
+    <Teleport to="body">
+      <div
+        v-if="modelPickerOpen"
+        class="model-picker-backdrop"
+        @click.self="modelPickerOpen = false"
+      >
+        <section class="model-picker-sheet">
+          <header>
+            <strong>选择模型</strong
+            ><button type="button" @click="modelPickerOpen = false">取消</button>
+          </header>
+          <div class="model-picker-search">
+            <Search class="h-4 w-4" />
+            <input v-model="modelSearch" type="search" placeholder="搜索供应商或模型" autofocus />
+          </div>
+          <div class="model-picker-list">
+            <div v-if="modelPickerLoading" class="model-picker-empty">
+              <Loader2 class="model-picker-spinner" />正在加载模型
+            </div>
+            <details
+              v-for="provider in filteredModelProviders"
+              v-else
+              :key="provider.id"
+              class="model-picker-provider"
+              :open="!!modelSearch || filteredModelProviders.length === 1"
+            >
+              <summary>
+                {{ provider.name }}<small>{{ provider.models.length }}</small>
+              </summary>
+              <button
+                v-for="model in provider.models"
+                :key="`${provider.id}:${model.modelId}`"
+                type="button"
+                :disabled="modelPickerSaving"
+                @click="selectAgentModel(provider.id, model.modelId)"
+              >
+                <span>{{ model.name || model.modelId }}</span
+                ><small>{{ model.modelId }}</small>
+              </button>
+            </details>
+            <div
+              v-if="!modelPickerLoading && !filteredModelProviders.length"
+              class="model-picker-empty"
+            >
+              {{ modelSearch ? "没有匹配的模型" : "暂无可用模型，请先在“模型”中添加。" }}
+            </div>
+          </div>
+        </section>
+      </div>
+    </Teleport>
 
     <SessionLogPanel v-if="showLogPanel" :session-id="session.id" @close="showLogPanel = false" />
 
@@ -138,7 +284,9 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onBeforeUnmount } from "vue";
+import { ClipboardList, Loader2, SlidersHorizontal, ScrollText, Search } from "lucide-vue-next";
 import { useSessionStore, useAgentStore, useProviderStore } from "@/store";
+import { showUiMessage } from "@/composables/use-ui-message";
 import * as api from "@/api";
 import type { ChatCompactionEntry, ChatEntry } from "@/types/chat-entry";
 import {
@@ -154,6 +302,7 @@ import {
 } from "../utils/session-entries";
 import { buildToolModal, buildBashModal } from "../utils/tool-detail";
 import ToolDetailModal from "../components/ToolDetailModal.vue";
+import BtwSplitPanel from "../components/BtwSplitPanel.vue";
 import ChatInputPanel from "../components/ChatInputPanel.vue";
 import ExternalAgentCommandHost from "../components/external-agents/ExternalAgentCommandHost.vue";
 import ChatSessionMenu from "../components/ChatSessionMenu.vue";
@@ -162,11 +311,13 @@ import ChatViewHeader from "../components/chat/ChatViewHeader.vue";
 import ChatSearchBar from "../components/chat/ChatSearchBar.vue";
 import ChatMessageList from "../components/chat/ChatMessageList.vue";
 import TaskWorkspacePanel from "../components/chat/TaskWorkspacePanel.vue";
+import SessionTimerStrip, { type SessionTimerView } from "../components/chat/SessionTimerStrip.vue";
 import type { ChatSendPayload } from "@/types/chat-compose";
 import { getShowThinking, setShowThinking } from "../composables/use-chat-session-prefs";
 import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-push-notifications";
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
 import { parseWorkflowState } from "../utils/workflow";
+import { sessionAvatar, type SessionAvatarValue } from "../utils/session-avatar";
 
 const props = defineProps<{
   session: {
@@ -179,6 +330,8 @@ const props = defineProps<{
       shadowSuggestedQuestions?: string[];
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
       workflow?: { stage: string; status: string };
+      timers?: SessionTimerView[];
+      avatar?: SessionAvatarValue;
     };
     workspaceId?: string;
     pinned?: boolean;
@@ -196,6 +349,13 @@ const emit = defineEmits<{
 }>();
 
 const workflow = computed(() => parseWorkflowState(props.session.meta));
+const sessionAvatarValue = computed(() =>
+  sessionAvatar(
+    props.session.id,
+    props.session.meta?.name ?? agentName.value ?? "Agent",
+    props.session.meta?.avatar,
+  ),
+);
 
 const sessionStore = useSessionStore();
 const agentStore = useAgentStore();
@@ -208,9 +368,29 @@ const agentName = computed(() => {
 const agentBackendType = computed(() =>
   props.agentId ? agentStore.getAgentById(props.agentId)?.backendType : undefined,
 );
+const modelMissing = computed(() => {
+  if (!props.agentId) return false;
+  const agent = agentStore.getAgentById(props.agentId);
+  return agent?.backendType === "native" && (!agent.providerId || !agent.modelId);
+});
+const sessionTimers = computed(() => {
+  const timers = props.session.meta?.timers;
+  if (!Array.isArray(timers)) return [];
+  return [...timers]
+    .filter(
+      (timer): timer is SessionTimerView =>
+        !!timer &&
+        typeof timer.id === "string" &&
+        typeof timer.prompt === "string" &&
+        typeof timer.createdAt === "number" &&
+        typeof timer.nextFireAt === "number",
+    )
+    .sort((left, right) => left.nextFireAt - right.nextFireAt);
+});
 
 const inputText = ref("");
 const suggestedQuestions = ref<string[]>([]);
+const rewindableEntryIds = ref<string[]>([]);
 const inputPanelRef = ref<InstanceType<typeof ChatInputPanel> | null>(null);
 const externalCommandHostRef = ref<InstanceType<typeof ExternalAgentCommandHost> | null>(null);
 const messageListRef = ref<InstanceType<typeof ChatMessageList> | null>(null);
@@ -224,6 +404,12 @@ const isStreaming = ref(false);
 const streamingSendMode = ref<"steer" | "follow_up">("follow_up");
 const streamingAssistantId = ref<string | null>(null);
 const sessionMenuOpen = ref(false);
+const modelPickerOpen = ref(false);
+const btwPanelOpen = ref(false);
+const modelPickerLoading = ref(false);
+const modelPickerSaving = ref(false);
+const modelSearch = ref("");
+const sessionActionsOpen = ref(false);
 const showLogPanel = ref(false);
 const searchOpen = ref(false);
 const searchQuery = ref("");
@@ -259,11 +445,68 @@ const providerDisabled = computed(() => {
   return providerStore.getProviderById(providerId)?.isEnabled === false;
 });
 
+const selectableProviders = computed(() =>
+  providerStore.providers
+    .filter((provider) => provider.isEnabled)
+    .map((provider) => ({ ...provider, models: providerStore.models[provider.id] ?? [] }))
+    .filter((provider) => provider.models.length > 0),
+);
+
+const filteredModelProviders = computed(() => {
+  const query = modelSearch.value.trim().toLocaleLowerCase();
+  if (!query) return selectableProviders.value;
+  return selectableProviders.value
+    .map((provider) => ({
+      ...provider,
+      models: provider.models.filter(
+        (model) =>
+          provider.name.toLocaleLowerCase().includes(query) ||
+          model.modelId.toLocaleLowerCase().includes(query) ||
+          model.name?.toLocaleLowerCase().includes(query),
+      ),
+    }))
+    .filter((provider) => provider.models.length > 0);
+});
+
+async function openModelPicker() {
+  modelPickerOpen.value = true;
+  modelSearch.value = "";
+  modelPickerLoading.value = true;
+  try {
+    if (!providerStore.providers.length) await providerStore.fetchProviders();
+    await Promise.all(
+      providerStore.providers.map((provider) =>
+        providerStore.fetchModels(provider.id).catch(() => []),
+      ),
+    );
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "模型加载失败", "error");
+  } finally {
+    modelPickerLoading.value = false;
+  }
+}
+
+async function selectAgentModel(providerId: string, modelId: string) {
+  if (!props.agentId || modelPickerSaving.value) return;
+  modelPickerSaving.value = true;
+  try {
+    await agentStore.updateAgent(props.agentId, { providerId, modelId });
+    modelPickerOpen.value = false;
+    showUiMessage("模型设置成功", "success");
+    await nextTick(() => inputPanelRef.value?.focus());
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "模型设置失败", "error");
+  } finally {
+    modelPickerSaving.value = false;
+  }
+}
+
 const inputDisabled = computed(
-  () => providerDisabled.value || terminalStatuses.has(props.session.status),
+  () => modelMissing.value || providerDisabled.value || terminalStatuses.has(props.session.status),
 );
 
 const inputPlaceholder = computed(() => {
+  if (modelMissing.value) return "请先为 Agent 配置模型";
   if (providerDisabled.value) return "模型供应商已禁用，无法发送消息";
   if (props.session.status === "finish") return "会话已完成";
   if (props.session.status === "error") return "会话出错，请查看菜单中的合并状态";
@@ -283,10 +526,15 @@ const childSessions = computed(() =>
   sessionStore.sessions.filter((session) => session.parentId === props.session.id),
 );
 
-async function onCreateBtw() {
-  const child = await sessionStore.createBtwSession(props.session.id);
+const btwSessions = computed(() =>
+  childSessions.value
+    .filter((session) => session.branchType === "btw")
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
+);
+
+function onCreateBtw() {
   sessionMenuOpen.value = false;
-  emit("navigate", child.id);
+  btwPanelOpen.value = true;
 }
 
 const canCompleteSession = computed(() => {
@@ -326,11 +574,12 @@ function stopStreaming() {
 }
 
 async function reloadMessagesFromServer(sessionId: string) {
-  const [, queuedInputs, nextTasks, nextTodos] = await Promise.all([
+  const [, queuedInputs, nextTasks, nextTodos, checkpoints] = await Promise.all([
     sessionStore.fetchSessionMessages(sessionId),
     api.getQueuedSessionInputs(sessionId).catch(() => []),
     api.getSessionTasks(sessionId).catch(() => []),
     api.getSessionTodos(sessionId).catch(() => []),
+    api.listCheckpoints(sessionId).catch(() => []),
   ]);
   const entries = sessionStore.messages[sessionId] ?? [];
   chatEntries.value = [
@@ -343,6 +592,7 @@ async function reloadMessagesFromServer(sessionId: string) {
         return entry;
       }),
   ];
+  rewindableEntryIds.value = checkpoints.map((checkpoint) => checkpoint.entryId);
   tasks.value = nextTasks;
   todos.value = nextTodos;
   const todoActive = nextTodos.length > 0 && !nextTodos.every((todo) => todo.status === "done");
@@ -404,6 +654,11 @@ async function saveSessionTitle() {
   await sessionStore.updateSessionMeta(props.session.id, { name });
 }
 
+async function onSessionTitleChange(value: string) {
+  sessionTitle.value = value;
+  await saveSessionTitle();
+}
+
 function openSearch() {
   searchOpen.value = true;
   sessionMenuOpen.value = false;
@@ -427,6 +682,28 @@ async function onMutedChange(muted: boolean) {
 function onShowThinkingChange(value: boolean) {
   showThinking.value = value;
   setShowThinking(props.session.id, value);
+}
+
+async function onAvatarChange(avatar: SessionAvatarValue) {
+  await sessionStore.updateSessionMeta(props.session.id, { avatar });
+}
+
+async function rewindToMessage(entryId: string) {
+  if (!window.confirm("回到这条消息？此后的代码修改和消息都会被移除。")) return;
+  try {
+    stopStreaming();
+    await api.rewindSessionToEntry(props.session.id, entryId);
+    await reloadMessagesFromServer(props.session.id);
+    await sessionStore.fetchSessions();
+    await scrollToBottom();
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : "回撤失败");
+  }
+}
+
+function runMobileAction(action: () => void | Promise<void>) {
+  sessionActionsOpen.value = false;
+  void action();
 }
 
 async function onCompleteSession() {
@@ -812,35 +1089,42 @@ async function executeCustomSlash(name: string) {
 </script>
 
 <style scoped>
-.task-strip {
-  padding: 7px 12px 0;
+.desktop-session-actions,
+.mobile-session-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
-.task-tag {
+.mobile-session-actions {
+  display: none;
+}
+
+.chat-header-action {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  border: 1px solid var(--app-chat-input-island-border);
-  border-radius: 999px;
-  padding: 5px 10px;
-  background: var(--app-chat-bg);
-  color: inherit;
-  cursor: pointer;
-  font-size: 12px;
-}
-
-.task-tag__types {
-  color: var(--app-text-muted);
-}
-
-.task-tag__count {
-  display: grid;
-  min-width: 18px;
-  height: 18px;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--app-chat-input-island-border);
+  justify-content: center;
+  gap: 3px;
+  min-width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  color: var(--app-text-secondary);
   font-size: 11px;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.chat-header-action:hover,
+.chat-header-action:focus-visible {
+  color: #07a65a;
+  background: var(--app-hover);
+  outline: none;
+}
+
+.chat-header-action:active {
+  transform: scale(0.94);
 }
 
 .chat-workspace {
@@ -883,6 +1167,207 @@ async function executeCustomSlash(name: string) {
   padding: 5px 10px;
   background: var(--app-chat-bg);
   color: var(--app-text-primary);
+}
+
+.mobile-actions-backdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgb(0 0 0 / 32%);
+}
+
+.mobile-actions-sheet {
+  width: 100%;
+  padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
+  border-radius: 16px 16px 0 0;
+  background: #f7f7f7;
+}
+
+.mobile-actions-handle {
+  width: 34px;
+  height: 4px;
+  margin: 0 auto 12px;
+  border-radius: 999px;
+  background: #c8c8c8;
+}
+
+.mobile-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 10px;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.mobile-actions-grid button {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 2px;
+  color: #575757;
+  font-size: 12px;
+}
+
+.mobile-actions-grid button :deep(svg) {
+  width: 22px;
+  height: 22px;
+  color: #07a65a;
+}
+
+.mobile-actions-grid button:active {
+  border-radius: 8px;
+  background: #ededed;
+}
+
+.mobile-actions-cancel {
+  width: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: #fff;
+  color: #191919;
+  font-size: 15px;
+}
+
+.model-picker-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgb(0 0 0 / 36%);
+}
+
+.model-picker-sheet {
+  width: min(420px, 100%);
+  max-height: min(560px, 78vh);
+  overflow: hidden;
+  border-radius: 12px;
+  color: var(--app-text-primary);
+  background: var(--app-popup-bg);
+  box-shadow: 0 14px 50px rgb(0 0 0 / 22%);
+}
+
+.model-picker-sheet header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 18px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.model-picker-sheet header button {
+  color: #576b95;
+  font-size: 13px;
+}
+
+.model-picker-list {
+  max-height: calc(min(560px, 78vh) - 54px);
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.model-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 12px 4px;
+  padding: 8px 10px;
+  border-radius: 7px;
+  color: var(--app-text-muted);
+  background: var(--app-hover);
+}
+
+.model-picker-search input {
+  min-width: 0;
+  flex: 1;
+  outline: none;
+  color: var(--app-text-primary);
+  background: transparent;
+  font-size: 13px;
+}
+
+.model-picker-provider summary {
+  display: flex;
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 18px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+  user-select: none;
+}
+
+.model-picker-provider summary:hover {
+  background: var(--app-popup-hover);
+}
+
+.model-picker-list button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 18px;
+  text-align: left;
+}
+
+.model-picker-list button:hover,
+.model-picker-list button:focus-visible {
+  background: var(--app-popup-hover);
+  outline: none;
+}
+
+.model-picker-list small,
+.model-picker-empty {
+  color: var(--app-text-muted);
+  font-size: 11px;
+}
+
+.model-picker-empty {
+  padding: 28px 18px;
+  text-align: center;
+}
+
+.model-picker-spinner {
+  display: inline-block;
+  width: 16px;
+  margin-right: 7px;
+  animation: model-picker-spin 0.8s linear infinite;
+}
+
+@keyframes model-picker-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 767px) {
+  .desktop-session-actions {
+    display: none;
+  }
+
+  .mobile-session-actions {
+    display: flex;
+  }
+
+  .model-picker-backdrop {
+    align-items: end;
+    padding: 0;
+  }
+
+  .model-picker-sheet {
+    width: 100%;
+    max-height: 72vh;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 .suggested-questions button:hover {

@@ -131,7 +131,18 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     await this.emit({ type: "agent_start" });
     await this.emit({ type: "message_start", message: { role: "assistant", content: "" } });
     try {
-      await this.runExternalTurn(message, images);
+      const runtimeConfig = this.session.meta.runtimeConfig;
+      const sideQuestionPrompt =
+        this.session.branchType === "btw" &&
+        runtimeConfig &&
+        typeof runtimeConfig === "object" &&
+        typeof (runtimeConfig as { systemPrompt?: unknown }).systemPrompt === "string"
+          ? (runtimeConfig as { systemPrompt: string }).systemPrompt
+          : "";
+      const externalMessage = sideQuestionPrompt
+        ? `${sideQuestionPrompt}\n\nSide question from the user:\n${message}`
+        : message;
+      await this.runExternalTurn(externalMessage, images);
       const assistantMessage = {
         role: "assistant",
         content: this.assistantText,

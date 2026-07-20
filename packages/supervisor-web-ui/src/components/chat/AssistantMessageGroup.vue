@@ -1,6 +1,8 @@
 <template>
   <div class="flex justify-start items-start gap-2">
-    <div class="chat-avatar chat-avatar--agent shrink-0">{{ avatarLabel }}</div>
+    <div class="chat-avatar chat-avatar--agent shrink-0" :style="{ backgroundColor: avatarColor }">
+      {{ avatarLabel }}
+    </div>
     <div class="max-w-[75%] flex flex-col items-start min-w-0">
       <span class="chat-msg-time chat-msg-time--agent">{{ timeLabel }}</span>
       <div
@@ -70,6 +72,7 @@ const props = defineProps<{
   timeLabel: string;
   searchHit?: boolean;
   avatarLabel?: string;
+  avatarColor?: string;
 }>();
 
 const emit = defineEmits<{

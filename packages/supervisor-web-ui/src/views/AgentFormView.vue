@@ -27,7 +27,7 @@
         :disabled="!canSave || saving"
         @click="save"
       >
-        创建
+        {{ saving ? "创建中…" : "创建" }}
       </button>
     </div>
 
@@ -114,6 +114,7 @@
             class="agent-form-input w-full px-3 py-2 rounded-md"
             @change="onProviderChange"
           >
+            <option value="">稍后配置</option>
             <option v-for="p in providerOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </label>
@@ -124,6 +125,7 @@
             v-model="draft.modelId"
             class="agent-form-input w-full px-3 py-2 rounded-md font-mono text-[12px]"
           >
+            <option value="">稍后配置</option>
             <option v-for="m in modelOptions" :key="m.id" :value="m.id">{{ m.id }}</option>
           </select>
         </label>
@@ -174,6 +176,7 @@ import { uploadIcon, type ToolsPreset } from "@/api";
 import { useAgentStore, useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import AgentAvatar from "../components/AgentAvatar.vue";
+import { showUiMessage } from "@/composables/use-ui-message";
 
 defineProps<{ showBack?: boolean }>();
 
@@ -218,12 +221,22 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => providerStore.providers.map((provider) => provider.id),
+  (providerIds) => {
+    for (const providerId of providerIds) {
+      if (!providerStore.models[providerId]) void providerStore.fetchModels(providerId);
+    }
+  },
+  { immediate: true },
+);
+
 const canSave = computed(() => {
   if (!draft.value.name.trim()) return false;
   if (draft.value.backendType !== "native") {
     return draft.value.backendType !== "acp" || !!draft.value.command.trim();
   }
-  return !!draft.value.providerId && !!draft.value.modelId;
+  return true;
 });
 
 const commandPlaceholder = computed(() => {
@@ -235,7 +248,10 @@ const commandPlaceholder = computed(() => {
 
 function onProviderChange() {
   const p = providerOptions.value.find((x) => x.id === draft.value.providerId);
-  if (!p) return;
+  if (!p) {
+    draft.value.modelId = "";
+    return;
+  }
   if (!p.models.some((m) => m.id === draft.value.modelId)) {
     draft.value.modelId = p.models[0]?.id || "";
   }
@@ -264,8 +280,14 @@ async function save() {
       description: draft.value.description.trim() || undefined,
       icon: draft.value.icon.trim() || null,
       backendType: draft.value.backendType,
-      providerId: draft.value.backendType === "native" ? draft.value.providerId : undefined,
-      modelId: draft.value.backendType === "native" ? draft.value.modelId : undefined,
+      providerId:
+        draft.value.backendType === "native" && draft.value.providerId
+          ? draft.value.providerId
+          : undefined,
+      modelId:
+        draft.value.backendType === "native" && draft.value.modelId
+          ? draft.value.modelId
+          : undefined,
       toolsPreset: draft.value.toolsPreset,
       meta:
         draft.value.backendType !== "native" && draft.value.command.trim()
@@ -279,7 +301,10 @@ async function save() {
             }
           : undefined,
     });
+    showUiMessage("智能代理创建成功", "success");
     emit("saved", agent.id);
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "智能代理创建失败", "error");
   } finally {
     saving.value = false;
   }

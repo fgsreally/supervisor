@@ -136,6 +136,7 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
       windowsHide: true,
     });
     const runtime = new CodexSessionRuntime({ ...options, child });
+    const sandbox = options.session.branchType === "btw" ? "read-only" : "workspace-write";
     try {
       await runtime.request("initialize", {
         clientInfo: { name: "pi-supervisor", title: "Pi Supervisor", version: "0.1.0" },
@@ -149,12 +150,12 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
               threadId: savedId,
               cwd: options.session.cwd,
               approvalPolicy: "on-request",
-              sandbox: "workspace-write",
+              sandbox,
             })
           : await runtime.request("thread/start", {
               cwd: options.session.cwd,
               approvalPolicy: "on-request",
-              sandbox: "workspace-write",
+              sandbox,
             });
       runtime.threadId = response.thread.id;
       runtime.setExternalSessionId(runtime.threadId);

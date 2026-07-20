@@ -1,5 +1,6 @@
 import type { ProviderApiType, SessionStatus } from "@/api";
 import type { SessionBranchType } from "@/utils/session-branch";
+import type { SessionAvatarValue } from "@/utils/session-avatar";
 
 export interface UIWorkspace {
   id: string;
@@ -20,6 +21,7 @@ export interface UISession {
   meta: {
     name: string;
     description?: string;
+    avatar?: SessionAvatarValue;
     [key: string]: unknown;
   };
   lastMessagePreview: string;

@@ -14,9 +14,10 @@ When at least one field is necessary, respond with exactly one XML element:
     <question>Another distinct next question</question>
   </suggested-questions>
   <title>A concise session title</title>
+  <commit-message>A concise conventional commit message</commit-message>
 </shadow>
 
-Every child element is optional. shadow-memory action must be append or replace. urgency applies only to message and must be low, normal, high, or critical. suggestion is only a draft for the user's input box and is never sent to the parent agent. suggested-questions contains up to four short, distinct questions the user is reasonably likely to ask next; emit it only when the latest answer creates useful follow-up paths. title is exceptional: emit it only when the current title is clearly wrong or meaningless and a stable topic has emerged; never emit title merely to rephrase or polish it. Routine conversation and acknowledgements should normally produce an empty response, but a completed answer may still produce suggested-questions when they add clear value. Output XML only.`;
+Every child element is optional. shadow-memory action must be append or replace. urgency applies only to message and must be low, normal, high, or critical. suggestion is only a draft for the user's input box and is never sent to the parent agent. suggested-questions contains up to four short, distinct questions the user is reasonably likely to ask next; emit it only when the latest answer creates useful follow-up paths. title is exceptional: emit it only when the current title is clearly wrong or meaningless and a stable topic has emerged; never emit title merely to rephrase or polish it. commit-message is exceptional: emit it only when the accumulated code changes form a coherent, tested milestone that should be committed before more work continues. It creates an intermediate Session-branch commit and never means the Session should be completed or merged. Routine conversation and acknowledgements should normally produce an empty response, but a completed answer may still produce suggested-questions when they add clear value. Output XML only.`;
 
 function decodeXml(value: string): string {
   return value
@@ -98,6 +99,7 @@ export function parseShadowProtocolResponse(text: string): ShadowProtocolResult 
     suggestion: extractText(candidate, "suggestion"),
     suggestedQuestions: extractSuggestedQuestions(candidate),
     title: extractText(candidate, "title"),
+    commitMessage: extractText(candidate, "commit-message"),
   };
 }
 

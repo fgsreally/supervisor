@@ -40,6 +40,7 @@ import {
   ArrowRightCircle,
   MessageCircleQuestion,
   BookOpen,
+  Clock3,
 } from "lucide-vue-next";
 import { isSkillReadPath, toolCallSummary, toolResultSummary } from "../utils/tool-display";
 import { isAskToolName } from "../utils/ask-tool";
@@ -95,6 +96,10 @@ const icon = computed(() => {
       return Users;
     case "skill":
       return BookOpen;
+    case "TimerCreate":
+    case "TimerList":
+    case "TimerDelete":
+      return Clock3;
     default:
       return Wrench;
   }
@@ -107,24 +112,21 @@ const icon = computed(() => {
   align-self: flex-start;
   max-width: 100%;
   width: fit-content;
-  border-radius: 6px;
+  border-radius: 5px;
   overflow: hidden;
-  border: 1px solid var(--app-border);
-  background: var(--app-bubble-assistant);
+  border: 0;
+  background: var(--app-hover);
 }
 
 .tool-activity-bar--pending {
-  border-color: #eab308;
   background: color-mix(in srgb, #eab308 8%, var(--app-bubble-assistant));
 }
 
 .tool-activity-bar--done {
-  border-color: #22c55e;
-  background: color-mix(in srgb, #22c55e 8%, var(--app-bubble-assistant));
+  background: var(--app-hover);
 }
 
 .tool-activity-bar--error {
-  border-color: #ef4444;
   background: color-mix(in srgb, #ef4444 8%, var(--app-bubble-assistant));
 }
 
@@ -132,10 +134,13 @@ const icon = computed(() => {
   display: inline-flex;
   width: auto;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 0.75rem;
+  gap: 0.35rem;
+  padding: 0.25rem 0.45rem;
   text-align: left;
-  transition: background-color 0.15s;
+  transition:
+    background-color 0.15s,
+    color 0.15s,
+    transform 0.1s;
 }
 
 .tool-activity-bar__inner--clickable {
@@ -143,7 +148,16 @@ const icon = computed(() => {
 }
 
 .tool-activity-bar__inner--clickable:hover {
-  background: var(--app-hover);
+  background: color-mix(in srgb, #07c160 8%, var(--app-hover));
+}
+
+.tool-activity-bar__inner--clickable:focus-visible {
+  box-shadow: 0 0 0 2px rgb(7 193 96 / 22%);
+  outline: none;
+}
+
+.tool-activity-bar__inner--clickable:active {
+  transform: scale(0.985);
 }
 
 .tool-activity-bar__icon {
@@ -169,12 +183,12 @@ const icon = computed(() => {
 
 .tool-activity-bar__label {
   min-width: 0;
-  max-width: min(100%, 22rem);
+  max-width: min(100%, 18rem);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  font-weight: 500;
+  font-weight: 400;
   color: var(--app-text-secondary);
 }
 

@@ -11,7 +11,7 @@ import {
   SESSION_INPUT_INTERRUPT_LEVEL,
 } from "../../../core/session-input-queue.js";
 import type { SupervisorDb } from "../../../db/db.js";
-import type { Session } from "../../../types.js";
+import type { Session, SessionCheckpoint } from "../../../types.js";
 import { resolveModelWithProviderOverrides } from "../../../utils/model-utils.js";
 import { applyShadowMemoryUpdate, readShadowMemory } from "./memory.js";
 import {
@@ -76,6 +76,7 @@ export async function runShadow(
   db: SupervisorDb,
   sessionId: number,
   event: Extract<AgentHarnessEvent, { type: "agent_end" }>,
+  checkpoint: SessionCheckpoint,
 ): Promise<void> {
   const row = db.get(sessionId);
   if (!row) return;
@@ -131,6 +132,16 @@ export async function runShadow(
 
   const title = result.title?.replace(/\s+/g, " ").trim().slice(0, 80);
   if (title) db.updateMeta(session.id, { name: title });
+
+  const commitMessage = result.commitMessage?.replace(/\s+/g, " ").trim().slice(0, 120);
+  if (commitMessage) {
+    try {
+      await manager.commitCheckpoint(session.id, checkpoint.id, commitMessage);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`shadow snapshot commit failed [session=${session.id}]:`, message);
+    }
+  }
 
   const message = result.message?.trim();
   if (message) {

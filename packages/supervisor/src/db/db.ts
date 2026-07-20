@@ -408,6 +408,16 @@ export class SupervisorDb {
     return rows.map(rowToProject);
   }
 
+  updateProjectMeta(id: number, patch: Record<string, unknown>): Record<string, unknown> {
+    const project = this.getProject(id);
+    if (!project) throw new Error(`Project ${id} not found`);
+    const meta = { ...project.meta, ...patch };
+    this.db
+      .prepare("UPDATE projects SET meta = ?, updated_at = ? WHERE id = ?")
+      .run(JSON.stringify(meta), Date.now(), id);
+    return meta;
+  }
+
   deleteProject(id: number): void {
     this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
   }

@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
@@ -24,8 +25,16 @@ export function sessionWorktreePath(repoRoot: string, sessionId: string): string
   return join(repoRoot, ".pi", "supervisor", "worktrees", sessionId);
 }
 
-async function runGit(cwd: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
-  const result = await execGit("git", args, { cwd, maxBuffer: 10 * 1024 * 1024 });
+async function runGit(
+  cwd: string,
+  args: string[],
+  env?: NodeJS.ProcessEnv,
+): Promise<{ stdout: string; stderr: string }> {
+  const result = await execGit("git", args, {
+    cwd,
+    env: env ? { ...process.env, ...env } : process.env,
+    maxBuffer: 10 * 1024 * 1024,
+  });
   return {
     stdout: result.stdout.toString().trim(),
     stderr: result.stderr.toString().trim(),
@@ -99,6 +108,15 @@ export async function getGitDiffStat(cwd: string): Promise<string> {
   }
 }
 
+export async function getGitHead(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await runGit(cwd, ["rev-parse", "HEAD"]);
+    return stdout.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function commitAll(
   cwd: string,
   message: string,
@@ -111,38 +129,76 @@ export async function commitAll(
   return { hash, message };
 }
 
-/** Create a stash-style snapshot of the working tree without mutating it. Returns commit object name or null. */
+/** Create an immutable commit object representing the worktree without moving HEAD. */
 export async function createGitSnapshot(cwd: string): Promise<string | null> {
   const inRepo = await findGitRoot(cwd);
   if (!inRepo) return null;
+  const directory = mkdtempSync(join(tmpdir(), "supervisor-git-index-"));
+  const indexPath = join(directory, "index");
+  const env = { GIT_INDEX_FILE: indexPath };
   try {
-    const { stdout } = await runGit(cwd, ["stash", "create"]);
-    const ref = stdout.trim();
-    return ref || null;
+    const head = await getGitHead(cwd);
+    if (!head) return null;
+    await runGit(cwd, ["read-tree", head], env);
+    await runGit(cwd, ["add", "-A"], env);
+    const { stdout: tree } = await runGit(cwd, ["write-tree"], env);
+    const { stdout: snapshot } = await runGit(
+      cwd,
+      ["commit-tree", tree, "-p", head, "-m", "supervisor worktree snapshot"],
+      env,
+    );
+    return snapshot.trim() || null;
   } catch {
     return null;
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 }
 
 /** Restore working tree to a snapshot created by createGitSnapshot. */
-export async function restoreGitSnapshot(cwd: string, ref: string): Promise<void> {
-  if (!ref.trim()) return;
+export async function restoreGitSnapshot(
+  cwd: string,
+  ref: string | null,
+  _head?: string | null,
+): Promise<void> {
   try {
     await runGit(cwd, ["reset", "--hard", "HEAD"]);
   } catch {
     // fresh repo may not have commits; continue to apply snapshot
   }
+  if (!ref?.trim()) return;
   try {
     await runGit(cwd, ["clean", "-fd"]);
   } catch {
     // ignore clean failures
   }
-  try {
-    await runGit(cwd, ["stash", "apply", "--index", ref]);
-    return;
-  } catch {
-    await runGit(cwd, ["stash", "apply", ref]);
+  await runGit(cwd, ["restore", "--source", ref, "--staged", "--worktree", "--", "."]);
+}
+
+/** Commit exactly a prior worktree snapshot while preserving newer working-tree changes. */
+export async function commitGitSnapshot(
+  cwd: string,
+  snapshotRef: string,
+  expectedHead: string,
+  message: string,
+): Promise<{ hash: string; message: string }> {
+  const currentHead = await getGitHead(cwd);
+  if (currentHead !== expectedHead) {
+    throw new Error("Snapshot base has changed; refusing to commit a stale Shadow result");
   }
+  const { stdout: tree } = await runGit(cwd, ["rev-parse", `${snapshotRef}^{tree}`]);
+  const { stdout: commit } = await runGit(cwd, [
+    "commit-tree",
+    tree,
+    "-p",
+    expectedHead,
+    "-m",
+    message,
+  ]);
+  const hash = commit.trim();
+  await runGit(cwd, ["update-ref", "HEAD", hash, expectedHead]);
+  await runGit(cwd, ["reset", "--mixed", hash]);
+  return { hash: hash.slice(0, 12), message };
 }
 
 export async function mergeSessionBranch(

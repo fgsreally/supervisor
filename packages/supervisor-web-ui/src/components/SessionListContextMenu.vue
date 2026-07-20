@@ -12,6 +12,22 @@
         @mousedown.stop
       >
         <button
+          v-if="status !== 'finish'"
+          type="button"
+          class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
+          @click="emit('achieve')"
+        >
+          完成并归档
+        </button>
+        <button
+          v-else
+          type="button"
+          class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
+          @click="emit('fork')"
+        >
+          Fork 后继续
+        </button>
+        <button
           type="button"
           class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
           @click="emit('delete')"
@@ -28,11 +44,14 @@ defineProps<{
   open: boolean;
   x: number;
   y: number;
+  status?: string;
 }>();
 
 const emit = defineEmits<{
   close: [];
   delete: [];
+  achieve: [];
+  fork: [];
 }>();
 </script>
 
@@ -43,8 +62,12 @@ const emit = defineEmits<{
 }
 
 .session-context-menu__item {
-  color: #fa5151;
+  color: var(--app-text-primary);
   transition: background-color 0.15s;
+}
+
+.session-context-menu__item:last-child {
+  color: #fa5151;
 }
 
 .session-context-menu__item:hover {

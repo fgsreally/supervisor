@@ -37,10 +37,9 @@
       <div class="relative shrink-0">
         <div
           class="rounded-md flex items-center justify-center text-white font-medium shadow-sm"
-          :class="avatarClass"
           :style="avatarStyle"
         >
-          {{ initial }}
+          {{ avatar.text }}
         </div>
         <div
           class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 session-status-ring"
@@ -81,6 +80,7 @@ import { branchDotColor } from "../utils/session-branch";
 import { formatListTime } from "../utils/format-time";
 import { parseWorkflowState } from "../utils/workflow";
 import WorkflowStageTag from "./WorkflowStageTag.vue";
+import { sessionAvatar } from "@/utils/session-avatar";
 
 const props = defineProps<{
   session: UISession;
@@ -145,7 +145,9 @@ const TREE_STEP_PX = 18;
 const AVATAR_PX = 40;
 const ROW_PAD_Y_PX = 12;
 
-const initial = computed(() => props.session.meta.name.substring(0, 1).toUpperCase());
+const avatar = computed(() =>
+  sessionAvatar(props.session.id, props.session.meta.name, props.session.meta.avatar),
+);
 const workflow = computed(() => parseWorkflowState(props.session.meta));
 
 const depth = computed(() => props.depth ?? 0);
@@ -196,13 +198,8 @@ const avatarStyle = computed(() => ({
   width: `${AVATAR_PX}px`,
   height: `${AVATAR_PX}px`,
   fontSize: "16px",
+  backgroundColor: avatar.value.color,
 }));
-
-const avatarClass = computed(() => {
-  const colors = ["bg-blue-500", "bg-indigo-500", "bg-teal-500", "bg-violet-500", "bg-amber-600"];
-  const idx = props.session.id.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % colors.length;
-  return colors[idx];
-});
 
 const statusDotClass = computed(() => {
   switch (props.session.status) {
@@ -264,6 +261,7 @@ const statusDotClass = computed(() => {
 
 .session-row:hover:not(.session-row--active) {
   background: var(--app-list-item-hover);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, #07c160 65%, transparent);
 }
 
 .session-row--child:hover:not(.session-row--active) {
@@ -281,6 +279,16 @@ const statusDotClass = computed(() => {
 
 .session-row--active .session-name {
   color: var(--app-list-item-active-text);
+}
+
+.session-row--active .session-preview,
+.session-row--active .session-time {
+  color: var(--app-list-item-active-secondary, rgb(255 255 255 / 78%));
+}
+
+.session-row--active:hover {
+  background: color-mix(in srgb, var(--app-list-item-active) 86%, white);
+  box-shadow: inset 3px 0 0 rgb(255 255 255 / 72%);
 }
 
 .session-name {

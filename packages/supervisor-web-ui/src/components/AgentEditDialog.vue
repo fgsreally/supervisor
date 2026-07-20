@@ -70,6 +70,7 @@
                 class="agent-edit-input"
                 @change="onProviderChange"
               >
+                <option value="">稍后配置</option>
                 <option v-for="provider in providers" :key="provider.id" :value="provider.id">
                   {{ provider.name }}
                 </option>
@@ -78,6 +79,7 @@
             <label class="block text-[13px]">
               <span class="agent-edit-label mb-1 block">模型</span>
               <select v-model="draft.modelId" class="agent-edit-input font-mono">
+                <option value="">稍后配置</option>
                 <option v-for="model in models" :key="model.id" :value="model.id">
                   {{ model.name }}
                 </option>
@@ -189,6 +191,10 @@ watch(
 );
 
 function onProviderChange() {
+  if (!draft.providerId) {
+    draft.modelId = "";
+    return;
+  }
   if (!models.value.some((model) => model.id === draft.modelId)) {
     draft.modelId = models.value[0]?.id ?? "";
   }
@@ -220,8 +226,8 @@ async function save() {
       name: draft.name.trim(),
       description: draft.description.trim(),
       icon: draft.icon.trim() || null,
-      providerId: value.backendType === "native" ? draft.providerId : null,
-      modelId: value.backendType === "native" ? draft.modelId : undefined,
+      providerId: value.backendType === "native" ? draft.providerId || null : null,
+      modelId: value.backendType === "native" ? draft.modelId || null : undefined,
       toolsPreset: value.backendType === "native" ? draft.toolsPreset : undefined,
       meta:
         value.backendType === "native"

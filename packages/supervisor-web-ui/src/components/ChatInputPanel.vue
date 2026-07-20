@@ -1,6 +1,16 @@
 <template>
   <div class="chat-input-shell shrink-0">
     <div class="chat-input-island relative" :style="{ height: `${panelHeight}px` }">
+      <div v-if="emptyStateTitle" class="chat-input-empty-state">
+        <div class="chat-input-empty-state__icon"><Bot class="h-5 w-5" /></div>
+        <div class="chat-input-empty-state__copy">
+          <strong>{{ emptyStateTitle }}</strong>
+          <span v-if="emptyStateDescription">{{ emptyStateDescription }}</span>
+        </div>
+        <button v-if="emptyStateAction" type="button" @click="emit('empty-action')">
+          {{ emptyStateAction }}
+        </button>
+      </div>
       <ResizeHandle orientation="horizontal" label="调整输入区高度" @start="startResize" />
       <ChatPendingImages :images="pendingImages" @remove="removePendingImage" />
       <ChatComposer
@@ -31,6 +41,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { Bot } from "lucide-vue-next";
 import * as api from "@/api";
 import { useAgentStore } from "@/store";
 import { useResizableHeight } from "../composables/use-resizable-height";
@@ -56,12 +67,17 @@ const props = defineProps<{
   agentId?: string;
   disabled?: boolean;
   placeholder?: string;
+  emptyStateTitle?: string;
+  emptyStateDescription?: string;
+  emptyStateAction?: string;
 }>();
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];
   send: [payload: ChatSendPayload];
   slash: [name: string];
+  "empty-action": [];
+  btw: [];
 }>();
 
 const agentStore = useAgentStore();
@@ -207,6 +223,9 @@ function onToolbarAction(action: ChatToolbarAction) {
     case "voice":
       composerRef.value?.focus();
       break;
+    case "btw":
+      emit("btw");
+      break;
   }
 }
 
@@ -285,5 +304,101 @@ defineExpose({ focus, clearAfterSend });
 .chat-input-editor {
   min-height: 40px;
   min-width: 0;
+}
+
+.chat-input-empty-state {
+  position: absolute;
+  z-index: 30;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 18px;
+  border-radius: inherit;
+  background: color-mix(
+    in srgb,
+    var(--app-chat-input-island-bg, var(--app-chat-bg)) 88%,
+    transparent
+  );
+  backdrop-filter: blur(5px);
+}
+
+.chat-input-empty-state__icon {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  border-radius: 12px;
+  color: var(--app-text-muted);
+  background: var(--app-hover);
+}
+
+.chat-input-empty-state__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+}
+
+.chat-input-empty-state__copy strong {
+  color: var(--app-text-primary);
+  font-size: 13px;
+}
+
+.chat-input-empty-state button {
+  flex: none;
+  padding: 6px 10px;
+  border-radius: 7px;
+  color: white;
+  background: var(--app-accent, #07c160);
+  font-size: 12px;
+  transition:
+    background-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.chat-input-empty-state button:hover,
+.chat-input-empty-state button:focus-visible {
+  background: #06ad56;
+  outline: none;
+}
+
+.chat-input-empty-state button:active {
+  transform: scale(0.96);
+}
+
+@media (max-width: 767px) {
+  .chat-input-island:has(.chat-input-empty-state) {
+    height: 72px !important;
+  }
+
+  .chat-input-empty-state {
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    backdrop-filter: none;
+  }
+
+  .chat-input-empty-state__icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+  }
+
+  .chat-input-empty-state__copy {
+    flex: 1;
+  }
+
+  .chat-input-empty-state__copy span {
+    display: none;
+  }
+
+  .chat-input-empty-state button {
+    padding: 8px 12px;
+    font-size: 13px;
+  }
 }
 </style>

@@ -55,7 +55,29 @@ class SkillTagWidget extends WidgetType {
   }
 }
 
-function buildTagElement(variant: "file" | "skill", iconSvg: string, label: string): HTMLElement {
+class SlashTagWidget extends WidgetType {
+  constructor(readonly token: string) {
+    super();
+  }
+
+  eq(other: SlashTagWidget): boolean {
+    return other.token === this.token;
+  }
+
+  toDOM(): HTMLElement {
+    return buildTagElement(
+      "slash",
+      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>',
+      this.token,
+    );
+  }
+}
+
+function buildTagElement(
+  variant: "file" | "skill" | "slash",
+  iconSvg: string,
+  label: string,
+): HTMLElement {
   const span = document.createElement("span");
   span.className = `cm-chat-tag cm-chat-tag--${variant}`;
   span.contentEditable = "false";
@@ -78,7 +100,11 @@ function buildTagDecorations(view: EditorView): DecorationSet {
   const text = view.state.doc.toString();
   for (const token of findChatTokens(text)) {
     const widget =
-      token.kind === "file" ? new FileTagWidget(token.text) : new SkillTagWidget(token.text);
+      token.kind === "file"
+        ? new FileTagWidget(token.text)
+        : token.kind === "skill"
+          ? new SkillTagWidget(token.text)
+          : new SlashTagWidget(token.text);
     builder.add(
       token.from,
       token.to,
@@ -152,6 +178,11 @@ export function chatInputTheme(editorHeightPx: number) {
     ".cm-chat-tag--skill": {
       backgroundColor: "var(--app-tag-skill-bg)",
       color: "var(--app-tag-skill-fg)",
+      fontWeight: "500",
+    },
+    ".cm-chat-tag--slash": {
+      backgroundColor: "color-mix(in srgb, #07c160 13%, transparent)",
+      color: "#079a4d",
       fontWeight: "500",
     },
     ".cm-chat-tag-icon": {

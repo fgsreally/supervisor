@@ -30,6 +30,7 @@ describe("shadow XML protocol", () => {
     <question>Can this be deployed safely?</question>
   </suggested-questions>
   <title>Shadow redesign</title>
+  <commit-message>feat: checkpoint shadow redesign</commit-message>
 </shadow>
 \`\`\`
 `);
@@ -41,6 +42,7 @@ describe("shadow XML protocol", () => {
       suggestion: "Ask it to add a regression test",
       suggestedQuestions: ["What should I test next?", "Can this be deployed safely?"],
       title: "Shadow redesign",
+      commitMessage: "feat: checkpoint shadow redesign",
     });
   });
 
@@ -53,6 +55,7 @@ describe("shadow XML protocol", () => {
       suggestion: undefined,
       suggestedQuestions: undefined,
       title: undefined,
+      commitMessage: undefined,
     });
   });
 
@@ -68,6 +71,7 @@ describe("shadow XML protocol", () => {
     expect(prompt).toContain("<shadow-memory");
     expect(prompt).toContain("<suggestion>");
     expect(prompt).toContain("<title>");
+    expect(prompt).toContain("<commit-message>");
     expect(prompt).toContain("default and expected response is an empty string");
     expect(prompt).toContain("title is exceptional");
   });

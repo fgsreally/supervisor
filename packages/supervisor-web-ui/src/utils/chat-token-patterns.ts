@@ -1,4 +1,4 @@
-export type ChatTokenKind = "file" | "skill";
+export type ChatTokenKind = "file" | "skill" | "slash";
 
 export interface ChatTokenRange {
   from: number;
@@ -48,6 +48,15 @@ export function findChatTokens(text: string): ChatTokenRange[] {
     const to = from + tokenText.length;
     if (overlaps(ranges, from, to)) continue;
     ranges.push({ from, to, kind: "skill", text: tokenText });
+  }
+
+  for (const match of text.matchAll(/\/[\w-]+/g)) {
+    const from = match.index;
+    if (from === undefined || !isTokenStart(text, from)) continue;
+    const tokenText = match[0];
+    const to = from + tokenText.length;
+    if (overlaps(ranges, from, to)) continue;
+    ranges.push({ from, to, kind: "slash", text: tokenText });
   }
 
   return ranges.sort((a, b) => a.from - b.from);

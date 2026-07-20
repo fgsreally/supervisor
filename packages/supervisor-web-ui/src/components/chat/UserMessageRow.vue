@@ -1,15 +1,19 @@
 <template>
   <div class="flex justify-end items-start gap-2">
+    <button
+      v-if="rewindable"
+      type="button"
+      class="message-rewind"
+      title="回到这一步"
+      aria-label="回到这一步"
+      @click="emit('rewind')"
+    >
+      <RotateCcw class="h-3.5 w-3.5" />
+    </button>
     <div class="max-w-[75%] flex flex-col items-end min-w-0">
       <span class="chat-msg-time chat-msg-time--user">{{ timeLabel }}</span>
       <span v-if="deliveryState" class="chat-msg-delivery" :class="deliveryState">
         {{ deliveryState === "queued" ? "排队中" : "发送失败" }}
-      </span>
-      <span v-if="slashSource" class="slash-source-tag">
-        <Sparkles v-if="slashSource === 'skill'" class="w-3 h-3" />
-        <FileText v-else-if="slashSource === 'prompt'" class="w-3 h-3" />
-        <Terminal v-else class="w-3 h-3" />
-        {{ slashSource }}
       </span>
       <ChatFileBubble v-if="file" :file="file" class="relative" />
       <div
@@ -22,7 +26,21 @@
           class="absolute top-3 w-2 h-2 rotate-45 -right-1 chat-bubble-tail"
           :style="{ background: 'var(--app-bubble-user)' }"
         />
-        <ChatRichText :content="text" class="relative z-10" />
+        <div v-if="slashCommand" class="relative z-10 slash-message">
+          <span class="slash-command-tag">
+            <Sparkles v-if="slashSource === 'skill'" class="w-3.5 h-3.5" />
+            <FileText v-else-if="slashSource === 'prompt'" class="w-3.5 h-3.5" />
+            <Terminal v-else class="w-3.5 h-3.5" />
+            <strong>{{ slashCommand }}</strong>
+          </span>
+          <span v-if="slashRemainder" class="slash-command-divider" />
+          <ChatRichText
+            v-if="slashRemainder"
+            class="slash-command-content"
+            :content="slashRemainder"
+          />
+        </div>
+        <ChatRichText v-else :content="text" class="relative z-10" />
       </div>
     </div>
     <div class="chat-avatar chat-avatar--user shrink-0">U</div>
@@ -30,19 +48,27 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import ChatFileBubble from "../ChatFileBubble.vue";
 import ChatRichText from "../ChatRichText.vue";
 import type { ChatUserFileAttachment } from "@/types/chat-entry";
-import { FileText, Sparkles, Terminal } from "lucide-vue-next";
+import { FileText, RotateCcw, Sparkles, Terminal } from "lucide-vue-next";
 
-defineProps<{
+const props = defineProps<{
   text: string;
   file?: ChatUserFileAttachment | null;
   timeLabel: string;
   searchHit?: boolean;
   deliveryState?: "queued" | "failed";
   slashSource?: "skill" | "prompt" | "custom";
+  rewindable?: boolean;
 }>();
+
+const emit = defineEmits<{ rewind: [] }>();
+
+const slashParts = computed(() => props.text.match(/^(\/[\w-]+)(?:\s+([\s\S]*))?$/));
+const slashCommand = computed(() => slashParts.value?.[1] ?? "");
+const slashRemainder = computed(() => slashParts.value?.[2]?.trim() ?? "");
 </script>
 
 <style scoped>
@@ -53,6 +79,40 @@ defineProps<{
   opacity: 0.85;
   white-space: nowrap;
   margin-bottom: 4px;
+}
+
+.message-rewind {
+  display: inline-grid;
+  width: 26px;
+  height: 26px;
+  margin-top: 17px;
+  flex: none;
+  place-items: center;
+  border-radius: 6px;
+  color: var(--app-text-muted);
+  opacity: 0;
+  transition:
+    opacity 0.15s ease,
+    color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+:global(.chat-row:hover) .message-rewind,
+.message-rewind:focus-visible {
+  opacity: 1;
+}
+
+.message-rewind:hover,
+.message-rewind:focus-visible {
+  color: #07a65a;
+  background: var(--app-hover);
+  outline: none;
+}
+
+@media (hover: none) {
+  .message-rewind {
+    opacity: 0.72;
+  }
 }
 
 .chat-msg-time--user {
@@ -70,16 +130,53 @@ defineProps<{
   color: #dc2626;
 }
 
-.slash-source-tag {
+.slash-message {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+
+.slash-command-tag {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  margin: 0 2px 4px 0;
-  padding: 2px 6px;
-  border-radius: 999px;
-  color: var(--app-text-secondary);
-  background: var(--app-hover);
-  font-size: 10px;
+  padding: 4px 8px;
+  border: 1px solid rgb(7 166 90 / 24%);
+  border-radius: 6px;
+  color: #075f32;
+  background: rgb(255 255 255 / 72%);
+  font-size: 12px;
+  transition:
+    background-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.slash-command-tag:hover {
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+.slash-command-divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgb(25 25 25 / 12%);
+}
+
+.slash-command-content {
+  min-width: 0;
+  color: #191919;
+}
+
+@media (max-width: 480px) {
+  .slash-message {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .slash-command-divider {
+    display: none;
+  }
 }
 
 .chat-avatar {

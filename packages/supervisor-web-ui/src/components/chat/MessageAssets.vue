@@ -52,13 +52,19 @@ function kind(asset: MessageAsset): "video" | "image" | "audio" | "file" {
   display: grid;
   gap: 0.5rem;
   margin-top: 0.5rem;
-  max-width: 48rem;
+  width: min(8.5rem, 36vw);
 }
 .asset-media {
-  max-width: 100%;
-  max-height: 32rem;
+  width: min(8.5rem, 36vw);
+  aspect-ratio: 1;
+  object-fit: cover;
   border-radius: 0.5rem;
   background: #000;
+}
+
+audio {
+  width: min(8.5rem, 36vw);
+  height: 36px;
 }
 .asset-link {
   color: var(--app-accent, #2563eb);

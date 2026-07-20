@@ -89,10 +89,10 @@
       <button
         type="button"
         class="model-form-btn model-form-btn--primary"
-        :disabled="!canSave"
+        :disabled="!canSave || saving"
         @click="save"
       >
-        保存
+        {{ saving ? "保存中…" : "保存" }}
       </button>
     </footer>
   </div>
@@ -103,6 +103,7 @@ import { computed, ref, watch } from "vue";
 import type { UIProviderModel } from "@/types/ui";
 import { createEmptyProviderModel } from "@/constants/providers";
 import { useProviderStore } from "@/store";
+import { showUiMessage } from "@/composables/use-ui-message";
 
 const props = defineProps<{
   providerId: string;
@@ -114,6 +115,7 @@ const emit = defineEmits<{ cancel: []; saved: [modelId: string] }>();
 const providerStore = useProviderStore();
 const draft = ref<UIProviderModel>(createEmptyProviderModel());
 const tagsInput = ref("");
+const saving = ref(false);
 
 watch(
   () => [props.mode, props.model, props.providerId] as const,
@@ -134,24 +136,32 @@ const canSave = computed(() => {
 });
 
 async function save() {
-  if (!canSave.value) return;
-  const modelId = draft.value.id.trim();
-  const payload = {
-    name: draft.value.name.trim() || modelId,
-    contextWindow: draft.value.contextWindow,
-    maxTokens: draft.value.maxTokens,
-    supportsMultimodal: draft.value.supportsMultimodal,
-    tags: tagsInput.value
-      .split(",")
-      .map((tag) => tag.trim())
-      .filter(Boolean),
-  };
-  if (props.mode === "create") {
-    await providerStore.createModel(props.providerId, { modelId, ...payload });
-  } else {
-    await providerStore.updateModel(props.providerId, modelId, payload);
+  if (!canSave.value || saving.value) return;
+  saving.value = true;
+  try {
+    const modelId = draft.value.id.trim();
+    const payload = {
+      name: draft.value.name.trim() || modelId,
+      contextWindow: draft.value.contextWindow,
+      maxTokens: draft.value.maxTokens,
+      supportsMultimodal: draft.value.supportsMultimodal,
+      tags: tagsInput.value
+        .split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
+    };
+    if (props.mode === "create") {
+      await providerStore.createModel(props.providerId, { modelId, ...payload });
+    } else {
+      await providerStore.updateModel(props.providerId, modelId, payload);
+    }
+    emit("saved", modelId);
+    showUiMessage(props.mode === "create" ? "模型创建成功" : "模型保存成功", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "模型保存失败", "error");
+  } finally {
+    saving.value = false;
   }
-  emit("saved", modelId);
 }
 </script>
 

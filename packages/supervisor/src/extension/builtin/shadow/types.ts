@@ -12,4 +12,5 @@ export interface ShadowProtocolResult {
   suggestion?: string;
   suggestedQuestions?: string[];
   title?: string;
+  commitMessage?: string;
 }

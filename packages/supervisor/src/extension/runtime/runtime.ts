@@ -14,6 +14,7 @@ import {
   messageAssetsExtension,
   subagentExtension,
   taskManagementExtension,
+  timerExtension,
   type EventHandlerContext,
   type ExtensionDefinition,
   type ExtensionCommandDefinition,
@@ -78,6 +79,7 @@ export class SessionExtensionRuntime {
   async loadBuiltinExtensions(): Promise<void> {
     await this.loadExtension(evalExtension, "builtin:eval");
     await this.loadExtension(taskManagementExtension, "builtin:task-management");
+    await this.loadExtension(timerExtension, "builtin:timer");
     await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");
     await this.loadExtension(mcpExtension, "builtin:mcp");
     await this.loadExtension(messageAssetsExtension, "builtin:message-assets");

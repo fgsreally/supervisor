@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { SessionTreeEntry } from "@earendil-works/pi-agent-core";
 import type { SupervisorDb } from "../db/db.js";
-import { createGitSnapshot, restoreGitSnapshot } from "../utils/git.js";
+import { createGitSnapshot, getGitHead, restoreGitSnapshot } from "../utils/git.js";
 import { SQLiteSessionStorage } from "./session-storage.js";
 import type { SessionRow, SessionCheckpoint } from "../types.js";
 
@@ -54,6 +54,7 @@ export function parseCheckpoints(meta: Record<string, unknown>): SessionCheckpoi
       id: row.id,
       entryId: row.entryId,
       gitRef: typeof row.gitRef === "string" ? row.gitRef : null,
+      gitHead: typeof row.gitHead === "string" ? row.gitHead : null,
       ...(typeof row.label === "string" ? { label: row.label } : {}),
       createdAt: row.createdAt,
     });
@@ -90,10 +91,12 @@ export async function createSessionCheckpoint(
   }
 
   const gitRef = await createGitSnapshot(session.cwd);
+  const gitHead = await getGitHead(session.cwd);
   const checkpoint: SessionCheckpoint = {
     id: randomUUID(),
     entryId: leafId,
     gitRef,
+    gitHead,
     createdAt: Date.now(),
     ...(options?.label?.trim() ? { label: options.label.trim() } : {}),
   };
@@ -147,26 +150,22 @@ export async function rewindSessionToCheckpoint(
     throw new Error(`Checkpoint entry ${checkpoint.entryId} no longer exists`);
   }
 
-  if (checkpoint.gitRef) {
-    await restoreGitSnapshot(session.cwd, checkpoint.gitRef);
+  if (checkpoint.gitRef || checkpoint.gitHead) {
+    await restoreGitSnapshot(session.cwd, checkpoint.gitRef, checkpoint.gitHead);
   }
 
-  const auditEntryId = await storage.createEntryId();
-  await storage.appendEntry({
-    id: auditEntryId,
-    parentId: checkpoint.entryId,
-    timestamp: new Date().toISOString(),
-    type: "custom",
-    customType: "checkpoint-rewind",
-    data: {
-      checkpointId: checkpoint.id,
-      entryId: checkpoint.entryId,
-      label: checkpoint.label,
-      rewoundAt: Date.now(),
-    },
-  });
-
+  const retainedEntryIds = (await storage.getPathToRoot(checkpoint.entryId)).map((item) => item.id);
+  const supervisorDb = db as SupervisorDb;
+  if (retainedEntryIds.length > 0) {
+    const placeholders = retainedEntryIds.map(() => "?").join(", ");
+    supervisorDb.db
+      .prepare(`DELETE FROM messages WHERE session_id = ? AND entry_id NOT IN (${placeholders})`)
+      .run(sessionId, ...retainedEntryIds);
+  }
   await storage.setLeafId(checkpoint.entryId);
+  db.updateMeta(sessionId, {
+    [CHECKPOINTS_META_KEY]: checkpoints.filter((item) => item.createdAt <= checkpoint.createdAt),
+  });
 
   if (options.reloadRuntime) {
     await options.reloadRuntime(sessionId, checkpoint.entryId);

@@ -256,3 +256,17 @@ watch(
   { immediate: true },
 );
 </script>
+
+<style scoped>
+.session-log-panel {
+  position: absolute;
+  z-index: 70;
+  inset: 0;
+}
+
+@media (max-width: 767px) {
+  .session-log-panel {
+    position: fixed;
+  }
+}
+</style>

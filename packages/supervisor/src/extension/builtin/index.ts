@@ -4,4 +4,5 @@ export { createSkillExtension } from "./skill/index.js";
 export { default as messageAssetsExtension } from "./message-assets/index.js";
 export { default as evalExtension } from "./eval/index.js";
 export { default as taskManagementExtension } from "./task-management/index.js";
+export { default as timerExtension } from "./timer/index.js";
 export * as shadowExtension from "./shadow/index.js";

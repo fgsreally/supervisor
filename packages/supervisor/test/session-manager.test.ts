@@ -50,6 +50,10 @@ describe("supervisor: SessionManager", () => {
     expect(btw.branchType).toBe("btw");
     expect(btw.showInSessionList).toBe(false);
     expect(btw.contextLeafId).toBe(parent.leafId);
+    expect((btw.meta.runtimeConfig as { toolsPreset: string }).toolsPreset).toBe("readonly");
+    expect((btw.meta.runtimeConfig as { systemPrompt: string }).systemPrompt).toContain(
+      "strictly read-only",
+    );
   });
 
   it("spawn() creates AgentHarness and marks instance idle when no instructions", async () => {
@@ -58,6 +62,16 @@ describe("supervisor: SessionManager", () => {
     expect(inst.status).toBe("idle");
     expect(inst.sessionId).toBe(String(inst.id));
     expect(manager.isAlive(inst.id)).toBe(true);
+  });
+
+  it("spawn() keeps a native Agent without a model as a disabled Session", async () => {
+    const agent = db.insertAgent({ name: "model pending" });
+    const inst = await manager.spawn({ ...SPAWN_OPTS, agentId: agent.id });
+
+    expect(inst.status).toBe("idle");
+    expect(inst.meta.modelRequired).toBe(true);
+    expect(MockAgentHarness.instances).toHaveLength(0);
+    await expect(manager.prompt(inst.id, "hello")).rejects.toThrow("has no model configured");
   });
 
   it("spawn() does not create a git worktree when parentId is set", async () => {

@@ -60,6 +60,7 @@ import {
 import { appendContextFilesToSystemPrompt } from "../agent/context-files.js";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
+import { commitGitSnapshot } from "../utils/git.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "../agent/prompt-templates.js";
 import { appendReadOrchestrationHint } from "../agent/system-prompts.js";
@@ -125,6 +126,11 @@ import type {
   SpawnSessionOptions,
   UpdateModelOptions,
 } from "../types.js";
+
+const BTW_SYSTEM_PROMPT = `You are answering a side question attached to another working session.
+Use the inherited conversation and workspace only to understand context and answer the question.
+This session is strictly read-only: do not create, edit, delete, rename, or otherwise modify files; do not run commands that change the workspace; do not commit or alter Git state.
+Keep the answer focused on the side question. Do not continue or redirect the parent session's task.`;
 
 const DEFAULT_PROVIDER: KnownProvider = "anthropic";
 const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
@@ -383,11 +389,15 @@ export class SessionManager {
           this.db.updateStatus(sessionId, "idle");
         }
         void (async () => {
+          const shadowCheckpoint =
+            runtime instanceof SessionRuntime && !hasPendingAsks(sessionId)
+              ? await createSessionCheckpoint(this.db, sessionId, { label: "shadow-turn" })
+              : undefined;
           if (!hasPendingAsks(sessionId)) {
             await this.drainSessionInputQueue(sessionId);
           }
-          if (runtime instanceof SessionRuntime) {
-            await runShadow(this, this.db, sessionId, event);
+          if (runtime instanceof SessionRuntime && shadowCheckpoint) {
+            await runShadow(this, this.db, sessionId, event, shadowCheckpoint);
           }
         })().catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
@@ -420,6 +430,18 @@ export class SessionManager {
       const listeners = this.outputListeners.get(sessionId);
       if (listeners) {
         for (const fn of listeners) fn(sessionId, event);
+      }
+    });
+  }
+
+  private enableMessageCheckpoints(storage: SQLiteSessionStorage, sessionId: number): void {
+    storage.onEntryAppended(async (entry) => {
+      if (entry.type !== "message" || entry.message.role !== "user") return;
+      try {
+        await createSessionCheckpoint(this.db, sessionId, { label: "message" });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`message checkpoint failed [${sessionId}]:`, message);
       }
     });
   }
@@ -471,7 +493,13 @@ export class SessionManager {
     }
 
     const config = this.extractRuntimeConfig(session);
-    const model = getModel(config.provider as KnownProvider, config.modelId as never);
+    if (agent?.backendType === "native" && (!agent.providerId || !agent.modelId)) {
+      throw new Error(`Agent ${agent.id} has no model configured`);
+    }
+    const model =
+      agent?.backendType === "native" && agent.providerId && agent.modelId
+        ? resolveModelWithProviderOverrides(this.db, agent.providerId, agent.modelId)
+        : getModel(config.provider as KnownProvider, config.modelId as never);
     if (!model) {
       throw new Error(`Model ${config.modelId} from provider ${config.provider} not found`);
     }
@@ -487,6 +515,7 @@ export class SessionManager {
     await resource.load();
 
     const storage = createRuntimeSessionStorage(this.db, session);
+    this.enableMessageCheckpoints(storage, session.id);
     const harnessSession = new AgentSession(storage);
     const env = new NodeExecutionEnv({ cwd: session.cwd });
     const sessionTools = this.assembleSessionTools(
@@ -610,6 +639,15 @@ export class SessionManager {
     );
     await ensureSessionDir(this.requireProjectId(activeSession), activeSession.id);
 
+    if (
+      agentInDb?.backendType === "native" &&
+      (agentInDb.providerId == null || agentInDb.modelId == null)
+    ) {
+      this.db.updateMeta(activeSession.id, { modelRequired: true });
+      this.db.updateStatus(activeSession.id, "idle");
+      return rowToSession(this.db.get(activeSession.id)!);
+    }
+
     if (agentInDb && agentInDb.backendType !== "native") {
       const runtime = await this.createExternalRuntime(activeSession, agentInDb);
       this.setupRuntime(activeSession.id, runtime);
@@ -639,6 +677,7 @@ export class SessionManager {
     }
 
     const storage = createRuntimeSessionStorage(this.db, activeSession);
+    this.enableMessageCheckpoints(storage, activeSession.id);
     const harnessSession = new AgentSession(storage);
     const env = new NodeExecutionEnv({ cwd: activeSession.cwd });
 
@@ -997,7 +1036,7 @@ export class SessionManager {
   }
 
   async complete(id: number): Promise<Session> {
-    const session = rowToSession(this.db.get(id)!);
+    let session = rowToSession(this.db.get(id)!);
     if (!session) throw new Error(`Session ${id} not found`);
     if (session.status === "finish" || session.status === "finished") return session;
 
@@ -1011,6 +1050,8 @@ export class SessionManager {
     }
 
     try {
+      await commitSessionChanges(id, session.cwd, session.meta, this.db);
+      session = rowToSession(this.db.get(id)!);
       await finalizeSessionLifecycleGit(this.db, session);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1253,7 +1294,29 @@ export class SessionManager {
   createBtw(id: number): Session {
     const parent = this._getSession(id);
     if (!parent) throw new Error(`Session ${id} not found`);
-    const runtimeConfig = parent.meta.runtimeConfig;
+    const parentRuntimeConfig =
+      parent.meta.runtimeConfig && typeof parent.meta.runtimeConfig === "object"
+        ? (parent.meta.runtimeConfig as Partial<RuntimeConfigSnapshot>)
+        : {};
+    const runtimeConfig: RuntimeConfigSnapshot = {
+      provider:
+        typeof parentRuntimeConfig.provider === "string"
+          ? parentRuntimeConfig.provider
+          : DEFAULT_PROVIDER,
+      modelId:
+        typeof parentRuntimeConfig.modelId === "string"
+          ? parentRuntimeConfig.modelId
+          : DEFAULT_MODEL_ID,
+      systemPrompt: [
+        typeof parentRuntimeConfig.systemPrompt === "string"
+          ? parentRuntimeConfig.systemPrompt
+          : "",
+        BTW_SYSTEM_PROMPT,
+      ]
+        .filter(Boolean)
+        .join("\n\n"),
+      toolsPreset: "readonly",
+    };
     return this.create({
       projectId: parent.projectId,
       parentId: parent.id,
@@ -1261,10 +1324,7 @@ export class SessionManager {
       agentId: parent.agentId,
       branchType: "btw",
       contextLeafId: parent.leafId,
-      meta:
-        runtimeConfig && typeof runtimeConfig === "object"
-          ? { runtimeConfig, name: "By the way" }
-          : { name: "By the way" },
+      meta: { runtimeConfig, name: "顺便问" },
     });
   }
 
@@ -1276,15 +1336,17 @@ export class SessionManager {
     const session = this.db.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
 
-    // Create a new session as a child
-    const newSession = this.create({
+    const project = session.project_id == null ? undefined : this.db.getProject(session.project_id);
+    const createOptions: CreateSessionOptions = {
       projectId: session.project_id,
       parentId: id,
-      cwd: session.cwd,
+      cwd: project?.cwd ?? session.cwd,
       agentId: (session as any).agentId ?? (session as any).agent_id,
       branchType: "fork",
-      meta: options?.label ? { label: options.label } : {},
-    });
+      meta: options?.label ? { name: options.label } : {},
+    };
+    let newSession = this.create(createOptions);
+    newSession = await prepareSessionLifecycleSpawn(this.db, newSession, createOptions);
 
     const messages = await this.getSessionMessages(id);
     const forkPointIndex = messages.findIndex((m) => m.id === entryId);
@@ -1394,6 +1456,12 @@ export class SessionManager {
     return session as unknown as Session;
   }
 
+  async rewindToEntry(id: number, entryId: string): Promise<Session> {
+    const checkpoint = this.listCheckpoints(id).find((item) => item.entryId === entryId);
+    if (!checkpoint) throw new Error("This message has no code snapshot and cannot be restored");
+    return this.rewindToCheckpoint(id, checkpoint.id);
+  }
+
   async commitSession(
     id: number,
     options?: CommitSessionOptions,
@@ -1410,6 +1478,29 @@ export class SessionManager {
       this.db,
       options,
     );
+  }
+
+  async commitCheckpoint(
+    id: number,
+    checkpointId: string,
+    message: string,
+  ): Promise<CommitSessionResult> {
+    const session = this.db.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    const checkpoint = this.listCheckpoints(id).find((item) => item.id === checkpointId);
+    if (!checkpoint?.gitRef || !checkpoint.gitHead) {
+      throw new Error("Checkpoint has no Git worktree snapshot");
+    }
+    const commit = await commitGitSnapshot(
+      session.cwd,
+      checkpoint.gitRef,
+      checkpoint.gitHead,
+      message,
+    );
+    const meta = typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta;
+    const git = meta.git && typeof meta.git === "object" ? meta.git : undefined;
+    if (git) this.db.updateMeta(id, { git: { ...git, lastCommit: commit } });
+    return commit;
   }
 
   searchMessages(

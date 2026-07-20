@@ -21,15 +21,37 @@
               <div class="flex flex-wrap gap-4">
                 <div class="flex flex-col items-center gap-1.5 w-14">
                   <div
-                    class="w-12 h-12 rounded-md bg-[#576b95] text-white flex items-center justify-center text-lg font-medium"
+                    class="w-12 h-12 rounded-md text-white flex items-center justify-center text-lg font-medium"
+                    :style="{ backgroundColor: avatarColor }"
                   >
-                    {{ agentInitial }}
+                    {{ avatarLabel }}
                   </div>
                   <span class="text-[11px] text-center truncate w-full chat-session-menu__muted">{{
                     agentName
                   }}</span>
                 </div>
               </div>
+              <div class="mt-4 flex items-center gap-2">
+                <span class="text-[12px] chat-session-menu__muted">会话头像</span>
+                <button
+                  v-for="color in SESSION_AVATAR_COLORS"
+                  :key="color"
+                  type="button"
+                  class="h-5 w-5 rounded-md ring-offset-2 transition-transform hover:scale-110"
+                  :class="color === avatarColor ? 'ring-2 ring-[#07c160]' : ''"
+                  :style="{ backgroundColor: color }"
+                  @click="emit('update:avatar', { text: avatarLabel, color })"
+                />
+              </div>
+              <label class="chat-session-menu__name mt-4">
+                <span>聊天名称</span>
+                <input
+                  :value="sessionTitle"
+                  type="text"
+                  :disabled="titleReadonly"
+                  @change="emit('update:title', ($event.target as HTMLInputElement).value)"
+                />
+              </label>
               <p v-if="gitBranch" class="mt-4 text-[12px] chat-session-menu__muted break-all">
                 分支：<code class="text-[11px]">{{ gitBranch }}</code>
               </p>
@@ -56,7 +78,7 @@
                 v-for="child in childSessions"
                 :key="child.id"
                 type="button"
-                class="chat-session-menu__row w-full flex items-center justify-between gap-3 px-5 py-3 text-left transition-colors"
+                class="chat-session-menu__child-row w-full flex items-center justify-between gap-3 px-5 py-3 text-left transition-colors"
                 @click="emit('navigate', child.id)"
               >
                 <span class="min-w-0">
@@ -173,14 +195,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
 import { ChevronRight, X } from "lucide-vue-next";
 import type { Session } from "@/api";
 import { BRANCH_LABELS } from "@/utils/session-branch";
+import { SESSION_AVATAR_COLORS, type SessionAvatarValue } from "@/utils/session-avatar";
 
 const props = defineProps<{
   open: boolean;
   agentName: string;
+  sessionTitle: string;
+  titleReadonly?: boolean;
+  avatarLabel: string;
+  avatarColor: string;
   muted: boolean;
   showThinking: boolean;
   sessionStatus?: string;
@@ -202,9 +228,9 @@ const emit = defineEmits<{
   navigate: [sessionId: string];
   "update:muted": [value: boolean];
   "update:showThinking": [value: boolean];
+  "update:avatar": [value: SessionAvatarValue];
+  "update:title": [value: string];
 }>();
-
-const agentInitial = computed(() => props.agentName.charAt(0).toUpperCase() || "A");
 
 function childName(child: { id: string; meta: Record<string, unknown> }): string {
   return typeof child.meta.name === "string" ? child.meta.name : `Session ${child.id}`;
@@ -242,10 +268,21 @@ function childName(child: { id: string; meta: Record<string, unknown> }): string
 
 .chat-session-menu__row {
   border-color: var(--app-border-subtle);
+  display: none;
+}
+
+.chat-session-menu__section:has(> .chat-session-menu__row) {
+  display: none;
 }
 
 .chat-session-menu__row:hover {
   background: var(--app-popup-hover);
+}
+
+.chat-session-menu__child-row:hover,
+.chat-session-menu__child-row:focus-visible {
+  background: var(--app-popup-hover);
+  outline: none;
 }
 
 .chat-session-menu__muted {
@@ -254,6 +291,40 @@ function childName(child: { id: string; meta: Record<string, unknown> }): string
 
 .chat-session-menu__chevron {
   color: var(--app-text-muted);
+}
+
+.chat-session-menu__name {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+}
+
+.chat-session-menu__name input {
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 6px;
+  outline: none;
+  color: var(--app-text-primary);
+  background: var(--app-chat-bg);
+}
+
+.chat-session-menu__name input:focus {
+  border-color: #07c160;
+  box-shadow: 0 0 0 2px rgb(7 193 96 / 12%);
+}
+
+[role="switch"]:hover,
+[role="switch"]:focus-visible {
+  box-shadow: 0 0 0 3px rgb(7 193 96 / 14%);
+  outline: none;
+}
+
+[role="switch"]:active {
+  transform: scale(0.97);
 }
 
 .chat-menu-enter-active,

@@ -268,9 +268,6 @@ export function createHttpServer(manager: SessionManager): Hono {
         body.backendType === "acp"
           ? body.backendType
           : "native";
-      if (backendType === "native" && typeof body.providerId !== "number") {
-        return jsonError(c, 400, "providerId is required");
-      }
       const legacyExternal = body.meta?.external as Record<string, unknown> | undefined;
       if (
         backendType === "acp" &&
@@ -1113,13 +1110,20 @@ export function createHttpServer(manager: SessionManager): Hono {
   // POST /sessions/:id/rewind — rewind to checkpoint (code + conversation leaf)
   app.post("/sessions/:id/rewind", async (c) => {
     const body = await c.req.json().catch(() => null);
-    if (!body || typeof body !== "object" || typeof body.checkpointId !== "string") {
-      return jsonError(c, 400, "invalid body, requires { checkpointId: string }");
+    if (
+      !body ||
+      typeof body !== "object" ||
+      (typeof body.checkpointId !== "string" && typeof body.entryId !== "string")
+    ) {
+      return jsonError(c, 400, "invalid body, requires { checkpointId } or { entryId }");
     }
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
-      const session = await manager.rewindToCheckpoint(id, body.checkpointId);
+      const session =
+        typeof body.entryId === "string"
+          ? await manager.rewindToEntry(id, body.entryId)
+          : await manager.rewindToCheckpoint(id, body.checkpointId);
       return c.json(session);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);

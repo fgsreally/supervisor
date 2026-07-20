@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { ContextDb } from "../src/extension/runtime/index.js";
 import { defineExtension, Type } from "../src/extension/index.js";
+import { timerExtension } from "../src/extension/index.js";
 import {
   createEventBus,
   SessionExtensionHost,
@@ -101,6 +102,47 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
 }
 
 describe("extension api", () => {
+  it("persists and fires Session timers through session meta", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-20T04:00:00.000Z"));
+    try {
+      let meta: Record<string, unknown> = {};
+      const options = createRuntimeOptions();
+      const sendUserMessage = vi.fn(async () => {});
+      options.db.getSessionMeta = async () => meta;
+      options.deps.patchSessionMeta = async (patch) => {
+        meta = { ...meta, ...patch };
+        return meta;
+      };
+      options.deps.sendUserMessage = sendUserMessage;
+      const runtime = new SessionExtensionHost(createExtensionTestContext(options));
+      await runtime.load(timerExtension, "builtin:timer");
+      const context = {
+        toolCallId: "timer-call",
+        session: { id: "1", cwd: process.cwd() },
+        reportProgress: () => {},
+      };
+
+      const created = await runtime.executeTool(
+        "TimerCreate",
+        { intent: "check deploy later", prompt: "check deploy", delaySeconds: 5 },
+        context,
+      );
+      const timer = created.details as { id: string };
+      expect(meta.timers).toMatchObject([{ id: timer.id, prompt: "check deploy" }]);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(meta.timers).toEqual([]);
+      expect(sendUserMessage).toHaveBeenCalledWith(expect.stringContaining('<timer-fire id="'), {
+        source: "timer",
+        origin: "check deploy",
+      });
+      await runtime.clear();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("registers and executes extension slash commands", async () => {
     const handler = vi.fn(async (_args: string) => {});
     const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));

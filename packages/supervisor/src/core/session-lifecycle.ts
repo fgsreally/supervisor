@@ -39,6 +39,7 @@ export type SessionLifecycleDb = Pick<
   | "listModelsByProvider"
   | "getProvider"
   | "getProject"
+  | "updateProjectMeta"
 >;
 
 /** Convert a SessionRow to the Session type expected by callers. */
@@ -184,7 +185,8 @@ export async function prepareSessionLifecycleSpawn(
   const initialName =
     typeof options.meta?.name === "string" ? options.meta.name : (agentDisplayName ?? undefined);
 
-  if (options?.parentId || options.meta?.builtin) {
+  const needsOwnWorktree = options.branchType === "fork" || options.branchType === "clone";
+  if ((options?.parentId && !needsOwnWorktree) || options.meta?.builtin) {
     if (initialName) {
       db.updateMeta(session.id, { name: initialName, nameDefault: initialName, projectName });
       return rowToSession(db.get(session.id)!);
@@ -203,6 +205,9 @@ export async function prepareSessionLifecycleSpawn(
         nameDefault: "New chat",
         projectName,
       });
+      if (session.projectId != null) {
+        db.updateProjectMeta(session.projectId, { defaultBranch: gitMeta.baseBranch });
+      }
       return rowToSession(db.get(session.id)!);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);

@@ -12,6 +12,7 @@
     "build": "pnpm --filter @earendil-works/pi-supervisor run build",
     "dev": "pnpm --filter @earendil-works/pi-supervisor-ui run dev",
     "dev:supervisor": "pnpm run build && pnpm --filter @earendil-works/pi-supervisor run serve:playground",
+    "dev:seed": "node packages/supervisor-web-ui/scripts/seed-dev-showcase.mjs",
     "playground": "pnpm run build && pnpm --filter @earendil-works/pi-supervisor run serve:playground",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",

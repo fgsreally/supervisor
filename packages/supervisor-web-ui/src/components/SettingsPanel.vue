@@ -1,6 +1,9 @@
 <template>
   <div class="flex-1 flex flex-col min-w-0 overflow-hidden settings-page">
     <div class="h-16 flex items-center px-6 border-b settings-header">
+      <button v-if="showBack" type="button" class="settings-back" @click="emit('back')">
+        <ChevronLeft class="h-5 w-5" />
+      </button>
       <h1 class="text-[17px] font-medium">设置</h1>
     </div>
 
@@ -73,12 +76,16 @@
 </template>
 
 <script setup lang="ts">
+import { ChevronLeft } from "lucide-vue-next";
 import { onMounted, reactive, ref } from "vue";
 import {
   getSupervisorSettings,
   updateSupervisorSettings,
   type SupervisorSettings,
 } from "../api/api";
+
+defineProps<{ showBack?: boolean }>();
+const emit = defineEmits<{ back: [] }>();
 
 const form = reactive<
   Required<
@@ -194,6 +201,22 @@ async function save() {
 }
 .save-button:disabled {
   opacity: 0.55;
+}
+.settings-back {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  margin-left: -8px;
+  margin-right: 8px;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--app-text-secondary);
+}
+.settings-back:hover,
+.settings-back:focus-visible {
+  color: #07a65a;
+  background: var(--app-hover);
+  outline: none;
 }
 @media (max-width: 640px) {
   .settings-card label {

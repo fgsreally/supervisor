@@ -53,6 +53,16 @@
     <div class="flex items-center gap-2 shrink-0">
       <button
         type="button"
+        class="toolbar-icon-btn btw-btn"
+        title="顺便问一下"
+        :disabled="disabled"
+        @mousedown.prevent
+        @click="emit('action', 'btw')"
+      >
+        <MessageCircleQuestion class="w-[19px] h-[19px] stroke-[1.5]" />
+      </button>
+      <button
+        type="button"
         class="toolbar-icon-btn"
         title="对讲"
         :disabled="disabled"
@@ -76,9 +86,17 @@
 </template>
 
 <script setup lang="ts">
-import { AudioLines, FolderOpen, Mic, Scissors, Smile, Sparkles } from "lucide-vue-next";
+import {
+  AudioLines,
+  FolderOpen,
+  MessageCircleQuestion,
+  Mic,
+  Scissors,
+  Smile,
+  Sparkles,
+} from "lucide-vue-next";
 
-export type ChatToolbarAction = "emoji" | "skill" | "attach" | "screenshot" | "voice";
+export type ChatToolbarAction = "emoji" | "skill" | "attach" | "screenshot" | "voice" | "btw";
 
 defineProps<{
   disabled?: boolean;
@@ -135,6 +153,10 @@ function onSlashSelect(event: Event) {
 
 .toolbar-icon-btn:disabled {
   opacity: 0.4;
+}
+
+.btw-btn {
+  color: #576b95;
 }
 
 .toolbar-divider {

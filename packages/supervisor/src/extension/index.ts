@@ -9,6 +9,7 @@ export {
   shadowExtension,
   subagentExtension,
   taskManagementExtension,
+  timerExtension,
 } from "./builtin/index.js";
 
 /** Define and validate an extension. */

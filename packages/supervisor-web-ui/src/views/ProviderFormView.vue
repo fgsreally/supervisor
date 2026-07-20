@@ -89,7 +89,7 @@
             </div>
           </div>
 
-          <label class="provider-form-field text-[13px]">
+          <label v-if="!isNew" class="provider-form-field text-[13px]">
             <span class="provider-form-subtitle md:pt-2">启用</span>
             <span class="provider-form-switch-row">
               <input v-model="draft.isEnabled" type="checkbox" class="sr-only" />
@@ -182,10 +182,10 @@
       <button
         type="button"
         class="provider-form-save-btn px-4 py-2 rounded-md text-[13px] disabled:opacity-50"
-        :disabled="!canSave"
+        :disabled="!canSave || saving"
         @click="save"
       >
-        {{ modelsOnly ? "完成" : "保存" }}
+        {{ saving ? "保存中…" : modelsOnly ? "完成" : "保存" }}
       </button>
     </footer>
   </div>
@@ -201,6 +201,7 @@ import { PROVIDER_API_TYPES, PROVIDER_PRESETS } from "@/constants/providers";
 import { useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import { uploadIcon } from "@/api";
+import { showUiMessage } from "@/composables/use-ui-message";
 
 const props = defineProps<{
   providerId?: string | null;
@@ -217,6 +218,7 @@ const providerStore = useProviderStore();
 const isNew = computed(() => !props.providerId);
 const iconInput = ref<HTMLInputElement | null>(null);
 const uploading = ref(false);
+const saving = ref(false);
 const apiKeyInput = ref("");
 const showApiKey = ref(false);
 const selectedPresetId = ref<string | null>(null);
@@ -369,43 +371,54 @@ async function syncModels(providerId: string, models: UIProviderModel[]) {
 }
 
 async function save() {
-  if (props.modelsOnly) {
-    const id = props.providerId;
-    if (!id || !canSave.value) return;
-    await syncModels(id, draft.value.models);
-    emit("saved", id);
-    return;
-  }
+  if (saving.value) return;
+  saving.value = true;
+  try {
+    if (props.modelsOnly) {
+      const id = props.providerId;
+      if (!id || !canSave.value) return;
+      await syncModels(id, draft.value.models);
+      emit("saved", id);
+      showUiMessage("模型列表已保存", "success");
+      return;
+    }
 
-  if (!canSave.value) return;
-  const payload = cloneProvider(draft.value);
-  payload.name = payload.name.trim();
+    if (!canSave.value) return;
+    const payload = cloneProvider(draft.value);
+    payload.name = payload.name.trim();
 
-  if (isNew.value) {
-    const slug = payload.id.trim() || providerSlug(payload.name);
-    const created = await providerStore.createProvider({
-      slug,
-      name: payload.name,
-      icon: payload.icon,
-      apiType: payload.apiType,
-      baseUrl: payload.baseUrl,
-      apiKey: apiKeyInput.value.trim() || null,
-      isEnabled: payload.isEnabled,
-    });
-    await syncModels(created.id, payload.models);
-    emit("saved", created.id);
-  } else {
-    const patch: import("@/api").UpdateProviderRequest = {
-      name: payload.name,
-      isEnabled: payload.isEnabled,
-      icon: payload.icon,
-      apiType: payload.apiType,
-      baseUrl: payload.baseUrl,
-    };
-    if (apiKeyInput.value.trim()) patch.apiKey = apiKeyInput.value.trim();
-    await providerStore.updateProvider(payload.id, patch);
-    await syncModels(payload.id, payload.models);
-    emit("saved", payload.id);
+    if (isNew.value) {
+      const slug = payload.id.trim() || providerSlug(payload.name);
+      const created = await providerStore.createProvider({
+        slug,
+        name: payload.name,
+        icon: payload.icon,
+        apiType: payload.apiType,
+        baseUrl: payload.baseUrl,
+        apiKey: apiKeyInput.value.trim() || null,
+        isEnabled: payload.isEnabled,
+      });
+      await syncModels(created.id, payload.models);
+      emit("saved", created.id);
+      showUiMessage("供应商创建成功", "success");
+    } else {
+      const patch: import("@/api").UpdateProviderRequest = {
+        name: payload.name,
+        isEnabled: payload.isEnabled,
+        icon: payload.icon,
+        apiType: payload.apiType,
+        baseUrl: payload.baseUrl,
+      };
+      if (apiKeyInput.value.trim()) patch.apiKey = apiKeyInput.value.trim();
+      await providerStore.updateProvider(payload.id, patch);
+      await syncModels(payload.id, payload.models);
+      emit("saved", payload.id);
+      showUiMessage("供应商保存成功", "success");
+    }
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "保存失败", "error");
+  } finally {
+    saving.value = false;
   }
 }
 

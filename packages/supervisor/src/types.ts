@@ -317,6 +317,7 @@ export interface SessionCheckpoint {
   id: string;
   entryId: string;
   gitRef: string | null;
+  gitHead?: string | null;
   label?: string;
   createdAt: number;
 }

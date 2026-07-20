@@ -388,7 +388,7 @@ export interface UpdateAgentRequest {
   icon?: string | null;
   backendType?: "native" | "codex" | "claude" | "kimi" | "acp";
   providerId?: string | null;
-  modelId?: string;
+  modelId?: string | null;
   toolsPreset?: ToolsPreset;
   homeDir?: string;
   meta?: Record<string, unknown>;
@@ -707,6 +707,11 @@ export async function listCheckpoints(id: string): Promise<SessionCheckpoint[]> 
 /** Rewind session to a checkpoint (code + conversation). */
 export async function rewindSession(id: string, checkpointId: string): Promise<Session> {
   const session = await postJson<RawSession>(`/sessions/${id}/rewind`, { checkpointId });
+  return mapSession(session);
+}
+
+export async function rewindSessionToEntry(id: string, entryId: string): Promise<Session> {
+  const session = await postJson<RawSession>(`/sessions/${id}/rewind`, { entryId });
   return mapSession(session);
 }
 

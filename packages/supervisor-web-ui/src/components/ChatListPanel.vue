@@ -8,6 +8,9 @@
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
       <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">聊天</h1>
+      <button type="button" class="chat-home-settings" title="设置" @click="emit('settings')">
+        <Settings class="h-[19px] w-[19px]" />
+      </button>
     </div>
 
     <div
@@ -111,15 +114,18 @@
       :open="contextMenu != null"
       :x="contextMenu?.x ?? 0"
       :y="contextMenu?.y ?? 0"
+      :status="contextSession?.status"
       @close="closeContextMenu"
       @delete="confirmDeleteSession"
+      @achieve="achieveSession"
+      @fork="forkFinishedSession"
     />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { ChevronRight, Plus, Search } from "lucide-vue-next";
+import { ChevronRight, Plus, Search, Settings } from "lucide-vue-next";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
 import { groupSessionsByWorkspace, toUISession } from "@/utils/ui-session";
@@ -137,6 +143,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [id: string];
   delete: [id: string];
+  settings: [];
 }>();
 
 const sessionStore = useSessionStore();
@@ -146,6 +153,11 @@ const query = ref("");
 const collapsedWorkspaceIds = ref<Set<string>>(new Set());
 const agentPickerWorkspaceId = ref<string | null>(null);
 const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null);
+const contextSession = computed(() =>
+  contextMenu.value
+    ? sessionStore.sessions.find((session) => session.id === contextMenu.value?.sessionId)
+    : undefined,
+);
 
 const panelStyle = computed(() => {
   if (props.width == null) return undefined;
@@ -218,7 +230,7 @@ function closeAgentPicker() {
 
 function openContextMenu(sessionId: string, pos: { x: number; y: number }) {
   const menuWidth = 120;
-  const menuHeight = 40;
+  const menuHeight = 80;
   const x = Math.min(pos.x, window.innerWidth - menuWidth - 8);
   const y = Math.min(pos.y, window.innerHeight - menuHeight - 8);
   contextMenu.value = { sessionId, x: Math.max(8, x), y: Math.max(8, y) };
@@ -235,6 +247,35 @@ async function confirmDeleteSession() {
   if (!window.confirm("确定删除该会话？子会话也会一并删除。")) return;
   await sessionStore.deleteSession(target.sessionId);
   emit("delete", target.sessionId);
+}
+
+async function achieveSession() {
+  const target = contextMenu.value;
+  closeContextMenu();
+  if (!target) return;
+  if (!window.confirm("完成并归档该会话？系统会提交剩余修改并合并到项目默认分支。")) return;
+  try {
+    await sessionStore.completeSession(target.sessionId);
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : "归档失败");
+  }
+}
+
+async function forkFinishedSession() {
+  const target = contextMenu.value;
+  closeContextMenu();
+  if (!target) return;
+  const source = sessionStore.sessions.find((session) => session.id === target.sessionId);
+  if (!source?.leafId) return;
+  try {
+    const forked = await sessionStore.forkSession(target.sessionId, {
+      entryId: source.leafId,
+      label: `${typeof source.meta.name === "string" ? source.meta.name : "会话"} · 继续`,
+    });
+    emit("select", forked.id);
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : "Fork 失败");
+  }
 }
 
 async function onAgentPicked(agentId: string) {
@@ -275,6 +316,30 @@ async function onAgentPicked(agentId: string) {
 </script>
 
 <style scoped>
+.chat-home-settings {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 7px;
+  color: var(--app-text-secondary);
+  transition:
+    color 0.15s ease,
+    background-color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.chat-home-settings:hover,
+.chat-home-settings:focus-visible {
+  color: #07a65a;
+  background: var(--app-hover);
+  outline: none;
+}
+
+.chat-home-settings:active {
+  transform: scale(0.93);
+}
+
 .list-search-input {
   background: var(--app-list-search-bg);
   color: var(--app-text-primary);

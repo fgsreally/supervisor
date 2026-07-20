@@ -26,6 +26,8 @@ export function isSkillReadPath(path: string): boolean {
 
 export function toolCallSummary(name: string, args: Record<string, unknown> | undefined): string {
   if (!args) return name;
+  const intent = typeof args.intent === "string" ? args.intent.trim() : "";
+  if (intent) return intent.length > 52 ? `${intent.slice(0, 49)}...` : intent;
   switch (name) {
     case "read": {
       const path = String(args.path ?? "");
@@ -51,6 +53,12 @@ export function toolCallSummary(name: string, args: Record<string, unknown> | un
       const path = typeof args.path === "string" ? args.path.trim() : "";
       return path ? `访问技能资源 ${skillName}/${path}` : `激活技能 ${skillName}`;
     }
+    case "TimerCreate":
+      return `安排定时任务：${String(args.prompt ?? "").slice(0, 36)}`;
+    case "TimerList":
+      return "查看当前定时安排";
+    case "TimerDelete":
+      return "取消定时任务";
     default: {
       if (isAskToolName(name)) {
         const questions = parseAskQuestions(args);
@@ -92,6 +100,18 @@ export function toolResultSummary(
       return "子代理已启动";
     case "skill":
       return "技能资源已加载";
+    case "TimerCreate":
+      return "已安排";
+    case "TimerList": {
+      try {
+        const parsed = JSON.parse(text) as unknown[];
+        return `${parsed.length} 项`;
+      } catch {
+        return "已查看";
+      }
+    }
+    case "TimerDelete":
+      return "已取消";
     default: {
       if (isAskToolName(name)) {
         const details = parseAskResultFromToolResult({ content: content ?? [] });

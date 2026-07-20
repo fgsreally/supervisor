@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
+import { appendFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { SessionRuntime } from "../../core/session-runtime.js";
 import type { SessionManager } from "../../core/session-manager.js";
 import type { SupervisorDb } from "../../db/db.js";
-import { ensureProjectDir, ensureSessionDir } from "../../core/session-files.js";
+import { ensureProjectDir, ensureSessionDir, getSessionDir } from "../../core/session-files.js";
 import { DEFAULT_SESSION_INPUT_LEVEL } from "../../core/session-input-queue.js";
 import { execCommand } from "../../utils/exec.js";
 import type {
@@ -535,6 +537,20 @@ export function buildExtensionDeps(deps: {
       if (level === "error") console.error(prefix, message, meta ?? "");
       else if (level === "warn") console.warn(prefix, message, meta ?? "");
       else console.log(prefix, message, meta ?? "");
+      try {
+        const logDir = join(getSessionDir(projectId, sessionId), "logs");
+        mkdirSync(logDir, { recursive: true });
+        const suffix = meta && Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : "";
+        appendFileSync(
+          join(logDir, "extensions.log"),
+          `${new Date().toISOString()} ${level.toUpperCase()} ${message}${suffix}\n`,
+          "utf8",
+        );
+      } catch (error) {
+        console.error(prefix, "Failed to persist extension log", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     },
 
     // ── Broadcast ────────────────────────────────────────────────

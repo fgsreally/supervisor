@@ -23,6 +23,8 @@
           :search-hit="isSearchHit(group)"
           :delivery-state="group.deliveryState"
           :slash-source="group.slashSource"
+          :rewindable="rewindableEntryIds.includes(group.id)"
+          @rewind="emit('rewind', group.id)"
         />
         <div v-else-if="group.type === 'slash'" class="slash-row">
           <Terminal class="w-4 h-4 shrink-0" />
@@ -45,6 +47,7 @@
           :time-label="messageTimeLabel(group)"
           :search-hit="isSearchHit(group)"
           :avatar-label="assistantAvatarLabel"
+          :avatar-color="assistantAvatarColor"
           @open-tool="(name, args, result) => emit('open-tool', name, args, result)"
           @open-bash="(cmd, result, intent) => emit('open-bash', cmd, result, intent)"
           @navigate="emit('navigate', $event)"
@@ -52,6 +55,7 @@
         />
         <MessageAssets
           v-if="group.type === 'grouped_assistant' && group.assets.length"
+          class="assistant-assets"
           :session-id="sessionId"
           :assets="group.assets"
         />
@@ -72,7 +76,12 @@
 
     <div v-if="showStreamingPlaceholder" class="py-2 md:py-3 px-3 md:px-5 chat-row">
       <div class="flex justify-start items-start gap-2">
-        <div class="chat-avatar chat-avatar--agent shrink-0">{{ assistantAvatarLabel }}</div>
+        <div
+          class="chat-avatar chat-avatar--agent shrink-0"
+          :style="{ backgroundColor: assistantAvatarColor }"
+        >
+          {{ assistantAvatarLabel }}
+        </div>
         <div class="max-w-[75%] flex flex-col items-start min-w-0">
           <span class="chat-msg-time chat-msg-time--agent">{{ streamingTimeLabel }}</span>
           <div
@@ -119,6 +128,8 @@ const props = defineProps<{
   searchOpen: boolean;
   searchQuery: string;
   assistantAvatarLabel?: string;
+  assistantAvatarColor?: string;
+  rewindableEntryIds: string[];
 }>();
 
 const emit = defineEmits<{
@@ -131,6 +142,7 @@ const emit = defineEmits<{
   navigate: [sessionId: string];
   "open-compaction": [entry: ChatCompactionEntry];
   answered: [];
+  rewind: [entryId: string];
 }>();
 
 const containerRef = ref<HTMLElement | null>(null);
@@ -282,6 +294,10 @@ defineExpose({ scrollToBottom, containerRef });
 
 .chat-row-inherited {
   background: var(--app-chat-message-inherited);
+}
+
+.assistant-assets {
+  margin-left: 44px;
 }
 
 .chat-msg-time {

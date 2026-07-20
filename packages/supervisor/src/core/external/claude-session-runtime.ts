@@ -255,6 +255,14 @@ export class ClaudeSessionRuntime extends ExternalSessionRuntime {
     input: Record<string, unknown>,
     context: Parameters<CanUseTool>[2],
   ): Promise<PermissionResult> {
+    if (
+      this.session.branchType === "btw" &&
+      /^(Write|Edit|MultiEdit|NotebookEdit|Bash|Task|KillShell|EnterWorktree|ExitWorktree)$/i.test(
+        toolName,
+      )
+    ) {
+      return { behavior: "deny", message: "BTW sessions are read-only." };
+    }
     const isQuestion = toolName === "AskUserQuestion" && Array.isArray(input.questions);
     const response = await this.requestExternalInteraction({
       backend: "claude",

@@ -20,6 +20,7 @@
               :active-id="activeSessionId ?? ''"
               @select="selectSession"
               @delete="onSessionDelete"
+              @settings="onTabChange('settings')"
             />
             <ContactsPanel
               v-else-if="mainTab === 'contacts'"
@@ -119,13 +120,18 @@
 
     <template v-else>
       <div class="flex-1 flex flex-col min-w-0">
-        <SettingsPanel v-if="mainTab === 'settings'" />
+        <SettingsPanel
+          v-if="mainTab === 'settings'"
+          :show-back="true"
+          @back="onTabChange('chat')"
+        />
         <template v-else-if="mobilePage === 'list'">
           <ChatListPanel
             v-if="mainTab === 'chat'"
             :active-id="activeSessionId ?? ''"
             @select="selectSession"
             @delete="onSessionDelete"
+            @settings="openMobileSettings"
           />
           <ContactsPanel
             v-else-if="mainTab === 'contacts'"
@@ -218,6 +224,7 @@
         </template>
       </div>
       <nav
+        v-if="mobilePage === 'list'"
         class="md:hidden fixed bottom-0 inset-x-0 h-14 border-t z-30 flex mobile-bottom-nav"
         style="background: var(--app-nav-bg); border-color: var(--app-border)"
       >
@@ -229,15 +236,6 @@
         >
           <MessageSquare class="w-5 h-5 mb-0.5" />
           聊天
-        </button>
-        <button
-          type="button"
-          class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-          :class="mainTab === 'search' ? 'mobile-bottom-nav__btn--active' : ''"
-          @click="onTabChange('search')"
-        >
-          <Search class="w-5 h-5 mb-0.5" />
-          搜索
         </button>
         <button
           type="button"
@@ -266,20 +264,12 @@
           <FolderOpen class="w-5 h-5 mb-0.5" />
           资源
         </button>
-        <button
-          type="button"
-          class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-          :class="mainTab === 'settings' ? 'mobile-bottom-nav__btn--active' : ''"
-          @click="onTabChange('settings')"
-        >
-          <Settings class="w-5 h-5 mb-0.5" />
-          设置
-        </button>
       </nav>
-      <div class="md:hidden h-14 shrink-0"></div>
+      <div v-if="mobilePage === 'list'" class="md:hidden h-14 shrink-0"></div>
     </template>
 
     <GlobalSearchModal :open="searchOpen" @close="searchOpen = false" @navigate="selectSession" />
+    <UiMessageHost />
     <ProviderEditDialog
       :open="providerEditOpen"
       :provider-id="providerEditId ?? ''"
@@ -292,7 +282,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Cloud, FolderOpen, MessageSquare, Search, Users, Settings } from "lucide-vue-next";
+import { Cloud, FolderOpen, MessageSquare, Users } from "lucide-vue-next";
 import ShellNav, { type MainTab } from "./components/ShellNav.vue";
 import SearchView from "./views/SearchView.vue";
 import ChatListPanel from "./components/ChatListPanel.vue";
@@ -313,6 +303,7 @@ import ProviderModelFormView from "./views/ProviderModelFormView.vue";
 import ProviderEditDialog from "./components/ProviderEditDialog.vue";
 import ChatView from "./views/ChatView.vue";
 import GlobalSearchModal from "./components/GlobalSearchModal.vue";
+import UiMessageHost from "./components/UiMessageHost.vue";
 import { useSessionStore, useAgentStore, useProviderStore, useResourceStore } from "./store";
 import { providerToUI } from "./utils/provider-ui";
 import { getDefaultWorkspaceCwd } from "./config/workspace";
@@ -681,6 +672,11 @@ function onTabChange(tab: MainTab) {
     if (first) activeProviderId.value = first.id;
   }
   pushRoute();
+}
+
+function openMobileSettings() {
+  onTabChange("settings");
+  mobilePage.value = "detail";
 }
 
 function viewAgent(agentId: string) {

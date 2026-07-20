@@ -1,6 +1,6 @@
 <template>
   <div
-    class="h-14 md:h-[60px] border-b flex items-center px-3 md:px-6 shrink-0 z-10"
+    class="h-16 md:h-[68px] border-b flex items-center px-3 md:px-6 shrink-0 z-10"
     style="background: var(--app-chat-header-bg); border-color: var(--app-border)"
   >
     <button
@@ -11,29 +11,27 @@
     >
       <ChevronLeft class="w-5 h-5" />
     </button>
-    <input
-      :value="title"
-      type="text"
-      class="font-medium text-[18px] bg-transparent border-b border-transparent focus:border-[#07c160] focus:outline-none min-w-0 max-w-[40%] truncate"
+    <h1
+      class="chat-header-title font-medium text-[18px] min-w-0 max-w-[40%] truncate"
       style="color: var(--app-text-primary)"
-      :readonly="titleReadonly"
-      @input="onTitleInput"
-      @change="emit('save-title')"
-    />
-    <WorkflowStageTag v-if="workflow" class="ml-2" :workflow="workflow" />
+    >
+      {{ title }}
+    </h1>
+    <WorkflowStageTag v-if="workflow" class="ml-3" :workflow="workflow" />
     <button
       v-if="agentName"
       type="button"
-      class="ml-2 text-[12px] hover:underline shrink-0"
+      class="chat-header-agent ml-3 text-[13px] hover:underline shrink-0"
       style="color: var(--app-text-link)"
       @click="agentId && emit('view-agent', agentId)"
     >
       {{ agentName }}
     </button>
-    <div class="ml-3 px-2 py-0.5 rounded text-xs font-medium" :class="statusBadgeClass">
+    <div class="chat-header-status ml-4 text-xs" :class="statusBadgeClass">
       {{ statusLabel }}
     </div>
     <div class="ml-auto flex items-center gap-1">
+      <slot name="actions" />
       <button
         v-if="searchOpen"
         type="button"
@@ -87,13 +85,7 @@ const emit = defineEmits<{
   "view-agent": [agentId: string];
   "open-menu": [];
   "close-search": [];
-  "save-title": [];
-  "update:title": [value: string];
 }>();
-
-function onTitleInput(event: Event) {
-  emit("update:title", (event.target as HTMLInputElement).value);
-}
 
 const statusLabel = computed(() => {
   switch (props.statusKey) {
@@ -119,20 +111,20 @@ const statusLabel = computed(() => {
 const statusBadgeClass = computed(() => {
   switch (props.statusKey) {
     case "starting":
-      return "bg-blue-100 text-blue-800";
+      return "status-blue";
     case "running":
-      return "bg-yellow-100 text-yellow-800 animate-pulse";
+      return "status-yellow animate-pulse";
     case "waiting_user":
-      return "bg-orange-100 text-orange-800";
+      return "status-orange";
     case "idle":
     case "finish":
-      return "bg-green-100 text-green-800";
+      return "status-green";
     case "error":
-      return "bg-red-100 text-red-800";
+      return "status-red";
     case "stopped":
-      return "bg-gray-200 text-gray-800";
+      return "status-gray";
     default:
-      return "bg-gray-200 text-gray-800";
+      return "status-gray";
   }
 });
 </script>
@@ -142,8 +134,57 @@ const statusBadgeClass = computed(() => {
   color: var(--app-nav-icon);
 }
 
+.chat-header-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--app-text-secondary);
+}
+
+.chat-header-status::before {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #8a8a8a;
+  content: "";
+}
+
+.status-green::before {
+  background: #07c160;
+}
+.status-blue::before {
+  background: #10aeff;
+}
+.status-yellow::before {
+  background: #ffc300;
+}
+.status-orange::before {
+  background: #fa9d3b;
+}
+.status-red::before {
+  background: #fa5151;
+}
+
 .chat-header-btn:hover {
   background: var(--app-hover);
   color: var(--app-text-primary);
+}
+
+@media (max-width: 767px) {
+  .chat-header-title {
+    max-width: none;
+    flex: 1;
+    font-size: 17px;
+  }
+
+  .chat-header-agent {
+    display: none;
+  }
+
+  .chat-header-status {
+    margin-left: 6px;
+    padding-inline: 6px;
+    font-size: 10px;
+  }
 }
 </style>

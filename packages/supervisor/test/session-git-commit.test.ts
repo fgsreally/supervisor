@@ -1,11 +1,17 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentHarnessEvent } from "@earendil-works/pi-agent-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { SupervisorDb } from "../src/db/db.js";
-import { getGitStatusPorcelain, parseSessionGitMeta } from "../src/utils/git.js";
+import {
+  commitGitSnapshot,
+  createGitSnapshot,
+  getGitHead,
+  getGitStatusPorcelain,
+  parseSessionGitMeta,
+} from "../src/utils/git.js";
 import { handleSessionLifecycleAgentEnd } from "../src/core/session-lifecycle.js";
 import { commitSessionChanges } from "../src/core/session-lifecycle.js";
 import type { SessionRuntime } from "../src/core/session-runtime.js";
@@ -47,6 +53,29 @@ afterEach(() => {
 });
 
 describe("supervisor: explicit commit", () => {
+  it("commits exactly a captured snapshot and preserves newer worktree changes", async () => {
+    writeFileSync(join(repoDir, "feature.txt"), "round one\n");
+    const head = await getGitHead(repoDir);
+    const snapshot = await createGitSnapshot(repoDir);
+    expect(head).toBeTruthy();
+    expect(snapshot).toBeTruthy();
+
+    writeFileSync(join(repoDir, "feature.txt"), "round two\n");
+    writeFileSync(join(repoDir, "second.txt"), "newer work\n");
+    await commitGitSnapshot(repoDir, snapshot!, head!, "feat: save round one");
+
+    const committed = execFileSync("git", ["show", "HEAD:feature.txt"], {
+      cwd: repoDir,
+      encoding: "utf8",
+    });
+    expect(committed).toBe("round one\n");
+    expect(readFileSync(join(repoDir, "feature.txt"), "utf8")).toBe("round two\n");
+    expect(readFileSync(join(repoDir, "second.txt"), "utf8")).toBe("newer work\n");
+    const status = await getGitStatusPorcelain(repoDir);
+    expect(status).toContain("feature.txt");
+    expect(status).toContain("second.txt");
+  });
+
   it("commitSessionChanges updates meta.git.lastCommit", async () => {
     const session = db.insert({
       project_id: null,

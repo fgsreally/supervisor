@@ -41,6 +41,12 @@ import { assertAgentUserSpawnable } from "../agent/index.js";
 import { cancelPendingApprovals, submitApprovalResolution } from "../extension/runtime/index.js";
 import type { ApprovalResult } from "../extension/index.js";
 import {
+  applyWorkflowPatch,
+  parseWorkflowState,
+  type SessionWorkflowState,
+  type WorkflowStatePatch,
+} from "./session-workflow.js";
+import {
   type AskAnswer,
   cancelPendingAsks,
   hasPendingAsks,
@@ -1143,11 +1149,69 @@ export class SessionManager {
   }
 
   updateMeta(id: number, patch: Record<string, unknown>): Record<string, unknown> {
-    return this.db.updateMeta(id, patch);
+    const before = this.getWorkflow(id);
+    const meta = this.db.updateMeta(id, patch);
+    void this.emitWorkflowChanges(id, before, parseWorkflowState(meta.workflow));
+    return meta;
   }
 
   setMeta(id: number, meta: Record<string, unknown>): void {
+    const before = this.getWorkflow(id);
     this.db.setMeta(id, meta);
+    void this.emitWorkflowChanges(id, before, parseWorkflowState(meta.workflow));
+  }
+
+  getWorkflow(id: number): SessionWorkflowState | null {
+    const session = this.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    return parseWorkflowState(session.meta.workflow);
+  }
+
+  async setWorkflow(id: number, patch: WorkflowStatePatch): Promise<SessionWorkflowState> {
+    const before = this.getWorkflow(id);
+    const workflow = applyWorkflowPatch(before, patch);
+    this.db.updateMeta(id, { workflow });
+    await this.emitWorkflowChanges(id, before, workflow);
+    return workflow;
+  }
+
+  async clearWorkflow(id: number): Promise<void> {
+    const session = this.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    const before = parseWorkflowState(session.meta.workflow);
+    if (!before && !Object.hasOwn(session.meta, "workflow")) return;
+    const meta = { ...session.meta };
+    delete meta.workflow;
+    this.db.setMeta(id, meta);
+    await this.emitWorkflowChanges(id, before, null);
+  }
+
+  private async emitWorkflowChanges(
+    id: number,
+    before: SessionWorkflowState | null,
+    after: SessionWorkflowState | null,
+  ): Promise<void> {
+    const extension = this.runtimes.get(id)?.extension;
+    if (!extension) return;
+    if (before?.stage !== after?.stage) {
+      await extension.emit({
+        type: "workflow.stage_changed",
+        sessionId: id,
+        from: before?.stage ?? null,
+        to: after?.stage ?? null,
+        workflow: after,
+      });
+    }
+    if (after && before?.status !== after.status) {
+      await extension.emit({
+        type: "workflow.status_changed",
+        sessionId: id,
+        stage: after.stage,
+        from: before?.status ?? null,
+        to: after.status,
+        workflow: after,
+      });
+    }
   }
 
   updateMessageMeta(

@@ -39,6 +39,7 @@ export { defineExtension, Type, type Static, type TSchema } from "./extension/in
 export { loadExtension, loadExtensions } from "./extension/index.js";
 export type {
   ExtensionContext,
+  ExtensionEvent,
   SpawnSessionRequest,
   SpawnSessionResult,
   SupervisorProjectFacade,

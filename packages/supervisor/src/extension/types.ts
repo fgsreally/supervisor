@@ -5,6 +5,7 @@
  */
 
 import type { Static, TSchema } from "typebox";
+import type { SessionWorkflowState, WorkflowStatePatch } from "../core/session-workflow.js";
 
 // ============================================================================
 // Extension Entry
@@ -121,6 +122,11 @@ export interface ExtensionSession {
     set(meta: Record<string, unknown>): Promise<void>;
     patch(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
   };
+  readonly workflow: {
+    get(): Promise<SessionWorkflowState | null>;
+    set(patch: WorkflowStatePatch): Promise<SessionWorkflowState>;
+    clear(): Promise<void>;
+  };
   readonly tools: {
     beforeUse(handler: ToolGuardHandler, options?: { priority?: number }): () => void;
     afterUse(handler: ToolResultHandler, options?: { priority?: number }): () => void;
@@ -146,6 +152,7 @@ export interface ExtensionSession {
     triggerTurn?: boolean;
   }): Promise<void>;
   sendUserMessage(content: string, options?: { source?: string }): Promise<void>;
+  sendToChild(sessionId: number, content: string, options?: { source?: string }): Promise<void>;
   pausing<T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T>;
   spawn(request: SpawnSessionRequest): Promise<SpawnSessionResult>;
   waitForResult(
@@ -177,6 +184,8 @@ export interface ExtensionAgent {
     definition: ToolDefinition<TParams, TResult>,
   ): void;
   unregisterTool(name: string): void;
+  registerCommand(name: string, definition: ExtensionCommandDefinition): void;
+  unregisterCommand(name: string): void;
   listTools(): ToolInfo[];
   getTool(name: string): ToolInfo | undefined;
   findByTag(tag: string): Promise<MemberAgentInfo[]>;
@@ -184,6 +193,18 @@ export interface ExtensionAgent {
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: "none" | "low" | "medium" | "high"): void;
   getThinkingLevel(): "none" | "low" | "medium" | "high";
+}
+
+export interface ExtensionCommandDefinition {
+  description?: string;
+  handler(args: string): void | Promise<void>;
+}
+
+export interface ExtensionCommandInfo {
+  name: string;
+  description?: string;
+  extensionName: string;
+  definition: ExtensionCommandDefinition;
 }
 
 export interface ExtensionRawDatabase {
@@ -452,6 +473,21 @@ export type ExtensionEvent =
       reason: "shutdown" | "switch" | "error";
       sessionId: number;
       nextSessionId?: string;
+    }
+  | {
+      type: "workflow.stage_changed";
+      sessionId: number;
+      from: string | null;
+      to: string | null;
+      workflow: SessionWorkflowState | null;
+    }
+  | {
+      type: "workflow.status_changed";
+      sessionId: number;
+      stage: string;
+      from: SessionWorkflowState["status"] | null;
+      to: SessionWorkflowState["status"];
+      workflow: SessionWorkflowState;
     }
 
   // ==================== 消息流 ====================

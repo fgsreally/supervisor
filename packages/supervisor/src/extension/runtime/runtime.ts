@@ -16,6 +16,8 @@ import {
   taskManagementExtension,
   type EventHandlerContext,
   type ExtensionDefinition,
+  type ExtensionCommandDefinition,
+  type ExtensionCommandInfo,
   type ExtensionEvent,
   type ToolDefinition,
   type ToolExecutionContext,
@@ -34,6 +36,7 @@ interface LoadedExtension {
 interface ExtensionRegistry {
   extensions: LoadedExtension[];
   tools: Map<string, ToolInfo>;
+  commands: Map<string, ExtensionCommandInfo>;
   getTool(name: string): ToolDefinition<TSchema, unknown> | undefined;
   getAllTools(): ToolInfo[];
 }
@@ -56,6 +59,7 @@ export class SessionExtensionRuntime {
     this.registry = {
       extensions: this.extensions,
       tools: new Map(),
+      commands: new Map(),
       getTool: (name: string) => this.registry.tools.get(name)?.definition,
       getAllTools: () => Array.from(this.registry.tools.values()),
     };
@@ -65,6 +69,9 @@ export class SessionExtensionRuntime {
       on: (extensionId, event, handler) => this.on(extensionId, event, handler),
       registerTool: (extensionId, definition) => this.registerTool(extensionId, definition),
       unregisterTool: (extensionId, name) => this.unregisterTool(extensionId, name),
+      registerCommand: (extensionId, name, definition) =>
+        this.registerCommand(extensionId, name, definition),
+      unregisterCommand: (extensionId, name) => this.unregisterCommand(extensionId, name),
     });
   }
 
@@ -181,6 +188,7 @@ export class SessionExtensionRuntime {
     this.extensions.length = 0;
     this.handlers.clear();
     this.registry.tools.clear();
+    this.registry.commands.clear();
   }
 
   async unloadExtension(extensionId: string): Promise<boolean> {
@@ -234,9 +242,42 @@ export class SessionExtensionRuntime {
     if (tool?.extensionName === extensionId) this.registry.tools.delete(name);
   }
 
+  private registerCommand(
+    extensionId: string,
+    name: string,
+    definition: ExtensionCommandDefinition,
+  ): void {
+    const normalized = name.trim().replace(/^\//, "").toLowerCase();
+    if (!normalized || /\s/.test(normalized)) throw new Error(`Invalid slash command: ${name}`);
+    this.registry.commands.set(normalized, {
+      name: normalized,
+      description: definition.description,
+      extensionName: extensionId,
+      definition,
+    });
+  }
+
+  private unregisterCommand(extensionId: string, name: string): void {
+    const command = this.registry.commands.get(name.replace(/^\//, "").toLowerCase());
+    if (command?.extensionName === extensionId) this.registry.commands.delete(command.name);
+  }
+
+  getAllCommands(): ExtensionCommandInfo[] {
+    return [...this.registry.commands.values()];
+  }
+
+  async executeCommand(name: string, args: string): Promise<void> {
+    const command = this.registry.commands.get(name.replace(/^\//, "").toLowerCase());
+    if (!command) throw new Error(`Slash command /${name} not found`);
+    await command.definition.handler(args);
+  }
+
   private removeExtensionResources(extensionId: string): void {
     for (const [name, tool] of this.registry.tools) {
       if (tool.extensionName === extensionId) this.registry.tools.delete(name);
+    }
+    for (const [name, command] of this.registry.commands) {
+      if (command.extensionName === extensionId) this.registry.commands.delete(name);
     }
     for (const handlers of this.handlers.values()) {
       for (const handler of handlers) {

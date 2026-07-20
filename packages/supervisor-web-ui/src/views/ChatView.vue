@@ -6,6 +6,7 @@
       :agent-name="agentName"
       :agent-id="agentId"
       :status-key="headerStatusKey"
+      :workflow="workflow"
       :show-back="showBack"
       :search-open="searchOpen"
       @back="emit('back')"
@@ -164,6 +165,7 @@ import type { ChatSendPayload } from "@/types/chat-compose";
 import { getShowThinking, setShowThinking } from "../composables/use-chat-session-prefs";
 import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-push-notifications";
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
+import { parseWorkflowState } from "../utils/workflow";
 
 const props = defineProps<{
   session: {
@@ -175,6 +177,7 @@ const props = defineProps<{
       builtin?: boolean;
       shadowSuggestedQuestions?: string[];
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
+      workflow?: { stage: string; status: string };
     };
     workspaceId?: string;
     pinned?: boolean;
@@ -190,6 +193,8 @@ const emit = defineEmits<{
   back: [];
   "view-agent": [agentId: string];
 }>();
+
+const workflow = computed(() => parseWorkflowState(props.session.meta));
 
 const sessionStore = useSessionStore();
 const agentStore = useAgentStore();
@@ -732,7 +737,7 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
   );
 }
 
-const sendMessage = (payload: ChatSendPayload) => {
+const sendMessage = async (payload: ChatSendPayload) => {
   const text = payload.text.trim();
   if ((!text && !payload.images.length) || inputDisabled.value) return;
   suggestedQuestions.value = [];
@@ -741,6 +746,26 @@ const sendMessage = (payload: ChatSendPayload) => {
     inputText.value = "";
     inputPanelRef.value?.clearAfterSend();
     return;
+  }
+
+  const slash = !payload.images.length ? /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text) : null;
+  if (slash) {
+    const commands = await api.getSessionCommands(props.session.id).catch(() => []);
+    const command = commands.find(
+      (item) => item.source === "extension" && item.name === slash[1]!.toLowerCase(),
+    );
+    if (command) {
+      inputText.value = "";
+      inputPanelRef.value?.clearAfterSend();
+      try {
+        await api.executeSessionCommand(props.session.id, command.name, slash[2]);
+        await reloadMessagesFromServer(props.session.id);
+        await sessionStore.fetchSessions();
+      } catch (error) {
+        console.error("Slash command failed:", error);
+      }
+      return;
+    }
   }
 
   const userEntry = createUserChatEntry(

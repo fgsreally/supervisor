@@ -141,6 +141,35 @@ describe("supervisor: HTTP server", () => {
     expect(session.meta).toEqual({ fresh: true });
   });
 
+  it("persists workflow through its dedicated API", async () => {
+    const { id } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
+      id: string;
+    };
+
+    const created = await req("PATCH", `/sessions/${id}/workflow`, {
+      stage: "brainstorm",
+      status: "working",
+    });
+    expect(created.status).toBe(200);
+    expect(await created.json()).toEqual({
+      workflow: { stage: "brainstorm", status: "working" },
+    });
+
+    await req("PATCH", `/sessions/${id}/workflow`, { status: "waiting_choice" });
+    expect(await (await req("GET", `/sessions/${id}/workflow`)).json()).toEqual({
+      workflow: { stage: "brainstorm", status: "waiting_choice" },
+    });
+
+    expect(
+      (await req("PATCH", `/sessions/${id}/meta`, { workflow: { stage: "design" } })).status,
+    ).toBe(403);
+
+    await req("DELETE", `/sessions/${id}/workflow`);
+    expect(await (await req("GET", `/sessions/${id}/workflow`)).json()).toEqual({
+      workflow: null,
+    });
+  });
+
   it("keeps Agent-managed task metadata read-only over HTTP", async () => {
     const create = await req("POST", "/sessions", {
       cwd: "/tmp",

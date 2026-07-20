@@ -49,10 +49,13 @@
       </div>
 
       <div class="flex-1 min-w-0">
-        <div class="flex items-baseline justify-between gap-2">
-          <span class="text-[13px] font-medium truncate session-name">
-            {{ session.meta.name }}
-          </span>
+        <div class="flex items-center justify-between gap-2">
+          <div class="flex items-center gap-1.5 min-w-0">
+            <span class="text-[13px] font-medium truncate session-name">
+              {{ session.meta.name }}
+            </span>
+            <WorkflowStageTag v-if="workflow" :workflow="workflow" compact />
+          </div>
           <span class="text-[10px] shrink-0 session-time">{{
             formatListTime(session.lastActiveAt)
           }}</span>
@@ -76,6 +79,8 @@ import { computed, onBeforeUnmount } from "vue";
 import type { UISession } from "@/types/ui";
 import { branchDotColor } from "../utils/session-branch";
 import { formatListTime } from "../utils/format-time";
+import { parseWorkflowState } from "../utils/workflow";
+import WorkflowStageTag from "./WorkflowStageTag.vue";
 
 const props = defineProps<{
   session: UISession;
@@ -141,6 +146,7 @@ const AVATAR_PX = 40;
 const ROW_PAD_Y_PX = 12;
 
 const initial = computed(() => props.session.meta.name.substring(0, 1).toUpperCase());
+const workflow = computed(() => parseWorkflowState(props.session.meta));
 
 const depth = computed(() => props.depth ?? 0);
 const isChild = computed(() => depth.value > 0);

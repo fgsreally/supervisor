@@ -265,6 +265,14 @@ export class SessionExtensionHost {
     return this.runtime.getAllTools();
   }
 
+  getAllCommands() {
+    return this.runtime.getAllCommands();
+  }
+
+  executeCommand(name: string, args: string): Promise<void> {
+    return this.runtime.executeCommand(name, args);
+  }
+
   /** 将一个 Supervisor 内置工具注册到当前 Agent 的扩展工具表。 */
   registerPackagedTool(packageId: string, tool: AgentTool, pausing?: { message: string }): void {
     this.runtime.registerPackagedTool(packageId, tool, pausing);

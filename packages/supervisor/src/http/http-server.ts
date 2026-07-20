@@ -1207,6 +1207,29 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
+  app.post("/sessions/:id/commands", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.command !== "string" || !body.command.trim()) {
+      return jsonError(c, 400, "invalid body, requires { command: string, argument?: string }");
+    }
+    try {
+      const sessionId = parseIntegerId(c.req.param("id"));
+      if (sessionId === null) return jsonError(c, 400, "invalid session id");
+      const runtime = manager.getRuntime(sessionId);
+      if (!runtime.executeSlashCommand) return jsonError(c, 409, "slash commands are not executable");
+      const command = body.command.trim().replace(/^\//, "").toLowerCase();
+      const available = runtime.getSlashCommands().some((item) => item.name === command);
+      if (!available) return jsonError(c, 404, `slash command /${command} not found`);
+      await runtime.executeSlashCommand(
+        command,
+        typeof body.argument === "string" ? body.argument.trim() : "",
+      );
+      return c.json({ ok: true });
+    } catch (e: unknown) {
+      return jsonError(c, 409, e instanceof Error ? e.message : String(e));
+    }
+  });
+
   app.get("/sessions/:id/external/codex/models", async (c) => {
     try {
       const sessionId = parseIntegerId(c.req.param("id"));
@@ -1338,6 +1361,9 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (hasAgentManagedTaskMeta(body)) {
       return jsonError(c, 403, "tasks, currentTask, and todos are managed by the Agent");
     }
+    if (Object.hasOwn(body, "workflow")) {
+      return jsonError(c, 403, "workflow is managed by the workflow API");
+    }
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
@@ -1355,6 +1381,9 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (hasAgentManagedTaskMeta(body)) {
       return jsonError(c, 403, "tasks, currentTask, and todos are managed by the Agent");
     }
+    if (Object.hasOwn(body, "workflow")) {
+      return jsonError(c, 403, "workflow is managed by the workflow API");
+    }
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(id);
@@ -1363,8 +1392,46 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (Object.hasOwn(session.meta, "tasks")) nextMeta.tasks = session.meta.tasks;
     if (Object.hasOwn(session.meta, "currentTask")) nextMeta.currentTask = session.meta.currentTask;
     if (Object.hasOwn(session.meta, "todos")) nextMeta.todos = session.meta.todos;
+    if (Object.hasOwn(session.meta, "workflow")) nextMeta.workflow = session.meta.workflow;
     manager.setMeta(id, nextMeta);
     return c.json({ ok: true });
+  });
+
+  app.get("/sessions/:id/workflow", (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      return c.json({ workflow: manager.getWorkflow(id) });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 404, message);
+    }
+  });
+
+  app.patch("/sessions/:id/workflow", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      const workflow = await manager.setWorkflow(id, body);
+      return c.json({ workflow });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 400, message);
+    }
+  });
+
+  app.delete("/sessions/:id/workflow", async (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      await manager.clearWorkflow(id);
+      return c.json({ ok: true });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 404, message);
+    }
   });
 
   // PATCH /sessions/:id/messages/:messageId/meta — merge message meta

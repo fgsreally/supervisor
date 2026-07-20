@@ -112,45 +112,46 @@ async function loadAutocompleteData() {
     workspaceFiles.value = [];
   }
 
-  if (props.agentId && isExternalAgent.value) {
-    skills.value = [];
-    await refreshExternalCommands(true);
-  } else if (props.agentId) {
+  if (props.agentId && !isExternalAgent.value) {
     try {
       await agentStore.fetchAgentResources(props.agentId, cwd || undefined);
       const res = agentStore.agentResources[props.agentId];
       skills.value = skillsFromAgentResources(props.agentId, res);
       prompts.value = promptsFromAgentResources(props.agentId, res);
+      if (props.sessionId) await refreshSessionCommands(true);
     } catch {
       skills.value = [];
       prompts.value = [];
     }
   } else {
     skills.value = [];
+    if (props.sessionId) await refreshSessionCommands(true);
   }
 }
 
-async function refreshExternalCommands(force = false) {
-  if (!isExternalAgent.value || !props.sessionId) return;
+async function refreshSessionCommands(force = false) {
+  if (!props.sessionId) return;
   const sessionId = props.sessionId;
   if (!force && Date.now() - lastCommandRefresh < 1000) return;
   if (commandRefreshInFlight) return commandRefreshInFlight;
   commandRefreshInFlight = (async () => {
     try {
       const commands = await api.getSessionCommands(sessionId);
-      skills.value = commands
+      const commandSkills = commands
         .filter((command) => command.source === "skill")
         .map((command) => ({ name: command.name, description: command.description }));
-      prompts.value = commands
+      const commandPrompts = commands
         .filter((command) => command.source !== "skill")
         .map((command) => ({
           name: command.name.replace(/^\//, ""),
           description: command.description,
         }));
+      skills.value = [...skills.value.filter((item) => !commandSkills.some((c) => c.name === item.name)), ...commandSkills];
+      prompts.value = [...prompts.value.filter((item) => !commandPrompts.some((c) => c.name === item.name)), ...commandPrompts];
       lastCommandRefresh = Date.now();
       if (commands.length === 0 && /(^|\s)\/[^\s]*$/.test(props.modelValue)) {
         if (commandRetryTimer) clearTimeout(commandRetryTimer);
-        commandRetryTimer = setTimeout(() => void refreshExternalCommands(true), 750);
+        commandRetryTimer = setTimeout(() => void refreshSessionCommands(true), 750);
       }
     } catch {
       prompts.value = [];
@@ -177,7 +178,7 @@ watch(
   () => props.modelValue,
   (value) => {
     if (isExternalAgent.value && /(^|\s)\/[^\s]*$/.test(value)) {
-      void refreshExternalCommands();
+      void refreshSessionCommands();
     }
   },
 );

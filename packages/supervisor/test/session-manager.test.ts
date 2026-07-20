@@ -222,6 +222,35 @@ describe("supervisor: SessionManager", () => {
     expect(manager.get(inst.id)!.meta).toEqual({ new: true });
   });
 
+  it("persists workflow state and automatically emits stage changes", async () => {
+    const inst = await manager.spawn(SPAWN_OPTS);
+    const events: Array<{ from: string | null; to: string | null }> = [];
+    manager.getRuntime(inst.id).extension!.on("workflow.stage_changed", (event) => {
+      events.push({ from: event.from, to: event.to });
+    });
+
+    await manager.setWorkflow(inst.id, { stage: "brainstorm", status: "working" });
+    await manager.setWorkflow(inst.id, { status: "waiting_confirmation" });
+    await manager.setWorkflow(inst.id, { stage: "design", status: "working" });
+
+    expect(manager.getWorkflow(inst.id)).toEqual({ stage: "design", status: "working" });
+    expect(manager.get(inst.id)!.meta.workflow).toEqual({ stage: "design", status: "working" });
+    expect(events).toEqual([
+      { from: null, to: "brainstorm" },
+      { from: "brainstorm", to: "design" },
+    ]);
+  });
+
+  it("rejects incomplete and invalid workflow state", async () => {
+    const inst = manager.create();
+    await expect(manager.setWorkflow(inst.id, { status: "working" })).rejects.toThrow(
+      "workflow stage is required",
+    );
+    await expect(
+      manager.setWorkflow(inst.id, { stage: "brainstorm", status: "unknown" as never }),
+    ).rejects.toThrow("invalid workflow status");
+  });
+
   it("records file changes in meta.turns on agent_end", async () => {
     const inst = await manager.spawn(SPAWN_OPTS);
     const tracker = MockAgentHarness.instances[0]!;

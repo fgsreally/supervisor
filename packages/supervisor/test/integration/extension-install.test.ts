@@ -5,7 +5,7 @@
  * It verifies global catalog installation, discovery, update, and removal.
  */
 
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -44,10 +44,10 @@ describe("extension installation and discovery", () => {
         version: "1.2.3",
         description: "A sample extension for testing",
         main: "./index.ts",
-        dependencies: { lodash: "^4.17.21" },
       }),
       "utf8",
     );
+    mkdirSync(join(srcRoot, "node_modules"));
     writeFileSync(
       join(srcRoot, "index.ts"),
       `import { defineExtension } from "@earendil-works/pi-supervisor";\nexport default defineExtension({ name: "test-ext", setup() {} });\n`,
@@ -95,6 +95,7 @@ describe("extension installation and discovery", () => {
       `import { defineExtension } from "@earendil-works/pi-supervisor";\nexport default defineExtension({ name: "no-repo", setup() {} });\n`,
       "utf8",
     );
+    mkdirSync(join(srcRoot, "node_modules"));
 
     const result = installExtensionToGlobal(srcRoot);
     expect(() => updateGlobalExtension(result.id)).toThrow(/repository field/i);

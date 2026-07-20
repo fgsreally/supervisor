@@ -23,6 +23,7 @@ import type {
   SpawnSessionRequest,
   SpawnSessionResult,
   ToolDefinition,
+  ExtensionCommandDefinition,
   ToolGuardHandler,
   ToolInfo,
   ToolResultHandler,
@@ -30,6 +31,7 @@ import type {
 import { getProjectDir, getSessionDir } from "../../core/session-files.js";
 import type { SessionManager } from "../../core/session-manager.js";
 import type { SessionRuntime } from "../../core/session-runtime.js";
+import type { SessionWorkflowState, WorkflowStatePatch } from "../../core/session-workflow.js";
 
 export interface ContextSessionMessages {
   list: ExtensionDatabase["getMessages"];
@@ -76,6 +78,11 @@ interface ContextSessionOptions {
   waitForIdle: () => Promise<void>;
   messages: ContextSessionMessages;
   meta: ContextSessionMeta;
+  workflow: {
+    get(): Promise<SessionWorkflowState | null>;
+    set(patch: WorkflowStatePatch): Promise<SessionWorkflowState>;
+    clear(): Promise<void>;
+  };
   tools: ContextSessionTools;
   getParent: () => Promise<SessionInfo | undefined>;
   children: () => Promise<SessionInfo[]>;
@@ -89,6 +96,7 @@ interface ContextSessionOptions {
     triggerTurn?: boolean;
   }) => Promise<void>;
   sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
+  sendToChild: (sessionId: number, content: string, options?: { source?: string }) => Promise<void>;
   pausing: <T>(reason: string, work: Promise<T> | (() => Promise<T>)) => Promise<T>;
   spawn: (request: SpawnSessionRequest) => Promise<SpawnSessionResult>;
   waitForResult: (
@@ -120,6 +128,8 @@ interface ContextAgentOptions {
     definition: ToolDefinition<TParams, TResult>,
   ) => void;
   unregisterTool: (name: string) => void;
+  registerCommand?: (name: string, definition: ExtensionCommandDefinition) => void;
+  unregisterCommand?: (name: string) => void;
   listTools: () => ToolInfo[];
   getTool: (name: string) => ToolInfo | undefined;
   findByTag: (tag: string) => Promise<MemberAgentInfo[]>;
@@ -152,6 +162,12 @@ interface ContextExtensionHost {
     definition: ToolDefinition<TParams, TResult>,
   ): void;
   unregisterTool(extensionId: string, name: string): void;
+  registerCommand(
+    extensionId: string,
+    name: string,
+    definition: ExtensionCommandDefinition,
+  ): void;
+  unregisterCommand(extensionId: string, name: string): void;
 }
 
 /** Session-scoped context shared by every extension activated for that session. */
@@ -276,12 +292,18 @@ export class Context {
         set: deps.setSessionMeta,
         patch: deps.patchSessionMeta,
       },
+      workflow: {
+        get: deps.getWorkflow,
+        set: deps.setWorkflow,
+        clear: deps.clearWorkflow,
+      },
       tools: sessionTools,
       getParent: extensionDb.getParentSession,
       children: extensionDb.getChildSessions,
       appendEntry: deps.appendEntry,
       sendMessage: deps.sendMessage,
       sendUserMessage: deps.sendUserMessage,
+      sendToChild: deps.sendToChild,
       pausing: deps.pausing,
       spawn: deps.spawnSession,
       waitForResult: async (targetSessionId, options) => {
@@ -305,6 +327,14 @@ export class Context {
         this.requireExtensionHost().registerTool(this.requireActiveExtension(), definition),
       unregisterTool: (name) =>
         this.requireExtensionHost().unregisterTool(this.requireActiveExtension(), name),
+      registerCommand: (name, definition) =>
+        this.requireExtensionHost().registerCommand(
+          this.requireActiveExtension(),
+          name,
+          definition,
+        ),
+      unregisterCommand: (name) =>
+        this.requireExtensionHost().unregisterCommand(this.requireActiveExtension(), name),
       listTools: () => this.listSessionTools(harnessState.tools ?? []),
       getTool: (name) =>
         this.listSessionTools(harnessState.tools ?? []).find((tool) => tool.name === name),
@@ -450,6 +480,9 @@ export class ContextSession {
   get meta(): ContextSessionMeta {
     return this.options.meta;
   }
+  get workflow(): ContextSessionOptions["workflow"] {
+    return this.options.workflow;
+  }
   get tools(): ContextSessionTools {
     return this.options.tools;
   }
@@ -483,6 +516,9 @@ export class ContextSession {
   }
   sendUserMessage(content: string, options?: { source?: string }): Promise<void> {
     return this.options.sendUserMessage(content, options);
+  }
+  sendToChild(sessionId: number, content: string, options?: { source?: string }): Promise<void> {
+    return this.options.sendToChild(sessionId, content, options);
   }
   pausing<T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T> {
     return this.options.pausing(reason, work);
@@ -543,6 +579,13 @@ export class ContextAgent {
   }
   unregisterTool(name: string): void {
     this.options.unregisterTool(name);
+  }
+  registerCommand(name: string, definition: ExtensionCommandDefinition): void {
+    if (!this.options.registerCommand) throw new Error("Slash command registration is unavailable");
+    this.options.registerCommand(name, definition);
+  }
+  unregisterCommand(name: string): void {
+    this.options.unregisterCommand?.(name);
   }
   listTools(): ToolInfo[] {
     return this.options.listTools();

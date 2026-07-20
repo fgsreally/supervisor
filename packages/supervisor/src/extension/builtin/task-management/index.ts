@@ -85,7 +85,26 @@ const taskManagementExtension: ExtensionDefinition = {
         objective: Type.Optional(Type.String({ minLength: 1 })),
         reason: Type.Optional(Type.String()),
       }),
-      async execute(params: { action: string; objective?: string; reason?: string }) {
+      execute: executeGoal,
+    });
+
+    ctx.agent.registerCommand("goal", {
+      description: "Create or inspect a persistent goal",
+      async handler(args) {
+        const trimmed = args.trim();
+        const [first = "", ...rest] = trimmed.split(/\s+/);
+        const actions = new Set(["status", "pause", "resume", "complete", "blocked", "cancel"]);
+        const action = actions.has(first) ? first : trimmed ? "create" : "status";
+        const tail = actions.has(first) ? rest.join(" ") : trimmed;
+        await executeGoal({
+          action,
+          objective: action === "create" ? tail : undefined,
+          reason: action === "pause" || action === "blocked" ? tail || undefined : undefined,
+        });
+      },
+    });
+
+    async function executeGoal(params: { action: string; objective?: string; reason?: string }) {
         const meta = await ctx.session.meta.get();
         let path = activeTaskPaths(meta).find((item) => item.includes("/goal-"));
         if (params.action === "create") {
@@ -129,8 +148,7 @@ const taskManagementExtension: ExtensionDefinition = {
         });
         if (status === "completed" || status === "cancelled") await finish(path);
         return { content: [{ type: "text", text: `Goal ${status}: ${path}` }], details: { path } };
-      },
-    });
+    }
 
     ctx.agent.registerTool({
       name: "EnterPlanMode",

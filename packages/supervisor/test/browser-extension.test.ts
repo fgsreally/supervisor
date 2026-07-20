@@ -1,5 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { activatePackagedTool } from "../src/tools/catalog.js";
+
+const originalWindowsHelper = process.env.PI_COMPUTER_USE_WINDOWS_HELPER_PATH;
+let helperDirectory: string | undefined;
+
+afterEach(() => {
+  if (originalWindowsHelper === undefined) delete process.env.PI_COMPUTER_USE_WINDOWS_HELPER_PATH;
+  else process.env.PI_COMPUTER_USE_WINDOWS_HELPER_PATH = originalWindowsHelper;
+  if (helperDirectory) rmSync(helperDirectory, { recursive: true, force: true });
+  helperDirectory = undefined;
+});
 
 describe("packaged supervisor tools", () => {
   it("activates web tools", async () => {
@@ -27,6 +40,12 @@ describe("packaged supervisor tools", () => {
   });
 
   it("adapts pi-computer-use tools", async () => {
+    if (process.platform === "win32") {
+      helperDirectory = mkdtempSync(join(tmpdir(), "supervisor-computer-use-test-"));
+      const helperPath = join(helperDirectory, "windows-bridge.exe");
+      writeFileSync(helperPath, "");
+      process.env.PI_COMPUTER_USE_WINDOWS_HELPER_PATH = helperPath;
+    }
     const activation = await activatePackagedTool("computer-use", {
       cwd: process.cwd(),
       sessionId: 1,

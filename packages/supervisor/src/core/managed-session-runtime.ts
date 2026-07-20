@@ -32,6 +32,7 @@ export interface ManagedSessionRuntime {
   getMessages(): Promise<SessionTreeEntry[]>;
   getState(): Promise<SessionState>;
   getSlashCommands(): SlashCommandInfo[];
+  executeSlashCommand?(name: string, args: string): Promise<void>;
   getLastAssistantText(): string | undefined;
   deactivateExtension(extensionId: string): Promise<boolean>;
   resolveExternalInteraction?(

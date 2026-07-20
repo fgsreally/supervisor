@@ -13,6 +13,7 @@ import type {
   EventHandlerContext,
   ExecResult,
   ExtensionDatabase,
+  ExtensionCommandDefinition,
   ExtensionEvent,
   MemberAgentInfo,
   ScheduleInjectionInput,
@@ -25,6 +26,7 @@ import type {
   ToolInfo,
   ToolResultHandler,
 } from "../src/extension/index.js";
+import { applyWorkflowPatch, parseWorkflowState } from "../src/core/session-workflow.js";
 
 export interface RuntimeOptions {
   sessionId: number;
@@ -52,6 +54,11 @@ export interface RuntimeOptions {
       triggerTurn?: boolean;
     }) => Promise<void>;
     sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
+    sendToChild?: (
+      sessionId: number,
+      content: string,
+      options?: { source?: string },
+    ) => Promise<void>;
     getSessionDir: () => Promise<string>;
     getProjectDir: () => Promise<string>;
     getMemberAgentsByTag: (tag: string) => Promise<MemberAgentInfo[]>;
@@ -125,6 +132,12 @@ interface TestExtensionHost {
     definition: ToolDefinition<TParams, TResult>,
   ): void;
   unregisterTool(extensionId: string, name: string): void;
+  registerCommand(
+    extensionId: string,
+    name: string,
+    definition: ExtensionCommandDefinition,
+  ): void;
+  unregisterCommand(extensionId: string, name: string): void;
 }
 
 /** Build a Context-shaped test fixture without restoring the removed callback constructor API. */
@@ -142,6 +155,7 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
   });
   let activeExtensionId: string | undefined;
   let host: TestExtensionHost | undefined;
+  let workflow = parseWorkflowState(options.sessionMeta?.workflow);
   const requireHost = () => {
     if (!host) throw new Error("Test context is not attached");
     return host;
@@ -182,6 +196,13 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
         set: options.deps.setSessionMeta,
         patch: options.deps.patchSessionMeta,
       },
+      workflow: {
+        get: async () => workflow,
+        set: async (patch) => (workflow = applyWorkflowPatch(workflow, patch)),
+        clear: async () => {
+          workflow = null;
+        },
+      },
       tools: {
         setPolicy: (policy: ToolPolicy) => services.tools.setPolicy(policy),
         getPolicy: () => services.tools.getPolicy(),
@@ -202,6 +223,7 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
       appendEntry: options.deps.appendEntry,
       sendMessage: options.deps.sendMessage,
       sendUserMessage: options.deps.sendUserMessage,
+      sendToChild: options.deps.sendToChild ?? (async () => {}),
       pausing: options.deps.pausing,
       spawn: options.deps.spawnSession,
       waitForResult: async (
@@ -226,6 +248,10 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
         definition: ToolDefinition<TParams, TResult>,
       ) => requireHost().registerTool(requireExtension(), definition),
       unregisterTool: (name: string) => requireHost().unregisterTool(requireExtension(), name),
+      registerCommand: (name: string, definition: ExtensionCommandDefinition) =>
+        requireHost().registerCommand(requireExtension(), name, definition),
+      unregisterCommand: (name: string) =>
+        requireHost().unregisterCommand(requireExtension(), name),
       listTools: () => options.deps.listSessionTools(),
       getTool: (name: string) => options.deps.listSessionTools().find((tool) => tool.name === name),
       findByTag: options.deps.getMemberAgentsByTag,

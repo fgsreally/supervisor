@@ -101,6 +101,26 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
 }
 
 describe("extension api", () => {
+  it("registers and executes extension slash commands", async () => {
+    const handler = vi.fn(async (_args: string) => {});
+    const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
+    await runtime.load(
+      defineExtension({
+        name: "command-test",
+        setup(ctx) {
+          ctx.agent.registerCommand("hello", { description: "Say hello", handler });
+        },
+      }),
+      "/tmp/command-test.ts",
+    );
+
+    expect(runtime.getAllCommands()).toMatchObject([
+      { name: "hello", description: "Say hello", extensionName: "command-test" },
+    ]);
+    await runtime.executeCommand("hello", "world");
+    expect(handler).toHaveBeenCalledWith("world");
+  });
+
   it("ctx.db exposes raw parameterized SQL", () => {
     const statement = {
       all: vi.fn(() => [{ id: 1 }]),

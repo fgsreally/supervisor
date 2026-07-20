@@ -38,9 +38,12 @@ function harnessSession(harness: unknown): HarnessSessionTree {
   return (harness as { session: HarnessSessionTree }).session;
 }
 
-export type SlashCommandSource = AgentResourceCommandSource;
+export type SlashCommandSource = AgentResourceCommandSource | "extension" | string;
 
-export type SlashCommandInfo = AgentResourceCommandInfo;
+export type SlashCommandInfo = Omit<AgentResourceCommandInfo, "source" | "sourceInfo"> & {
+  source?: SlashCommandSource;
+  sourceInfo?: AgentResourceCommandInfo["sourceInfo"];
+};
 
 export interface SessionState {
   id: number;
@@ -346,7 +349,20 @@ export class SessionRuntime implements ManagedSessionRuntime {
    * Mirrors coding-agent's AgentSession.getSlashCommands().
    */
   getSlashCommands(): SlashCommandInfo[] {
-    return this.resource.getSlashCommands();
+    const commands = new Map<string, SlashCommandInfo>();
+    for (const command of this.resource.getSlashCommands()) commands.set(command.name, command);
+    for (const command of this._extension?.getAllCommands() ?? []) {
+      commands.set(command.name, {
+        name: command.name,
+        description: command.description,
+        source: "extension",
+      });
+    }
+    return [...commands.values()];
+  }
+
+  async executeSlashCommand(name: string, args: string): Promise<void> {
+    await this._extension?.executeCommand(name, args);
   }
 
   getLastAssistantText(): string | undefined {

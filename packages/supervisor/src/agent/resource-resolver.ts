@@ -78,11 +78,19 @@ function createProbeContext(
         contextUsage: async () => ({ tokens: null, contextWindow: 0, percent: null }),
       },
       meta: { get: async () => ({}), set: noopAsync, patch: async () => ({}) },
+      workflow: {
+        get: async () => null,
+        set: async () => {
+          throw new Error("workflow is unavailable while probing resources");
+        },
+        clear: noopAsync,
+      },
       getParent: async () => undefined,
       children: async () => [],
       appendEntry: async () => "",
       sendMessage: noopAsync,
       sendUserMessage: noopAsync,
+      sendToChild: noopAsync,
       pausing: async <T>(_reason: string, work: Promise<T> | (() => Promise<T>)) =>
         typeof work === "function" ? work() : work,
       spawn: async () => ({ sessionId: 0, parentId: null, status: "idle", agentId: null }),

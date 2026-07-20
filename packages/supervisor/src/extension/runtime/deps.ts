@@ -21,6 +21,7 @@ import type {
   SpawnSessionResult,
   ToolInfo,
 } from "../index.js";
+import type { WorkflowStatePatch } from "../../core/session-workflow.js";
 
 /**
  * 为 Extension 创建事件总线。
@@ -134,6 +135,22 @@ export function buildExtensionDeps(deps: {
         message: content,
         level: options?.level ?? DEFAULT_SESSION_INPUT_LEVEL,
         source: options?.source,
+      });
+    },
+
+    sendToChild: async (
+      targetSessionId: number,
+      content: string,
+      options?: { source?: string },
+    ) => {
+      const child = manager.get(targetSessionId);
+      if (!child || child.parentId !== sessionId || child.branchType !== "subagent") {
+        throw new Error(`Session ${targetSessionId} is not a direct subagent of ${sessionId}`);
+      }
+      await manager.submitSessionInput(targetSessionId, {
+        message: content,
+        level: DEFAULT_SESSION_INPUT_LEVEL,
+        source: options?.source ?? `extension:parent:${sessionId}`,
       });
     },
 
@@ -314,12 +331,18 @@ export function buildExtensionDeps(deps: {
     },
 
     setSessionMeta: async (meta: Record<string, unknown>) => {
-      db.setMeta(sessionId, meta);
+      manager.setMeta(sessionId, meta);
     },
 
     patchSessionMeta: async (patch: Record<string, unknown>) => {
-      return db.updateMeta(sessionId, patch);
+      return manager.updateMeta(sessionId, patch);
     },
+
+    getWorkflow: async () => manager.getWorkflow(sessionId),
+
+    setWorkflow: async (patch: WorkflowStatePatch) => manager.setWorkflow(sessionId, patch),
+
+    clearWorkflow: async () => manager.clearWorkflow(sessionId),
 
     setMessageMeta: async (messageId: string, meta: Record<string, unknown>) => {
       db.setMessageMeta(sessionId, messageId, meta);
@@ -531,6 +554,7 @@ type RuntimeDeps = {
     triggerTurn?: boolean;
   }) => Promise<void>;
   sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
+  sendToChild: (sessionId: number, content: string, options?: { source?: string }) => Promise<void>;
   getSessionDir: () => Promise<string>;
   getProjectDir: () => Promise<string>;
   getMemberAgentsByTag: (tag: string) => Promise<MemberAgentInfo[]>;
@@ -545,6 +569,11 @@ type RuntimeDeps = {
   pausing: <T>(reason: string, work: Promise<T> | (() => Promise<T>)) => Promise<T>;
   setSessionMeta: (meta: Record<string, unknown>) => Promise<void>;
   patchSessionMeta: (patch: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  getWorkflow: () => Promise<import("../../core/session-workflow.js").SessionWorkflowState | null>;
+  setWorkflow: (
+    patch: WorkflowStatePatch,
+  ) => Promise<import("../../core/session-workflow.js").SessionWorkflowState>;
+  clearWorkflow: () => Promise<void>;
   setMessageMeta: (messageId: string, meta: Record<string, unknown>) => Promise<void>;
   patchMessageMeta: (
     messageId: string,

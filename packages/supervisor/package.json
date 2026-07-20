@@ -7,10 +7,10 @@
   },
   "type": "module",
   "main": "./dist/index.mjs",
-  "types": "./dist/types.d.mts",
+  "types": "./dist/index.d.mts",
   "exports": {
     ".": {
-      "types": "./dist/types.d.mts",
+      "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
     },
     "./test": {

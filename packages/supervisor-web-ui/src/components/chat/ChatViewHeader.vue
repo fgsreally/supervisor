@@ -20,6 +20,7 @@
       @input="onTitleInput"
       @change="emit('save-title')"
     />
+    <WorkflowStageTag v-if="workflow" class="ml-2" :workflow="workflow" />
     <button
       v-if="agentName"
       type="button"
@@ -57,6 +58,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { ChevronLeft, MoreHorizontal, X } from "lucide-vue-next";
+import type { WorkflowState } from "@/utils/workflow";
+import WorkflowStageTag from "../WorkflowStageTag.vue";
 
 /** UI-facing session phase (overrides backend idle while streaming / waiting on ask). */
 export type ChatHeaderStatus =
@@ -76,6 +79,7 @@ const props = defineProps<{
   statusKey: ChatHeaderStatus | string;
   showBack?: boolean;
   searchOpen?: boolean;
+  workflow?: WorkflowState | null;
 }>();
 
 const emit = defineEmits<{

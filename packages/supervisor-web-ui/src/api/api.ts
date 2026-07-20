@@ -931,6 +931,14 @@ export async function getSessionCommands(id: string): Promise<SlashCommandInfo[]
   return fetchJson<SlashCommandInfo[]>(`/sessions/${id}/commands`);
 }
 
+export async function executeSessionCommand(
+  id: string,
+  command: string,
+  argument?: string,
+): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(`/sessions/${id}/commands`, { command, argument });
+}
+
 export async function getCodexSessionModels(id: string): Promise<CodexModelInfo[]> {
   return fetchJson<CodexModelInfo[]>(`/sessions/${id}/external/codex/models`);
 }

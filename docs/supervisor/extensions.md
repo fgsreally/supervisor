@@ -65,6 +65,23 @@ monorepo 子目录：
 
 打包工具（`edit`、`lsp`、`web` 等）在 `src/tools/`，由 agent 资源配置启用，不再走扩展目录。
 
+## 内置扩展
+
+随核心包提供（`src/extension/builtin/`），会话按需激活：
+
+| 扩展 | 作用 |
+|------|------|
+| `mcp` | 连接 MCP 服务器并注册工具 |
+| `subagent` | `spawn_agent` 工具 + members |
+| `shadow` | Shadow 旁路观察 |
+| `skill` | Skill 资源注入 |
+| `eval` | 评估相关能力 |
+| `task-management` | 任务 / todo |
+| `timer` | 定时相关 |
+| `message-assets` | 消息附件资源 |
+
+仓库级可选扩展见 [仓库扩展](/supervisor/shipped-extensions)。
+
 ## 工具边界
 
 默认 agent 以会话资源绑定的工具为准；扩展可通过 `ctx.agent.tools.register` 增加工具。
@@ -88,7 +105,7 @@ monorepo 子目录：
 示例：
 
 ```ts
-import { defineExtension, Type } from "@earendil-works/pi-supervisor";
+import { defineExtension, Type } from "pi-supervisor";
 
 export default defineExtension({
   name: "demo",

@@ -1,27 +1,30 @@
-# Agent 工具
+# 打包工具
 
-supervisor 核心默认只提供 pi 原生 4 个工具：
+默认工具由 `src/utils/default-tools.ts` 的 `toolsPreset` 决定，**不是**扩展：
 
-- `read`
-- `bash`
-- `edit`
-- `write`
+| Preset    | 工具 |
+| --------- | ---- |
+| `coding`  | pi `createCodingTools`（read / bash / edit / write）+ grep / find / ls |
+| `readonly`| pi `createReadOnlyTools` |
 
-除此之外的 agent 工具都必须由扩展注册或覆盖。
+额外能力以 **打包工具**（`src/tools/`）形式按 Agent 资源配置启用，ID 定义于 `PACKAGED_TOOL_IDS`：
 
-## 可选工具扩展
+| ID                   | 说明 |
+| -------------------- | ---- |
+| `ask`                | 向用户提问，经 `POST /sessions/:id/ask-answer` 等待回答 |
+| `edit`               | 覆盖默认 edit（anchor 替换等） |
+| `lsp`                | 语言服务：symbols / definition / references / diagnostics |
+| `ast-grep`           | 结构化搜索与改写（依赖 `@ast-grep/napi`） |
+| `web`                | web_search + web_fetch（provider 见 settings / `config` CLI） |
+| `browser`            | 浏览器自动化 |
+| `computer-use`       | 桌面计算机使用 |
+| `desktop-recording`  | 桌面录制 |
+| `output-minimizer`   | 压缩过长工具输出 |
 
-仓库随包提供 `supervisor-agent-tools` 扩展，入口为 `src/extensions/agent-tools/index.ts`。它不会自动加载。
-
-该扩展当前提供：
-
-- `ask`：向用户提问，并通过 `POST /sessions/:id/ask-answer` 等待回答。
-- `read_pattern`：按范围、模式或跨文件搜索读取内容。
-- `lsp`：TS/JS/Python/Go 的 symbols、definition、references、diagnostics，TS/JS 支持 rename。
-- `edit`：覆盖默认 edit，提供 anchor-based replacement 和可选审批。
-- `ast_grep`：依赖 `@ast-grep/napi`，可用时注册结构化搜索、摘要、改写。
-- `tool.after_call` 输出压缩：压缩 bash 的长输出。
+激活入口：`src/tools/catalog.ts` 的 `activatePackagedTool`。
 
 ## 非工具逻辑
 
-`src/core/session-lifecycle.ts` 保留会话生命周期逻辑，例如 git worktree、agent end 后的自动命名、结束时 git 合并。这些不是 agent 可调用工具。
+`src/core/session-lifecycle.ts` 中的 worktree、自动命名、结束合并、触发 rolling compaction 等属于会话生命周期，不是 agent 可调用工具。
+
+扩展仍可通过 `ctx.agent.tools.register` 注册自定义工具，见 [扩展框架](/supervisor/extensions)。

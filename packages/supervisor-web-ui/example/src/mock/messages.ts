@@ -382,7 +382,7 @@ const session2Messages: MockEntry[] = [
           name: "bash",
           arguments: {
             intent: "运行 supervisor 包的 session-manager 测试",
-            command: "npm test -w @earendil-works/pi-supervisor -- session-manager",
+            command: "npm test -w pi-supervisor -- session-manager",
           },
         },
       ],
@@ -440,7 +440,7 @@ const session121Messages: MockEntry[] = [
           name: "bash",
           arguments: {
             intent: "运行 supervisor 包的 session-manager 测试",
-            command: "npm test -w @earendil-works/pi-supervisor -- session-manager",
+            command: "npm test -w pi-supervisor -- session-manager",
           },
         },
       ],

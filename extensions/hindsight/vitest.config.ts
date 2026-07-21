@@ -7,7 +7,7 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
-      "@earendil-works/pi-supervisor": path.resolve(
+      "pi-supervisor": path.resolve(
         root,
         "../../packages/supervisor/src/extension-system/index.ts",
       ),

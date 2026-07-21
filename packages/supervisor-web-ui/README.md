@@ -1,6 +1,6 @@
 # Pi Supervisor Web UI
 
-Vue 3 + Vite 前端，连接 `@earendil-works/pi-supervisor` HTTP API，提供聊天、Agent 管理、全局资源库等功能。
+Vue 3 + Vite 前端，连接 `pi-supervisor` HTTP API，提供聊天、Agent 管理、全局资源库等功能。
 
 ## 开发
 
@@ -41,7 +41,7 @@ npm run dev
 
 ### ask 工具
 
-- 后端：`packages/supervisor/src/ask-tool.ts`，工具名 `ask`
+- 后端：`packages/supervisor/src/tools/ask/`，工具名 `ask`
 - 提交答案：`POST /sessions/:id/ask-answer`
 - 前端解析：`src/utils/ask-tool.ts`
 - 兼容工具名：`ask`、`questionnaire`、`AskUserQuestion`

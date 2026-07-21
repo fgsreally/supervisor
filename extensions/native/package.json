@@ -1,5 +1,5 @@
 {
-  "name": "@earendil-works/supervisor-native",
+  "name": "supervisor-native",
   "version": "0.1.0",
   "description": "Supervisor extension: Rust-backed tools via @oh-my-pi/pi-natives (bash, grep, find, read)",
   "files": [
@@ -23,13 +23,13 @@
   "devDependencies": {
     "@earendil-works/pi-agent-core": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",
-    "@earendil-works/pi-supervisor": "workspace:*",
+    "pi-supervisor": "workspace:*",
     "vitest": "^3.2.4"
   },
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",
-    "@earendil-works/pi-supervisor": "^0.1.0"
+    "pi-supervisor": "^0.1.0"
   },
   "optionalDependencies": {
     "@oh-my-pi/pi-natives-darwin-arm64": "16.3.10",

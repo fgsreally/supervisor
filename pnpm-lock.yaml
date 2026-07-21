@@ -39,7 +39,7 @@ importers:
       '@earendil-works/pi-agent-core':
         specifier: ^0.74.0
         version: 0.74.2(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
-      '@earendil-works/pi-supervisor':
+      pi-supervisor:
         specifier: workspace:*
         version: link:../../packages/supervisor
       vitest:
@@ -61,7 +61,7 @@ importers:
       '@earendil-works/pi-coding-agent':
         specifier: ^0.74.0
         version: 0.74.2(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
-      '@earendil-works/pi-supervisor':
+      pi-supervisor:
         specifier: workspace:*
         version: link:../../packages/supervisor
       vitest:
@@ -90,7 +90,7 @@ importers:
         specifier: ^1.3.3
         version: 1.3.3
     devDependencies:
-      '@earendil-works/pi-supervisor':
+      pi-supervisor:
         specifier: workspace:*
         version: link:../../packages/supervisor
       vitest:
@@ -196,9 +196,6 @@ importers:
       '@earendil-works/pi-ai':
         specifier: ^0.74.0
         version: 0.74.2(@modelcontextprotocol/sdk@1.29.0(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
-      '@earendil-works/pi-supervisor':
-        specifier: workspace:*
-        version: link:../supervisor
       '@he-tree/vue':
         specifier: ^2.10.5
         version: 2.10.5(vue@3.5.39(typescript@5.9.3))
@@ -217,6 +214,9 @@ importers:
       marked:
         specifier: ^15.0.12
         version: 15.0.12
+      pi-supervisor:
+        specifier: workspace:*
+        version: link:../supervisor
       pinia:
         specifier: ^2.1.0
         version: 2.3.1(typescript@5.9.3)(vue@3.5.39(typescript@5.9.3))

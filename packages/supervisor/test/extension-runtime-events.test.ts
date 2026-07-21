@@ -400,7 +400,7 @@ describe("extension runtime events", () => {
     const extFile = join(helloDir, "index.ts");
     writeFileSync(
       extFile,
-      `import { defineExtension } from "@earendil-works/pi-supervisor";
+      `import { defineExtension } from "pi-supervisor";
 let hits = 0;
 export default defineExtension({
   name: "hello-events",

@@ -4,7 +4,7 @@ import {
   defineExtension,
   type ExtensionEvent,
   type SessionWorkflowState,
-} from "@earendil-works/pi-supervisor";
+} from "pi-supervisor";
 import { WorkflowArtifacts } from "./artifacts.js";
 import { WorkflowOrchestrator } from "./orchestrator.js";
 import { STAGES } from "./stages.js";

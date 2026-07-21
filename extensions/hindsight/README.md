@@ -1,4 +1,4 @@
-# @earendil-works/supervisor-hindsight
+# supervisor-hindsight
 
 Supervisor 扩展：长期记忆（Hindsight），从 omp 移植核心能力，在 `extensions/` 独立维护，不依赖 supervisor 核心内置逻辑。
 

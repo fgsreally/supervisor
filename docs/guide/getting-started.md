@@ -1,11 +1,11 @@
 # 快速开始
 
-本指南从零开始搭建一个可用的 Pi Supervisor 运行环境：构建后端、启动 HTTP API、配置 Provider 与 Agent、启动 Web UI。
+本指南从零搭建可用的 Pi Supervisor 环境：安装依赖、构建后端、启动 HTTP API 与 Web UI，并完成一次对话。
 
 ## 前置要求
 
 - Node.js >= 20.6.0
-- pnpm（或兼容的 nub）
+- [pnpm](https://pnpm.io/)（推荐）
 
 ## 1. 安装依赖
 
@@ -21,42 +21,41 @@ pnpm install
 pnpm run build
 ```
 
-构建脚本会调用 `tsdown`，将 `packages/supervisor/src/` 下的 TypeScript 编译到 `packages/supervisor/dist/`。
-
-::: warning
-当前 `packages/supervisor/src/` 下没有 `cli.ts` 或 `index.ts` 入口文件，所以 `dist/cli.js` 不会生成。这意味着 `pnpm run serve` 暂时无法直接运行。这是上游 pi 仓库遗留的状态，详见 [Supervisor 已知未实装功能](/supervisor/known-gaps)。
-
-要跑起来，需要自行补一个 `src/cli.ts` 入口（解析 argv、调用 `http-server.ts` 的 `startHttpServer`）和 `src/index.ts`（重新导出公共 API）。本文档不实现该入口，只做说明。
-:::
+`tsdown` 会将 `packages/supervisor/src/` 编译到 `packages/supervisor/dist/`，产出 `cli.mjs` 等入口。
 
 ## 3. 启动 Supervisor HTTP API
 
-补完 CLI 入口后：
-
 ```bash
 pnpm run serve
-# 等价于 node packages/supervisor/dist/cli.js serve --port 3030
 ```
 
-默认监听 `http://localhost:3030`。
+默认监听 `http://localhost:3030`，工作目录为仓库内 `playground/`，数据库为 `playground/.supervisor/supervisor.db`。
+
+也可用 CLI 显式指定：
+
+```bash
+node packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground --db playground/.supervisor/supervisor.db
+```
+
+健康检查：`GET http://localhost:3030/healthz` 应返回 `{ "ok": true }`。
 
 ## 4. 启动 Web UI
 
-Web UI 通过 Vite 代理转发 API 请求到 `http://localhost:3030`，无需配置 CORS：
+另开终端：
 
 ```bash
 pnpm run dev
 ```
 
-打开浏览器访问 `http://localhost:5173`。
+浏览器打开 `http://localhost:5173`。Vite 将 API 代理到 `http://localhost:3030`，无需配置 CORS。
 
 ::: tip
-如果 `VITE_API_BASE` 写成了 `http://localhost:3030`，会触发跨域错误。让它留空，使用 Vite 代理。
+不要把 `VITE_API_BASE` 设成 `http://localhost:3030`，否则会触发跨域。留空即可走代理。
 :::
 
 ## 5. 配置 Provider
 
-通过 API 添加 Provider（以 OpenAI 兼容的 minimax 为例）：
+通过 Web UI 的 Providers 页添加，或用 API：
 
 ```bash
 curl -X POST http://localhost:3030/providers \
@@ -70,7 +69,11 @@ curl -X POST http://localhost:3030/providers \
   }'
 ```
 
-或通过 Web UI 的 Providers 标签页添加。
+也可使用交互式 CLI：
+
+```bash
+node packages/supervisor/dist/cli.mjs providers add
+```
 
 ## 6. 配置 Agent
 
@@ -84,6 +87,8 @@ curl -X POST http://localhost:3030/agents \
     "toolsPreset": "coding"
   }'
 ```
+
+`toolsPreset: "coding"` 会启用 read / bash / edit / write 以及 grep / find / ls 等探索工具。更多能力通过打包工具与扩展绑定启用，见 [打包工具](/supervisor/builtin-tools) 与 [扩展框架](/supervisor/extensions)。
 
 ## 7. 创建会话并发送消息
 
@@ -99,48 +104,37 @@ curl -X POST http://localhost:3030/sessions/<session-id>/prompt \
   -d '{ "message": "Read TASK.md and suggest the first change." }'
 ```
 
-或通过 Web UI 创建会话并在 Chat 面板对话。
+或在 Web UI Chat 页创建会话并对话。运行中可选择「立即干预」（steer）或「轮后追加」（follow-up）；输入 `/` 可执行 slash 命令。
 
-## 8. 编写自定义 Skill
+## 8. 可选：安装仓库扩展
 
-在工作目录创建 `SKILL.md`：
+仓库内提供 `extensions/native`、`extensions/hindsight`、`extensions/strict-sdd`。安装到全局 catalog 后绑定到 Agent：
 
 ```bash
-mkdir -p ~/pi-workspace/skills/my-skill
-cat > ~/pi-workspace/skills/my-skill/SKILL.md << 'EOF'
-# My Skill
-
-这是一个示例 skill。
-
-## 功能
-
-- 功能 1
-- 功能 2
-EOF
+node packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
+node packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
 ```
 
-Supervisor 启动时会扫描 agent 工作目录下的 `skills/*/SKILL.md`，把 skill 列表注入到对话上下文。
+详见 [仓库扩展](/supervisor/shipped-extensions)。
 
 ## 故障排除
 
 ### 端口冲突
 
 ```bash
-pnpm run serve -- --port 3031    # 切换端口
+node packages/supervisor/dist/cli.mjs serve --port 3031 --cwd playground --db playground/.supervisor/supervisor.db
 ```
 
 ### Web UI 无法连接后端
 
-检查：
+1. 确认后端已启动（`http://localhost:3030/healthz` 可访问）。
+2. 不要设置 `VITE_API_BASE`，或保持为空。
+3. 检查 `packages/supervisor-web-ui` 的 Vite proxy 指向后端端口。
 
-1. Supervisor 后端已启动（`http://localhost:3030` 可访问）。
-2. `packages/supervisor-web-ui/.env` 不存在或 `VITE_API_BASE` 留空。
-3. `vite.config.ts` 的 proxy 配置正确指向后端端口。
-
-### 类型错误
+### 类型检查
 
 ```bash
-pnpm --filter @earendil-works/pi-supervisor-ui run check
+pnpm --filter pi-supervisor-ui run check
 ```
 
-类型检查会暴露源码中已知的问题，详见 [Web UI 已知未实装功能](/web-ui/known-gaps)。
+仍存在的 UI 缺口见 [Web UI 已知缺口](/web-ui/known-gaps)。

@@ -83,7 +83,7 @@ function getAliases(): Record<string, string> {
 
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   _aliases = {
-    "@earendil-works/pi-supervisor": path.resolve(__dirname, "./index.js"),
+    "pi-supervisor": path.resolve(__dirname, "./index.js"),
   };
 
   return _aliases;

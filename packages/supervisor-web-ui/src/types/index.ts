@@ -1,4 +1,4 @@
-import type { Agent, Model, Provider, Session } from "@earendil-works/pi-supervisor";
+import type { Agent, Model, Provider, Session } from "pi-supervisor";
 
 // ============ Session UI Extensions ============
 

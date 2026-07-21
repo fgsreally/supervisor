@@ -50,7 +50,7 @@ describe("extension installation and discovery", () => {
     mkdirSync(join(srcRoot, "node_modules"));
     writeFileSync(
       join(srcRoot, "index.ts"),
-      `import { defineExtension } from "@earendil-works/pi-supervisor";\nexport default defineExtension({ name: "test-ext", setup() {} });\n`,
+      `import { defineExtension } from "pi-supervisor";\nexport default defineExtension({ name: "test-ext", setup() {} });\n`,
       "utf8",
     );
 
@@ -92,7 +92,7 @@ describe("extension installation and discovery", () => {
     );
     writeFileSync(
       join(srcRoot, "index.ts"),
-      `import { defineExtension } from "@earendil-works/pi-supervisor";\nexport default defineExtension({ name: "no-repo", setup() {} });\n`,
+      `import { defineExtension } from "pi-supervisor";\nexport default defineExtension({ name: "no-repo", setup() {} });\n`,
       "utf8",
     );
     mkdirSync(join(srcRoot, "node_modules"));

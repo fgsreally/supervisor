@@ -1,15 +1,16 @@
 # 路由
 
-`src/router/index.ts:18-29` 定义的路由：
+`src/router/index.ts` 定义的路由：
 
-| Path                      | 组件前缀                | 作用                |
-| ------------------------- | ----------------------- | ------------------- |
-| `/chat/:sessionId?`       | `App.vue` 的 `chat-tab` | 会话列表 + 对话窗口 |
-| `/contacts/:agentId?`     | `contacts-tab`          | Agent 详情          |
-| `/providers/:providerId?` | `providers-tab`         | Provider 详情       |
-| `/resources/:resourceId?` | `resources-tab`         | 资源详情            |
-| `/search`                 | `search-tab`            | 全局搜索            |
-| `/settings`               | `settings-tab`          | 设置面板            |
-| `/`                       | → 重定向到 `/chat`      |                     |
+| Path | 作用 |
+|------|------|
+| `/` | 重定向到 `/chat` |
+| `/chat/:sessionId?` | 会话列表 + 对话 |
+| `/contacts/:agentId?` | Agent 详情 |
+| `/providers/:providerId?` | Provider 详情 |
+| `/providers/:providerId/models/:modelId` | Provider 模型详情 |
+| `/resources/:resourceId?` | 资源详情 |
+| `/settings` | 设置 |
+| `/search` | **重定向到 `/chat`**（无独立 Search 页） |
 
-路由本身很小（7 个 stub），实际视图切换由 `App.vue:8-92` 的 `mainTab` 控制。路由参数只是让 URL 可分享。
+视图切换主要由 `App.vue` 的 `mainTab`（由路径推导）控制；路由参数用于可分享 URL。

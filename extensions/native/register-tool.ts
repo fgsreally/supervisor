@@ -1,5 +1,5 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { defineExtension } from "@earendil-works/pi-supervisor";
+import type { defineExtension } from "pi-supervisor";
 
 type ExtensionContext = Parameters<Parameters<typeof defineExtension>[0]["setup"]>[0];
 

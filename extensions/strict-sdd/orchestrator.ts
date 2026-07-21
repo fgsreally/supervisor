@@ -1,5 +1,5 @@
 import { relative, resolve } from "node:path";
-import type { ExtensionContext } from "@earendil-works/pi-supervisor";
+import type { ExtensionContext } from "pi-supervisor";
 import { WorkflowArtifacts } from "./artifacts.js";
 import type {
   ChangeProgress,

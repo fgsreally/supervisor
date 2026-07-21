@@ -1,4 +1,4 @@
-import { defineExtension } from "@earendil-works/pi-supervisor";
+import { defineExtension } from "pi-supervisor";
 
 /** 最小 supervisor 扩展：加载时注册一条会话启动日志，无额外工具。 */
 export default defineExtension({

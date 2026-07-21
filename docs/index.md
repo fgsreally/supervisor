@@ -15,15 +15,15 @@ hero:
 
 features:
   - title: Supervisor
-    details: SQLite 持久化的多会话管理、HTTP API、扩展框架、MCP 集成、上下文压缩
+    details: 多会话管理、HTTP API、扩展框架、MCP、滚动压缩、工作流状态
     link: /supervisor/overview
   - title: Web UI
-    details: Vue 3 + Vite + Pinia 控制台，对话窗口、Agent/Provider 配置、资源管理
+    details: Vue 3 控制台：对话、Steer/Follow-up、Slash、Agent/Provider/资源管理
     link: /web-ui/overview
-  - title: 扩展框架
-    details: defineExtension DSL，加载本地或全局扩展，注入工具、命令、订阅事件
+  - title: 子代理与 Shadow
+    details: spawn_agent + members；Shadow 旁路观察主会话
+    link: /supervisor/subagents
+  - title: 扩展与外部 Agent
+    details: 全局 catalog + bind；Codex / Claude / ACP；仓库扩展 strict-sdd 等
     link: /supervisor/extensions
-  - title: MCP 集成
-    details: 标准化接入外部 MCP 服务器，自动将 MCP 工具适配为 AgentTool
-    link: /supervisor/mcp
 ---

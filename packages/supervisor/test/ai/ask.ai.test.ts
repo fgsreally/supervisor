@@ -1,4 +1,4 @@
-import { judgeAiResult, withAiTestEnvironment } from "@earendil-works/pi-supervisor/test";
+import { judgeAiResult, withAiTestEnvironment } from "pi-supervisor/test";
 import { describe, expect } from "vitest";
 import { aiIt } from "./helpers.js";
 

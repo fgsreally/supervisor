@@ -7,7 +7,7 @@ import { computeBankScope } from "../bank.js";
 import { loadHindsightConfig, resolveMemoryMode } from "../config.js";
 import { extractFactsFromMessages, recallLocalByQuery, retainLocalFacts } from "../local-store.js";
 
-describe("@earendil-works/supervisor-hindsight", () => {
+describe("supervisor-hindsight", () => {
   it("exports supervisor-hindsight extension", () => {
     expect(extension.name).toBe("supervisor-hindsight");
     expect(typeof extension.setup).toBe("function");

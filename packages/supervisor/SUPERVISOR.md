@@ -1,6 +1,6 @@
 # pi-supervisor 包结构与文件说明
 
-`@earendil-works/pi-supervisor` 是多会话 AI Agent 编排运行时：管理 session 生命周期、SQLite 持久化、HTTP API、扩展框架、内置工具与 Shadow 协作者。
+`pi-supervisor` 是多会话 AI Agent 编排运行时：管理 session 生命周期、SQLite 持久化、HTTP API、扩展框架、内置工具与 Shadow 协作者。
 
 入口：`cli.ts`（`pi-supervisor` 命令）或 `index.ts` 的 `startSupervisor()`。
 
@@ -38,23 +38,21 @@ packages/supervisor/
 ├── vitest.ai.config.ts              # *.ai.test.ts
 ├── vitest.shared.ts                 # 共享测试配置
 ├── SUPERVISOR.md                    # 本文件
-└── SUPERVISOR_VS_CODING_AGENT_FEATURE_DIFF.md  # 与 coding-agent 功能对比
 ```
 
 ---
 
 ## 根目录
 
-| 文件                                         | 用途                                  |
-| -------------------------------------------- | ------------------------------------- |
-| `package.json`                               | 包元数据、依赖、`build` / `test` 脚本 |
-| `tsdown.config.ts`                           | 用 tsdown 将 `src/` 编译到 `dist/`    |
-| `tsconfig.build.json`                        | 构建用 TypeScript 配置                |
-| `vitest.config.ts`                           | 普通测试运行配置                      |
-| `vitest.ai.config.ts`                        | AI 效果测试运行配置                   |
-| `vitest.shared.ts`                           | 两类测试的共享配置                    |
-| `.env.example`                               | 可选环境变量说明（API Key 等）        |
-| `SUPERVISOR_VS_CODING_AGENT_FEATURE_DIFF.md` | 与 `pi-coding-agent` 的能力差异说明   |
+| 文件                  | 用途                               |
+| --------------------- | ---------------------------------- |
+| `package.json`        | 包元数据、依赖、`build` / `test` 脚本 |
+| `tsdown.config.ts`    | 用 tsdown 将 `src/` 编译到 `dist/` |
+| `tsconfig.build.json` | 构建用 TypeScript 配置             |
+| `vitest.config.ts`    | 普通测试运行配置                   |
+| `vitest.ai.config.ts` | AI 效果测试运行配置                |
+| `vitest.shared.ts`    | 两类测试的共享配置                 |
+| `.env.example`        | 可选环境变量说明（API Key 等）     |
 
 ---
 
@@ -123,7 +121,7 @@ packages/supervisor/
 | `runtime-resources.ts` | 单个运行中 Agent 的 Skill、Prompt 与命令状态                                                            |
 | `resource-resolver.ts` | 解析 Agent 已绑定资源、扩展工具与最终工具列表                                                           |
 
-`src/testing/ai/` 通过 `@earendil-works/pi-supervisor/test` 提供真实 Coding Agent 场景执行、裁判评分、A/B 比较与测试产物能力。公共 API 不依赖具体测试框架。
+`src/testing/ai/` 通过 `pi-supervisor/test` 提供真实 Coding Agent 场景执行、裁判评分、A/B 比较与测试产物能力。公共 API 不依赖具体测试框架。
 
 ---
 
@@ -327,9 +325,9 @@ packages/supervisor/
 | `ai/*.ai.test.ts`                                     | Coding Agent 与裁判 LLM 效果测试        |
 | `ai-testing.test.ts`                                  | 公共 AI 测试 API 的确定性测试           |
 
-普通测试：`pnpm --filter @earendil-works/pi-supervisor run test:unit`
+普通测试：`pnpm --filter pi-supervisor run test:unit`
 
-AI 测试：`pnpm --filter @earendil-works/pi-supervisor run test:ai`
+AI 测试：`pnpm --filter pi-supervisor run test:ai`
 
 ---
 

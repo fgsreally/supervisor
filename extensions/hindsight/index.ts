@@ -1,4 +1,4 @@
-import { defineExtension } from "@earendil-works/pi-supervisor";
+import { defineExtension } from "pi-supervisor";
 import { computeBankScope } from "./bank.js";
 import { createHindsightClient } from "./client.js";
 import { isHindsightApiConfigured, loadHindsightConfig, resolveMemoryMode } from "./config.js";

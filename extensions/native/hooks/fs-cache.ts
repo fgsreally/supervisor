@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import type { defineExtension } from "@earendil-works/pi-supervisor";
+import type { defineExtension } from "pi-supervisor";
 import { loadPiNativesBindings } from "../pi-natives-loader.js";
 
 type ExtensionContext = Parameters<Parameters<typeof defineExtension>[0]["setup"]>[0];

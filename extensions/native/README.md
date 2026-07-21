@@ -1,4 +1,4 @@
-# @earendil-works/supervisor-native
+# supervisor-native
 
 Supervisor 扩展：用 omp 的 Rust 原生库（`@oh-my-pi/pi-natives`）**覆盖**默认工具。
 

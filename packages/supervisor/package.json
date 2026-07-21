@@ -1,5 +1,5 @@
 {
-  "name": "@earendil-works/pi-supervisor",
+  "name": "pi-supervisor",
   "version": "0.1.0",
   "description": "Supervisor for managing multiple pi agent sessions",
   "bin": {

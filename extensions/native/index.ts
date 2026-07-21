@@ -1,4 +1,4 @@
-import { defineExtension } from "@earendil-works/pi-supervisor";
+import { defineExtension } from "pi-supervisor";
 import { registerFsCacheInvalidation } from "./hooks/fs-cache.js";
 import { isPiNativesAvailable } from "./pi-natives-loader.js";
 import { registerNativeTool } from "./register-tool.js";

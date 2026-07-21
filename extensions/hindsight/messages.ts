@@ -1,4 +1,4 @@
-import type { MessageEntry } from "@earendil-works/pi-supervisor";
+import type { MessageEntry } from "pi-supervisor";
 import type { HindsightMessage } from "./content.js";
 
 export function extractTextContent(content: unknown): string {

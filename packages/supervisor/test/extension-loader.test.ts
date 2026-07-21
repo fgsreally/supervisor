@@ -12,7 +12,7 @@ describe("supervisor: extension loader", () => {
     const custom = join(customDir, "index.ts");
     writeFileSync(
       custom,
-      `import { defineExtension } from "@earendil-works/pi-supervisor";
+      `import { defineExtension } from "pi-supervisor";
 export default defineExtension({ name: "custom-test", setup() {} });`,
     );
 

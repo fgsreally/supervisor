@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "@earendil-works/pi-supervisor";
+import type { ExtensionContext } from "pi-supervisor";
 
 export type StageId =
   | "brainstorm"

@@ -3,8 +3,8 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
-      "@earendil-works/pi-supervisor": ["./packages/supervisor/src/index.ts"],
-      "@earendil-works/pi-supervisor/*": ["./packages/supervisor/src/*"]
+      "pi-supervisor": ["./packages/supervisor/src/index.ts"],
+      "pi-supervisor/*": ["./packages/supervisor/src/*"]
     }
   },
   "include": ["packages/*/src/**/*", "packages/*/test/**/*"],

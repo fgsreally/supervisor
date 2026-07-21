@@ -20,7 +20,7 @@ function textContent(result: { content: Array<{ type: string; text?: string }> }
     .join("\n");
 }
 
-describe("@earendil-works/supervisor-native", () => {
+describe("supervisor-native", () => {
   it("loads extension entry", async () => {
     const mod = await import(extensionEntry);
     expect(mod.default.name).toBe("supervisor-native");

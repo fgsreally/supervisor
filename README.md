@@ -1,100 +1,78 @@
 # supervisor-standalone
 
-Standalone Supervisor project — extracted from the pi monorepo, modernized with a Rust-based toolchain.
+Standalone Supervisor：SQLite-first 多会话 Agent 运行时 + Vue 3 Web UI。
 
 ## Packages
 
-- `packages/supervisor` — SQLite-backed multi-session agent runtime
-- `packages/supervisor-web-ui` — Vue 3 + Vite web UI
-
-## Toolchain
-
-This project uses a Rust-based toolchain:
-
-- **Package manager**: [nub](https://github.com/nubjs/nub) — Rust all-in-one Node.js toolkit (pnpm-compatible CLI)
-- **Linter**: [oxlint](https://oxc.rs/) — ESLint-compatible, 50-100x faster
-- **Formatter**: [oxfmt](https://oxc.rs/) — Prettier-compatible, 30x faster
-- **Builder**: [tsdown](https://tsdown.dev/) — Rust-based TypeScript bundler for the supervisor package; Vite remains for the web UI
+- `packages/supervisor` — `pi-supervisor`（HTTP API、扩展、MCP、工具）
+- `packages/supervisor-web-ui` — `pi-supervisor-ui`（Vue 3 + Vite）
+- `extensions/*` — 可选仓库扩展（native / hindsight / strict-sdd）
 
 ## Prerequisites
 
-Install `nub` (Windows PowerShell):
-
-```powershell
-irm https://nubjs.com/install.ps1 | iex
-```
-
-Or via npm:
-
-```sh
-npm install -g --ignore-scripts=false @nubjs/nub
-```
-
-`nub` reads the workspace config (pnpm-workspace.yaml) and is flag-for-flag compatible with pnpm.
+- Node.js >= 20.6.0
+- [pnpm](https://pnpm.io/)
 
 ## Install
 
 ```sh
-nub install
+pnpm install
 ```
 
 ## Common scripts
 
-| Command                  | Description                                    |
-| ------------------------ | ---------------------------------------------- |
-| `nub run build`          | Build the supervisor package                   |
-| `nub run dev`            | Start the web UI dev server (Vite, :5173)      |
-| `nub run dev:supervisor` | Watch-build the supervisor package             |
-| `nub run lint`           | Lint with oxlint                               |
-| `nub run lint:fix`       | Apply safe lint fixes via oxlint               |
-| `nub run format`         | Format source with oxfmt                       |
-| `nub run format:check`   | Check formatting without writing               |
-| `nub run check`          | Run lint + format check + per-package check    |
-| `nub run test`           | Run tests across all packages                  |
-| `nub run serve`          | Launch the supervisor server on :3030          |
-| `nub run docs:dev`       | Start VitePress docs dev server (:5173)        |
-| `nub run docs:build`     | Build VitePress docs to `docs/.vitepress/dist` |
-| `nub run docs:preview`   | Preview built docs                             |
+| Command                  | Description                                      |
+| ------------------------ | ------------------------------------------------ |
+| `pnpm run build`         | 构建 supervisor 包（tsdown → `dist/`）           |
+| `pnpm run serve`         | 启动 HTTP 服务（默认 :3030，playground cwd）     |
+| `pnpm run dev`           | 启动 Web UI 开发服务器（Vite，:5173）            |
+| `pnpm run dev:supervisor`| 构建并 watch / playground serve                  |
+| `pnpm run lint`          | oxlint                                           |
+| `pnpm run format`        | oxfmt                                            |
+| `pnpm run check`         | lint + format check + 包级 check                 |
+| `pnpm run test`          | 各包测试                                         |
+| `pnpm run docs:dev`      | VitePress 文档开发服务器                         |
+| `pnpm run docs:build`    | 构建文档到 `docs/.vitepress/dist`                |
 
-You can also use `pnpm` directly as a fallback since `nub` is pnpm-compatible.
+工具链：oxlint / oxfmt / tsdown（supervisor）/ Vite（web-ui）。也可用与 pnpm 兼容的 [nub](https://github.com/nubjs/nub) 替代包管理命令。
 
 ## Documentation
 
-Full documentation lives under [`docs/`](docs/). Run `pnpm docs:dev` to start the VitePress dev server, or read:
+完整文档在 [`docs/`](docs/)。本地预览：
+
+```sh
+pnpm docs:dev
+```
+
+常用入口：
 
 - [快速开始](docs/guide/getting-started.md)
 - [架构总览](docs/guide/architecture.md)
-- [Supervisor 后端](docs/supervisor/overview.md)
-- [Web UI 前端](docs/web-ui/overview.md)
-- [Supervisor 已知未实装功能](docs/supervisor/known-gaps.md)
-- [Web UI 已知未实装功能](docs/web-ui/known-gaps.md)
+- [Supervisor 概览](docs/supervisor/overview.md)
+- [HTTP API](docs/supervisor/http-api.md)
+- [Web UI](docs/web-ui/overview.md)
+- [已知缺口（后端）](docs/supervisor/known-gaps.md)
+- [已知缺口（Web UI）](docs/web-ui/known-gaps.md)
 
-## Architecture
+开发者包内架构说明：[`packages/supervisor/SUPERVISOR.md`](packages/supervisor/SUPERVISOR.md)。
 
-See `packages/supervisor/SUPERVISOR.md` for the supervisor architecture overview. The web UI is a Vue 3 + Vite + Pinia app that connects to the supervisor server's HTTP API.
-
-## Project Layout
+## Project layout
 
 ```
 supervisor-standalone/
 ├── packages/
-│   ├── supervisor/         (@earendil-works/pi-supervisor)
-│   └── supervisor-web-ui/ (@earendil-works/pi-supervisor-ui)
-├── docs/                  VitePress documentation
+│   ├── supervisor/          (pi-supervisor)
+│   └── supervisor-web-ui/   (pi-supervisor-ui)
+├── extensions/              可选扩展包
+├── docs/                    VitePress 文档
+├── playground/              本地联调工作区
 ├── package.json
 ├── pnpm-workspace.yaml
-├── tsconfig.base.json
-├── tsconfig.json
-├── oxlint.json
-├── .oxfmtrc.json
-├── AGENTS.md
-├── LICENSE
 └── README.md
 ```
 
 ## Notes
 
-- Internal pi dependencies (`@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-coding-agent`) are pulled from the npm registry at version `^0.74.0`.
-- `@earendil-works/pi-supervisor` is consumed by the web UI as a `workspace:*` dependency.
-- The supervisor package's build script is `tsdown`; it compiles `src/**/*.ts` to `dist/`. See `packages/supervisor/tsdown.config.ts`.
-- The web UI keeps its Vite + vue-tsc toolchain unchanged.
+- 上游依赖（`@earendil-works/pi-ai`、`pi-agent-core`、`pi-coding-agent` 等）从 npm 拉取。
+- Web UI 以 `workspace:*` 依赖 `pi-supervisor`。
+- supervisor 包用 tsdown 编译 `src/**/*.ts` → `dist/`；Web UI 保持 Vite + vue-tsc。

@@ -2,7 +2,7 @@ import {
   parseAiComparisonResult,
   parseAiJudgeResult,
   readAiSubjectConfig,
-} from "@earendil-works/pi-supervisor/test";
+} from "pi-supervisor/test";
 import { describe, expect, it } from "vitest";
 
 describe("public AI testing API", () => {

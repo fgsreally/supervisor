@@ -8,7 +8,6 @@
 
       <div class="flex flex-1 min-w-0 min-h-0 overflow-hidden">
         <SettingsPanel v-if="mainTab === 'settings'" class="flex-1 min-w-0 h-full" />
-        <SearchView v-else-if="mainTab === 'search'" class="flex-1 min-w-0 h-full" />
         <template v-else>
           <div
             class="relative shrink-0 h-full hidden md:block"
@@ -269,6 +268,14 @@
     </template>
 
     <GlobalSearchModal :open="searchOpen" @close="searchOpen = false" @navigate="selectSession" />
+    <ProviderModelEditor
+      :open="modelEditorOpen"
+      mode="edit"
+      :model="activeProviderModelUi"
+      :saving="modelEditorSaving"
+      @cancel="modelEditorOpen = false"
+      @save="saveModelFromDialog"
+    />
     <UiMessageHost />
     <ProviderEditDialog
       :open="providerEditOpen"
@@ -284,7 +291,6 @@ import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Cloud, FolderOpen, MessageSquare, Users } from "lucide-vue-next";
 import ShellNav, { type MainTab } from "./components/ShellNav.vue";
-import SearchView from "./views/SearchView.vue";
 import ChatListPanel from "./components/ChatListPanel.vue";
 import ContactsPanel from "./components/ContactsPanel.vue";
 import ProvidersPanel from "./components/ProvidersPanel.vue";
@@ -301,9 +307,11 @@ import ProviderFormView from "./views/ProviderFormView.vue";
 import ProviderModelDetailView from "./views/ProviderModelDetailView.vue";
 import ProviderModelFormView from "./views/ProviderModelFormView.vue";
 import ProviderEditDialog from "./components/ProviderEditDialog.vue";
+import ProviderModelEditor from "./components/ProviderModelEditor.vue";
 import ChatView from "./views/ChatView.vue";
 import GlobalSearchModal from "./components/GlobalSearchModal.vue";
 import UiMessageHost from "./components/UiMessageHost.vue";
+import { showUiMessage } from "./composables/use-ui-message";
 import { useSessionStore, useAgentStore, useProviderStore, useResourceStore } from "./store";
 import { providerToUI } from "./utils/provider-ui";
 import { getDefaultWorkspaceCwd } from "./config/workspace";
@@ -333,6 +341,8 @@ const activeResourceId = ref<string | null>(null);
 const isMobile = ref(false);
 const mobilePage = ref<"list" | "detail">("list");
 const searchOpen = ref(false);
+const modelEditorOpen = ref(false);
+const modelEditorSaving = ref(false);
 type ProviderPage = "detail" | "add" | "model-add" | "model-edit";
 type AgentPage = "detail" | "add";
 
@@ -374,8 +384,6 @@ function pushRoute() {
     );
   } else if (tab === "settings") {
     void router.push("/settings");
-  } else if (tab === "search") {
-    void router.push("/search");
   }
 }
 
@@ -589,13 +597,33 @@ async function onProviderEditSaved() {
 
 function openModelEdit() {
   if (!activeProviderModel.value) return;
-  providerPage.value = "model-edit";
-  if (isMobile.value) mobilePage.value = "detail";
+  modelEditorOpen.value = true;
 }
 
 function editModelById(modelId: string) {
   activeModelId.value = modelId;
   openModelEdit();
+}
+
+async function saveModelFromDialog(model: NonNullable<typeof activeProviderModelUi.value>) {
+  if (!activeProviderId.value || modelEditorSaving.value) return;
+  modelEditorSaving.value = true;
+  try {
+    await providerStore.updateModel(activeProviderId.value, model.id, {
+      name: model.name,
+      contextWindow: model.contextWindow,
+      maxTokens: model.maxTokens,
+      supportsMultimodal: model.supportsMultimodal,
+      tags: model.tags,
+    });
+    modelEditorOpen.value = false;
+    await providerStore.fetchModels(activeProviderId.value);
+    showUiMessage("模型保存成功", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "模型保存失败", "error");
+  } finally {
+    modelEditorSaving.value = false;
+  }
 }
 
 async function deleteModelById(modelId: string) {

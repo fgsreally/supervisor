@@ -302,6 +302,7 @@ function removeModel(modelId: string) {
 }
 
 .provider-detail-model-row {
+  padding-inline: 18px;
   transition: background 120ms ease;
 }
 
@@ -340,6 +341,10 @@ function removeModel(modelId: string) {
 }
 
 .provider-detail-divider {
+  border-color: var(--app-border-subtle);
+}
+
+.provider-detail-divider > :not(:last-child) {
   border-color: var(--app-border-subtle);
 }
 

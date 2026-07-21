@@ -21,6 +21,7 @@
         :workspace-files="workspaceFiles"
         :skills="skills"
         :prompts="prompts"
+        :commands="autocompleteCommands"
         :skill-trigger="skillTrigger"
         :disabled="disabled"
         :placeholder="placeholder"
@@ -85,6 +86,16 @@ const workspaceFiles = ref<WorkspaceFileEntry[]>([]);
 const skills = ref<SkillAutocompleteEntry[]>([]);
 const prompts = ref<PromptAutocompleteEntry[]>([]);
 const customCommands = ref<api.SlashCommandInfo[]>([]);
+const autocompleteCommands = computed(() =>
+  customCommands.value.map((command) => ({
+    name: command.name,
+    description: command.description,
+    source:
+      command.source === "mcp" || command.name.toLowerCase().startsWith("mcp")
+        ? ("mcp" as const)
+        : ("custom" as const),
+  })),
+);
 const pendingImages = ref<PendingChatImage[]>([]);
 let commandRefreshInFlight: Promise<void> | null = null;
 let lastCommandRefresh = 0;
@@ -94,11 +105,7 @@ const isExternalAgent = computed(() => {
   if (!props.agentId) return false;
   return agentStore.getAgentById(props.agentId)?.backendType !== "native";
 });
-const skillTrigger = computed<"slash" | "dollar">(() =>
-  props.agentId && agentStore.getAgentById(props.agentId)?.backendType === "codex"
-    ? "dollar"
-    : "slash",
-);
+const skillTrigger = computed<"slash">(() => "slash");
 
 const text = computed({
   get: () => props.modelValue,
@@ -174,7 +181,9 @@ async function refreshSessionCommands(force = false) {
         ...prompts.value.filter((item) => !commandPrompts.some((c) => c.name === item.name)),
         ...commandPrompts,
       ];
-      customCommands.value = commands.filter((command) => command.source === "custom");
+      customCommands.value = commands.filter(
+        (command) => command.source !== "skill" && command.source !== "prompt",
+      );
       lastCommandRefresh = Date.now();
       if (commands.length === 0 && /(^|\s)\/[^\s]*$/.test(props.modelValue)) {
         if (commandRetryTimer) clearTimeout(commandRetryTimer);
@@ -204,8 +213,8 @@ onBeforeUnmount(() => {
 watch(
   () => props.modelValue,
   (value) => {
-    if (isExternalAgent.value && /(^|\s)\/[^\s]*$/.test(value)) {
-      void refreshSessionCommands();
+    if (/(^|\s)\/[^\s]*$/.test(value)) {
+      void refreshSessionCommands(true);
     }
   },
 );

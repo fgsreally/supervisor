@@ -81,6 +81,14 @@ export default defineConfig({
         target: "http://localhost:3030",
         changeOrigin: true,
       },
+      "/settings": {
+        target: "http://localhost:3030",
+        changeOrigin: true,
+      },
+      "/messages": {
+        target: "http://localhost:3030",
+        changeOrigin: true,
+      },
       "/workspace": {
         target: "http://localhost:3030",
         changeOrigin: true,

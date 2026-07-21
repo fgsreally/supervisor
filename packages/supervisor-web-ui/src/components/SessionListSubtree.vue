@@ -1,25 +1,27 @@
 <template>
-  <template v-for="(child, idx) in children" :key="child.id">
-    <SessionListItem
-      :session="child"
-      :active="activeId === child.id"
-      mode="chat"
-      :depth="depth"
-      :is-last-child="idx === children.length - 1"
-      :ancestor-open-depths="ancestorOpenDepths"
-      @select="$emit('select', $event)"
-      @context-menu="(pos) => $emit('context-menu', { sessionId: child.id, ...pos })"
-    />
-    <SessionListSubtree
-      :parent-id="child.id"
-      :depth="depth + 1"
-      :active-id="activeId"
-      :sessions="sessions"
-      :ancestor-open-depths="nextAncestorDepths(idx)"
-      @select="$emit('select', $event)"
-      @context-menu="$emit('context-menu', $event)"
-    />
-  </template>
+  <TransitionGroup name="session-list">
+    <template v-for="(child, idx) in children" :key="child.id">
+      <SessionListItem
+        :session="child"
+        :active="activeId === child.id"
+        mode="chat"
+        :depth="depth"
+        :is-last-child="idx === children.length - 1"
+        :ancestor-open-depths="ancestorOpenDepths"
+        @select="$emit('select', $event)"
+        @context-menu="(pos) => $emit('context-menu', { sessionId: child.id, ...pos })"
+      />
+      <SessionListSubtree
+        :parent-id="child.id"
+        :depth="depth + 1"
+        :active-id="activeId"
+        :sessions="sessions"
+        :ancestor-open-depths="nextAncestorDepths(idx)"
+        @select="$emit('select', $event)"
+        @context-menu="$emit('context-menu', $event)"
+      />
+    </template>
+  </TransitionGroup>
 </template>
 
 <script setup lang="ts">
@@ -43,7 +45,10 @@ defineEmits<{
 
 const children = computed(() =>
   props.sessions
-    .filter((s) => s.parentId === props.parentId)
+    .filter(
+      (s) =>
+        s.parentId === props.parentId && s.showInSessionList && s.creationMethod === "spawn_agent",
+    )
     .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()),
 );
 
@@ -55,3 +60,21 @@ function nextAncestorDepths(idx: number): number[] {
   return result;
 }
 </script>
+
+<style scoped>
+.session-list-enter-active,
+.session-list-leave-active,
+.session-list-move {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+.session-list-enter-from {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+.session-list-leave-to {
+  opacity: 0;
+  transform: translateX(-12px);
+}
+</style>

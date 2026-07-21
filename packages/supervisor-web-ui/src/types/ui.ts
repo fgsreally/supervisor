@@ -1,4 +1,4 @@
-import type { ProviderApiType, SessionStatus } from "@/api";
+import type { ProviderApiType, SessionCreationMethod, SessionStatus } from "@/api";
 import type { SessionBranchType } from "@/utils/session-branch";
 import type { SessionAvatarValue } from "@/utils/session-avatar";
 
@@ -13,6 +13,7 @@ export interface UISession {
   workspaceId: string;
   parentId?: string | null;
   branchType?: SessionBranchType;
+  creationMethod: SessionCreationMethod;
   showInSessionList: boolean;
   contextLeafId?: string | null;
   agentId?: string | null;

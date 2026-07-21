@@ -225,10 +225,16 @@ function findBuiltinAssistantId(db: SupervisorDb): number | undefined {
 }
 
 function findBuiltinAssistantSessionId(db: SupervisorDb, agentId: number): number | undefined {
-  return db.list().find((session) => {
-    const meta = typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta;
-    return session.agentId === agentId && meta?.builtin === true;
-  })?.id;
+  const sessions = db
+    .list()
+    .filter((session) => {
+      const meta = typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta;
+      return session.agent_id === agentId && meta?.builtin === true;
+    })
+    .sort((left, right) => left.id - right.id);
+  const primary = sessions[0];
+  for (const duplicate of sessions.slice(1)) db.delete(duplicate.id);
+  return primary?.id;
 }
 
 function installBuiltinAssistantSkill(db: SupervisorDb, agentId: number): void {

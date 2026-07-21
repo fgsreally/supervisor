@@ -34,6 +34,7 @@
           v-if="unlinkedGlobal.length"
           :items="unlinkedGlobal"
           :kind="props.kind"
+          :binding-item-id="bindingItemId"
           @bind="bindGlobalItem"
           @installed="refreshAfterInstall"
           @uninstalled="refreshAfterUninstall"
@@ -173,6 +174,7 @@ import ResourceLayerBadge from "./ResourceLayerBadge.vue";
 import SkillFileTree from "./SkillFileTree.vue";
 import SkillListItem from "./SkillListItem.vue";
 import { useAgentStore, useResourceStore } from "@/store";
+import { showUiMessage } from "@/composables/use-ui-message";
 import {
   agentResourcesToUiItems,
   getLinkedResourcesForAgent,
@@ -196,6 +198,7 @@ const props = defineProps<{
 const agentStore = useAgentStore();
 const resourceStore = useResourceStore();
 const agentItems = ref<UIResourceItem[]>([]);
+const bindingItemId = ref<string | null>(null);
 
 const selectedSkillId = ref<string | null>(null);
 const selectedFileId = ref<string | null>(null);
@@ -247,9 +250,20 @@ async function bindGlobalItem(item: UIResourceItem) {
         : props.kind === "mcp"
           ? "mcp"
           : "prompt";
-  await agentStore.bindAgentResource(props.agentId, kind, sourcePath);
-  await reloadAgentItems(props.agentId);
-  resetSelection();
+  try {
+    bindingItemId.value = item.id;
+    await agentStore.bindAgentResource(props.agentId, kind, sourcePath);
+    agentItems.value = [
+      ...agentItems.value,
+      { ...item, layer: "agent", agentIds: [props.agentId] } as UIResourceItem,
+    ];
+    resetSelection();
+    showUiMessage(`已引入 ${item.name}`, "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "引入失败", "error");
+  } finally {
+    bindingItemId.value = null;
+  }
 }
 
 const items = computed(() =>

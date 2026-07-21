@@ -1,7 +1,7 @@
 <template>
   <div v-if="timers.length" class="timer-strip">
     <button
-      class="timer-summary"
+      class="timer-summary chat-context-button"
       type="button"
       :title="`${timers.length} 个定时器 · 下次 ${formatTime(timers[0]!.nextFireAt)}`"
       @click="open = !open"
@@ -65,9 +65,8 @@ function formatInterval(value: number): string {
   border: 1px solid var(--app-border-subtle);
   border-radius: 8px;
   color: var(--app-text-secondary);
-  background: color-mix(in srgb, var(--app-chat-bg) 88%, transparent);
-  font-size: 10px;
-  backdrop-filter: blur(6px);
+  background: transparent;
+  font-size: 11px;
   transition:
     background-color 0.15s ease,
     color 0.15s ease,
@@ -92,6 +91,8 @@ function formatInterval(value: number): string {
   border: 1px solid var(--app-popup-border);
   border-radius: 10px;
   background: var(--app-popup-bg);
+  opacity: 1;
+  isolation: isolate;
   box-shadow: 0 10px 30px rgb(0 0 0 / 16%);
 }
 .timer-item {

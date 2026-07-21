@@ -110,10 +110,10 @@
         <button
           type="button"
           class="px-4 py-2 text-[13px] rounded-md bg-[#07c160] text-white hover:bg-[#06ad56] disabled:opacity-50"
-          :disabled="!canSave"
+          :disabled="!canSave || saving"
           @click="save"
         >
-          保存
+          {{ saving ? "保存中..." : "保存" }}
         </button>
       </div>
     </div>
@@ -133,6 +133,7 @@ const props = defineProps<{
   mode: "create" | "edit";
   model?: UIProviderModel | null;
   existingIds?: string[];
+  saving?: boolean;
 }>();
 
 const emit = defineEmits<{

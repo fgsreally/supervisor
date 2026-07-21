@@ -38,6 +38,7 @@ export interface SupervisorSettings {
   firecrawlApiKeyEnv?: string;
 }
 export type SessionBranchType = "subagent" | "fork" | "clone" | "btw";
+export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork" | "clone";
 
 // ============ Domain Types ============
 
@@ -52,6 +53,7 @@ export interface Project {
   name: string;
   cwd: string;
   workDir: string;
+  defaultBranch: string;
   meta: Record<string, unknown>;
   origin?: string | null;
   createdAt: string;
@@ -70,6 +72,7 @@ export interface Session {
   leafId: string | null;
   agentId: string | null;
   branchType: SessionBranchType | null;
+  creationMethod: SessionCreationMethod;
   showInSessionList: boolean;
   contextLeafId: string | null;
   createdAt: string; // ISO date
@@ -203,6 +206,7 @@ export interface AgentResources {
     source: "preset" | "extension" | "system";
     extensionName?: string;
     description?: string;
+    enabled: boolean;
   }>;
   layers: {
     agent: ResourceLayer;
@@ -497,6 +501,7 @@ interface RawProject {
   name: string;
   cwd: string;
   workDir: string;
+  defaultBranch: string;
   meta: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
@@ -517,6 +522,7 @@ interface RawSession {
   leafId: string | null;
   agentId: number | null;
   branchType: SessionBranchType | null;
+  creationMethod?: SessionCreationMethod;
   showInSessionList?: boolean;
   contextLeafId?: string | null;
   createdAt: string;
@@ -533,6 +539,9 @@ function mapSession(raw: RawSession): Session {
     projectId: raw.projectId === null ? null : String(raw.projectId),
     parentId: raw.parentId === null ? null : String(raw.parentId),
     agentId: raw.agentId === null ? null : String(raw.agentId),
+    creationMethod:
+      raw.creationMethod ??
+      (raw.branchType === "subagent" ? "spawn_agent" : (raw.branchType ?? "user")),
     showInSessionList:
       raw.showInSessionList ??
       (raw.parentId === null || raw.branchType === "fork" || raw.branchType === "clone"),
@@ -563,6 +572,10 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
   if (!res.ok) {
     const err = await res.text().catch(() => "Unknown error");
     throw new Error(`HTTP ${res.status}: ${err}`);
+  }
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    throw new Error(`接口 ${path} 返回了非 JSON 响应，请确认后端服务和开发代理已启动`);
   }
   return res.json() as Promise<T>;
 }
@@ -663,6 +676,37 @@ export async function getSession(id: string): Promise<Session> {
 export async function getSessionChildren(id: string): Promise<Session[]> {
   const sessions = await fetchJson<RawSession[]>(`/sessions/${id}/children`);
   return sessions.map(mapSession);
+}
+
+export interface SessionMember {
+  id: number;
+  sessionId: number;
+  agentId: number;
+  role: string;
+  tags: string[];
+}
+
+export function getSessionMembers(id: string): Promise<SessionMember[]> {
+  return fetchJson<SessionMember[]>(`/sessions/${id}/members`);
+}
+
+export interface WorktreeCommit {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  author: string;
+  timestamp: number;
+}
+
+export function getSessionCommits(id: string): Promise<WorktreeCommit[]> {
+  return fetchJson<WorktreeCommit[]>(`/sessions/${id}/commits`);
+}
+
+export function updateSessionMembers(
+  id: string,
+  value: { shadowAgentId: string | null; spawnedAgentIds: string[] },
+): Promise<SessionMember[]> {
+  return putJson<SessionMember[]>(`/sessions/${id}/members`, value);
 }
 
 /** Create/Spawn a new session. */
@@ -941,6 +985,21 @@ export async function getSessionState(id: string): Promise<SupervisorSessionStat
 /** Get available slash commands for a session. */
 export async function getSessionCommands(id: string): Promise<SlashCommandInfo[]> {
   return fetchJson<SlashCommandInfo[]>(`/sessions/${id}/commands`);
+}
+
+export interface EvalRuntimeState {
+  kernels: Array<"js" | "py">;
+  history: Array<{
+    language: "js" | "py";
+    code: string;
+    output: string;
+    error?: string;
+    at: number;
+  }>;
+}
+
+export function getSessionEvalState(id: string): Promise<EvalRuntimeState> {
+  return fetchJson<EvalRuntimeState>(`/sessions/${id}/eval-state`);
 }
 
 export async function executeSessionCommand(

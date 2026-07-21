@@ -29,7 +29,30 @@
     </div>
 
     <div class="flex-1 overflow-y-auto custom-scrollbar">
-      <template v-if="pinnedRoots.length">
+      <template v-if="query.trim()">
+        <div v-if="searching" class="chat-search-state">搜索中...</div>
+        <button
+          v-for="result in searchResults"
+          v-else
+          :key="result.session.id"
+          type="button"
+          class="chat-search-result"
+          :class="{ 'chat-search-result--active': activeId === result.session.id }"
+          @click="emit('select', result.session.id)"
+        >
+          <span
+            class="chat-search-result__avatar"
+            :style="{ backgroundColor: result.session.meta.avatar?.color ?? '#576b95' }"
+            >{{ result.session.meta.avatar?.text ?? result.session.meta.name.slice(0, 1) }}</span
+          >
+          <span class="chat-search-result__body">
+            <strong>{{ result.session.meta.name }}</strong>
+            <small>{{ result.description }}</small>
+          </span>
+        </button>
+        <div v-if="!searching && !searchResults.length" class="chat-search-state">无匹配会话</div>
+      </template>
+      <template v-else-if="pinnedRoots.length">
         <div class="list-section-header sticky top-0 z-10">
           <span class="list-section-title flex-1 truncate">置顶</span>
         </div>
@@ -45,7 +68,7 @@
         </div>
       </template>
 
-      <template v-if="regularRoots.length">
+      <template v-if="!query.trim() && regularRoots.length">
         <template v-for="group in workspaceGroups" :key="group.workspace.id">
           <div class="list-section-header sticky top-0 z-10">
             <button
@@ -96,7 +119,7 @@
       </template>
 
       <div
-        v-if="!pinnedRoots.length && !regularRoots.length"
+        v-if="!query.trim() && !pinnedRoots.length && !regularRoots.length"
         class="py-12 text-center text-sm"
         style="color: var(--app-text-muted)"
       >
@@ -124,12 +147,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { ChevronRight, Plus, Search, Settings } from "lucide-vue-next";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
 import { groupSessionsByWorkspace, toUISession } from "@/utils/ui-session";
 import { getDefaultWorkspaceCwd, rememberCwd } from "@/config/workspace";
+import { searchMessages } from "@/api";
 import SessionAgentPicker from "./SessionAgentPicker.vue";
 import SessionListContextMenu from "./SessionListContextMenu.vue";
 import SessionListItem from "./SessionListItem.vue";
@@ -150,6 +174,9 @@ const sessionStore = useSessionStore();
 const agentStore = useAgentStore();
 
 const query = ref("");
+const searching = ref(false);
+const messageMatches = ref<Map<string, string>>(new Map());
+let searchGeneration = 0;
 const collapsedWorkspaceIds = ref<Set<string>>(new Set());
 const agentPickerWorkspaceId = ref<string | null>(null);
 const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null);
@@ -176,6 +203,54 @@ function filterSessions(list: UISession[]): UISession[] {
 }
 
 const uiSessions = computed(() => sessionStore.sessions.map(toUISession));
+const searchResults = computed(() => {
+  const q = query.value.trim().toLowerCase();
+  if (!q) return [];
+  return uiSessions.value
+    .filter((session) => session.showInSessionList)
+    .map((session) => {
+      const titleMatch = session.meta.name.toLowerCase().includes(q);
+      const description =
+        messageMatches.value.get(session.id) ??
+        (titleMatch ? session.lastMessagePreview || session.meta.description || "标题匹配" : "");
+      return {
+        session,
+        description,
+        matched: titleMatch || Boolean(messageMatches.value.get(session.id)),
+      };
+    })
+    .filter((result) => result.matched)
+    .sort(
+      (left, right) =>
+        new Date(right.session.lastActiveAt).getTime() -
+        new Date(left.session.lastActiveAt).getTime(),
+    );
+});
+
+watch(query, async (value) => {
+  const generation = ++searchGeneration;
+  const normalized = value.trim();
+  if (!normalized) {
+    messageMatches.value = new Map();
+    searching.value = false;
+    return;
+  }
+  searching.value = true;
+  try {
+    const hits = await searchMessages(normalized, { limit: 80 });
+    if (generation !== searchGeneration) return;
+    const matches = new Map<string, string>();
+    for (const hit of hits) {
+      const sessionId = String(hit.sessionId);
+      if (!matches.has(sessionId)) matches.set(sessionId, hit.snippet);
+    }
+    messageMatches.value = matches;
+  } catch {
+    if (generation === searchGeneration) messageMatches.value = new Map();
+  } finally {
+    if (generation === searchGeneration) searching.value = false;
+  }
+});
 const filtered = computed(() => filterSessions(uiSessions.value));
 const listVisible = computed(() => filtered.value.filter((session) => session.showInSessionList));
 
@@ -253,7 +328,12 @@ async function achieveSession() {
   const target = contextMenu.value;
   closeContextMenu();
   if (!target) return;
-  if (!window.confirm("完成并归档该会话？系统会提交剩余修改并合并到项目默认分支。")) return;
+  const session = sessionStore.sessions.find((item) => item.id === target.sessionId);
+  const prompt =
+    session?.creationMethod === "spawn_agent"
+      ? "完成该子代理会话？完成后会从会话列表隐藏，不会提交或合并代码。"
+      : "完成并归档该会话？系统会提交剩余修改并合并到项目默认分支。";
+  if (!window.confirm(prompt)) return;
   try {
     await sessionStore.completeSession(target.sessionId);
   } catch (error) {
@@ -316,6 +396,55 @@ async function onAgentPicked(agentId: string) {
 </script>
 
 <style scoped>
+.chat-search-state {
+  padding: 40px 16px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+.chat-search-result {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px;
+  text-align: left;
+  transition: background-color 0.15s;
+}
+.chat-search-result:hover,
+.chat-search-result--active {
+  background: var(--app-list-active-bg);
+}
+.chat-search-result__avatar {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  place-items: center;
+  border-radius: 7px;
+  color: white;
+  font-size: 17px;
+}
+.chat-search-result__body {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+.chat-search-result__body strong,
+.chat-search-result__body small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.chat-search-result__body strong {
+  color: var(--app-text-primary);
+  font-size: 14px;
+  font-weight: 500;
+}
+.chat-search-result__body small {
+  color: var(--app-text-secondary);
+  font-size: 12px;
+}
 .chat-home-settings {
   display: inline-grid;
   width: 32px;

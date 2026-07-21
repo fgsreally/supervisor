@@ -1,5 +1,5 @@
 <template>
-  <div class="flex-1 overflow-y-auto custom-scrollbar" ref="containerRef">
+  <div class="min-h-0 flex-1 overflow-y-auto custom-scrollbar" ref="containerRef">
     <template v-for="(group, groupIndex) in groups" :key="group.id">
       <div
         v-if="showBranchDivider(groupIndex)"
@@ -15,8 +15,13 @@
       </div>
 
       <div :class="messageRowClass(group)">
+        <ShadowMessageRow
+          v-if="group.type === 'message' && group.message?.role === 'user' && group.shadowSource"
+          :text="userText(group)"
+          :queued="group.deliveryState === 'queued'"
+        />
         <UserMessageRow
-          v-if="group.type === 'message' && group.message?.role === 'user'"
+          v-else-if="group.type === 'message' && group.message?.role === 'user'"
           :text="userText(group)"
           :file="userFileAttachment(group)"
           :time-label="messageTimeLabel(group)"
@@ -113,6 +118,7 @@ import {
 import { messageTextContent } from "@/utils/message-content";
 import { formatListTime } from "@/utils/format-time";
 import UserMessageRow from "./UserMessageRow.vue";
+import ShadowMessageRow from "./ShadowMessageRow.vue";
 import AssistantMessageGroup from "./AssistantMessageGroup.vue";
 import CompactionBanner from "../CompactionBanner.vue";
 import MessageAssets from "./MessageAssets.vue";

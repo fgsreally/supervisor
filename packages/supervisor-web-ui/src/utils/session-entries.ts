@@ -67,8 +67,9 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
     ...(entry.isOld ? { isOld: true } : {}),
     ...(assets.length > 0 ? { assets } : {}),
     ...(entry.source?.startsWith("slash:")
-      ? { slashSource: entry.source.slice(6) as "skill" | "prompt" | "custom" }
+      ? { slashSource: entry.source.slice(6) as "skill" | "prompt" | "custom" | "mcp" }
       : {}),
+    ...(entry.source?.startsWith("shadow:") ? { shadowSource: entry.source } : {}),
   };
   if (entry.type === "system") {
     return {
@@ -146,12 +147,14 @@ export function createUserChatEntry(
   id: string,
   text: string,
   deliveryState?: "queued" | "failed",
+  source?: string | null,
 ): ChatEntry {
   return {
     id,
     type: "message",
     createdAt: Date.now(),
     ...(deliveryState ? { deliveryState } : {}),
+    ...(source?.startsWith("shadow:") ? { shadowSource: source } : {}),
     message: { role: "user", content: text },
   };
 }

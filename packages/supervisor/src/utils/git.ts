@@ -1,10 +1,36 @@
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
 const execGit = promisify(execFile);
+
+export function ensureGitRepositorySync(cwd: string): string {
+  mkdirSync(cwd, { recursive: true });
+  const git = (args: string[]) =>
+    execFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+  try {
+    git(["rev-parse", "--show-toplevel"]);
+  } catch {
+    git(["init", "-b", "main"]);
+  }
+  let branch = "";
+  try {
+    branch = git(["branch", "--show-current"]);
+  } catch {
+    // handled below
+  }
+  if (!branch) {
+    branch = "main";
+    git(["symbolic-ref", "HEAD", `refs/heads/${branch}`]);
+  }
+  return branch;
+}
 
 export interface SessionGitMeta {
   repoRoot: string;
@@ -252,4 +278,26 @@ export function parseSessionGitMeta(meta: Record<string, unknown>): SessionGitMe
       : {}),
     ...(typeof item.mergeError === "string" ? { mergeError: item.mergeError } : {}),
   };
+}
+
+export async function listWorktreeCommits(
+  cwd: string,
+  limit = 30,
+): Promise<
+  Array<{ hash: string; shortHash: string; subject: string; author: string; timestamp: number }>
+> {
+  const { stdout } = await runGit(cwd, [
+    "log",
+    `-${Math.max(1, Math.min(limit, 100))}`,
+    "--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ct%x1e",
+  ]).catch(() => ({ stdout: "", stderr: "" }));
+  return stdout
+    .split("\x1e")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const [hash = "", shortHash = "", subject = "", author = "", timestamp = "0"] =
+        line.split("\x1f");
+      return { hash, shortHash, subject, author, timestamp: Number(timestamp) * 1000 };
+    });
 }

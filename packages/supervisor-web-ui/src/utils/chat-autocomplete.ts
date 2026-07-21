@@ -22,6 +22,12 @@ export interface PromptAutocompleteEntry {
   source?: "prompt";
 }
 
+export interface CommandAutocompleteEntry {
+  name: string;
+  description: string;
+  source?: "custom" | "mcp";
+}
+
 export interface ChatAutocompleteItem {
   value: string;
   label: string;
@@ -29,7 +35,7 @@ export interface ChatAutocompleteItem {
   trigger: AutocompleteTrigger;
   isDirectory?: boolean;
   fileIconKind?: FileIconKind;
-  source?: "skill" | "prompt";
+  source?: "skill" | "prompt" | "custom" | "mcp";
 }
 
 export interface ChatAutocompleteContext {
@@ -160,6 +166,7 @@ export function getAutocompleteSuggestions(
     workspaceFiles: WorkspaceFileEntry[];
     skills: SkillAutocompleteEntry[];
     prompts: PromptAutocompleteEntry[];
+    commands?: CommandAutocompleteEntry[];
     skillTrigger?: "slash" | "dollar";
   },
 ): ChatAutocompleteItem[] {
@@ -206,6 +213,13 @@ export function getAutocompleteSuggestions(
       label: `/${prompt.name}`,
       source: "prompt" as const,
       description: prompt.description || "Prompt 模板",
+    })),
+    ...(options.commands ?? []).map((command) => ({
+      trigger: "slash" as const,
+      value: command.name.replace(/^\//, ""),
+      label: `/${command.name.replace(/^\//, "")}`,
+      source: command.source ?? (command.name.toLowerCase().startsWith("mcp") ? "mcp" : "custom"),
+      description: command.description,
     })),
   ];
 

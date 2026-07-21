@@ -19,7 +19,6 @@ import {
   getShadowProtocolPrompt,
   parseShadowProtocolResponse,
 } from "./protocol.js";
-import type { ShadowUrgency } from "./types.js";
 
 function parseMeta(meta: Session["meta"]): Record<string, unknown> {
   if (!meta) return {};
@@ -64,13 +63,6 @@ function extractAssistantText(content: Array<{ type: string; text?: string }>): 
     .trim();
 }
 
-export function shadowUrgencyToLevel(urgency: ShadowUrgency | undefined): number {
-  if (urgency === "normal") return 50;
-  if (urgency === "high") return 80;
-  if (urgency === "critical") return SESSION_INPUT_INTERRUPT_LEVEL;
-  return DEFAULT_PARENT_MESSAGE_LEVEL;
-}
-
 export async function runShadow(
   manager: SessionManager,
   db: SupervisorDb,
@@ -86,7 +78,8 @@ export async function runShadow(
   const latestTurn = formatHarnessMessages(event.messages ?? []);
   if (!latestTurn) return;
 
-  const shadowAgentId = findPackagedAgentId(db, "shadow");
+  const configuredShadow = db.listMembers(session.id).find((member) => member.role === "shadow");
+  const shadowAgentId = configuredShadow?.agentId ?? findPackagedAgentId(db, "shadow");
   if (shadowAgentId === undefined) return;
   const shadowAgent = db.getAgent(shadowAgentId);
   if (!shadowAgent?.modelId) return;
@@ -127,7 +120,20 @@ export async function runShadow(
   applyShadowMemoryUpdate(session.projectId, session.id, result.shadowMemory);
 
   const suggestedQuestions = result.suggestedQuestions ?? [];
-  db.updateMeta(session.id, { shadowSuggestedQuestions: suggestedQuestions });
+  db.updateMeta(session.id, {
+    shadow: {
+      agentId: shadowAgent.id,
+      suggestedQuestions,
+      message: result.message,
+      interrupt: result.interrupt === true,
+      status: result.status,
+      title: result.title,
+      commitMessage: result.commitMessage,
+      memory: result.shadowMemory,
+      memoryUpdated: Boolean(result.shadowMemory),
+      lastRunAt: Date.now(),
+    },
+  });
   manager.publishShadowSuggestions(session.id, suggestedQuestions);
 
   const title = result.title?.replace(/\s+/g, " ").trim().slice(0, 80);
@@ -147,10 +153,8 @@ export async function runShadow(
   if (message) {
     await manager.submitSessionInput(session.id, {
       message,
-      level: shadowUrgencyToLevel(result.urgency),
+      level: result.interrupt ? SESSION_INPUT_INTERRUPT_LEVEL : DEFAULT_PARENT_MESSAGE_LEVEL,
       source: `shadow:${shadowAgent.id}`,
     });
   }
-
-  // suggestion is parsed now; delivery waits for the planned WebSocket session event channel.
 }

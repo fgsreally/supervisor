@@ -16,6 +16,7 @@ export function toUISession(session: Session): UISession {
     workspaceId: session.projectId ?? "unknown",
     parentId: session.parentId,
     branchType: session.branchType ?? undefined,
+    creationMethod: session.creationMethod,
     showInSessionList: session.showInSessionList,
     contextLeafId: session.contextLeafId,
     agentId: session.agentId,

@@ -37,6 +37,11 @@ function rowToSession(row: SessionRow): SessionRow {
   return {
     ...row,
     branch_type: row.branch_type === "spawn" ? "subagent" : row.branch_type,
+    created_via:
+      row.created_via ??
+      (row.branch_type === "subagent" || row.branch_type === "spawn"
+        ? "spawn_agent"
+        : (row.branch_type ?? "user")),
     show_in_session_list: row.show_in_session_list ?? 1,
     context_leaf_id: row.context_leaf_id ?? null,
     meta: JSON.parse(row.meta) as any,
@@ -49,6 +54,7 @@ function rowToProject(row: ProjectRow): Project {
     name: row.name,
     cwd: row.cwd,
     workDir: row.work_dir,
+    defaultBranch: row.default_branch,
     meta: JSON.parse(row.meta),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -221,6 +227,7 @@ export class SupervisorDb {
 				name          TEXT NOT NULL,
 				cwd           TEXT NOT NULL UNIQUE,
 				work_dir      TEXT NOT NULL,
+				default_branch TEXT NOT NULL DEFAULT 'main',
 				meta          TEXT NOT NULL DEFAULT '{}',
 				created_at    INTEGER NOT NULL,
 				updated_at    INTEGER NOT NULL
@@ -238,6 +245,7 @@ export class SupervisorDb {
 				leaf_id       TEXT,
 				agent_id      INTEGER REFERENCES agents(id) ON DELETE SET NULL,
 				branch_type   TEXT,
+				created_via  TEXT NOT NULL DEFAULT 'user',
 				show_in_session_list INTEGER NOT NULL DEFAULT 1,
 				context_leaf_id TEXT,
 				created_at    INTEGER NOT NULL,
@@ -263,6 +271,7 @@ export class SupervisorDb {
       CREATE INDEX IF NOT EXISTS idx_members_agent ON members(agent_id);
 		`);
 
+    this.ensureProjectColumns();
     this.ensureSessionChildColumns();
 
     this.db.exec(`
@@ -322,6 +331,13 @@ export class SupervisorDb {
     this.initializeDefaultProviders();
   }
 
+  private ensureProjectColumns(): void {
+    const columns = this.db.pragma("table_info(projects)") as Array<{ name: string }>;
+    if (!columns.some((column) => column.name === "default_branch")) {
+      this.db.exec("ALTER TABLE projects ADD COLUMN default_branch TEXT NOT NULL DEFAULT 'main'");
+    }
+  }
+
   private ensureSessionChildColumns(): void {
     const columns = this.db.pragma("table_info(sessions)") as Array<{ name: string }>;
     const names = new Set(columns.map((column) => column.name));
@@ -339,6 +355,15 @@ export class SupervisorDb {
     }
     if (!names.has("context_leaf_id")) {
       this.db.exec("ALTER TABLE sessions ADD COLUMN context_leaf_id TEXT");
+    }
+    if (!names.has("created_via")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN created_via TEXT NOT NULL DEFAULT 'user'");
+      this.db.exec(`UPDATE sessions SET created_via = CASE
+        WHEN branch_type = 'subagent' OR branch_type = 'spawn' THEN 'spawn_agent'
+        WHEN branch_type IN ('btw', 'fork', 'clone') THEN branch_type
+        ELSE 'user' END`);
+      this.db.exec(`UPDATE sessions SET show_in_session_list = 1
+        WHERE parent_id IS NOT NULL AND (branch_type = 'subagent' OR branch_type = 'spawn')`);
     }
     this.db.exec(`
       UPDATE sessions
@@ -372,13 +397,14 @@ export class SupervisorDb {
     const now = Date.now();
     const result = this.db
       .prepare(
-        `INSERT INTO projects (name, cwd, work_dir, meta, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (name, cwd, work_dir, default_branch, meta, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         options?.name ?? this.projectNameFromCwd(cwd),
         cwd,
         "",
+        "main",
         JSON.stringify(options?.meta ?? {}),
         now,
         now,
@@ -392,6 +418,12 @@ export class SupervisorDb {
 
   insertProject(row: { name?: string; cwd: string; meta?: Record<string, unknown> }): Project {
     return this.findOrCreateProjectByCwd(row.cwd, { name: row.name, meta: row.meta });
+  }
+
+  updateProjectDefaultBranch(id: number, branch: string): void {
+    this.db
+      .prepare("UPDATE projects SET default_branch = ?, updated_at = ? WHERE id = ?")
+      .run(branch, Date.now(), id);
   }
 
   getProject(id: number): Project | undefined {
@@ -433,6 +465,7 @@ export class SupervisorDb {
       | "leaf_id"
       | "agent_id"
       | "branch_type"
+      | "created_via"
       | "show_in_session_list"
       | "context_leaf_id"
       | "thinking_level"
@@ -442,6 +475,7 @@ export class SupervisorDb {
       leaf_id?: string | null;
       agent_id?: number | null;
       branch_type?: SessionBranchType | null;
+      created_via?: SessionRow["created_via"];
       show_in_session_list?: number;
       context_leaf_id?: string | null;
       thinking_level?: "none" | "low" | "medium" | "high";
@@ -461,6 +495,7 @@ export class SupervisorDb {
       leaf_id: row.leaf_id ?? null,
       agent_id: row.agent_id ?? null,
       branch_type: row.branch_type ?? null,
+      created_via: row.created_via ?? "user",
       show_in_session_list: row.show_in_session_list ?? 1,
       context_leaf_id: row.context_leaf_id ?? null,
       ...row,
@@ -473,8 +508,8 @@ export class SupervisorDb {
     };
     const result = this.db
       .prepare(
-        `INSERT INTO sessions (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, show_in_session_list, context_leaf_id, created_at, last_active_at, meta)
-				 VALUES (@project_id, @parent_id, @session_id, @pid, @status, @thinking_level, @cwd, @leaf_id, @agent_id, @branch_type, @show_in_session_list, @context_leaf_id, @created_at, @last_active_at, @meta)`,
+        `INSERT INTO sessions (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, created_via, show_in_session_list, context_leaf_id, created_at, last_active_at, meta)
+				 VALUES (@project_id, @parent_id, @session_id, @pid, @status, @thinking_level, @cwd, @leaf_id, @agent_id, @branch_type, @created_via, @show_in_session_list, @context_leaf_id, @created_at, @last_active_at, @meta)`,
       )
       .run(full);
     return rowToSession({ ...full, id: Number(result.lastInsertRowid) });
@@ -528,6 +563,12 @@ export class SupervisorDb {
     this.db
       .prepare("UPDATE sessions SET status = ?, last_active_at = ? WHERE id = ?")
       .run(status, Date.now(), id);
+  }
+
+  updateSessionListVisibility(id: number, visible: boolean): void {
+    this.db
+      .prepare("UPDATE sessions SET show_in_session_list = ?, last_active_at = ? WHERE id = ?")
+      .run(visible ? 1 : 0, Date.now(), id);
   }
 
   updateThinkingLevel(id: number, thinkingLevel: "none" | "low" | "medium" | "high"): void {
@@ -756,6 +797,36 @@ export class SupervisorDb {
       .prepare("SELECT * FROM members WHERE session_id = ? ORDER BY created_at ASC")
       .all(sessionId) as MemberRow[];
     return rows.map(rowToMember);
+  }
+
+  replaceSessionAgentMembers(
+    sessionId: number,
+    shadowAgentId: number | null,
+    spawnedAgentIds: number[],
+  ): Member[] {
+    const transaction = this.db.transaction(() => {
+      this.db
+        .prepare("DELETE FROM members WHERE session_id = ? AND role IN ('shadow', 'spawned')")
+        .run(sessionId);
+      if (shadowAgentId !== null) {
+        this.upsertMember({
+          session_id: sessionId,
+          agent_id: shadowAgentId,
+          role: "shadow",
+          tags: ["shadow"],
+        });
+      }
+      for (const agentId of [...new Set(spawnedAgentIds)]) {
+        this.upsertMember({
+          session_id: sessionId,
+          agent_id: agentId,
+          role: "spawned",
+          tags: ["default"],
+        });
+      }
+    });
+    transaction();
+    return this.listMembers(sessionId);
   }
 
   listMemberAgentIdsByRole(sessionId: number, role: string): number[] {

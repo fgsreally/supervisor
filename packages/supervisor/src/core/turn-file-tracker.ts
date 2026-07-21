@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { isAbsolute, relative, resolve } from "node:path";
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
 
@@ -13,6 +14,12 @@ export interface TurnRecord {
   startedAt: number;
   endedAt: number;
   files: TurnFileChanges;
+}
+
+export interface SessionChangedFile {
+  path: string;
+  status: "added" | "modified" | "deleted";
+  lastTurn: number;
 }
 
 interface PendingTool {
@@ -40,6 +47,27 @@ export function normalizeFilePath(cwd: string, rawPath: string): string {
   const rel = relative(cwd, abs);
   if (!rel.startsWith("..")) return rel.replace(/\\/g, "/");
   return abs.replace(/\\/g, "/");
+}
+
+function readGitWorktreeChanges(cwd: string): TurnFileChanges {
+  const changes: TurnFileChanges = { added: [], modified: [], deleted: [] };
+  try {
+    const output = execFileSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], {
+      cwd,
+      encoding: "utf8",
+      windowsHide: true,
+    });
+    for (const line of output.split(/\r?\n/)) {
+      if (line.length < 4) continue;
+      const code = line.slice(0, 2);
+      const path = line.slice(3).split(" -> ").at(-1)?.replace(/^"|"$/g, "");
+      if (!path) continue;
+      if (code === "??" || code.includes("A")) changes.added.push(path);
+      else if (code.includes("D")) changes.deleted.push(path);
+      else changes.modified.push(path);
+    }
+  } catch {}
+  return changes;
 }
 
 function parseBashFileChanges(cwd: string, command: string): TurnFileChanges {
@@ -153,6 +181,10 @@ export class TurnFileTracker {
   }
 
   finishTurn(): TurnRecord {
+    const worktree = readGitWorktreeChanges(this.cwd);
+    for (const path of worktree.added) this.added.add(path);
+    for (const path of worktree.modified) this.modified.add(path);
+    for (const path of worktree.deleted) this.deleted.add(path);
     return {
       index: this.turnIndex,
       startedAt: this.startedAt,
@@ -171,7 +203,31 @@ export function mergeTurnIntoMeta(
   turn: TurnRecord,
 ): Record<string, unknown> {
   const existing = Array.isArray(meta.turns) ? (meta.turns as TurnRecord[]) : [];
-  return { ...meta, turns: [...existing, turn] };
+  const changed = new Map<string, SessionChangedFile>();
+  if (Array.isArray(meta.changedFiles)) {
+    for (const value of meta.changedFiles as SessionChangedFile[]) {
+      if (value && typeof value.path === "string") changed.set(value.path, value);
+    }
+  }
+  for (const path of turn.files.added) {
+    changed.set(path, { path, status: "added", lastTurn: turn.index });
+  }
+  for (const path of turn.files.modified) {
+    const previous = changed.get(path);
+    changed.set(path, {
+      path,
+      status: previous?.status === "added" ? "added" : "modified",
+      lastTurn: turn.index,
+    });
+  }
+  for (const path of turn.files.deleted) {
+    changed.set(path, { path, status: "deleted", lastTurn: turn.index });
+  }
+  return {
+    ...meta,
+    turns: [...existing, turn],
+    changedFiles: [...changed.values()].sort((a, b) => a.path.localeCompare(b.path)),
+  };
 }
 
 export function handleAgentEventForTurnFiles(

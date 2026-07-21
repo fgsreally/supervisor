@@ -8,7 +8,7 @@
     </div>
 
     <div class="flex-1 overflow-y-auto custom-scrollbar p-6">
-      <div class="max-w-2xl space-y-5">
+      <div class="settings-content space-y-5">
         <section class="settings-card">
           <h2>浏览器</h2>
           <label>
@@ -158,13 +158,19 @@ async function save() {
   color: var(--app-text-primary);
 }
 .settings-card {
-  padding: 20px;
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 8px;
+  overflow: hidden;
+  padding: 0 22px 18px;
+  border: 1px solid color-mix(in srgb, var(--app-border-subtle) 72%, transparent);
+  border-radius: 12px;
   background: var(--app-settings-card);
 }
+.settings-content {
+  width: min(920px, 100%);
+}
 .settings-card h2 {
-  margin-bottom: 16px;
+  margin: 0 -22px 4px;
+  padding: 17px 22px 14px;
+  border-bottom: 1px solid var(--app-border-subtle);
   font-size: 15px;
   font-weight: 600;
   color: var(--app-text-primary);
@@ -174,18 +180,49 @@ async function save() {
   grid-template-columns: 180px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  margin-top: 12px;
+  min-height: 58px;
+  margin: 0;
+  border-bottom: 1px solid var(--app-border-subtle);
   font-size: 14px;
   color: var(--app-text-primary);
 }
 .settings-card select,
 .settings-card input {
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
-  background: var(--app-settings-bg);
+  min-height: 38px;
+  padding: 8px 34px 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  outline: none;
+  background-color: var(--app-settings-bg);
   color: var(--app-text-primary);
+  transition:
+    border-color 0.15s,
+    box-shadow 0.15s,
+    background-color 0.15s;
+}
+.settings-card select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--app-text-muted) 50%),
+    linear-gradient(135deg, var(--app-text-muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 16px) 16px,
+    calc(100% - 11px) 16px;
+  background-repeat: no-repeat;
+  background-size:
+    5px 5px,
+    5px 5px;
+  cursor: pointer;
+}
+.settings-card select:hover,
+.settings-card input:hover {
+  background-color: var(--app-hover);
+}
+.settings-card select:focus,
+.settings-card input:focus {
+  border-color: #07c160;
+  box-shadow: 0 0 0 3px rgb(7 193 96 / 12%);
 }
 .settings-card p {
   margin-top: 12px;
@@ -198,6 +235,15 @@ async function save() {
   border-radius: 6px;
   color: white;
   background: #07c160;
+  transition:
+    background-color 0.15s,
+    transform 0.1s;
+}
+.save-button:hover:not(:disabled) {
+  background: #06ad56;
+}
+.save-button:active:not(:disabled) {
+  transform: scale(0.98);
 }
 .save-button:disabled {
   opacity: 0.55;

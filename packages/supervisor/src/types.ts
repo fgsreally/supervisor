@@ -12,6 +12,7 @@ export interface SupervisorHarnessMetadata extends SessionMetadata {
 }
 
 export type ToolsPreset = "coding" | "readonly" | "none";
+export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork" | "clone";
 
 /** `stopped` is kept for backward compatibility with old DB rows. */
 export type SessionStatus =
@@ -36,6 +37,7 @@ export interface SessionRow {
   leaf_id: string | null;
   agent_id: number | null;
   branch_type: string | null;
+  created_via?: SessionCreationMethod;
   show_in_session_list?: number;
   context_leaf_id?: string | null;
   created_at: number;
@@ -56,6 +58,7 @@ export interface Session {
   agentId: number | null;
   /** How this child session was created. Root sessions use null. */
   branchType: SessionBranchType | null;
+  creationMethod: SessionCreationMethod;
   showInSessionList: boolean;
   /** BTW context snapshot in the parent session. */
   contextLeafId: string | null;
@@ -74,6 +77,7 @@ export interface CreateSessionOptions {
   meta?: Record<string, unknown>;
   agentId?: number | null;
   branchType?: SessionBranchType | null;
+  creationMethod?: SessionCreationMethod;
   contextLeafId?: string | null;
 }
 
@@ -82,6 +86,7 @@ export interface ProjectRow {
   name: string;
   cwd: string;
   work_dir: string;
+  default_branch: string;
   meta: string;
   created_at: number;
   updated_at: number;
@@ -92,6 +97,7 @@ export interface Project {
   name: string;
   cwd: string;
   workDir: string;
+  defaultBranch: string;
   meta: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;

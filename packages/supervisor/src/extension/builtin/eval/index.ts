@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Worker } from "node:worker_threads";
 import { Type } from "typebox";
@@ -155,6 +155,13 @@ const evalExtension: ExtensionDefinition = {
     const runtimeDir = join(ctx.session.dir, "eval");
     await mkdir(runtimeDir, { recursive: true });
     const kernels = new Map<Language, EvalKernel>();
+    const history: Array<{
+      language: Language;
+      code: string;
+      output: string;
+      error?: string;
+      at: number;
+    }> = [];
     let queue = Promise.resolve();
     ctx.agent.registerTool({
       name: "eval",
@@ -195,6 +202,23 @@ const evalExtension: ExtensionDefinition = {
           ]
             .filter(Boolean)
             .join("\n");
+          if (params.reset) {
+            for (let index = history.length - 1; index >= 0; index--) {
+              if (history[index]?.language === params.language) history.splice(index, 1);
+            }
+          }
+          history.push({
+            language: params.language,
+            code: params.code,
+            output: text || "(no output)",
+            error: reply.error,
+            at: Date.now(),
+          });
+          await writeFile(
+            join(runtimeDir, "state.json"),
+            JSON.stringify({ kernels: [...kernels.keys()], history }, null, 2),
+            "utf8",
+          );
           return {
             content: [{ type: "text", text: text || "(no output)" }],
             isError: Boolean(reply.error),

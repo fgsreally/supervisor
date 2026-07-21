@@ -11,6 +11,9 @@
       <component :is="icon" class="tool-activity-bar__icon" />
       <span class="tool-activity-bar__label">{{ summary }}</span>
       <span v-if="isSkillLoad" class="tool-activity-bar__badge">Skill</span>
+      <span v-if="isMcpTool" class="tool-activity-bar__badge tool-activity-bar__badge--mcp"
+        >MCP</span
+      >
       <button
         v-if="showNavigate"
         type="button"
@@ -41,6 +44,7 @@ import {
   MessageCircleQuestion,
   BookOpen,
   Clock3,
+  Plug,
 } from "lucide-vue-next";
 import { isSkillReadPath, toolCallSummary, toolResultSummary } from "../utils/tool-display";
 import { isAskToolName } from "../utils/ask-tool";
@@ -80,9 +84,11 @@ const isSkillLoad = computed(() => {
   const path = typeof props.callArgs?.path === "string" ? props.callArgs.path : "";
   return isSkillReadPath(path);
 });
+const isMcpTool = computed(() => /^mcp[_:.-]/i.test(props.toolName));
 
 const icon = computed(() => {
   if (isAskToolName(props.toolName)) return MessageCircleQuestion;
+  if (isMcpTool.value) return Plug;
   switch (props.toolName) {
     case "read":
       return FileText;
@@ -202,6 +208,12 @@ const icon = computed(() => {
   color: var(--app-accent, #07c160);
   background: color-mix(in srgb, var(--app-accent, #07c160) 15%, transparent);
   border: 1px solid color-mix(in srgb, var(--app-accent, #07c160) 35%, transparent);
+}
+
+.tool-activity-bar__badge--mcp {
+  color: #7561d4;
+  border-color: color-mix(in srgb, #7561d4 35%, transparent);
+  background: color-mix(in srgb, #7561d4 14%, transparent);
 }
 
 .tool-activity-bar__status {

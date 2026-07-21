@@ -1,16 +1,10 @@
 import { createRouter, createWebHistory, type RouteLocationNormalized } from "vue-router";
 
-export type AppRouteTab = "chat" | "contacts" | "providers" | "resources" | "settings" | "search";
+export type AppRouteTab = "chat" | "contacts" | "providers" | "resources" | "settings";
 
 export function tabFromRoute(route: RouteLocationNormalized): AppRouteTab {
   const seg = route.path.split("/").filter(Boolean)[0];
-  if (
-    seg === "contacts" ||
-    seg === "providers" ||
-    seg === "resources" ||
-    seg === "settings" ||
-    seg === "search"
-  ) {
+  if (seg === "contacts" || seg === "providers" || seg === "resources" || seg === "settings") {
     return seg;
   }
   return "chat";
@@ -40,7 +34,7 @@ const router = createRouter({
     { path: "/providers/:providerId?", name: "providers", component: { template: "<div />" } },
     { path: "/resources/:resourceId?", name: "resources", component: { template: "<div />" } },
     { path: "/settings", name: "settings", component: { template: "<div />" } },
-    { path: "/search", name: "search", component: { template: "<div />" } },
+    { path: "/search", redirect: "/chat" },
   ],
 });
 

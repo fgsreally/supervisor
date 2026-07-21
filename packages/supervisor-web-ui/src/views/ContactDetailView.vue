@@ -198,9 +198,7 @@ const provider = computed(() => {
 
 const isExternal = computed(() => agent.value?.backendType !== "native");
 const canEdit = computed(() => {
-  const value = agent.value;
-  if (!value) return false;
-  return value.backendType !== "native" || value.meta.builtin !== true;
+  return agent.value?.backendType === "native";
 });
 
 function onAgentSaved() {

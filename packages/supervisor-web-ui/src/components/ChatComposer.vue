@@ -41,6 +41,7 @@ const props = withDefaults(
     workspaceFiles?: Array<{ path: string; isDirectory: boolean }>;
     skills?: Array<{ name: string; description: string }>;
     prompts?: Array<{ name: string; description: string }>;
+    commands?: Array<{ name: string; description: string; source?: "custom" | "mcp" }>;
     skillTrigger?: "slash" | "dollar";
     disabled?: boolean;
     editorHeight?: number;
@@ -50,6 +51,7 @@ const props = withDefaults(
     workspaceFiles: () => [],
     skills: () => [],
     prompts: () => [],
+    commands: () => [],
     skillTrigger: "slash",
     disabled: false,
     editorHeight: 88,
@@ -91,6 +93,7 @@ const suggestions = computed(() => {
     workspaceFiles: props.workspaceFiles,
     skills: props.skills,
     prompts: props.prompts,
+    commands: props.commands,
     skillTrigger: props.skillTrigger,
   });
 });

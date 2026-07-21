@@ -561,9 +561,7 @@ export const useAgentStore = defineStore("agent", () => {
   async function bindAgentResource(id: string, kind: api.CatalogResourceKind, sourcePath: string) {
     root.clearError();
     try {
-      const result = await api.bindAgentResourceBySourcePath(id, kind, sourcePath);
-      await fetchAgentResources(id);
-      return result;
+      return await api.bindAgentResourceBySourcePath(id, kind, sourcePath);
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to bind resource");
       throw err;

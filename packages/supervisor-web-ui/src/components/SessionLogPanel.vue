@@ -259,14 +259,16 @@ watch(
 
 <style scoped>
 .session-log-panel {
-  position: absolute;
-  z-index: 70;
-  inset: 0;
+  min-width: 22rem;
+  background: var(--app-popup-bg);
+  border-left: 1px solid var(--app-border-subtle);
 }
 
 @media (max-width: 767px) {
   .session-log-panel {
     position: fixed;
+    z-index: 70;
+    inset: 0;
   }
 }
 </style>

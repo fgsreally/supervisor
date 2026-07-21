@@ -1,5 +1,6 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -22,7 +23,7 @@ if (!project) throw new Error("Start Supervisor once before seeding showcase dat
 
 const scenarios = [
   {
-    name: "生产发布巡检",
+    name: "timer",
     description: "发布窗口、健康检查与值班提醒",
     avatar: { text: "巡", color: "#07a65a" },
     timers: [
@@ -72,7 +73,7 @@ const scenarios = [
     ],
   },
   {
-    name: "支付回调安全审查",
+    name: "skill",
     description: "使用审查技能核对签名与幂等设计",
     avatar: { text: "审", color: "#576b95" },
     messages: [
@@ -95,7 +96,34 @@ const scenarios = [
     ],
   },
   {
-    name: "客服检索体验优化",
+    name: "prompt-template",
+    description: "使用团队模板生成结构一致的生产事故复盘",
+    avatar: { text: "模", color: "#5b6ee1" },
+    messages: [
+      { role: "user", text: "昨晚支付回调积压了 18 分钟，按团队复盘模板起草事故报告。" },
+      {
+        role: "assistant",
+        text: "我会套用生产事故复盘模板，先整理影响、时间线、根因和改进项。",
+      },
+      {
+        role: "user",
+        text: "/incident-review 支付回调队列积压",
+        source: "slash:prompt",
+        origin: "/incident-review 支付回调队列积压",
+      },
+      {
+        role: "assistant",
+        text: "初稿已按统一结构生成。当前还缺少首次告警时间和受影响订单数，我先保留为待确认项。",
+      },
+      { role: "user", text: "首次告警 22:14，影响 326 笔订单，全部在 22:41 前补偿完成。" },
+      {
+        role: "assistant",
+        text: "已补全时间线和影响范围，并把队列水位告警、消费端限流和补偿演练列为后续行动项。",
+      },
+    ],
+  },
+  {
+    name: "task-management · TodoList",
     description: "以目标和待办推进搜索体验改版",
     avatar: { text: "客", color: "#d97706" },
     todos: [
@@ -118,7 +146,7 @@ const scenarios = [
     ],
   },
   {
-    name: "线上告警联合排查",
+    name: "mcp",
     description: "通过监控数据定位接口延迟波动",
     avatar: { text: "告", color: "#5b6ee1" },
     messages: [
@@ -141,6 +169,67 @@ const scenarios = [
   },
 ];
 
+scenarios.splice(
+  3,
+  0,
+  {
+    name: "task-management · Goal",
+    description: "用持久目标约束支付对账改造的完成条件",
+    avatar: { text: "目", color: "#576b95" },
+    taskArtifact: {
+      path: "tasks/goal-reconciliation.md",
+      type: "goal",
+      title: "支付对账自动化目标",
+      status: "active",
+      body: "# 支付对账自动化目标\n\n将人工差异单减少 80%，且连续两周无漏单。",
+    },
+    messages: [
+      {
+        role: "user",
+        text: "/goal 将人工对账差异单减少 80%，并连续两周无漏单。",
+        source: "slash:custom",
+        origin: "/goal 将人工对账差异单减少 80%，并连续两周无漏单。",
+      },
+      {
+        role: "assistant",
+        text: "我会把结果指标和停止条件保存为会话目标。",
+        tool: { name: "Goal", intent: "创建支付对账自动化目标", result: "目标已创建并设为进行中" },
+      },
+      { role: "user", text: "把误报率也纳入验收，不能超过 2%。" },
+      {
+        role: "assistant",
+        text: "已补充误报率上限；目标必须同时满足差异单、漏单和误报率三项条件。",
+        tool: { name: "Goal", intent: "更新目标验收条件", result: "目标条件已更新" },
+      },
+    ],
+  },
+  {
+    name: "task-management · Plan",
+    description: "在只读计划模式中设计订单索引迁移方案",
+    avatar: { text: "计", color: "#8b6f47" },
+    taskArtifact: {
+      path: "tasks/plan-order-index.md",
+      type: "plan",
+      title: "订单索引无停机迁移计划",
+      status: "planning",
+      body: "# 订单索引无停机迁移计划\n\n1. 创建新索引并回填。\n2. 双写校验。\n3. 灰度切读。\n4. 回滚演练。",
+    },
+    messages: [
+      { role: "user", text: "先进入计划模式，设计订单索引的无停机迁移，不要修改代码。" },
+      {
+        role: "assistant",
+        text: "已进入只读计划模式，我会先整理迁移阶段和回滚门槛。",
+        tool: { name: "EnterPlanMode", intent: "创建订单索引迁移计划", result: "计划模式已启用" },
+      },
+      { role: "user", text: "需要包含双写校验和灰度切读。" },
+      {
+        role: "assistant",
+        text: "计划已包含新索引回填、双写校验、灰度切读与回滚演练，等待评审后再退出计划模式。",
+      },
+    ],
+  },
+);
+
 scenarios[0].messages.push(
   { role: "user", text: "把结束提醒改到 23:30，巡检频率保持不变。" },
   {
@@ -154,9 +243,12 @@ scenarios[0].messages.push(
     tool: { name: "TimerCreate", intent: "重新安排发布结束提醒", result: "已安排 23:30 提醒" },
   },
 );
-scenarios[1].messages.find((item) => item.tool?.name === "Skill").tool.name = "skill";
-scenarios[2].messages.find((item) => item.tool?.name === "TodoWrite").tool.name = "TodoList";
-scenarios[1].messages.push(
+const skillScenario = scenarios.find((scenario) => scenario.name === "skill");
+const todoScenario = scenarios.find((scenario) => scenario.name === "task-management · TodoList");
+const mcpScenario = scenarios.find((scenario) => scenario.name === "mcp");
+skillScenario.messages.find((item) => item.tool?.name === "Skill").tool.name = "skill";
+todoScenario.messages.find((item) => item.tool?.name === "TodoWrite").tool.name = "TodoList";
+skillScenario.messages.push(
   { role: "user", text: "规范里对回调签名原文的拼接顺序怎么要求？" },
   {
     role: "assistant",
@@ -168,27 +260,13 @@ scenarios[1].messages.push(
     text: "要求按原始请求字段顺序验签，不能先反序列化再重新排序；同时必须校验时间戳窗口。",
   },
 );
-scenarios[2].messages.push(
+mcpScenario.messages.push(
   {
     role: "user",
-    text: "/goal 本周将无结果搜索率降低 30%",
-    source: "slash:custom",
-    origin: "/goal 本周将无结果搜索率降低 30%",
+    text: "/metrics 把连接池等待按实例拆开，确认是不是单点。",
+    source: "slash:mcp",
+    origin: "/metrics 把连接池等待按实例拆开，确认是不是单点。",
   },
-  {
-    role: "assistant",
-    text: "目标会作为会话级 Markdown 产物持续保留。",
-    tool: { name: "Goal", intent: "创建可持续跟踪的优化目标", result: "目标已创建" },
-  },
-  { role: "user", text: "先进入计划模式，只允许整理方案，不要改代码。" },
-  {
-    role: "assistant",
-    text: "已进入只读计划模式，接下来只维护 Session 内的计划文件。",
-    tool: { name: "EnterPlanMode", intent: "进入只读计划阶段", result: "计划模式已启用" },
-  },
-);
-scenarios[3].messages.push(
-  { role: "user", text: "把连接池等待按实例拆开，确认是不是单点。" },
   {
     role: "assistant",
     text: "我通过 MCP 监控服务按实例维度继续查询。",
@@ -203,7 +281,7 @@ scenarios[3].messages.push(
 
 scenarios.push(
   {
-    name: "订单数据即时分析",
+    name: "eval",
     description: "展示 eval 扩展的持久 JavaScript 与 Python 运行环境",
     avatar: { text: "算", color: "#8b6f47" },
     messages: [
@@ -235,7 +313,7 @@ scenarios.push(
     ],
   },
   {
-    name: "结算流程并行审查",
+    name: "subagent",
     description: "展示 subagent 扩展的前台委派、后台任务与结果汇总",
     avatar: { text: "协", color: "#576b95" },
     messages: [
@@ -268,9 +346,14 @@ scenarios.push(
     ],
   },
   {
-    name: "浏览器回归录制",
+    name: "message-assets",
     description: "展示 message-assets 扩展如何把录屏绑定到对应消息",
     avatar: { text: "录", color: "#d97706" },
+    changedFiles: [
+      { path: "src/payment/pay.mjs", status: "modified", lastTurn: 1 },
+      { path: "src/payment/index.html", status: "modified", lastTurn: 1 },
+      { path: "src/admin/admin.html", status: "added", lastTurn: 1 },
+    ],
     messages: [
       { role: "user", text: "复现优惠券叠加失败，并把浏览器操作过程录下来。" },
       {
@@ -404,8 +487,12 @@ const seed = db.transaction(() => {
       avatar: scenario.avatar,
       timers: scenario.timers,
       todos: scenario.todos,
+      changedFiles: scenario.changedFiles,
       devShowcase: marker,
       checkpoints,
+      ...(scenario.taskArtifact
+        ? { tasks: [scenario.taskArtifact.path], currentTask: scenario.taskArtifact.path }
+        : {}),
     };
     const session = db
       .prepare(`INSERT INTO sessions
@@ -422,7 +509,136 @@ const seed = db.transaction(() => {
     const sessionId = Number(session.lastInsertRowid);
     seededSessions.push(sessionId);
     addMessages(sessionId, index, scenario.messages);
+    if (scenario.name === "eval") {
+      const evalDir = resolve(
+        homedir(),
+        ".pi/supervisor/projects",
+        String(project.id),
+        "sessions",
+        String(sessionId),
+        "eval",
+      );
+      mkdirSync(evalDir, { recursive: true });
+      writeFileSync(
+        resolve(evalDir, "state.json"),
+        JSON.stringify(
+          {
+            kernels: ["js", "py"],
+            history: [
+              {
+                language: "js",
+                code: "const orders = [128, 256, 96, 520]",
+                output: "orders initialized",
+                at: now - 180000,
+              },
+              {
+                language: "js",
+                code: "orders.reduce((a, b) => a + b, 0) / orders.length",
+                output: "250",
+                at: now - 120000,
+              },
+              {
+                language: "py",
+                code: "statistics.pstdev([128, 256, 96, 520])",
+                output: "168.4",
+                at: now - 60000,
+              },
+            ],
+          },
+          null,
+          2,
+        ),
+        "utf8",
+      );
+    }
+    if (scenario.taskArtifact) {
+      const sessionDir = resolve(
+        homedir(),
+        ".pi/supervisor/projects",
+        String(project.id),
+        "sessions",
+        String(sessionId),
+      );
+      mkdirSync(resolve(sessionDir, "tasks"), { recursive: true });
+      const artifact = scenario.taskArtifact;
+      writeFileSync(
+        resolve(sessionDir, artifact.path),
+        `---\ntype: ${artifact.type}\ntitle: ${artifact.title}\nstatus: ${artifact.status}\nupdatedAt: ${new Date(now).toISOString()}\n---\n\n${artifact.body}\n`,
+        "utf8",
+      );
+    }
   });
+
+  const subagentParentIndex = scenarios.findIndex((scenario) => scenario.name === "subagent");
+  const subagentParentId = seededSessions[subagentParentIndex];
+  if (subagentParentId) {
+    const parent = db
+      .prepare("SELECT agent_id, cwd FROM sessions WHERE id = ?")
+      .get(subagentParentId);
+    const children = [
+      {
+        name: "数据库一致性审查",
+        messages: [
+          { role: "user", text: "检查退款与清算更新是否处于同一事务，并列出竞态风险。" },
+          {
+            role: "assistant",
+            text: "发现退款状态和清算余额分两次提交；并发重试时可能短暂不一致。建议合并事务并增加唯一约束。",
+          },
+        ],
+      },
+      {
+        name: "接口兼容性审查",
+        messages: [
+          { role: "user", text: "核对新旧结算接口字段、错误码和分页行为。" },
+          {
+            role: "assistant",
+            text: "旧客户端依赖空数组而非 null，且分页游标字段不能直接移除；建议保留一版兼容映射。",
+          },
+        ],
+      },
+    ];
+    const childIds = [];
+    children.forEach((child, childIndex) => {
+      const createdAt = now - (childIndex + 1) * 120_000;
+      const row = db
+        .prepare(`INSERT INTO sessions
+        (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, created_via, show_in_session_list, context_leaf_id, created_at, last_active_at, meta)
+        VALUES (?, ?, NULL, NULL, 'finish', 'none', ?, NULL, ?, 'subagent', 'spawn_agent', 1, NULL, ?, ?, ?)`)
+        .run(
+          project.id,
+          subagentParentId,
+          parent.cwd,
+          parent.agent_id,
+          createdAt,
+          createdAt,
+          JSON.stringify({ name: child.name, devShowcase: marker }),
+        );
+      const childId = Number(row.lastInsertRowid);
+      childIds.push(childId);
+      addMessages(childId, scenarios.length + 10 + childIndex, child.messages);
+    });
+    const spawnMessages = db
+      .prepare(
+        "SELECT id, payload FROM messages WHERE session_id = ? AND payload LIKE '%spawn_agent%' ORDER BY id",
+      )
+      .all(subagentParentId);
+    spawnMessages.forEach((message, index) => {
+      const childId = childIds[index];
+      if (!childId) return;
+      const payload = JSON.parse(message.payload);
+      const toolCall = Array.isArray(payload.message?.content)
+        ? payload.message.content.find(
+            (part) => part.type === "toolCall" && part.name === "spawn_agent",
+          )
+        : null;
+      if (!toolCall) return;
+      toolCall.arguments = { ...toolCall.arguments, childSessionId: String(childId) };
+      db.prepare("UPDATE messages SET payload = ? WHERE id = ?").run(
+        JSON.stringify(payload),
+        message.id,
+      );
+    });
+  }
 
   const btwExamples = [
     {

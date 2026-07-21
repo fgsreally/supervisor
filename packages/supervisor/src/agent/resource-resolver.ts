@@ -238,6 +238,7 @@ export interface AgentToolInfo {
   source: "preset" | "extension" | "system";
   extensionName?: string;
   description?: string;
+  enabled: boolean;
 }
 
 export interface AgentResources {
@@ -395,17 +396,23 @@ export async function resolveAgentTools(
   }
 
   const merged = new Map<string, AgentToolInfo>();
+  const disabledTools = new Set(
+    Array.isArray(agent.meta?.disabledTools)
+      ? agent.meta.disabledTools.filter((name): name is string => typeof name === "string")
+      : [],
+  );
 
   for (const tool of createDefaultTools(cwd, agent.toolsPreset ?? "coding")) {
     merged.set(tool.name, {
       name: tool.name,
       source: "preset",
       description: tool.description,
+      enabled: !disabledTools.has(tool.name),
     });
   }
 
   for (const tool of SYSTEM_TOOLS) {
-    merged.set(tool.name, tool);
+    merged.set(tool.name, { ...tool, enabled: !disabledTools.has(tool.name) });
   }
 
   const extensionSlugs = db.listAgentResourceSlugs(agentId, "extension");
@@ -418,6 +425,7 @@ export async function resolveAgentTools(
         source: "extension",
         extensionName: tool.extensionName,
         description: tool.description,
+        enabled: !disabledTools.has(tool.name),
       });
     }
   }
@@ -433,6 +441,7 @@ export async function resolveAgentTools(
         source: "extension",
         extensionName: toolId,
         description: tool.description,
+        enabled: !disabledTools.has(tool.name),
       });
     }
   }
@@ -469,7 +478,11 @@ export async function resolveAgentResources(
 
   const agentSkills =
     boundSkillPaths.size > 0
-      ? skillsToResourceInfo(skills.filter((s) => boundSkillPaths.has(s.filePath)))
+      ? skillsToResourceInfo(
+          skills.filter(
+            (skill) => boundSkillPaths.has(skill.baseDir) || boundSkillPaths.has(skill.filePath),
+          ),
+        )
       : skillsToResourceInfo(skills);
   const agentPrompts =
     boundPromptPaths.size > 0

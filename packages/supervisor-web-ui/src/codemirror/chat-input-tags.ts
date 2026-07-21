@@ -68,7 +68,7 @@ class SlashTagWidget extends WidgetType {
     return buildTagElement(
       "slash",
       '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/></svg>',
-      this.token,
+      this.token.replace(/^\//, ""),
     );
   }
 }

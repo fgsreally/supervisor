@@ -57,10 +57,16 @@ const presetLabel = computed(() => {
 <style scoped>
 .agent-list-item:hover {
   background: var(--app-list-item-hover);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--app-accent) 65%, transparent);
 }
 
 .agent-list-item--active {
   background: var(--app-list-item-active);
+  box-shadow: inset 3px 0 0 var(--app-accent);
+}
+
+.agent-list-item--active:hover {
+  background: color-mix(in srgb, var(--app-list-item-active) 90%, var(--app-hover));
 }
 
 .agent-list-item__name {

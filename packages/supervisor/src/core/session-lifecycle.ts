@@ -57,6 +57,7 @@ function rowToSession(row: SessionRow): Session {
     leafId: row.leaf_id,
     agentId: row.agent_id,
     branchType: normalizeSessionBranchType(row.branch_type),
+    creationMethod: row.created_via ?? "user",
     showInSessionList: row.show_in_session_list !== 0,
     contextLeafId: row.context_leaf_id ?? null,
     createdAt: new Date(row.created_at),

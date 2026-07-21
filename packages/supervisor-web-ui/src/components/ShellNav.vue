@@ -45,21 +45,12 @@
 </template>
 
 <script setup lang="ts">
-import {
-  Cloud,
-  FolderOpen,
-  MessageSquare,
-  Moon,
-  Search,
-  Settings,
-  Sun,
-  Users,
-} from "lucide-vue-next";
+import { Cloud, FolderOpen, MessageSquare, Moon, Settings, Sun, Users } from "lucide-vue-next";
 import { useAppTheme } from "../composables/use-app-theme";
 
 const { isDark, toggleDark } = useAppTheme();
 
-export type MainTab = "chat" | "contacts" | "providers" | "resources" | "settings" | "search";
+export type MainTab = "chat" | "contacts" | "providers" | "resources" | "settings";
 
 defineProps<{
   tab: MainTab;
@@ -74,7 +65,6 @@ const navItems = [
   { id: "contacts" as const, icon: Users, title: "智能代理" },
   { id: "providers" as const, icon: Cloud, title: "模型" },
   { id: "resources" as const, icon: FolderOpen, title: "资源" },
-  { id: "search" as const, icon: Search, title: "搜索" },
 ];
 </script>
 

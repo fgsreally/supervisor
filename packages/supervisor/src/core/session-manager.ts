@@ -61,7 +61,7 @@ import {
 import { appendContextFilesToSystemPrompt } from "../agent/context-files.js";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
-import { commitGitSnapshot } from "../utils/git.js";
+import { commitGitSnapshot, ensureGitRepositorySync } from "../utils/git.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "../agent/prompt-templates.js";
 import { appendReadOrchestrationHint } from "../agent/system-prompts.js";
@@ -183,6 +183,7 @@ function rowToSession(row: SessionRow): Session {
     leafId: row.leaf_id,
     agentId: row.agent_id,
     branchType: normalizeSessionBranchType(row.branch_type),
+    creationMethod: row.created_via ?? "user",
     showInSessionList: row.show_in_session_list !== 0,
     contextLeafId: row.context_leaf_id ?? null,
     createdAt: new Date(row.created_at),
@@ -264,6 +265,7 @@ export class SessionManager {
       leafId: row.leaf_id,
       agentId: row.agent_id,
       branchType: normalizeSessionBranchType(row.branch_type),
+      creationMethod: row.created_via ?? "user",
       showInSessionList: row.show_in_session_list !== 0,
       contextLeafId: row.context_leaf_id ?? null,
       createdAt: new Date(row.created_at),
@@ -296,9 +298,21 @@ export class SessionManager {
     toolsPreset: "coding" | "readonly" | "none",
     overrideTools?: AgentTool[],
   ): AgentTool[] {
-    const baseTools = overrideTools ?? createDefaultTools(cwd, toolsPreset);
+    const disabledTools = this.getDisabledAgentTools(agentId);
+    const baseTools = (overrideTools ?? createDefaultTools(cwd, toolsPreset)).filter(
+      (tool) => !disabledTools.has(tool.name),
+    );
     this.sessionToolConfigs.set(sessionId, { cwd, agentId, toolsPreset, overrideTools });
     return baseTools;
+  }
+
+  private getDisabledAgentTools(agentId: number | null): Set<string> {
+    const agent = agentId == null ? undefined : this.db.getAgent(agentId);
+    return new Set(
+      Array.isArray(agent?.meta?.disabledTools)
+        ? agent.meta.disabledTools.filter((name): name is string => typeof name === "string")
+        : [],
+    );
   }
 
   async resolveAgentResources(agentId: number, cwd: string) {
@@ -382,7 +396,10 @@ export class SessionManager {
       if (event.type === "agent_start") {
         this.db.updateStatus(sessionId, "running");
         if (runtime instanceof SessionRuntime) {
-          this.db.updateMeta(sessionId, { shadowSuggestedQuestions: [] });
+          const current = this.db.get(sessionId);
+          const meta = current ? parseSessionMeta(current.meta) : {};
+          const shadow = meta.shadow && typeof meta.shadow === "object" ? meta.shadow : {};
+          this.db.updateMeta(sessionId, { shadow: { ...shadow, suggestedQuestions: [] } });
           this.publishShadowSuggestions(sessionId, []);
         }
       } else if (event.type === "agent_end") {
@@ -576,9 +593,12 @@ export class SessionManager {
     );
     const extensionTools = runtime.collectExtensionTools();
     if (extensionTools.length > 0) {
+      const disabledTools = this.getDisabledAgentTools(session.agentId);
       const mergedTools = new Map<string, AgentTool>();
       for (const tool of tools) mergedTools.set(tool.name, tool);
-      for (const tool of extensionTools) mergedTools.set(tool.name, tool);
+      for (const tool of extensionTools) {
+        if (!disabledTools.has(tool.name)) mergedTools.set(tool.name, tool);
+      }
       await runtime.setTools([...mergedTools.values()]);
     }
 
@@ -596,8 +616,14 @@ export class SessionManager {
   /** Create a DB record only, no embedded agent. */
   create(options: CreateSessionOptions = {}): Session {
     const branchType = options.parentId == null ? null : (options.branchType ?? "subagent");
+    const creationMethod =
+      options.creationMethod ??
+      (branchType === "subagent" ? "spawn_agent" : branchType === null ? "user" : branchType);
     const showInSessionList =
-      options.parentId == null || branchType === "fork" || branchType === "clone";
+      options.parentId == null ||
+      creationMethod === "spawn_agent" ||
+      branchType === "fork" ||
+      branchType === "clone";
     const row = this.db.insert({
       parent_id: options.parentId ?? null,
       project_id: this.resolveProjectId(options),
@@ -608,6 +634,7 @@ export class SessionManager {
       cwd: options.cwd ?? getDefaultCwd(),
       agent_id: options.agentId ?? null,
       branch_type: branchType,
+      created_via: creationMethod,
       show_in_session_list: showInSessionList ? 1 : 0,
       context_leaf_id: branchType === "btw" ? (options.contextLeafId ?? null) : null,
       meta: JSON.stringify(options.meta ?? {}),
@@ -775,9 +802,12 @@ export class SessionManager {
     );
     const extensionTools = runtime.collectExtensionTools();
     if (extensionTools.length > 0) {
+      const disabledTools = this.getDisabledAgentTools(activeSession.agentId);
       const mergedTools = new Map<string, AgentTool>();
       for (const tool of tools) mergedTools.set(tool.name, tool);
-      for (const tool of extensionTools) mergedTools.set(tool.name, tool);
+      for (const tool of extensionTools) {
+        if (!disabledTools.has(tool.name)) mergedTools.set(tool.name, tool);
+      }
       await runtime.setTools([...mergedTools.values()]);
     }
 
@@ -1069,10 +1099,13 @@ export class SessionManager {
       } as any);
     }
 
+    const isSpawnedSubagent = session.creationMethod === "spawn_agent" && session.parentId != null;
     try {
-      await commitSessionChanges(id, session.cwd, session.meta, this.db);
-      session = rowToSession(this.db.get(id)!);
-      await finalizeSessionLifecycleGit(this.db, session);
+      if (!isSpawnedSubagent) {
+        await commitSessionChanges(id, session.cwd, session.meta, this.db);
+        session = rowToSession(this.db.get(id)!);
+        await finalizeSessionLifecycleGit(this.db, session);
+      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       const gitMeta = session.meta?.git;
@@ -1095,6 +1128,7 @@ export class SessionManager {
       this.sessionToolConfigs.delete(id);
     }
     this.db.updateStatus(id, "finish");
+    if (isSpawnedSubagent) this.db.updateSessionListVisibility(id, false);
     return rowToSession(this.db.get(id)!);
   }
 
@@ -1119,7 +1153,10 @@ export class SessionManager {
   }
 
   createProject(options: { name?: string; cwd: string; meta?: Record<string, unknown> }) {
-    return this.db.insertProject(options);
+    const branch = ensureGitRepositorySync(options.cwd);
+    const project = this.db.insertProject(options);
+    if (project.defaultBranch !== branch) this.db.updateProjectDefaultBranch(project.id, branch);
+    return this.db.getProject(project.id)!;
   }
 
   deleteProject(id: number): void {
@@ -1207,6 +1244,15 @@ export class SessionManager {
 
   listMembers(sessionId: number): Member[] {
     return this.db.listMembers(sessionId);
+  }
+
+  replaceSessionAgentMembers(
+    sessionId: number,
+    shadowAgentId: number | null,
+    spawnedAgentIds: number[],
+  ): Member[] {
+    if (!this.db.get(sessionId)) throw new Error(`Session ${sessionId} not found`);
+    return this.db.replaceSessionAgentMembers(sessionId, shadowAgentId, spawnedAgentIds);
   }
 
   listMemberAgentsByTag(sessionId: number, tag: string): MemberAgent[] {

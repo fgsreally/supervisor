@@ -1,5 +1,33 @@
 @import "tailwindcss";
 
+.chat-context-button {
+  display: inline-flex;
+  min-width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 7px;
+  border-radius: 6px;
+  color: var(--app-text-secondary);
+  font-size: 11px;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.chat-context-button:hover,
+.chat-context-button:focus-visible {
+  color: var(--app-accent);
+  background: var(--app-hover);
+  outline: none;
+}
+
+.chat-context-button:active {
+  transform: scale(0.94);
+}
+
 /* ========== Light (WeChat PC) ========== */
 :root,
 [data-theme="light"] {

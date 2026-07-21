@@ -14,7 +14,8 @@ export type ChatEntryBase = {
   createdAt?: number;
   assets?: MessageAsset[];
   deliveryState?: "queued" | "failed";
-  slashSource?: "skill" | "prompt" | "custom";
+  slashSource?: "skill" | "prompt" | "custom" | "mcp";
+  shadowSource?: string;
 };
 
 export interface ChatToolPart {

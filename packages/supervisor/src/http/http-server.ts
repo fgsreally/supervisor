@@ -20,6 +20,7 @@ import { parseSessionTodos } from "../core/session-todos.js";
 import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-manager.js";
 import { isResourceKind } from "../resources/types.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";
+import { listWorktreeCommits } from "../utils/git.js";
 import type { Model, Provider, SessionStatus } from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
 
@@ -1195,6 +1196,54 @@ export function createHttpServer(manager: SessionManager): Hono {
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 409, message);
+    }
+  });
+
+  app.get("/sessions/:id/commits", async (c) => {
+    const sessionId = parseIntegerId(c.req.param("id"));
+    if (sessionId === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(sessionId);
+    if (!session) return jsonError(c, 404, "session not found");
+    return c.json(await listWorktreeCommits(session.cwd));
+  });
+
+  app.get("/sessions/:id/members", (c) => {
+    const sessionId = parseIntegerId(c.req.param("id"));
+    if (sessionId === null) return jsonError(c, 400, "invalid session id");
+    return c.json(manager.listMembers(sessionId));
+  });
+
+  app.put("/sessions/:id/members", async (c) => {
+    const sessionId = parseIntegerId(c.req.param("id"));
+    if (sessionId === null) return jsonError(c, 400, "invalid session id");
+    const body = await c.req.json().catch(() => null);
+    const shadowAgentId = body?.shadowAgentId == null ? null : Number(body.shadowAgentId);
+    const spawnedAgentIds = Array.isArray(body?.spawnedAgentIds)
+      ? body.spawnedAgentIds.map(Number).filter(Number.isInteger)
+      : [];
+    if (shadowAgentId !== null && !Number.isInteger(shadowAgentId)) {
+      return jsonError(c, 400, "invalid shadowAgentId");
+    }
+    try {
+      return c.json(manager.replaceSessionAgentMembers(sessionId, shadowAgentId, spawnedAgentIds));
+    } catch (error) {
+      return jsonError(c, 404, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.get("/sessions/:id/eval-state", async (c) => {
+    const sessionId = parseIntegerId(c.req.param("id"));
+    if (sessionId === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(sessionId);
+    if (!session?.projectId) return jsonError(c, 404, "session not found");
+    try {
+      const content = await readFile(
+        join(getSessionDir(session.projectId, session.id), "eval", "state.json"),
+        "utf8",
+      );
+      return c.json(JSON.parse(content));
+    } catch {
+      return c.json({ kernels: [], history: [] });
     }
   });
 

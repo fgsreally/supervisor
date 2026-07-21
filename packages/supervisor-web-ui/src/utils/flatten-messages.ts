@@ -255,7 +255,10 @@ export function spawnChildSessionId(pieces: RenderPiece[], toolCallId: string): 
       if (part.type === "text" && part.text) {
         try {
           const parsed = JSON.parse(part.text);
-          if (typeof parsed?.sessionId === "string") return parsed.sessionId;
+          const sessionId = parsed?.sessionId ?? parsed?.session?.id;
+          if (typeof sessionId === "string" || typeof sessionId === "number") {
+            return String(sessionId);
+          }
         } catch {
           // not JSON, continue
         }
@@ -265,5 +268,5 @@ export function spawnChildSessionId(pieces: RenderPiece[], toolCallId: string): 
 
   // Fallback: childSessionId in callArgs (mock format)
   const id = step.callArgs?.childSessionId;
-  return typeof id === "string" ? id : undefined;
+  return typeof id === "string" || typeof id === "number" ? String(id) : undefined;
 }

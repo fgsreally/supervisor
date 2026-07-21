@@ -31,19 +31,24 @@
           >
             <ScrollText class="h-[17px] w-[17px]" />
           </button>
+          <SessionCommitPopover :session-id="session.id" />
           <button
-            v-if="taskCount"
+            v-if="tasks.length"
             class="chat-header-action context-count"
             type="button"
             :title="`任务 · ${taskTypeSummary}`"
             @click="taskPaneOpen = !taskPaneOpen"
           >
-            <ClipboardList class="h-[17px] w-[17px]" /><span>{{ taskCount }}</span>
+            <ClipboardList class="h-[17px] w-[17px]" /><span>{{ tasks.length }}</span>
           </button>
+          <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
           <SessionTimerStrip :timers="sessionTimers" />
+          <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
         </div>
         <div class="mobile-session-actions">
+          <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
           <SessionTimerStrip :timers="sessionTimers" />
+          <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
           <button
             class="chat-header-action"
             type="button"
@@ -65,6 +70,17 @@
 
     <div class="chat-workspace">
       <div class="chat-workspace__conversation">
+        <div v-if="sessionLoading && !chatEntries.length" class="session-loading">
+          <Loader2 /><span>正在加载聊天记录...</span>
+        </div>
+        <button
+          v-else-if="hasOlderGroups"
+          type="button"
+          class="load-older-messages"
+          @click="historyLimit += 80"
+        >
+          查看更早的消息
+        </button>
         <ChatMessageList
           ref="messageListRef"
           :session-id="session.id"
@@ -126,9 +142,9 @@
       </div>
 
       <TaskWorkspacePanel
-        v-if="taskPaneOpen && taskCount"
+        v-if="taskPaneOpen && tasks.length"
         :tasks="tasks"
-        :todos="activeTodos"
+        :todos="[]"
         :selected-path="selectedTaskPath"
         @select="selectedTaskPath = $event"
         @close="taskPaneOpen = false"
@@ -138,6 +154,20 @@
         :parent-id="session.id"
         :sessions="btwSessions"
         @close="btwPanelOpen = false"
+      />
+      <SessionLogPanel
+        v-if="showLogPanel"
+        class="chat-workspace__side-panel"
+        :session-id="session.id"
+        @close="showLogPanel = false"
+      />
+      <ToolDetailPanel
+        v-if="toolPanel"
+        :title="toolPanel.title"
+        :sections="toolPanel.sections"
+        :terminal="toolPanel.terminal"
+        :session-id="session.id"
+        @close="toolPanel = null"
       />
     </div>
 
@@ -172,7 +202,7 @@
                 <ScrollText /><span>日志</span>
               </button>
               <button
-                v-if="taskCount"
+                v-if="tasks.length"
                 type="button"
                 @click="
                   runMobileAction(() => {
@@ -205,6 +235,9 @@
       :can-complete="canCompleteSession"
       :can-checkpoint="canCheckpointActions"
       :child-sessions="childSessions"
+      :configurable-agents="configurableAgents"
+      :shadow-agent-id="shadowAgentId"
+      :spawned-agent-ids="spawnedAgentIds"
       @close="sessionMenuOpen = false"
       @search="openSearchFromMenu"
       @log="showLogPanel = true"
@@ -218,6 +251,7 @@
       @update:show-thinking="onShowThinkingChange"
       @update:avatar="onAvatarChange"
       @update:title="onSessionTitleChange"
+      @update:members="onSessionMembersChange"
     />
 
     <Teleport to="body">
@@ -271,8 +305,6 @@
       </div>
     </Teleport>
 
-    <SessionLogPanel v-if="showLogPanel" :session-id="session.id" @close="showLogPanel = false" />
-
     <ToolDetailModal
       :open="!!toolModal"
       :title="toolModal?.title ?? ''"
@@ -302,6 +334,7 @@ import {
 } from "../utils/session-entries";
 import { buildToolModal, buildBashModal } from "../utils/tool-detail";
 import ToolDetailModal from "../components/ToolDetailModal.vue";
+import ToolDetailPanel from "../components/ToolDetailPanel.vue";
 import BtwSplitPanel from "../components/BtwSplitPanel.vue";
 import ChatInputPanel from "../components/ChatInputPanel.vue";
 import ExternalAgentCommandHost from "../components/external-agents/ExternalAgentCommandHost.vue";
@@ -312,6 +345,11 @@ import ChatSearchBar from "../components/chat/ChatSearchBar.vue";
 import ChatMessageList from "../components/chat/ChatMessageList.vue";
 import TaskWorkspacePanel from "../components/chat/TaskWorkspacePanel.vue";
 import SessionTimerStrip, { type SessionTimerView } from "../components/chat/SessionTimerStrip.vue";
+import SessionTodoPopover from "../components/chat/SessionTodoPopover.vue";
+import SessionChangesPopover, {
+  type SessionChangedFileView,
+} from "../components/chat/SessionChangesPopover.vue";
+import SessionCommitPopover from "../components/chat/SessionCommitPopover.vue";
 import type { ChatSendPayload } from "@/types/chat-compose";
 import { getShowThinking, setShowThinking } from "../composables/use-chat-session-prefs";
 import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-push-notifications";
@@ -327,11 +365,13 @@ const props = defineProps<{
     meta?: {
       name?: string;
       builtin?: boolean;
-      shadowSuggestedQuestions?: string[];
+      shadow?: { suggestedQuestions?: string[]; status?: string };
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
       workflow?: { stage: string; status: string };
       timers?: SessionTimerView[];
       avatar?: SessionAvatarValue;
+      changedFiles?: SessionChangedFileView[];
+      turns?: Array<{ files?: { added?: string[]; modified?: string[]; deleted?: string[] } }>;
     };
     workspaceId?: string;
     pinned?: boolean;
@@ -356,6 +396,18 @@ const sessionAvatarValue = computed(() =>
     props.session.meta?.avatar,
   ),
 );
+const sessionChangedFiles = computed<SessionChangedFileView[]>(() => {
+  if (Array.isArray(props.session.meta?.changedFiles)) return props.session.meta.changedFiles;
+  const files = new Map<string, SessionChangedFileView>();
+  for (const turn of props.session.meta?.turns ?? []) {
+    for (const path of turn.files?.added ?? []) files.set(path, { path, status: "added" });
+    for (const path of turn.files?.modified ?? []) {
+      files.set(path, { path, status: files.get(path)?.status === "added" ? "added" : "modified" });
+    }
+    for (const path of turn.files?.deleted ?? []) files.set(path, { path, status: "deleted" });
+  }
+  return [...files.values()].sort((a, b) => a.path.localeCompare(b.path));
+});
 
 const sessionStore = useSessionStore();
 const agentStore = useAgentStore();
@@ -397,9 +449,16 @@ const messageListRef = ref<InstanceType<typeof ChatMessageList> | null>(null);
 const searchBarRef = ref<InstanceType<typeof ChatSearchBar> | null>(null);
 const sessionTitle = ref("");
 const chatEntries = ref<ChatEntry[]>([]);
+const sessionLoading = ref(false);
+const historyLimit = ref(80);
 const toolModal = ref<{ title: string; sections: { label: string; content: string }[] } | null>(
   null,
 );
+const toolPanel = ref<{
+  title: string;
+  sections: { label: string; content: string }[];
+  terminal?: "bash" | "eval";
+} | null>(null);
 const isStreaming = ref(false);
 const streamingSendMode = ref<"steer" | "follow_up">("follow_up");
 const streamingAssistantId = ref<string | null>(null);
@@ -513,6 +572,7 @@ const inputPlaceholder = computed(() => {
   if (props.session.status === "stopped") return "会话已停止";
   if (isStreaming.value)
     return streamingSendMode.value === "steer" ? "输入立即干预内容" : "输入轮后追加内容";
+  if (props.session.meta?.shadow?.status) return props.session.meta.shadow.status;
   return "输入消息";
 });
 
@@ -524,6 +584,19 @@ const gitBranch = computed(() => {
 
 const childSessions = computed(() =>
   sessionStore.sessions.filter((session) => session.parentId === props.session.id),
+);
+const configurableAgents = computed(() =>
+  agentStore.agents.filter((agent) => !agent.meta?.builtin),
+);
+const sessionMembers = ref<api.SessionMember[]>([]);
+const shadowAgentId = computed(() => {
+  const id = sessionMembers.value.find((member) => member.role === "shadow")?.agentId;
+  return id == null ? null : String(id);
+});
+const spawnedAgentIds = computed(() =>
+  sessionMembers.value
+    .filter((member) => member.role === "spawned")
+    .map((member) => String(member.agentId)),
 );
 
 const btwSessions = computed(() =>
@@ -574,23 +647,28 @@ function stopStreaming() {
 }
 
 async function reloadMessagesFromServer(sessionId: string) {
-  const [, queuedInputs, nextTasks, nextTodos, checkpoints] = await Promise.all([
+  const [, queuedInputs, nextTasks, nextTodos, checkpoints, members] = await Promise.all([
     sessionStore.fetchSessionMessages(sessionId),
     api.getQueuedSessionInputs(sessionId).catch(() => []),
     api.getSessionTasks(sessionId).catch(() => []),
     api.getSessionTodos(sessionId).catch(() => []),
     api.listCheckpoints(sessionId).catch(() => []),
+    api.getSessionMembers(sessionId).catch(() => []),
   ]);
+  sessionMembers.value = members;
   const entries = sessionStore.messages[sessionId] ?? [];
   chatEntries.value = [
     ...sessionTreeToChatEntries(entries),
-    ...queuedInputs
-      .filter((input) => input.source === null)
-      .map((input) => {
-        const entry = createUserChatEntry(`queued-${input.id}`, input.message, "queued");
-        entry.createdAt = input.enqueuedAt;
-        return entry;
-      }),
+    ...queuedInputs.map((input) => {
+      const entry = createUserChatEntry(
+        `queued-${input.id}`,
+        input.message,
+        "queued",
+        input.source,
+      );
+      entry.createdAt = input.enqueuedAt;
+      return entry;
+    }),
   ];
   rewindableEntryIds.value = checkpoints.map((checkpoint) => checkpoint.entryId);
   tasks.value = nextTasks;
@@ -611,14 +689,23 @@ async function reloadMessagesFromServer(sessionId: string) {
 
 async function loadSessionMessages(sessionId: string) {
   stopStreaming();
-  await reloadMessagesFromServer(sessionId);
+  historyLimit.value = 80;
+  const cached = sessionStore.messages[sessionId];
+  if (cached?.length) chatEntries.value = sessionTreeToChatEntries(cached);
+  else chatEntries.value = [];
+  sessionLoading.value = true;
+  try {
+    await reloadMessagesFromServer(sessionId);
+  } finally {
+    sessionLoading.value = false;
+  }
   sessionTitle.value = props.session.meta?.name ?? `Session ${sessionId.substring(0, 8)}`;
   toolModal.value = null;
   searchOpen.value = false;
   searchQuery.value = "";
   sessionMenuOpen.value = false;
-  suggestedQuestions.value = Array.isArray(props.session.meta?.shadowSuggestedQuestions)
-    ? props.session.meta.shadowSuggestedQuestions.filter(
+  suggestedQuestions.value = Array.isArray(props.session.meta?.shadow?.suggestedQuestions)
+    ? props.session.meta.shadow.suggestedQuestions.filter(
         (question): question is string =>
           typeof question === "string" && question.trim().length > 0,
       )
@@ -657,6 +744,18 @@ async function saveSessionTitle() {
 async function onSessionTitleChange(value: string) {
   sessionTitle.value = value;
   await saveSessionTitle();
+}
+
+async function onSessionMembersChange(value: {
+  shadowAgentId: string | null;
+  spawnedAgentIds: string[];
+}) {
+  try {
+    sessionMembers.value = await api.updateSessionMembers(props.session.id, value);
+    showUiMessage("Session 代理配置已更新", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "代理配置更新失败", "error");
+  }
 }
 
 function openSearch() {
@@ -836,9 +935,14 @@ watch(pendingAsk, (ask, prev) => {
 
 const visibleGroups = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
-  if (!searchOpen.value || !q) return displayGroups.value;
-  return displayGroups.value.filter((group) => groupMatchesSearch(group, q));
+  if (searchOpen.value && q)
+    return displayGroups.value.filter((group) => groupMatchesSearch(group, q));
+  return displayGroups.value.slice(-historyLimit.value);
 });
+
+const hasOlderGroups = computed(
+  () => !searchOpen.value && displayGroups.value.length > historyLimit.value,
+);
 
 const searchHitCount = computed(() => visibleGroups.value.length);
 
@@ -889,7 +993,10 @@ function openToolDetail(
   callArgs?: Record<string, unknown>,
   resultContent?: Array<{ type: string; text: string }>,
 ) {
-  toolModal.value = buildToolModal(toolName, callArgs, resultContent);
+  const detail = buildToolModal(toolName, callArgs, resultContent);
+  if (toolName === "eval" || toolName === "bash") {
+    toolPanel.value = { ...detail, terminal: toolName };
+  } else toolModal.value = detail;
 }
 
 function openBashDetail(
@@ -897,7 +1004,12 @@ function openBashDetail(
   resultContent?: Array<{ type: string; text: string }>,
   intent?: string,
 ) {
-  toolModal.value = buildBashModal(command, resultContent, intent);
+  const detail = buildBashModal(command, resultContent, intent);
+  const output = resultContent?.map((part) => part.text ?? "").join("\n") ?? "";
+  const terminalPresentation =
+    resultContent === undefined || output.length > 1000 || output.split(/\r?\n/).length > 8;
+  if (terminalPresentation) toolPanel.value = { ...detail, terminal: "bash" };
+  else toolModal.value = detail;
 }
 
 function openCompactionDetail(entry: ChatCompactionEntry) {
@@ -1139,6 +1251,68 @@ async function executeCustomSlash(name: string) {
   min-width: 0;
   flex: 1;
   flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+.session-loading {
+  display: flex;
+  min-height: 180px;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+.session-loading svg {
+  width: 17px;
+  height: 17px;
+  animation: spin 0.8s linear infinite;
+}
+.load-older-messages {
+  align-self: center;
+  margin: 10px 0 2px;
+  padding: 6px 13px;
+  border-radius: 16px;
+  color: var(--app-text-link);
+  background: var(--app-hover);
+  font-size: 12px;
+  transition:
+    background-color 0.15s,
+    transform 0.1s;
+}
+.load-older-messages:hover {
+  background: var(--app-list-active-bg);
+}
+.load-older-messages:active {
+  transform: scale(0.97);
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.chat-workspace__side-panel {
+  width: min(48%, 44rem) !important;
+  min-width: 22rem;
+  border-left: 1px solid var(--app-border-subtle);
+}
+
+.desktop-session-actions,
+.mobile-session-actions {
+  position: relative;
+  z-index: 70;
+}
+
+@media (max-width: 767px) {
+  .chat-workspace__side-panel {
+    position: absolute;
+    inset: 0;
+    z-index: 60;
+    width: 100% !important;
+    min-width: 0;
+  }
 }
 
 .streaming-send-mode {

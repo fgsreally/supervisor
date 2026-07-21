@@ -385,9 +385,12 @@ export class SessionRuntime implements ManagedSessionRuntime {
   async executeSlashCommand(name: string, args: string): Promise<void> {
     if (!this._extension) throw new Error("Extension runtime is unavailable");
     const raw = `/${name}${args ? ` ${args}` : ""}`;
+    const commandSource = this.getSlashCommands().find(
+      (command) => command.name === name.replace(/^\//, ""),
+    )?.source;
     const result = await this._extension.executeCommand(name, args);
     if (result.type === "prompt") {
-      await this.prompt(result.prompt, undefined, "slash:custom", raw);
+      await this.prompt(result.prompt, undefined, `slash:${commandSource ?? "custom"}`, raw);
       return;
     }
     if (result.type === "error") throw new Error(result.message);

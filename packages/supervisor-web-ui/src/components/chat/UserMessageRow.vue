@@ -27,9 +27,10 @@
           :style="{ background: 'var(--app-bubble-user)' }"
         />
         <div v-if="slashCommand" class="relative z-10 slash-message">
-          <span class="slash-command-tag">
+          <span class="slash-command-tag" :class="`slash-command-tag--${slashSource ?? 'custom'}`">
             <Sparkles v-if="slashSource === 'skill'" class="w-3.5 h-3.5" />
             <FileText v-else-if="slashSource === 'prompt'" class="w-3.5 h-3.5" />
+            <Plug v-else-if="slashSource === 'mcp'" class="w-3.5 h-3.5" />
             <Terminal v-else class="w-3.5 h-3.5" />
             <strong>{{ slashCommand }}</strong>
           </span>
@@ -52,7 +53,7 @@ import { computed } from "vue";
 import ChatFileBubble from "../ChatFileBubble.vue";
 import ChatRichText from "../ChatRichText.vue";
 import type { ChatUserFileAttachment } from "@/types/chat-entry";
-import { FileText, RotateCcw, Sparkles, Terminal } from "lucide-vue-next";
+import { FileText, Plug, RotateCcw, Sparkles, Terminal } from "lucide-vue-next";
 
 const props = defineProps<{
   text: string;
@@ -60,14 +61,14 @@ const props = defineProps<{
   timeLabel: string;
   searchHit?: boolean;
   deliveryState?: "queued" | "failed";
-  slashSource?: "skill" | "prompt" | "custom";
+  slashSource?: "skill" | "prompt" | "custom" | "mcp";
   rewindable?: boolean;
 }>();
 
 const emit = defineEmits<{ rewind: [] }>();
 
 const slashParts = computed(() => props.text.match(/^(\/[\w-]+)(?:\s+([\s\S]*))?$/));
-const slashCommand = computed(() => slashParts.value?.[1] ?? "");
+const slashCommand = computed(() => slashParts.value?.[1]?.slice(1) ?? "");
 const slashRemainder = computed(() => slashParts.value?.[2]?.trim() ?? "");
 </script>
 
@@ -154,6 +155,27 @@ const slashRemainder = computed(() => slashParts.value?.[2]?.trim() ?? "");
 .slash-command-tag:hover {
   background: rgb(255 255 255 / 92%);
   box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+.slash-command-tag--skill {
+  color: #075f32;
+  border-color: rgb(7 166 90 / 26%);
+  background: rgb(231 248 239 / 92%);
+}
+.slash-command-tag--prompt {
+  color: #3f5688;
+  border-color: rgb(87 107 149 / 28%);
+  background: rgb(232 239 250 / 94%);
+}
+.slash-command-tag--custom {
+  color: #7a4b00;
+  border-color: rgb(217 119 6 / 28%);
+  background: rgb(255 244 224 / 94%);
+}
+.slash-command-tag--mcp {
+  color: #5640a3;
+  border-color: rgb(91 78 180 / 28%);
+  background: rgb(238 234 255 / 94%);
 }
 
 .slash-command-divider {

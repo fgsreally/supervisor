@@ -6,11 +6,13 @@
         v-for="item in items"
         :key="item.id"
         type="button"
+        :disabled="!!bindingItemId"
         class="global-resource-bind-bar__btn text-left px-2 py-1.5 rounded text-[12px] truncate"
         :title="item.description"
         @click="emit('bind', item)"
       >
-        + {{ item.name }}
+        <Loader2 v-if="bindingItemId === item.id" class="global-resource-bind-bar__spinner" />
+        <span v-else>+</span> {{ item.name }}
       </button>
       <div v-if="items.length === 0" class="text-[11px] text-muted px-2 py-1.5">无可用项</div>
     </div>
@@ -24,12 +26,14 @@
 
 <script setup lang="ts">
 import ExtensionInstallBox from "./ExtensionInstallBox.vue";
+import { Loader2 } from "lucide-vue-next";
 import type { UIResourceItem } from "@/types/ui";
 import type { UIResourceKind } from "@/types/ui";
 
 const props = defineProps<{
   items: UIResourceItem[];
   kind: UIResourceKind;
+  bindingItemId?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -61,6 +65,28 @@ void props;
 
 .global-resource-bind-bar__btn {
   color: var(--app-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.global-resource-bind-bar__btn:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.global-resource-bind-bar__spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  flex: none;
+  animation: resource-spin 0.8s linear infinite;
+}
+
+@keyframes resource-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .global-resource-bind-bar__btn:hover {

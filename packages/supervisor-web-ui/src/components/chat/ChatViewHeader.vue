@@ -1,6 +1,6 @@
 <template>
   <div
-    class="h-16 md:h-[68px] border-b flex items-center px-3 md:px-6 shrink-0 z-10"
+    class="relative z-50 h-16 md:h-[68px] border-b flex items-center px-3 md:px-6 shrink-0"
     style="background: var(--app-chat-header-bg); border-color: var(--app-border)"
   >
     <button

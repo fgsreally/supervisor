@@ -63,6 +63,47 @@
               </p>
             </section>
 
+            <section class="px-5 py-4 border-b chat-session-menu__section session-agent-settings">
+              <span class="session-agent-settings__label">影子代理</span>
+              <div class="session-agent-grid">
+                <button
+                  type="button"
+                  class="session-agent-card"
+                  :class="{ 'session-agent-card--selected': !shadowAgentId }"
+                  @click="updateShadow('')"
+                >
+                  <span class="session-agent-card__builtin">S</span><small>Shadow</small>
+                </button>
+                <button
+                  v-for="agent in configurableAgents"
+                  :key="`shadow-${agent.id}`"
+                  type="button"
+                  class="session-agent-card"
+                  :class="{ 'session-agent-card--selected': shadowAgentId === agent.id }"
+                  @click="updateShadow(agent.id)"
+                >
+                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.icon" />
+                  <small>{{ agent.name }}</small>
+                </button>
+              </div>
+              <span class="session-agent-settings__label session-agent-settings__label--spaced"
+                >可用子代理</span
+              >
+              <div class="session-agent-grid">
+                <button
+                  v-for="agent in configurableAgents"
+                  :key="`spawn-${agent.id}`"
+                  type="button"
+                  class="session-agent-card"
+                  :class="{ 'session-agent-card--selected': spawnedAgentIds.includes(agent.id) }"
+                  @click="toggleSpawned(agent.id)"
+                >
+                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.icon" />
+                  <small>{{ agent.name }}</small>
+                </button>
+              </div>
+            </section>
+
             <button
               type="button"
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
@@ -71,26 +112,6 @@
               <span>顺便问一下</span>
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
-
-            <section v-if="childSessions.length" class="border-b chat-session-menu__section">
-              <div class="px-5 pt-4 pb-2 text-[12px] chat-session-menu__muted">子会话</div>
-              <button
-                v-for="child in childSessions"
-                :key="child.id"
-                type="button"
-                class="chat-session-menu__child-row w-full flex items-center justify-between gap-3 px-5 py-3 text-left transition-colors"
-                @click="emit('navigate', child.id)"
-              >
-                <span class="min-w-0">
-                  <span class="block truncate text-[14px]">{{ childName(child) }}</span>
-                  <span class="block text-[11px] chat-session-menu__muted">
-                    {{ child.branchType ? BRANCH_LABELS[child.branchType] : "子会话" }} ·
-                    {{ child.status }}
-                  </span>
-                </span>
-                <ChevronRight class="w-4 h-4 shrink-0 chat-session-menu__chevron" />
-              </button>
-            </section>
 
             <button
               type="button"
@@ -197,8 +218,9 @@
 <script setup lang="ts">
 import { ChevronRight, X } from "lucide-vue-next";
 import type { Session } from "@/api";
-import { BRANCH_LABELS } from "@/utils/session-branch";
+import type { Agent } from "@/api";
 import { SESSION_AVATAR_COLORS, type SessionAvatarValue } from "@/utils/session-avatar";
+import AgentAvatar from "./AgentAvatar.vue";
 
 const props = defineProps<{
   open: boolean;
@@ -214,6 +236,9 @@ const props = defineProps<{
   canComplete?: boolean;
   canCheckpoint?: boolean;
   childSessions: Array<Pick<Session, "id" | "status" | "branchType" | "meta">>;
+  configurableAgents: Agent[];
+  shadowAgentId?: string | null;
+  spawnedAgentIds: string[];
 }>();
 
 const emit = defineEmits<{
@@ -230,10 +255,17 @@ const emit = defineEmits<{
   "update:showThinking": [value: boolean];
   "update:avatar": [value: SessionAvatarValue];
   "update:title": [value: string];
+  "update:members": [value: { shadowAgentId: string | null; spawnedAgentIds: string[] }];
 }>();
 
-function childName(child: { id: string; meta: Record<string, unknown> }): string {
-  return typeof child.meta.name === "string" ? child.meta.name : `Session ${child.id}`;
+function updateShadow(value: string) {
+  emit("update:members", { shadowAgentId: value || null, spawnedAgentIds: props.spawnedAgentIds });
+}
+function toggleSpawned(agentId: string) {
+  const next = props.spawnedAgentIds.includes(agentId)
+    ? props.spawnedAgentIds.filter((id) => id !== agentId)
+    : [...props.spawnedAgentIds, agentId];
+  emit("update:members", { shadowAgentId: props.shadowAgentId ?? null, spawnedAgentIds: next });
 }
 </script>
 
@@ -310,6 +342,75 @@ function childName(child: { id: string; meta: Record<string, unknown> }): string
   outline: none;
   color: var(--app-text-primary);
   background: var(--app-chat-bg);
+}
+
+.session-agent-settings__label {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+}
+.session-agent-settings__label--spaced {
+  margin-top: 18px;
+}
+.session-agent-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 8px;
+}
+.session-agent-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 2px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    transform 0.1s;
+}
+.session-agent-card:hover {
+  background: var(--app-popup-hover);
+}
+.session-agent-card:active {
+  transform: scale(0.97);
+}
+.session-agent-card :deep(.agent-avatar),
+.session-agent-card__builtin {
+  width: 44px;
+  height: 44px;
+}
+.session-agent-card__builtin {
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #7d4cff;
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+}
+.session-agent-card small {
+  width: 100%;
+  overflow: hidden;
+  color: var(--app-text-secondary);
+  font-size: 11px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-agent-card--selected::after {
+  position: absolute;
+  top: 42px;
+  right: 7px;
+  width: 13px;
+  height: 13px;
+  border: 2px solid var(--app-popup-bg);
+  border-radius: 50%;
+  background: #07c160;
+  content: "";
 }
 
 .chat-session-menu__name input:focus {

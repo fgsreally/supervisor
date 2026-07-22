@@ -42,14 +42,12 @@
             <ClipboardList class="h-[17px] w-[17px]" /><span>{{ tasks.length }}</span>
           </button>
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
-          <SessionTimerStrip :timers="sessionTimers" />
-          <SessionBashPopover :session-id="session.id" />
+          <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
           <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
         </div>
         <div class="mobile-session-actions">
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
-          <SessionTimerStrip :timers="sessionTimers" />
-          <SessionBashPopover :session-id="session.id" />
+          <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
           <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
           <button
             class="chat-header-action"
@@ -132,11 +130,13 @@
           :workspace-id="workspaceId"
           :agent-id="agentId"
           :disabled="inputDisabled"
+          :interrupting="isStreaming"
           :placeholder="inputPlaceholder"
           :empty-state-title="modelMissing ? '需要先配置模型' : undefined"
           :empty-state-description="modelMissing ? '选择模型后即可继续这段对话' : undefined"
           :empty-state-action="modelMissing ? '选择模型' : undefined"
           @send="sendMessage"
+          @interrupt="interruptCurrentTurn"
           @slash="executeCustomSlash"
           @empty-action="openModelPicker"
           @btw="onCreateBtw"
@@ -346,8 +346,9 @@ import ChatViewHeader from "../components/chat/ChatViewHeader.vue";
 import ChatSearchBar from "../components/chat/ChatSearchBar.vue";
 import ChatMessageList from "../components/chat/ChatMessageList.vue";
 import TaskWorkspacePanel from "../components/chat/TaskWorkspacePanel.vue";
-import SessionTimerStrip, { type SessionTimerView } from "../components/chat/SessionTimerStrip.vue";
-import SessionBashPopover from "../components/chat/SessionBashPopover.vue";
+import SessionJobsPopover, {
+  type JobDetailRequest,
+} from "../components/chat/SessionJobsPopover.vue";
 import SessionTodoPopover from "../components/chat/SessionTodoPopover.vue";
 import SessionChangesPopover, {
   type SessionChangedFileView,
@@ -371,7 +372,6 @@ const props = defineProps<{
       shadow?: { suggestedQuestions?: string[]; status?: string };
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
       workflow?: { stage: string; status: string };
-      timers?: SessionTimerView[];
       avatar?: SessionAvatarValue;
       changedFiles?: SessionChangedFileView[];
       turns?: Array<{ files?: { added?: string[]; modified?: string[]; deleted?: string[] } }>;
@@ -428,21 +428,6 @@ const modelMissing = computed(() => {
   const agent = agentStore.getAgentById(props.agentId);
   return agent?.backendType === "native" && (!agent.providerId || !agent.modelId);
 });
-const sessionTimers = computed(() => {
-  const timers = props.session.meta?.timers;
-  if (!Array.isArray(timers)) return [];
-  return [...timers]
-    .filter(
-      (timer): timer is SessionTimerView =>
-        !!timer &&
-        typeof timer.id === "string" &&
-        typeof timer.prompt === "string" &&
-        typeof timer.createdAt === "number" &&
-        typeof timer.nextFireAt === "number",
-    )
-    .sort((left, right) => left.nextFireAt - right.nextFireAt);
-});
-
 const inputText = ref("");
 const suggestedQuestions = ref<string[]>([]);
 const rewindableEntryIds = ref<string[]>([]);
@@ -462,9 +447,26 @@ const toolPanel = ref<{
   sections: { label: string; content: string }[];
   terminal?: "bash" | "eval";
 } | null>(null);
+
+function openJobDetail(request: JobDetailRequest): void {
+  if (request.presentation === "panel") {
+    toolPanel.value = {
+      title: request.title,
+      sections: request.sections,
+      terminal: request.terminal,
+    };
+    return;
+  }
+  toolModal.value = { title: request.title, sections: request.sections };
+}
 const isStreaming = ref(false);
 const streamingSendMode = ref<"steer" | "follow_up">("follow_up");
 const streamingAssistantId = ref<string | null>(null);
+const activeTurn = ref<{
+  userEntryId: string;
+  text: string;
+  assistantActivitySeen: boolean;
+} | null>(null);
 const sessionMenuOpen = ref(false);
 const modelPickerOpen = ref(false);
 const btwPanelOpen = ref(false);
@@ -647,6 +649,31 @@ function stopStreaming() {
   streamCleanup = null;
   isStreaming.value = false;
   streamingAssistantId.value = null;
+}
+
+async function interruptCurrentTurn() {
+  if (!isStreaming.value) return;
+  const turn = activeTurn.value;
+  const shouldRetract = !!turn && !turn.assistantActivitySeen;
+  try {
+    const result = await api.abortSession(props.session.id, {
+      retractIfNoAssistant: shouldRetract,
+    });
+    if (turn && shouldRetract && result.retracted) {
+      const assistantId = streamingAssistantId.value;
+      chatEntries.value = chatEntries.value.filter(
+        (entry) => entry.id !== turn.userEntryId && entry.id !== assistantId,
+      );
+      inputText.value = [turn.text, inputText.value].filter((value) => value.trim()).join("\n\n");
+      await nextTick(() => inputPanelRef.value?.focus());
+    }
+  } catch (error) {
+    console.error("Interrupt failed:", error);
+  } finally {
+    activeTurn.value = null;
+    stopStreaming();
+    void sessionStore.fetchSessions();
+  }
 }
 
 async function reloadMessagesFromServer(sessionId: string) {
@@ -1097,6 +1124,13 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
   streamingAssistantId.value = assistantId;
   isStreaming.value = true;
 
+  const userEntry = [...chatEntries.value]
+    .reverse()
+    .find((entry) => entry.type === "message" && entry.message.role === "user");
+  activeTurn.value = userEntry
+    ? { userEntryId: userEntry.id, text: userText, assistantActivitySeen: false }
+    : null;
+
   chatEntries.value.push(createStreamingAssistantEntry(assistantId));
   void scrollToBottom();
 
@@ -1107,6 +1141,14 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
     props.session.id,
     userText,
     (event) => {
+      if (
+        activeTurn.value &&
+        (event.type === "message_update" ||
+          event.type === "tool_execution_start" ||
+          event.type === "tool_execution_end")
+      ) {
+        activeTurn.value.assistantActivitySeen = true;
+      }
       applyAgentEventToChatEntries(chatEntries.value, assistantId, event);
       void scrollToBottom();
     },
@@ -1117,6 +1159,7 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
       isStreaming.value = false;
       streamingAssistantId.value = null;
       streamCleanup = null;
+      activeTurn.value = null;
       void reloadMessagesFromServer(props.session.id).then(() => scrollToBottom());
       void sessionStore.fetchSessions();
       notifyMessageComplete({

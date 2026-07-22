@@ -77,7 +77,8 @@ monorepo 子目录：
 | `skill`           | Skill 资源注入               |
 | `eval`            | 评估相关能力                 |
 | `task-management` | 任务 / todo                  |
-| `timer`           | 定时相关                     |
+| `timer`           | Job 定时计划与触发           |
+| `persistent-bash` | 以 Job 运行后台 shell        |
 | `message-assets`  | 消息附件资源                 |
 
 仓库级可选扩展见 [仓库扩展](/supervisor/shipped-extensions)。
@@ -96,6 +97,7 @@ monorepo 子目录：
 | `ctx.session.current`             | 当前会话（id / cwd / 是否空闲等）           |
 | `ctx.agent`                       | Agent 域操作（`tools.register`、改模型）    |
 | `ctx.agent.current`               | 当前 agent（id / name / model 等）          |
+| `ctx.jobs`                        | 创建、更新执行记录和定时计划                |
 | `ctx.db`                          | 只读库查询                                  |
 | `ctx.project`                     | 项目目录                                    |
 | `ctx.ui`                          | 广播、审批                                  |

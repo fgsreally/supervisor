@@ -2,14 +2,21 @@ import { Type, type Static } from "typebox";
 import type { ExtensionContext, ExtensionDefinition } from "../../types.js";
 
 const spawnAgentSchema = Type.Object({
-  subagent_type: Type.Optional(
-    Type.String({
-      description: "Type/tag of a spawned member agent, for example 'review' or 'explore'.",
+  sessionId: Type.Optional(
+    Type.Number({
+      description: "Existing spawned child Session to continue instead of creating a new one.",
     }),
   ),
-  agentId: Type.Optional(
-    Type.Number({
-      description: "ID of a member agent whose role is 'spawned'. Prefer subagent_type.",
+  agentName: Type.Optional(
+    Type.String({
+      description: "Name of the spawned member Agent to use when creating a child Session.",
+    }),
+  ),
+  urgency: Type.Optional(
+    Type.Union([Type.Literal("normal"), Type.Literal("urgent")], {
+      description:
+        "For session continuation: normal queues behind the current turn; urgent interrupts it.",
+      default: "normal",
     }),
   ),
   description: Type.Optional(
@@ -67,37 +74,81 @@ function pickAgent(
   agents: Awaited<ReturnType<ExtensionContext["agent"]["findByRole"]>>,
   params: SpawnAgentParams,
 ) {
-  if (params.agentId !== undefined) {
-    return agents.find((agent) => agent.id === params.agentId);
+  const agentName = params.agentName?.trim();
+  if (agentName) {
+    const matches = agents.filter((agent) => agent.name === agentName);
+    if (matches.length > 1) {
+      throw new Error(`Multiple spawned members are named '${agentName}'; rename them uniquely`);
+    }
+    return matches[0];
   }
-  const type = params.subagent_type?.trim();
-  if (!type) {
-    throw new Error("spawn_agent requires subagent_type or agentId");
-  }
-  return agents.find((agent) => agent.tags.includes(type));
+  throw new Error("spawn_agent requires agentName when sessionId is not provided");
 }
 
 export default {
   name: "subagent",
-  setup(ctx) {
+  async setup(ctx) {
+    const configuredAgents = await ctx.agent.findByRole("spawned");
+    const configuredNames = configuredAgents.map((agent) => agent.name).join(", ");
     ctx.agent.registerTool({
       name: "spawn_agent",
       description:
-        "Spawn or run a delegated subagent session from current session members. " +
-        "Prefer subagent_type over raw agentId. Only role='spawned' members can be used.",
+        "Create or continue a delegated subagent Session. Pass sessionId to continue an existing " +
+        "child Session; otherwise select a spawned member by agentName. For continuation, urgency " +
+        "normal queues the message and urgent interrupts the child's current turn." +
+        (configuredNames ? ` Available agentName values: ${configuredNames}.` : ""),
       parameters: spawnAgentSchema,
       async execute(params: SpawnAgentParams) {
         const instructions = (params.prompt ?? params.instructions ?? "").trim();
         if (!instructions) {
           throw new Error("spawn_agent requires prompt or instructions");
         }
+
+        if (params.sessionId !== undefined) {
+          await ctx.session.sendToChild(params.sessionId, instructions, {
+            source: `spawn_agent:parent:${ctx.session.id}`,
+            background: params.run_in_background,
+            urgency: params.urgency ?? "normal",
+          });
+          const resumed = {
+            sessionId: params.sessionId,
+            parentId: ctx.session.id,
+            status: params.run_in_background ? "accepted" : "idle",
+            resumed: true,
+            description: params.description,
+          };
+          if (params.run_in_background) {
+            return {
+              content: [{ type: "text", text: JSON.stringify(resumed) }],
+              details: resumed,
+            };
+          }
+
+          const summary = await ctx.session.waitForResult(params.sessionId, {
+            timeoutMs: params.timeoutMs,
+            maxChars: params.maxResultChars,
+          });
+          if (params.finish_on_result) await ctx.session.finish(params.sessionId);
+          const details = {
+            ...resumed,
+            status: summary.status,
+            result: summary.result,
+            truncated: summary.truncated,
+          };
+          return {
+            content: [{ type: "text", text: JSON.stringify(details) }],
+            details,
+          };
+        }
+
         const allowedAgents = await ctx.agent.findByRole("spawned");
         const allowedAgent = pickAgent(allowedAgents, params);
         if (!allowedAgent) {
+          const available = allowedAgents.map((agent) => agent.name).join(", ") || "none";
           throw new Error(
-            params.agentId !== undefined
-              ? `Agent ${params.agentId} is not a spawned member of session ${ctx.session.id}`
-              : `No spawned member matches subagent_type '${params.subagent_type}' in session ${ctx.session.id}`,
+            params.agentName?.trim()
+              ? `Agent '${params.agentName.trim()}' is not a spawned member of session ${ctx.session.id}; available: ${available}`
+              : `spawn_agent requires agentName; available: ${available}`,
           );
         }
         const result = await ctx.session.spawn({
@@ -110,7 +161,7 @@ export default {
             spawnedBy: "spawn_agent",
             parentSessionId: ctx.session.id,
             subagent: {
-              type: params.subagent_type ?? "agent",
+              agentName: allowedAgent.name,
               description: params.description,
               mode: params.run_in_background ? "background" : "foreground",
               finishOnResult: params.finish_on_result ?? false,
@@ -139,6 +190,26 @@ export default {
           truncated: summary.truncated,
           description: params.description,
         };
+        return {
+          content: [{ type: "text", text: JSON.stringify(details) }],
+          details,
+        };
+      },
+    });
+    ctx.agent.registerTool({
+      name: "get_subagent_status",
+      description:
+        "Inspect the latest execution state and latest assistant output of a direct spawned child Session.",
+      parameters: Type.Object({
+        sessionId: Type.Number({ description: "Child Session ID returned by spawn_agent." }),
+        maxResultChars: Type.Optional(
+          Type.Number({ description: "Maximum latest-result characters to return." }),
+        ),
+      }),
+      async execute(params) {
+        const details = await ctx.session.inspectChild(params.sessionId, {
+          maxChars: params.maxResultChars,
+        });
         return {
           content: [{ type: "text", text: JSON.stringify(details) }],
           details,

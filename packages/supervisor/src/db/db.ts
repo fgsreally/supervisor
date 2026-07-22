@@ -293,6 +293,18 @@ export class SupervisorDb {
       CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
       CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, message_role);
       CREATE INDEX IF NOT EXISTS idx_messages_search_text ON messages(search_text) WHERE search_text IS NOT NULL;
+      CREATE TABLE IF NOT EXISTS session_input_queue (
+        id            TEXT PRIMARY KEY,
+        session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        message       TEXT NOT NULL,
+        level         INTEGER NOT NULL,
+        source        TEXT,
+        origin        TEXT,
+        images        TEXT,
+        enqueued_at   INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_session_input_queue_session
+        ON session_input_queue(session_id, level DESC, enqueued_at ASC);
       CREATE INDEX IF NOT EXISTS idx_members_session ON members(session_id);
       CREATE INDEX IF NOT EXISTS idx_members_agent ON members(agent_id);
       DROP TABLE IF EXISTS extensions;
@@ -565,6 +577,25 @@ export class SupervisorDb {
       .run(status, Date.now(), id);
   }
 
+  /** Normalize process-bound Session state after Supervisor starts. */
+  reconcileInterruptedSessionStatuses(): number {
+    const normalized = this.db
+      .prepare(
+        `UPDATE sessions
+         SET status = 'idle', pid = NULL
+         WHERE status IN ('starting', 'running', 'waiting_user')`,
+      )
+      .run().changes;
+    const hidden = this.db
+      .prepare(
+        `UPDATE sessions
+         SET show_in_session_list = 0
+         WHERE created_via = 'spawn_agent' AND status IN ('finish', 'finished')`,
+      )
+      .run().changes;
+    return normalized + hidden;
+  }
+
   updateSessionListVisibility(id: number, visible: boolean): void {
     this.db
       .prepare("UPDATE sessions SET show_in_session_list = ?, last_active_at = ? WHERE id = ?")
@@ -605,6 +636,76 @@ export class SupervisorDb {
       .prepare("UPDATE sessions SET meta = ?, last_active_at = ? WHERE id = ?")
       .run(JSON.stringify(merged), Date.now(), id);
     return merged;
+  }
+
+  enqueueSessionInput(input: {
+    id: string;
+    sessionId: number;
+    message: string;
+    level: number;
+    source: string | null;
+    origin?: string;
+    images?: unknown[];
+    enqueuedAt: number;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO session_input_queue
+         (id, session_id, message, level, source, origin, images, enqueued_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.id,
+        input.sessionId,
+        input.message,
+        input.level,
+        input.source,
+        input.origin ?? null,
+        input.images ? JSON.stringify(input.images) : null,
+        input.enqueuedAt,
+      );
+  }
+
+  deleteSessionInput(id: string): void {
+    this.db.prepare("DELETE FROM session_input_queue WHERE id = ?").run(id);
+  }
+
+  listPersistedSessionInputs(): Array<{
+    id: string;
+    sessionId: number;
+    message: string;
+    level: number;
+    source: string | null;
+    origin?: string;
+    images?: unknown[];
+    enqueuedAt: number;
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT id, session_id, message, level, source, origin, images, enqueued_at
+         FROM session_input_queue
+         ORDER BY level DESC, enqueued_at ASC`,
+      )
+      .all() as Array<{
+      id: string;
+      session_id: number;
+      message: string;
+      level: number;
+      source: string | null;
+      origin: string | null;
+      images: string | null;
+      enqueued_at: number;
+    }>;
+    return rows.map((row) => ({
+      id: row.id,
+      sessionId: row.session_id,
+      message: row.message,
+      level: row.level,
+      source: row.source,
+      ...(row.origin ? { origin: row.origin } : {}),
+      ...(row.images ? { images: JSON.parse(row.images) as unknown[] } : {}),
+      enqueuedAt: row.enqueued_at,
+    }));
   }
 
   setMeta(id: number, meta: Record<string, unknown>): void {

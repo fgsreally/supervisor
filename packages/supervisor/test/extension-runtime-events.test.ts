@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createEventBus, SessionExtensionHost } from "../src/extension/runtime/index.js";
 import { defineExtension } from "../src/extension/index.js";
 import { loadExtensions } from "../src/extension/index.js";
@@ -364,6 +364,25 @@ describe("extension runtime events", () => {
     await runtime.unload("eval");
   });
 
+  it("blocks a fourth identical tool call after three identical results", async () => {
+    const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
+    await runtime.initialize();
+    const evalTool = runtime.wrapTools(runtime.collectTools()).find((tool) => tool.name === "eval");
+    expect(evalTool).toBeDefined();
+    const run = (id: string) =>
+      evalTool!.execute(id, { language: "js", code: "21 * 2" }, new AbortController().signal);
+
+    expect((await run("loop-1")).isError).not.toBe(true);
+    expect((await run("loop-2")).isError).not.toBe(true);
+    expect((await run("loop-3")).isError).not.toBe(true);
+    const blocked = await run("loop-4");
+
+    expect(blocked.isError).toBe(true);
+    expect(blocked.content).toEqual([
+      expect.objectContaining({ text: expect.stringContaining("Blocked repeated tool call") }),
+    ]);
+  });
+
   it("persists todo, goal, plan, and current task in session metadata", async () => {
     const sessionDir = join(tmpdir(), `supervisor-tasks-${Date.now()}`);
     const options = createRuntimeOptions();
@@ -400,7 +419,11 @@ describe("extension runtime events", () => {
     await runtime.initialize();
     const result = await runtime.executeTool(
       "spawn_agent",
-      { subagent_type: "review", prompt: "review the change", finish_on_result: true },
+      {
+        agentName: "child",
+        prompt: "review the change",
+        finish_on_result: true,
+      },
       {
         toolCallId: "spawn-1",
         session: runtime.getToolExecutionSession(),
@@ -418,6 +441,71 @@ describe("extension runtime events", () => {
       truncated: false,
     });
     expect(options.finishedSessions).toEqual([2]);
+  });
+
+  it("continues an existing spawned Session through spawn_agent", async () => {
+    const options = createRuntimeOptions();
+    const sendToChild = vi.fn(async () => {});
+    options.deps.sendToChild = sendToChild;
+    const runtime = new SessionExtensionHost(createExtensionTestContext(options));
+    await runtime.initialize();
+
+    const result = await runtime.executeTool(
+      "spawn_agent",
+      { sessionId: 23, prompt: "check the follow-up" },
+      {
+        toolCallId: "spawn-resume",
+        session: runtime.getToolExecutionSession(),
+        reportProgress: () => {},
+      },
+    );
+
+    expect(sendToChild).toHaveBeenCalledWith(23, "check the follow-up", {
+      source: "spawn_agent:parent:1",
+      background: undefined,
+      urgency: "normal",
+    });
+    expect(result.details).toMatchObject({
+      sessionId: 23,
+      parentId: 1,
+      resumed: true,
+      result: "child result",
+    });
+  });
+
+  it("inspects a spawned child through get_subagent_status", async () => {
+    const options = createRuntimeOptions();
+    const inspectChild = vi.fn(async () => ({
+      sessionId: 23,
+      parentId: 1,
+      agentName: "child",
+      status: "running",
+      result: "reviewing tests",
+      truncated: false,
+      queuedInputCount: 1,
+      lastActiveAt: 123,
+    }));
+    options.deps.inspectChild = inspectChild;
+    const runtime = new SessionExtensionHost(createExtensionTestContext(options));
+    await runtime.initialize();
+
+    const result = await runtime.executeTool(
+      "get_subagent_status",
+      { sessionId: 23, maxResultChars: 1000 },
+      {
+        toolCallId: "inspect-subagent",
+        session: runtime.getToolExecutionSession(),
+        reportProgress: () => {},
+      },
+    );
+
+    expect(inspectChild).toHaveBeenCalledWith(23, { maxChars: 1000 });
+    expect(result.details).toMatchObject({
+      sessionId: 23,
+      status: "running",
+      result: "reviewing tests",
+      queuedInputCount: 1,
+    });
   });
 
   it("loads extension files that listen for session.start", async () => {

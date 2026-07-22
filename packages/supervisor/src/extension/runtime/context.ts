@@ -20,6 +20,7 @@ import type {
   MemberAgentInfo,
   SessionInfo,
   SessionResultSummary,
+  SubagentStatusSnapshot,
   ScheduleInjectionInput,
   SpawnSessionRequest,
   SpawnSessionResult,
@@ -100,7 +101,15 @@ interface ContextSessionOptions {
     content: string,
     options?: { source?: string; origin?: string },
   ) => Promise<void>;
-  sendToChild: (sessionId: number, content: string, options?: { source?: string }) => Promise<void>;
+  sendToChild: (
+    sessionId: number,
+    content: string,
+    options?: { source?: string; background?: boolean; urgency?: "normal" | "urgent" },
+  ) => Promise<void>;
+  inspectChild: (
+    sessionId: number,
+    options?: { maxChars?: number },
+  ) => Promise<SubagentStatusSnapshot>;
   pausing: <T>(reason: string, work: Promise<T> | (() => Promise<T>)) => Promise<T>;
   spawn: (request: SpawnSessionRequest) => Promise<SpawnSessionResult>;
   waitForResult: (
@@ -184,6 +193,7 @@ export class Context {
       options?: { signal?: AbortSignal },
     ): Promise<ExtensionToolCallResult<TResult>>;
   };
+  readonly jobs: import("../types.js").ExtensionJobFacade;
   readonly db: ContextDb;
   readonly project: { readonly cwd: string; readonly dir: string; getDir(): Promise<string> };
   readonly ui: {
@@ -314,6 +324,7 @@ export class Context {
       sendMessage: deps.sendMessage,
       sendUserMessage: deps.sendUserMessage,
       sendToChild: deps.sendToChild,
+      inspectChild: deps.inspectChild,
       pausing: deps.pausing,
       spawn: deps.spawnSession,
       waitForResult: async (targetSessionId, options) => {
@@ -373,6 +384,59 @@ export class Context {
           params,
           options?.signal,
         )) as ExtensionToolCallResult<TResult>,
+    };
+    this.jobs = {
+      create: async (input) => sessionManager.jobs.create(session.id, input),
+      get: async (id) => {
+        const job = sessionManager.jobs.get(id);
+        return job?.sessionId === session.id ? job : undefined;
+      },
+      list: async (options) => sessionManager.jobs.list(session.id, options),
+      update: async (id, patch) => {
+        const job = sessionManager.jobs.get(id);
+        if (!job || job.sessionId !== session.id) throw new Error(`Job ${id} not found`);
+        return sessionManager.jobs.update(id, patch);
+      },
+      cancel: async (id) => {
+        const job = sessionManager.jobs.get(id);
+        if (!job || job.sessionId !== session.id) throw new Error(`Job ${id} not found`);
+        return sessionManager.jobs.cancel(id);
+      },
+      input: async (id, input) => {
+        const job = sessionManager.jobs.get(id);
+        if (!job || job.sessionId !== session.id) throw new Error(`Job ${id} not found`);
+        return sessionManager.jobs.input(id, input);
+      },
+      setCancelHandler: (id, handler) => {
+        const job = sessionManager.jobs.get(id);
+        if (!job || job.sessionId !== session.id) throw new Error(`Job ${id} not found`);
+        sessionManager.jobs.setCancelHandler(id, handler);
+      },
+      setInputHandler: (id, handler) => {
+        const job = sessionManager.jobs.get(id);
+        if (!job || job.sessionId !== session.id) throw new Error(`Job ${id} not found`);
+        sessionManager.jobs.setInputHandler(id, handler);
+      },
+      schedules: {
+        create: async (input) => sessionManager.jobs.createSchedule(session.id, input),
+        get: async (id) => {
+          const schedule = sessionManager.jobs.getSchedule(id);
+          return schedule?.sessionId === session.id ? schedule : undefined;
+        },
+        list: async () => sessionManager.jobs.listSchedules(session.id),
+        update: async (id, patch) => {
+          const schedule = sessionManager.jobs.getSchedule(id);
+          if (!schedule || schedule.sessionId !== session.id) {
+            throw new Error(`Job schedule ${id} not found`);
+          }
+          return sessionManager.jobs.updateSchedule(id, patch);
+        },
+        delete: async (id) => {
+          const schedule = sessionManager.jobs.getSchedule(id);
+          if (!schedule || schedule.sessionId !== session.id) return false;
+          return sessionManager.jobs.deleteSchedule(id);
+        },
+      },
     };
     this.db = new ContextDb(db.db);
     this.project = {
@@ -544,8 +608,15 @@ export class ContextSession {
   sendUserMessage(content: string, options?: { source?: string; origin?: string }): Promise<void> {
     return this.options.sendUserMessage(content, options);
   }
-  sendToChild(sessionId: number, content: string, options?: { source?: string }): Promise<void> {
+  sendToChild(
+    sessionId: number,
+    content: string,
+    options?: { source?: string; background?: boolean; urgency?: "normal" | "urgent" },
+  ): Promise<void> {
     return this.options.sendToChild(sessionId, content, options);
+  }
+  inspectChild(sessionId: number, options?: { maxChars?: number }) {
+    return this.options.inspectChild(sessionId, options);
   }
   pausing<T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T> {
     return this.options.pausing(reason, work);

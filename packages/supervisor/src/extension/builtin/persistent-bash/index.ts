@@ -4,9 +4,7 @@ import {
   getPersistentBashSession,
   listPersistentBashSessions,
   startPersistentBashSession,
-  stopPersistentBashSession,
   stopPersistentBashSessions,
-  writePersistentBashSession,
 } from "./manager.js";
 
 export default {
@@ -15,7 +13,7 @@ export default {
     ctx.agent.registerTool({
       name: "PersistentBash",
       description:
-        "Manage an in-memory long-running shell for this Session. Start commands without blocking, read output, write stdin, list, or stop. Shells end when the Session or Supervisor stops.",
+        "Manage a background shell represented as a Session Job. Start commands without blocking, read persisted output, write stdin, list, or stop. Process execution ends when the Session or Supervisor stops.",
       parameters: Type.Object({
         action: Type.Union([
           Type.Literal("start"),
@@ -32,37 +30,43 @@ export default {
       }),
       async execute(params) {
         if (params.action === "start") {
-          const item = startPersistentBashSession({
+          const item = await startPersistentBashSession({
             sessionId: ctx.session.id,
             cwd: ctx.session.cwd,
+            jobs: ctx.jobs,
             command: params.command,
             label: params.label,
           });
           return { content: [{ type: "text", text: JSON.stringify(item) }], details: item };
         }
         if (params.action === "list") {
-          const items = listPersistentBashSessions(ctx.session.id);
+          const items = await listPersistentBashSessions(ctx.session.id, ctx.jobs);
           return { content: [{ type: "text", text: JSON.stringify(items) }], details: { items } };
         }
         if (!params.id) throw new Error(`PersistentBash action=${params.action} requires id`);
         if (params.action === "read") {
-          const item = getPersistentBashSession(ctx.session.id, params.id, params.tailChars);
+          const item = await getPersistentBashSession(
+            ctx.session.id,
+            params.id,
+            ctx.jobs,
+            params.tailChars,
+          );
           if (!item) throw new Error(`Bash session ${params.id} not found`);
           return { content: [{ type: "text", text: item.output || "(no output)" }], details: item };
         }
         if (params.action === "write") {
           if (!params.input) throw new Error("PersistentBash action=write requires input");
-          writePersistentBashSession(ctx.session.id, params.id, params.input);
+          await ctx.jobs.input(params.id, params.input);
           return { content: [{ type: "text", text: `Wrote to Bash session ${params.id}` }] };
         }
-        await stopPersistentBashSession(ctx.session.id, params.id);
-        const item = getPersistentBashSession(ctx.session.id, params.id);
+        await ctx.jobs.cancel(params.id);
+        const item = await getPersistentBashSession(ctx.session.id, params.id, ctx.jobs);
         return {
           content: [{ type: "text", text: item?.output || `Stopped ${params.id}` }],
           details: item,
         };
       },
     });
-    return () => stopPersistentBashSessions(ctx.session.id);
+    return () => stopPersistentBashSessions(ctx.session.id, ctx.jobs);
   },
 } satisfies ExtensionDefinition;

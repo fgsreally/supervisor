@@ -16,6 +16,7 @@ import {
   subagentExtension,
   taskManagementExtension,
   timerExtension,
+  toolLoopGuardExtension,
   type EventHandlerContext,
   type ExtensionDefinition,
   type ExtensionCommandDefinition,
@@ -81,6 +82,7 @@ export class SessionExtensionRuntime {
   async loadBuiltinExtensions(): Promise<void> {
     await this.loadExtension(evalExtension, "builtin:eval");
     await this.loadExtension(taskManagementExtension, "builtin:task-management");
+    await this.loadExtension(toolLoopGuardExtension, "builtin:tool-loop-guard");
     await this.loadExtension(timerExtension, "builtin:timer");
     await this.loadExtension(persistentBashExtension, "builtin:persistent-bash");
     await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");

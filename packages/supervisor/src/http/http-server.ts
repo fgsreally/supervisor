@@ -17,11 +17,6 @@ import type { SessionManager } from "../core/session-manager.js";
 import { getProjectDir, getSessionDir } from "../core/session-files.js";
 import { activeTaskPaths, readTaskArtifact } from "../core/task-artifacts.js";
 import { parseSessionTodos } from "../core/session-todos.js";
-import {
-  listPersistentBashSessions,
-  removePersistentBashSession,
-  writePersistentBashSession,
-} from "../extension/builtin/persistent-bash/manager.js";
 import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-manager.js";
 import { isResourceKind } from "../resources/types.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";
@@ -1055,12 +1050,62 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // In-memory persistent Bash sessions. They intentionally do not survive Supervisor restarts.
+  // Unified execution records and schedules for the Session Job popover.
+  app.get("/sessions/:id/jobs", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    if (!manager.get(id)) return jsonError(c, 404, `Session ${id} not found`);
+    return c.json({
+      jobs: manager.jobs.list(id, { limit: 50 }),
+      schedules: manager.jobs.listSchedules(id),
+    });
+  });
+
+  app.post("/sessions/:id/jobs/:jobId/input", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const job = manager.jobs.get(c.req.param("jobId"));
+    if (!job || job.sessionId !== id) return jsonError(c, 404, "Job not found");
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body.input !== "string" || !body.input) {
+      return jsonError(c, 400, "input is required");
+    }
+    try {
+      await manager.jobs.input(job.id, body.input);
+      return c.json({ ok: true });
+    } catch (error) {
+      return jsonError(c, 409, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.delete("/sessions/:id/jobs/:jobId", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const job = manager.jobs.get(c.req.param("jobId"));
+    if (!job || job.sessionId !== id) return jsonError(c, 404, "Job not found");
+    return c.json({ job: await manager.jobs.cancel(job.id) });
+  });
+
+  // Compatibility aliases for clients that still use the PersistentBash endpoints.
   app.get("/sessions/:id/bash-sessions", (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
     if (!manager.get(id)) return jsonError(c, 404, `Session ${id} not found`);
-    return c.json({ sessions: listPersistentBashSessions(id) });
+    const sessions = manager.jobs.list(id, { kind: "shell" }).map((job) => ({
+      id: job.id,
+      sessionId: job.sessionId,
+      command: typeof job.metadata.command === "string" ? job.metadata.command : "",
+      label: job.label,
+      cwd: typeof job.metadata.cwd === "string" ? job.metadata.cwd : "",
+      pid: job.metadata.pid,
+      status:
+        job.status === "succeeded" ? "exited" : job.status === "cancelled" ? "exited" : job.status,
+      startedAt: job.startedAt ?? job.createdAt,
+      endedAt: job.finishedAt,
+      exitCode: job.metadata.exitCode,
+      output: job.output,
+    }));
+    return c.json({ sessions });
   });
 
   app.post("/sessions/:id/bash-sessions/:bashId/input", async (c) => {
@@ -1071,7 +1116,7 @@ export function createHttpServer(manager: SessionManager): Hono {
       return jsonError(c, 400, "input is required");
     }
     try {
-      writePersistentBashSession(id, c.req.param("bashId"), body.input);
+      await manager.jobs.input(c.req.param("bashId"), body.input);
       return c.json({ ok: true });
     } catch (error) {
       return jsonError(c, 404, error instanceof Error ? error.message : String(error));
@@ -1082,7 +1127,9 @@ export function createHttpServer(manager: SessionManager): Hono {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
     try {
-      await removePersistentBashSession(id, c.req.param("bashId"));
+      const job = manager.jobs.get(c.req.param("bashId"));
+      if (!job || job.sessionId !== id) return jsonError(c, 404, "Bash Job not found");
+      await manager.jobs.cancel(job.id);
       return c.json({ ok: true });
     } catch (error) {
       return jsonError(c, 404, error instanceof Error ? error.message : String(error));
@@ -1094,8 +1141,11 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
-      await manager.abort(id);
-      return c.json({ ok: true });
+      const body = await c.req.json().catch(() => ({}));
+      const result = await manager.abort(id, {
+        retractIfNoAssistant: body?.retractIfNoAssistant === true,
+      });
+      return c.json({ ok: true, ...result });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 409, message);

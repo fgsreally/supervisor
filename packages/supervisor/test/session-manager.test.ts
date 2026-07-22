@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AgentEvent, AgentHarnessEvent } from "@earendil-works/pi-agent-core";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./mock-agent-harness.js";
 import { SupervisorDb } from "../src/db.js";
 import { SessionManager } from "../src/session-manager.js";
@@ -54,7 +54,7 @@ describe("supervisor: SessionManager", () => {
     expect(parent.branchType).toBeNull();
     expect(parent.showInSessionList).toBe(true);
     expect(subagent.branchType).toBe("subagent");
-    expect(subagent.showInSessionList).toBe(false);
+    expect(subagent.showInSessionList).toBe(true);
     expect(btw.branchType).toBe("btw");
     expect(btw.showInSessionList).toBe(false);
     expect(btw.contextLeafId).toBeNull();
@@ -163,6 +163,28 @@ describe("supervisor: SessionManager", () => {
     expect(harness.abort).toHaveBeenCalled();
     expect(harness.compact).toHaveBeenCalledWith("short");
     expect(harness.setThinkingLevel).toHaveBeenCalledWith("low");
+  });
+
+  it("retracts the latest unanswered user message when aborting", async () => {
+    const inst = await manager.spawn(SPAWN_OPTS);
+    const { SQLiteSessionStorage } = await import("../src/session-storage.js");
+    const storage = new SQLiteSessionStorage(db, inst.id);
+    const entryId = await storage.createEntryId();
+    await storage.appendEntry({
+      id: entryId,
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: { role: "user", content: "unsent thought", timestamp: Date.now() },
+    });
+    vi.spyOn(manager.getRuntime(inst.id) as any, "reloadMessagesFromSessionTree").mockResolvedValue(
+      undefined,
+    );
+
+    const result = await manager.abort(inst.id, { retractIfNoAssistant: true });
+
+    expect(result.retracted).toBe(true);
+    expect(await manager.getMessages(inst.id)).toEqual([]);
   });
 
   it("getState() returns a headless state snapshot", async () => {
@@ -315,6 +337,110 @@ describe("supervisor: SessionManager", () => {
     manager.create({ parentId: parent.id });
     manager.create({ parentId: parent.id });
     expect(manager.children(parent.id)).toHaveLength(2);
+  });
+
+  it("reopens a finished spawned child before submitting more input", async () => {
+    const parent = manager.create();
+    const child = manager.create({ parentId: parent.id });
+    const completed = await manager.complete(child.id);
+    expect(completed).toMatchObject({ status: "finish", showInSessionList: false });
+    const submit = vi.spyOn(manager, "submitSessionInput").mockResolvedValue("drained");
+
+    await manager.submitSubagentInput(parent.id, child.id, "continue reviewing");
+
+    expect(manager.get(child.id)).toMatchObject({ status: "idle", showInSessionList: true });
+    expect(submit).toHaveBeenCalledWith(child.id, {
+      message: "continue reviewing",
+      level: 50,
+      source: `subagent:parent:${parent.id}`,
+    });
+  });
+
+  it("interrupts the current child turn for urgent continued input", async () => {
+    const parent = manager.create();
+    const child = manager.create({ parentId: parent.id });
+    const interrupt = vi.spyOn(manager, "interruptAndPrompt").mockResolvedValue();
+
+    const disposition = await manager.submitSubagentInput(parent.id, child.id, "stop and inspect", {
+      urgency: "urgent",
+    });
+
+    expect(disposition).toBe("interrupt");
+    expect(interrupt).toHaveBeenCalledWith(
+      child.id,
+      "stop and inspect",
+      undefined,
+      `subagent:parent:${parent.id}`,
+      undefined,
+    );
+  });
+
+  it("rejects continuing a Session that is not a direct spawned child", async () => {
+    const parent = manager.create();
+    const unrelated = manager.create();
+    await expect(manager.submitSubagentInput(parent.id, unrelated.id, "continue")).rejects.toThrow(
+      "not a direct spawned subagent",
+    );
+  });
+
+  it("queues continued input while the spawned child is busy", async () => {
+    const parent = manager.create();
+    const child = manager.create({ parentId: parent.id });
+    const busyManager = manager as unknown as {
+      isSessionBusy(sessionId: number): Promise<boolean>;
+    };
+    vi.spyOn(busyManager, "isSessionBusy").mockResolvedValue(true);
+
+    const disposition = await manager.submitSubagentInput(
+      parent.id,
+      child.id,
+      "follow-up while busy",
+    );
+
+    expect(disposition).toBe("queued");
+    expect(manager.listSessionInputs(child.id)).toMatchObject([
+      { message: "follow-up while busy", source: `subagent:parent:${parent.id}` },
+    ]);
+  });
+
+  it("restores queued Session input after Supervisor restarts", async () => {
+    const session = manager.create();
+    const busyManager = manager as unknown as {
+      isSessionBusy(sessionId: number): Promise<boolean>;
+    };
+    vi.spyOn(busyManager, "isSessionBusy").mockResolvedValue(true);
+    await manager.submitSessionInput(session.id, {
+      message: "resume this after restart",
+      source: "test:persistence",
+    });
+
+    await manager.dispose();
+    db = new SupervisorDb(join(tmpDir, "test.db"));
+    manager = new SessionManager(db);
+
+    expect(manager.listSessionInputs(session.id)).toMatchObject([
+      { message: "resume this after restart", source: "test:persistence", level: 50 },
+    ]);
+  });
+
+  it("normalizes interrupted Session states when Supervisor restarts", async () => {
+    const starting = manager.create();
+    const running = manager.create();
+    const waiting = manager.create();
+    const finished = manager.create({ parentId: starting.id });
+    db.updateStatus(running.id, "running");
+    db.updateStatus(waiting.id, "waiting_user");
+    db.updateStatus(finished.id, "finish");
+
+    await manager.dispose();
+    db = new SupervisorDb(join(tmpDir, "test.db"));
+    manager = new SessionManager(db);
+
+    expect(manager.get(starting.id)?.status).toBe("idle");
+    expect(manager.get(running.id)?.status).toBe("idle");
+    expect(manager.get(waiting.id)?.status).toBe("idle");
+    expect(manager.get(finished.id)?.status).toBe("finish");
+    expect(manager.get(finished.id)?.showInSessionList).toBe(false);
   });
 
   it("fork() sets branch_type and marks copied messages is_old", async () => {

@@ -59,6 +59,10 @@ export class SessionInputQueue {
   list(sessionId: number): SessionQueuedInput[] {
     return [...(this.queues.get(sessionId) ?? [])];
   }
+
+  sessionIds(): number[] {
+    return [...this.queues.keys()];
+  }
 }
 
 export function shouldInterruptSessionInput(level: number): boolean {

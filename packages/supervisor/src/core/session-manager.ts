@@ -27,6 +27,7 @@ import { getDefaultCwd } from "../config/default-cwd.js";
 import { initializeResourceCatalog } from "../resources/catalog-sync.js";
 import { ExtensionModuleRegistry } from "../extension/registry.js";
 import { ResourceManager } from "../resources/resource-manager.js";
+import { JobManager } from "./jobs.js";
 import { ensureGlobalResourceRoot } from "../resources/resource-paths.js";
 import { AgentResource } from "../agent/runtime-resources.js";
 import {
@@ -92,6 +93,7 @@ import { ensureSessionDir, removeProjectDirSync, removeSessionDirSync } from "./
 import { runShadow } from "../extension/builtin/shadow/index.js";
 import {
   DEFAULT_SESSION_INPUT_LEVEL,
+  SESSION_INPUT_INTERRUPT_LEVEL,
   type SessionInputDisposition,
   SessionInputQueue,
   type SessionQueuedInput,
@@ -209,13 +211,23 @@ export class SessionManager {
   private outputListeners = new Map<number, Set<SessionOutputListener>>();
   private sessionToolConfigs = new Map<number, SessionToolConfig>();
   private readonly sessionInputQueues = new SessionInputQueue();
+  private readonly drainingSessionInputs = new Set<number>();
   private readonly extensionRegistry = new ExtensionModuleRegistry();
   private readonly resourceHandlers: ReturnType<typeof createResourceHandlers>;
   private readonly resourceManager: ResourceManager;
   private resourcesInitialized = false;
+  readonly jobs: JobManager;
 
   constructor(db: SupervisorDb) {
     this.db = db;
+    this.db.reconcileInterruptedSessionStatuses();
+    for (const input of this.db.listPersistedSessionInputs()) {
+      this.sessionInputQueues.enqueue(input.sessionId, {
+        ...input,
+        images: input.images as ImageContent[] | undefined,
+      });
+    }
+    this.jobs = new JobManager(db);
     const agentDir = join(homedir(), ".pi", "agent");
     const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
     this.modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
@@ -407,10 +419,17 @@ export class SessionManager {
           this.db.updateStatus(sessionId, "idle");
         }
         void (async () => {
-          const shadowCheckpoint =
-            runtime instanceof SessionRuntime && !hasPendingAsks(sessionId)
-              ? await createSessionCheckpoint(this.db, sessionId, { label: "shadow-turn" })
-              : undefined;
+          let shadowCheckpoint;
+          if (runtime instanceof SessionRuntime && !hasPendingAsks(sessionId)) {
+            try {
+              shadowCheckpoint = await createSessionCheckpoint(this.db, sessionId, {
+                label: "shadow-turn",
+              });
+            } catch (error: unknown) {
+              const detail = error instanceof Error ? error.message : String(error);
+              console.debug(`shadow checkpoint skipped [${sessionId}]:`, detail);
+            }
+          }
           if (!hasPendingAsks(sessionId)) {
             await this.drainSessionInputQueue(sessionId);
           }
@@ -896,13 +915,52 @@ export class SessionManager {
       return "interrupt";
     }
 
+    this.db.enqueueSessionInput({ ...entry, sessionId: id });
     this.sessionInputQueues.enqueue(id, entry);
 
-    if (await this.isSessionBusy(id)) {
+    if (this.drainingSessionInputs.has(id) || (await this.isSessionBusy(id))) {
       return "queued";
     }
 
-    await this.drainSessionInputQueue(id);
+    return (await this.drainSessionInputQueue(id)) ? "drained" : "queued";
+  }
+
+  async submitSubagentInput(
+    parentSessionId: number,
+    childSessionId: number,
+    message: string,
+    options?: { source?: string; background?: boolean; urgency?: "normal" | "urgent" },
+  ): Promise<SessionInputDisposition> {
+    const child = this.get(childSessionId);
+    if (!child || child.parentId !== parentSessionId || child.creationMethod !== "spawn_agent") {
+      throw new Error(
+        `Session ${childSessionId} is not a direct spawned subagent of ${parentSessionId}`,
+      );
+    }
+    if (child.status === "error" || child.status === "stopped") {
+      throw new Error(`Session ${childSessionId} cannot be continued (status: ${child.status})`);
+    }
+    if (child.status === "finish" || child.status === "finished") {
+      this.db.updateStatus(childSessionId, "idle");
+      this.db.updateSessionListVisibility(childSessionId, true);
+    }
+
+    const submit = () =>
+      this.submitSessionInput(childSessionId, {
+        message,
+        level:
+          options?.urgency === "urgent"
+            ? SESSION_INPUT_INTERRUPT_LEVEL
+            : DEFAULT_SESSION_INPUT_LEVEL,
+        source: options?.source ?? `subagent:parent:${parentSessionId}`,
+      });
+    if (!options?.background) return submit();
+
+    void submit().catch((error: unknown) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`Subagent prompt error [${childSessionId}]:`, detail);
+      this.db.updateStatus(childSessionId, "error");
+    });
     return "drained";
   }
 
@@ -939,11 +997,44 @@ export class SessionManager {
     return this.sessionInputQueues.list(sessionId);
   }
 
+  resumePersistedSessionInputs(): void {
+    for (const sessionId of this.sessionInputQueues.sessionIds()) {
+      const session = this.get(sessionId);
+      if (!session || session.status === "finish" || session.status === "error") continue;
+      void this.drainSessionInputQueue(sessionId).catch((error: unknown) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`Persisted Session input failed [${sessionId}]:`, detail);
+      });
+    }
+  }
+
   async drainSessionInputQueue(sessionId: number): Promise<boolean> {
+    if (this.drainingSessionInputs.has(sessionId)) return false;
     const next = this.sessionInputQueues.dequeue(sessionId);
     if (!next) return false;
-    await this.prompt(sessionId, next.message, next.images, next.source, next.origin);
-    return true;
+    this.drainingSessionInputs.add(sessionId);
+    let delivered = false;
+    try {
+      await this.prompt(sessionId, next.message, next.images, next.source, next.origin);
+      this.db.deleteSessionInput(next.id);
+      delivered = true;
+      return true;
+    } catch (error) {
+      this.sessionInputQueues.enqueue(sessionId, next);
+      throw error;
+    } finally {
+      this.drainingSessionInputs.delete(sessionId);
+      if (
+        delivered &&
+        this.sessionInputQueues.size(sessionId) > 0 &&
+        !(await this.isSessionBusy(sessionId))
+      ) {
+        void this.drainSessionInputQueue(sessionId).catch((error: unknown) => {
+          const detail = error instanceof Error ? error.message : String(error);
+          console.error(`Queued Session input failed [${sessionId}]:`, detail);
+        });
+      }
+    }
   }
 
   /** @deprecated use submitSessionInput */
@@ -967,7 +1058,14 @@ export class SessionManager {
     while (Date.now() - startedAt < timeoutMs) {
       const row = this.db.get(sessionId);
       if (!row) throw new Error(`Session ${sessionId} not found`);
-      if (row.status !== "starting" && row.status !== "running" && row.status !== "waiting_user") {
+      const hasPendingInput =
+        this.drainingSessionInputs.has(sessionId) || this.sessionInputQueues.size(sessionId) > 0;
+      if (
+        !hasPendingInput &&
+        row.status !== "starting" &&
+        row.status !== "running" &&
+        row.status !== "waiting_user"
+      ) {
         return;
       }
       await new Promise((resolve) => setTimeout(resolve, 250));
@@ -989,10 +1087,40 @@ export class SessionManager {
     runtime.followUp(message, source, images);
   }
 
-  async abort(id: number): Promise<void> {
+  async abort(
+    id: number,
+    options?: { retractIfNoAssistant?: boolean },
+  ): Promise<{
+    retracted: boolean;
+  }> {
     cancelPendingAsks(id);
     cancelPendingApprovals(id);
-    await (await this.getOrRestoreRuntime(id)).abort();
+    const runtime = await this.getOrRestoreRuntime(id);
+    await runtime.abort();
+    if (!options?.retractIfNoAssistant || !(runtime instanceof SessionRuntime)) {
+      return { retracted: false };
+    }
+
+    const leaf = this.db.db
+      .prepare(
+        `SELECT m.entry_id, m.parent_entry_id
+         FROM sessions s
+         JOIN messages m ON m.entry_id = s.leaf_id AND m.session_id = s.id
+         WHERE s.id = ? AND m.message_role = 'user'`,
+      )
+      .get(id) as { entry_id: string; parent_entry_id: string | null } | undefined;
+    if (!leaf) return { retracted: false };
+
+    this.db.db.transaction(() => {
+      this.db.db
+        .prepare("UPDATE sessions SET leaf_id = ?, last_active_at = ? WHERE id = ?")
+        .run(leaf.parent_entry_id, Date.now(), id);
+      this.db.db
+        .prepare("DELETE FROM messages WHERE session_id = ? AND entry_id = ?")
+        .run(id, leaf.entry_id);
+    })();
+    await runtime.reloadMessagesFromSessionTree();
+    return { retracted: true };
   }
 
   submitAskAnswer(sessionId: number, toolCallId: string, answers: AskAnswer[]): boolean {
@@ -1082,13 +1210,22 @@ export class SessionManager {
     this.sessionToolConfigs.delete(id);
     if (current.status !== "error") {
       this.db.updateStatus(id, "finish");
+      if (current.created_via === "spawn_agent" && current.parent_id != null) {
+        this.db.updateSessionListVisibility(id, false);
+      }
     }
   }
 
   async complete(id: number): Promise<Session> {
     let session = rowToSession(this.db.get(id)!);
     if (!session) throw new Error(`Session ${id} not found`);
-    if (session.status === "finish" || session.status === "finished") return session;
+    if (session.status === "finish" || session.status === "finished") {
+      if (session.creationMethod === "spawn_agent" && session.parentId != null) {
+        this.db.updateSessionListVisibility(id, false);
+        session = rowToSession(this.db.get(id)!);
+      }
+      return session;
+    }
 
     // Emit session.before_complete
     const runtime = this.runtimes.get(id);

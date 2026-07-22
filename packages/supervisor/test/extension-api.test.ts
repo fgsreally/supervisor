@@ -132,18 +132,12 @@ describe("extension api", () => {
     await runtime.clear();
   });
 
-  it("persists and fires Session timers through session meta", async () => {
+  it("persists schedules and records fired timers as Jobs", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-20T04:00:00.000Z"));
     try {
-      let meta: Record<string, unknown> = {};
       const options = createRuntimeOptions();
       const sendUserMessage = vi.fn(async () => {});
-      options.db.getSessionMeta = async () => meta;
-      options.deps.patchSessionMeta = async (patch) => {
-        meta = { ...meta, ...patch };
-        return meta;
-      };
       options.deps.sendUserMessage = sendUserMessage;
       const runtime = new SessionExtensionHost(createExtensionTestContext(options));
       await runtime.load(timerExtension, "builtin:timer");
@@ -159,10 +153,14 @@ describe("extension api", () => {
         context,
       );
       const timer = created.details as { id: string };
-      expect(meta.timers).toMatchObject([{ id: timer.id, prompt: "check deploy" }]);
+      const before = await runtime.executeTool("TimerList", { intent: "inspect timers" }, context);
+      expect((before.details as { timers: Array<{ id: string }> }).timers).toMatchObject([
+        { id: timer.id, prompt: "check deploy" },
+      ]);
 
       await vi.advanceTimersByTimeAsync(5_000);
-      expect(meta.timers).toEqual([]);
+      const after = await runtime.executeTool("TimerList", { intent: "inspect timers" }, context);
+      expect((after.details as { timers: unknown[] }).timers).toEqual([]);
       expect(sendUserMessage).toHaveBeenCalledWith(expect.stringContaining('<timer-fire id="'), {
         source: "timer",
         origin: "check deploy",

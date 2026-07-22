@@ -5,6 +5,13 @@
  */
 
 import type { Static, TSchema } from "typebox";
+import type {
+  CreateJobInput,
+  CreateJobScheduleInput,
+  JobRecord,
+  JobSchedule,
+  UpdateJobInput,
+} from "../core/jobs.js";
 import type { SessionWorkflowState, WorkflowStatePatch } from "../core/session-workflow.js";
 
 // ============================================================================
@@ -152,7 +159,16 @@ export interface ExtensionSession {
     triggerTurn?: boolean;
   }): Promise<void>;
   sendUserMessage(content: string, options?: { source?: string; origin?: string }): Promise<void>;
-  sendToChild(sessionId: number, content: string, options?: { source?: string }): Promise<void>;
+  sendToChild(
+    sessionId: number,
+    content: string,
+    options?: {
+      source?: string;
+      background?: boolean;
+      urgency?: "normal" | "urgent";
+    },
+  ): Promise<void>;
+  inspectChild(sessionId: number, options?: { maxChars?: number }): Promise<SubagentStatusSnapshot>;
   pausing<T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T>;
   spawn(request: SpawnSessionRequest): Promise<SpawnSessionResult>;
   waitForResult(
@@ -259,6 +275,9 @@ export interface ExtensionContext {
   /** Session-scoped registry for dynamically invoking tools registered by any extension. */
   readonly tools: ExtensionToolFacade;
 
+  /** System-level execution records used by extensions; not an LLM tool surface. */
+  readonly jobs: ExtensionJobFacade;
+
   /** 项目域：工作区与项目级目录 */
   readonly project: SupervisorProjectFacade;
 
@@ -316,6 +335,25 @@ export interface ExtensionToolFacade {
     params: unknown,
     options?: { signal?: AbortSignal },
   ): Promise<ExtensionToolCallResult<TResult>>;
+}
+
+/** Session-scoped access to Supervisor's system-level execution registry. */
+export interface ExtensionJobFacade {
+  create(input: CreateJobInput): Promise<JobRecord>;
+  get(id: string): Promise<JobRecord | undefined>;
+  list(options?: { limit?: number; kind?: string }): Promise<JobRecord[]>;
+  update(id: string, patch: UpdateJobInput): Promise<JobRecord>;
+  cancel(id: string): Promise<JobRecord>;
+  input(id: string, input: string): Promise<void>;
+  setCancelHandler(id: string, handler: () => void | Promise<void>): void;
+  setInputHandler(id: string, handler: (input: string) => void | Promise<void>): void;
+  schedules: {
+    create(input: CreateJobScheduleInput): Promise<JobSchedule>;
+    get(id: string): Promise<JobSchedule | undefined>;
+    list(): Promise<JobSchedule[]>;
+    update(id: string, patch: { nextRunAt: number }): Promise<JobSchedule>;
+    delete(id: string): Promise<boolean>;
+  };
 }
 
 // ============================================================================
@@ -476,6 +514,13 @@ export interface SessionResultSummary {
   status: string;
   result: string;
   truncated: boolean;
+}
+
+export interface SubagentStatusSnapshot extends SessionResultSummary {
+  parentId: number;
+  agentName?: string;
+  queuedInputCount: number;
+  lastActiveAt: number;
 }
 
 export interface ExtensionSqliteStatement {

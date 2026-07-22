@@ -74,12 +74,18 @@
       <button
         type="button"
         class="send-btn"
-        :class="{ 'send-btn--active': canSend }"
-        :disabled="!canSend"
+        :class="{
+          'send-btn--active': canSend || interrupting,
+          'send-btn--interrupt': interrupting,
+        }"
+        :disabled="interrupting ? false : !canSend"
+        :aria-label="interrupting ? '打断当前会话' : '发送消息'"
+        :title="interrupting ? '打断当前会话' : '发送消息'"
         @mousedown.prevent
-        @click="emit('send')"
+        @click="onPrimaryAction"
       >
-        发送
+        <Square v-if="interrupting" class="send-btn__stop-icon" aria-hidden="true" />
+        <template v-else>发送</template>
       </button>
     </div>
   </div>
@@ -94,13 +100,15 @@ import {
   Scissors,
   Smile,
   Sparkles,
+  Square,
 } from "lucide-vue-next";
 
 export type ChatToolbarAction = "emoji" | "skill" | "attach" | "screenshot" | "voice" | "btw";
 
-defineProps<{
+const props = defineProps<{
   disabled?: boolean;
   canSend?: boolean;
+  interrupting?: boolean;
   customCommands?: Array<{ name: string; description: string }>;
 }>();
 
@@ -108,6 +116,7 @@ const emit = defineEmits<{
   action: [action: ChatToolbarAction];
   slash: [name: string];
   send: [];
+  interrupt: [];
 }>();
 
 const leftButtons = [
@@ -115,6 +124,11 @@ const leftButtons = [
   { id: "skill" as const, icon: Sparkles, title: "技能" },
   { id: "attach" as const, icon: FolderOpen, title: "发送文件" },
 ];
+
+function onPrimaryAction() {
+  if (props.interrupting) emit("interrupt");
+  else emit("send");
+}
 
 function onSlashSelect(event: Event) {
   const select = event.target as HTMLSelectElement;
@@ -185,6 +199,16 @@ function onSlashSelect(event: Event) {
 
 .send-btn--active:hover:not(:disabled) {
   background: var(--app-accent-hover);
+}
+
+.send-btn--interrupt {
+  background: var(--app-danger, #dc2626);
+}
+
+.send-btn__stop-icon {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
 }
 
 .send-btn:disabled {

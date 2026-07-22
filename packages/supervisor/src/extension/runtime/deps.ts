@@ -18,6 +18,7 @@ import type {
   MessageEntry,
   MessageNode,
   SessionResultSummary,
+  SubagentStatusSnapshot,
   SessionInfo,
   SpawnSessionRequest,
   SpawnSessionResult,
@@ -44,6 +45,58 @@ export function createEventBus(): EventBus {
     off(event: string, handler: (data: unknown) => void): void {
       emitter.off(event, handler);
     },
+  };
+}
+
+function readSessionResultSummary(
+  db: SupervisorDb,
+  targetSessionId: number,
+  maxChars: number,
+): SessionResultSummary {
+  const row = db.get(targetSessionId);
+  if (!row) throw new Error(`Session ${targetSessionId} not found`);
+  const message = db.db
+    .prepare(
+      `SELECT payload
+       FROM messages
+       WHERE session_id = ? AND message_role = 'assistant'
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+    .get(targetSessionId) as { payload?: string } | undefined;
+  let result = "";
+  if (message?.payload) {
+    try {
+      const payload = JSON.parse(message.payload) as {
+        message?: { content?: unknown };
+        content?: unknown;
+      };
+      const content = payload.message?.content ?? payload.content;
+      if (typeof content === "string") {
+        result = content;
+      } else if (Array.isArray(content)) {
+        result = content
+          .map((part) => {
+            if (typeof part === "string") return part;
+            if (part && typeof part === "object" && "text" in part) {
+              const text = (part as { text?: unknown }).text;
+              return typeof text === "string" ? text : "";
+            }
+            return "";
+          })
+          .filter(Boolean)
+          .join("\n");
+      }
+    } catch {
+      result = message.payload;
+    }
+  }
+  const truncated = result.length > maxChars;
+  return {
+    sessionId: targetSessionId,
+    status: row.status,
+    result: truncated ? result.slice(0, maxChars) : result,
+    truncated,
   };
 }
 
@@ -147,17 +200,38 @@ export function buildExtensionDeps(deps: {
     sendToChild: async (
       targetSessionId: number,
       content: string,
-      options?: { source?: string },
+      options?: {
+        source?: string;
+        background?: boolean;
+        urgency?: "normal" | "urgent";
+      },
     ) => {
-      const child = manager.get(targetSessionId);
-      if (!child || child.parentId !== sessionId || child.branchType !== "subagent") {
-        throw new Error(`Session ${targetSessionId} is not a direct subagent of ${sessionId}`);
-      }
-      await manager.submitSessionInput(targetSessionId, {
-        message: content,
-        level: DEFAULT_SESSION_INPUT_LEVEL,
+      await manager.submitSubagentInput(sessionId, targetSessionId, content, {
         source: options?.source ?? `extension:parent:${sessionId}`,
+        background: options?.background,
+        urgency: options?.urgency,
       });
+    },
+
+    inspectChild: async (
+      targetSessionId: number,
+      options?: { maxChars?: number },
+    ): Promise<SubagentStatusSnapshot> => {
+      const child = manager.get(targetSessionId);
+      if (!child || child.parentId !== sessionId || child.creationMethod !== "spawn_agent") {
+        throw new Error(
+          `Session ${targetSessionId} is not a direct spawned subagent of ${sessionId}`,
+        );
+      }
+      const summary = readSessionResultSummary(db, targetSessionId, options?.maxChars ?? 4000);
+      const agent = child.agentId == null ? undefined : manager.getAgent(child.agentId);
+      return {
+        ...summary,
+        parentId: sessionId,
+        agentName: agent?.name,
+        queuedInputCount: manager.listSessionInputs(targetSessionId).length,
+        lastActiveAt: child.lastActiveAt,
+      };
     },
 
     continueTurn: async (content: string, options?: { source?: string }) => {
@@ -265,57 +339,12 @@ export function buildExtensionDeps(deps: {
       targetSessionId: number,
       options?: { maxChars?: number },
     ): Promise<SessionResultSummary> => {
-      const maxChars = options?.maxChars ?? 20000;
-      const row = db.get(targetSessionId);
-      if (!row) throw new Error(`Session ${targetSessionId} not found`);
-      const message = db.db
-        .prepare(
-          `SELECT payload
-           FROM messages
-           WHERE session_id = ? AND message_role = 'assistant'
-           ORDER BY created_at DESC
-           LIMIT 1`,
-        )
-        .get(targetSessionId) as { payload?: string } | undefined;
-      let result = "";
-      if (message?.payload) {
-        try {
-          const payload = JSON.parse(message.payload) as {
-            message?: { content?: unknown };
-            content?: unknown;
-          };
-          const content = payload.message?.content ?? payload.content;
-          if (typeof content === "string") {
-            result = content;
-          } else if (Array.isArray(content)) {
-            result = content
-              .map((part) => {
-                if (typeof part === "string") return part;
-                if (part && typeof part === "object" && "text" in part) {
-                  const text = (part as { text?: unknown }).text;
-                  return typeof text === "string" ? text : "";
-                }
-                return "";
-              })
-              .filter(Boolean)
-              .join("\n");
-          }
-        } catch {
-          result = message.payload;
-        }
-      }
-      const truncated = result.length > maxChars;
-      return {
-        sessionId: targetSessionId,
-        status: row.status,
-        result: truncated ? result.slice(0, maxChars) : result,
-        truncated,
-      };
+      return readSessionResultSummary(db, targetSessionId, options?.maxChars ?? 20000);
     },
 
     finishSession: async (targetSessionId: number): Promise<void> => {
       if (!db.get(targetSessionId)) throw new Error(`Session ${targetSessionId} not found`);
-      db.updateStatus(targetSessionId, "finished");
+      await manager.complete(targetSessionId);
     },
 
     pausing: async <T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T> => {
@@ -577,7 +606,15 @@ type RuntimeDeps = {
     content: string,
     options?: { source?: string; origin?: string },
   ) => Promise<void>;
-  sendToChild: (sessionId: number, content: string, options?: { source?: string }) => Promise<void>;
+  sendToChild: (
+    sessionId: number,
+    content: string,
+    options?: { source?: string; background?: boolean; urgency?: "normal" | "urgent" },
+  ) => Promise<void>;
+  inspectChild: (
+    sessionId: number,
+    options?: { maxChars?: number },
+  ) => Promise<SubagentStatusSnapshot>;
   getSessionDir: () => Promise<string>;
   getProjectDir: () => Promise<string>;
   getMemberAgentsByTag: (tag: string) => Promise<MemberAgentInfo[]>;

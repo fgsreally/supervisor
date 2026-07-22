@@ -900,6 +900,73 @@ export interface PersistentBashSession {
   output: string;
 }
 
+export type JobStatus =
+  | "queued"
+  | "running"
+  | "waiting"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "interrupted";
+
+export interface SessionJob {
+  id: string;
+  sessionId: number;
+  kind: string;
+  name: string;
+  label: string;
+  status: JobStatus;
+  executionMode: "inline" | "background";
+  parentJobId?: string;
+  capabilities: Array<"cancel" | "input" | "read_output" | "retry">;
+  output: string;
+  progress?: Record<string, unknown>;
+  result?: unknown;
+  error?: unknown;
+  metadata: Record<string, unknown>;
+  createdAt: number;
+  startedAt?: number;
+  finishedAt?: number;
+}
+
+export interface SessionJobSchedule {
+  id: string;
+  sessionId: number;
+  kind: string;
+  name: string;
+  label: string;
+  prompt: string;
+  nextRunAt: number;
+  intervalMs?: number;
+  metadata: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SessionJobsSnapshot {
+  jobs: SessionJob[];
+  schedules: SessionJobSchedule[];
+}
+
+export async function getSessionJobs(id: string): Promise<SessionJobsSnapshot> {
+  return fetchJson<SessionJobsSnapshot>(`/sessions/${id}/jobs`);
+}
+
+export async function sendSessionJobInput(
+  sessionId: string,
+  jobId: string,
+  input: string,
+): Promise<{ ok: boolean }> {
+  return postJson(`/sessions/${sessionId}/jobs/${jobId}/input`, { input });
+}
+
+export async function cancelSessionJob(
+  sessionId: string,
+  jobId: string,
+): Promise<{ job: SessionJob }> {
+  return fetchJson(`/sessions/${sessionId}/jobs/${jobId}`, { method: "DELETE" });
+}
+
 export async function listPersistentBashSessions(id: string): Promise<PersistentBashSession[]> {
   const result = await fetchJson<{ sessions: PersistentBashSession[] }>(
     `/sessions/${id}/bash-sessions`,
@@ -923,8 +990,11 @@ export async function stopPersistentBash(
 }
 
 /** Abort the current work in a session. */
-export async function abortSession(id: string): Promise<{ ok: boolean }> {
-  return postJson<{ ok: boolean }>(`/sessions/${id}/abort`, {});
+export async function abortSession(
+  id: string,
+  options?: { retractIfNoAssistant?: boolean },
+): Promise<{ ok: boolean; retracted: boolean }> {
+  return postJson<{ ok: boolean; retracted: boolean }>(`/sessions/${id}/abort`, options ?? {});
 }
 
 /** Submit an answer for a pending ask tool call. */

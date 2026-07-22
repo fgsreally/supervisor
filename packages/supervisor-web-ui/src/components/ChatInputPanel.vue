@@ -31,10 +31,12 @@
       <ChatInputToolbar
         :disabled="disabled"
         :can-send="canSend"
+        :interrupting="interrupting"
         :custom-commands="customCommands"
         @action="onToolbarAction"
         @slash="onCustomSlash"
         @send="emit('send', { text, images: pendingImages })"
+        @interrupt="emit('interrupt')"
       />
     </div>
   </div>
@@ -67,6 +69,7 @@ const props = defineProps<{
   workspaceId: string;
   agentId?: string;
   disabled?: boolean;
+  interrupting?: boolean;
   placeholder?: string;
   emptyStateTitle?: string;
   emptyStateDescription?: string;
@@ -76,6 +79,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   "update:modelValue": [value: string];
   send: [payload: ChatSendPayload];
+  interrupt: [];
   slash: [name: string];
   "empty-action": [];
   btw: [];

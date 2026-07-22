@@ -21,6 +21,7 @@ export function startSupervisor(options: SupervisorOptions = {}): {
   const app = createHttpServer(manager);
   const port = options.port ?? 3030;
   const server = serve({ fetch: app.fetch, port });
+  manager.resumePersistedSessionInputs();
   return {
     manager,
     stop: async () => {
@@ -40,6 +41,7 @@ export { loadExtension, loadExtensions } from "./extension/index.js";
 export type {
   ExtensionContext,
   ExtensionEvent,
+  ExtensionJobFacade,
   SpawnSessionRequest,
   SpawnSessionResult,
   SupervisorProjectFacade,
@@ -51,6 +53,8 @@ export { extractMessageSearchFields } from "./db/message-search.js";
 export { copyMessagesWithInheritance } from "./core/session-history.js";
 export type { SessionOutputListener } from "./core/session-manager.js";
 export { SessionManager } from "./core/session-manager.js";
+export { JobManager } from "./core/jobs.js";
+export type * from "./core/jobs.js";
 export {
   ResourceManager,
   type BindResourceInput,

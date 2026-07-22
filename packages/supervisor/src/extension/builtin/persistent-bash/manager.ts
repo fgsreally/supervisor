@@ -1,5 +1,6 @@
-import { randomUUID } from "node:crypto";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { JobRecord } from "../../../core/jobs.js";
+import type { ExtensionJobFacade } from "../../types.js";
 
 const MAX_SESSIONS = 10;
 const MAX_OUTPUT_CHARS = 200_000;
@@ -11,102 +12,57 @@ export interface PersistentBashSession {
   label: string;
   cwd: string;
   pid?: number;
-  status: "running" | "exited" | "failed";
+  status: "running" | "exited" | "failed" | "cancelled" | "interrupted";
   startedAt: number;
   endedAt?: number;
   exitCode?: number | null;
   output: string;
 }
 
-interface ManagedSession extends PersistentBashSession {
-  child: ChildProcessWithoutNullStreams;
-}
-
-const sessions = new Map<number, Map<string, ManagedSession>>();
-
-function publicSession(session: ManagedSession, tailChars?: number): PersistentBashSession {
-  const output =
-    tailChars && tailChars > 0 ? session.output.slice(-Math.floor(tailChars)) : session.output;
-  return { ...session, child: undefined, output } as PersistentBashSession;
-}
-
-function appendOutput(session: ManagedSession, chunk: unknown): void {
-  session.output = `${session.output}${String(chunk)}`.slice(-MAX_OUTPUT_CHARS);
-}
-
-export function listPersistentBashSessions(sessionId: number): PersistentBashSession[] {
-  return [...(sessions.get(sessionId)?.values() ?? [])]
-    .toSorted((left, right) => right.startedAt - left.startedAt)
-    .map((session) => publicSession(session, 12_000));
-}
-
-export function getPersistentBashSession(
-  sessionId: number,
-  id: string,
-  tailChars = 12_000,
-): PersistentBashSession | undefined {
-  const session = sessions.get(sessionId)?.get(id);
-  return session ? publicSession(session, tailChars) : undefined;
-}
-
-export function startPersistentBashSession(options: {
+interface ManagedSession {
+  id: string;
   sessionId: number;
-  cwd: string;
-  command?: string;
-  label?: string;
-}): PersistentBashSession {
-  const bucket = sessions.get(options.sessionId) ?? new Map<string, ManagedSession>();
-  const running = [...bucket.values()].filter((session) => session.status === "running").length;
-  if (running >= MAX_SESSIONS)
-    throw new Error(`A Session can have at most ${MAX_SESSIONS} Bash sessions`);
+  child: ChildProcessWithoutNullStreams;
+  jobs: ExtensionJobFacade;
+  output: string;
+  stopping: boolean;
+  settled: boolean;
+  updates: Promise<void>;
+}
 
-  const command = options.command?.trim() ?? "";
-  const child = command
-    ? spawn(command, { cwd: options.cwd, shell: true, stdio: "pipe" })
-    : process.platform === "win32"
-      ? spawn(process.env.ComSpec ?? "cmd.exe", ["/Q"], { cwd: options.cwd, stdio: "pipe" })
-      : spawn(process.env.SHELL ?? "/bin/bash", [], { cwd: options.cwd, stdio: "pipe" });
-  const id = randomUUID().replaceAll("-", "").slice(0, 8);
-  const session: ManagedSession = {
-    id,
-    sessionId: options.sessionId,
-    command,
-    label: options.label?.trim() || command || "Interactive shell",
-    cwd: options.cwd,
-    pid: child.pid,
-    status: "running",
-    startedAt: Date.now(),
-    output: "",
-    child,
+const sessions = new Map<string, ManagedSession>();
+
+function publicSession(job: JobRecord, tailChars?: number): PersistentBashSession {
+  const metadata = job.metadata;
+  const output = tailChars ? job.output.slice(-Math.max(1, Math.floor(tailChars))) : job.output;
+  const status =
+    job.status === "succeeded"
+      ? "exited"
+      : job.status === "cancelled" || job.status === "interrupted"
+        ? job.status
+        : job.status === "failed"
+          ? "failed"
+          : "running";
+  return {
+    id: job.id,
+    sessionId: job.sessionId,
+    command: typeof metadata.command === "string" ? metadata.command : "",
+    label: job.label,
+    cwd: typeof metadata.cwd === "string" ? metadata.cwd : "",
+    ...(typeof metadata.pid === "number" ? { pid: metadata.pid } : {}),
+    status,
+    startedAt: job.startedAt ?? job.createdAt,
+    ...(job.finishedAt === undefined ? {} : { endedAt: job.finishedAt }),
+    ...(typeof metadata.exitCode === "number" || metadata.exitCode === null
+      ? { exitCode: metadata.exitCode as number | null }
+      : {}),
+    output,
   };
-  child.stdout.on("data", (chunk) => appendOutput(session, chunk));
-  child.stderr.on("data", (chunk) => appendOutput(session, chunk));
-  child.once("error", (error) => {
-    appendOutput(session, `\n${error.message}\n`);
-    session.status = "failed";
-    session.endedAt = Date.now();
-  });
-  child.once("exit", (code) => {
-    session.status = code === 0 ? "exited" : "failed";
-    session.exitCode = code;
-    session.endedAt = Date.now();
-  });
-  bucket.set(id, session);
-  sessions.set(options.sessionId, bucket);
-  return publicSession(session);
 }
 
-export function writePersistentBashSession(sessionId: number, id: string, input: string): void {
-  const session = sessions.get(sessionId)?.get(id);
-  if (!session) throw new Error(`Bash session ${id} not found`);
-  if (session.status !== "running") throw new Error(`Bash session ${id} is not running`);
-  session.child.stdin.write(input.endsWith("\n") ? input : `${input}\n`);
-}
-
-export async function stopPersistentBashSession(sessionId: number, id: string): Promise<void> {
-  const session = sessions.get(sessionId)?.get(id);
-  if (!session) throw new Error(`Bash session ${id} not found`);
-  if (session.status !== "running") return;
+async function stopChild(session: ManagedSession): Promise<void> {
+  if (session.stopping || session.child.exitCode !== null) return;
+  session.stopping = true;
   await new Promise<void>((resolve) => {
     const timeout = setTimeout(resolve, 2_000);
     session.child.once("exit", () => {
@@ -115,17 +71,128 @@ export async function stopPersistentBashSession(sessionId: number, id: string): 
     });
     session.child.kill();
   });
+  sessions.delete(session.id);
 }
 
-export async function removePersistentBashSession(sessionId: number, id: string): Promise<void> {
-  await stopPersistentBashSession(sessionId, id);
-  const bucket = sessions.get(sessionId);
-  bucket?.delete(id);
-  if (bucket?.size === 0) sessions.delete(sessionId);
+export async function listPersistentBashSessions(
+  _sessionId: number,
+  jobs: ExtensionJobFacade,
+): Promise<PersistentBashSession[]> {
+  return (await jobs.list({ kind: "shell" })).map((job) => publicSession(job, 12_000));
 }
 
-export async function stopPersistentBashSessions(sessionId: number): Promise<void> {
-  const ids = [...(sessions.get(sessionId)?.keys() ?? [])];
-  await Promise.all(ids.map((id) => stopPersistentBashSession(sessionId, id).catch(() => {})));
-  sessions.delete(sessionId);
+export async function getPersistentBashSession(
+  sessionId: number,
+  id: string,
+  jobs: ExtensionJobFacade,
+  tailChars = 12_000,
+): Promise<PersistentBashSession | undefined> {
+  const job = await jobs.get(id);
+  return job?.sessionId === sessionId && job.kind === "shell"
+    ? publicSession(job, tailChars)
+    : undefined;
+}
+
+export async function startPersistentBashSession(options: {
+  sessionId: number;
+  cwd: string;
+  jobs: ExtensionJobFacade;
+  command?: string;
+  label?: string;
+}): Promise<PersistentBashSession> {
+  const running = (await options.jobs.list({ kind: "shell" })).filter(
+    (job) => job.status === "running",
+  ).length;
+  if (running >= MAX_SESSIONS) {
+    throw new Error(`A Session can have at most ${MAX_SESSIONS} Bash sessions`);
+  }
+
+  const command = options.command?.trim() ?? "";
+  const child = command
+    ? spawn(command, { cwd: options.cwd, shell: true, stdio: "pipe" })
+    : process.platform === "win32"
+      ? spawn(process.env.ComSpec ?? "cmd.exe", ["/Q"], { cwd: options.cwd, stdio: "pipe" })
+      : spawn(process.env.SHELL ?? "/bin/bash", [], { cwd: options.cwd, stdio: "pipe" });
+  const job = await options.jobs.create({
+    kind: "shell",
+    name: "persistent-bash",
+    label: options.label?.trim() || command || "Interactive shell",
+    status: "running",
+    executionMode: "background",
+    capabilities: ["cancel", "input", "read_output"],
+    metadata: { command, cwd: options.cwd, pid: child.pid },
+  });
+  const session: ManagedSession = {
+    id: job.id,
+    sessionId: options.sessionId,
+    child,
+    jobs: options.jobs,
+    output: "",
+    stopping: false,
+    settled: false,
+    updates: Promise.resolve(),
+  };
+  sessions.set(job.id, session);
+  options.jobs.setCancelHandler(job.id, () => stopChild(session));
+  options.jobs.setInputHandler(job.id, (input) =>
+    writePersistentBashSession(options.sessionId, job.id, input),
+  );
+
+  const appendOutput = (chunk: unknown) => {
+    session.output = `${session.output}${String(chunk)}`.slice(-MAX_OUTPUT_CHARS);
+    const output = session.output;
+    session.updates = session.updates
+      .then(async () => {
+        await options.jobs.update(job.id, { output });
+      })
+      .catch(() => {});
+  };
+  child.stdout.on("data", appendOutput);
+  child.stderr.on("data", appendOutput);
+  child.once("error", async (error) => {
+    appendOutput(`\n${error.message}\n`);
+    await session.updates;
+    if (!session.stopping && !session.settled) {
+      session.settled = true;
+      void options.jobs.update(job.id, {
+        status: "failed",
+        output: session.output,
+        error: { message: error.message },
+      });
+    }
+    sessions.delete(job.id);
+  });
+  child.once("exit", async (code) => {
+    await session.updates;
+    if (!session.stopping && !session.settled) {
+      session.settled = true;
+      void options.jobs.update(job.id, {
+        status: code === 0 ? "succeeded" : "failed",
+        output: session.output,
+        metadata: { exitCode: code },
+        ...(code === 0 ? { result: { exitCode: code } } : { error: { exitCode: code } }),
+      });
+    }
+    sessions.delete(job.id);
+  });
+  return publicSession((await options.jobs.get(job.id))!);
+}
+
+export function writePersistentBashSession(sessionId: number, id: string, input: string): void {
+  const session = sessions.get(id);
+  if (!session || session.sessionId !== sessionId) throw new Error(`Bash Job ${id} not found`);
+  if (session.stopping || session.child.exitCode !== null) {
+    throw new Error(`Bash Job ${id} is not running`);
+  }
+  session.child.stdin.write(input.endsWith("\n") ? input : `${input}\n`);
+}
+
+export async function stopPersistentBashSessions(
+  sessionId: number,
+  jobs: ExtensionJobFacade,
+): Promise<void> {
+  const ids = [...sessions.values()]
+    .filter((session) => session.sessionId === sessionId)
+    .map((session) => session.id);
+  await Promise.all(ids.map((id) => jobs.cancel(id).catch(() => undefined)));
 }

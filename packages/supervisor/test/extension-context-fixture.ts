@@ -20,6 +20,7 @@ import type {
   ScheduleInjectionInput,
   SessionInfo,
   SessionResultSummary,
+  SubagentStatusSnapshot,
   SpawnSessionRequest,
   SpawnSessionResult,
   ToolDefinition,
@@ -28,6 +29,13 @@ import type {
   ToolResultHandler,
 } from "../src/extension/index.js";
 import { applyWorkflowPatch, parseWorkflowState } from "../src/core/session-workflow.js";
+import type {
+  CreateJobInput,
+  CreateJobScheduleInput,
+  JobRecord,
+  JobSchedule,
+  UpdateJobInput,
+} from "../src/core/jobs.js";
 
 export interface RuntimeOptions {
   sessionId: number;
@@ -58,8 +66,12 @@ export interface RuntimeOptions {
     sendToChild?: (
       sessionId: number,
       content: string,
-      options?: { source?: string },
+      options?: { source?: string; background?: boolean; urgency?: "normal" | "urgent" },
     ) => Promise<void>;
+    inspectChild?: (
+      sessionId: number,
+      options?: { maxChars?: number },
+    ) => Promise<SubagentStatusSnapshot>;
     getSessionDir: () => Promise<string>;
     getProjectDir: () => Promise<string>;
     getMemberAgentsByTag: (tag: string) => Promise<MemberAgentInfo[]>;
@@ -154,6 +166,11 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
   let activeExtensionId: string | undefined;
   let host: TestExtensionHost | undefined;
   let workflow = parseWorkflowState(options.sessionMeta?.workflow);
+  const jobs = new Map<string, JobRecord>();
+  const schedules = new Map<string, JobSchedule>();
+  const cancelHandlers = new Map<string, () => void | Promise<void>>();
+  const inputHandlers = new Map<string, (input: string) => void | Promise<void>>();
+  let nextJobId = 0;
   const requireHost = () => {
     if (!host) throw new Error("Test context is not attached");
     return host;
@@ -222,6 +239,17 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
       sendMessage: options.deps.sendMessage,
       sendUserMessage: options.deps.sendUserMessage,
       sendToChild: options.deps.sendToChild ?? (async () => {}),
+      inspectChild:
+        options.deps.inspectChild ??
+        (async (sessionId) => ({
+          sessionId,
+          parentId: options.sessionId,
+          status: "idle",
+          result: "",
+          truncated: false,
+          queuedInputCount: 0,
+          lastActiveAt: Date.now(),
+        })),
       pausing: options.deps.pausing,
       spawn: options.deps.spawnSession,
       waitForResult: async (
@@ -269,6 +297,97 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
           .find((tool) => tool.name === name),
       call: (name: string, params: unknown, callOptions?: { signal?: AbortSignal }) =>
         requireHost().callTool(name, params, callOptions?.signal),
+    },
+    jobs: {
+      create: async (input: CreateJobInput) => {
+        const now = Date.now();
+        const status = input.status ?? "queued";
+        const job: JobRecord = {
+          id: `job-${++nextJobId}`,
+          sessionId: options.sessionId,
+          kind: input.kind,
+          name: input.name,
+          label: input.label ?? input.name,
+          status,
+          executionMode: input.executionMode ?? "inline",
+          capabilities: input.capabilities ?? [],
+          output: input.output ?? "",
+          metadata: input.metadata ?? {},
+          createdAt: now,
+          ...(status === "running" ? { startedAt: now } : {}),
+        };
+        jobs.set(job.id, job);
+        return job;
+      },
+      get: async (id: string) => jobs.get(id),
+      list: async (listOptions?: { limit?: number; kind?: string }) =>
+        [...jobs.values()]
+          .filter((job) => !listOptions?.kind || job.kind === listOptions.kind)
+          .slice(0, listOptions?.limit ?? jobs.size),
+      update: async (id: string, patch: UpdateJobInput) => {
+        const job = jobs.get(id);
+        if (!job) throw new Error(`Job ${id} not found`);
+        const updated = {
+          ...job,
+          ...patch,
+          metadata: patch.metadata ? { ...job.metadata, ...patch.metadata } : job.metadata,
+          ...(patch.status &&
+          ["succeeded", "failed", "cancelled", "interrupted"].includes(patch.status)
+            ? { finishedAt: Date.now() }
+            : {}),
+        } as JobRecord;
+        jobs.set(id, updated);
+        return updated;
+      },
+      cancel: async (id: string) => {
+        await cancelHandlers.get(id)?.();
+        const job = jobs.get(id);
+        if (!job) throw new Error(`Job ${id} not found`);
+        const updated = { ...job, status: "cancelled", finishedAt: Date.now() } as JobRecord;
+        jobs.set(id, updated);
+        return updated;
+      },
+      input: async (id: string, input: string) => {
+        const handler = inputHandlers.get(id);
+        if (!handler) throw new Error(`Job ${id} does not accept input`);
+        await handler(input);
+      },
+      setCancelHandler: (id: string, handler: () => void | Promise<void>) => {
+        cancelHandlers.set(id, handler);
+      },
+      setInputHandler: (id: string, handler: (input: string) => void | Promise<void>) => {
+        inputHandlers.set(id, handler);
+      },
+      schedules: {
+        create: async (input: CreateJobScheduleInput) => {
+          const now = Date.now();
+          const schedule: JobSchedule = {
+            id: `schedule-${++nextJobId}`,
+            sessionId: options.sessionId,
+            kind: input.kind,
+            name: input.name,
+            label: input.label ?? input.name,
+            prompt: input.prompt,
+            nextRunAt: input.nextRunAt,
+            ...(input.intervalMs ? { intervalMs: input.intervalMs } : {}),
+            metadata: input.metadata ?? {},
+            createdAt: now,
+            updatedAt: now,
+          };
+          schedules.set(schedule.id, schedule);
+          return schedule;
+        },
+        get: async (id: string) => schedules.get(id),
+        list: async () => [...schedules.values()].sort((a, b) => a.nextRunAt - b.nextRunAt),
+        update: async (id: string, patch: { nextRunAt: number }) => {
+          const schedule = schedules.get(id);
+          if (!schedule) throw new Error(`Job schedule ${id} not found`);
+          const updated = { ...schedule, ...patch, updatedAt: Date.now() };
+          schedules.set(id, updated);
+          return updated;
+        },
+        delete: async (id: string) => schedules.delete(id),
+      },
     },
     db: new ContextDb(options.db.sqlite),
     project: {

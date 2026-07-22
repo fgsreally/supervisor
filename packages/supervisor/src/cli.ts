@@ -158,6 +158,7 @@ async function run() {
       ensurePackagedAgents(db);
       const app = createHttpServer(manager);
       serve({ fetch: app.fetch, port });
+      manager.resumePersistedSessionInputs();
       console.log(`Server listening on http://localhost:${port}`);
       console.log(`Workspace cwd: ${workspaceCwd}`);
       break;

@@ -110,6 +110,16 @@
 | GET    | `/sessions/:id/tasks`      | tasks               |
 | GET    | `/sessions/:id/eval-state` | eval 状态           |
 
+## Session — Job
+
+| Method | Path                              | 说明                         |
+| ------ | --------------------------------- | ---------------------------- |
+| GET    | `/sessions/:id/jobs`              | 执行记录与定时计划的统一快照 |
+| POST   | `/sessions/:id/jobs/:jobId/input` | 向支持输入的 Job 写入内容    |
+| DELETE | `/sessions/:id/jobs/:jobId`       | 取消支持取消的 Job           |
+
+Job 的状态、能力和界面语义见 [Job](/supervisor/jobs)。
+
 ## Session — 交互 / 外部 Agent / 资源文件
 
 | Method | Path                                                         | 说明           |

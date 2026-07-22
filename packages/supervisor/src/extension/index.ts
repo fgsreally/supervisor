@@ -11,6 +11,7 @@ export {
   subagentExtension,
   taskManagementExtension,
   timerExtension,
+  toolLoopGuardExtension,
 } from "./builtin/index.js";
 
 /** Define and validate an extension. */

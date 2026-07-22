@@ -117,6 +117,39 @@ describe("supervisor: HTTP server", () => {
     expect(await res.json()).toEqual([]);
   });
 
+  it("exposes Session Jobs and schedules through one HTTP resource", async () => {
+    const { id } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
+      id: string;
+    };
+    const sessionId = Number(id);
+    const job = manager.jobs.create(sessionId, {
+      kind: "shell",
+      name: "persistent-bash",
+      status: "running",
+      executionMode: "background",
+      capabilities: ["cancel"],
+    });
+    manager.jobs.createSchedule(sessionId, {
+      kind: "timer",
+      name: "timer",
+      prompt: "continue",
+      nextRunAt: Date.now() + 60_000,
+    });
+
+    const snapshot = (await (await req("GET", `/sessions/${id}/jobs`)).json()) as {
+      jobs: Array<{ id: string; kind: string }>;
+      schedules: Array<{ kind: string }>;
+    };
+    expect(snapshot.jobs).toEqual([expect.objectContaining({ id: job.id, kind: "shell" })]);
+    expect(snapshot.schedules).toEqual([expect.objectContaining({ kind: "timer" })]);
+
+    const cancelled = await req("DELETE", `/sessions/${id}/jobs/${job.id}`);
+    expect(cancelled.status).toBe(200);
+    expect(await cancelled.json()).toEqual({
+      job: expect.objectContaining({ status: "cancelled" }),
+    });
+  });
+
   it("PATCH /sessions/:id/meta merges patch", async () => {
     const { id } = (await (
       await req("POST", "/sessions", { cwd: "/tmp", meta: { a: 1 } })

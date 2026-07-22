@@ -30,6 +30,7 @@ export default defineConfig({
           items: [
             { text: "概览", link: "/supervisor/overview" },
             { text: "会话管理", link: "/supervisor/session" },
+            { text: "Job", link: "/supervisor/jobs" },
             { text: "工作流", link: "/supervisor/workflow" },
             { text: "子代理", link: "/supervisor/subagents" },
             { text: "Shadow", link: "/supervisor/shadow" },

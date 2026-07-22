@@ -94,9 +94,16 @@ describe("supervisor: HTTP server", () => {
   });
 
   it("POST /sessions/:id/btw creates a hidden BTW child", async () => {
+    const btwAgent = db.insertAgent({ name: "Test BTW" });
     const { id: parentId } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
       id: string;
     };
+    db.upsertMember({
+      session_id: Number(parentId),
+      agent_id: btwAgent.id,
+      role: "assistant",
+      tags: ["btw"],
+    });
     const res = await req("POST", `/sessions/${parentId}/btw`, {});
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual(

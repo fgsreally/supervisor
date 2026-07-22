@@ -64,26 +64,21 @@
             </section>
 
             <section class="px-5 py-4 border-b chat-session-menu__section session-agent-settings">
-              <span class="session-agent-settings__label">影子代理</span>
-              <div class="session-agent-grid">
+              <div class="flex items-center justify-between">
+                <span class="session-agent-settings__label">影子代理</span>
                 <button
                   type="button"
-                  class="session-agent-card"
-                  :class="{ 'session-agent-card--selected': !shadowAgentId }"
-                  @click="updateShadow('')"
+                  role="switch"
+                  aria-label="启用影子代理"
+                  :aria-checked="shadowEnabled"
+                  class="relative w-11 h-6 rounded-full transition-colors"
+                  :class="shadowEnabled ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
+                  @click="emit('update:shadowEnabled', !shadowEnabled)"
                 >
-                  <span class="session-agent-card__builtin">S</span><small>Shadow</small>
-                </button>
-                <button
-                  v-for="agent in configurableAgents"
-                  :key="`shadow-${agent.id}`"
-                  type="button"
-                  class="session-agent-card"
-                  :class="{ 'session-agent-card--selected': shadowAgentId === agent.id }"
-                  @click="updateShadow(agent.id)"
-                >
-                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.icon" />
-                  <small>{{ agent.name }}</small>
+                  <span
+                    class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                    :class="shadowEnabled ? 'translate-x-5' : 'translate-x-0'"
+                  />
                 </button>
               </div>
               <span class="session-agent-settings__label session-agent-settings__label--spaced"
@@ -237,7 +232,7 @@ const props = defineProps<{
   canCheckpoint?: boolean;
   childSessions: Array<Pick<Session, "id" | "status" | "branchType" | "meta">>;
   configurableAgents: Agent[];
-  shadowAgentId?: string | null;
+  shadowEnabled: boolean;
   spawnedAgentIds: string[];
 }>();
 
@@ -255,17 +250,15 @@ const emit = defineEmits<{
   "update:showThinking": [value: boolean];
   "update:avatar": [value: SessionAvatarValue];
   "update:title": [value: string];
-  "update:members": [value: { shadowAgentId: string | null; spawnedAgentIds: string[] }];
+  "update:shadowEnabled": [value: boolean];
+  "update:spawnedAgents": [value: string[]];
 }>();
 
-function updateShadow(value: string) {
-  emit("update:members", { shadowAgentId: value || null, spawnedAgentIds: props.spawnedAgentIds });
-}
 function toggleSpawned(agentId: string) {
   const next = props.spawnedAgentIds.includes(agentId)
     ? props.spawnedAgentIds.filter((id) => id !== agentId)
     : [...props.spawnedAgentIds, agentId];
-  emit("update:members", { shadowAgentId: props.shadowAgentId ?? null, spawnedAgentIds: next });
+  emit("update:spawnedAgents", next);
 }
 </script>
 

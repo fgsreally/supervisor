@@ -104,7 +104,7 @@ curl -X POST http://localhost:3030/sessions/<session-id>/prompt \
   -d '{ "message": "Read TASK.md and suggest the first change." }'
 ```
 
-或在 Web UI Chat 页创建会话并对话。运行中可选择「立即干预」（steer）或「轮后追加」（follow-up）；输入 `/` 可执行 slash 命令。
+或在 Web UI Chat 页创建会话并对话。运行时输入区仍可排队或立即干预；发送按钮会变成停止图标，用于中断当前 Turn。输入 `/` 可执行 slash 命令。
 
 ## 8. 可选：安装仓库扩展
 

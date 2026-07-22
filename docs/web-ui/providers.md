@@ -2,9 +2,9 @@
 
 ## 页面
 
-- `ProvidersPanel.vue`：Provider + Model 列表（左侧面板，路由 `providers-tab`）
+- `ProvidersPanel.vue`：Provider + Model 列表
 - `ProviderDetailView.vue`：Provider 详情与 Model 管理（路由 `/providers/:providerId?`）
-- `ProviderFormView.vue`：创建 / 编辑 Provider 表单（路由 `/providers/:providerId/edit`）
+- `ProviderFormView.vue`：由 `App.vue` 在创建或编辑状态下切换，不使用独立 `/edit` 路由
 
 ## 组件
 
@@ -19,7 +19,7 @@
 
 ## Store
 
-`useProviderStore()`（`src/store/index.ts:515-687`）：
+`useProviderStore()`（`src/store/index.ts`）：
 
 - `providers: Provider[]`
 - `providerModels: Map<string, Model[]>` — 每个 provider 的 model 列表

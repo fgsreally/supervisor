@@ -32,7 +32,7 @@ SKILL.md 格式的技能包。agent 对话时自动加载对应 skill。
 
 ## Store
 
-`useResourceStore()`（`src/store/index.ts:691-753`）：
+`useResourceStore()`（`src/store/index.ts`）：
 
 - `globalSkills: ResourceFile[]`
 - `globalPrompts: ResourceFile[]`

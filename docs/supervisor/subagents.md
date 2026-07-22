@@ -31,7 +31,7 @@
 
 `get_subagent_status` 接收 `sessionId`，返回当前状态、队列中的输入数量、最近活跃时间以及最新一条 assistant 输出。父代理可先检查执行情况，再决定是否通过 `spawn_agent` 发送普通或紧急消息。
 
-Supervisor 启动时会把遗留的 `starting`、`running`、`waiting_user` 状态归一为 `idle`，不会自动重放被中断的输入。`finish`、`finished` 和 `error` 保持不变。
+Supervisor 启动时会把遗留的 `starting`、`running`、`waiting_user` 状态归一为 `idle`，并恢复 SQLite 中尚未投递的输入队列。`finish`、`finished` 和 `error` 保持不变。
 
 成员关系持久化在 SQLite `members` 表，HTTP：
 

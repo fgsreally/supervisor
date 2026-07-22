@@ -35,10 +35,11 @@ index.html → src/main.ts → App.vue
 | `@` 文件补全 + skill/prompt 补全    | 完成               |
 | Provider / Agent / 资源管理         | 完成               |
 | Checkpoint / Rewind / Commit        | 完成               |
+| Job Popover 与长输出分屏            | 完成               |
 | Workflow stage 标签                 | 完成（面板见缺口） |
-| Shadow 消息行                       | 完成               |
+| Shadow 消息行与启用开关             | 完成               |
 | 暗色主题 / 推送 / PWA               | 完成               |
-| Abort 按钮                          | 未实现             |
+| 运行中停止与未回答消息回填          | 完成               |
 | Thinking Level 切换                 | 未实现             |
 | 扩展管理 UI                         | 未实现             |
 
@@ -50,5 +51,4 @@ index.html → src/main.ts → App.vue
 - [Provider 配置](/web-ui/providers)
 - [资源管理](/web-ui/resources)
 - [Pinia Stores](/web-ui/stores)
-- [API 客户端](/web-ui/api-client)
 - [已知缺口](/web-ui/known-gaps)

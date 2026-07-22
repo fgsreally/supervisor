@@ -4,43 +4,37 @@
 
 ## Store 清单
 
-### useRootStore（`store/index.ts:41-67`）
+### useRootStore
 
-```ts
-interface RootState {
-  isLoading: boolean;
-  globalError: string | null;
-}
-```
+统一保存各业务域的 loading 状态和全局错误。
 
-各 view 在加载时调用 `setLoading(true/false)`。全局错误显示在 App shell 层面。
-
-### useSessionStore（`store/index.ts:71-325`）
+### useSessionStore
 
 核心 store，最复杂：
 
 **State**：
 
 - `sessions: Session[]`
-- `messages: SessionMessageResponse[]`
+- `projects: Project[]`
 - `currentSessionId: string | null`
-- `currentCheckpoints: SessionCheckpoint[]`
+- `messages: Record<string, SessionTreeEntry[]>`
 - `groupedSessions`（按 workspace 分组的 getter）
 
 **Actions**：
 
-- `fetchSessions()` / `fetchSession(id)` / `fetchSessionTree(id)`
+- `fetchProjects()` / `createProject(opts)`
+- `fetchSessions()` / `fetchSession(id)`
 - `createSession(opts)` / `deleteSession(id)`
-- `promptSession(id, msg)` — **核心**，启动 SSE
+- `fetchSessionMessages(id)` / `sendPrompt(id, message)`
 - `forkSession(id)` / `cloneSession(id)`
 - `killSession(id)` / `completeSession(id)`
 - `createCheckpoint(id)` / `listCheckpoints(id)` / `rewindSession(id, checkpointId)`
 - `commitSession(id)`
-- `getSessionLog(id)`
+- `createBtwSession(id)` / `updateSessionMeta(id, patch)`
 
-**SSE 流处理**：`promptSession` 内部建立一个 SSE reader，逐条解析事件（`/events` streaming event），更新 messages 树。
+实时 SSE 与流式消息合并主要由 `ChatView` 和 `src/api` 负责，store 保存服务端会话快照。
 
-### useAgentStore（`store/index.ts:329-511`）
+### useAgentStore
 
 **State**：
 
@@ -49,7 +43,7 @@ interface RootState {
 
 **Actions**：fetch / create / update / delete agent，fetch / update systemMd，bind resource。
 
-### useProviderStore（`store/index.ts:515-687`）
+### useProviderStore
 
 **State**：
 
@@ -58,14 +52,15 @@ interface RootState {
 
 **Actions**：provider + model 完整 CRUD。
 
-### useResourceStore（`store/index.ts:691-753`）
+### useResourceStore
 
 **State**：
 
-- `globalSkills / globalPrompts / globalExtensions: ResourceFile[]`
+- `globalResources: ResourceLayer | null`
+- `currentCwd: string`
 - `resourceItems: AgentResource[]`
 
-**Actions**：`fetchGlobalResources()`、`linkResource()`。
+**Actions**：`fetchGlobalResources()`、`setCwd()`。
 
 ## 已弃用 Store
 

@@ -238,7 +238,7 @@
       :can-checkpoint="canCheckpointActions"
       :child-sessions="childSessions"
       :configurable-agents="configurableAgents"
-      :shadow-agent-id="shadowAgentId"
+      :shadow-enabled="shadowEnabled"
       :spawned-agent-ids="spawnedAgentIds"
       @close="sessionMenuOpen = false"
       @search="openSearchFromMenu"
@@ -253,7 +253,8 @@
       @update:show-thinking="onShowThinkingChange"
       @update:avatar="onAvatarChange"
       @update:title="onSessionTitleChange"
-      @update:members="onSessionMembersChange"
+      @update:shadow-enabled="onShadowEnabledChange"
+      @update:spawned-agents="onSpawnedAgentsChange"
     />
 
     <Teleport to="body">
@@ -369,6 +370,7 @@ const props = defineProps<{
     meta?: {
       name?: string;
       builtin?: boolean;
+      shadowDisabled?: boolean;
       shadow?: { suggestedQuestions?: string[]; status?: string };
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
       workflow?: { stage: string; status: string };
@@ -594,10 +596,7 @@ const configurableAgents = computed(() =>
   agentStore.agents.filter((agent) => !agent.meta?.builtin),
 );
 const sessionMembers = ref<api.SessionMember[]>([]);
-const shadowAgentId = computed(() => {
-  const id = sessionMembers.value.find((member) => member.role === "shadow")?.agentId;
-  return id == null ? null : String(id);
-});
+const shadowEnabled = computed(() => props.session.meta?.shadowDisabled !== true);
 const spawnedAgentIds = computed(() =>
   sessionMembers.value
     .filter((member) => member.role === "spawned")
@@ -776,12 +775,25 @@ async function onSessionTitleChange(value: string) {
   await saveSessionTitle();
 }
 
-async function onSessionMembersChange(value: {
-  shadowAgentId: string | null;
-  spawnedAgentIds: string[];
-}) {
+async function onShadowEnabledChange(value: boolean) {
   try {
-    sessionMembers.value = await api.updateSessionMembers(props.session.id, value);
+    const members = await api.updateSessionMembers(props.session.id, {
+      shadowAgentId: null,
+      spawnedAgentIds: spawnedAgentIds.value,
+    });
+    await sessionStore.updateSessionMeta(props.session.id, { shadowDisabled: !value });
+    sessionMembers.value = members;
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "影子代理设置更新失败", "error");
+  }
+}
+
+async function onSpawnedAgentsChange(spawnedAgentIds: string[]) {
+  try {
+    sessionMembers.value = await api.updateSessionMembers(props.session.id, {
+      shadowAgentId: null,
+      spawnedAgentIds,
+    });
     showUiMessage("Session 代理配置已更新", "success");
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : "代理配置更新失败", "error");

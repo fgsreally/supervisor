@@ -65,7 +65,7 @@
 | POST   | `/sessions/:id/prompt`                   | 发送消息                                   |
 | POST   | `/sessions/:id/steer`                    | 立即干预（不新增 user message 语义见实现） |
 | POST   | `/sessions/:id/follow-up`                | 轮后追加                                   |
-| POST   | `/sessions/:id/abort`                    | 中止当前轮                                 |
+| POST   | `/sessions/:id/abort`                    | 中止当前轮；可请求撤回尚无回复的 user 消息 |
 | POST   | `/sessions/:id/kill`                     | 杀进程                                     |
 | POST   | `/sessions/:id/complete`                 | 完成会话                                   |
 | POST   | `/sessions/:id/send`                     | 发送（兼容路径）                           |
@@ -119,6 +119,8 @@
 | DELETE | `/sessions/:id/jobs/:jobId`       | 取消支持取消的 Job           |
 
 Job 的状态、能力和界面语义见 [Job](/supervisor/jobs)。
+
+旧 `/sessions/:id/bash-sessions*` 路径仍作为 Job 的兼容别名存在，不应在新客户端中继续使用。
 
 ## Session — 交互 / 外部 Agent / 资源文件
 

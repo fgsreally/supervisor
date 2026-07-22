@@ -17,7 +17,9 @@ ChatView.vue
 │   └── CompactionBanner.vue
 ├── ChatInputPanel.vue / ChatComposer
 │   ├── `@` / `/` 自动补全
-│   └── 运行中发送模式：steer | follow_up
+│   ├── 运行中发送模式：steer | follow_up
+│   └── 运行时停止按钮
+├── SessionJobsPopover（定时计划、后台执行与详情）
 └── WorkflowStageTag（会话工作流标签）
 ```
 
@@ -28,7 +30,7 @@ ChatView.vue
 - **steer**：`api.steerSession` → `POST /sessions/:id/steer`
 - **follow_up**：`api.followUpSession` → `POST /sessions/:id/follow-up`
 
-Abort API（`api.abortSession`）已封装，UI 按钮见 [已知缺口](/web-ui/known-gaps)。
+运行时发送按钮变成停止图标并调用 `api.abortSession`。如果该轮尚未出现 assistant 输出，后端会撤回最新 user message，前端将文本放回输入框；已经出现输出时只中断当前 Turn。
 
 ## Slash 命令
 
@@ -42,6 +44,8 @@ Abort API（`api.abortSession`）已封装，UI 按钮见 [已知缺口](/web-ui
 
 `ChatSessionMenu`：Checkpoint / Rewind / Commit / Kill / Complete、Session Log 等。
 
+Shadow 在菜单中只有启用/禁用开关，不提供 Agent 选择。可用子代理仍单独配置。
+
 ## 相关缺口
 
-- 无 Abort 按钮、无 Thinking Level 选择器、无完整工作流面板 — 见 [已知缺口](/web-ui/known-gaps)
+- 无 Thinking Level 选择器、无完整工作流面板 — 见 [已知缺口](/web-ui/known-gaps)

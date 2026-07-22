@@ -3,7 +3,7 @@
 ## 页面
 
 - `ContactDetailView.vue`：Agent 详情页（路由 `/contacts/:agentId?`）
-- `AgentFormView.vue`：创建 / 编辑 Agent 表单（路由 `/contacts/:agentId/edit`）
+- `AgentFormView.vue`：由 `App.vue` 在创建或编辑状态下切换，不使用独立 `/edit` 路由
 
 ## 组件
 
@@ -16,7 +16,7 @@
 
 ## Store
 
-`useAgentStore()`（`src/store/index.ts:329-511`）：
+`useAgentStore()`（`src/store/index.ts`）：
 
 - `agents: Agent[]`
 - `agentResources: Map<string, AgentResource>` — 当前 agent 的资源

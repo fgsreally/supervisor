@@ -15,10 +15,10 @@ hero:
 
 features:
   - title: Supervisor
-    details: 多会话管理、HTTP API、扩展框架、MCP、滚动压缩、工作流状态
+    details: 多会话管理、持久化 Job、HTTP API、扩展框架、MCP、滚动压缩
     link: /supervisor/overview
   - title: Web UI
-    details: Vue 3 控制台：对话、Steer/Follow-up、Slash、Agent/Provider/资源管理
+    details: Vue 3 控制台：对话中断、Job、Slash、Agent/Provider/资源管理
     link: /web-ui/overview
   - title: 子代理与 Shadow
     details: spawn_agent + members；Shadow 旁路观察主会话

@@ -9,7 +9,7 @@ Pi Supervisor 由两个包组成：
 │  Pinia store               │ ←────→ │  Hono HTTP API           │
 │  api/api.ts                │  SSE   │  SessionManager          │
 │  Chat / Settings / Resources│        │  SessionExtensionHost    │
-└────────────────────────────┘        │  MCP / Subagent / Shadow │
+└────────────────────────────┘        │  Job / MCP / Subagent    │
                                        │  External agents         │
                                        │  SQLite (supervisor.db)  │
                                        └──────────────────────────┘
@@ -21,17 +21,18 @@ Pi Supervisor 由两个包组成：
 
 ### 核心模块
 
-| 模块               | 路径                             | 职责                                            |
-| ------------------ | -------------------------------- | ----------------------------------------------- |
-| SessionManager     | `src/core/session-manager.ts`    | 创建、spawn、fork、clone、btw、kill、checkpoint |
-| SessionRuntime     | `src/core/session-runtime.ts`    | prompt / steer / follow-up / abort              |
-| SessionWorkflow    | `src/core/session-workflow.ts`   | `meta.workflow = { stage, status }`             |
-| Compaction         | `src/core/compaction/rolling.ts` | 滚动上下文压缩                                  |
-| External runtimes  | `src/core/external/`             | Codex / Claude / ACP 外部 Agent 会话            |
-| SupervisorDb       | `src/db/db.ts`                   | schema、迁移、members、FTS5                     |
-| Extension host     | `src/extension/runtime/`         | 激活扩展、事件、工具注入                        |
-| Builtin extensions | `src/extension/builtin/`         | mcp、subagent、shadow、skill、eval、timer 等    |
-| Packaged tools     | `src/tools/`                     | ask、edit、lsp、web、browser 等可选工具         |
+| 模块               | 路径                             | 职责                                       |
+| ------------------ | -------------------------------- | ------------------------------------------ |
+| SessionManager     | `src/core/session-manager.ts`    | 会话、子会话、输入队列、重启协调           |
+| JobManager         | `src/core/jobs.ts`               | 执行记录、定时计划、取消与输入             |
+| SessionRuntime     | `src/core/session-runtime.ts`    | prompt / steer / follow-up / abort         |
+| SessionWorkflow    | `src/core/session-workflow.ts`   | `meta.workflow = { stage, status }`        |
+| Compaction         | `src/core/compaction/rolling.ts` | 滚动上下文压缩                             |
+| External runtimes  | `src/core/external/`             | Codex / Claude / ACP 外部 Agent 会话       |
+| SupervisorDb       | `src/db/db.ts`                   | schema、迁移、members、Job、输入队列、FTS5 |
+| Extension host     | `src/extension/runtime/`         | 激活扩展、事件、工具注入                   |
+| Builtin extensions | `src/extension/builtin/`         | mcp、subagent、shadow、timer、循环守卫等   |
+| Packaged tools     | `src/tools/`                     | ask、edit、lsp、web、browser 等可选工具    |
 
 ### 数据存储
 
@@ -52,7 +53,7 @@ Pi Supervisor 由两个包组成：
 ## 数据流
 
 1. 用户在 Web UI 输入消息
-2. `ChatView` / 输入面板 → store `promptSession`（或 steer / follow-up）
+2. `ChatView` / 输入面板直接调用 API，并由 store 维护持久化会话状态
 3. `POST /sessions/:id/prompt`（或对应端点），并订阅 `GET /sessions/:id/events` SSE
 4. `SessionManager` / `SessionRuntime` 驱动 harness，事件回写消息树
 5. 前端增量渲染；扩展可注入工具、命令与工作流状态

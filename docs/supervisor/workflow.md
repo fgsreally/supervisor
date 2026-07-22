@@ -27,7 +27,7 @@ meta.workflow = { stage: string; status: WorkflowStatus }
 | PATCH  | `/sessions/:id/workflow` | 更新 stage/status |
 | DELETE | `/sessions/:id/workflow` | 清除              |
 
-Web UI 通过 `WorkflowStageTag` 展示当前 stage/status；完整工作流面板尚未提供（见 [已知缺口](/supervisor/known-gaps)）。
+Web UI 通过 `WorkflowStageTag` 展示当前 stage/status；完整工作流确认与选择面板尚未提供。
 
 ## Strict SDD 扩展
 

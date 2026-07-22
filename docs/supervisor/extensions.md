@@ -1,6 +1,6 @@
 # 扩展框架
 
-supervisor 的扩展框架允许在不修改核心会话运行时的前提下，向 agent 注入工具、订阅事件、注册 HTTP 命令。
+supervisor 的扩展框架允许在不修改核心会话运行时的前提下，向 agent 注入工具、订阅事件和注册 slash 命令。
 
 ## 扩展包结构
 
@@ -11,6 +11,7 @@ supervisor 的扩展框架允许在不修改核心会话运行时的前提下，
   "name": "my-extension",
   "version": "1.0.0",
   "main": "./src/index.ts",
+  "repository": "github:acme/my-extension",
   "dependencies": {}
 }
 ```
@@ -80,29 +81,29 @@ monorepo 子目录：
 | `timer`           | Job 定时计划与触发           |
 | `persistent-bash` | 以 Job 运行后台 shell        |
 | `message-assets`  | 消息附件资源                 |
+| `tool-loop-guard` | 重复工具调用提醒与阻止       |
 
 仓库级可选扩展见 [仓库扩展](/supervisor/shipped-extensions)。
 
 ## 工具边界
 
-默认 agent 以会话资源绑定的工具为准；扩展可通过 `ctx.agent.tools.register` 增加工具。
+默认 agent 以会话资源绑定的工具为准；扩展可通过 `ctx.agent.registerTool()` 增加工具。
 
 ## 扩展 Context
 
 `setup(ctx)` 暴露业务域对象与少量宿主能力：
 
-| 位置                              | 用途                                        |
-| --------------------------------- | ------------------------------------------- |
-| `ctx.session`                     | 会话域操作（spawn、发消息、meta、工具策略） |
-| `ctx.session.current`             | 当前会话（id / cwd / 是否空闲等）           |
-| `ctx.agent`                       | Agent 域操作（`tools.register`、改模型）    |
-| `ctx.agent.current`               | 当前 agent（id / name / model 等）          |
-| `ctx.jobs`                        | 创建、更新执行记录和定时计划                |
-| `ctx.db`                          | 只读库查询                                  |
-| `ctx.project`                     | 项目目录                                    |
-| `ctx.ui`                          | 广播、审批                                  |
-| `ctx.on` / `ctx.log` / `ctx.exec` | 事件、日志、命令                            |
-| `ctx.flow` / `ctx.inject`         | Turn 流程与注入                             |
+| 位置                              | 用途                                       |
+| --------------------------------- | ------------------------------------------ |
+| `ctx.session`                     | 当前会话身份、消息、meta、spawn 与工具策略 |
+| `ctx.agent`                       | 当前 Agent 身份、工具注册与模型设置        |
+| `ctx.tools`                       | 查询或调用当前 Session 注册的扩展工具      |
+| `ctx.jobs`                        | 创建、更新执行记录和定时计划               |
+| `ctx.db`                          | 原始 SQLite 访问；扩展自行保证完整性       |
+| `ctx.project`                     | 项目目录                                   |
+| `ctx.ui`                          | 广播、审批                                 |
+| `ctx.on` / `ctx.log` / `ctx.exec` | 事件、日志、命令                           |
+| `ctx.flow` / `ctx.inject`         | Turn 流程与注入                            |
 
 示例：
 
@@ -112,7 +113,7 @@ import { defineExtension, Type } from "pi-supervisor";
 export default defineExtension({
   name: "demo",
   setup(ctx) {
-    ctx.agent.tools.register({
+    ctx.agent.registerTool({
       name: "ping",
       description: "Ping",
       parameters: Type.Object({}),
@@ -121,7 +122,7 @@ export default defineExtension({
           content: [
             {
               type: "text",
-              text: `session ${ctx.session.current.id} / agent ${ctx.agent.current.id}`,
+              text: `session ${ctx.session.id} / agent ${ctx.agent.id}`,
             },
           ],
         };

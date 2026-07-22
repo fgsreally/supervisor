@@ -17,7 +17,7 @@ src/
   agent/              agent 资源、skills、builtin agents
   config/             内置 provider 等配置
   core/               session-manager、runtime、workflow、compaction、external
-  db/                 SQLite schema、迁移、members、FTS
+  db/                 SQLite schema、迁移、members、Job、输入队列、FTS
   extension/          扩展框架及内置扩展（mcp / subagent / shadow / …）
   http/               Hono HTTP API
   resources/          资源 Handler、catalog 与 Agent 绑定
@@ -33,6 +33,7 @@ src/
 | 主题          | 文档                                       |
 | ------------- | ------------------------------------------ |
 | 会话 / 子会话 | [会话管理](/supervisor/session)            |
+| 后台执行      | [Job](/supervisor/jobs)                    |
 | HTTP 路由     | [HTTP API](/supervisor/http-api)           |
 | 扩展 DSL      | [扩展框架](/supervisor/extensions)         |
 | 打包工具      | [打包工具](/supervisor/builtin-tools)      |
@@ -44,4 +45,3 @@ src/
 | 外部 Agent    | [外部 Agent](/supervisor/external-agents)  |
 | 仓库扩展      | [仓库扩展](/supervisor/shipped-extensions) |
 | AI 测试       | [AI 效果测试](/supervisor/ai-testing)      |
-| 真实缺口      | [已知缺口](/supervisor/known-gaps)         |

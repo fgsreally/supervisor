@@ -18,7 +18,7 @@ node packages/supervisor/dist/cli.mjs serve --port 3030
 # 常用快捷方式（playground + 本地 db）
 pnpm run serve
 
-# 仅监视重建 supervisor 包
+# 构建后启动 playground Supervisor
 pnpm run dev:supervisor
 ```
 

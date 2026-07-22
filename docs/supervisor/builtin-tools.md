@@ -27,4 +27,4 @@
 
 `src/core/session-lifecycle.ts` 中的 worktree、自动命名、结束合并、触发 rolling compaction 等属于会话生命周期，不是 agent 可调用工具。
 
-扩展仍可通过 `ctx.agent.tools.register` 注册自定义工具，见 [扩展框架](/supervisor/extensions)。
+扩展仍可通过 `ctx.agent.registerTool()` 注册自定义工具，见 [扩展框架](/supervisor/extensions)。

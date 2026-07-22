@@ -72,12 +72,12 @@ node packages/supervisor/dist/cli.mjs extensions unbind <agent-id> <id>
 
 ## 通用选项
 
-| 选项                | 说明                                          |
-| ------------------- | --------------------------------------------- |
-| `-p, --port <port>` | HTTP 端口，默认 3030                          |
-| `--db <path>`       | SQLite 路径，默认 `~/.pi/supervisor.db`       |
-| `--cwd <path>`      | 默认工作目录（`serve`）                       |
-| `-h, --help`        | 帮助                                          |
+| 选项                | 说明                                    |
+| ------------------- | --------------------------------------- |
+| `-p, --port <port>` | HTTP 端口，默认 3030                    |
+| `--db <path>`       | SQLite 路径，默认 `~/.pi/supervisor.db` |
+| `--cwd <path>`      | 默认工作目录（`serve`）                 |
+| `-h, --help`        | 帮助                                    |
 
 ## 说明
 

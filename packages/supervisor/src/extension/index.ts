@@ -6,6 +6,7 @@ export {
   evalExtension,
   mcpExtension,
   messageAssetsExtension,
+  persistentBashExtension,
   shadowExtension,
   subagentExtension,
   taskManagementExtension,

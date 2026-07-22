@@ -256,6 +256,9 @@ export interface ExtensionContext {
   /** Agent 域：当前 agent 身份 + 工具注册 / 查找等操作 */
   readonly agent: ExtensionAgent;
 
+  /** Session-scoped registry for dynamically invoking tools registered by any extension. */
+  readonly tools: ExtensionToolFacade;
+
   /** 项目域：工作区与项目级目录 */
   readonly project: SupervisorProjectFacade;
 
@@ -297,6 +300,22 @@ export interface ExtensionContext {
 
   /** Turn 边界注入（plan/goal 等） */
   readonly inject: TurnInjectorFacade;
+}
+
+export interface ExtensionToolCallResult<TResult = unknown> {
+  content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>;
+  details?: TResult;
+  isError?: boolean;
+}
+
+export interface ExtensionToolFacade {
+  list(): ToolInfo[];
+  get(name: string): ToolInfo | undefined;
+  call<TResult = unknown>(
+    name: string,
+    params: unknown,
+    options?: { signal?: AbortSignal },
+  ): Promise<ExtensionToolCallResult<TResult>>;
 }
 
 // ============================================================================

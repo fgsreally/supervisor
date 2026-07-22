@@ -44,15 +44,15 @@ packages/supervisor/
 
 ## 根目录
 
-| 文件                  | 用途                               |
-| --------------------- | ---------------------------------- |
+| 文件                  | 用途                                  |
+| --------------------- | ------------------------------------- |
 | `package.json`        | 包元数据、依赖、`build` / `test` 脚本 |
-| `tsdown.config.ts`    | 用 tsdown 将 `src/` 编译到 `dist/` |
-| `tsconfig.build.json` | 构建用 TypeScript 配置             |
-| `vitest.config.ts`    | 普通测试运行配置                   |
-| `vitest.ai.config.ts` | AI 效果测试运行配置                |
-| `vitest.shared.ts`    | 两类测试的共享配置                 |
-| `.env.example`        | 可选环境变量说明（API Key 等）     |
+| `tsdown.config.ts`    | 用 tsdown 将 `src/` 编译到 `dist/`    |
+| `tsconfig.build.json` | 构建用 TypeScript 配置                |
+| `vitest.config.ts`    | 普通测试运行配置                      |
+| `vitest.ai.config.ts` | AI 效果测试运行配置                   |
+| `vitest.shared.ts`    | 两类测试的共享配置                    |
+| `.env.example`        | 可选环境变量说明（API Key 等）        |
 
 ---
 

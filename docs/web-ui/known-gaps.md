@@ -37,12 +37,12 @@
 
 ## 总结
 
-| 缺口 | 严重度 |
-|------|--------|
-| Abort 按钮 | 中 |
-| Thinking Level UI | 低 |
-| 扩展管理页 | 低 |
-| 工作流面板 | 中 |
-| Search 死代码 / 重定向 | 低 |
-| E2E data-testid | 低 |
-| store shim | 低 |
+| 缺口                   | 严重度 |
+| ---------------------- | ------ |
+| Abort 按钮             | 中     |
+| Thinking Level UI      | 低     |
+| 扩展管理页             | 低     |
+| 工作流面板             | 中     |
+| Search 死代码 / 重定向 | 低     |
+| E2E data-testid        | 低     |
+| store shim             | 低     |

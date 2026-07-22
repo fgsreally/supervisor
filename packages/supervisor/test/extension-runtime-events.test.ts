@@ -186,6 +186,34 @@ describe("extension runtime events", () => {
         },
       ],
     });
+
+    await runtime.handleStoredEntry({
+      id: "screenshot-result-1",
+      parentId: "assistant-1",
+      type: "message",
+      message: {
+        role: "toolResult",
+        toolCallId: "call-2",
+        toolName: "browser",
+        content: [{ type: "text", text: "Browser screenshot saved" }],
+        details: {
+          action: "screenshot",
+          path: join(sessionDir, "screenshots", "page.png"),
+        },
+      },
+    } as any);
+
+    expect(patchedId).toBe("screenshot-result-1");
+    expect(patched).toEqual({
+      assets: [
+        {
+          scope: "session",
+          path: "screenshots/page.png",
+          name: "Browser screenshot",
+          mediaType: "image/png",
+        },
+      ],
+    });
   });
 
   it("delivers system events registered via ctx.on", async () => {

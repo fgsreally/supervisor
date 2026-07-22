@@ -21,17 +21,17 @@ Pi Supervisor 由两个包组成：
 
 ### 核心模块
 
-| 模块                 | 路径                                     | 职责                                              |
-| -------------------- | ---------------------------------------- | ------------------------------------------------- |
-| SessionManager       | `src/core/session-manager.ts`            | 创建、spawn、fork、clone、btw、kill、checkpoint   |
-| SessionRuntime       | `src/core/session-runtime.ts`            | prompt / steer / follow-up / abort                |
-| SessionWorkflow      | `src/core/session-workflow.ts`           | `meta.workflow = { stage, status }`               |
-| Compaction           | `src/core/compaction/rolling.ts`         | 滚动上下文压缩                                    |
-| External runtimes    | `src/core/external/`                     | Codex / Claude / ACP 外部 Agent 会话              |
-| SupervisorDb         | `src/db/db.ts`                           | schema、迁移、members、FTS5                       |
-| Extension host       | `src/extension/runtime/`                 | 激活扩展、事件、工具注入                          |
-| Builtin extensions   | `src/extension/builtin/`                 | mcp、subagent、shadow、skill、eval、timer 等      |
-| Packaged tools       | `src/tools/`                             | ask、edit、lsp、web、browser 等可选工具           |
+| 模块               | 路径                             | 职责                                            |
+| ------------------ | -------------------------------- | ----------------------------------------------- |
+| SessionManager     | `src/core/session-manager.ts`    | 创建、spawn、fork、clone、btw、kill、checkpoint |
+| SessionRuntime     | `src/core/session-runtime.ts`    | prompt / steer / follow-up / abort              |
+| SessionWorkflow    | `src/core/session-workflow.ts`   | `meta.workflow = { stage, status }`             |
+| Compaction         | `src/core/compaction/rolling.ts` | 滚动上下文压缩                                  |
+| External runtimes  | `src/core/external/`             | Codex / Claude / ACP 外部 Agent 会话            |
+| SupervisorDb       | `src/db/db.ts`                   | schema、迁移、members、FTS5                     |
+| Extension host     | `src/extension/runtime/`         | 激活扩展、事件、工具注入                        |
+| Builtin extensions | `src/extension/builtin/`         | mcp、subagent、shadow、skill、eval、timer 等    |
+| Packaged tools     | `src/tools/`                     | ask、edit、lsp、web、browser 等可选工具         |
 
 ### 数据存储
 
@@ -42,12 +42,12 @@ Pi Supervisor 由两个包组成：
 
 入口：`index.html` → `src/main.ts` → `App.vue`
 
-| 模块        | 路径                                               | 职责                            |
-| ----------- | -------------------------------------------------- | ------------------------------- |
-| Router      | `src/router/index.ts`                              | chat / contacts / providers 等  |
-| Pinia       | `src/store/`                                       | Session / Agent / Provider 等   |
-| API Client  | `src/api/api.ts`                                   | HTTP + SSE                      |
-| Chat        | `src/views/ChatView.vue` + `src/components/chat/`  | 对话、steer/follow-up、slash    |
+| 模块       | 路径                                              | 职责                           |
+| ---------- | ------------------------------------------------- | ------------------------------ |
+| Router     | `src/router/index.ts`                             | chat / contacts / providers 等 |
+| Pinia      | `src/store/`                                      | Session / Agent / Provider 等  |
+| API Client | `src/api/api.ts`                                  | HTTP + SSE                     |
+| Chat       | `src/views/ChatView.vue` + `src/components/chat/` | 对话、steer/follow-up、slash   |
 
 ## 数据流
 

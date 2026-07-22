@@ -138,6 +138,13 @@ function createProbeContext(
       setThinkingLevel: noop,
       getThinkingLevel: () => "none" as const,
     }),
+    tools: {
+      list: toolRegistry.list,
+      get: toolRegistry.get,
+      call: async () => {
+        throw new Error("Tool execution is unavailable while probing resources");
+      },
+    },
     project: { cwd: process.cwd(), dir: process.cwd(), getDir: async () => process.cwd() },
     ui: { broadcast: noop, requestApproval: async () => ({ action: "approve" as const }) },
     on: () => noop,

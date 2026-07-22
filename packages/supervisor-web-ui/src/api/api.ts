@@ -886,6 +886,42 @@ export async function getQueuedSessionInputs(id: string): Promise<QueuedSessionI
   return fetchJson<QueuedSessionInput[]>(`/sessions/${id}/queued-inputs`);
 }
 
+export interface PersistentBashSession {
+  id: string;
+  sessionId: number;
+  command: string;
+  label: string;
+  cwd: string;
+  pid?: number;
+  status: "running" | "exited" | "failed";
+  startedAt: number;
+  endedAt?: number;
+  exitCode?: number | null;
+  output: string;
+}
+
+export async function listPersistentBashSessions(id: string): Promise<PersistentBashSession[]> {
+  const result = await fetchJson<{ sessions: PersistentBashSession[] }>(
+    `/sessions/${id}/bash-sessions`,
+  );
+  return result.sessions;
+}
+
+export async function writePersistentBashInput(
+  sessionId: string,
+  bashId: string,
+  input: string,
+): Promise<{ ok: boolean }> {
+  return postJson(`/sessions/${sessionId}/bash-sessions/${bashId}/input`, { input });
+}
+
+export async function stopPersistentBash(
+  sessionId: string,
+  bashId: string,
+): Promise<{ ok: boolean }> {
+  return fetchJson(`/sessions/${sessionId}/bash-sessions/${bashId}`, { method: "DELETE" });
+}
+
 /** Abort the current work in a session. */
 export async function abortSession(id: string): Promise<{ ok: boolean }> {
   return postJson<{ ok: boolean }>(`/sessions/${id}/abort`, {});

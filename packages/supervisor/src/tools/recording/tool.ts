@@ -1,13 +1,24 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import ffmpeg from "@ffmpeg-installer/ffmpeg";
+import { promisify } from "node:util";
 
 interface RecordingParams {
-  action: "start" | "stop" | "status";
+  action: "start" | "stop" | "status" | "screenshot";
   path?: string;
   fps?: number;
+}
+
+const execFileAsync = promisify(execFile);
+
+function screenshotInputArgs(): string[] {
+  if (process.platform === "win32") return ["-f", "gdigrab", "-i", "desktop"];
+  if (process.platform === "darwin") return ["-f", "avfoundation", "-i", "1:none"];
+  const display = process.env.DISPLAY;
+  if (!display) throw new Error("desktop capture on Linux requires DISPLAY");
+  return ["-f", "x11grab", "-i", display];
 }
 
 function captureArgs(path: string, fps: number): string[] {
@@ -82,12 +93,12 @@ export function createDesktopRecordingTool(storageDir: string): {
     name: "desktop_recording",
     label: "desktop_recording",
     description:
-      "Record the full desktop during computer-use E2E tests. Use start before interaction and stop afterward. Produces a WebM artifact.",
+      "Record or screenshot the full desktop during computer-use E2E tests. Recordings are WebM artifacts and screenshots are PNG artifacts.",
     parameters: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["start", "stop", "status"] },
-        path: { type: "string", description: "Optional .webm output path." },
+        action: { type: "string", enum: ["start", "stop", "status", "screenshot"] },
+        path: { type: "string", description: "Optional .webm or .png output path." },
         fps: { type: "number", description: "Frames per second (default 15, max 30)." },
       },
       required: ["action"],
@@ -111,6 +122,37 @@ export function createDesktopRecordingTool(storageDir: string): {
           ],
           details: { path },
         };
+      }
+      if (params.action === "screenshot") {
+        const path = params.path
+          ? isAbsolute(params.path)
+            ? params.path
+            : resolve(storageDir, params.path)
+          : join(storageDir, "screenshots", `desktop-${Date.now()}.png`);
+        await mkdir(dirname(path), { recursive: true });
+        try {
+          await execFileAsync(ffmpeg.path, [
+            "-y",
+            ...screenshotInputArgs(),
+            "-frames:v",
+            "1",
+            path,
+          ]);
+          return {
+            content: [{ type: "text", text: `Desktop screenshot saved: ${path}` }],
+            details: { action: "screenshot", path },
+          };
+        } catch (error) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Desktop screenshot failed: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            ],
+            isError: true,
+          };
+        }
       }
       if (processHandle)
         return {

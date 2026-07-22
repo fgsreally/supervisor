@@ -21,7 +21,7 @@
 
             <label class="provider-edit-field text-[13px]">
               <span class="provider-edit-label">名称</span>
-              <input v-model="draft.name" type="text" class="provider-edit-input" />
+              <UiField v-model="draft.name" type="text" />
             </label>
 
             <div class="provider-edit-field">
@@ -79,7 +79,7 @@
                     v-model="draft.apiType"
                     type="radio"
                     :value="opt.value"
-                    class="accent-[#07c160]"
+                    class="accent-[var(--app-accent)]"
                   />
                   <span class="font-mono">{{ opt.value }}</span>
                 </label>
@@ -88,24 +88,24 @@
 
             <label class="provider-edit-field text-[13px]">
               <span class="provider-edit-label">Base URL</span>
-              <input
+              <UiField
                 v-model="baseUrlInput"
                 type="text"
                 placeholder="留空使用默认端点"
-                class="provider-edit-input font-mono"
+                class="font-mono"
               />
             </label>
 
             <label class="provider-edit-field text-[13px]">
               <span class="provider-edit-label">API Key</span>
               <span class="relative block min-w-0">
-                <input
+                <UiField
                   v-model="apiKeyInput"
                   :type="showApiKey ? 'text' : 'password'"
                   placeholder="留空则保留已有 API Key"
                   autocomplete="new-password"
                   spellcheck="false"
-                  class="provider-edit-input font-mono pr-10"
+                  class="font-mono pr-10"
                 />
                 <button
                   type="button"
@@ -122,17 +122,8 @@
         </div>
 
         <footer class="px-5 py-3 border-t flex justify-end gap-2 shrink-0">
-          <button type="button" class="wechat-btn wechat-btn--secondary" @click="close">
-            取消
-          </button>
-          <button
-            type="button"
-            class="wechat-btn wechat-btn--primary"
-            :disabled="!canSave || saving"
-            @click="save"
-          >
-            保存
-          </button>
+          <UiButton @click="close"> 取消 </UiButton>
+          <UiButton variant="primary" :disabled="!canSave || saving" @click="save"> 保存 </UiButton>
         </footer>
       </section>
     </div>
@@ -143,6 +134,7 @@
 import { computed, ref, watch } from "vue";
 import { Eye, EyeOff, Upload, X } from "lucide-vue-next";
 import ProviderAvatar from "./ProviderAvatar.vue";
+import { UiButton, UiField } from "./ui";
 import { PROVIDER_API_TYPES } from "@/constants/providers";
 import { useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
@@ -287,21 +279,6 @@ async function save() {
   align-items: start;
 }
 
-.provider-edit-input {
-  width: 100%;
-  padding: 9px 10px;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
-  background: var(--app-settings-card);
-  color: var(--app-text-primary);
-  outline: none;
-}
-
-.provider-edit-input:focus {
-  border-color: #07c160;
-  box-shadow: 0 0 0 2px rgb(7 193 96 / 12%);
-}
-
 .provider-edit-secret-toggle {
   color: var(--app-text-secondary);
 }
@@ -363,39 +340,6 @@ async function save() {
 .provider-edit-avatar-upload:hover .provider-edit-avatar-overlay,
 .provider-edit-avatar-upload:focus-visible .provider-edit-avatar-overlay {
   opacity: 1;
-}
-
-.wechat-btn {
-  min-width: 72px;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-.wechat-btn--secondary {
-  border: 1px solid var(--app-border);
-  background: var(--app-settings-card);
-  color: var(--app-text-primary);
-}
-
-.wechat-btn--secondary:hover {
-  background: var(--app-hover);
-}
-
-.wechat-btn--primary {
-  border: 1px solid #07c160;
-  background: #07c160;
-  color: #ffffff;
-}
-
-.wechat-btn--primary:hover {
-  background: #06ad56;
-  border-color: #06ad56;
-}
-
-.wechat-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 @media (max-width: 767px) {

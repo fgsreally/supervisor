@@ -29,6 +29,10 @@ describe("packaged supervisor tools", () => {
       sessionId: 1,
     });
     expect(activation.tools[0]?.name).toBe("browser");
+    const parameters = activation.tools[0]?.parameters as {
+      properties?: { action?: { enum?: string[] } };
+    };
+    expect(parameters.properties?.action?.enum).toContain("screenshot");
   });
 
   it("activates desktop recording", async () => {
@@ -37,6 +41,10 @@ describe("packaged supervisor tools", () => {
       sessionId: 1,
     });
     expect(activation.tools[0]?.name).toBe("desktop_recording");
+    const parameters = activation.tools[0]?.parameters as {
+      properties?: { action?: { enum?: string[] } };
+    };
+    expect(parameters.properties?.action?.enum).toContain("screenshot");
   });
 
   it("adapts pi-computer-use tools", async () => {

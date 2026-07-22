@@ -21,18 +21,18 @@ pnpm install
 
 ## Common scripts
 
-| Command                  | Description                                      |
-| ------------------------ | ------------------------------------------------ |
-| `pnpm run build`         | 构建 supervisor 包（tsdown → `dist/`）           |
-| `pnpm run serve`         | 启动 HTTP 服务（默认 :3030，playground cwd）     |
-| `pnpm run dev`           | 启动 Web UI 开发服务器（Vite，:5173）            |
-| `pnpm run dev:supervisor`| 构建并 watch / playground serve                  |
-| `pnpm run lint`          | oxlint                                           |
-| `pnpm run format`        | oxfmt                                            |
-| `pnpm run check`         | lint + format check + 包级 check                 |
-| `pnpm run test`          | 各包测试                                         |
-| `pnpm run docs:dev`      | VitePress 文档开发服务器                         |
-| `pnpm run docs:build`    | 构建文档到 `docs/.vitepress/dist`                |
+| Command                   | Description                                  |
+| ------------------------- | -------------------------------------------- |
+| `pnpm run build`          | 构建 supervisor 包（tsdown → `dist/`）       |
+| `pnpm run serve`          | 启动 HTTP 服务（默认 :3030，playground cwd） |
+| `pnpm run dev`            | 启动 Web UI 开发服务器（Vite，:5173）        |
+| `pnpm run dev:supervisor` | 构建并 watch / playground serve              |
+| `pnpm run lint`           | oxlint                                       |
+| `pnpm run format`         | oxfmt                                        |
+| `pnpm run check`          | lint + format check + 包级 check             |
+| `pnpm run test`           | 各包测试                                     |
+| `pnpm run docs:dev`       | VitePress 文档开发服务器                     |
+| `pnpm run docs:build`     | 构建文档到 `docs/.vitepress/dist`            |
 
 工具链：oxlint / oxfmt / tsdown（supervisor）/ Vite（web-ui）。也可用与 pnpm 兼容的 [nub](https://github.com/nubjs/nub) 替代包管理命令。
 

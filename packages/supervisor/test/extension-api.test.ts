@@ -102,6 +102,36 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
 }
 
 describe("extension api", () => {
+  it("runs and reads an in-memory persistent Bash session", async () => {
+    const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
+    await runtime.initialize();
+    const context = {
+      toolCallId: "persistent-bash-test",
+      session: { id: "1", cwd: process.cwd() },
+      reportProgress: () => {},
+    };
+    const started = await runtime.executeTool(
+      "PersistentBash",
+      {
+        action: "start",
+        command: `node -e "process.stdout.write('persistent-ready')"`,
+        label: "test shell",
+      },
+      context,
+    );
+    const id = (started.details as { id: string }).id;
+    await vi.waitFor(
+      async () => {
+        const read = await runtime.executeTool("PersistentBash", { action: "read", id }, context);
+        expect(read.content[0]?.type === "text" ? read.content[0].text : "").toContain(
+          "persistent-ready",
+        );
+      },
+      { timeout: 5_000 },
+    );
+    await runtime.clear();
+  });
+
   it("persists and fires Session timers through session meta", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-20T04:00:00.000Z"));
@@ -164,6 +194,43 @@ describe("extension api", () => {
       sessionId: 1,
       cwd: process.cwd(),
     });
+  });
+
+  it("lets extensions dynamically call tools registered by other extensions", async () => {
+    const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
+    await runtime.load(
+      defineExtension({
+        name: "tool-provider",
+        setup(ctx) {
+          ctx.agent.registerTool({
+            name: "shared_echo",
+            description: "Echo a value",
+            parameters: Type.Object({ value: Type.String() }),
+            async execute(params) {
+              return { content: [{ type: "text", text: params.value }] };
+            },
+          });
+        },
+      }),
+      "/tmp/tool-provider.ts",
+    );
+
+    let received = "";
+    let owner: string | undefined;
+    await runtime.load(
+      defineExtension({
+        name: "tool-consumer",
+        async setup(ctx) {
+          owner = ctx.tools.get("shared_echo")?.extensionName;
+          const result = await ctx.tools.call("shared_echo", { value: "from extension" });
+          received = result.content[0]?.type === "text" ? result.content[0].text : "";
+        },
+      }),
+      "/tmp/tool-consumer.ts",
+    );
+
+    expect(received).toBe("from extension");
+    expect(owner).toBe("tool-provider");
   });
 
   it("ctx.db exposes raw parameterized SQL", () => {

@@ -4,12 +4,12 @@
 
 ## 模型
 
-| 字段 | 含义 |
-|------|------|
-| `sessions.parent_id` | 父子关系 |
+| 字段                                | 含义                              |
+| ----------------------------------- | --------------------------------- |
+| `sessions.parent_id`                | 父子关系                          |
 | `sessions.branch_type = "subagent"` | 由委派产生（旧值 `spawn` 会迁移） |
-| `sessions.agent_id` | 实际执行的 Agent |
-| 独立 `messages` | 子代理自己的消息树 |
+| `sessions.agent_id`                 | 实际执行的 Agent                  |
+| 独立 `messages`                     | 子代理自己的消息树                |
 
 父代理通过工具结果、事件与显式 resume 接收摘要，不共享完整上下文。
 
@@ -27,12 +27,12 @@
 
 成员关系持久化在 SQLite `members` 表，HTTP：
 
-| Method | Path                    | 说明     |
-| ------ | ----------------------- | -------- |
-| GET    | `/sessions/:id/members` | 列出成员 |
-| PUT    | `/sessions/:id/members` | 更新成员 |
-| GET    | `/sessions/:id/children`| 直接子会话 |
-| GET    | `/sessions/:id/tree`    | 会话树   |
+| Method | Path                     | 说明       |
+| ------ | ------------------------ | ---------- |
+| GET    | `/sessions/:id/members`  | 列出成员   |
+| PUT    | `/sessions/:id/members`  | 更新成员   |
+| GET    | `/sessions/:id/children` | 直接子会话 |
+| GET    | `/sessions/:id/tree`     | 会话树     |
 
 ## 创建路径
 

@@ -69,16 +69,16 @@ monorepo 子目录：
 
 随核心包提供（`src/extension/builtin/`），会话按需激活：
 
-| 扩展 | 作用 |
-|------|------|
-| `mcp` | 连接 MCP 服务器并注册工具 |
-| `subagent` | `spawn_agent` 工具 + members |
-| `shadow` | Shadow 旁路观察 |
-| `skill` | Skill 资源注入 |
-| `eval` | 评估相关能力 |
-| `task-management` | 任务 / todo |
-| `timer` | 定时相关 |
-| `message-assets` | 消息附件资源 |
+| 扩展              | 作用                         |
+| ----------------- | ---------------------------- |
+| `mcp`             | 连接 MCP 服务器并注册工具    |
+| `subagent`        | `spawn_agent` 工具 + members |
+| `shadow`          | Shadow 旁路观察              |
+| `skill`           | Skill 资源注入               |
+| `eval`            | 评估相关能力                 |
+| `task-management` | 任务 / todo                  |
+| `timer`           | 定时相关                     |
+| `message-assets`  | 消息附件资源                 |
 
 仓库级可选扩展见 [仓库扩展](/supervisor/shipped-extensions)。
 

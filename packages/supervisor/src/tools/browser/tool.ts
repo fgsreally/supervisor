@@ -8,7 +8,7 @@ import { createBrowserSession, type BrowserSession } from "./registry.js";
 const DEFAULT_TAB = "main";
 
 interface BrowserParams {
-  action: "open" | "close" | "run" | "start_recording" | "stop_recording";
+  action: "open" | "close" | "run" | "screenshot" | "start_recording" | "stop_recording";
   name?: string;
   url?: string;
   viewport?: { width: number; height: number };
@@ -136,6 +136,7 @@ export function createBrowserTool(options?: {
       "- open: create or reuse a tab (default name 'main'), optionally navigate to url\n" +
       "- run: execute async JavaScript with `page` (puppeteer Page) and `tab` helpers in scope\n" +
       "- close: release a tab or all tabs (all=true)\n\n" +
+      "- screenshot: save the named tab as a PNG artifact\n" +
       "- start_recording / stop_recording: record the named tab to a WebM artifact\n\n" +
       "tab helpers: title(), url(), content(), text(selector), click(selector), type(selector, text), " +
       "fill(selector, value), screenshot() (returns base64 PNG), waitForSelector(selector), evaluate(fn)\n\n" +
@@ -145,7 +146,7 @@ export function createBrowserTool(options?: {
       properties: {
         action: {
           type: "string",
-          enum: ["open", "close", "run", "start_recording", "stop_recording"],
+          enum: ["open", "close", "run", "screenshot", "start_recording", "stop_recording"],
           description: "Operation to perform.",
         },
         name: {
@@ -170,7 +171,7 @@ export function createBrowserTool(options?: {
         },
         path: {
           type: "string",
-          description: "Optional .webm output path for start_recording.",
+          description: "Optional output path for screenshot (.png) or start_recording (.webm).",
         },
         timeout: {
           type: "number",
@@ -256,6 +257,31 @@ export function createBrowserTool(options?: {
           return {
             content: [{ type: "text", text: `Tab "${tabName}" run result:\n${resultText}` }],
             details: { action: "run", name: tabName, result },
+          };
+        }
+
+        if (params.action === "screenshot") {
+          let handle = session.getTab(tabName);
+          if (!handle) handle = await session.openTab(tabName, params.url, params.viewport);
+          const baseDir = options?.sessionDir ?? options?.cwd ?? process.cwd();
+          const safeTabName = tabName.replace(/[^A-Za-z0-9._-]+/g, "-");
+          const outputPath = params.path
+            ? isAbsolute(params.path)
+              ? params.path
+              : resolve(baseDir, params.path)
+            : join(baseDir, "screenshots", `browser-${safeTabName}-${Date.now()}.png`);
+          await mkdir(dirname(outputPath), { recursive: true });
+          const image = await handle.page.screenshot({ path: outputPath, type: "png" });
+          return {
+            content: [
+              { type: "text", text: `Browser screenshot saved: ${outputPath}` },
+              {
+                type: "image",
+                data: Buffer.from(image).toString("base64"),
+                mimeType: "image/png",
+              },
+            ],
+            details: { action: "screenshot", name: tabName, path: outputPath },
           };
         }
 

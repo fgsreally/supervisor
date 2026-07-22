@@ -33,9 +33,9 @@ node packages/supervisor/dist/cli.mjs extensions list
 
 ## 与内置扩展的区别
 
-| 类型 | 位置 | 启用方式 |
-|------|------|----------|
-| 内置 | `packages/supervisor/src/extension/builtin/` | 核心按绑定/会话需要激活 |
-| 仓库扩展 | `extensions/*` | `extensions install` + `bind` |
+| 类型     | 位置                                         | 启用方式                      |
+| -------- | -------------------------------------------- | ----------------------------- |
+| 内置     | `packages/supervisor/src/extension/builtin/` | 核心按绑定/会话需要激活       |
+| 仓库扩展 | `extensions/*`                               | `extensions install` + `bind` |
 
 通用 DSL 与 Context 见 [扩展框架](/supervisor/extensions)。

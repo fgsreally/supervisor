@@ -15,6 +15,7 @@ import type {
   ExtensionDatabase,
   ExtensionCommandDefinition,
   ExtensionEvent,
+  ExtensionToolCallResult,
   MemberAgentInfo,
   ScheduleInjectionInput,
   SessionInfo,
@@ -134,6 +135,7 @@ interface TestExtensionHost {
   unregisterTool(extensionId: string, name: string): void;
   registerCommand(extensionId: string, name: string, definition: ExtensionCommandDefinition): void;
   unregisterCommand(extensionId: string, name: string): void;
+  callTool(name: string, params: unknown, signal?: AbortSignal): Promise<ExtensionToolCallResult>;
 }
 
 /** Build a Context-shaped test fixture without restoring the removed callback constructor API. */
@@ -258,6 +260,15 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
       setModel: options.deps.setModel,
       setThinkingLevel: options.deps.setThinkingLevel,
       getThinkingLevel: options.deps.getThinkingLevel,
+    },
+    tools: {
+      list: () => requireHost().listTools(),
+      get: (name: string) =>
+        requireHost()
+          .listTools()
+          .find((tool) => tool.name === name),
+      call: (name: string, params: unknown, callOptions?: { signal?: AbortSignal }) =>
+        requireHost().callTool(name, params, callOptions?.signal),
     },
     db: new ContextDb(options.db.sqlite),
     project: {

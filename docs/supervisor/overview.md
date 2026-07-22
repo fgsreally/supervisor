@@ -30,18 +30,18 @@ src/
 
 ## 能力索引
 
-| 主题 | 文档 |
-|------|------|
-| 会话 / 子会话 | [会话管理](/supervisor/session) |
-| HTTP 路由 | [HTTP API](/supervisor/http-api) |
-| 扩展 DSL | [扩展框架](/supervisor/extensions) |
-| 打包工具 | [打包工具](/supervisor/builtin-tools) |
-| MCP | [MCP 集成](/supervisor/mcp) |
-| 压缩 | [上下文压缩](/supervisor/compaction) |
-| 工作流 | [工作流](/supervisor/workflow) |
-| 子代理 | [子代理](/supervisor/subagents) |
-| Shadow | [Shadow](/supervisor/shadow) |
-| 外部 Agent | [外部 Agent](/supervisor/external-agents) |
-| 仓库扩展 | [仓库扩展](/supervisor/shipped-extensions) |
-| AI 测试 | [AI 效果测试](/supervisor/ai-testing) |
-| 真实缺口 | [已知缺口](/supervisor/known-gaps) |
+| 主题          | 文档                                       |
+| ------------- | ------------------------------------------ |
+| 会话 / 子会话 | [会话管理](/supervisor/session)            |
+| HTTP 路由     | [HTTP API](/supervisor/http-api)           |
+| 扩展 DSL      | [扩展框架](/supervisor/extensions)         |
+| 打包工具      | [打包工具](/supervisor/builtin-tools)      |
+| MCP           | [MCP 集成](/supervisor/mcp)                |
+| 压缩          | [上下文压缩](/supervisor/compaction)       |
+| 工作流        | [工作流](/supervisor/workflow)             |
+| 子代理        | [子代理](/supervisor/subagents)            |
+| Shadow        | [Shadow](/supervisor/shadow)               |
+| 外部 Agent    | [外部 Agent](/supervisor/external-agents)  |
+| 仓库扩展      | [仓库扩展](/supervisor/shipped-extensions) |
+| AI 测试       | [AI 效果测试](/supervisor/ai-testing)      |
+| 真实缺口      | [已知缺口](/supervisor/known-gaps)         |

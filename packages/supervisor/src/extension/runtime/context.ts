@@ -14,6 +14,7 @@ import type {
   ExecResult,
   ExtensionDatabase,
   ExtensionEvent,
+  ExtensionToolCallResult,
   ExtensionSqliteDatabase,
   ExtensionSqliteStatement,
   MemberAgentInfo,
@@ -167,12 +168,22 @@ interface ContextExtensionHost {
   unregisterTool(extensionId: string, name: string): void;
   registerCommand(extensionId: string, name: string, definition: ExtensionCommandDefinition): void;
   unregisterCommand(extensionId: string, name: string): void;
+  callTool(name: string, params: unknown, signal?: AbortSignal): Promise<ExtensionToolCallResult>;
 }
 
 /** Session-scoped context shared by every extension activated for that session. */
 export class Context {
   readonly session: ContextSession;
   readonly agent: ContextAgent;
+  readonly tools: {
+    list(): ToolInfo[];
+    get(name: string): ToolInfo | undefined;
+    call<TResult = unknown>(
+      name: string,
+      params: unknown,
+      options?: { signal?: AbortSignal },
+    ): Promise<ExtensionToolCallResult<TResult>>;
+  };
   readonly db: ContextDb;
   readonly project: { readonly cwd: string; readonly dir: string; getDir(): Promise<string> };
   readonly ui: {
@@ -346,6 +357,23 @@ export class Context {
 
     this.session = new ContextSession(sessionOptions);
     this.agent = new ContextAgent(agentOptions);
+    this.tools = {
+      list: () => this.requireExtensionHost().listTools(),
+      get: (name) =>
+        this.requireExtensionHost()
+          .listTools()
+          .find((tool) => tool.name === name),
+      call: async <TResult = unknown>(
+        name: string,
+        params: unknown,
+        options?: { signal?: AbortSignal },
+      ) =>
+        (await this.requireExtensionHost().callTool(
+          name,
+          params,
+          options?.signal,
+        )) as ExtensionToolCallResult<TResult>,
+    };
     this.db = new ContextDb(db.db);
     this.project = {
       cwd: session.cwd,

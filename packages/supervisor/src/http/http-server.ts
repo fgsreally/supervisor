@@ -17,6 +17,11 @@ import type { SessionManager } from "../core/session-manager.js";
 import { getProjectDir, getSessionDir } from "../core/session-files.js";
 import { activeTaskPaths, readTaskArtifact } from "../core/task-artifacts.js";
 import { parseSessionTodos } from "../core/session-todos.js";
+import {
+  listPersistentBashSessions,
+  removePersistentBashSession,
+  writePersistentBashSession,
+} from "../extension/builtin/persistent-bash/manager.js";
 import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-manager.js";
 import { isResourceKind } from "../resources/types.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";
@@ -1047,6 +1052,40 @@ export function createHttpServer(manager: SessionManager): Hono {
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 404, message);
+    }
+  });
+
+  // In-memory persistent Bash sessions. They intentionally do not survive Supervisor restarts.
+  app.get("/sessions/:id/bash-sessions", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    if (!manager.get(id)) return jsonError(c, 404, `Session ${id} not found`);
+    return c.json({ sessions: listPersistentBashSessions(id) });
+  });
+
+  app.post("/sessions/:id/bash-sessions/:bashId/input", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const body = await c.req.json().catch(() => ({}));
+    if (typeof body.input !== "string" || !body.input) {
+      return jsonError(c, 400, "input is required");
+    }
+    try {
+      writePersistentBashSession(id, c.req.param("bashId"), body.input);
+      return c.json({ ok: true });
+    } catch (error) {
+      return jsonError(c, 404, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.delete("/sessions/:id/bash-sessions/:bashId", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    try {
+      await removePersistentBashSession(id, c.req.param("bashId"));
+      return c.json({ ok: true });
+    } catch (error) {
+      return jsonError(c, 404, error instanceof Error ? error.message : String(error));
     }
   });
 

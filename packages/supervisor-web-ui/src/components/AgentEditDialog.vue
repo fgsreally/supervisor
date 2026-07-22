@@ -26,12 +26,7 @@
             <label class="block flex-1 text-[13px]">
               <span class="agent-edit-label mb-1 block">头像</span>
               <div class="flex gap-2">
-                <input
-                  v-model="draft.icon"
-                  type="text"
-                  placeholder="图片 URL 或 Iconify ID"
-                  class="agent-edit-input"
-                />
+                <UiField v-model="draft.icon" type="text" placeholder="图片 URL 或 Iconify ID" />
                 <input
                   ref="iconInput"
                   type="file"
@@ -54,58 +49,55 @@
 
           <label class="block text-[13px]">
             <span class="agent-edit-label mb-1 block">名称</span>
-            <input v-model="draft.name" type="text" class="agent-edit-input" />
+            <UiField v-model="draft.name" type="text" />
           </label>
 
           <label class="block text-[13px]">
             <span class="agent-edit-label mb-1 block">描述</span>
-            <textarea v-model="draft.description" rows="3" class="agent-edit-input resize-y" />
+            <UiField v-model="draft.description" as="textarea" rows="3" class="resize-y" />
           </label>
 
           <template v-if="agent.backendType === 'native'">
             <label class="block text-[13px]">
               <span class="agent-edit-label mb-1 block">模型服务</span>
-              <select
-                v-model="draft.providerId"
-                class="agent-edit-input"
-                @change="onProviderChange"
-              >
+              <UiField v-model="draft.providerId" as="select" @change="onProviderChange">
                 <option value="">稍后配置</option>
                 <option v-for="provider in providers" :key="provider.id" :value="provider.id">
                   {{ provider.name }}
                 </option>
-              </select>
+              </UiField>
             </label>
             <label class="block text-[13px]">
               <span class="agent-edit-label mb-1 block">模型</span>
-              <select v-model="draft.modelId" class="agent-edit-input font-mono">
+              <UiField v-model="draft.modelId" as="select" class="font-mono">
                 <option value="">稍后配置</option>
                 <option v-for="model in models" :key="model.id" :value="model.id">
                   {{ model.name }}
                 </option>
-              </select>
+              </UiField>
             </label>
             <label class="block text-[13px]">
               <span class="agent-edit-label mb-1 block">工具集</span>
-              <select v-model="draft.toolsPreset" class="agent-edit-input">
+              <UiField v-model="draft.toolsPreset" as="select">
                 <option value="coding">coding</option>
                 <option value="readonly">readonly</option>
                 <option value="none">none</option>
-              </select>
+              </UiField>
             </label>
           </template>
 
           <template v-else>
             <label class="block text-[13px]">
               <span class="agent-edit-label mb-1 block">启动命令</span>
-              <input v-model="draft.command" type="text" class="agent-edit-input font-mono" />
+              <UiField v-model="draft.command" type="text" class="font-mono" />
             </label>
             <label class="block text-[13px]">
               <span class="agent-edit-label mb-1 block">命令行参数（每行一个）</span>
-              <textarea
+              <UiField
                 v-model="draft.args"
+                as="textarea"
                 rows="5"
-                class="agent-edit-input font-mono resize-y"
+                class="font-mono resize-y"
                 placeholder="--model&#10;sonnet&#10;--allowedTools&#10;Bash(git diff:*) Edit"
               />
             </label>
@@ -113,17 +105,8 @@
         </div>
 
         <footer class="px-5 py-3 border-t flex justify-end gap-2 shrink-0">
-          <button type="button" class="wechat-btn wechat-btn--secondary" @click="close">
-            取消
-          </button>
-          <button
-            type="button"
-            class="wechat-btn wechat-btn--primary"
-            :disabled="!canSave || saving"
-            @click="save"
-          >
-            保存
-          </button>
+          <UiButton @click="close"> 取消 </UiButton>
+          <UiButton variant="primary" :disabled="!canSave || saving" @click="save"> 保存 </UiButton>
         </footer>
       </section>
     </div>
@@ -137,6 +120,7 @@ import { uploadIcon, type ToolsPreset } from "@/api";
 import { useAgentStore, useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import AgentAvatar from "./AgentAvatar.vue";
+import { UiButton, UiField } from "./ui";
 
 const props = defineProps<{ open: boolean; agentId: string }>();
 const emit = defineEmits<{ close: []; saved: [] }>();
@@ -279,21 +263,6 @@ async function save() {
   color: var(--app-text-secondary);
 }
 
-.agent-edit-input {
-  width: 100%;
-  padding: 9px 10px;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
-  background: var(--app-settings-card);
-  color: var(--app-text-primary);
-  outline: none;
-}
-
-.agent-edit-input:focus {
-  border-color: #07c160;
-  box-shadow: 0 0 0 2px rgb(7 193 96 / 12%);
-}
-
 .agent-edit-upload {
   flex: none;
   width: 38px;
@@ -307,40 +276,7 @@ async function save() {
 }
 
 .agent-edit-upload:hover:not(:disabled) {
-  border-color: #07c160;
-  color: #07c160;
-}
-
-.wechat-btn {
-  min-width: 72px;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 13px;
-}
-
-.wechat-btn--secondary {
-  border: 1px solid var(--app-border);
-  background: var(--app-settings-card);
-  color: var(--app-text-primary);
-}
-
-.wechat-btn--secondary:hover {
-  background: var(--app-hover);
-}
-
-.wechat-btn--primary {
-  border: 1px solid #07c160;
-  background: #07c160;
-  color: #ffffff;
-}
-
-.wechat-btn--primary:hover {
-  background: #06ad56;
-  border-color: #06ad56;
-}
-
-.wechat-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+  border-color: var(--app-accent);
+  color: var(--app-accent);
 }
 </style>

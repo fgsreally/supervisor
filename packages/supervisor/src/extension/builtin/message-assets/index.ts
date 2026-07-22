@@ -15,19 +15,28 @@ const messageAssetsExtension: ExtensionDefinition = {
       const details = result.details;
       const path = details?.path;
       if (!path || !isAbsolute(path)) return;
-      const isCompleted =
+      const isRecording =
         (event.toolName === "browser" && details?.action === "stop_recording") ||
         (event.toolName === "desktop_recording" &&
           result.content?.some((part) => part.text?.includes("recording saved:")));
-      if (!isCompleted) return;
+      const isScreenshot =
+        details?.action === "screenshot" &&
+        (event.toolName === "browser" || event.toolName === "desktop_recording");
+      if (!isRecording && !isScreenshot) return;
 
       const relativePath = relative(ctx.session.dir, path);
       if (!relativePath || relativePath === ".." || relativePath.startsWith(`..${sep}`)) return;
       const asset: MessageAsset = {
         scope: "session",
         path: relativePath.split(sep).join("/"),
-        name: event.toolName === "browser" ? "Browser recording" : "Desktop recording",
-        mediaType: "video/webm",
+        name: isScreenshot
+          ? event.toolName === "browser"
+            ? "Browser screenshot"
+            : "Desktop screenshot"
+          : event.toolName === "browser"
+            ? "Browser recording"
+            : "Desktop recording",
+        mediaType: isScreenshot ? "image/png" : "video/webm",
       };
       const meta = await ctx.session.messages.getMeta(event.messageId);
       const existing = Array.isArray(meta.assets) ? meta.assets : [];

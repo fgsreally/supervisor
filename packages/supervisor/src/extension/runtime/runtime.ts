@@ -12,6 +12,7 @@ import {
   evalExtension,
   mcpExtension,
   messageAssetsExtension,
+  persistentBashExtension,
   subagentExtension,
   taskManagementExtension,
   timerExtension,
@@ -73,6 +74,7 @@ export class SessionExtensionRuntime {
       registerCommand: (extensionId, name, definition) =>
         this.registerCommand(extensionId, name, definition),
       unregisterCommand: (extensionId, name) => this.unregisterCommand(extensionId, name),
+      callTool: (name, params, signal) => this.callRegisteredTool(name, params, signal),
     });
   }
 
@@ -80,6 +82,7 @@ export class SessionExtensionRuntime {
     await this.loadExtension(evalExtension, "builtin:eval");
     await this.loadExtension(taskManagementExtension, "builtin:task-management");
     await this.loadExtension(timerExtension, "builtin:timer");
+    await this.loadExtension(persistentBashExtension, "builtin:persistent-bash");
     await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");
     await this.loadExtension(mcpExtension, "builtin:mcp");
     await this.loadExtension(messageAssetsExtension, "builtin:message-assets");
@@ -376,6 +379,36 @@ export class SessionExtensionRuntime {
     }
 
     return await tool.execute(params, context);
+  }
+
+  private async callRegisteredTool(
+    name: string,
+    params: unknown,
+    signal?: AbortSignal,
+  ): Promise<{
+    content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>;
+    details?: unknown;
+    isError?: boolean;
+  }> {
+    const toolCallId = `extension-${name}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const decision = await this.checkToolBeforeCall(toolCallId, name, params);
+    if (decision.block) {
+      return {
+        content: [{ type: "text", text: decision.reason ?? `Tool ${name} is blocked` }],
+        isError: true,
+      };
+    }
+    const result = await this.executeTool(name, params, {
+      toolCallId,
+      session: this.getToolExecutionSession(),
+      signal: signal ?? this.context.session.signal,
+      reportProgress: () => {},
+    });
+    let finalResult = result;
+    await this.runToolAfterHandlers(toolCallId, name, params, result, (next) => {
+      finalResult = next as typeof result;
+    });
+    return finalResult;
   }
 
   async checkToolBeforeCall(

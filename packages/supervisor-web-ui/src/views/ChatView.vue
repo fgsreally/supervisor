@@ -43,11 +43,13 @@
           </button>
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
           <SessionTimerStrip :timers="sessionTimers" />
+          <SessionBashPopover :session-id="session.id" />
           <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
         </div>
         <div class="mobile-session-actions">
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
           <SessionTimerStrip :timers="sessionTimers" />
+          <SessionBashPopover :session-id="session.id" />
           <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
           <button
             class="chat-header-action"
@@ -345,6 +347,7 @@ import ChatSearchBar from "../components/chat/ChatSearchBar.vue";
 import ChatMessageList from "../components/chat/ChatMessageList.vue";
 import TaskWorkspacePanel from "../components/chat/TaskWorkspacePanel.vue";
 import SessionTimerStrip, { type SessionTimerView } from "../components/chat/SessionTimerStrip.vue";
+import SessionBashPopover from "../components/chat/SessionBashPopover.vue";
 import SessionTodoPopover from "../components/chat/SessionTodoPopover.vue";
 import SessionChangesPopover, {
   type SessionChangedFileView,
@@ -994,8 +997,8 @@ function openToolDetail(
   resultContent?: Array<{ type: string; text: string }>,
 ) {
   const detail = buildToolModal(toolName, callArgs, resultContent);
-  if (toolName === "eval" || toolName === "bash") {
-    toolPanel.value = { ...detail, terminal: toolName };
+  if (toolName === "eval" || toolName === "bash" || toolName === "PersistentBash") {
+    toolPanel.value = { ...detail, terminal: toolName === "eval" ? "eval" : "bash" };
   } else toolModal.value = detail;
 }
 

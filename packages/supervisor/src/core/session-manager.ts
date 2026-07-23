@@ -28,6 +28,14 @@ import { getDefaultCwd } from "../config/default-cwd.js";
 import { initializeResourceCatalog } from "../resources/catalog-sync.js";
 import { ExtensionModuleRegistry } from "../extension/registry.js";
 import { ResourceManager } from "../resources/resource-manager.js";
+import {
+  ensureAgentBuiltinExtensionBindings,
+  ensureBuiltinExtensionResources,
+} from "../extension/builtin/ensure.js";
+import {
+  BUILTIN_EXTENSIONS,
+  isBuiltinExtensionResource,
+} from "../extension/builtin/catalog.js";
 import { JobManager } from "./jobs.js";
 import {
   executeTaskSlashCommand,
@@ -339,6 +347,7 @@ export class SessionManager {
   async ensureResourceCatalog(): Promise<void> {
     if (this.resourcesInitialized) return;
     initializeResourceCatalog(this.db, this.resourceHandlers.values());
+    ensureBuiltinExtensionResources(this.db);
     await this.extensionRegistry.refresh(this.db);
     this.resourcesInitialized = true;
   }
@@ -1557,7 +1566,75 @@ export class SessionManager {
       const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
       writeAgentHomeSystemPrompt(homeDir, options.systemMd);
     }
+    ensureBuiltinExtensionResources(this.db);
+    ensureAgentBuiltinExtensionBindings(this.db, agent.id);
     return this.enrichAgentWithSystemMd(agent);
+  }
+
+  /** Unified extension list for Agent management UI (builtins + user bindings). */
+  listAgentExtensions(agentId: number): Array<{
+    slug: string;
+    name: string;
+    description: string | null;
+    builtin: boolean;
+    enabled: boolean;
+    resourceId: number;
+    bindingId: number;
+  }> {
+    if (!this.db.getAgent(agentId)) throw new Error(`Agent ${agentId} not found`);
+    ensureAgentBuiltinExtensionBindings(this.db, agentId);
+    const bindings = this.db.listAgentResourceBindings(agentId, {
+      kind: "extension",
+      enabledOnly: false,
+    });
+    const bySlug = new Map(
+      bindings
+        .filter((b) => b.resource)
+        .map((b) => [b.resource!.slug, b] as const),
+    );
+    const rows: Array<{
+      slug: string;
+      name: string;
+      description: string | null;
+      builtin: boolean;
+      enabled: boolean;
+      resourceId: number;
+      bindingId: number;
+    }> = [];
+
+    for (const spec of BUILTIN_EXTENSIONS) {
+      const binding = bySlug.get(spec.slug);
+      if (!binding?.resource) continue;
+      rows.push({
+        slug: spec.slug,
+        name: spec.name,
+        description: spec.description,
+        builtin: true,
+        enabled: binding.enabled,
+        resourceId: binding.resourceId,
+        bindingId: binding.id,
+      });
+      bySlug.delete(spec.slug);
+    }
+
+    for (const binding of bySlug.values()) {
+      const resource = binding.resource!;
+      if (isBuiltinExtensionResource(resource.meta)) continue;
+      rows.push({
+        slug: resource.slug,
+        name: resource.name ?? resource.slug,
+        description: resource.description,
+        builtin: false,
+        enabled: binding.enabled,
+        resourceId: binding.resourceId,
+        bindingId: binding.id,
+      });
+    }
+    return rows;
+  }
+
+  setAgentExtensionEnabled(agentId: number, resourceId: number, enabled: boolean) {
+    return this.resourceManager.setResourceEnabled(agentId, resourceId, enabled);
   }
 
   updateAgent(id: number, patch: Parameters<SupervisorDb["updateAgent"]>[1]): AgentWithSystemMd {

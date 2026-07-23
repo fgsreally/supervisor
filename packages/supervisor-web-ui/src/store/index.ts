@@ -616,6 +616,36 @@ export const useAgentStore = defineStore("agent", () => {
     }
   }
 
+  async function unbindAgentResource(id: string, resourceId: number) {
+    root.clearError();
+    try {
+      return await api.unbindCatalogResourceFromAgent(id, resourceId);
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to unbind resource");
+      throw err;
+    }
+  }
+
+  async function fetchAgentExtensions(id: string) {
+    root.clearError();
+    try {
+      return await api.listAgentExtensions(id);
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to fetch extensions");
+      throw err;
+    }
+  }
+
+  async function setAgentExtensionEnabled(id: string, resourceId: number, enabled: boolean) {
+    root.clearError();
+    try {
+      return await api.setAgentExtensionEnabled(id, resourceId, enabled);
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to update extension");
+      throw err;
+    }
+  }
+
   function setCurrentAgent(id: string | null) {
     currentAgentId.value = id;
   }
@@ -637,6 +667,9 @@ export const useAgentStore = defineStore("agent", () => {
     fetchAgentSystemMd,
     updateAgentSystemMd,
     bindAgentResource,
+    unbindAgentResource,
+    fetchAgentExtensions,
+    setAgentExtensionEnabled,
     setCurrentAgent,
   };
 });

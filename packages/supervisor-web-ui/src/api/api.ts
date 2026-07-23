@@ -1718,12 +1718,43 @@ export async function unbindCatalogResourceFromAgent(
   return deleteRequest<{ ok: boolean }>(`/agents/${agentId}/resources/${resourceId}`);
 }
 
+export interface AgentExtensionInfo {
+  slug: string;
+  name: string;
+  description: string | null;
+  builtin: boolean;
+  enabled: boolean;
+  resourceId: number;
+  bindingId: number;
+}
+
+/** List agent extensions (shipped builtins + user bindings) with enabled flags. */
+export async function listAgentExtensions(agentId: string): Promise<AgentExtensionInfo[]> {
+  return fetchJson<AgentExtensionInfo[]>(`/agents/${agentId}/extensions`);
+}
+
+/** Enable or disable an extension binding (builtins included). */
+export async function setAgentExtensionEnabled(
+  agentId: string,
+  resourceId: number,
+  enabled: boolean,
+): Promise<{ ok: boolean; binding: AgentResourceBinding }> {
+  return patchJson<{ ok: boolean; binding: AgentResourceBinding }>(
+    `/agents/${agentId}/extensions/${resourceId}`,
+    { enabled },
+  );
+}
+
 /** List database resource bindings for an agent. */
 export async function listAgentResourceBindings(
   agentId: string,
   kind?: CatalogResourceKind,
+  options?: { includeDisabled?: boolean },
 ): Promise<AgentResourceBinding[]> {
-  const qs = kind ? `?kind=${encodeURIComponent(kind)}` : "";
+  const params = new URLSearchParams();
+  if (kind) params.set("kind", kind);
+  if (options?.includeDisabled) params.set("includeDisabled", "1");
+  const qs = params.toString() ? `?${params.toString()}` : "";
   return fetchJson<AgentResourceBinding[]>(`/agents/${agentId}/resource-bindings${qs}`);
 }
 

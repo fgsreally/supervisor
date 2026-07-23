@@ -79,16 +79,27 @@ export class SessionExtensionRuntime {
     });
   }
 
-  async loadBuiltinExtensions(): Promise<void> {
-    await this.loadExtension(evalExtension, "builtin:eval");
-    await this.loadExtension(taskManagementExtension, "builtin:task-management");
-    await this.loadExtension(toolLoopGuardExtension, "builtin:tool-loop-guard");
-    await this.loadExtension(timerExtension, "builtin:timer");
-    await this.loadExtension(persistentBashExtension, "builtin:persistent-bash");
-    await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");
-    await this.loadExtension(mcpExtension, "builtin:mcp");
-    await this.loadExtension(messageAssetsExtension, "builtin:message-assets");
-    if (this.context.session.isMain) {
+  async loadBuiltinExtensions(enabledSlugs?: ReadonlySet<string>): Promise<void> {
+    const allow = (slug: string) => enabledSlugs == null || enabledSlugs.has(slug);
+    if (allow("eval")) await this.loadExtension(evalExtension, "builtin:eval");
+    if (allow("task-management")) {
+      await this.loadExtension(taskManagementExtension, "builtin:task-management");
+    }
+    if (allow("tool-loop-guard")) {
+      await this.loadExtension(toolLoopGuardExtension, "builtin:tool-loop-guard");
+    }
+    if (allow("timer")) await this.loadExtension(timerExtension, "builtin:timer");
+    if (allow("persistent-bash")) {
+      await this.loadExtension(persistentBashExtension, "builtin:persistent-bash");
+    }
+    if (allow("skill")) {
+      await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");
+    }
+    if (allow("mcp")) await this.loadExtension(mcpExtension, "builtin:mcp");
+    if (allow("message-assets")) {
+      await this.loadExtension(messageAssetsExtension, "builtin:message-assets");
+    }
+    if (this.context.session.isMain && allow("subagent")) {
       await this.loadExtension(subagentExtension, "builtin:subagent");
     }
   }

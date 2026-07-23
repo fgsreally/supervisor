@@ -12,6 +12,12 @@ export {
   taskManagementExtension,
   timerExtension,
   toolLoopGuardExtension,
+  BUILTIN_EXTENSIONS,
+  BUILTIN_EXTENSION_SLUGS,
+  isBuiltinExtensionResource,
+  ensureAgentBuiltinExtensionBindings,
+  ensureBuiltinExtensionResources,
+  listEnabledBuiltinExtensionSlugs,
 } from "./builtin/index.js";
 
 /** Define and validate an extension. */

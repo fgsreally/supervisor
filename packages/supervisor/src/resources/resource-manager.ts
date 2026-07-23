@@ -59,8 +59,15 @@ export class ResourceManager {
     return this.deps.db.listResources(kind);
   }
 
-  listAgentBindings(agentId: number, kind?: ResourceKind): AgentResourceBinding[] {
-    return this.deps.db.listAgentResources(agentId, kind);
+  listAgentBindings(
+    agentId: number,
+    kind?: ResourceKind,
+    options?: { enabledOnly?: boolean },
+  ): AgentResourceBinding[] {
+    return this.deps.db.listAgentResourceBindings(agentId, {
+      kind,
+      enabledOnly: options?.enabledOnly,
+    });
   }
 
   async installResource(input: InstallResourceInput): Promise<InstallResourceResult> {
@@ -103,6 +110,9 @@ export class ResourceManager {
 
   async uninstallResource(kind: ResourceKind, slug: string): Promise<void> {
     const resource = this.deps.db.getResourceByKindSlug(kind, slug);
+    if (resource?.meta?.builtin === true) {
+      throw new Error(`Cannot uninstall built-in ${kind}/${slug}`);
+    }
     if (resource) {
       try {
         this.deps.db.deleteResource(resource.id);
@@ -124,9 +134,27 @@ export class ResourceManager {
       const identity = "kind" in input ? `${input.kind}/${input.slug}` : input.resourceId;
       throw new Error(`Resource not found: ${identity}`);
     }
+    if (resource.meta?.builtin === true && resource.kind === "extension") {
+      // Builtins are auto-bound; binding again just ensures the row (keep enabled).
+      return this.deps.db.ensureAgentResourceBinding(input.agentId, resource.id, {
+        enabled: true,
+        priority: input.priority,
+      });
+    }
     return this.deps.db.bindAgentResource(input.agentId, resource.id, {
       priority: input.priority,
     });
+  }
+
+  setResourceEnabled(
+    agentId: number,
+    resourceId: number,
+    enabled: boolean,
+  ): AgentResourceBinding {
+    assertAgentExists(this.deps.db, agentId);
+    const resource = this.deps.db.getResource(resourceId);
+    if (!resource) throw new Error(`Resource not found: ${resourceId}`);
+    return this.deps.db.setAgentResourceEnabled(agentId, resourceId, enabled);
   }
 
   async unbindResource(input: UnbindResourceInput): Promise<void> {
@@ -134,6 +162,9 @@ export class ResourceManager {
       "kind" in input
         ? this.deps.db.getResourceByKindSlug(input.kind, input.slug)
         : this.deps.db.getResource(input.resourceId);
+    if (resource?.meta?.builtin === true) {
+      throw new Error(`Cannot remove built-in extension "${resource.slug}" from an agent`);
+    }
     if ("kind" in input) {
       this.deps.db.unbindAgentResourceBySlug(input.agentId, input.kind, input.slug);
     } else {

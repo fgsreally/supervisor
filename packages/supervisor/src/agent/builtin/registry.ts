@@ -8,6 +8,10 @@ import type { SessionManager } from "../../core/session-manager.js";
 import { getGlobalSkillsDirectory } from "../skill-resource.js";
 import { loadPromptTemplate } from "../system-prompts.js";
 import { loadBuiltinAgentPrompt, loadPackagedAgentPrompt } from "./prompts.js";
+import {
+  ensureAgentBuiltinExtensionBindings,
+  ensureBuiltinExtensionResources,
+} from "../../extension/builtin/ensure.js";
 
 export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro", "coding"] as const;
 export type PackagedAgentKind = (typeof PACKAGED_AGENT_KINDS)[number];
@@ -132,6 +136,8 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
   const homeDir = getAgentHomeDir(agent.id);
   ensureAgentHome(agent.id, homeDir);
   writeAgentHomeSystemPrompt(homeDir, loadPackagedAgentPrompt(kind));
+  ensureBuiltinExtensionResources(db);
+  ensureAgentBuiltinExtensionBindings(db, agent.id);
   return agent.id;
 }
 
@@ -276,6 +282,8 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
     ensureAgentHome(agent.id, homeDir);
     writeAgentHomeSystemPrompt(homeDir, BUILTIN_ASSISTANT_PROMPT);
     installBuiltinAssistantSkill(db, agent.id);
+    ensureBuiltinExtensionResources(db);
+    ensureAgentBuiltinExtensionBindings(db, agent.id);
   }
 
   let sessionId = findBuiltinAssistantSessionId(db, agent.id);

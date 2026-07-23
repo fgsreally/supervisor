@@ -119,6 +119,12 @@
           </div>
         </template>
 
+        <AgentExtensionsPanel
+          v-else-if="rightTab === 'extensions'"
+          class="flex-1 min-h-0"
+          :agent-id="agentId"
+        />
+
         <AgentResourceBrowser v-else class="flex-1 min-h-0" :agent-id="agentId" :kind="rightTab" />
       </div>
 
@@ -142,6 +148,7 @@ import { ChevronLeft, ChevronRight } from "lucide-vue-next";
 import AgentConfigPanel from "../components/AgentConfigPanel.vue";
 import AgentSystemPromptPanel from "../components/AgentSystemPromptPanel.vue";
 import AgentResourceBrowser from "../components/AgentResourceBrowser.vue";
+import AgentExtensionsPanel from "../components/AgentExtensionsPanel.vue";
 import MobileResourceTabs from "../components/MobileResourceTabs.vue";
 import ProviderAvatar from "../components/ProviderAvatar.vue";
 import AgentAvatar from "../components/AgentAvatar.vue";

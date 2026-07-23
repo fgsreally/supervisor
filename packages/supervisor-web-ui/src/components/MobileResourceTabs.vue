@@ -21,6 +21,10 @@
       <AgentSystemPromptPanel :agent-id="agentId" />
     </div>
 
+    <div v-else-if="tab === 'extensions'" class="min-h-[20rem]">
+      <AgentExtensionsPanel :agent-id="agentId" />
+    </div>
+
     <div v-else-if="tab === 'skills'" class="px-4 py-3 space-y-4">
       <div
         v-for="skill in skillItems"
@@ -81,6 +85,7 @@
 import { computed, reactive, ref, watch } from "vue";
 import AgentConfigPanel from "./AgentConfigPanel.vue";
 import AgentSystemPromptPanel from "./AgentSystemPromptPanel.vue";
+import AgentExtensionsPanel from "./AgentExtensionsPanel.vue";
 import ResourceContentView from "./ResourceContentView.vue";
 import ResourceFileListItem from "./ResourceFileListItem.vue";
 import ResourceLayerBadge from "./ResourceLayerBadge.vue";

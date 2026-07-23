@@ -788,13 +788,15 @@ async function loadSessionMessages(sessionId: string) {
     : [];
 }
 
-function handleUiNotifyEvent(event: { type?: string; kind?: string; message?: string } | undefined) {
-  if (!event || event.type !== "ui_notify" || typeof event.message !== "string") return false;
+function handleUiNotifyEvent(event: { type?: string } | undefined) {
+  if (!event || event.type !== "ui_notify") return false;
+  const notify = event as { type: "ui_notify"; kind?: string; message?: string };
+  if (typeof notify.message !== "string") return false;
   const kind =
-    event.kind === "success" || event.kind === "info" || event.kind === "error"
-      ? event.kind
+    notify.kind === "success" || notify.kind === "info" || notify.kind === "error"
+      ? notify.kind
       : "error";
-  showUiMessage(event.message, kind);
+  showUiMessage(notify.message, kind);
   return true;
 }
 
@@ -1241,7 +1243,11 @@ function attachToRunningSession() {
       if (payload.type !== "agent" || !payload.event) return;
       if (handleUiNotifyEvent(payload.event)) return;
       if (payload.event.type === "shadow_suggestions") return;
-      applyAgentEventToChatEntries(chatEntries.value, assistantId, payload.event);
+      applyAgentEventToChatEntries(
+        chatEntries.value,
+        assistantId,
+        payload.event as import("@earendil-works/pi-agent-core").AgentEvent,
+      );
       void scrollToBottom();
       if (payload.event.type === "agent_end") {
         stopStreaming();
@@ -1288,7 +1294,11 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
       ) {
         activeTurn.value.assistantActivitySeen = true;
       }
-      applyAgentEventToChatEntries(chatEntries.value, assistantId, event);
+      applyAgentEventToChatEntries(
+        chatEntries.value,
+        assistantId,
+        event as import("@earendil-works/pi-agent-core").AgentEvent,
+      );
       void scrollToBottom();
     },
     (err) => {

@@ -22,6 +22,8 @@ import type { SQLiteSessionStorage } from "./session-storage.js";
 import { Context } from "../extension/runtime/index.js";
 import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
 import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
+import { BUILTIN_EXTENSION_SLUGS } from "../extension/builtin/catalog.js";
+import { listEnabledBuiltinExtensionSlugs } from "../extension/builtin/ensure.js";
 
 interface HarnessSessionTree {
   buildContext(): Promise<{ messages: AgentMessage[] }>;
@@ -139,9 +141,13 @@ export class SessionRuntime implements ManagedSessionRuntime {
     const context = new Context({ sessionManager: manager, db, sessionRuntime: this });
     const extension = new SessionExtensionHost(context);
     this._extension = extension;
-    await extension.initialize();
 
+    await manager.ensureResourceCatalog();
     const currentSession = this.getSession();
+    const isMainSession = currentSession?.parentId == null;
+    const enabledBuiltins = listEnabledBuiltinExtensionSlugs(db, agentId, { isMainSession });
+    await extension.initialize(enabledBuiltins);
+
     await extension.emit({
       type: "session.prepare",
       sessionId: this.id,
@@ -151,9 +157,10 @@ export class SessionRuntime implements ManagedSessionRuntime {
       agentDisplayName: agentName,
     } as any);
 
-    // Activate bound extensions (modules imported once at process level).
-    await manager.ensureResourceCatalog();
-    const extensionSlugs = db.listAgentResourceSlugs(agentId, "extension");
+    // User-installed extensions only (builtins load via initialize).
+    const extensionSlugs = db
+      .listAgentResourceSlugs(agentId, "extension")
+      .filter((slug) => !BUILTIN_EXTENSION_SLUGS.has(slug));
     const moduleErrors = await extension.loadModules(
       manager.getExtensionRegistry().getMany(extensionSlugs),
     );

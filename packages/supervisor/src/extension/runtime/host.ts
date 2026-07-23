@@ -47,8 +47,8 @@ export class SessionExtensionHost {
   }
 
   /** Activate built-in extensions after the session Context is fully constructed. */
-  async initialize(): Promise<void> {
-    await this.runtime.loadBuiltinExtensions();
+  async initialize(enabledBuiltinSlugs?: ReadonlySet<string>): Promise<void> {
+    await this.runtime.loadBuiltinExtensions(enabledBuiltinSlugs);
   }
 
   /** 合并 Harness 内置工具和扩展工具；同名时扩展工具覆盖内置工具。 */

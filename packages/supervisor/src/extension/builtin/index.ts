@@ -8,3 +8,15 @@ export { default as timerExtension } from "./timer/index.js";
 export { default as toolLoopGuardExtension } from "./tool-loop-guard/index.js";
 export { default as persistentBashExtension } from "./persistent-bash/index.js";
 export * as shadowExtension from "./shadow/index.js";
+export {
+  BUILTIN_EXTENSIONS,
+  BUILTIN_EXTENSION_SLUGS,
+  builtinExtensionSourcePath,
+  isBuiltinExtensionResource,
+  type BuiltinExtensionSpec,
+} from "./catalog.js";
+export {
+  ensureAgentBuiltinExtensionBindings,
+  ensureBuiltinExtensionResources,
+  listEnabledBuiltinExtensionSlugs,
+} from "./ensure.js";

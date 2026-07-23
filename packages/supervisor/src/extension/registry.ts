@@ -20,13 +20,15 @@ export class ExtensionModuleRegistry {
   async refresh(db: SupervisorDb): Promise<void> {
     this.modules.clear();
     for (const resource of db.listResources("extension")) {
+      if (resource.meta?.builtin === true) continue;
+      if (resource.sourcePath?.startsWith("builtin:")) continue;
       await this.loadResource(resource.slug, resource.sourcePath);
     }
   }
 
   async reload(db: SupervisorDb, slug: string): Promise<void> {
     const resource = db.getResourceByKindSlug("extension", slug);
-    if (!resource?.sourcePath) {
+    if (!resource?.sourcePath || resource.meta?.builtin === true) {
       this.modules.delete(slug);
       return;
     }

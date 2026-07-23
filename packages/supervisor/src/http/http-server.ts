@@ -2333,7 +2333,7 @@ export function createHttpServer(manager: SessionManager): Hono {
         kind && isResourceKind(kind)
           ? manager.resources.listResources(kind)
           : manager.resources.listResources();
-      return c.json(resources);
+      return c.json(resources.filter((item) => item.meta?.builtin !== true));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 500, message);
@@ -2433,14 +2433,53 @@ export function createHttpServer(manager: SessionManager): Hono {
       const agentId = parseIntegerId(c.req.param("id"));
       if (agentId === null) return jsonError(c, 400, "invalid agent id");
       const kind = c.req.query("kind");
+      const includeDisabled = c.req.query("includeDisabled") === "1" || c.req.query("all") === "1";
       const bindings = manager.resources.listAgentBindings(
         agentId,
         kind && isResourceKind(kind) ? kind : undefined,
+        { enabledOnly: !includeDisabled },
       );
       return c.json(bindings);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 500, message);
+    }
+  });
+
+  // GET /agents/:id/extensions — builtins + user extensions with enabled flags
+  app.get("/agents/:id/extensions", (c) => {
+    const agentId = parseIntegerId(c.req.param("id"));
+    if (agentId === null) return jsonError(c, 400, "invalid agent id");
+    try {
+      return c.json(manager.listAgentExtensions(agentId));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, message.includes("not found") ? 404 : 500, message);
+    }
+  });
+
+  // PATCH /agents/:id/extensions/:resourceId — enable/disable (allowed for built-in agents)
+  app.patch("/agents/:id/extensions/:resourceId", async (c) => {
+    const agentId = parseIntegerId(c.req.param("id"));
+    const resourceId = parseIntegerId(c.req.param("resourceId"));
+    if (agentId === null || resourceId === null) {
+      return jsonError(c, 400, "invalid agent id or resource id");
+    }
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object" || typeof (body as { enabled?: unknown }).enabled !== "boolean") {
+      return jsonError(c, 400, "enabled boolean required");
+    }
+    try {
+      if (!manager.getAgent(agentId)) return jsonError(c, 404, "agent not found");
+      const binding = manager.setAgentExtensionEnabled(
+        agentId,
+        resourceId,
+        (body as { enabled: boolean }).enabled,
+      );
+      return c.json({ ok: true, binding });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 400, message);
     }
   });
 
@@ -2482,10 +2521,11 @@ export function createHttpServer(manager: SessionManager): Hono {
 
   // ============ Extension Management (global catalog) ============
 
-  // GET /extensions — list extensions from resource catalog
+  // GET /extensions — list extensions from resource catalog (exclude shipped builtins)
   app.get("/extensions", (c) => {
     try {
-      return c.json(manager.resources.listResources("extension"));
+      const all = manager.resources.listResources("extension");
+      return c.json(all.filter((item) => item.meta?.builtin !== true));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 500, message);

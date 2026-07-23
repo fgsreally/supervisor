@@ -1505,6 +1505,50 @@ export class SupervisorDb {
     return this.rowToAgentResourceBinding(row);
   }
 
+  /** Insert binding if missing; never changes an existing enabled flag. */
+  ensureAgentResourceBinding(
+    agentId: number,
+    resourceId: number,
+    options?: { enabled?: boolean; priority?: number },
+  ): AgentResourceBinding {
+    const existing = this.getAgentResourceBinding(agentId, resourceId);
+    if (existing) return existing;
+    const now = Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO agent_resources (agent_id, resource_id, enabled, priority, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        agentId,
+        resourceId,
+        options?.enabled === false ? 0 : 1,
+        options?.priority ?? 0,
+        now,
+      );
+    return this.getAgentResourceBinding(agentId, resourceId)!;
+  }
+
+  getAgentResourceBinding(agentId: number, resourceId: number): AgentResourceBinding | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM agent_resources WHERE agent_id = ? AND resource_id = ?")
+      .get(agentId, resourceId) as AgentResourceRow | undefined;
+    return row ? this.rowToAgentResourceBinding(row, true) : undefined;
+  }
+
+  setAgentResourceEnabled(
+    agentId: number,
+    resourceId: number,
+    enabled: boolean,
+  ): AgentResourceBinding {
+    const existing = this.getAgentResourceBinding(agentId, resourceId);
+    if (!existing) throw new Error(`Binding not found for agent ${agentId} resource ${resourceId}`);
+    this.db
+      .prepare("UPDATE agent_resources SET enabled = ? WHERE agent_id = ? AND resource_id = ?")
+      .run(enabled ? 1 : 0, agentId, resourceId);
+    return this.getAgentResourceBinding(agentId, resourceId)!;
+  }
+
   unbindAgentResource(agentId: number, resourceId: number): void {
     this.db
       .prepare("DELETE FROM agent_resources WHERE agent_id = ? AND resource_id = ?")
@@ -1634,14 +1678,25 @@ export class SupervisorDb {
   }
 
   listAgentResources(agentId: number, kind?: ResourceKind): AgentResourceBinding[] {
+    return this.listAgentResourceBindings(agentId, { kind, enabledOnly: true });
+  }
+
+  /** List bindings; by default only enabled. Pass enabledOnly:false for management UIs. */
+  listAgentResourceBindings(
+    agentId: number,
+    options?: { kind?: ResourceKind; enabledOnly?: boolean },
+  ): AgentResourceBinding[] {
+    const enabledOnly = options?.enabledOnly !== false;
+    const kind = options?.kind;
+    const enabledClause = enabledOnly ? "AND ar.enabled = 1" : "";
     const sql = kind
       ? `SELECT ar.* FROM agent_resources ar
          INNER JOIN resources r ON r.id = ar.resource_id
-         WHERE ar.agent_id = ? AND r.kind = ? AND ar.enabled = 1
+         WHERE ar.agent_id = ? AND r.kind = ? ${enabledClause}
          ORDER BY ar.priority DESC, r.slug`
       : `SELECT ar.* FROM agent_resources ar
          INNER JOIN resources r ON r.id = ar.resource_id
-         WHERE ar.agent_id = ? AND ar.enabled = 1
+         WHERE ar.agent_id = ? ${enabledClause}
          ORDER BY r.kind, ar.priority DESC, r.slug`;
     const rows = kind
       ? (this.db.prepare(sql).all(agentId, kind) as AgentResourceRow[])

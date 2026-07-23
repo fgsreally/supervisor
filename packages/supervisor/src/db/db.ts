@@ -449,6 +449,21 @@ export class SupervisorDb {
       .run(branch, Date.now(), id);
   }
 
+  updateProject(
+    id: number,
+    patch: { name?: string; meta?: Record<string, unknown> },
+  ): Project {
+    const project = this.getProject(id);
+    if (!project) throw new Error(`Project ${id} not found`);
+    const name =
+      typeof patch.name === "string" && patch.name.trim() ? patch.name.trim() : project.name;
+    const meta = patch.meta ? { ...project.meta, ...patch.meta } : project.meta;
+    this.db
+      .prepare("UPDATE projects SET name = ?, meta = ?, updated_at = ? WHERE id = ?")
+      .run(name, JSON.stringify(meta), Date.now(), id);
+    return this.getProject(id)!;
+  }
+
   getProject(id: number): Project | undefined {
     const row = this.db.prepare("SELECT * FROM projects WHERE id = ?").get(id) as
       | ProjectRow

@@ -1,24 +1,26 @@
 <template>
   <div
-    class="flex justify-end items-start gap-2"
+    class="user-message-row flex justify-end items-start gap-2"
     @pointerdown="startLongPress"
     @pointerup="cancelLongPress"
     @pointercancel="cancelLongPress"
     @pointermove="onPointerMove"
-    @contextmenu.prevent="openMessageActions"
+    @contextmenu.prevent="onContextMenu"
   >
-    <button
-      v-if="rewindable"
-      type="button"
-      class="message-rewind"
-      title="回到这一步"
-      aria-label="回到这一步"
-      @click="emit('rewind')"
-    >
-      <RotateCcw class="h-3.5 w-3.5" />
-    </button>
     <div class="max-w-[75%] flex flex-col items-end min-w-0">
-      <span class="chat-msg-time chat-msg-time--user">{{ timeLabel }}</span>
+      <div class="user-message-meta">
+        <button
+          v-if="rewindable"
+          type="button"
+          class="message-rewind"
+          title="回到这一步"
+          aria-label="回到这一步"
+          @click="emit('rewind')"
+        >
+          <Undo2 class="h-3 w-3" />
+        </button>
+        <span class="chat-msg-time chat-msg-time--user">{{ timeLabel }}</span>
+      </div>
       <span v-if="deliveryState" class="chat-msg-delivery" :class="deliveryState">
         {{ deliveryState === "queued" ? "排队中" : "发送失败" }}
       </span>
@@ -52,29 +54,15 @@
       </div>
     </div>
     <div class="chat-avatar chat-avatar--user shrink-0">U</div>
-    <Teleport to="body">
-      <Transition name="message-actions">
-        <div
-          v-if="messageActionsOpen"
-          class="message-actions-backdrop"
-          @click.self="messageActionsOpen = false"
-        >
-          <section class="message-actions-sheet">
-            <button type="button" @click="confirmRewind">回到这里</button>
-            <button type="button" @click="messageActionsOpen = false">取消</button>
-          </section>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, onBeforeUnmount } from "vue";
 import ChatFileBubble from "../ChatFileBubble.vue";
 import ChatRichText from "../ChatRichText.vue";
 import type { ChatUserFileAttachment } from "@/types/chat-entry";
-import { FileText, Plug, RotateCcw, Sparkles, Terminal } from "lucide-vue-next";
+import { FileText, Plug, Sparkles, Terminal, Undo2 } from "lucide-vue-next";
 
 const props = defineProps<{
   text: string;
@@ -86,8 +74,11 @@ const props = defineProps<{
   rewindable?: boolean;
 }>();
 
-const emit = defineEmits<{ rewind: [] }>();
-const messageActionsOpen = ref(false);
+const emit = defineEmits<{
+  rewind: [];
+  "open-actions": [payload: { mode: "menu" | "sheet"; x: number; y: number }];
+}>();
+
 let longPressTimer: ReturnType<typeof setTimeout> | undefined;
 let longPressStart = { x: 0, y: 0 };
 
@@ -96,10 +87,12 @@ const slashCommand = computed(() => slashParts.value?.[1]?.slice(1) ?? "");
 const slashRemainder = computed(() => slashParts.value?.[2]?.trim() ?? "");
 
 function startLongPress(event: PointerEvent) {
-  if (!props.rewindable || event.pointerType === "mouse") return;
+  if (event.pointerType === "mouse") return;
   cancelLongPress();
   longPressStart = { x: event.clientX, y: event.clientY };
-  longPressTimer = setTimeout(openMessageActions, 520);
+  longPressTimer = setTimeout(() => {
+    emit("open-actions", { mode: "sheet", x: event.clientX, y: event.clientY });
+  }, 520);
 }
 
 function onPointerMove(event: PointerEvent) {
@@ -116,106 +109,73 @@ function cancelLongPress() {
   longPressTimer = undefined;
 }
 
-function openMessageActions() {
+function onContextMenu(event: MouseEvent) {
   cancelLongPress();
-  if (props.rewindable) messageActionsOpen.value = true;
-}
-
-function confirmRewind() {
-  messageActionsOpen.value = false;
-  emit("rewind");
+  emit("open-actions", { mode: "menu", x: event.clientX, y: event.clientY });
 }
 
 onBeforeUnmount(cancelLongPress);
 </script>
 
 <style scoped>
+.user-message-meta {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin: 0 2px 4px 0;
+}
+
 .chat-msg-time {
   font-size: 11px;
   line-height: 1;
   color: var(--app-text-muted);
   opacity: 0.85;
   white-space: nowrap;
-  margin-bottom: 4px;
 }
 
 .message-rewind {
-  display: inline-grid;
-  width: 26px;
-  height: 26px;
-  margin-top: 17px;
-  flex: none;
-  place-items: center;
-  border-radius: 6px;
+  position: absolute;
+  right: calc(100% + 6px);
+  top: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--app-text-muted);
   opacity: 0;
-  transition:
-    opacity 0.15s ease,
-    color 0.15s ease,
-    background-color 0.15s ease;
+  pointer-events: none;
+  transform: translateY(-50%);
+  cursor: pointer;
+  transition: opacity 0.12s ease;
 }
 
-:global(.chat-row:hover) .message-rewind,
-.message-rewind:focus-visible {
-  opacity: 1;
+@media (hover: hover) and (pointer: fine) {
+  .user-message-row:hover .message-rewind,
+  .message-rewind:focus-visible {
+    opacity: 0.45;
+    pointer-events: auto;
+  }
+
+  .message-rewind:hover,
+  .message-rewind:focus-visible {
+    opacity: 0.75;
+    color: var(--app-text-secondary);
+    background: transparent;
+    outline: none;
+  }
 }
 
-.message-rewind:hover,
-.message-rewind:focus-visible {
-  color: #07a65a;
-  background: var(--app-hover);
-  outline: none;
-}
-
-@media (hover: none) {
+@media (hover: none), (pointer: coarse) {
   .message-rewind {
     display: none;
   }
 }
 
-.message-actions-backdrop {
-  position: fixed;
-  z-index: 110;
-  inset: 0;
-  display: flex;
-  align-items: flex-end;
-  background: rgb(0 0 0 / 30%);
-}
-.message-actions-sheet {
-  width: 100%;
-  padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
-}
-.message-actions-sheet button {
-  width: 100%;
-  padding: 13px;
-  border-radius: 12px;
-  color: var(--app-text-primary);
-  background: var(--app-popup-bg);
-  font-size: 15px;
-}
-.message-actions-sheet button + button {
-  margin-top: 8px;
-}
-.message-actions-enter-active,
-.message-actions-leave-active {
-  transition: opacity 0.2s ease;
-}
-.message-actions-enter-active .message-actions-sheet,
-.message-actions-leave-active .message-actions-sheet {
-  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.message-actions-enter-from,
-.message-actions-leave-to {
-  opacity: 0;
-}
-.message-actions-enter-from .message-actions-sheet,
-.message-actions-leave-to .message-actions-sheet {
-  transform: translateY(100%);
-}
-
 .chat-msg-time--user {
   align-self: flex-end;
-  margin-right: 2px;
 }
 
 .chat-msg-delivery {
@@ -244,14 +204,6 @@ onBeforeUnmount(cancelLongPress);
   color: #075f32;
   background: rgb(255 255 255 / 72%);
   font-size: 12px;
-  transition:
-    background-color 0.15s ease,
-    box-shadow 0.15s ease;
-}
-
-.slash-command-tag:hover {
-  background: rgb(255 255 255 / 92%);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
 }
 
 .slash-command-tag--skill {

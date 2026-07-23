@@ -35,12 +35,14 @@
 
     <div class="flex items-center gap-3 relative">
       <div class="relative shrink-0">
-        <div
-          class="rounded-md flex items-center justify-center text-white font-medium shadow-sm"
-          :style="avatarStyle"
-        >
-          {{ avatar.text }}
-        </div>
+        <SessionAvatar
+          :session-id="session.id"
+          :name="session.meta.name"
+          :agent-id="session.agentId"
+          :avatar="session.meta.avatar"
+          :agent-icon="agentIcon"
+          :size="AVATAR_PX"
+        />
         <div
           class="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full border-2 session-status-ring"
           :class="statusDotClass"
@@ -80,7 +82,8 @@ import { branchDotColor } from "../utils/session-branch";
 import { formatListTime } from "../utils/format-time";
 import { parseWorkflowState } from "../utils/workflow";
 import WorkflowStageTag from "./WorkflowStageTag.vue";
-import { sessionAvatar } from "@/utils/session-avatar";
+import SessionAvatar from "./SessionAvatar.vue";
+import { useAgentStore } from "@/store";
 
 const props = defineProps<{
   session: UISession;
@@ -95,6 +98,13 @@ const emit = defineEmits<{
   select: [id: string];
   "context-menu": [payload: { x: number; y: number }];
 }>();
+
+const agentStore = useAgentStore();
+const agentIcon = computed(() => {
+  const id = props.session.agentId;
+  if (!id) return null;
+  return agentStore.getAgentById(id)?.icon ?? null;
+});
 
 const LONG_PRESS_MS = 500;
 let longPressTimer: ReturnType<typeof setTimeout> | null = null;
@@ -145,9 +155,6 @@ const TREE_STEP_PX = 18;
 const AVATAR_PX = 40;
 const ROW_PAD_Y_PX = 12;
 
-const avatar = computed(() =>
-  sessionAvatar(props.session.id, props.session.meta.name, props.session.meta.avatar),
-);
 const workflow = computed(() => parseWorkflowState(props.session.meta));
 
 const depth = computed(() => props.depth ?? 0);
@@ -193,13 +200,6 @@ const preview = computed(() =>
     ? (props.session.meta.description ?? props.session.id)
     : props.session.lastMessagePreview,
 );
-
-const avatarStyle = computed(() => ({
-  width: `${AVATAR_PX}px`,
-  height: `${AVATAR_PX}px`,
-  fontSize: "16px",
-  backgroundColor: avatar.value.color,
-}));
 
 const statusDotClass = computed(() => {
   switch (props.session.status) {

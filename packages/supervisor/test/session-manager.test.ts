@@ -469,4 +469,53 @@ describe("supervisor: SessionManager", () => {
     expect(messages[0]?.source).toBe("sidecar-a");
     expect(messages[0]?.meta).toEqual({});
   });
+
+  it("fork() from a user message includes the following assistant turn", async () => {
+    const parent = await manager.spawn(SPAWN_OPTS);
+    const { SQLiteSessionStorage } = await import("../src/session-storage.js");
+    const storage = new SQLiteSessionStorage(db, parent.id);
+
+    const userId = await storage.createEntryId();
+    await storage.appendEntry({
+      id: userId,
+      parentId: null,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: { role: "user", content: "ask", timestamp: Date.now() },
+    });
+
+    const assistantId = await storage.createEntryId();
+    await storage.appendEntry({
+      id: assistantId,
+      parentId: userId,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "answer" }],
+        timestamp: Date.now(),
+      },
+    });
+
+    const nextUserId = await storage.createEntryId();
+    await storage.appendEntry({
+      id: nextUserId,
+      parentId: assistantId,
+      timestamp: new Date().toISOString(),
+      type: "message",
+      message: { role: "user", content: "later", timestamp: Date.now() },
+    });
+
+    const forkedFromUser = await manager.fork(parent.id, userId);
+    const fromUser = await manager.getSessionMessages(forkedFromUser.id);
+    expect(fromUser).toHaveLength(2);
+    expect(fromUser[0]?.message).toMatchObject({ role: "user", content: "ask" });
+    expect(fromUser[1]?.message).toMatchObject({ role: "assistant" });
+
+    const forkedFromAssistant = await manager.fork(parent.id, assistantId);
+    const fromAssistant = await manager.getSessionMessages(forkedFromAssistant.id);
+    expect(fromAssistant).toHaveLength(2);
+    expect(fromAssistant[0]?.message).toMatchObject({ role: "user", content: "ask" });
+    expect(fromAssistant[1]?.message).toMatchObject({ role: "assistant" });
+  });
 });

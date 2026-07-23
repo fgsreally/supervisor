@@ -40,6 +40,15 @@
         @transcript="appendTranscript"
         @voice-error="onVoiceError"
       />
+      <input
+        ref="imageInputRef"
+        type="file"
+        class="sr-only"
+        accept="image/*"
+        multiple
+        tabindex="-1"
+        @change="onImageInputChange"
+      />
     </div>
   </div>
 </template>
@@ -93,9 +102,10 @@ const workspaceFiles = ref<WorkspaceFileEntry[]>([]);
 const skills = ref<SkillAutocompleteEntry[]>([]);
 const prompts = ref<PromptAutocompleteEntry[]>([]);
 const customCommands = ref<api.SlashCommandInfo[]>([]);
+const imageInputRef = ref<HTMLInputElement | null>(null);
 const autocompleteCommands = computed(() =>
   customCommands.value.map((command) => ({
-    name: command.name,
+    name: command.name.replace(/^\//, ""),
     description: command.description,
     source:
       command.source === "mcp" || command.name.toLowerCase().startsWith("mcp")
@@ -188,16 +198,22 @@ async function refreshSessionCommands(force = false) {
         ...prompts.value.filter((item) => !commandPrompts.some((c) => c.name === item.name)),
         ...commandPrompts,
       ];
-      customCommands.value = commands.filter(
-        (command) => command.source !== "skill" && command.source !== "prompt",
-      );
+      customCommands.value = commands.filter((command) => {
+        const source = command.source ?? "custom";
+        return source !== "skill" && source !== "prompt";
+      });
       lastCommandRefresh = Date.now();
       if (commands.length === 0 && /(^|\s)\/[^\s]*$/.test(props.modelValue)) {
         if (commandRetryTimer) clearTimeout(commandRetryTimer);
         commandRetryTimer = setTimeout(() => void refreshSessionCommands(true), 750);
       }
-    } catch {
-      prompts.value = [];
+    } catch (error) {
+      if (/(^|\s)\/[^\s]*$/.test(props.modelValue)) {
+        showUiMessage(
+          error instanceof Error ? error.message : "斜杠命令列表加载失败",
+          "error",
+        );
+      }
     } finally {
       commandRefreshInFlight = null;
     }
@@ -235,8 +251,10 @@ function onToolbarAction(action: ChatToolbarAction) {
       composerRef.value?.insertTrigger("/");
       break;
     case "emoji":
-    case "screenshot":
       composerRef.value?.focus();
+      break;
+    case "upload-image":
+      imageInputRef.value?.click();
       break;
     case "btw":
       emit("btw");
@@ -282,6 +300,13 @@ function addPendingImage(file: File) {
     });
   };
   reader.readAsDataURL(file);
+}
+
+function onImageInputChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const files = Array.from(input.files ?? []);
+  for (const file of files) addPendingImage(file);
+  input.value = "";
 }
 
 function removePendingImage(id: string) {

@@ -1,10 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { getSupervisorHome } from "../utils/supervisor-home.js";
 
 /** Supervisor per-agent homes: ~/.pi/supervisor/agents */
 export function getSupervisorAgentsRoot(): string {
-  return join(homedir(), ".pi", "supervisor", "agents");
+  return join(getSupervisorHome(), "agents");
 }
 
 export function getAgentHomeDir(agentId: string | number): string {

@@ -1,10 +1,31 @@
 <template>
-  <div class="flex justify-start items-start gap-2">
-    <div class="chat-avatar chat-avatar--agent shrink-0" :style="{ backgroundColor: avatarColor }">
+  <div
+    class="assistant-message-row flex justify-start items-start gap-2"
+    @pointerdown="startLongPress"
+    @pointerup="cancelLongPress"
+    @pointercancel="cancelLongPress"
+    @pointermove="onPointerMove"
+    @contextmenu.prevent="onContextMenu"
+  >
+    <AgentAvatar
+      v-if="avatarIcon"
+      class="chat-avatar shrink-0"
+      :agent-id="avatarAgentId || sessionId"
+      :agent-name="avatarLabel || 'A'"
+      :icon="avatarIcon"
+    />
+    <div
+      v-else
+      class="chat-avatar chat-avatar--agent shrink-0"
+      :style="{ backgroundColor: avatarColor }"
+    >
       {{ avatarLabel }}
     </div>
     <div class="max-w-[75%] flex flex-col items-start min-w-0">
-      <span class="chat-msg-time chat-msg-time--agent">{{ timeLabel }}</span>
+      <span class="chat-msg-time chat-msg-time--agent">
+        {{ timeLabel }}
+        <span v-if="durationLabel" class="chat-msg-duration">· {{ durationLabel }}</span>
+      </span>
       <div
         class="relative px-3.5 py-2.5 text-[14px] w-full chat-bubble"
         :style="{
@@ -56,12 +77,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount } from "vue";
 import { Loader2 } from "lucide-vue-next";
 import type { DisplayGroup, RenderPiece } from "@/utils/flatten-messages";
 import MarkdownContent from "../MarkdownContent.vue";
 import ThinkingBlock from "../ThinkingBlock.vue";
 import ToolStepRenderer from "./ToolStepRenderer.vue";
+import AgentAvatar from "../AgentAvatar.vue";
 
 const props = defineProps<{
   sessionId: string;
@@ -70,9 +92,12 @@ const props = defineProps<{
   isStreaming: boolean;
   streamingGroupId: string | null;
   timeLabel: string;
+  durationLabel?: string | null;
   searchHit?: boolean;
   avatarLabel?: string;
   avatarColor?: string;
+  avatarIcon?: string | null;
+  avatarAgentId?: string;
 }>();
 
 const emit = defineEmits<{
@@ -84,7 +109,11 @@ const emit = defineEmits<{
   "open-bash": [command: string, result?: Array<{ type: string; text: string }>, intent?: string];
   navigate: [sessionId: string];
   answered: [];
+  "open-actions": [payload: { mode: "menu" | "sheet"; x: number; y: number }];
 }>();
+
+let longPressTimer: ReturnType<typeof setTimeout> | undefined;
+let longPressStart = { x: 0, y: 0 };
 
 const displayPieces = computed(() =>
   props.group.pieces
@@ -121,6 +150,36 @@ const showThinking = computed(() => {
   if (lastPiece.kind === "bash" || lastPiece.kind === "toolStep") return !!lastPiece.result;
   return false;
 });
+
+function startLongPress(event: PointerEvent) {
+  if (event.pointerType === "mouse") return;
+  cancelLongPress();
+  longPressStart = { x: event.clientX, y: event.clientY };
+  longPressTimer = setTimeout(() => {
+    emit("open-actions", { mode: "sheet", x: event.clientX, y: event.clientY });
+  }, 520);
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (
+    Math.abs(event.clientX - longPressStart.x) > 10 ||
+    Math.abs(event.clientY - longPressStart.y) > 10
+  ) {
+    cancelLongPress();
+  }
+}
+
+function cancelLongPress() {
+  if (longPressTimer) clearTimeout(longPressTimer);
+  longPressTimer = undefined;
+}
+
+function onContextMenu(event: MouseEvent) {
+  cancelLongPress();
+  emit("open-actions", { mode: "menu", x: event.clientX, y: event.clientY });
+}
+
+onBeforeUnmount(cancelLongPress);
 </script>
 
 <style scoped>
@@ -136,6 +195,17 @@ const showThinking = computed(() => {
 .chat-msg-time--agent {
   align-self: flex-start;
   margin-left: 2px;
+}
+
+.chat-msg-duration {
+  opacity: 0;
+  margin-left: 2px;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+
+.assistant-message-row:hover .chat-msg-duration {
+  opacity: 0.95;
 }
 
 .chat-avatar {

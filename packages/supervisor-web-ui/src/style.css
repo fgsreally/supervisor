@@ -34,30 +34,31 @@
   color-scheme: light;
 
   --app-shell-bg: #f3f3f3;
-  --app-nav-bg: #dcdce1;
-  --app-nav-border: #dcdce1;
+  --app-nav-bg: #d6d6da;
+  --app-nav-border: #d6d6da;
   --app-nav-icon: #6b6b6b;
   --app-nav-icon-active: #07c160;
-  --app-nav-hover: #d3d3d8;
-  --app-nav-active-bg: #d3d3d8;
+  --app-nav-hover: #cbcbd0;
+  --app-nav-active-bg: #cbcbd0;
 
-  --app-list-bg: #f0f0f1;
-  --app-list-header-bg: #f0f0f1;
-  --app-list-search-bg: #dcdce1;
+  /* Sidebar denser gray; content sits next to it, not near-white. */
+  --app-list-bg: #dcdce1;
+  --app-list-header-bg: #dcdce1;
+  --app-list-search-bg: #d0d0d6;
   --app-list-search-focus-bg: #ffffff;
-  --app-list-item-hover: #dcdce1;
-  --app-list-item-child-hover: #dcdce1;
-  --app-list-item-active: #c9c9cb;
+  --app-list-item-hover: #d0d0d6;
+  --app-list-item-child-hover: #d0d0d6;
+  --app-list-item-active: #c4c4c8;
   --app-list-item-active-text: #191919;
   --app-list-item-active-secondary: #666666;
-  --app-list-section-bg: #f0f0f1;
+  --app-list-section-bg: #dcdce1;
   --app-monochrome-icon-filter: none;
 
-  --app-chat-bg: #fafafa;
-  --app-chat-header-bg: #fafafa;
-  --app-chat-message-bg: #fafafa;
-  --app-chat-message-inherited: #f0f0f0;
-  --app-chat-input-island-border: #e3e3e3;
+  --app-chat-bg: #e3e3e5;
+  --app-chat-header-bg: #e3e3e5;
+  --app-chat-message-bg: #e3e3e5;
+  --app-chat-message-inherited: #dcdce1;
+  --app-chat-input-island-border: #d0d0d4;
 
   --app-text-primary: #191919;
   --app-text-secondary: #888888;
@@ -152,8 +153,8 @@
   --app-nav-hover: #2c2c2c;
   --app-nav-active-bg: #333333;
 
-  --app-list-bg: #222222;
-  --app-list-header-bg: #222222;
+  --app-list-bg: #262626;
+  --app-list-header-bg: #262626;
   --app-list-search-bg: #333333;
   --app-list-search-focus-bg: #3a3a3a;
   --app-list-item-hover: #333333;
@@ -161,13 +162,14 @@
   --app-list-item-active: #19ac70;
   --app-list-item-active-text: #ffffff;
   --app-list-item-active-secondary: #c8c8c8;
-  --app-list-section-bg: #222222;
+  --app-list-section-bg: #262626;
   --app-monochrome-icon-filter: invert(1);
 
-  --app-chat-bg: #191919;
-  --app-chat-header-bg: #191919;
-  --app-chat-message-bg: #191919;
-  --app-chat-message-inherited: #222222;
+  /* Content area stays close to sidebar, not much darker. */
+  --app-chat-bg: #232323;
+  --app-chat-header-bg: #232323;
+  --app-chat-message-bg: #232323;
+  --app-chat-message-inherited: #262626;
   --app-chat-input-island-border: #383838;
   --app-toolbar-icon: #d0d0d0;
 
@@ -255,15 +257,15 @@
 @media (max-width: 767px) {
   :root,
   [data-theme="light"] {
-    --app-list-bg: #fafafa;
-    --app-list-header-bg: #fafafa;
-    --app-list-section-bg: #fafafa;
+    --app-list-bg: #e3e3e5;
+    --app-list-header-bg: #e3e3e5;
+    --app-list-section-bg: #e3e3e5;
   }
 
   [data-theme="dark"] {
-    --app-list-bg: #191919;
-    --app-list-header-bg: #191919;
-    --app-list-section-bg: #191919;
+    --app-list-bg: #232323;
+    --app-list-header-bg: #232323;
+    --app-list-section-bg: #232323;
   }
 }
 
@@ -292,3 +294,139 @@ body,
 .custom-scrollbar::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Chat page enter/leave — Vue <Transition> only (no v-motion mix). */
+.chat-panel-host {
+  display: flex;
+  flex: 0 0 auto;
+  max-width: min(48vw, 44rem);
+  min-width: 22rem;
+  overflow: hidden;
+  will-change: max-width, min-width, opacity;
+}
+
+.chat-panel-host__body {
+  flex: 0 0 auto;
+  width: min(48vw, 44rem);
+  min-width: 22rem;
+  max-width: min(48vw, 44rem);
+  height: 100%;
+  will-change: transform;
+}
+
+.chat-panel-enter-active,
+.chat-panel-leave-active {
+  transition:
+    max-width 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    min-width 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.28s ease;
+}
+
+.chat-panel-enter-active .chat-panel-host__body,
+.chat-panel-leave-active .chat-panel-host__body {
+  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chat-panel-enter-from,
+.chat-panel-leave-to {
+  max-width: 0 !important;
+  min-width: 0 !important;
+  opacity: 0;
+}
+
+.chat-panel-enter-from .chat-panel-host__body,
+.chat-panel-leave-to .chat-panel-host__body {
+  transform: translateX(18%);
+}
+
+.chat-overlay-enter-active {
+  transition: opacity 0.18s ease;
+}
+.chat-overlay-leave-active {
+  transition: opacity 0.14s ease;
+}
+.chat-overlay-enter-from,
+.chat-overlay-leave-to {
+  opacity: 0;
+}
+
+.chat-overlay-enter-active .ui-confirm,
+.chat-overlay-enter-active .model-picker-sheet {
+  transition:
+    opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chat-overlay-leave-active .ui-confirm,
+.chat-overlay-leave-active .model-picker-sheet {
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.chat-overlay-enter-from .ui-confirm,
+.chat-overlay-enter-from .model-picker-sheet,
+.chat-overlay-leave-to .ui-confirm,
+.chat-overlay-leave-to .model-picker-sheet {
+  opacity: 0;
+  transform: scale(0.96) translateY(6px);
+}
+
+.chat-sheet-enter-active {
+  transition: opacity 0.2s ease;
+}
+.chat-sheet-enter-active > *:last-child {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chat-sheet-leave-active {
+  transition: opacity 0.16s ease;
+}
+.chat-sheet-leave-active > *:last-child {
+  transition: transform 0.16s ease;
+}
+.chat-sheet-enter-from,
+.chat-sheet-leave-to {
+  opacity: 0;
+}
+.chat-sheet-enter-from > *:last-child,
+.chat-sheet-leave-to > *:last-child {
+  transform: translateY(56px);
+}
+
+@media (max-width: 767px) {
+  .chat-panel-host {
+    position: absolute;
+    z-index: 60;
+    inset: auto 0 0;
+    max-width: none;
+    min-width: 0;
+    width: 100%;
+    height: min(68%, 620px);
+  }
+
+  .chat-panel-host__body {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: 100%;
+  }
+
+  .chat-panel-enter-active,
+  .chat-panel-leave-active {
+    transition:
+      transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.24s ease;
+  }
+
+  .chat-panel-enter-from,
+  .chat-panel-leave-to {
+    max-width: none !important;
+    min-width: 0 !important;
+    opacity: 0;
+    transform: translateY(100%);
+  }
+
+  .chat-panel-enter-from .chat-panel-host__body,
+  .chat-panel-leave-to .chat-panel-host__body {
+    transform: none;
+  }
+}
+

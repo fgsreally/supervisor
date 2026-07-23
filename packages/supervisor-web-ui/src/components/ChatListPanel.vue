@@ -45,11 +45,19 @@
           :class="{ 'chat-search-result--active': activeId === result.session.id }"
           @click="emit('select', result.session.id)"
         >
-          <span
+          <SessionAvatar
             class="chat-search-result__avatar"
-            :style="{ backgroundColor: result.session.meta.avatar?.color ?? '#576b95' }"
-            >{{ result.session.meta.avatar?.text ?? result.session.meta.name.slice(0, 1) }}</span
-          >
+            :session-id="result.session.id"
+            :name="result.session.meta.name"
+            :agent-id="result.session.agentId"
+            :avatar="result.session.meta.avatar"
+            :agent-icon="
+              result.session.agentId
+                ? agentStore.getAgentById(result.session.agentId)?.icon
+                : null
+            "
+            :size="42"
+          />
           <span class="chat-search-result__body">
             <strong>{{ result.session.meta.name }}</strong>
             <small>{{ result.description }}</small>
@@ -83,11 +91,27 @@
               @click="toggleWorkspaceCollapse(group.workspace.id)"
             >
               <ChevronRight
-                class="w-4 h-4 transition-transform"
-                :class="{ 'rotate-90': !isWorkspaceCollapsed(group.workspace.id) }"
+                class="w-4 h-4 section-chevron"
+                :class="{ 'section-chevron--open': !isWorkspaceCollapsed(group.workspace.id) }"
               />
             </button>
             <span class="list-section-title flex-1 truncate">{{ group.workspace.name }}</span>
+            <button
+              type="button"
+              class="section-action-btn"
+              title="Git"
+              @click="openProjectGit(group.workspace.id, $event)"
+            >
+              <GitBranch class="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              class="section-action-btn"
+              title="项目设置"
+              @click="openProjectSettings(group.workspace.id)"
+            >
+              <Settings class="w-4 h-4" />
+            </button>
             <button
               type="button"
               class="section-action-btn"
@@ -98,28 +122,33 @@
             </button>
           </div>
 
-          <template v-if="!isWorkspaceCollapsed(group.workspace.id)">
-            <div v-for="root in group.sessions" :key="root.id">
-              <SessionListItem
-                :session="root"
-                :active="activeId === root.id"
-                mode="chat"
-                :depth="0"
-                @select="$emit('select', $event)"
-                @context-menu="openContextMenu(root.id, $event)"
-              />
-              <SessionListSubtree
-                v-if="childrenOf(root.id).length"
-                :parent-id="root.id"
-                :depth="1"
-                :active-id="activeId"
-                :sessions="filtered"
-                :ancestor-open-depths="[]"
-                @select="$emit('select', $event)"
-                @context-menu="openContextMenu($event.sessionId, $event)"
-              />
+          <div
+            class="workspace-collapse"
+            :class="{ 'workspace-collapse--open': !isWorkspaceCollapsed(group.workspace.id) }"
+          >
+            <div class="workspace-collapse__inner">
+              <div v-for="root in group.sessions" :key="root.id" class="workspace-session-block">
+                <SessionListItem
+                  :session="root"
+                  :active="activeId === root.id"
+                  mode="chat"
+                  :depth="0"
+                  @select="$emit('select', $event)"
+                  @context-menu="openContextMenu(root.id, $event)"
+                />
+                <SessionListSubtree
+                  v-if="childrenOf(root.id).length"
+                  :parent-id="root.id"
+                  :depth="1"
+                  :active-id="activeId"
+                  :sessions="filtered"
+                  :ancestor-open-depths="[]"
+                  @select="$emit('select', $event)"
+                  @context-menu="openContextMenu($event.sessionId, $event)"
+                />
+              </div>
             </div>
-          </template>
+          </div>
         </template>
       </template>
 
@@ -156,22 +185,50 @@
       @achieve="achieveSession"
       @fork="forkFinishedSession"
     />
+
+    <ProjectSettingsMenu
+      :open="projectSettingsId != null"
+      :name="projectSettingsProject?.name"
+      :cwd="projectSettingsProject?.cwd"
+      :busy="projectBusy"
+      @close="closeProjectSettings"
+      @rename="renameProject"
+    />
+
+    <ProjectGitMenu
+      :open="projectGit != null"
+      :x="projectGit?.x ?? 0"
+      :y="projectGit?.y ?? 0"
+      :busy="projectBusy"
+      @close="closeProjectGit"
+      @pull="runProjectGit('pull')"
+      @push="runProjectGit('push')"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronRight, Plus, Search } from "lucide-vue-next";
+import { ChevronRight, GitBranch, Plus, Search, Settings } from "lucide-vue-next";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
 import { groupSessionsByWorkspace, toUISession } from "@/utils/ui-session";
 import { getDefaultWorkspaceCwd, rememberCwd } from "@/config/workspace";
-import { searchMessages, type ExternalSessionCandidate } from "@/api";
+import {
+  pullProjectGit,
+  pushProjectGit,
+  searchMessages,
+  type ExternalSessionCandidate,
+} from "@/api";
+import { showUiMessage } from "@/composables/use-ui-message";
 import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
+import ProjectGitMenu from "./ProjectGitMenu.vue";
+import ProjectSettingsMenu from "./ProjectSettingsMenu.vue";
 import SessionAgentPicker from "./SessionAgentPicker.vue";
 import SessionListContextMenu from "./SessionListContextMenu.vue";
 import SessionListItem from "./SessionListItem.vue";
 import SessionListSubtree from "./SessionListSubtree.vue";
+import SessionAvatar from "./SessionAvatar.vue";
 
 const props = defineProps<{
   activeId: string;
@@ -199,6 +256,14 @@ const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null
 const contextSession = computed(() =>
   contextMenu.value
     ? sessionStore.sessions.find((session) => session.id === contextMenu.value?.sessionId)
+    : undefined,
+);
+const projectSettingsId = ref<string | null>(null);
+const projectGit = ref<{ projectId: string; x: number; y: number } | null>(null);
+const projectBusy = ref(false);
+const projectSettingsProject = computed(() =>
+  projectSettingsId.value
+    ? sessionStore.projects.find((project) => project.id === projectSettingsId.value)
     : undefined,
 );
 
@@ -313,6 +378,85 @@ function toggleWorkspaceCollapse(workspaceId: string) {
 
 function openAgentPicker(workspaceId: string) {
   agentPickerWorkspaceId.value = workspaceId;
+}
+
+function openProjectSettings(projectId: string) {
+  closeProjectGit();
+  projectSettingsId.value = projectId;
+}
+
+function closeProjectSettings() {
+  if (projectBusy.value) return;
+  projectSettingsId.value = null;
+}
+
+function openProjectGit(projectId: string, event: MouseEvent) {
+  closeProjectSettings();
+  const target = event.currentTarget as HTMLElement | null;
+  const rect = target?.getBoundingClientRect();
+  const width = 180;
+  const left = rect ? rect.right - width : event.clientX;
+  projectGit.value = {
+    projectId,
+    x: Math.max(8, Math.min(left, window.innerWidth - width - 8)),
+    y: rect ? Math.min(rect.bottom + 4, window.innerHeight - 120) : event.clientY,
+  };
+}
+
+function closeProjectGit() {
+  if (projectBusy.value) return;
+  projectGit.value = null;
+}
+
+async function renameProject(name: string) {
+  const projectId = projectSettingsId.value;
+  if (!projectId || projectBusy.value) return;
+  projectBusy.value = true;
+  try {
+    await sessionStore.updateProject(projectId, { name });
+    showUiMessage("项目名已更新", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "项目名更新失败", "error");
+  } finally {
+    projectBusy.value = false;
+  }
+}
+
+async function runProjectGit(action: "pull" | "push") {
+  const target = projectGit.value;
+  if (!target || projectBusy.value) return;
+  projectBusy.value = true;
+  try {
+    const result =
+      action === "pull"
+        ? await pullProjectGit(target.projectId)
+        : await pushProjectGit(target.projectId);
+    const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    showUiMessage(
+      detail || (action === "pull" ? "Git Pull 完成" : "Git Push 完成"),
+      "success",
+    );
+    projectGit.value = null;
+  } catch (error) {
+    showUiMessage(formatProjectGitError(error, action), "error");
+  } finally {
+    projectBusy.value = false;
+  }
+}
+
+function formatProjectGitError(error: unknown, action: "pull" | "push"): string {
+  const fallback = action === "pull" ? "Git Pull 失败" : "Git Push 失败";
+  if (!(error instanceof Error)) return fallback;
+  const match = error.message.match(/\{[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]) as { error?: string };
+      if (typeof parsed.error === "string" && parsed.error.trim()) return parsed.error.trim();
+    } catch {
+      // keep raw message
+    }
+  }
+  return error.message || fallback;
 }
 
 function closeAgentPicker() {
@@ -490,10 +634,35 @@ async function onAgentPicked(agentId: string) {
   place-items: center;
   border-radius: 7px;
   color: var(--app-text-secondary);
+  cursor: pointer;
   transition:
     color 0.15s ease,
     background-color 0.15s ease,
     transform 0.1s ease;
+}
+
+.workspace-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.workspace-collapse--open {
+  grid-template-rows: 1fr;
+}
+.workspace-collapse__inner {
+  min-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition:
+    opacity 0.24s ease,
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.workspace-collapse--open .workspace-collapse__inner {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
 }
 
 .chat-home-settings:hover,
@@ -538,6 +707,7 @@ async function onAgentPicked(agentId: string) {
   padding: 4px;
   border-radius: 4px;
   color: var(--app-text-muted);
+  cursor: pointer;
   transition:
     color 0.15s,
     background-color 0.15s;
@@ -546,5 +716,15 @@ async function onAgentPicked(agentId: string) {
 .section-action-btn:hover {
   color: var(--app-text-secondary);
   background: var(--app-hover);
+  cursor: pointer;
+}
+
+.section-chevron {
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  transform: rotate(0deg);
+}
+
+.section-chevron--open {
+  transform: rotate(90deg);
 }
 </style>

@@ -113,6 +113,33 @@ const taskManagementExtension: ExtensionDefinition = {
       },
     });
 
+    ctx.agent.registerSlash("plan", {
+      description: "Enter plan mode and create a Session-owned Markdown plan",
+      source: "custom",
+      icon: "map",
+      arguments: { type: "none" },
+      async handler() {
+        if (planPath) {
+          return {
+            type: "handled",
+            message: `Plan mode is already active: ${planPath}`,
+          };
+        }
+        planPath = taskArtifactPath("plan");
+        await writeTaskArtifact(ctx.session.dir, planPath, {
+          type: "plan",
+          title: "Implementation plan",
+          status: "planning",
+          body: "# Implementation plan\n\nWrite the plan here.",
+        });
+        await setActive(planPath);
+        return {
+          type: "handled",
+          message: `Plan mode active. Write the plan to ${planPath}, then call ExitPlanMode.`,
+        };
+      },
+    });
+
     async function executeGoal(params: { action: string; objective?: string; reason?: string }) {
       const meta = await ctx.session.meta.get();
       let path = activeTaskPaths(meta).find((item) => item.includes("/goal-"));

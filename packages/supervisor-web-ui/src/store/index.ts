@@ -122,6 +122,20 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
+  async function updateProject(id: string, options: api.UpdateProjectRequest) {
+    root.clearError();
+    try {
+      const project = await api.updateProject(id, options);
+      const index = projects.value.findIndex((p) => p.id === id);
+      if (index >= 0) projects.value[index] = project;
+      else projects.value.unshift(project);
+      return project;
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to update project");
+      throw err;
+    }
+  }
+
   async function fetchSessions(params?: {
     status?: api.SessionStatus;
     parentId?: string | null;
@@ -391,6 +405,7 @@ export const useSessionStore = defineStore("session", () => {
     fetchProjects,
     fetchSessions,
     createProject,
+    updateProject,
     fetchSession,
     createSession,
     importExternalSession,

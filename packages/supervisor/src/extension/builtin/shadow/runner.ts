@@ -28,7 +28,7 @@ function parseMeta(meta: Session["meta"]): Record<string, unknown> {
 function shouldRunShadow(session: Session): boolean {
   if (session.parentId !== null) return false;
   const meta = parseMeta(session.meta);
-  return meta.builtin !== true && meta.shadowDisabled !== true;
+  return meta.builtin !== true && meta.shadowDisabled === false;
 }
 
 function formatHarnessMessages(messages: unknown[]): string {

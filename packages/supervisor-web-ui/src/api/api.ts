@@ -395,6 +395,11 @@ export interface CreateProjectRequest {
   meta?: Record<string, unknown>;
 }
 
+export interface UpdateProjectRequest {
+  name?: string;
+  meta?: Record<string, unknown>;
+}
+
 export interface CreateAgentRequest {
   id?: string;
   name: string;
@@ -611,6 +616,13 @@ export async function uploadIcon(file: File): Promise<{ path: string }> {
   return fetchJson<{ path: string }>("/upload/icons", { method: "POST", body });
 }
 
+/** Upload an image into supervisor public static dir (~/.pi/supervisor/public). */
+export async function uploadPublicFile(file: File): Promise<{ path: string }> {
+  const body = new FormData();
+  body.append("file", file);
+  return fetchJson<{ path: string }>("/upload/public", { method: "POST", body });
+}
+
 async function postJson<T>(path: string, body: unknown): Promise<T> {
   return fetchJson<T>(path, {
     method: "POST",
@@ -673,8 +685,27 @@ export async function getProject(id: string): Promise<Project> {
   return mapProject(project);
 }
 
+export async function updateProject(id: string, options: UpdateProjectRequest): Promise<Project> {
+  const project = await patchJson<RawProject>(`/projects/${id}`, options);
+  return mapProject(project);
+}
+
 export async function deleteProject(id: string): Promise<{ ok: boolean }> {
   return deleteRequest<{ ok: boolean }>(`/projects/${id}`);
+}
+
+export interface ProjectGitResult {
+  ok: true;
+  stdout: string;
+  stderr: string;
+}
+
+export async function pullProjectGit(id: string): Promise<ProjectGitResult> {
+  return postJson<ProjectGitResult>(`/projects/${id}/git/pull`, {});
+}
+
+export async function pushProjectGit(id: string): Promise<ProjectGitResult> {
+  return postJson<ProjectGitResult>(`/projects/${id}/git/push`, {});
 }
 
 // ============ Session API ============

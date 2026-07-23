@@ -1,12 +1,12 @@
 <template>
   <Teleport to="body">
-    <Transition name="chat-menu">
-      <div v-if="open" class="fixed inset-0 z-50 flex justify-end" @click.self="emit('close')">
-        <div class="absolute inset-0 bg-black/20" />
-        <aside
-          class="chat-session-menu relative w-full max-w-[300px] h-full flex flex-col"
-          @click.stop
-        >
+    <Transition name="chat-menu" :duration="{ enter: 280, leave: 260 }">
+      <div
+        v-if="open"
+        class="chat-session-menu-backdrop fixed inset-0 z-50 flex justify-end"
+        @click.self="emit('close')"
+      >
+        <aside class="chat-session-menu relative w-full max-w-[300px] h-full flex flex-col" @click.stop>
           <header
             class="chat-session-menu__header h-14 flex items-center justify-between px-4 border-b shrink-0"
           >
@@ -20,7 +20,15 @@
             <section class="px-5 py-5 border-b chat-session-menu__section">
               <div class="flex flex-wrap gap-4">
                 <div class="flex flex-col items-center gap-1.5 w-14">
+                  <AgentAvatar
+                    v-if="avatarIcon"
+                    class="session-menu-avatar"
+                    :agent-id="avatarAgentId || 'session'"
+                    :agent-name="agentName"
+                    :icon="avatarIcon"
+                  />
                   <div
+                    v-else
                     class="w-12 h-12 rounded-md text-white flex items-center justify-center text-lg font-medium"
                     :style="{ backgroundColor: avatarColor }"
                   >
@@ -100,12 +108,12 @@
                 <button
                   v-if="availableSpawnAgents.length"
                   type="button"
-                  class="session-agent-card"
+                  class="session-agent-card session-agent-card--add"
                   title="添加子代理"
+                  aria-label="添加子代理"
                   @click="spawnAgentPickerOpen = !spawnAgentPickerOpen"
                 >
                   <span class="session-agent-card__add"><Plus /></span>
-                  <small>添加</small>
                 </button>
               </div>
               <div v-if="spawnAgentPickerOpen" class="session-agent-picker">
@@ -269,6 +277,8 @@ const props = defineProps<{
   titleReadonly?: boolean;
   avatarLabel: string;
   avatarColor: string;
+  avatarIcon?: string | null;
+  avatarAgentId?: string;
   muted: boolean;
   showThinking: boolean;
   sessionStatus?: string;
@@ -336,10 +346,19 @@ function childSessionName(child: Pick<Session, "id" | "meta">): string {
 </script>
 
 <style scoped>
+.chat-session-menu-backdrop {
+  background: rgb(0 0 0 / 20%);
+}
+
 .chat-session-menu {
   background: var(--app-popup-bg);
   color: var(--app-text-primary);
   box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+}
+
+.session-menu-avatar {
+  width: 48px;
+  height: 48px;
 }
 
 .chat-session-menu__header {
@@ -486,6 +505,10 @@ function childSessionName(child: Pick<Session, "id" | "meta">): string {
 .session-agent-card:active {
   transform: scale(0.97);
 }
+.session-agent-card--add {
+  align-self: flex-start;
+  padding-bottom: 5px;
+}
 .session-agent-card :deep(.agent-avatar),
 .session-agent-card__builtin,
 .session-agent-card__add {
@@ -588,16 +611,18 @@ function childSessionName(child: Pick<Session, "id" | "meta">): string {
 .chat-menu-leave-active {
   transition: opacity 0.2s ease;
 }
-.chat-menu-enter-active aside,
-.chat-menu-leave-active aside {
+.chat-menu-enter-active .chat-session-menu {
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chat-menu-leave-active .chat-session-menu {
   transition: transform 0.22s ease;
 }
 .chat-menu-enter-from,
 .chat-menu-leave-to {
   opacity: 0;
 }
-.chat-menu-enter-from aside,
-.chat-menu-leave-to aside {
+.chat-menu-enter-from .chat-session-menu,
+.chat-menu-leave-to .chat-session-menu {
   transform: translateX(100%);
 }
 

@@ -1,6 +1,6 @@
 <template>
-  <TransitionGroup name="session-list">
-    <template v-for="(child, idx) in children" :key="child.id">
+  <TransitionGroup name="session-list" tag="div" class="session-list-subtree">
+    <div v-for="(child, idx) in children" :key="child.id" class="session-list-node">
       <SessionListItem
         :session="child"
         :active="activeId === child.id"
@@ -20,7 +20,7 @@
         @select="$emit('select', $event)"
         @context-menu="$emit('context-menu', $event)"
       />
-    </template>
+    </div>
   </TransitionGroup>
 </template>
 
@@ -62,19 +62,29 @@ function nextAncestorDepths(idx: number): number[] {
 </script>
 
 <style scoped>
+.session-list-subtree {
+  position: relative;
+}
+
 .session-list-enter-active,
-.session-list-leave-active,
-.session-list-move {
+.session-list-leave-active {
+  overflow: hidden;
   transition:
-    opacity 0.18s ease,
-    transform 0.18s ease;
+    opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.session-list-enter-from {
-  opacity: 0;
-  transform: translateY(-8px);
+.session-list-leave-active {
+  position: absolute;
+  left: 0;
+  right: 0;
+  pointer-events: none;
 }
+.session-list-move {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.session-list-enter-from,
 .session-list-leave-to {
   opacity: 0;
-  transform: translateX(-12px);
+  transform: translateY(-8px);
 }
 </style>

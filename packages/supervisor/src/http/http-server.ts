@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readFile, realpath } from "node:fs/promises";
@@ -20,11 +20,12 @@ import { parseSessionTodos } from "../core/session-todos.js";
 import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-manager.js";
 import { isResourceKind } from "../resources/types.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";
+import { ensureSupervisorPublicDir } from "../utils/supervisor-home.js";
 import { encryptApiKey } from "../utils/encrypt.js";
 import { decryptApiKey } from "../utils/encrypt.js";
 import { testApiKey, type ApiKeyProvider } from "../utils/test-api-key.js";
 import { resolveApiKey } from "../tools/web/credentials.js";
-import { listWorktreeCommits } from "../utils/git.js";
+import { gitPull, gitPush, listWorktreeCommits } from "../utils/git.js";
 import type { Model, Provider, SessionStatus } from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
 
@@ -767,6 +768,30 @@ export function createHttpServer(manager: SessionManager): Hono {
     return c.json(project);
   });
 
+  app.patch("/projects/:id", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid project id");
+    if (!manager.getProject(id)) return jsonError(c, 404, "not found");
+    const body = await c.req.json().catch(() => ({}));
+    const patch: { name?: string; meta?: Record<string, unknown> } = {};
+    if (typeof body.name === "string") {
+      if (!body.name.trim()) return jsonError(c, 400, "name cannot be empty");
+      patch.name = body.name.trim();
+    }
+    if (typeof body.meta === "object" && body.meta !== null) {
+      patch.meta = body.meta as Record<string, unknown>;
+    }
+    if (patch.name === undefined && patch.meta === undefined) {
+      return jsonError(c, 400, "name or meta is required");
+    }
+    try {
+      return c.json(manager.updateProject(id, patch));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 500, message);
+    }
+  });
+
   app.delete("/projects/:id", (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid project id");
@@ -774,6 +799,32 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (!project) return jsonError(c, 404, "not found");
     manager.deleteProject(id);
     return c.json({ ok: true });
+  });
+
+  app.post("/projects/:id/git/pull", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid project id");
+    const project = manager.getProject(id);
+    if (!project) return jsonError(c, 404, "not found");
+    try {
+      return c.json(await gitPull(project.cwd));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 500, message);
+    }
+  });
+
+  app.post("/projects/:id/git/push", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid project id");
+    const project = manager.getProject(id);
+    if (!project) return jsonError(c, 404, "not found");
+    try {
+      return c.json(await gitPush(project.cwd));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 500, message);
+    }
   });
 
   // ============ Session Endpoints ============
@@ -1543,8 +1594,15 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const sessionId = parseIntegerId(c.req.param("id"));
       if (sessionId === null) return jsonError(c, 400, "invalid session id");
-      const runtime = manager.getRuntime(sessionId);
-      return c.json(runtime.getSlashCommands());
+      if (!manager.get(sessionId)) return jsonError(c, 404, "not found");
+      let commands: ReturnType<SessionManager["listTaskSlashCommands"]> = [];
+      try {
+        const runtime = await manager.ensureRuntime(sessionId);
+        commands = runtime.getSlashCommands();
+      } catch {
+        // Idle/external/unrestorable sessions still expose builtin task commands.
+      }
+      return c.json(manager.mergeSessionSlashCommands(commands));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 409, message);
@@ -1559,18 +1617,39 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const sessionId = parseIntegerId(c.req.param("id"));
       if (sessionId === null) return jsonError(c, 400, "invalid session id");
-      const runtime = manager.getRuntime(sessionId);
-      if (!runtime.executeSlashCommand)
-        return jsonError(c, 409, "slash commands are not executable");
+      if (!manager.get(sessionId)) return jsonError(c, 404, "not found");
       const command = body.command.trim().replace(/^\//, "").toLowerCase();
-      const available = runtime.getSlashCommands().find((item) => item.name === command);
-      if (!available) return jsonError(c, 404, `slash command /${command} not found`);
       const argument = typeof body.argument === "string" ? body.argument.trim() : "";
+
+      let runtimeCommands: ReturnType<SessionManager["listTaskSlashCommands"]> = [];
+      let runtime: Awaited<ReturnType<SessionManager["ensureRuntime"]>> | null = null;
+      try {
+        runtime = await manager.ensureRuntime(sessionId);
+        runtimeCommands = runtime.getSlashCommands();
+      } catch {
+        runtime = null;
+      }
+
+      const available = manager
+        .mergeSessionSlashCommands(runtimeCommands)
+        .find((item) => item.name.toLowerCase() === command);
+      if (!available) return jsonError(c, 404, `slash command /${command} not found`);
       if (available.arguments?.type === "text" && available.arguments.required && !argument) {
         return jsonError(c, 400, `slash command /${command} requires an argument`);
       }
-      await runtime.executeSlashCommand(command, argument);
-      return c.json({ ok: true });
+
+      const runtimeHasCommand = runtimeCommands.some(
+        (item) => item.name.replace(/^\//, "").toLowerCase() === command,
+      );
+      if (runtime?.executeSlashCommand && runtimeHasCommand) {
+        await runtime.executeSlashCommand(available.name, argument);
+        return c.json({ ok: true });
+      }
+      if (command === "goal" || command === "plan") {
+        await manager.executeTaskSlashCommand(sessionId, command, argument);
+        return c.json({ ok: true });
+      }
+      return jsonError(c, 409, "slash commands are not executable");
     } catch (e: unknown) {
       return jsonError(c, 409, e instanceof Error ? e.message : String(e));
     }
@@ -2172,13 +2251,70 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // POST /upload/icons — upload provider icon
+  // POST /upload/public — upload a file into ~/.pi/supervisor/public (avatars, etc.)
+  // GET /public/* — static file serving (Express-style)
+  app.get("/public/*", async (c) => {
+    const wildcard = c.req.param("*") ?? "";
+    if (!wildcard || wildcard.includes("\0") || wildcard.includes("..")) {
+      return jsonError(c, 404, "file not found");
+    }
+    try {
+      const root = ensureSupervisorPublicDir();
+      const content = await readOwnedAsset(root, wildcard);
+      if (!content) return jsonError(c, 404, "file not found");
+      return new Response(content, {
+        headers: {
+          "Content-Type": assetContentType(wildcard),
+          "Cache-Control": "public, max-age=31536000, immutable",
+        },
+      });
+    } catch {
+      return jsonError(c, 404, "file not found");
+    }
+  });
+
+  app.post("/upload/public", async (c) => {
+    try {
+      const body = await c.req.formData();
+      const file = body.get("file") as File | null;
+      if (!file) return jsonError(c, 400, "file is required");
+
+      const allowedTypes: Record<string, string> = {
+        "image/png": "png",
+        "image/jpeg": "jpg",
+        "image/webp": "webp",
+        "image/gif": "gif",
+        "image/svg+xml": "svg",
+      };
+      const ext = allowedTypes[file.type];
+      if (!ext) return jsonError(c, 400, "unsupported image type");
+      if (file.size > 2 * 1024 * 1024) return jsonError(c, 400, "file must not exceed 2 MB");
+
+      const publicDir = ensureSupervisorPublicDir();
+      const filename = `${randomUUID()}.${ext}`;
+      const filepath = join(publicDir, filename);
+      writeFileSync(filepath, Buffer.from(await file.arrayBuffer()));
+      return c.json({ path: `/public/${filename}` });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 500, message);
+    }
+  });
+
+  // Legacy icon routes — store under public/, still accept /uploaded-icons URLs
   app.get("/uploaded-icons/:filename", async (c) => {
     const filename = c.req.param("filename");
     const match = filename.match(/^[0-9a-f-]+\.(png|jpe?g|webp|gif|svg)$/i);
     if (!match) return jsonError(c, 404, "icon not found");
     try {
-      const content = await readFile(join(getSupervisorAgentsRoot(), "icons", filename));
+      const publicFile = join(ensureSupervisorPublicDir(), filename);
+      const legacyFile = join(getSupervisorAgentsRoot(), "icons", filename);
+      let content: Buffer;
+      try {
+        content = await readFile(publicFile);
+      } catch {
+        content = await readFile(legacyFile);
+      }
       const contentTypes: Record<string, string> = {
         png: "image/png",
         jpg: "image/jpeg",
@@ -2217,18 +2353,15 @@ export function createHttpServer(manager: SessionManager): Hono {
       if (!ext) return jsonError(c, 400, "unsupported image type");
       if (file.size > 2 * 1024 * 1024) return jsonError(c, 400, "icon must not exceed 2 MB");
 
-      const agentHome = getSupervisorAgentsRoot();
-      const iconsDir = join(agentHome, "icons");
-      mkdirSync(iconsDir, { recursive: true });
-
+      const publicDir = ensureSupervisorPublicDir();
       const filename = `${randomUUID()}.${ext}`;
-      const filepath = join(iconsDir, filename);
+      const filepath = join(publicDir, filename);
 
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
       writeFileSync(filepath, buffer);
 
-      return c.json({ path: `/uploaded-icons/${filename}` });
+      return c.json({ path: `/public/${filename}` });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 500, message);

@@ -317,8 +317,17 @@ onBeforeUnmount(() => cleanup());
   line-height: 1.45;
 }
 .voice-button {
+  padding: 6px;
+  border-radius: 8px;
   touch-action: none;
   user-select: none;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+.voice-button:hover:not(:disabled) {
+  background: var(--app-hover);
+  color: var(--app-text-primary);
 }
 .voice-icon {
   width: 19px;

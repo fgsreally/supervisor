@@ -28,6 +28,10 @@
             v-else-if="item.source === 'skill'"
             class="w-4 h-4 shrink-0 mt-0.5 autocomplete-icon autocomplete-icon--skill"
           />
+          <FileText
+            v-else-if="item.source === 'prompt'"
+            class="w-4 h-4 shrink-0 mt-0.5 autocomplete-icon autocomplete-icon--prompt"
+          />
           <FileText v-else class="w-4 h-4 shrink-0 mt-0.5 autocomplete-icon" />
           <div class="min-w-0 flex-1">
             <div
@@ -131,6 +135,10 @@ function displayLabel(item: ChatAutocompleteItem): string {
 
 .autocomplete-icon--skill {
   color: #ff9f1a;
+}
+
+.autocomplete-icon--prompt {
+  color: #576b95;
 }
 
 .autocomplete-label {

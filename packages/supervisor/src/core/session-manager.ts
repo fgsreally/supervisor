@@ -28,6 +28,12 @@ import { initializeResourceCatalog } from "../resources/catalog-sync.js";
 import { ExtensionModuleRegistry } from "../extension/registry.js";
 import { ResourceManager } from "../resources/resource-manager.js";
 import { JobManager } from "./jobs.js";
+import {
+  executeTaskSlashCommand,
+  isTaskSlashCommand,
+  mergeSlashCommands,
+  TASK_SLASH_COMMANDS,
+} from "./session-task-commands.js";
 import { ensureGlobalResourceRoot } from "../resources/resource-paths.js";
 import { AgentResource } from "../agent/runtime-resources.js";
 import {
@@ -208,6 +214,50 @@ function parseCurrentTask(value: unknown): Session["currentTask"] {
 function parseSessionMeta<T = Record<string, unknown>>(meta: string | Record<string, unknown>): T {
   return typeof meta === "string" ? (JSON.parse(meta) as T) : (meta as T);
 }
+
+/** Seed session avatar.icon from the linked agent when the client did not set one. */
+function withDefaultSessionAvatar(
+  meta: Record<string, unknown> | undefined,
+  agent: { name: string; icon: string | null } | null | undefined,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...(meta ?? {}) };
+  const icon = typeof agent?.icon === "string" ? agent.icon.trim() : "";
+  if (!icon) return next;
+
+  const rawAvatar = next.avatar;
+  const avatar =
+    rawAvatar && typeof rawAvatar === "object" && !Array.isArray(rawAvatar)
+      ? { ...(rawAvatar as Record<string, unknown>) }
+      : {};
+  const existingIcon = typeof avatar.icon === "string" ? avatar.icon.trim() : "";
+  if (existingIcon) return next;
+
+  next.avatar = { ...avatar, icon };
+  return next;
+}
+
+function isUserRoleEntry(entry: SessionMessageResponse): boolean {
+  return entry.type === "message" && entry.message?.role === "user";
+}
+
+/**
+ * Fork copies history through the selected entry's full turn.
+ * User and assistant share the same boundary: include the rest of the turn
+ * (assistant / tool results) until the next user message.
+ */
+function resolveForkExclusiveEndIndex(
+  messages: SessionMessageResponse[],
+  forkPointIndex: number,
+  position?: "before" | "at",
+): number {
+  if (position === "before") return forkPointIndex;
+  let end = forkPointIndex + 1;
+  while (end < messages.length && !isUserRoleEntry(messages[end]!)) {
+    end += 1;
+  }
+  return end;
+}
+
 export class SessionManager {
   private db: SupervisorDb;
   private modelRegistry: ModelRegistry;
@@ -648,6 +698,8 @@ export class SessionManager {
       creationMethod === "spawn_agent" ||
       branchType === "fork" ||
       branchType === "clone";
+    const agent = options.agentId ? this.db.getAgent(options.agentId) : undefined;
+    const meta = withDefaultSessionAvatar(options.meta, agent);
     const row = this.db.insert({
       parent_id: options.parentId ?? null,
       project_id: this.resolveProjectId(options),
@@ -661,7 +713,7 @@ export class SessionManager {
       created_via: creationMethod,
       show_in_session_list: showInSessionList ? 1 : 0,
       context_leaf_id: branchType === "btw" ? (options.contextLeafId ?? null) : null,
-      meta: JSON.stringify(options.meta ?? {}),
+      meta: JSON.stringify(meta),
     });
     const session = rowToSession(row);
     if (session.parentId == null) {
@@ -1315,6 +1367,10 @@ export class SessionManager {
     return this.db.getProject(project.id)!;
   }
 
+  updateProject(id: number, patch: { name?: string; meta?: Record<string, unknown> }) {
+    return this.db.updateProject(id, patch);
+  }
+
   listImportableExternalSessions(limit?: number) {
     return listExternalSessions(limit);
   }
@@ -1612,7 +1668,7 @@ export class SessionManager {
       throw new Error(`Entry ${entryId} not found in session ${id}`);
     }
 
-    const endIndex = options?.position === "before" ? forkPointIndex : forkPointIndex + 1;
+    const endIndex = resolveForkExclusiveEndIndex(messages, forkPointIndex, options?.position);
     const storage = new SQLiteSessionStorage(this.db, newSession.id);
     const inherited = messages.slice(0, endIndex);
     await copyMessagesWithInheritance(storage, inherited);
@@ -1908,6 +1964,33 @@ export class SessionManager {
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
     return runtime;
+  }
+
+  /** Restore idle session runtime when needed (slash commands, delayed ops). */
+  async ensureRuntime(id: number): Promise<ManagedSessionRuntime> {
+    return this.getOrRestoreRuntime(id);
+  }
+
+  listTaskSlashCommands() {
+    return TASK_SLASH_COMMANDS;
+  }
+
+  mergeSessionSlashCommands(commands: ReturnType<ManagedSessionRuntime["getSlashCommands"]>) {
+    return mergeSlashCommands(commands);
+  }
+
+  async executeTaskSlashCommand(id: number, name: string, args = ""): Promise<void> {
+    const session = this.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    if (session.projectId == null) throw new Error(`Session ${id} has no project`);
+    if (!isTaskSlashCommand(name)) throw new Error(`slash command /${name} not found`);
+    await executeTaskSlashCommand({
+      db: this.db,
+      sessionId: id,
+      projectId: session.projectId,
+      name,
+      args,
+    });
   }
 
   async listCodexModels(id: number): Promise<Record<string, any>[]> {

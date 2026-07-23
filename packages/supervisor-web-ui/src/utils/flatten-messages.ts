@@ -32,6 +32,8 @@ export type DisplayGroup =
       role: "assistant";
       pieces: RenderPiece[];
       createdAt?: number;
+      /** Last entry timestamp in this assistant turn (for duration). */
+      endedAt?: number;
       /** True when message was copied from parent session (is_old). */
       inherited?: boolean;
       assets: MessageAsset[];
@@ -203,10 +205,15 @@ export function buildDisplayGroups(entries: ChatEntry[]): DisplayGroup[] {
           role: "assistant",
           pieces: [],
           createdAt: entry.createdAt,
+          endedAt: entry.createdAt,
           assets: [],
         };
       }
       if (isOldEntry(entry)) current.inherited = true;
+      if (entry.createdAt) {
+        if (!current.createdAt) current.createdAt = entry.createdAt;
+        current.endedAt = entry.createdAt;
+      }
       attachResult(current.pieces, entry);
       current.assets.push(...(entry.assets ?? []));
       continue;
@@ -220,11 +227,15 @@ export function buildDisplayGroups(entries: ChatEntry[]): DisplayGroup[] {
           role: "assistant",
           pieces: [],
           createdAt: entry.createdAt,
+          endedAt: entry.createdAt,
           assets: [],
         };
       }
       if (isOldEntry(entry)) current.inherited = true;
-      if (entry.createdAt && !current.createdAt) current.createdAt = entry.createdAt;
+      if (entry.createdAt) {
+        if (!current.createdAt) current.createdAt = entry.createdAt;
+        current.endedAt = entry.createdAt;
+      }
       appendMessagePieces(current.pieces, entry);
       current.assets.push(...(entry.assets ?? []));
     }

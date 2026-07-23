@@ -52,7 +52,7 @@
           title="查看 Eval"
           @click="openEvalPanel"
         >
-          <Terminal class="h-[17px] w-[17px]" />
+          <Braces class="h-[17px] w-[17px]" />
         </button>
         <div class="mobile-session-actions">
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
@@ -102,6 +102,8 @@
           :search-query="searchQuery"
           :assistant-avatar-label="session.meta?.builtin ? 'π' : sessionAvatarValue.text"
           :assistant-avatar-color="sessionAvatarValue.color"
+          :assistant-avatar-icon="session.meta?.builtin ? null : sessionAvatarValue.icon"
+          :assistant-avatar-agent-id="agentId ?? session.id"
           :rewindable-entry-ids="rewindableEntryIds"
           @open-tool="openToolDetail"
           @open-bash="openBashDetail"
@@ -109,6 +111,7 @@
           @navigate="navigateToSubagent"
           @answered="onAskAnswered"
           @rewind="rewindToMessage"
+          @fork="forkFromMessage"
         />
 
         <div v-if="suggestedQuestions.length" class="suggested-questions">
@@ -151,38 +154,49 @@
         />
       </div>
 
-      <TaskWorkspacePanel
-        v-if="taskPaneOpen && tasks.length"
-        v-motion="splitPanelMotion"
-        :tasks="tasks"
-        :todos="[]"
-        :selected-path="selectedTaskPath"
-        @select="selectedTaskPath = $event"
-        @close="taskPaneOpen = false"
-      />
-      <BtwSplitPanel
-        v-if="btwPanelOpen"
-        :parent-id="session.id"
-        :sessions="btwSessions"
-        @close="btwPanelOpen = false"
-      />
-      <SessionLogPanel
-        v-if="showLogPanel"
-        v-motion="splitPanelMotion"
-        class="chat-workspace__side-panel"
-        :session-id="session.id"
-        @close="showLogPanel = false"
-      />
-      <ToolDetailPanel
-        v-if="toolPanel"
-        v-motion="splitPanelMotion"
-        class="chat-workspace__tool-panel"
-        :title="toolPanel.title"
-        :sections="toolPanel.sections"
-        :terminal="toolPanel.terminal"
-        :session-id="session.id"
-        @close="toolPanel = null"
-      />
+      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
+        <div v-if="taskPaneOpen && tasks.length" class="chat-panel-host">
+          <TaskWorkspacePanel
+            class="chat-panel-host__body"
+            :tasks="tasks"
+            :todos="[]"
+            :selected-path="selectedTaskPath"
+            @select="selectedTaskPath = $event"
+            @close="taskPaneOpen = false"
+          />
+        </div>
+      </Transition>
+      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
+        <div v-if="btwPanelOpen" class="chat-panel-host">
+          <BtwSplitPanel
+            class="chat-panel-host__body"
+            :parent-id="session.id"
+            :sessions="btwSessions"
+            @close="btwPanelOpen = false"
+          />
+        </div>
+      </Transition>
+      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
+        <div v-if="showLogPanel" class="chat-panel-host">
+          <SessionLogPanel
+            class="chat-panel-host__body chat-workspace__side-panel"
+            :session-id="session.id"
+            @close="showLogPanel = false"
+          />
+        </div>
+      </Transition>
+      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
+        <div v-if="toolPanel" class="chat-panel-host">
+          <ToolDetailPanel
+            class="chat-panel-host__body chat-workspace__tool-panel"
+            :title="toolPanel.title"
+            :sections="toolPanel.sections"
+            :terminal="toolPanel.terminal"
+            :session-id="session.id"
+            @close="toolPanel = null"
+          />
+        </div>
+      </Transition>
     </div>
 
     <ExternalAgentCommandHost
@@ -193,45 +207,46 @@
     />
 
     <Teleport to="body">
-      <div
-        v-if="sessionActionsOpen"
-        v-motion="bottomSheetMotion"
-        class="mobile-actions-backdrop"
-        @click.self="sessionActionsOpen = false"
-      >
-        <section class="mobile-actions-sheet">
-          <div class="mobile-actions-handle" />
-          <div class="mobile-actions-grid">
-            <button type="button" @click="runMobileAction(openSearch)">
-              <Search /><span>搜索</span>
+      <Transition name="chat-sheet" :duration="{ enter: 300, leave: 180 }">
+        <div
+          v-if="sessionActionsOpen"
+          class="mobile-actions-backdrop"
+          @click.self="sessionActionsOpen = false"
+        >
+          <section class="mobile-actions-sheet">
+            <div class="mobile-actions-handle" />
+            <div class="mobile-actions-grid">
+              <button type="button" @click="runMobileAction(openSearch)">
+                <Search /><span>搜索</span>
+              </button>
+              <button
+                type="button"
+                @click="
+                  runMobileAction(() => {
+                    showLogPanel = true;
+                  })
+                "
+              >
+                <ScrollText /><span>日志</span>
+              </button>
+              <button
+                v-if="tasks.length"
+                type="button"
+                @click="
+                  runMobileAction(() => {
+                    taskPaneOpen = true;
+                  })
+                "
+              >
+                <ClipboardList /><span>任务</span>
+              </button>
+            </div>
+            <button class="mobile-actions-cancel" type="button" @click="sessionActionsOpen = false">
+              取消
             </button>
-            <button
-              type="button"
-              @click="
-                runMobileAction(() => {
-                  showLogPanel = true;
-                })
-              "
-            >
-              <ScrollText /><span>日志</span>
-            </button>
-            <button
-              v-if="tasks.length"
-              type="button"
-              @click="
-                runMobileAction(() => {
-                  taskPaneOpen = true;
-                })
-              "
-            >
-              <ClipboardList /><span>任务</span>
-            </button>
-          </div>
-          <button class="mobile-actions-cancel" type="button" @click="sessionActionsOpen = false">
-            取消
-          </button>
-        </section>
-      </div>
+          </section>
+        </div>
+      </Transition>
     </Teleport>
 
     <ChatSessionMenu
@@ -241,6 +256,8 @@
       :title-readonly="!!session.meta?.builtin"
       :avatar-label="sessionAvatarValue.text"
       :avatar-color="sessionAvatarValue.color"
+      :avatar-icon="sessionAvatarValue.icon"
+      :avatar-agent-id="agentId ?? session.id"
       :muted="sessionMuted"
       :show-thinking="showThinking"
       :session-status="session.status"
@@ -269,16 +286,17 @@
     />
 
     <Teleport to="body">
-      <div
-        v-if="modelPickerOpen"
-        class="model-picker-backdrop"
-        @click.self="modelPickerOpen = false"
-      >
-        <section class="model-picker-sheet">
-          <header>
-            <strong>选择模型</strong
-            ><button type="button" @click="modelPickerOpen = false">取消</button>
-          </header>
+      <Transition name="chat-overlay" :duration="{ enter: 200, leave: 160 }">
+        <div
+          v-if="modelPickerOpen"
+          class="model-picker-backdrop"
+          @click.self="modelPickerOpen = false"
+        >
+          <section class="model-picker-sheet">
+            <header>
+              <strong>选择模型</strong
+              ><button type="button" @click="modelPickerOpen = false">取消</button>
+            </header>
           <div class="model-picker-search">
             <Search class="h-4 w-4" />
             <input v-model="modelSearch" type="search" placeholder="搜索供应商或模型" autofocus />
@@ -317,6 +335,7 @@
           </div>
         </section>
       </div>
+      </Transition>
     </Teleport>
 
     <ToolDetailModal
@@ -331,15 +350,17 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onBeforeUnmount } from "vue";
 import {
+  Braces,
   ClipboardList,
   Loader2,
   SlidersHorizontal,
   ScrollText,
   Search,
-  Terminal,
 } from "lucide-vue-next";
 import { useSessionStore, useAgentStore, useProviderStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { requestUiConfirm } from "@/composables/use-ui-confirm";
+import { formatMessageClock } from "@/utils/format-time";
 import * as api from "@/api";
 import type { ChatCompactionEntry, ChatEntry } from "@/types/chat-entry";
 import {
@@ -379,7 +400,6 @@ import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-pu
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
 import { parseWorkflowState } from "../utils/workflow";
 import { sessionAvatar, type SessionAvatarValue } from "../utils/session-avatar";
-import { bottomSheetMotion, splitPanelMotion } from "../motion/presets";
 
 const props = defineProps<{
   session: {
@@ -413,13 +433,6 @@ const emit = defineEmits<{
 }>();
 
 const workflow = computed(() => parseWorkflowState(props.session.meta));
-const sessionAvatarValue = computed(() =>
-  sessionAvatar(
-    props.session.id,
-    props.session.meta?.name ?? agentName.value ?? "Agent",
-    props.session.meta?.avatar,
-  ),
-);
 const sessionChangedFiles = computed<SessionChangedFileView[]>(() => {
   if (Array.isArray(props.session.meta?.changedFiles)) return props.session.meta.changedFiles;
   const files = new Map<string, SessionChangedFileView>();
@@ -441,6 +454,14 @@ const agentName = computed(() => {
   if (!props.agentId) return null;
   return agentStore.getAgentById(props.agentId)?.name ?? props.agentId;
 });
+const sessionAvatarValue = computed(() =>
+  sessionAvatar(
+    props.session.id,
+    props.session.meta?.name ?? agentName.value ?? "Agent",
+    props.session.meta?.avatar,
+    props.agentId ? agentStore.getAgentById(props.agentId)?.icon : null,
+  ),
+);
 const agentBackendType = computed(() =>
   props.agentId ? agentStore.getAgentById(props.agentId)?.backendType : undefined,
 );
@@ -615,7 +636,7 @@ const configurableAgents = computed(() =>
   agentStore.agents.filter((agent) => !agent.meta?.builtin),
 );
 const sessionMembers = ref<api.SessionMember[]>([]);
-const shadowEnabled = computed(() => props.session.meta?.shadowDisabled !== true);
+const shadowEnabled = computed(() => props.session.meta?.shadowDisabled === false);
 const spawnedAgentIds = computed(() =>
   sessionMembers.value
     .filter((member) => member.role === "spawned")
@@ -845,11 +866,22 @@ function onShowThinkingChange(value: boolean) {
 }
 
 async function onAvatarChange(avatar: SessionAvatarValue) {
-  await sessionStore.updateSessionMeta(props.session.id, { avatar });
+  await sessionStore.updateSessionMeta(props.session.id, {
+    avatar: {
+      ...sessionAvatarValue.value,
+      ...avatar,
+    },
+  });
 }
 
 async function rewindToMessage(entryId: string) {
-  if (!window.confirm("回到这条消息？此后的代码修改和消息都会被移除。")) return;
+  const confirmed = await requestUiConfirm({
+    title: "回到这条消息",
+    message: "此后的代码修改和消息都会被移除，确定继续？",
+    confirmText: "回到这里",
+    danger: true,
+  });
+  if (!confirmed) return;
   try {
     stopStreaming();
     await api.rewindSessionToEntry(props.session.id, entryId);
@@ -857,7 +889,17 @@ async function rewindToMessage(entryId: string) {
     await sessionStore.fetchSessions();
     await scrollToBottom();
   } catch (error) {
-    window.alert(error instanceof Error ? error.message : "回撤失败");
+    showUiMessage(error instanceof Error ? error.message : "回撤失败", "error");
+  }
+}
+
+async function forkFromMessage(entryId: string) {
+  try {
+    const forked = await sessionStore.forkSession(props.session.id, { entryId });
+    emit("navigate", forked.id);
+    showUiMessage("已从此消息创建分支会话", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "分支失败", "error");
   }
 }
 
@@ -1047,9 +1089,7 @@ function groupMatchesSearch(group: DisplayGroup, q: string): boolean {
   return false;
 }
 
-const streamingTimeLabel = computed(() =>
-  new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-);
+const streamingTimeLabel = computed(() => formatMessageClock(Date.now()));
 
 const showStreamingPlaceholder = computed(() => {
   if (!isStreaming.value || !streamingAssistantId.value) return false;
@@ -1241,9 +1281,13 @@ const sendMessage = async (payload: ChatSendPayload) => {
   const slash = !payload.images.length ? /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text) : null;
   if (slash) {
     const commands = await api.getSessionCommands(props.session.id).catch(() => []);
-    const command = commands.find(
-      (item) => item.source === "custom" && item.name === slash[1]!.toLowerCase(),
-    );
+    const commandName = slash[1]!.toLowerCase();
+    const command = commands.find((item) => {
+      const name = item.name.replace(/^\//, "").toLowerCase();
+      if (name !== commandName) return false;
+      // Skills / prompts still go through normal prompt expansion.
+      return item.source !== "skill" && item.source !== "prompt";
+    });
     if (command) {
       inputText.value = "";
       inputPanelRef.value?.clearAfterSend();
@@ -1252,7 +1296,7 @@ const sendMessage = async (payload: ChatSendPayload) => {
         await reloadMessagesFromServer(props.session.id);
         await sessionStore.fetchSessions();
       } catch (error) {
-        console.error("Slash command failed:", error);
+        showUiMessage(error instanceof Error ? error.message : "斜杠命令执行失败", "error");
       }
       return;
     }
@@ -1354,6 +1398,18 @@ async function executeCustomSlash(name: string) {
   min-height: 0;
   overflow: hidden;
 }
+
+.chat-panel-host :deep(.tool-detail-panel),
+.chat-panel-host :deep(.task-workspace),
+.chat-panel-host :deep(.btw-panel),
+.chat-panel-host :deep(.session-log-panel) {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: 1 1 auto !important;
+  border-left: 1px solid var(--app-border-subtle);
+}
+
 .session-loading {
   display: flex;
   min-height: 180px;
@@ -1394,8 +1450,6 @@ async function executeCustomSlash(name: string) {
 }
 
 .chat-workspace__side-panel {
-  width: min(48%, 44rem) !important;
-  min-width: 22rem;
   border-left: 1px solid var(--app-border-subtle);
 }
 
@@ -1406,24 +1460,14 @@ async function executeCustomSlash(name: string) {
 }
 
 @media (max-width: 767px) {
-  .chat-workspace__side-panel,
-  .chat-workspace__tool-panel {
-    position: absolute;
-    z-index: 60;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    width: 100% !important;
-    min-width: 0;
-    height: min(68%, 620px);
+  .chat-panel-host :deep(.tool-detail-panel),
+  .chat-panel-host :deep(.task-workspace),
+  .chat-panel-host :deep(.btw-panel),
+  .chat-panel-host :deep(.session-log-panel) {
     border-top: 1px solid var(--app-border-subtle);
     border-left: 0;
     border-radius: 16px 16px 0 0;
     box-shadow: 0 -10px 30px rgb(0 0 0 / 14%);
-  }
-
-  .chat-workspace__side-panel {
-    z-index: 60;
   }
 }
 

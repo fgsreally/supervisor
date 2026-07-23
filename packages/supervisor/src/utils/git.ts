@@ -301,3 +301,47 @@ export async function listWorktreeCommits(
       return { hash, shortHash, subject, author, timestamp: Number(timestamp) * 1000 };
     });
 }
+
+export interface GitRemoteResult {
+  ok: true;
+  stdout: string;
+  stderr: string;
+}
+
+function formatGitError(error: unknown): Error {
+  if (
+    error &&
+    typeof error === "object" &&
+    "stderr" in error &&
+    typeof (error as { stderr?: unknown }).stderr === "string" &&
+    (error as { stderr: string }).stderr.trim()
+  ) {
+    return new Error((error as { stderr: string }).stderr.trim());
+  }
+  if (error instanceof Error) return error;
+  return new Error(String(error));
+}
+
+/** Run `git pull` in the given repository working directory. */
+export async function gitPull(cwd: string): Promise<GitRemoteResult> {
+  const repoRoot = await findGitRoot(cwd);
+  if (!repoRoot) throw new Error("not a git repository");
+  try {
+    const result = await runGit(repoRoot, ["pull"]);
+    return { ok: true, stdout: result.stdout, stderr: result.stderr };
+  } catch (error) {
+    throw formatGitError(error);
+  }
+}
+
+/** Run `git push` in the given repository working directory. */
+export async function gitPush(cwd: string): Promise<GitRemoteResult> {
+  const repoRoot = await findGitRoot(cwd);
+  if (!repoRoot) throw new Error("not a git repository");
+  try {
+    const result = await runGit(repoRoot, ["push"]);
+    return { ok: true, stdout: result.stdout, stderr: result.stderr };
+  } catch (error) {
+    throw formatGitError(error);
+  }
+}

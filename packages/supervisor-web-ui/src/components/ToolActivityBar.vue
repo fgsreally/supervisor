@@ -10,9 +10,6 @@
     >
       <component :is="icon" class="tool-activity-bar__icon" />
       <span class="tool-activity-bar__label">{{ summary }}</span>
-      <span v-if="isEvalTool" class="tool-activity-bar__badge tool-activity-bar__badge--eval"
-        >Eval</span
-      >
       <span v-if="isSkillLoad" class="tool-activity-bar__badge">Skill</span>
       <span v-if="isMcpTool" class="tool-activity-bar__badge tool-activity-bar__badge--mcp"
         >MCP</span
@@ -36,6 +33,7 @@
 import { computed } from "vue";
 import {
   Terminal,
+  Braces,
   FileText,
   PencilLine,
   FilePlus,
@@ -93,7 +91,7 @@ const isEvalTool = computed(() => props.toolName.toLowerCase().includes("eval"))
 const icon = computed(() => {
   if (isAskToolName(props.toolName)) return MessageCircleQuestion;
   if (isMcpTool.value) return Plug;
-  if (isEvalTool.value) return Terminal;
+  if (isEvalTool.value) return Braces;
   switch (props.toolName) {
     case "read":
       return FileText;
@@ -219,12 +217,6 @@ const icon = computed(() => {
   color: #7561d4;
   border-color: color-mix(in srgb, #7561d4 35%, transparent);
   background: color-mix(in srgb, #7561d4 14%, transparent);
-}
-
-.tool-activity-bar__badge--eval {
-  color: #2563eb;
-  border-color: color-mix(in srgb, #2563eb 35%, transparent);
-  background: color-mix(in srgb, #2563eb 12%, transparent);
 }
 
 .tool-activity-bar__status {

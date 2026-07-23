@@ -1,6 +1,6 @@
 <template>
   <div class="chat-input-toolbar flex items-center justify-between px-2 py-1.5 shrink-0">
-    <div class="flex items-center gap-0.5">
+    <div class="toolbar-group flex items-center">
       <select
         v-if="customCommands?.length"
         class="slash-select"
@@ -30,22 +30,16 @@
       <button
         type="button"
         class="toolbar-icon-btn inline-flex items-center"
-        title="截图"
+        title="上传图片"
         :disabled="disabled"
         @mousedown.prevent
-        @click="emit('action', 'screenshot')"
+        @click="emit('action', 'upload-image')"
       >
-        <Scissors class="w-[19px] h-[19px] stroke-[1.5]" />
+        <ImagePlus class="w-[19px] h-[19px] stroke-[1.5]" />
       </button>
-
-      <VoiceInputButton
-        :disabled="disabled"
-        @transcript="emit('transcript', $event)"
-        @error="emit('voice-error', $event)"
-      />
     </div>
 
-    <div class="flex items-center gap-2 shrink-0">
+    <div class="toolbar-group flex items-center shrink-0">
       <button
         type="button"
         class="toolbar-icon-btn btw-btn"
@@ -56,15 +50,11 @@
       >
         <MessageCircleQuestion class="w-[19px] h-[19px] stroke-[1.5]" />
       </button>
-      <button
-        type="button"
-        class="toolbar-icon-btn"
-        title="对讲"
+      <VoiceInputButton
         :disabled="disabled"
-        @mousedown.prevent
-      >
-        <AudioLines class="w-[19px] h-[19px] stroke-[1.5]" />
-      </button>
+        @transcript="emit('transcript', $event)"
+        @error="emit('voice-error', $event)"
+      />
       <div class="toolbar-divider" />
       <button
         type="button"
@@ -88,17 +78,16 @@
 
 <script setup lang="ts">
 import {
-  AudioLines,
   FolderOpen,
+  ImagePlus,
   MessageCircleQuestion,
-  Scissors,
   Smile,
   Sparkles,
   Square,
 } from "lucide-vue-next";
 import VoiceInputButton from "./VoiceInputButton.vue";
 
-export type ChatToolbarAction = "emoji" | "skill" | "attach" | "screenshot" | "voice" | "btw";
+export type ChatToolbarAction = "emoji" | "skill" | "attach" | "upload-image" | "voice" | "btw";
 
 const props = defineProps<{
   disabled?: boolean;
@@ -118,7 +107,7 @@ const emit = defineEmits<{
 
 const leftButtons = [
   { id: "emoji" as const, icon: Smile, title: "表情" },
-  { id: "skill" as const, icon: Sparkles, title: "技能" },
+  { id: "skill" as const, icon: Sparkles, title: "斜杠命令（/goal /plan /技能 /Prompt）" },
   { id: "attach" as const, icon: FolderOpen, title: "发送文件" },
 ];
 
@@ -139,6 +128,10 @@ function onSlashSelect(event: Event) {
   color: var(--app-toolbar-icon);
 }
 
+.toolbar-group {
+  gap: 2px;
+}
+
 .toolbar-icon-btn {
   padding: 6px;
   border-radius: 8px;
@@ -149,6 +142,7 @@ function onSlashSelect(event: Event) {
 
 .slash-select {
   max-width: 86px;
+  margin-right: 2px;
   padding: 5px 7px;
   border: 1px solid var(--app-border-subtle);
   border-radius: 8px;
@@ -173,6 +167,7 @@ function onSlashSelect(event: Event) {
 .toolbar-divider {
   width: 1px;
   height: 18px;
+  margin: 0 4px;
   background: var(--app-border-subtle);
 }
 

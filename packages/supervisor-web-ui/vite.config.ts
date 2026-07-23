@@ -66,6 +66,10 @@ export default defineConfig({
         target: "http://localhost:3030",
         changeOrigin: true,
       },
+      "/external-sessions": {
+        target: "http://localhost:3030",
+        changeOrigin: true,
+      },
       "/agents": {
         target: "http://localhost:3030",
         changeOrigin: true,
@@ -104,6 +108,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/uploaded-icons": {
+        target: "http://localhost:3030",
+        changeOrigin: true,
+      },
+      "/public": {
         target: "http://localhost:3030",
         changeOrigin: true,
       },

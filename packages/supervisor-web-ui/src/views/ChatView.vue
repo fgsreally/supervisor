@@ -81,14 +81,6 @@
         <div v-if="sessionLoading && !chatEntries.length" class="session-loading">
           <Loader2 /><span>正在加载聊天记录...</span>
         </div>
-        <button
-          v-else-if="hasOlderGroups"
-          type="button"
-          class="load-older-messages"
-          @click="historyLimit += 80"
-        >
-          查看更早的消息
-        </button>
         <ChatMessageList
           ref="messageListRef"
           :session-id="session.id"
@@ -106,6 +98,9 @@
           :assistant-avatar-agent-id="agentId ?? session.id"
           :rewindable-entry-ids="rewindableEntryIds"
           :retrying="retryingError"
+          :has-older="hasOlderMessages"
+          :loading-older="loadingOlder"
+          @load-older="loadOlderMessages"
           @open-tool="openToolDetail"
           @open-bash="openBashDetail"
           @open-compaction="openCompactionDetail"
@@ -482,7 +477,8 @@ const searchBarRef = ref<InstanceType<typeof ChatSearchBar> | null>(null);
 const sessionTitle = ref("");
 const chatEntries = ref<ChatEntry[]>([]);
 const sessionLoading = ref(false);
-const historyLimit = ref(80);
+const historyHasMore = ref(false);
+const loadingOlder = ref(false);
 const toolModal = ref<{ title: string; sections: { label: string; content: string }[] } | null>(
   null,
 );
@@ -732,6 +728,7 @@ async function reloadMessagesFromServer(sessionId: string) {
     api.getSessionMembers(sessionId).catch(() => []),
   ]);
   sessionMembers.value = members;
+  historyHasMore.value = sessionStore.messageCursors[sessionId]?.hasMore ?? false;
   const entries = sessionStore.messages[sessionId] ?? [];
   chatEntries.value = [
     ...sessionTreeToChatEntries(entries),
@@ -763,9 +760,41 @@ async function reloadMessagesFromServer(sessionId: string) {
   if (nextTasks.length === 0 && !todoActive) taskPaneOpen.value = false;
 }
 
+async function loadOlderMessages() {
+  if (loadingOlder.value || !historyHasMore.value) return;
+  loadingOlder.value = true;
+  const listEl = messageListRef.value?.containerRef;
+  const prevHeight = listEl?.scrollHeight ?? 0;
+  const prevTop = listEl?.scrollTop ?? 0;
+  try {
+    const page = await sessionStore.fetchOlderSessionMessages(props.session.id);
+    historyHasMore.value = page.hasMore;
+    const entries = sessionStore.messages[props.session.id] ?? [];
+    const queued = chatEntries.value.filter((entry) => entry.deliveryState === "queued");
+    chatEntries.value = [...sessionTreeToChatEntries(entries), ...queued];
+    await nextTick();
+    if (listEl) {
+      listEl.scrollTop = listEl.scrollHeight - prevHeight + prevTop;
+    }
+    // Keep going if still pinned to the top (or content shorter than viewport).
+    await nextTick();
+    if (
+      historyHasMore.value &&
+      listEl &&
+      (listEl.scrollTop <= 80 || listEl.scrollHeight <= listEl.clientHeight + 8)
+    ) {
+      loadingOlder.value = false;
+      await loadOlderMessages();
+      return;
+    }
+  } finally {
+    loadingOlder.value = false;
+  }
+}
+
 async function loadSessionMessages(sessionId: string) {
   stopStreaming();
-  historyLimit.value = 80;
+  historyHasMore.value = false;
   const cached = sessionStore.messages[sessionId];
   if (cached?.length) chatEntries.value = sessionTreeToChatEntries(cached);
   else chatEntries.value = [];
@@ -1093,11 +1122,11 @@ const visibleGroups = computed(() => {
   const q = searchQuery.value.trim().toLowerCase();
   if (searchOpen.value && q)
     return displayGroups.value.filter((group) => groupMatchesSearch(group, q));
-  return displayGroups.value.slice(-historyLimit.value);
+  return displayGroups.value;
 });
 
-const hasOlderGroups = computed(
-  () => !searchOpen.value && displayGroups.value.length > historyLimit.value,
+const hasOlderMessages = computed(
+  () => !searchOpen.value && historyHasMore.value,
 );
 
 const searchHitCount = computed(() => visibleGroups.value.length);
@@ -1142,12 +1171,29 @@ const showStreamingPlaceholder = computed(() => {
   return !group;
 });
 
-function openToolDetail(
+async function openToolDetail(
   toolName: string,
   callArgs?: Record<string, unknown>,
   resultContent?: Array<{ type: string; text: string }>,
+  resultEntryId?: string,
 ) {
-  const detail = buildToolModal(toolName, callArgs, resultContent);
+  let content = resultContent;
+  const truncated = chatEntries.value.some(
+    (entry) =>
+      entry.type === "toolResult" &&
+      entry.id === resultEntryId &&
+      entry.truncated === true,
+  );
+  if (truncated && resultEntryId) {
+    try {
+      const full = await api.getSessionMessage(props.session.id, resultEntryId);
+      const fullEntry = sessionTreeToChatEntries([full])[0];
+      if (fullEntry?.type === "toolResult") content = fullEntry.content;
+    } catch (error) {
+      console.error("Failed to load full tool result:", error);
+    }
+  }
+  const detail = buildToolModal(toolName, callArgs, content);
   const normalizedToolName = toolName.toLowerCase();
   const isEval = normalizedToolName.includes("eval");
   const isTerminal = isEval || normalizedToolName.includes("bash");
@@ -1164,15 +1210,32 @@ function openEvalPanel() {
   };
 }
 
-function openBashDetail(
+async function openBashDetail(
   command: string,
   resultContent?: Array<{ type: string; text: string }>,
   intent?: string,
+  resultEntryId?: string,
 ) {
-  const detail = buildBashModal(command, resultContent, intent);
-  const output = resultContent?.map((part) => part.text ?? "").join("\n") ?? "";
+  let content = resultContent;
+  const truncated = chatEntries.value.some(
+    (entry) =>
+      entry.type === "toolResult" &&
+      entry.id === resultEntryId &&
+      entry.truncated === true,
+  );
+  if (truncated && resultEntryId) {
+    try {
+      const full = await api.getSessionMessage(props.session.id, resultEntryId);
+      const fullEntry = sessionTreeToChatEntries([full])[0];
+      if (fullEntry?.type === "toolResult") content = fullEntry.content;
+    } catch (error) {
+      console.error("Failed to load full bash result:", error);
+    }
+  }
+  const detail = buildBashModal(command, content, intent);
+  const output = content?.map((part) => part.text ?? "").join("\n") ?? "";
   const terminalPresentation =
-    resultContent === undefined || output.length > 1000 || output.split(/\r?\n/).length > 8;
+    content === undefined || output.length > 1000 || output.split(/\r?\n/).length > 8;
   if (terminalPresentation) toolPanel.value = { ...detail, terminal: "bash" };
   else toolModal.value = detail;
 }
@@ -1480,24 +1543,6 @@ async function executeCustomSlash(name: string) {
   width: 17px;
   height: 17px;
   animation: spin 0.8s linear infinite;
-}
-.load-older-messages {
-  align-self: center;
-  margin: 10px 0 2px;
-  padding: 6px 13px;
-  border-radius: 16px;
-  color: var(--app-text-link);
-  background: var(--app-hover);
-  font-size: 12px;
-  transition:
-    background-color 0.15s,
-    transform 0.1s;
-}
-.load-older-messages:hover {
-  background: var(--app-list-active-bg);
-}
-.load-older-messages:active {
-  transform: scale(0.97);
 }
 @keyframes spin {
   to {

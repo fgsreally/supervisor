@@ -1,112 +1,56 @@
 <template>
-  <div class="min-h-0 flex-1 overflow-y-auto custom-scrollbar" ref="containerRef">
-    <template v-for="(group, groupIndex) in groups" :key="group.id">
+  <div
+    class="min-h-0 flex-1 overflow-y-auto custom-scrollbar"
+    ref="containerRef"
+    @scroll.passive="onScroll"
+  >
+    <div v-if="loadingOlder" class="chat-load-older">
+      <Loader2 class="w-4 h-4 animate-spin" />
+      <span>加载更早消息…</span>
+    </div>
+    <div
+      class="chat-virtual-spacer"
+      :style="{ height: `${rowVirtualizer.getTotalSize()}px` }"
+    >
       <div
-        v-if="showBranchDivider(groupIndex)"
-        class="flex justify-center py-2"
-        style="background: var(--app-chat-message-bg)"
+        v-for="virtualRow in rowVirtualizer.getVirtualItems()"
+        :key="String(virtualRow.key)"
+        :data-index="virtualRow.index"
+        :ref="measureRow"
+        class="chat-virtual-row"
+        :style="{ transform: `translateY(${virtualRow.start}px)` }"
       >
-        <span
-          class="text-[12px] px-3 py-1 rounded-full"
-          style="color: var(--app-text-secondary); background: var(--app-hover)"
-        >
-          以下为本会话新消息
-        </span>
-      </div>
-
-      <div
-        v-if="showDateDivider(groupIndex)"
-        class="chat-date-divider"
-        style="background: var(--app-chat-message-bg)"
-      >
-        <span>{{ dateDividerLabel(group) }}</span>
-      </div>
-
-      <div
-        v-if="(group.type === 'notice' || group.type === 'system') && group.content"
-        class="chat-date-divider"
-        style="background: var(--app-chat-message-bg)"
-      >
-        <span>{{ group.content }}</span>
-      </div>
-
-      <div
-        v-else-if="group.type === 'llm_error'"
-        class="py-2 md:py-3 px-3 md:px-5 chat-row"
-        style="background: var(--app-chat-message-bg)"
-      >
-        <LlmErrorCard
-          :content="group.content"
-          :retrying="retrying"
-          :avatar-label="assistantAvatarLabel"
-          :avatar-color="assistantAvatarColor"
-          @retry="emit('retry-error')"
-        />
-      </div>
-
-      <div v-else :class="messageRowClass(group)">
-        <ShadowMessageRow
-          v-if="group.type === 'message' && group.message?.role === 'user' && group.shadowSource"
-          :text="userText(group)"
-          :queued="group.deliveryState === 'queued'"
-        />
-        <UserMessageRow
-          v-else-if="group.type === 'message' && group.message?.role === 'user'"
-          :text="userText(group)"
-          :file="userFileAttachment(group)"
-          :time-label="messageTimeLabel(group)"
-          :search-hit="isSearchHit(group)"
-          :delivery-state="group.deliveryState"
-          :slash-source="group.slashSource"
-          :rewindable="rewindableEntryIds.includes(group.id)"
-          @rewind="emit('rewind', group.id)"
-          @open-actions="openActions(group, $event)"
-        />
-        <div v-else-if="group.type === 'slash'" class="slash-row">
-          <Terminal class="w-4 h-4 shrink-0" />
-          <span class="slash-tag">Custom</span>
-          <code>{{ group.content }}</code>
-        </div>
-        <MessageAssets
-          v-if="group.type === 'message' && group.message?.role === 'user' && group.assets?.length"
+        <ChatMessageGroupRow
+          v-if="groups[virtualRow.index]"
           :session-id="sessionId"
-          :assets="group.assets"
-        />
-
-        <AssistantMessageGroup
-          v-else-if="isGroupedAssistantGroup(group) && shouldRenderAssistantGroup(group)"
-          :session-id="sessionId"
-          :group="group"
+          :group="groups[virtualRow.index]!"
+          :show-branch-divider="showBranchDivider(virtualRow.index)"
+          :show-date-divider="showDateDivider(virtualRow.index)"
+          :date-divider-label="dateDividerLabel(groups[virtualRow.index]!)"
+          :time-label="messageTimeLabel(groups[virtualRow.index]!)"
+          :duration-label="assistantDurationLabel(virtualRow.index)"
+          :search-hit="isSearchHit(groups[virtualRow.index]!)"
+          :rewindable="rewindableEntryIds.includes(groups[virtualRow.index]!.id)"
           :show-thinking-blocks="showThinkingBlocks"
           :is-streaming="isStreaming"
           :streaming-group-id="streamingGroupId"
-          :time-label="messageTimeLabel(group)"
-          :duration-label="assistantDurationLabel(groupIndex)"
-          :search-hit="isSearchHit(group)"
-          :avatar-label="assistantAvatarLabel"
-          :avatar-color="assistantAvatarColor"
-          :avatar-icon="assistantAvatarIcon"
-          :avatar-agent-id="assistantAvatarAgentId"
-          @open-tool="(name, args, result) => emit('open-tool', name, args, result)"
-          @open-bash="(cmd, result, intent) => emit('open-bash', cmd, result, intent)"
+          :should-render="assistantShouldRender(virtualRow.index)"
+          :retrying="retrying"
+          :assistant-avatar-label="assistantAvatarLabel"
+          :assistant-avatar-color="assistantAvatarColor"
+          :assistant-avatar-icon="assistantAvatarIcon"
+          :assistant-avatar-agent-id="assistantAvatarAgentId"
+          @open-tool="(name, args, result, entryId) => emit('open-tool', name, args, result, entryId)"
+          @open-bash="(cmd, result, intent, entryId) => emit('open-bash', cmd, result, intent, entryId)"
           @navigate="emit('navigate', $event)"
+          @open-compaction="emit('open-compaction', $event)"
           @answered="emit('answered')"
-          @open-actions="openActions(group, $event)"
-        />
-        <MessageAssets
-          v-if="group.type === 'grouped_assistant' && group.assets.length"
-          class="assistant-assets"
-          :session-id="sessionId"
-          :assets="group.assets"
-        />
-
-        <CompactionBanner
-          v-else-if="group.type === 'compaction'"
-          :entry="group"
-          @open="emit('open-compaction', group)"
+          @rewind="emit('rewind', $event)"
+          @retry-error="emit('retry-error')"
+          @open-actions="openActions(groups[virtualRow.index]!, $event)"
         />
       </div>
-    </template>
+    </div>
 
     <div
       v-if="showStreamingPlaceholder"
@@ -160,10 +104,10 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, reactive, ref } from "vue";
-import { Loader2, Terminal } from "lucide-vue-next";
+import { computed, nextTick, reactive, ref, type ComponentPublicInstance } from "vue";
+import { useVirtualizer } from "@tanstack/vue-virtual";
+import { Loader2 } from "lucide-vue-next";
 import type { ChatCompactionEntry } from "@/types/chat-entry";
-import type { ChatUserFileAttachment } from "@/types/chat-entry";
 import {
   isGroupedAssistantGroup,
   isDisplayGroupInherited,
@@ -176,12 +120,7 @@ import {
   formatMessageDuration,
   sameCalendarDay,
 } from "@/utils/format-time";
-import UserMessageRow from "./UserMessageRow.vue";
-import ShadowMessageRow from "./ShadowMessageRow.vue";
-import AssistantMessageGroup from "./AssistantMessageGroup.vue";
-import LlmErrorCard from "./LlmErrorCard.vue";
-import CompactionBanner from "../CompactionBanner.vue";
-import MessageAssets from "./MessageAssets.vue";
+import ChatMessageGroupRow from "./ChatMessageGroupRow.vue";
 import MessageContextMenu from "./MessageContextMenu.vue";
 import AgentAvatar from "../AgentAvatar.vue";
 
@@ -201,15 +140,24 @@ const props = defineProps<{
   assistantAvatarIcon?: string | null;
   assistantAvatarAgentId?: string;
   rewindableEntryIds: string[];
+  hasOlder?: boolean;
+  loadingOlder?: boolean;
 }>();
 
 const emit = defineEmits<{
+  "load-older": [];
   "open-tool": [
     toolName: string,
     callArgs?: Record<string, unknown>,
     result?: Array<{ type: string; text: string }>,
+    resultEntryId?: string,
   ];
-  "open-bash": [command: string, result?: Array<{ type: string; text: string }>, intent?: string];
+  "open-bash": [
+    command: string,
+    result?: Array<{ type: string; text: string }>,
+    intent?: string,
+    resultEntryId?: string,
+  ];
   navigate: [sessionId: string];
   "open-compaction": [entry: ChatCompactionEntry];
   answered: [];
@@ -217,6 +165,14 @@ const emit = defineEmits<{
   fork: [entryId: string];
   "retry-error": [];
 }>();
+
+const LOAD_OLDER_THRESHOLD_PX = 80;
+
+function onScroll() {
+  const el = containerRef.value;
+  if (!el || !props.hasOlder || props.loadingOlder || props.searchOpen) return;
+  if (el.scrollTop <= LOAD_OLDER_THRESHOLD_PX) emit("load-older");
+}
 
 const containerRef = ref<HTMLElement | null>(null);
 const contextMenu = reactive({
@@ -231,9 +187,22 @@ const contextMenu = reactive({
   canCopy: false,
 });
 
-function messageRowClass(group: DisplayGroup): string {
-  const pad = "py-2 md:py-3 px-3 md:px-5";
-  return isDisplayGroupInherited(group) ? `${pad} chat-row-inherited` : `${pad} chat-row`;
+const rowVirtualizer = useVirtualizer(
+  computed(() => ({
+    count: props.groups.length,
+    getScrollElement: () => containerRef.value,
+    estimateSize: () => 160,
+    overscan: 8,
+    getItemKey: (index: number) => props.groups[index]?.id ?? index,
+  })),
+);
+
+function measureRow(el: Element | ComponentPublicInstance | null) {
+  const node =
+    el && typeof el === "object" && "$el" in el
+      ? ((el as ComponentPublicInstance).$el as Element | null)
+      : (el as Element | null);
+  if (node instanceof Element) rowVirtualizer.value.measureElement(node);
 }
 
 function showBranchDivider(groupIndex: number): boolean {
@@ -351,13 +320,13 @@ async function onContextCopy() {
   try {
     await navigator.clipboard.writeText(text);
   } catch {
-    // ignore clipboard failures (permissions / insecure context)
+    // ignore clipboard failures
   }
 }
 
 function actionableCopyText(group: DisplayGroup): string {
   if (group.type === "message" && group.message?.role === "user") {
-    return userText(group).trim();
+    return messageTextContent(group.message?.content).trim();
   }
   if (isGroupedAssistantGroup(group)) {
     return group.pieces
@@ -367,35 +336,6 @@ function actionableCopyText(group: DisplayGroup): string {
       .trim();
   }
   return "";
-}
-
-function isUserFileMessage(group: DisplayGroup): boolean {
-  if (group.type !== "message" || group.message?.role !== "user") return false;
-  const content = group.message.content;
-  return (
-    typeof content === "object" &&
-    content !== null &&
-    !Array.isArray(content) &&
-    content.type === "file"
-  );
-}
-
-function userFileAttachment(group: DisplayGroup): ChatUserFileAttachment | null {
-  if (!isUserFileMessage(group) || group.type !== "message") return null;
-  const content = group.message?.content;
-  if (
-    typeof content !== "object" ||
-    content === null ||
-    Array.isArray(content) ||
-    content.type !== "file"
-  )
-    return null;
-  return content;
-}
-
-function userText(group: DisplayGroup): string {
-  if (group.type !== "message") return "";
-  return messageTextContent(group.message?.content);
 }
 
 function groupMatchesSearch(group: DisplayGroup, q: string): boolean {
@@ -452,7 +392,17 @@ function shouldRenderAssistantGroup(
   return false;
 }
 
+function assistantShouldRender(index: number): boolean {
+  const group = props.groups[index];
+  if (!group || !isGroupedAssistantGroup(group)) return true;
+  return shouldRenderAssistantGroup(group);
+}
+
 async function scrollToBottom() {
+  await nextTick();
+  if (props.groups.length > 0) {
+    rowVirtualizer.value.scrollToIndex(props.groups.length - 1, { align: "end" });
+  }
   await nextTick();
   if (containerRef.value) {
     containerRef.value.scrollTop = containerRef.value.scrollHeight;
@@ -463,52 +413,30 @@ defineExpose({ scrollToBottom, containerRef });
 </script>
 
 <style scoped>
-.chat-date-divider {
-  display: flex;
-  justify-content: center;
-  padding: 10px 12px 4px;
+.chat-virtual-spacer {
+  width: 100%;
+  position: relative;
 }
 
-.chat-date-divider span {
-  padding: 3px 10px;
-  border-radius: 4px;
-  color: var(--app-text-secondary);
-  background: color-mix(in srgb, var(--app-hover) 80%, transparent);
-  font-size: 12px;
-  line-height: 1.4;
+.chat-virtual-row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
 }
 
-.slash-row {
+.chat-load-older {
   display: flex;
   align-items: center;
-  gap: 7px;
-  margin: 4px 16px;
-  padding: 8px 10px;
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 8px;
-  color: var(--app-text-secondary);
-  background: var(--app-hover);
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 12px 4px;
+  color: var(--app-text-muted);
+  font-size: 12px;
 }
 
-.slash-tag {
-  padding: 1px 6px;
-  border-radius: 999px;
-  font-size: 10px;
-  background: var(--app-chat-bg);
-}
-</style>
-
-<style scoped>
 .chat-row {
   background: var(--app-chat-message-bg);
-}
-
-.chat-row-inherited {
-  background: var(--app-chat-message-inherited);
-}
-
-.assistant-assets {
-  margin-left: 44px;
 }
 
 .chat-msg-time {

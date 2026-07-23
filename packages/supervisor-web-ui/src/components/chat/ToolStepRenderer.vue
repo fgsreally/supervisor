@@ -24,7 +24,7 @@
     :result-content="piece.result?.content"
     :pending="pending"
     :is-error="isError"
-    @open="emit('open-bash', piece.command, piece.result?.content, piece.intent)"
+    @open="emit('open-bash', piece.command, piece.result?.content, piece.intent, piece.result?.id)"
   />
   <RecordingStep
     v-else-if="isRecording && piece.kind === 'toolStep'"
@@ -34,7 +34,7 @@
     :result-content="piece.result?.content"
     :pending="pending"
     :is-error="isError"
-    @open="emit('open-tool', piece.toolName, piece.callArgs, piece.result?.content)"
+    @open="emit('open-tool', piece.toolName, piece.callArgs, piece.result?.content, piece.result?.id)"
   />
   <ToolActivityBar
     v-else-if="piece.kind === 'toolStep'"
@@ -44,7 +44,7 @@
     :pending="pending"
     :is-error="isError"
     :show-navigate="piece.toolName === 'spawn_agent' && !!childSessionId"
-    @open="emit('open-tool', piece.toolName, piece.callArgs, piece.result?.content)"
+    @open="emit('open-tool', piece.toolName, piece.callArgs, piece.result?.content, piece.result?.id)"
     @navigate="childSessionId && emit('navigate', childSessionId)"
   />
 </template>
@@ -73,8 +73,14 @@ const emit = defineEmits<{
     toolName: string,
     callArgs?: Record<string, unknown>,
     result?: Array<{ type: string; text: string }>,
+    resultEntryId?: string,
   ];
-  "open-bash": [command: string, result?: Array<{ type: string; text: string }>, intent?: string];
+  "open-bash": [
+    command: string,
+    result?: Array<{ type: string; text: string }>,
+    intent?: string,
+    resultEntryId?: string,
+  ];
   navigate: [sessionId: string];
   answered: [];
 }>();

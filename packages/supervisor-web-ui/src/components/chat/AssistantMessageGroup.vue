@@ -59,8 +59,8 @@
               :all-pieces="group.pieces"
               :pending="isToolPiecePending(piece)"
               :is-error="piece.result?.isError"
-              @open-tool="(name, args, result) => emit('open-tool', name, args, result)"
-              @open-bash="(cmd, result, intent) => emit('open-bash', cmd, result, intent)"
+              @open-tool="(name, args, result, entryId) => emit('open-tool', name, args, result, entryId)"
+              @open-bash="(cmd, result, intent, entryId) => emit('open-bash', cmd, result, intent, entryId)"
               @navigate="emit('navigate', $event)"
               @answered="emit('answered')"
             />
@@ -105,8 +105,14 @@ const emit = defineEmits<{
     toolName: string,
     callArgs?: Record<string, unknown>,
     result?: Array<{ type: string; text: string }>,
+    resultEntryId?: string,
   ];
-  "open-bash": [command: string, result?: Array<{ type: string; text: string }>, intent?: string];
+  "open-bash": [
+    command: string,
+    result?: Array<{ type: string; text: string }>,
+    intent?: string,
+    resultEntryId?: string,
+  ];
   navigate: [sessionId: string];
   answered: [];
   "open-actions": [payload: { mode: "menu" | "sheet"; x: number; y: number }];

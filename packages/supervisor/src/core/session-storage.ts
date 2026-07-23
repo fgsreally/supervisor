@@ -299,7 +299,7 @@ function createStorage(
   return new SQLiteSessionStorage(db, sessionId);
 }
 
-function rowToStoredMessage(row: MessageRow): {
+export function rowToStoredMessage(row: MessageRow): {
   entry: SessionTreeEntry;
   meta: Record<string, unknown>;
   isOld: boolean;

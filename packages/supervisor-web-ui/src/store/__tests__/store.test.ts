@@ -10,6 +10,8 @@ vi.mock("@/api", () => ({
   deleteSession: vi.fn(),
   updateSessionMeta: vi.fn(),
   getSessionMessages: vi.fn(),
+  getSessionMessagesPage: vi.fn(),
+  getSessionMessage: vi.fn(),
   listAgents: vi.fn(),
   getAgent: vi.fn(),
   createAgent: vi.fn(),

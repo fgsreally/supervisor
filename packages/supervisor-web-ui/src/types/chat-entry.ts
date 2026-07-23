@@ -93,5 +93,7 @@ export type ChatEntry =
       content: Array<{ type: string; text: string }>;
       isError?: boolean;
       details?: unknown;
+      /** List API truncated this payload; open detail to fetch full. */
+      truncated?: boolean;
     })
   | ChatCompactionEntry;

@@ -1258,9 +1258,33 @@ export async function setSessionThinkingLevel(id: string, level: string): Promis
   return postJson<{ ok: boolean }>(`/sessions/${id}/thinking-level`, { level });
 }
 
-/** Get the full message history for a session. */
+/** Get the full message history for a session (legacy unpaged). */
 export async function getSessionMessages(id: string): Promise<SessionTreeEntry[]> {
   return fetchJson<SessionTreeEntry[]>(`/sessions/${id}/messages`);
+}
+
+export interface SessionMessagesPage {
+  messages: SessionTreeEntry[];
+  hasMore: boolean;
+  oldestRowId: number | null;
+  newestRowId: number | null;
+}
+
+/** Paginated chat history; default view is lite (truncated heavy fields). */
+export async function getSessionMessagesPage(
+  id: string,
+  options?: { limit?: number; beforeId?: number; view?: "lite" | "full" },
+): Promise<SessionMessagesPage> {
+  const params = new URLSearchParams();
+  params.set("limit", String(options?.limit ?? 80));
+  if (options?.beforeId != null) params.set("beforeId", String(options.beforeId));
+  if (options?.view) params.set("view", options.view);
+  return fetchJson<SessionMessagesPage>(`/sessions/${id}/messages?${params.toString()}`);
+}
+
+/** Full single message payload (for opening truncated tool results etc.). */
+export async function getSessionMessage(id: string, entryId: string): Promise<SessionTreeEntry> {
+  return fetchJson<SessionTreeEntry>(`/sessions/${id}/messages/${encodeURIComponent(entryId)}`);
 }
 
 /** Read the active Markdown task artifacts managed by the Agent. */

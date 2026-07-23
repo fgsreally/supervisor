@@ -79,6 +79,9 @@ export const useSessionStore = defineStore("session", () => {
   const projects = ref<Project[]>([]);
   const currentSessionId = ref<string | null>(null);
   const messages = ref<Record<string, SessionTreeEntry[]>>({});
+  const messageCursors = ref<
+    Record<string, { oldestRowId: number | null; hasMore: boolean }>
+  >({});
 
   // Getters
   const getSessionById = computed(() => (id: string) => {
@@ -225,7 +228,10 @@ export const useSessionStore = defineStore("session", () => {
             ? { ...session, parentId: null }
             : session,
         );
-      for (const removedId of removedIds) delete messages.value[removedId];
+      for (const removedId of removedIds) {
+        delete messages.value[removedId];
+        delete messageCursors.value[removedId];
+      }
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to delete session");
       throw err;
@@ -266,14 +272,45 @@ export const useSessionStore = defineStore("session", () => {
     root.loading.messages = true;
     root.clearError();
     try {
-      const entries = await api.getSessionMessages(id);
-      messages.value[id] = entries;
-      return entries;
+      const page = await api.getSessionMessagesPage(id, { limit: 80, view: "lite" });
+      messages.value[id] = page.messages;
+      messageCursors.value[id] = {
+        oldestRowId: page.oldestRowId,
+        hasMore: page.hasMore,
+      };
+      return page.messages;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch messages");
       throw err;
     } finally {
       root.loading.messages = false;
+    }
+  }
+
+  async function fetchOlderSessionMessages(id: string) {
+    root.clearError();
+    const cursor = messageCursors.value[id];
+    if (!cursor?.hasMore || cursor.oldestRowId == null) {
+      return { messages: [] as api.SessionTreeEntry[], hasMore: false };
+    }
+    try {
+      const page = await api.getSessionMessagesPage(id, {
+        limit: 80,
+        beforeId: cursor.oldestRowId,
+        view: "lite",
+      });
+      const existing = messages.value[id] ?? [];
+      const seen = new Set(existing.map((entry) => entry.id));
+      const older = page.messages.filter((entry) => !seen.has(entry.id));
+      messages.value[id] = [...older, ...existing];
+      messageCursors.value[id] = {
+        oldestRowId: page.oldestRowId,
+        hasMore: page.hasMore,
+      };
+      return page;
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to fetch older messages");
+      throw err;
     }
   }
 
@@ -428,6 +465,8 @@ export const useSessionStore = defineStore("session", () => {
     updateSessionMeta,
     markSessionRead,
     fetchSessionMessages,
+    fetchOlderSessionMessages,
+    messageCursors,
     sendPrompt,
     forkSession,
     cloneSession,

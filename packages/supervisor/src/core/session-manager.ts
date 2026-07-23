@@ -120,6 +120,10 @@ import {
   toSessionMessageResponse,
 } from "./session-storage.js";
 import {
+  getSessionMessageByEntryId,
+  querySessionMessagesPage,
+} from "./session-message-query.js";
+import {
   appendCustomMessage,
   formatGitCommitCustomMessage,
 } from "./session-notice.js";
@@ -168,6 +172,7 @@ import type {
   Session,
   SessionCheckpoint,
   SessionMessageResponse,
+  SessionMessagesPage,
   SessionRow,
   SpawnSessionOptions,
   UpdateModelOptions,
@@ -1923,6 +1928,23 @@ export class SessionManager {
     const storage = new SQLiteSessionStorage(this.db, id);
     const rows = await storage.getStoredMessages();
     return rows.map(toSessionMessageResponse);
+  }
+
+  getSessionMessagesPage(
+    id: number,
+    options?: { beforeId?: number; limit?: number; view?: "lite" | "full" },
+  ): SessionMessagesPage {
+    const inst = this.db.get(id);
+    if (!inst) throw new Error(`Session ${id} not found`);
+    return querySessionMessagesPage(this.db, id, options);
+  }
+
+  getSessionMessage(id: number, entryId: string): SessionMessageResponse {
+    const inst = this.db.get(id);
+    if (!inst) throw new Error(`Session ${id} not found`);
+    const message = getSessionMessageByEntryId(this.db, id, entryId);
+    if (!message) throw new Error(`Message ${entryId} not found in session ${id}`);
+    return message;
   }
 
   async createCheckpoint(

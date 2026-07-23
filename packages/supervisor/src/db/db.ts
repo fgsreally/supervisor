@@ -1084,6 +1084,51 @@ export class SupervisorDb {
       .all(sessionId) as MessageRow[];
   }
 
+  getMessageRowByEntryId(sessionId: number, entryId: string): MessageRow | undefined {
+    return this.db
+      .prepare("SELECT * FROM messages WHERE session_id = ? AND entry_id = ?")
+      .get(sessionId, entryId) as MessageRow | undefined;
+  }
+
+  /**
+   * Newest-first page by monotonic row id. Caller should reverse for chronological UI.
+   * `beforeId` excludes that row and older pages use smaller ids.
+   */
+  getMessageRowsPage(
+    sessionId: number,
+    options?: { beforeId?: number; limit?: number },
+  ): MessageRow[] {
+    const limit = Math.max(1, Math.min(options?.limit ?? 80, 500));
+    if (options?.beforeId != null) {
+      return this.db
+        .prepare(
+          `SELECT * FROM messages
+           WHERE session_id = ? AND id < ?
+           ORDER BY id DESC
+           LIMIT ?`,
+        )
+        .all(sessionId, options.beforeId, limit) as MessageRow[];
+    }
+    return this.db
+      .prepare(
+        `SELECT * FROM messages
+         WHERE session_id = ?
+         ORDER BY id DESC
+         LIMIT ?`,
+      )
+      .all(sessionId, limit) as MessageRow[];
+  }
+
+  /** Count whether any older row exists before the given id. */
+  hasOlderMessages(sessionId: number, beforeId: number): boolean {
+    const row = this.db
+      .prepare(
+        `SELECT 1 AS ok FROM messages WHERE session_id = ? AND id < ? LIMIT 1`,
+      )
+      .get(sessionId, beforeId) as { ok: number } | undefined;
+    return !!row;
+  }
+
   searchMessages(
     query: string,
     filter?: { sessionId?: string; role?: string; limit?: number },

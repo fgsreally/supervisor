@@ -246,6 +246,16 @@ export type SessionMessageResponse = SessionTreeEntry & {
   createdAt: number;
 };
 
+/** Paginated chat history for the Web UI (newest page first fetch). */
+export interface SessionMessagesPage {
+  messages: SessionMessageResponse[];
+  hasMore: boolean;
+  /** Smallest messages.id in this page; pass as `beforeId` for older pages. */
+  oldestRowId: number | null;
+  /** Largest messages.id in this page. */
+  newestRowId: number | null;
+}
+
 // ============ Provider/Model Types ============
 export interface ProviderRow {
   id: number;

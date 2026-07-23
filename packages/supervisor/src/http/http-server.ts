@@ -1224,16 +1224,51 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // GET /sessions/:id/messages  — get full conversation history
+  // GET /sessions/:id/messages — conversation history (paginated when limit is set)
   app.get("/sessions/:id/messages", async (c) => {
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
-      const messages = await manager.getSessionMessages(id);
-      return c.json(messages);
+      const limitRaw = c.req.query("limit");
+      if (limitRaw == null || limitRaw === "") {
+        const messages = await manager.getSessionMessages(id);
+        return c.json(messages);
+      }
+      const limit = Number.parseInt(limitRaw, 10);
+      if (!Number.isFinite(limit) || limit < 1) return jsonError(c, 400, "invalid limit");
+      const beforeRaw = c.req.query("beforeId");
+      const beforeId =
+        beforeRaw == null || beforeRaw === ""
+          ? undefined
+          : Number.parseInt(beforeRaw, 10);
+      if (beforeRaw != null && beforeRaw !== "" && !Number.isFinite(beforeId)) {
+        return jsonError(c, 400, "invalid beforeId");
+      }
+      const view = c.req.query("view") === "full" ? "full" : "lite";
+      return c.json(
+        manager.getSessionMessagesPage(id, {
+          limit,
+          beforeId,
+          view,
+        }),
+      );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 404, message);
+    }
+  });
+
+  // GET /sessions/:id/messages/:entryId — full single message (for truncated list rows)
+  app.get("/sessions/:id/messages/:entryId", (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      const entryId = c.req.param("entryId");
+      if (!entryId) return jsonError(c, 400, "invalid entry id");
+      return c.json(manager.getSessionMessage(id, entryId));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, message.includes("not found") ? 404 : 500, message);
     }
   });
 

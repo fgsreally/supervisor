@@ -40,6 +40,7 @@ function toolResultChatEntry(
     ...(payload.details !== undefined ? { details: payload.details } : {}),
     createdAt: entry.createdAt,
     ...(assets.length > 0 ? { assets } : {}),
+    ...(entry.meta?.liteTruncated === true ? { truncated: true } : {}),
   };
 }
 

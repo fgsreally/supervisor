@@ -43,6 +43,7 @@ function createRuntimeOptions(sessionId = 1): RuntimeOptions & { finishedSession
     deps: {
       appendEntry: async () => "entry-1",
       sendMessage: async () => {},
+      sendCustomMessage: async () => "custom-1",
       sendUserMessage: async () => {},
       getSessionDir: async () => tmpdir(),
       getProjectDir: async () => tmpdir(),

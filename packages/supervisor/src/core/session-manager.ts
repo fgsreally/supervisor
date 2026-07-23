@@ -5,6 +5,7 @@ import {
   type AgentEvent,
   AgentHarness,
   type AgentHarnessEvent,
+  type AgentMessage,
   Session as AgentSession,
   type AgentTool,
   type SessionTreeEntry,
@@ -110,6 +111,19 @@ import {
   SQLiteSessionStorage,
   toSessionMessageResponse,
 } from "./session-storage.js";
+import {
+  appendCustomMessage,
+  formatGitCommitCustomMessage,
+} from "./session-notice.js";
+import {
+  appendLlmErrorMessage,
+  assistantHasVisibleContent,
+  extractAgentEndLlmError,
+  formatLlmErrorMessage,
+  LLM_ERROR_CUSTOM_TYPE,
+  willAttemptOverflowRecovery,
+} from "./session-llm-error.js";
+import { setSessionUnreadHandler } from "./session-unread.js";
 import { ensureSessionDir, removeProjectDirSync, removeSessionDirSync } from "./session-files.js";
 import { runShadow } from "../extension/builtin/shadow/index.js";
 import {
@@ -151,11 +165,6 @@ import type {
   UpdateModelOptions,
 } from "../types.js";
 
-const BTW_SYSTEM_PROMPT = `You are answering a side question attached to another working session.
-Use the inherited conversation and workspace only to understand context and answer the question.
-This session is strictly read-only: do not create, edit, delete, rename, or otherwise modify files; do not run commands that change the workspace; do not commit or alter Git state.
-Keep the answer focused on the side question. Do not continue or redirect the parent session's task.`;
-
 const DEFAULT_PROVIDER: KnownProvider = "anthropic";
 const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
@@ -165,7 +174,15 @@ export type ShadowSuggestionsEvent = {
   timestamp: number;
 };
 
-export type SessionOutputEvent = AgentHarnessEvent | ShadowSuggestionsEvent;
+/** Operational notify for the Web UI (toast). Does not change session status. */
+export type UiNotifyEvent = {
+  type: "ui_notify";
+  kind: "error" | "info" | "success";
+  message: string;
+  timestamp: number;
+};
+
+export type SessionOutputEvent = AgentHarnessEvent | ShadowSuggestionsEvent | UiNotifyEvent;
 export type SessionOutputListener = (sessionId: number, event: SessionOutputEvent) => void;
 
 interface RuntimeConfigSnapshot {
@@ -309,6 +326,9 @@ export class SessionManager {
       ensureCatalog: () => this.ensureResourceCatalog(),
     });
     void this.ensureResourceCatalog();
+    setSessionUnreadHandler((sessionId, entry, options) => {
+      this.handleAssistantMessageUnread(sessionId, entry, options);
+    });
   }
 
   // Expose for home/daily-work helpers that need direct DB access.
@@ -487,31 +507,49 @@ export class SessionManager {
           this.publishShadowSuggestions(sessionId, []);
         }
       } else if (event.type === "agent_end") {
-        if (!hasPendingAsks(sessionId)) {
-          this.db.updateStatus(sessionId, "idle");
-        }
-        void (async () => {
-          let shadowCheckpoint;
-          if (runtime instanceof SessionRuntime && !hasPendingAsks(sessionId)) {
-            try {
-              shadowCheckpoint = await createSessionCheckpoint(this.db, sessionId, {
-                label: "shadow-turn",
-              });
-            } catch (error: unknown) {
+        const llmError = extractAgentEndLlmError(event);
+        const overflowRecovery =
+          !!llmError &&
+          runtime instanceof SessionRuntime &&
+          willAttemptOverflowRecovery(
+            sessionId,
+            llmError,
+            runtime.harness.agent.state.model as never,
+          );
+
+        if (llmError && !overflowRecovery && !hasPendingAsks(sessionId)) {
+          this.db.updateStatus(sessionId, "error");
+          void this.recordLlmError(sessionId, formatLlmErrorMessage(llmError)).catch(
+            (error: unknown) => {
               const detail = error instanceof Error ? error.message : String(error);
-              console.debug(`shadow checkpoint skipped [${sessionId}]:`, detail);
+              console.error(`recordLlmError failed [${sessionId}]:`, detail);
+            },
+          );
+        } else if (!hasPendingAsks(sessionId)) {
+          this.db.updateStatus(sessionId, "idle");
+          void (async () => {
+            let shadowCheckpoint;
+            if (runtime instanceof SessionRuntime && !hasPendingAsks(sessionId)) {
+              try {
+                shadowCheckpoint = await createSessionCheckpoint(this.db, sessionId, {
+                  label: "shadow-turn",
+                });
+              } catch (error: unknown) {
+                const detail = error instanceof Error ? error.message : String(error);
+                console.debug(`shadow checkpoint skipped [${sessionId}]:`, detail);
+              }
             }
-          }
-          if (!hasPendingAsks(sessionId)) {
-            await this.drainSessionInputQueue(sessionId);
-          }
-          if (runtime instanceof SessionRuntime && shadowCheckpoint) {
-            await runShadow(this, this.db, sessionId, event, shadowCheckpoint);
-          }
-        })().catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
-          console.error(`shadow hook failed [${sessionId}]:`, message);
-        });
+            if (!hasPendingAsks(sessionId)) {
+              await this.drainSessionInputQueue(sessionId);
+            }
+            if (runtime instanceof SessionRuntime && shadowCheckpoint) {
+              await runShadow(this, this.db, sessionId, event, shadowCheckpoint);
+            }
+          })().catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            console.error(`shadow hook failed [${sessionId}]:`, message);
+          });
+        }
       }
 
       if (runtime instanceof SessionRuntime) {
@@ -555,6 +593,31 @@ export class SessionManager {
     });
   }
 
+  private hasSessionViewer(sessionId: number): boolean {
+    return (this.outputListeners.get(sessionId)?.size ?? 0) > 0;
+  }
+
+  private handleAssistantMessageUnread(
+    sessionId: number,
+    entry: SessionTreeEntry,
+    options: { isOld?: boolean },
+  ): void {
+    if (options.isOld) return;
+    if (entry.type !== "message" || entry.message.role !== "assistant") return;
+
+    if (this.hasSessionViewer(sessionId)) {
+      this.db.updateMessageMeta(sessionId, entry.id, { read: true });
+      return;
+    }
+
+    this.db.updateMessageMeta(sessionId, entry.id, { read: false });
+    const row = this.db.get(sessionId);
+    if (!row) return;
+    const meta = parseSessionMeta(row.meta);
+    const current = typeof meta.unread === "number" && meta.unread > 0 ? meta.unread : 0;
+    this.db.updateMeta(sessionId, { unread: current + 1 });
+  }
+
   private extractRuntimeConfig(session: Session): RuntimeConfigSnapshot {
     const saved = session.meta?.runtimeConfig as Partial<RuntimeConfigSnapshot> | undefined;
     const provider = typeof saved?.provider === "string" ? saved.provider : DEFAULT_PROVIDER;
@@ -587,11 +650,11 @@ export class SessionManager {
     if (
       session.status === "finish" ||
       session.status === "finished" ||
-      session.status === "error" ||
       session.status === "stopped"
     ) {
       throw new Error(`Session ${id} is not resumable (status: ${session.status})`);
     }
+    // `error` is resumable via retryAfterLlmError / prompt after clearing error state.
 
     const agent = this.getAgentForSession(session.agentId);
     if (agent && agent.backendType !== "native") {
@@ -636,16 +699,9 @@ export class SessionManager {
     const tools = sessionTools;
 
     const systemPrompt =
-      session.branchType === "btw"
-        ? this.buildSystemPrompt(
-            BTW_SYSTEM_PROMPT,
-            resource.getSkillsPrompt(),
-            resource.systemMd,
-            session.cwd,
-          )
-        : config.systemPrompt.length > 0
-          ? config.systemPrompt
-          : this.buildSystemPrompt("", resource.getSkillsPrompt(), resource.systemMd, session.cwd);
+      session.branchType === "btw" || config.systemPrompt.length === 0
+        ? this.buildSystemPrompt("", resource.getSkillsPrompt(), resource.systemMd, session.cwd)
+        : config.systemPrompt;
 
     const harness = new AgentHarness({
       env,
@@ -733,17 +789,6 @@ export class SessionManager {
       meta: JSON.stringify(meta),
     });
     const session = rowToSession(row);
-    if (session.parentId == null) {
-      const btwAgentId = findPackagedAgentId(this.db, "btw");
-      if (btwAgentId !== undefined) {
-        this.db.upsertMember({
-          session_id: session.id,
-          agent_id: btwAgentId,
-          role: "assistant",
-          tags: ["btw"],
-        });
-      }
-    }
     return session;
   }
 
@@ -794,8 +839,10 @@ export class SessionManager {
       if (options.instructions) {
         void runtime.prompt(options.instructions).catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
-          console.error(`ACP agent prompt error [${activeSession.id}]:`, message);
-          this.db.updateStatus(activeSession.id, "error");
+          this.reportOperationalError(activeSession.id, message);
+          if (this.db.get(activeSession.id)?.status === "running") {
+            this.db.updateStatus(activeSession.id, "idle");
+          }
         });
       }
       this.db.updateStatus(activeSession.id, options.instructions ? "running" : "idle");
@@ -909,8 +956,10 @@ export class SessionManager {
     if (options.instructions) {
       void runtime.prompt(options.instructions).catch((err: unknown) => {
         const message = err instanceof Error ? err.message : String(err);
-        console.error(`Agent prompt error [${activeSession.id}]:`, message);
-        this.db.updateStatus(activeSession.id, "error");
+        this.reportOperationalError(activeSession.id, message);
+        if (this.db.get(activeSession.id)?.status === "running") {
+          this.db.updateStatus(activeSession.id, "idle");
+        }
       });
     }
 
@@ -937,6 +986,30 @@ export class SessionManager {
     for (const listener of this.outputListeners.get(sessionId) ?? []) {
       listener(sessionId, event);
     }
+  }
+
+  /** Push a toast-style notify to connected Web UI clients. Never flips session status. */
+  publishUiNotify(
+    sessionId: number,
+    message: string,
+    kind: UiNotifyEvent["kind"] = "error",
+  ): void {
+    const text = message.trim();
+    if (!text) return;
+    const event: UiNotifyEvent = {
+      type: "ui_notify",
+      kind,
+      message: text.slice(0, 2000),
+      timestamp: Date.now(),
+    };
+    for (const listener of this.outputListeners.get(sessionId) ?? []) {
+      listener(sessionId, event);
+    }
+  }
+
+  private reportOperationalError(sessionId: number, message: string): void {
+    console.error(`[session ${sessionId}]`, message);
+    this.publishUiNotify(sessionId, message, "error");
   }
 
   async prompt(
@@ -1032,8 +1105,10 @@ export class SessionManager {
 
     void submit().catch((error: unknown) => {
       const detail = error instanceof Error ? error.message : String(error);
-      console.error(`Subagent prompt error [${childSessionId}]:`, detail);
-      this.db.updateStatus(childSessionId, "error");
+      this.reportOperationalError(childSessionId, detail);
+      if (this.db.get(childSessionId)?.status === "running") {
+        this.db.updateStatus(childSessionId, "idle");
+      }
     });
     return "drained";
   }
@@ -1321,13 +1396,21 @@ export class SessionManager {
             : backendType === "claude"
               ? "committed by cc"
               : undefined;
-        await commitSessionChanges(
+        const commit = await commitSessionChanges(
           id,
           session.cwd,
           session.meta,
           this.db,
           externalCommitMessage ? { message: externalCommitMessage } : {},
         );
+        if (commit) {
+          await this.sendCustomMessage(id, formatGitCommitCustomMessage(commit)).catch(
+            (error: unknown) => {
+              const detail = error instanceof Error ? error.message : String(error);
+              console.error(`sendCustomMessage failed [${id}]:`, detail);
+            },
+          );
+        }
         session = rowToSession(this.db.get(id)!);
         await finalizeSessionLifecycleGit(this.db, session);
       }
@@ -1339,7 +1422,8 @@ export class SessionManager {
           git: { ...(gitMeta as Record<string, unknown>), mergeError: message },
         });
       }
-      this.db.updateStatus(id, "error");
+      // Operational failure (git/merge) — toast to UI, do NOT mark session as LLM error.
+      this.reportOperationalError(id, message);
       throw new Error(message);
     }
 
@@ -1541,6 +1625,13 @@ export class SessionManager {
     return meta;
   }
 
+  /** Mark all unread messages as read and clear session.meta.unread. */
+  markSessionRead(id: number): Record<string, unknown> {
+    if (!this.db.get(id)) throw new Error(`Session ${id} not found`);
+    this.db.markSessionMessagesRead(id);
+    return this.updateMeta(id, { unread: 0 });
+  }
+
   setMeta(id: number, meta: Record<string, unknown>): void {
     const before = this.getWorkflow(id);
     this.db.setMeta(id, meta);
@@ -1635,18 +1726,14 @@ export class SessionManager {
   createBtw(id: number): Session {
     const parent = this._getSession(id);
     if (!parent) throw new Error(`Session ${id} not found`);
-    const btwAgent =
-      this.db.listMemberAgentsByTag(parent.id, "btw")[0] ??
-      (() => {
-        const agentId = findPackagedAgentId(this.db, "btw");
-        return agentId === undefined ? undefined : this.db.getAgent(agentId);
-      })();
+    const btwAgentId = findPackagedAgentId(this.db, "btw");
+    const btwAgent = btwAgentId === undefined ? undefined : this.db.getAgent(btwAgentId);
     if (!btwAgent) throw new Error("BTW agent is not configured");
     const runtimeConfig: RuntimeConfigSnapshot = {
       provider: DEFAULT_PROVIDER,
       modelId: btwAgent.modelId ?? DEFAULT_MODEL_ID,
-      systemPrompt: BTW_SYSTEM_PROMPT,
-      toolsPreset: "readonly",
+      systemPrompt: "",
+      toolsPreset: btwAgent.toolsPreset === "none" ? "none" : "readonly",
     };
     return this.create({
       projectId: parent.projectId,
@@ -1737,6 +1824,7 @@ export class SessionManager {
 
   async dispose(): Promise<void> {
     this.detachHomeTaskSync();
+    setSessionUnreadHandler(null);
     await Promise.all([...this.runtimes.keys()].map((id) => this.kill(id).catch(() => {})));
     this.runtimes.clear();
     this.turnTrackers.clear();
@@ -1803,13 +1891,15 @@ export class SessionManager {
     if (session.status === "running" || session.status === "waiting_user") {
       throw new Error(`Session ${id} is busy (status: ${session.status})`);
     }
-    return commitSessionChanges(
+    const commit = await commitSessionChanges(
       id,
       session.cwd,
       typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta,
       this.db,
       options,
     );
+    if (commit) await this.sendCustomMessage(id, formatGitCommitCustomMessage(commit));
+    return commit;
   }
 
   async commitCheckpoint(
@@ -1832,7 +1922,141 @@ export class SessionManager {
     const meta = typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta;
     const git = meta.git && typeof meta.git === "object" ? meta.git : undefined;
     if (git) this.db.updateMeta(id, { git: { ...git, lastCommit: commit } });
+    await this.sendCustomMessage(id, formatGitCommitCustomMessage(commit));
     return commit;
+  }
+
+  /**
+   * Append a timeline-only custom message (not sent to the LLM).
+   * Same idea as extension `ctx.session.sendCustomMessage`.
+   */
+  async sendCustomMessage(sessionId: number, content: string): Promise<string> {
+    const storage = new SQLiteSessionStorage(this.db, sessionId);
+    return appendCustomMessage(storage, content);
+  }
+
+  private async recordLlmError(sessionId: number, content: string): Promise<void> {
+    await this.retractTrailingEmptyFailedAssistant(sessionId);
+    const storage = new SQLiteSessionStorage(this.db, sessionId);
+    await appendLlmErrorMessage(storage, content);
+    const runtime = this.runtimes.get(sessionId);
+    if (runtime instanceof SessionRuntime) {
+      await runtime.reloadMessagesFromSessionTree().catch(() => {});
+    }
+  }
+
+  /** Remove empty failed assistant leaves so they never re-enter the LLM context. */
+  private retractTrailingEmptyFailedAssistant(sessionId: number): void {
+    for (;;) {
+      const leaf = this.db.db
+        .prepare(
+          `SELECT m.entry_id, m.parent_entry_id, m.payload, m.type
+           FROM sessions s
+           JOIN messages m ON m.entry_id = s.leaf_id AND m.session_id = s.id
+           WHERE s.id = ?`,
+        )
+        .get(sessionId) as
+        | { entry_id: string; parent_entry_id: string | null; payload: string; type: string }
+        | undefined;
+      if (!leaf || leaf.type !== "message") return;
+      let entry: SessionTreeEntry;
+      try {
+        entry = JSON.parse(leaf.payload) as SessionTreeEntry;
+      } catch {
+        return;
+      }
+      if (entry.type !== "message" || entry.message.role !== "assistant") return;
+      const assistant = entry.message as {
+        role: string;
+        stopReason?: string;
+        content?: unknown;
+      };
+      if (assistant.stopReason !== "error") return;
+      if (assistantHasVisibleContent(assistant)) return;
+
+      this.db.db.transaction(() => {
+        this.db.db
+          .prepare("UPDATE sessions SET leaf_id = ?, last_active_at = ? WHERE id = ?")
+          .run(leaf.parent_entry_id, Date.now(), sessionId);
+        this.db.db
+          .prepare("DELETE FROM messages WHERE session_id = ? AND entry_id = ?")
+          .run(sessionId, leaf.entry_id);
+      })();
+    }
+  }
+
+  private deleteLlmErrorLeaf(sessionId: number): string | null {
+    const leaf = this.db.db
+      .prepare(
+        `SELECT m.entry_id, m.parent_entry_id, m.payload, m.type
+         FROM sessions s
+         JOIN messages m ON m.entry_id = s.leaf_id AND m.session_id = s.id
+         WHERE s.id = ?`,
+      )
+      .get(sessionId) as
+      | { entry_id: string; parent_entry_id: string | null; payload: string; type: string }
+      | undefined;
+    if (!leaf || leaf.type !== "custom") return null;
+    let entry: SessionTreeEntry;
+    try {
+      entry = JSON.parse(leaf.payload) as SessionTreeEntry;
+    } catch {
+      return null;
+    }
+    if (entry.type !== "custom" || entry.customType !== LLM_ERROR_CUSTOM_TYPE) return null;
+
+    this.db.db.transaction(() => {
+      this.db.db
+        .prepare("UPDATE sessions SET leaf_id = ?, last_active_at = ? WHERE id = ?")
+        .run(leaf.parent_entry_id, Date.now(), sessionId);
+      this.db.db
+        .prepare("DELETE FROM messages WHERE session_id = ? AND entry_id = ?")
+        .run(sessionId, leaf.entry_id);
+    })();
+    return leaf.entry_id;
+  }
+
+  /** Retry after an LLM failure: drop the error card and continue the turn. */
+  async retryAfterLlmError(id: number): Promise<Session> {
+    const row = this.db.get(id);
+    if (!row) throw new Error(`Session ${id} not found`);
+    if (row.status !== "error") {
+      throw new Error(`Session ${id} is not in error state`);
+    }
+
+    this.deleteLlmErrorLeaf(id);
+    this.retractTrailingEmptyFailedAssistant(id);
+    this.db.updateStatus(id, "idle");
+
+    const runtime = await this.getOrRestoreRuntime(id);
+    if (!(runtime instanceof SessionRuntime)) {
+      throw new Error("Retry is only supported for native agent sessions");
+    }
+
+    await runtime.reloadMessagesFromSessionTree();
+    const agent = runtime.harness.agent as {
+      state: { messages: AgentMessage[] };
+      continue?: () => Promise<void>;
+    };
+    while (agent.state.messages.length > 0) {
+      const last = agent.state.messages[agent.state.messages.length - 1];
+      if (last?.role !== "assistant") break;
+      const stopReason = (last as { stopReason?: string }).stopReason;
+      if (stopReason !== "error") break;
+      agent.state.messages = agent.state.messages.slice(0, -1);
+    }
+
+    this.db.updateStatus(id, "running");
+    void agent
+      .continue?.()
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`retryAfterLlmError continue failed [${id}]:`, message);
+        this.db.updateStatus(id, "error");
+        void this.recordLlmError(id, message).catch(() => {});
+      });
+
+    return rowToSession(this.db.get(id)!)!;
   }
 
   searchMessages(

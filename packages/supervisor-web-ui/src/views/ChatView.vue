@@ -105,6 +105,7 @@
           :assistant-avatar-icon="session.meta?.builtin ? null : sessionAvatarValue.icon"
           :assistant-avatar-agent-id="agentId ?? session.id"
           :rewindable-entry-ids="rewindableEntryIds"
+          :retrying="retryingError"
           @open-tool="openToolDetail"
           @open-bash="openBashDetail"
           @open-compaction="openCompactionDetail"
@@ -112,6 +113,7 @@
           @answered="onAskAnswered"
           @rewind="rewindToMessage"
           @fork="forkFromMessage"
+          @retry-error="onRetryLlmError"
         />
 
         <div v-if="suggestedQuestions.length" class="suggested-questions">
@@ -529,6 +531,7 @@ let shadowSuggestionCleanup: (() => void) | null = null;
 const workspaceId = computed(() => props.session.workspaceId ?? "");
 const sessionMuted = computed(() => !!props.session.muted);
 const showThinking = ref(false);
+const retryingError = ref(false);
 const activeTodos = computed(() =>
   todos.value.length > 0 && !todos.value.every((todo) => todo.status === "done") ? todos.value : [],
 );
@@ -615,7 +618,11 @@ const inputPlaceholder = computed(() => {
   if (modelMissing.value) return "请先为 Agent 配置模型";
   if (providerDisabled.value) return "模型供应商已禁用，无法发送消息";
   if (props.session.status === "finish") return "会话已完成";
-  if (props.session.status === "error") return "会话出错，请查看菜单中的合并状态";
+  if (props.session.status === "error") {
+    return chatEntries.value.some((entry) => entry.type === "llm_error")
+      ? "模型调用失败，请点击错误卡片重试"
+      : "会话出错，请查看菜单中的合并状态";
+  }
   if (props.session.status === "stopped") return "会话已停止";
   if (isStreaming.value)
     return streamingSendMode.value === "steer" ? "输入立即干预内容" : "输入轮后追加内容";
@@ -781,12 +788,24 @@ async function loadSessionMessages(sessionId: string) {
     : [];
 }
 
+function handleUiNotifyEvent(event: { type?: string; kind?: string; message?: string } | undefined) {
+  if (!event || event.type !== "ui_notify" || typeof event.message !== "string") return false;
+  const kind =
+    event.kind === "success" || event.kind === "info" || event.kind === "error"
+      ? event.kind
+      : "error";
+  showUiMessage(event.message, kind);
+  return true;
+}
+
 function subscribeShadowSuggestions(sessionId: string) {
   shadowSuggestionCleanup?.();
   shadowSuggestionCleanup = api.subscribeSessionEvents(
     sessionId,
     (payload) => {
-      if (payload.type !== "agent" || payload.event?.type !== "shadow_suggestions") return;
+      if (payload.type !== "agent" || !payload.event) return;
+      if (handleUiNotifyEvent(payload.event)) return;
+      if (payload.event.type !== "shadow_suggestions") return;
       suggestedQuestions.value = payload.event.questions;
     },
     (error) => console.error("Shadow suggestion events error:", error),
@@ -921,7 +940,7 @@ async function onCompleteSession() {
     await sessionStore.fetchSession(props.session.id);
     sessionTitle.value = props.session.meta?.name ?? sessionTitle.value;
   } catch (err) {
-    console.error("Complete session failed:", err);
+    showUiMessage(err instanceof Error ? err.message : "完成会话失败", "error");
     await sessionStore.fetchSession(props.session.id);
   }
 }
@@ -980,10 +999,30 @@ async function onCommitSession() {
       window.alert("没有需要提交的变更");
       return;
     }
-    window.alert(`已提交：${result.commit.hash} ${result.commit.message}`);
+    await reloadMessagesFromServer(props.session.id);
+    void scrollToBottom();
   } catch (err) {
     console.error("Commit failed:", err);
     window.alert(err instanceof Error ? err.message : "提交失败");
+  }
+}
+
+async function onRetryLlmError() {
+  if (retryingError.value || isStreaming.value) return;
+  retryingError.value = true;
+  try {
+    await api.retrySession(props.session.id);
+    await sessionStore.fetchSession(props.session.id);
+    await reloadMessagesFromServer(props.session.id);
+    attachToRunningSession();
+    void scrollToBottom();
+  } catch (err) {
+    console.error("Retry failed:", err);
+    showUiMessage(err instanceof Error ? err.message : "重试失败", "error");
+    await reloadMessagesFromServer(props.session.id).catch(() => {});
+    await sessionStore.fetchSession(props.session.id).catch(() => {});
+  } finally {
+    retryingError.value = false;
   }
 }
 
@@ -1200,6 +1239,7 @@ function attachToRunningSession() {
     props.session.id,
     (payload) => {
       if (payload.type !== "agent" || !payload.event) return;
+      if (handleUiNotifyEvent(payload.event)) return;
       if (payload.event.type === "shadow_suggestions") return;
       applyAgentEventToChatEntries(chatEntries.value, assistantId, payload.event);
       void scrollToBottom();
@@ -1209,7 +1249,10 @@ function attachToRunningSession() {
         void sessionStore.fetchSessions();
       }
     },
-    (err) => console.error("Session events error:", err),
+    (err) => {
+      console.error("Session events error:", err);
+      showUiMessage(err.message, "error");
+    },
   );
 }
 
@@ -1235,6 +1278,8 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
     props.session.id,
     userText,
     (event) => {
+      if (handleUiNotifyEvent(event)) return;
+      if (event.type === "shadow_suggestions") return;
       if (
         activeTurn.value &&
         (event.type === "message_update" ||
@@ -1248,6 +1293,7 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
     },
     (err) => {
       console.error("Stream error:", err);
+      showUiMessage(err.message, "error");
     },
     () => {
       isStreaming.value = false;

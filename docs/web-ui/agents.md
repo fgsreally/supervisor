@@ -31,6 +31,7 @@ Action：`fetchAgent`、`createAgent`、`updateAgent`、`deleteAgent`、`fetchAg
 - `GET /agents/:id` → 获取 agent
 - `GET /agents/:id/resources` → agent 资源
 - `GET /agents/:id/system-md` → SYSTEM.md
-- `PATCH /agents/:id` → 更新 agent
-- `POST /agents/:id/resources` → 绑定 catalog 资源
-- `DELETE /agents/:id/resources/:resourceId` → 删除资源绑定
+- `PUT /agents/:id/system-md` → 写入 SYSTEM.md（**内置 Agent 也可改**；其它 mutation 仍 403）
+- `PATCH /agents/:id` → 更新 agent（内置 Agent 禁止）
+- `POST /agents/:id/resources` → 绑定 catalog 资源（内置 Agent 禁止）
+- `DELETE /agents/:id/resources/:resourceId` → 删除资源绑定（内置 Agent 禁止）

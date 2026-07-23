@@ -13,7 +13,9 @@ ChatView.vue
 │   │   ├── ThinkingBlock.vue
 │   │   ├── ToolStepRenderer.vue
 │   │   └── …
+│   ├── LlmErrorCard.vue（`customType: llm_error`，可 retry）
 │   ├── ShadowMessageRow.vue（如有）
+│   ├── 日期分割线样式的 `custom_message` notice
 │   └── CompactionBanner.vue
 ├── ChatInputPanel.vue / ChatComposer
 │   ├── `@` / `/` 自动补全
@@ -38,7 +40,9 @@ ChatView.vue
 
 ## SSE
 
-`promptSession` 等建立 SSE（`GET /sessions/:id/events`），事件推入消息树后增量渲染。
+`promptSession` 等建立 SSE（`GET /sessions/:id/events`），事件推入消息树后增量渲染。会话输出中的 `ui_notify` 以 toast（`showUiMessage`）展示，不改变 session status。
+
+打开会话时调用 `POST /sessions/:id/read` 清除未读；列表项用 `meta.unread` 显示角标。
 
 ## 会话菜单
 

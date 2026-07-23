@@ -59,6 +59,16 @@ export type ChatEntry =
   | (ChatEntryBase & { id: string; type: "system"; content: string })
   | (ChatEntryBase & {
       id: string;
+      type: "notice";
+      content: string;
+    })
+  | (ChatEntryBase & {
+      id: string;
+      type: "llm_error";
+      content: string;
+    })
+  | (ChatEntryBase & {
+      id: string;
       type: "slash";
       direction: "input" | "output";
       content: string;

@@ -59,11 +59,8 @@ describe("supervisor: SessionManager", () => {
     expect(btw.showInSessionList).toBe(false);
     expect(btw.contextLeafId).toBeNull();
     expect(btw.agentId).toBe(findPackagedAgentId(db, "btw"));
-    expect(manager.listMemberAgentsByTag(parent.id, "btw")[0]?.id).toBe(btw.agentId);
     expect((btw.meta.runtimeConfig as { toolsPreset: string }).toolsPreset).toBe("readonly");
-    expect((btw.meta.runtimeConfig as { systemPrompt: string }).systemPrompt).toContain(
-      "strictly read-only",
-    );
+    expect((btw.meta.runtimeConfig as { systemPrompt: string }).systemPrompt).toBe("");
   });
 
   it("spawn() creates AgentHarness and marks instance idle when no instructions", async () => {

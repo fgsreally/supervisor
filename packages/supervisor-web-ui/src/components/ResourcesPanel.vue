@@ -28,18 +28,41 @@
     </div>
 
     <div
-      v-if="showAction"
-      class="px-3 py-1.5 shrink-0 border-b flex items-center justify-end"
+      class="px-3 py-1.5 shrink-0 border-b flex items-center justify-between gap-2"
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
-      <button
-        type="button"
-        class="list-header-btn"
-        :title="actionTitle"
-        @click="onAction"
-      >
-        <Plus class="w-5 h-5" />
-      </button>
+      <span class="text-[12px] shrink-0" style="color: var(--app-text-muted)">
+        共{{ filteredItems.length }}个
+      </span>
+      <div v-if="showAction" class="flex items-center gap-0.5 shrink-0">
+        <template v-if="kind === 'skills'">
+          <button
+            type="button"
+            class="list-header-btn"
+            title="搜索 Skill"
+            @click="openSkillDialog('search')"
+          >
+            <Search class="w-5 h-5" />
+          </button>
+          <button
+            type="button"
+            class="list-header-btn"
+            title="导入 Skill"
+            @click="openSkillDialog('link')"
+          >
+            <Link class="w-5 h-5" />
+          </button>
+        </template>
+        <button
+          v-else
+          type="button"
+          class="list-header-btn"
+          :title="actionTitle"
+          @click="onAction"
+        >
+          <Plus class="w-5 h-5" />
+        </button>
+      </div>
     </div>
 
     <div class="flex-1 overflow-y-auto custom-scrollbar">
@@ -71,6 +94,7 @@
     />
     <SkillInstallDialog
       :open="skillOpen"
+      :mode="skillMode"
       @close="skillOpen = false"
       @installed="onSkillInstalled"
     />
@@ -79,7 +103,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Plus } from "lucide-vue-next";
+import { Link, Plus, Search } from "lucide-vue-next";
 import ResourceCreateDialog from "./ResourceCreateDialog.vue";
 import SkillInstallDialog from "./SkillInstallDialog.vue";
 import { useResourceStore } from "@/store";
@@ -97,6 +121,7 @@ const resourceStore = useResourceStore();
 const kind = ref<UIResourceKind>("skills");
 const createOpen = ref(false);
 const skillOpen = ref(false);
+const skillMode = ref<"search" | "link">("search");
 
 const kinds = [
   { id: "skills" as const, label: "Skills" },
@@ -112,18 +137,18 @@ const showAction = computed(
 );
 
 const actionTitle = computed(() => {
-  if (kind.value === "skills") return "引入 Skill";
   if (kind.value === "mcp") return "新建 MCP";
   return "新建 Prompt";
 });
 
 const createKind = computed<"prompt" | "mcp">(() => (kind.value === "mcp" ? "mcp" : "prompt"));
 
+function openSkillDialog(mode: "search" | "link") {
+  skillMode.value = mode;
+  skillOpen.value = true;
+}
+
 function onAction() {
-  if (kind.value === "skills") {
-    skillOpen.value = true;
-    return;
-  }
   createOpen.value = true;
 }
 

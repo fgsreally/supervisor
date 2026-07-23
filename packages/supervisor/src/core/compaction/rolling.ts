@@ -25,6 +25,8 @@ import { compactWithUtilityModel, resolveFeatureModelAuth } from "../../utils/ut
 const overflowRecoveryAttempted = new Set<string>();
 const compactingSessions = new Set<string>();
 
+export { overflowRecoveryAttempted };
+
 export function getLatestCompactionEntry(
   entries: SessionTreeEntry[],
 ): Extract<SessionTreeEntry, { type: "compaction" }> | null {

@@ -12,7 +12,10 @@
 packages/supervisor/
 ├── agents/                          # 内置 agent 的 prompt 模板
 │   ├── shadow/prompt.md
-│   └── intro/prompt.md
+│   ├── btw/prompt.md
+│   ├── intro/prompt.md
+│   ├── coding/prompt.md
+│   └── assistant/prompt.md
 ├── prompts/                         # 随包分发的系统 prompt 片段
 ├── scripts/                         # 开发/调试脚本
 ├── src/                             # 运行时源码
@@ -63,10 +66,12 @@ packages/supervisor/
 | 文件                  | 用途                                                                                                                    |
 | --------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `shadow/prompt.md`    | Shadow 协作者（`is_internal`）：每轮主对话结束后分析记忆与安全，按需向父 session 投递消息；**不可**用于创建用户 session |
+| `btw/prompt.md`       | BTW 只读侧问代理（`is_internal`）；**不可**用于创建用户 session                                                         |
 | `intro/prompt.md`     | Intro 引导和扩展开发助手，使用 coding 工具；**可以**创建用户 session                                                    |
+| `coding/prompt.md`    | 通用 Coding agent：项目开发与验证；端口经环境变量注入；**可以**创建用户 session               |
 | `assistant/prompt.md` | 默认 Pi Assistant 的 system prompt                                                                                      |
 
-内置 Agent 的 meta 只使用 `builtin` 和 `userSpawnable` 两个布尔字段。HTTP API 不允许修改、删除内置 Agent，也不允许改写其 system prompt 或资源绑定。
+内置 / 打包 Agent 的 meta 使用 `builtin`、`userSpawnable`（以及 `packagedKind` 等）。HTTP：禁止 PATCH/DELETE 内置 Agent 及其资源绑定；**允许** `PUT /agents/:id/system-md` 自定义 SYSTEM.md。打包 kinds：`shadow` / `btw`（不可用户建会话）、`intro` / `coding`（可用户建会话），另有「Pi 助手」。BTW 使用 packaged `btw` agent 的 SYSTEM.md（由 `btw/prompt.md` 种子写入），经 `POST /sessions/:id/btw` 创建，不经 members `tag=btw`。
 
 ---
 
@@ -215,8 +220,7 @@ packages/supervisor/
 | `protocol.ts` | 构建提示并解析 memory、message、urgency、suggestion、title XML |
 | `types.ts`    | Shadow 协议类型定义                                            |
 
-有价值的 `message` 会注入主模型输入队列；常规轮次允许返回空。`suggestion` 的 WebSocket
-前端投递是后续任务。
+有价值的 `message` 会注入主模型输入队列；常规轮次允许返回空。`suggestion` / 推荐问题经会话事件（SSE）投递给前端。
 
 ---
 
@@ -345,7 +349,7 @@ SessionManager ──► SessionInputQueue（统一输入队列）
     │
     ├─► SupervisorDb (SQLite)
     │
-    └─► agent_end ──► drain 队列 ──► runShadowHook ──► shadow 子 session
+    └─► agent_end ──► drain 队列 ──► Shadow LLM hook（不创建子 session）
 ```
 
 ---
@@ -361,6 +365,6 @@ SessionManager ──► SessionInputQueue（统一输入队列）
 
 <cwd>/.pi/supervisor/            # 项目级资源（可选）
 <cwd>/.supervisor/projects/<pid>/sessions/<sid>/
-    ├── shadow/memory.md         # Shadow 记忆（仅父 session）
+    ├── shadow/shadow-memory.md  # Shadow 记忆（仅父 session）
     └── ...                      # 会话附件、日志等
 ```

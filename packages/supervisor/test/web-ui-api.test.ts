@@ -108,7 +108,7 @@ describe("supervisor: Web UI API compatibility", () => {
   });
 
   describe("Agent management", () => {
-    it("rejects built-in Agent mutations through HTTP", async () => {
+    it("rejects built-in Agent mutations through HTTP except system prompt", async () => {
       const providerId = db.insertProvider({
         slug: "builtin-test",
         name: "Builtin Test",
@@ -122,8 +122,12 @@ describe("supervisor: Web UI API compatibility", () => {
 
       expect((await req("PATCH", `/agents/${agent.id}`, { name: "Changed" })).status).toBe(403);
       expect(
-        (await req("PUT", `/agents/${agent.id}/system-md`, { content: "Changed" })).status,
-      ).toBe(403);
+        (await req("PUT", `/agents/${agent.id}/system-md`, { content: "Changed prompt" })).status,
+      ).toBe(200);
+      expect((await req("GET", `/agents/${agent.id}/system-md`)).status).toBe(200);
+      expect(await (await req("GET", `/agents/${agent.id}/system-md`)).json()).toEqual({
+        content: "Changed prompt",
+      });
       expect((await req("PATCH", `/agents/${agent.id}/meta`, { key: "value" })).status).toBe(403);
       expect((await req("POST", `/agents/${agent.id}/resources`, { resourceId: 1 })).status).toBe(
         403,

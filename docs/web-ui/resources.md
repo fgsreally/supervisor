@@ -23,6 +23,8 @@ SKILL.md 格式的技能包。agent 对话时自动加载对应 skill。
 
 | 组件                        | 作用               |
 | --------------------------- | ------------------ |
+| `ResourcesPanel.vue`        | 全局资源列表与分类 |
+| `SkillInstallDialog.vue`    | Skill 搜索 / 链接导入 |
 | `ResourceContentView.vue`   | 资源内容查看与编辑 |
 | `ResourceFileListItem.vue`  | 资源文件列表项     |
 | `ResourceLayerBadge.vue`    | 资源层级标签       |
@@ -47,5 +49,6 @@ Action：`fetchGlobalResources`、`linkResource`
 
 ## 备注
 
+- Skills 可通过搜索（`GET /skills/search`）或直接粘贴链接安装
 - 资源系统是 supervisor 扩展能力的 UI 层面体现
 - 通过 `AgentResourceBrowser.vue` 可在 Agent 配置页面直接查看和编辑链接后的资源内容

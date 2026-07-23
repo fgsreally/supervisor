@@ -43,7 +43,7 @@
 | POST   | `/agents/:id/resources`             | 绑定资源           |
 | DELETE | `/agents/:id/resources/:resourceId` | 解除绑定           |
 
-内置 Agent（`builtin: true`）只读：禁止更新、删除、改 system prompt 与资源绑定。
+内置 Agent（`meta.builtin: true`）：禁止 PATCH/DELETE 与资源绑定变更；**例外**：`PUT /agents/:id/system-md` 允许改写 SYSTEM.md（内置 prompt 可定制）。
 
 ## Project
 
@@ -68,6 +68,8 @@
 | POST   | `/sessions/:id/abort`                    | 中止当前轮；可请求撤回尚无回复的 user 消息 |
 | POST   | `/sessions/:id/kill`                     | 杀进程                                     |
 | POST   | `/sessions/:id/complete`                 | 完成会话                                   |
+| POST   | `/sessions/:id/retry`                    | LLM 失败后清除错误卡并继续                 |
+| POST   | `/sessions/:id/read`                     | 消息标已读并清 `meta.unread`               |
 | POST   | `/sessions/:id/send`                     | 发送（兼容路径）                           |
 | GET    | `/sessions/:id/state`                    | 运行状态、可用命令等                       |
 | GET    | `/sessions/:id/messages`                 | 消息树                                     |
@@ -141,6 +143,7 @@ Job 的状态、能力和界面语义见 [Job](/supervisor/jobs)。
 | Method | Path                    | 说明                 |
 | ------ | ----------------------- | -------------------- |
 | GET    | `/messages/search`      | 消息 FTS 搜索        |
+| GET    | `/skills/search`        | 代理 skills.sh 搜索  |
 | GET    | `/files/content?path=`  | 读文件（路径白名单） |
 | GET    | `/workspace/files?dir=` | 列工作区文件         |
 
@@ -171,3 +174,5 @@ Job 的状态、能力和界面语义见 [Job](/supervisor/jobs)。
 - Slash 命令已实现：`GET/POST /sessions/:id/commands`。
 - 文件读取有路径白名单，见 `http-server.ts` 中 `GET /files/content`。
 - 工作流语义见 [工作流](/supervisor/workflow)；外部 Agent 见 [外部 Agent](/supervisor/external-agents)。
+- **错误与通知**：仅 LLM 失败会把 session 标为 `status=error`，并写入 timeline `customType: llm_error`，可用 `POST /sessions/:id/retry`；其它运维错误经 SSE `ui_notify` toast，不改 status。
+- **未读**：消息 `meta.read`；会话 `meta.unread`；打开会话时 `POST /sessions/:id/read`。

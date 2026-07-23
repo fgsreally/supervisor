@@ -185,7 +185,7 @@ export function buildDisplayGroups(entries: ChatEntry[]): DisplayGroup[] {
       continue;
     }
 
-    if (entry.type === "system") {
+    if (entry.type === "system" || entry.type === "notice" || entry.type === "llm_error") {
       flushAssistant();
       groups.push(entry);
       continue;

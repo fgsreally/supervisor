@@ -62,6 +62,7 @@ export interface RuntimeOptions {
       details?: unknown;
       triggerTurn?: boolean;
     }) => Promise<void>;
+    sendCustomMessage: (content: string) => Promise<string>;
     sendUserMessage: (content: string, options?: { source?: string }) => Promise<void>;
     sendToChild?: (
       sessionId: number,
@@ -237,6 +238,7 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
       children: options.db.getChildSessions,
       appendEntry: options.deps.appendEntry,
       sendMessage: options.deps.sendMessage,
+      sendCustomMessage: options.deps.sendCustomMessage,
       sendUserMessage: options.deps.sendUserMessage,
       sendToChild: options.deps.sendToChild ?? (async () => {}),
       inspectChild:

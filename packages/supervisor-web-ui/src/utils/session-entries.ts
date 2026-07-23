@@ -58,10 +58,12 @@ function toolResultFromMessageEntry(
 }
 
 export function sessionTreeToChatEntries(entries: SessionTreeEntry[]): ChatEntry[] {
-  return entries.map(sessionTreeEntryToChatEntry);
+  return entries
+    .map(sessionTreeEntryToChatEntry)
+    .filter((entry): entry is ChatEntry => entry != null);
 }
 
-export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry {
+export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry | null {
   const assets = messageAssets(entry.meta);
   const base = {
     ...(entry.isOld ? { isOld: true } : {}),
@@ -79,6 +81,39 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
       content: entry.content ?? "",
       createdAt: entry.createdAt,
     };
+  }
+  if (entry.type === "custom" && entry.customType === "llm_error") {
+    const data = entry.data ?? {};
+    const text =
+      typeof data.text === "string" && data.text.trim()
+        ? data.text.trim()
+        : "模型调用失败，请重试";
+    return {
+      ...base,
+      id: entry.id,
+      type: "llm_error",
+      content: text,
+      createdAt: entry.createdAt,
+    };
+  }
+  if (entry.type === "custom" && (entry.customType === "custom_message" || entry.customType === "session_notice")) {
+    const data = entry.data ?? {};
+    const text =
+      typeof data.text === "string" && data.text.trim()
+        ? data.text.trim()
+        : typeof data.message === "string"
+          ? data.message.trim()
+          : "系统事件";
+    return {
+      ...base,
+      id: entry.id,
+      type: "notice",
+      content: text,
+      createdAt: entry.createdAt,
+    };
+  }
+  if (entry.type === "custom") {
+    return null;
   }
   if (entry.type === "compaction") {
     return {

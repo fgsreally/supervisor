@@ -247,6 +247,21 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
+  async function markSessionRead(id: string) {
+    root.clearError();
+    try {
+      const updated = await api.markSessionRead(id);
+      const session = getSessionById.value(id);
+      if (session) {
+        session.meta = updated;
+      }
+      return updated;
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to mark session read");
+      throw err;
+    }
+  }
+
   async function fetchSessionMessages(id: string) {
     root.loading.messages = true;
     root.clearError();
@@ -411,6 +426,7 @@ export const useSessionStore = defineStore("session", () => {
     importExternalSession,
     deleteSession,
     updateSessionMeta,
+    markSessionRead,
     fetchSessionMessages,
     sendPrompt,
     forkSession,

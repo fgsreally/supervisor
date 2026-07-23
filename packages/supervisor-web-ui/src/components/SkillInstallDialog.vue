@@ -12,30 +12,13 @@
         aria-labelledby="skill-install-title"
       >
         <header class="h-14 px-5 border-b flex items-center shrink-0 gap-2">
-          <h2 id="skill-install-title" class="text-[16px] font-medium flex-1">引入 Skill</h2>
+          <h2 id="skill-install-title" class="text-[16px] font-medium flex-1">
+            {{ mode === "search" ? "搜索 Skill" : "导入 Skill" }}
+          </h2>
           <button type="button" class="skill-install-icon-btn" title="关闭" @click="close">
             <X class="w-5 h-5" />
           </button>
         </header>
-
-        <div class="px-5 pt-3 flex gap-1 shrink-0">
-          <button
-            type="button"
-            class="skill-install-tab px-2.5 py-1 rounded text-[12px]"
-            :class="mode === 'search' ? 'skill-install-tab--active' : ''"
-            @click="mode = 'search'"
-          >
-            联网搜索
-          </button>
-          <button
-            type="button"
-            class="skill-install-tab px-2.5 py-1 rounded text-[12px]"
-            :class="mode === 'link' ? 'skill-install-tab--active' : ''"
-            @click="mode = 'link'"
-          >
-            链接安装
-          </button>
-        </div>
 
         <div class="p-5 flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
           <template v-if="mode === 'search'">
@@ -129,6 +112,7 @@
             <label class="block text-[13px]">
               <span class="skill-install-muted mb-1.5 block">源地址</span>
               <input
+                ref="linkInputRef"
                 v-model="link"
                 type="text"
                 class="skill-install-input w-full rounded-md px-3 py-2 text-[13px] font-mono"
@@ -161,7 +145,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { nextTick, ref, watch } from "vue";
 import { Download, Loader2, Search, X } from "lucide-vue-next";
 import {
   installSkill,
@@ -172,6 +156,7 @@ import { showUiMessage } from "@/composables/use-ui-message";
 
 const props = defineProps<{
   open: boolean;
+  mode: "search" | "link";
 }>();
 
 const emit = defineEmits<{
@@ -179,9 +164,9 @@ const emit = defineEmits<{
   installed: [slug: string];
 }>();
 
-const mode = ref<"search" | "link">("search");
 const query = ref("");
 const link = ref("");
+const linkInputRef = ref<HTMLInputElement | null>(null);
 const searching = ref(false);
 const searched = ref(false);
 const searchError = ref<string | null>(null);
@@ -191,9 +176,8 @@ const installingId = ref<string | null>(null);
 
 watch(
   () => props.open,
-  (open) => {
+  async (open) => {
     if (!open) return;
-    mode.value = "search";
     query.value = "";
     link.value = "";
     results.value = [];
@@ -201,6 +185,10 @@ watch(
     searchError.value = null;
     linkError.value = null;
     installingId.value = null;
+    if (props.mode === "link") {
+      await nextTick();
+      linkInputRef.value?.focus();
+    }
   },
 );
 
@@ -290,18 +278,6 @@ async function installFromLink() {
 .skill-install-icon-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
-}
-
-.skill-install-tab {
-  background: var(--app-settings-card);
-  color: var(--app-text-secondary);
-  border: 1px solid var(--app-border);
-}
-
-.skill-install-tab--active {
-  background: var(--app-accent);
-  color: #fff;
-  border-color: var(--app-accent);
 }
 
 .skill-install-input {

@@ -519,7 +519,7 @@ async function achieveSession() {
   try {
     await sessionStore.completeSession(target.sessionId);
   } catch (error) {
-    window.alert(error instanceof Error ? error.message : "归档失败");
+    showUiMessage(error instanceof Error ? error.message : "归档失败", "error");
   }
 }
 

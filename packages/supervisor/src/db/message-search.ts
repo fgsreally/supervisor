@@ -19,6 +19,21 @@ export function extractMessageSearchFields(entry: SessionTreeEntry): MessageSear
     }
     case "compaction":
       return { messageRole: null, searchText: entry.summary.trim() || null };
+    case "custom": {
+      if (
+        entry.customType !== "custom_message" &&
+        entry.customType !== "session_notice" &&
+        entry.customType !== "llm_error"
+      ) {
+        return { messageRole: null, searchText: null };
+      }
+      const data = entry.data as { text?: unknown } | undefined;
+      const text = typeof data?.text === "string" ? data.text.trim() : "";
+      return {
+        messageRole: entry.customType === "llm_error" ? "llm_error" : "custom_message",
+        searchText: text.length > 0 ? text : null,
+      };
+    }
     case "custom_message":
       if (!entry.display) return { messageRole: null, searchText: null };
       return {

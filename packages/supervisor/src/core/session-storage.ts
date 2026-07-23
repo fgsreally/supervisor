@@ -12,6 +12,7 @@ import type {
   SessionMessageResponse,
   SupervisorHarnessMetadata,
 } from "../types.js";
+import { notifySessionEntryAppended } from "./session-unread.js";
 
 export interface AppendEntryOptions {
   meta?: Record<string, unknown>;
@@ -24,7 +25,9 @@ export class SQLiteSessionStorage implements SessionStorage {
   private sessionId: number;
   private pendingUserMessageSources: Array<{ source: string | null; consumed: boolean }> = [];
   private pendingUserMessageOrigins: Array<{ origin: string; consumed: boolean }> = [];
-  private entryListeners = new Set<(entry: SessionTreeEntry) => void | Promise<void>>();
+  private entryListeners = new Set<
+    (entry: SessionTreeEntry, options: AppendEntryOptions) => void | Promise<void>
+  >();
 
   constructor(db: SupervisorDb, sessionId: number) {
     this.db = db;
@@ -60,7 +63,9 @@ export class SQLiteSessionStorage implements SessionStorage {
     return randomUUID();
   }
 
-  onEntryAppended(listener: (entry: SessionTreeEntry) => void | Promise<void>): () => void {
+  onEntryAppended(
+    listener: (entry: SessionTreeEntry, options: AppendEntryOptions) => void | Promise<void>,
+  ): () => void {
     this.entryListeners.add(listener);
     return () => this.entryListeners.delete(listener);
   }
@@ -127,7 +132,8 @@ export class SQLiteSessionStorage implements SessionStorage {
         created_at: Date.now(),
       });
     await this.setLeafId(entry.id);
-    for (const listener of this.entryListeners) await listener(entry);
+    for (const listener of this.entryListeners) await listener(entry, options);
+    await notifySessionEntryAppended(this.sessionId, entry, options);
   }
 
   async getEntry(id: string): Promise<SessionTreeEntry | undefined> {

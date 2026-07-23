@@ -95,7 +95,7 @@ monorepo 子目录：
 
 | 位置                              | 用途                                       |
 | --------------------------------- | ------------------------------------------ |
-| `ctx.session`                     | 当前会话身份、消息、meta、spawn 与工具策略 |
+| `ctx.session`                     | 当前会话身份、消息、meta、spawn、工具策略；`sendCustomMessage` 写 timeline notice（不进 LLM） |
 | `ctx.agent`                       | 当前 Agent 身份、工具注册与模型设置        |
 | `ctx.tools`                       | 查询或调用当前 Session 注册的扩展工具      |
 | `ctx.jobs`                        | 创建、更新执行记录和定时计划               |

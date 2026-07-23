@@ -97,6 +97,7 @@ interface ContextSessionOptions {
     details?: unknown;
     triggerTurn?: boolean;
   }) => Promise<void>;
+  sendCustomMessage: (content: string) => Promise<string>;
   sendUserMessage: (
     content: string,
     options?: { source?: string; origin?: string },
@@ -322,6 +323,7 @@ export class Context {
       children: extensionDb.getChildSessions,
       appendEntry: deps.appendEntry,
       sendMessage: deps.sendMessage,
+      sendCustomMessage: deps.sendCustomMessage,
       sendUserMessage: deps.sendUserMessage,
       sendToChild: deps.sendToChild,
       inspectChild: deps.inspectChild,
@@ -604,6 +606,9 @@ export class ContextSession {
   }
   sendMessage(message: Parameters<ContextSessionOptions["sendMessage"]>[0]): Promise<void> {
     return this.options.sendMessage(message);
+  }
+  sendCustomMessage(content: string): Promise<string> {
+    return this.options.sendCustomMessage(content);
   }
   sendUserMessage(content: string, options?: { source?: string; origin?: string }): Promise<void> {
     return this.options.sendUserMessage(content, options);

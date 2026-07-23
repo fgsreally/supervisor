@@ -33,6 +33,61 @@ describe("sessionTreeEntryToChatEntry", () => {
       isError: false,
     });
   });
+
+  it("maps custom_message entries to notice timeline items", () => {
+    const entry = sessionTreeEntryToChatEntry({
+      id: "n1",
+      parentId: "u1",
+      type: "custom",
+      customType: "custom_message",
+      data: { text: "已提交 abc1234：fix login" },
+      isOld: false,
+      meta: {},
+      createdAt: 42,
+    } as import("@/api").SessionTreeEntry);
+
+    expect(entry).toEqual({
+      id: "n1",
+      type: "notice",
+      content: "已提交 abc1234：fix login",
+      createdAt: 42,
+    });
+  });
+
+  it("maps llm_error entries to error cards", () => {
+    const entry = sessionTreeEntryToChatEntry({
+      id: "e1",
+      parentId: "u1",
+      type: "custom",
+      customType: "llm_error",
+      data: { text: "Insufficient balance" },
+      isOld: false,
+      meta: {},
+      createdAt: 7,
+    } as import("@/api").SessionTreeEntry);
+
+    expect(entry).toEqual({
+      id: "e1",
+      type: "llm_error",
+      content: "Insufficient balance",
+      createdAt: 7,
+    });
+  });
+
+  it("hides unknown custom entries from the chat timeline", () => {
+    expect(
+      sessionTreeEntryToChatEntry({
+        id: "c1",
+        parentId: null,
+        type: "custom",
+        customType: "internal_marker",
+        data: {},
+        isOld: false,
+        meta: {},
+        createdAt: 1,
+      } as import("@/api").SessionTreeEntry),
+    ).toBeNull();
+  });
 });
 
 describe("buildDisplayGroups with API-shaped entries", () => {

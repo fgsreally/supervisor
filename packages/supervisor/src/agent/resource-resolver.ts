@@ -89,6 +89,7 @@ function createProbeContext(
       children: async () => [],
       appendEntry: async () => "",
       sendMessage: noopAsync,
+      sendCustomMessage: async () => "",
       sendUserMessage: noopAsync,
       sendToChild: noopAsync,
       pausing: async <T>(_reason: string, work: Promise<T> | (() => Promise<T>)) =>

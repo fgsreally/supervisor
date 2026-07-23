@@ -263,7 +263,7 @@ export interface ToolResultContent {
 export interface SessionTreeEntry {
   id: string;
   parentId: string | null;
-  type: "system" | "message" | "toolResult" | "compaction";
+  type: "system" | "message" | "toolResult" | "compaction" | "custom";
   /** Copied from parent session via fork/clone */
   isOld: boolean;
   /** User/orchestrator extensions only */
@@ -273,6 +273,9 @@ export interface SessionTreeEntry {
   createdAt: number;
   // For type='system'
   content?: string;
+  // For type='custom' (not sent to LLM)
+  customType?: string;
+  data?: Record<string, unknown>;
   // For type='message'
   message?: {
     role: string;
@@ -364,10 +367,26 @@ export interface SessionTreeNode {
 
 export type SseEventType = "started" | "event" | "done" | "error";
 
+export interface ShadowSuggestionsEvent {
+  type: "shadow_suggestions";
+  questions: string[];
+  timestamp: number;
+}
+
+/** Operational toast from backend (not an LLM error card). */
+export interface UiNotifyEvent {
+  type: "ui_notify";
+  kind: "error" | "info" | "success";
+  message: string;
+  timestamp: number;
+}
+
+export type SessionStreamEvent = AgentEvent | ShadowSuggestionsEvent | UiNotifyEvent;
+
 export interface SseEvent {
   type: SseEventType;
   sessionId?: string;
-  event?: AgentEvent;
+  event?: SessionStreamEvent;
   error?: string;
 }
 
@@ -971,7 +990,7 @@ export async function deleteSession(id: string): Promise<{ ok: boolean }> {
 export function promptSession(
   id: string,
   message: string,
-  onEvent: (event: AgentEvent) => void,
+  onEvent: (event: SessionStreamEvent) => void,
   onError?: (error: Error) => void,
   onComplete?: () => void,
   images?: PromptImageInput[],
@@ -1186,6 +1205,11 @@ export async function abortSession(
   return postJson<{ ok: boolean; retracted: boolean }>(`/sessions/${id}/abort`, options ?? {});
 }
 
+/** Retry after an LLM failure (clears error card and continues the turn). */
+export async function retrySession(id: string): Promise<Session> {
+  return postJson<Session>(`/sessions/${id}/retry`, {});
+}
+
 /** Submit an answer for a pending ask tool call. */
 export async function submitAskAnswer(
   sessionId: string,
@@ -1335,6 +1359,11 @@ export async function updateSessionMeta(
   return patchJson<Record<string, unknown>>(`/sessions/${id}/meta`, meta);
 }
 
+/** Mark all session messages as read and clear unread count. */
+export async function markSessionRead(id: string): Promise<Record<string, unknown>> {
+  return postJson<Record<string, unknown>>(`/sessions/${id}/read`, {});
+}
+
 /** Replace session meta completely. */
 export async function setSessionMeta(
   id: string,
@@ -1356,14 +1385,6 @@ export async function updateMessageMeta(
 }
 
 /** Subscribe to session events via SSE. */
-export interface ShadowSuggestionsEvent {
-  type: "shadow_suggestions";
-  questions: string[];
-  timestamp: number;
-}
-
-export type SessionStreamEvent = AgentEvent | ShadowSuggestionsEvent;
-
 export function subscribeSessionEvents(
   sessionId: string,
   onEvent: (event: { type: string; event?: SessionStreamEvent }) => void,

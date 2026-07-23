@@ -43,6 +43,7 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
     deps: {
       appendEntry: async () => "entry-1",
       sendMessage: async () => {},
+      sendCustomMessage: async () => "custom-1",
       sendUserMessage: async () => {},
       continueTurn: overrides?.continueTurn ?? vi.fn(async () => {}),
       setActiveTools: vi.fn(async () => {}),

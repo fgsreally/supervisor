@@ -418,6 +418,7 @@ watch(() => route.fullPath, applyRoute);
 onMounted(() => {
   updateMobileFlag();
   window.addEventListener("resize", updateMobileFlag);
+  document.addEventListener("visibilitychange", onVisibilityChange);
 
   Promise.all([
     sessionStore.fetchProjects(),
@@ -446,13 +447,39 @@ onMounted(() => {
           activeResourceId.value = resourceStore.resourceItems[0]?.id ?? null;
         }
       }
+      startSessionListPoll();
     })
     .catch(console.error);
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", updateMobileFlag);
+  document.removeEventListener("visibilitychange", onVisibilityChange);
+  stopSessionListPoll();
 });
+
+let sessionListPoll: ReturnType<typeof setInterval> | null = null;
+
+function startSessionListPoll() {
+  stopSessionListPoll();
+  sessionListPoll = setInterval(() => {
+    if (mainTab.value !== "chat" && mainTab.value !== "home") return;
+    if (typeof document !== "undefined" && document.hidden) return;
+    void sessionStore.fetchSessions();
+  }, 5000);
+}
+
+function stopSessionListPoll() {
+  if (!sessionListPoll) return;
+  clearInterval(sessionListPoll);
+  sessionListPoll = null;
+}
+
+function onVisibilityChange() {
+  if (document.hidden) return;
+  if (mainTab.value !== "chat" && mainTab.value !== "home") return;
+  void sessionStore.fetchSessions();
+}
 
 const activeSession = computed(() => {
   if (!activeSessionId.value) return null;
@@ -524,6 +551,25 @@ function openSessionFromHome(sessionId: string) {
   mainTab.value = "chat";
   if (isMobile.value) mobilePage.value = "detail";
   pushRoute();
+}
+
+watch(
+  [activeSessionId, mainTab, () => sessionStore.sessions.map((s) => [s.id, s.meta?.unread])],
+  ([id, tab]) => {
+    if (!id || tab !== "chat") return;
+    void markActiveSessionRead(id);
+  },
+);
+
+async function markActiveSessionRead(id: string) {
+  const session = sessionStore.sessions.find((s) => s.id === id);
+  const unread = session?.meta?.unread;
+  if (typeof unread !== "number" || unread <= 0) return;
+  try {
+    await sessionStore.markSessionRead(id);
+  } catch (err) {
+    console.error("Failed to mark session read:", err);
+  }
 }
 
 function onSessionDelete(id: string) {

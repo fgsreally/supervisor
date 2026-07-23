@@ -832,6 +832,29 @@ export class SupervisorDb {
     return merged;
   }
 
+  /** Mark all unread messages in a session as read. Returns how many were updated. */
+  markSessionMessagesRead(sessionId: number): number {
+    const rows = this.db
+      .prepare(
+        `SELECT entry_id, meta FROM messages
+         WHERE session_id = ?
+           AND json_extract(meta, '$.read') = 0`,
+      )
+      .all(sessionId) as Array<{ entry_id: string; meta: string }>;
+    if (rows.length === 0) return 0;
+    const update = this.db.prepare(
+      "UPDATE messages SET meta = ? WHERE entry_id = ? AND session_id = ?",
+    );
+    const mark = this.db.transaction(() => {
+      for (const row of rows) {
+        const meta = { ...(JSON.parse(row.meta) as Record<string, unknown>), read: true };
+        update.run(JSON.stringify(meta), row.entry_id, sessionId);
+      }
+    });
+    mark();
+    return rows.length;
+  }
+
   setMessageMeta(sessionId: number, messageId: string, meta: Record<string, unknown>): void {
     const result = this.db
       .prepare("UPDATE messages SET meta = ? WHERE entry_id = ? AND session_id = ?")

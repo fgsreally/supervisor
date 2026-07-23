@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "./mock-agent-harness.js";
+import { ensurePackagedAgents } from "../src/agent/index.js";
 import { SupervisorDb } from "../src/db.js";
 import { createHttpServer } from "../src/http-server.js";
 import { SessionManager } from "../src/session-manager.js";
@@ -94,16 +95,16 @@ describe("supervisor: HTTP server", () => {
   });
 
   it("POST /sessions/:id/btw creates a hidden BTW child", async () => {
-    const btwAgent = db.insertAgent({ name: "Test BTW" });
+    const providerId = db.insertProvider({
+      slug: "test-provider",
+      name: "Test Provider",
+      api_type: "anthropic-messages",
+    });
+    db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6" });
+    ensurePackagedAgents(db);
     const { id: parentId } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
       id: string;
     };
-    db.upsertMember({
-      session_id: Number(parentId),
-      agent_id: btwAgent.id,
-      role: "assistant",
-      tags: ["btw"],
-    });
     const res = await req("POST", `/sessions/${parentId}/btw`, {});
     expect(res.status).toBe(201);
     expect(await res.json()).toEqual(

@@ -22,7 +22,29 @@
         <span>{{ dateDividerLabel(group) }}</span>
       </div>
 
-      <div :class="messageRowClass(group)">
+      <div
+        v-if="(group.type === 'notice' || group.type === 'system') && group.content"
+        class="chat-date-divider"
+        style="background: var(--app-chat-message-bg)"
+      >
+        <span>{{ group.content }}</span>
+      </div>
+
+      <div
+        v-else-if="group.type === 'llm_error'"
+        class="py-2 md:py-3 px-3 md:px-5 chat-row"
+        style="background: var(--app-chat-message-bg)"
+      >
+        <LlmErrorCard
+          :content="group.content"
+          :retrying="retrying"
+          :avatar-label="assistantAvatarLabel"
+          :avatar-color="assistantAvatarColor"
+          @retry="emit('retry-error')"
+        />
+      </div>
+
+      <div v-else :class="messageRowClass(group)">
         <ShadowMessageRow
           v-if="group.type === 'message' && group.message?.role === 'user' && group.shadowSource"
           :text="userText(group)"
@@ -83,12 +105,6 @@
           :entry="group"
           @open="emit('open-compaction', group)"
         />
-
-        <div v-else-if="group.type === 'system'" class="flex justify-center px-4">
-          <span class="text-[12px] text-center" style="color: var(--app-text-muted)">{{
-            group.content
-          }}</span>
-        </div>
       </div>
     </template>
 
@@ -163,6 +179,7 @@ import {
 import UserMessageRow from "./UserMessageRow.vue";
 import ShadowMessageRow from "./ShadowMessageRow.vue";
 import AssistantMessageGroup from "./AssistantMessageGroup.vue";
+import LlmErrorCard from "./LlmErrorCard.vue";
 import CompactionBanner from "../CompactionBanner.vue";
 import MessageAssets from "./MessageAssets.vue";
 import MessageContextMenu from "./MessageContextMenu.vue";
@@ -175,6 +192,7 @@ const props = defineProps<{
   isStreaming: boolean;
   streamingGroupId: string | null;
   showStreamingPlaceholder: boolean;
+  retrying?: boolean;
   streamingTimeLabel: string;
   searchOpen: boolean;
   searchQuery: string;
@@ -197,6 +215,7 @@ const emit = defineEmits<{
   answered: [];
   rewind: [entryId: string];
   fork: [entryId: string];
+  "retry-error": [];
 }>();
 
 const containerRef = ref<HTMLElement | null>(null);

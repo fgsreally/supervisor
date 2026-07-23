@@ -107,6 +107,10 @@ export default defineConfig({
       "/resources": {
         ...spaAwareProxy(),
       },
+      "/skills": {
+        target: "http://localhost:3030",
+        changeOrigin: true,
+      },
       "/upload": {
         target: "http://localhost:3030",
         changeOrigin: true,

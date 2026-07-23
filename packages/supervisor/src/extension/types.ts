@@ -158,6 +158,11 @@ export interface ExtensionSession {
     details?: unknown;
     triggerTurn?: boolean;
   }): Promise<void>;
+  /**
+   * Timeline-only custom message for the user (date-divider style).
+   * Never enters the LLM context.
+   */
+  sendCustomMessage(content: string): Promise<string>;
   sendUserMessage(content: string, options?: { source?: string; origin?: string }): Promise<void>;
   sendToChild(
     sessionId: number,
@@ -886,6 +891,8 @@ export interface MessageAsset {
 
 export interface MessageMeta extends Record<string, unknown> {
   assets?: MessageAsset[];
+  /** Whether the user has seen this message. Assistant replies start as unread when no UI is watching. */
+  read?: boolean;
 }
 
 export interface MessageEntry {

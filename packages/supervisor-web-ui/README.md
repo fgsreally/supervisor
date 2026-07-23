@@ -48,10 +48,11 @@ npm run dev
 
 ### 内置 Pi 助手
 
-- Agent ID：`pi-assistant`
-- 置顶会话：`pi-assistant-session`（`meta.pinned` + `meta.builtin`）
+- Agent 名称：**Pi 助手**（`meta.builtin` + `meta.userSpawnable`；数据库自增 id，非固定字符串）
+- 置顶会话：`meta.pinned` + `meta.builtin`
 - 启动 supervisor 时自动创建；自带 `supervisor-guide` skill 与系统提示
 - 用途：Supervisor 配置、插件迁移、skill 安装、使用答疑
+- 会话列表未读角标：`meta.unread`（打开会话时清零）
 
 ## PWA 与推送
 

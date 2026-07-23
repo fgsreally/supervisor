@@ -36,6 +36,9 @@ index.html → src/main.ts → App.vue
 | Provider / Agent / 资源管理         | 完成               |
 | Checkpoint / Rewind / Commit        | 完成               |
 | Job Popover 与长输出分屏            | 完成               |
+| 会话未读角标                        | 完成               |
+| LLM 错误卡与重试                    | 完成               |
+| Skills 搜索 / 链接安装              | 完成               |
 | Workflow stage 标签                 | 完成（面板见缺口） |
 | Shadow 消息行与启用开关             | 完成               |
 | 暗色主题 / 推送 / PWA               | 完成               |

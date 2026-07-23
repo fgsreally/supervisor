@@ -51,7 +51,6 @@ pnpm docs:dev
 - [Supervisor 概览](docs/supervisor/overview.md)
 - [HTTP API](docs/supervisor/http-api.md)
 - [Web UI](docs/web-ui/overview.md)
-- [已知缺口（后端）](docs/supervisor/known-gaps.md)
 - [已知缺口（Web UI）](docs/web-ui/known-gaps.md)
 
 开发者包内架构说明：[`packages/supervisor/SUPERVISOR.md`](packages/supervisor/SUPERVISOR.md)。

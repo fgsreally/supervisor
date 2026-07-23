@@ -740,7 +740,7 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // PUT /agents/:id/system-md
+  // PUT /agents/:id/system-md — allowed for built-in agents (prompt customization)
   app.put("/agents/:id/system-md", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     if (typeof body.content !== "string") {
@@ -749,10 +749,10 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid agent id");
-      const mutationError = getAgentMutationError(manager, id);
-      if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
-      const agent = manager.setAgentSystemMd(id, body.content);
-      return c.json({ content: agent.systemMd });
+      const agent = manager.getAgent(id);
+      if (!agent) return jsonError(c, 404, "agent not found");
+      const updated = manager.setAgentSystemMd(id, body.content);
+      return c.json({ content: updated.systemMd });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 404, message);
@@ -1627,6 +1627,18 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
+  // POST /sessions/:id/retry — retry after LLM failure (clears error card and continues)
+  app.post("/sessions/:id/retry", async (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      return c.json(await manager.retryAfterLlmError(id));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 409, message);
+    }
+  });
+
   // POST /sessions/:id/compact — compact SQLite-backed conversation context
   app.post("/sessions/:id/compact", async (c) => {
     const body = await c.req.json().catch(() => ({}));
@@ -2015,6 +2027,18 @@ export function createHttpServer(manager: SessionManager): Hono {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
       return c.json(manager.updateMeta(id, body));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 404, message);
+    }
+  });
+
+  // POST /sessions/:id/read — mark all messages read and clear unread badge
+  app.post("/sessions/:id/read", (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      return c.json(manager.markSessionRead(id));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 404, message);

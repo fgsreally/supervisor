@@ -26,3 +26,5 @@ compaction-results/
 test-results/
 .pi/hf-sessions/
 .pi/hf-sessions-backup/
+docs/.vitepress/cache/
+docs/.vitepress/dist/

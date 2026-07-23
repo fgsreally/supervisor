@@ -1,5 +1,12 @@
 <template>
-  <div class="flex justify-end items-start gap-2">
+  <div
+    class="flex justify-end items-start gap-2"
+    @pointerdown="startLongPress"
+    @pointerup="cancelLongPress"
+    @pointercancel="cancelLongPress"
+    @pointermove="onPointerMove"
+    @contextmenu.prevent="openMessageActions"
+  >
     <button
       v-if="rewindable"
       type="button"
@@ -45,11 +52,25 @@
       </div>
     </div>
     <div class="chat-avatar chat-avatar--user shrink-0">U</div>
+    <Teleport to="body">
+      <Transition name="message-actions">
+        <div
+          v-if="messageActionsOpen"
+          class="message-actions-backdrop"
+          @click.self="messageActionsOpen = false"
+        >
+          <section class="message-actions-sheet">
+            <button type="button" @click="confirmRewind">回到这里</button>
+            <button type="button" @click="messageActionsOpen = false">取消</button>
+          </section>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import ChatFileBubble from "../ChatFileBubble.vue";
 import ChatRichText from "../ChatRichText.vue";
 import type { ChatUserFileAttachment } from "@/types/chat-entry";
@@ -66,10 +87,46 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ rewind: [] }>();
+const messageActionsOpen = ref(false);
+let longPressTimer: ReturnType<typeof setTimeout> | undefined;
+let longPressStart = { x: 0, y: 0 };
 
 const slashParts = computed(() => props.text.match(/^(\/[\w-]+)(?:\s+([\s\S]*))?$/));
 const slashCommand = computed(() => slashParts.value?.[1]?.slice(1) ?? "");
 const slashRemainder = computed(() => slashParts.value?.[2]?.trim() ?? "");
+
+function startLongPress(event: PointerEvent) {
+  if (!props.rewindable || event.pointerType === "mouse") return;
+  cancelLongPress();
+  longPressStart = { x: event.clientX, y: event.clientY };
+  longPressTimer = setTimeout(openMessageActions, 520);
+}
+
+function onPointerMove(event: PointerEvent) {
+  if (
+    Math.abs(event.clientX - longPressStart.x) > 10 ||
+    Math.abs(event.clientY - longPressStart.y) > 10
+  ) {
+    cancelLongPress();
+  }
+}
+
+function cancelLongPress() {
+  if (longPressTimer) clearTimeout(longPressTimer);
+  longPressTimer = undefined;
+}
+
+function openMessageActions() {
+  cancelLongPress();
+  if (props.rewindable) messageActionsOpen.value = true;
+}
+
+function confirmRewind() {
+  messageActionsOpen.value = false;
+  emit("rewind");
+}
+
+onBeforeUnmount(cancelLongPress);
 </script>
 
 <style scoped>
@@ -112,8 +169,48 @@ const slashRemainder = computed(() => slashParts.value?.[2]?.trim() ?? "");
 
 @media (hover: none) {
   .message-rewind {
-    opacity: 0.72;
+    display: none;
   }
+}
+
+.message-actions-backdrop {
+  position: fixed;
+  z-index: 110;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  background: rgb(0 0 0 / 30%);
+}
+.message-actions-sheet {
+  width: 100%;
+  padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+}
+.message-actions-sheet button {
+  width: 100%;
+  padding: 13px;
+  border-radius: 12px;
+  color: var(--app-text-primary);
+  background: var(--app-popup-bg);
+  font-size: 15px;
+}
+.message-actions-sheet button + button {
+  margin-top: 8px;
+}
+.message-actions-enter-active,
+.message-actions-leave-active {
+  transition: opacity 0.2s ease;
+}
+.message-actions-enter-active .message-actions-sheet,
+.message-actions-leave-active .message-actions-sheet {
+  transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.message-actions-enter-from,
+.message-actions-leave-to {
+  opacity: 0;
+}
+.message-actions-enter-from .message-actions-sheet,
+.message-actions-leave-to .message-actions-sheet {
+  transform: translateY(100%);
 }
 
 .chat-msg-time--user {

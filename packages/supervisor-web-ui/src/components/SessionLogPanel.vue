@@ -266,9 +266,16 @@ watch(
 
 @media (max-width: 767px) {
   .session-log-panel {
-    position: fixed;
-    z-index: 70;
-    inset: 0;
+    position: absolute;
+    z-index: 60;
+    inset: auto 0 0;
+    width: 100%;
+    min-width: 0;
+    height: min(68%, 620px);
+    border-top: 1px solid var(--app-border-subtle);
+    border-left: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px rgb(0 0 0 / 14%);
   }
 }
 </style>

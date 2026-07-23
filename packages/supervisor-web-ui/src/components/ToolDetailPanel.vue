@@ -1,7 +1,8 @@
 <template>
   <aside class="tool-detail-panel">
+    <div class="tool-detail-panel__grabber" />
     <header>
-      <strong>{{ title }}</strong>
+      <span>{{ title }}</span>
       <button type="button" title="关闭" @click="$emit('close')"><X /></button>
     </header>
     <ToolTerminal v-if="terminal" :lines="terminalLines" :prompt="terminalPrompt" />
@@ -31,6 +32,7 @@ const props = defineProps<{
 }>();
 defineEmits<{ close: [] }>();
 const evalState = ref<EvalRuntimeState>();
+let evalSignature = "";
 const terminalLines = computed(() => {
   if (props.terminal === "eval" && evalState.value?.history.length) {
     return evalState.value.history.flatMap((entry) => [
@@ -48,12 +50,17 @@ const terminalPrompt = computed(() =>
 );
 let poll: ReturnType<typeof setInterval> | undefined;
 async function refreshEvalState() {
-  if (props.terminal === "eval" && props.sessionId)
-    evalState.value = await getSessionEvalState(props.sessionId).catch(() => undefined);
+  if (props.terminal !== "eval" || !props.sessionId || document.hidden) return;
+  const next = await getSessionEvalState(props.sessionId).catch(() => undefined);
+  if (!next) return;
+  const signature = JSON.stringify(next.history);
+  if (signature === evalSignature) return;
+  evalSignature = signature;
+  evalState.value = next;
 }
 onMounted(() => {
   void refreshEvalState();
-  if (props.terminal === "eval") poll = setInterval(refreshEvalState, 1000);
+  if (props.terminal === "eval") poll = setInterval(refreshEvalState, 3000);
 });
 onBeforeUnmount(() => {
   if (poll) clearInterval(poll);
@@ -68,17 +75,21 @@ onBeforeUnmount(() => {
   flex-direction: column;
   min-height: 0;
   border-left: 1px solid var(--app-border-subtle);
-  background: var(--app-popup-bg);
+  background: var(--app-chat-bg);
 }
 header {
-  height: 3.5rem;
+  height: 48px;
   flex: none;
-  padding: 0 1rem;
+  padding: 0 12px 0 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--app-border-subtle);
   color: var(--app-text-primary);
+}
+header span {
+  font-size: 15px;
+  font-weight: 500;
 }
 header button {
   cursor: pointer;
@@ -93,6 +104,9 @@ header button:hover {
 header svg {
   width: 1.1rem;
   height: 1.1rem;
+}
+.tool-detail-panel__grabber {
+  display: none;
 }
 .tool-detail-panel__body {
   overflow: auto;
@@ -118,10 +132,30 @@ pre {
 @media (max-width: 767px) {
   .tool-detail-panel {
     position: absolute;
-    inset: 0;
+    inset: auto 0 0;
     z-index: 60;
     width: 100%;
     min-width: 0;
+    height: min(68%, 620px);
+    border-top: 1px solid var(--app-border-subtle);
+    border-left: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px rgb(0 0 0 / 14%);
+  }
+  .tool-detail-panel__grabber {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    display: block;
+    width: 36px;
+    height: 4px;
+    border-radius: 999px;
+    background: var(--app-border);
+    transform: translateX(-50%);
+  }
+  header {
+    height: 48px;
+    padding-top: 4px;
   }
 }
 </style>

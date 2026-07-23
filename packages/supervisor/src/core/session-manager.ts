@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import {
   type AgentEvent,
   AgentHarness,
@@ -62,7 +62,7 @@ import {
 import { appendContextFilesToSystemPrompt } from "../agent/context-files.js";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
-import { commitGitSnapshot, ensureGitRepositorySync } from "../utils/git.js";
+import { commitAll, commitGitSnapshot, ensureGitRepositorySync } from "../utils/git.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "../agent/prompt-templates.js";
 import { appendReadOrchestrationHint } from "../agent/system-prompts.js";
@@ -84,6 +84,11 @@ import { AcpSessionRuntime } from "./external/acp-session-runtime.js";
 import { externalAgentAvailability } from "./external/external-agent-config.js";
 import { CodexSessionRuntime } from "./external/codex-session-runtime.js";
 import { ClaudeSessionRuntime } from "./external/claude-session-runtime.js";
+import {
+  listExternalSessions,
+  loadExternalSession,
+  type ImportableExternalBackend,
+} from "./external/external-session-import.js";
 import {
   createRuntimeSessionStorage,
   SQLiteSessionStorage,
@@ -1239,7 +1244,21 @@ export class SessionManager {
     const isSpawnedSubagent = session.creationMethod === "spawn_agent" && session.parentId != null;
     try {
       if (!isSpawnedSubagent) {
-        await commitSessionChanges(id, session.cwd, session.meta, this.db);
+        const backendType =
+          session.agentId == null ? undefined : this.db.getAgent(session.agentId)?.backendType;
+        const externalCommitMessage =
+          backendType === "codex"
+            ? "committed by codex"
+            : backendType === "claude"
+              ? "committed by cc"
+              : undefined;
+        await commitSessionChanges(
+          id,
+          session.cwd,
+          session.meta,
+          this.db,
+          externalCommitMessage ? { message: externalCommitMessage } : {},
+        );
         session = rowToSession(this.db.get(id)!);
         await finalizeSessionLifecycleGit(this.db, session);
       }
@@ -1294,6 +1313,52 @@ export class SessionManager {
     const project = this.db.insertProject(options);
     if (project.defaultBranch !== branch) this.db.updateProjectDefaultBranch(project.id, branch);
     return this.db.getProject(project.id)!;
+  }
+
+  listImportableExternalSessions(limit?: number) {
+    return listExternalSessions(limit);
+  }
+
+  async importExternalSession(options: {
+    backend: ImportableExternalBackend;
+    externalSessionId: string;
+  }): Promise<Session> {
+    const imported = await loadExternalSession(options.backend, options.externalSessionId);
+    const agent = this.db.listAgents().find((item) => item.backendType === options.backend);
+    if (!agent) throw new Error(`${options.backend} Agent is not configured`);
+    assertAgentUserSpawnable(agent, agent.id);
+
+    const normalizedCwd = resolve(imported.candidate.cwd);
+    const comparableCwd = (value: string) =>
+      process.platform === "win32" ? resolve(value).toLowerCase() : resolve(value);
+    const project =
+      this.db
+        .listProjects()
+        .find((item) => comparableCwd(item.cwd) === comparableCwd(normalizedCwd)) ??
+      this.createProject({ cwd: normalizedCwd });
+    const commitMessage =
+      options.backend === "codex"
+        ? "checkpoint before importing codex session"
+        : "checkpoint before importing claude code session";
+    await commitAll(normalizedCwd, commitMessage);
+
+    const session = await this.spawn({
+      projectId: project.id,
+      cwd: normalizedCwd,
+      agentId: agent.id,
+      meta: {
+        name: imported.candidate.title,
+        externalSessionId: imported.candidate.externalSessionId,
+      },
+    });
+    const storage = new SQLiteSessionStorage(this.db, session.id);
+    for (const entry of imported.entries) {
+      await storage.appendEntry(entry, {
+        isOld: true,
+        source: `external-import:${options.backend}`,
+      });
+    }
+    return rowToSession(this.db.get(session.id)!);
   }
 
   deleteProject(id: number): void {

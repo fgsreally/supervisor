@@ -41,8 +41,8 @@
   --app-nav-hover: #d3d3d8;
   --app-nav-active-bg: #d3d3d8;
 
-  --app-list-bg: #e3e3e5;
-  --app-list-header-bg: #e3e3e5;
+  --app-list-bg: #f0f0f1;
+  --app-list-header-bg: #f0f0f1;
   --app-list-search-bg: #dcdce1;
   --app-list-search-focus-bg: #ffffff;
   --app-list-item-hover: #dcdce1;
@@ -50,7 +50,7 @@
   --app-list-item-active: #c9c9cb;
   --app-list-item-active-text: #191919;
   --app-list-item-active-secondary: #666666;
-  --app-list-section-bg: #e3e3e5;
+  --app-list-section-bg: #f0f0f1;
   --app-monochrome-icon-filter: none;
 
   --app-chat-bg: #fafafa;
@@ -152,8 +152,8 @@
   --app-nav-hover: #2c2c2c;
   --app-nav-active-bg: #333333;
 
-  --app-list-bg: #262626;
-  --app-list-header-bg: #262626;
+  --app-list-bg: #222222;
+  --app-list-header-bg: #222222;
   --app-list-search-bg: #333333;
   --app-list-search-focus-bg: #3a3a3a;
   --app-list-item-hover: #333333;
@@ -161,7 +161,7 @@
   --app-list-item-active: #19ac70;
   --app-list-item-active-text: #ffffff;
   --app-list-item-active-secondary: #c8c8c8;
-  --app-list-section-bg: #262626;
+  --app-list-section-bg: #222222;
   --app-monochrome-icon-filter: invert(1);
 
   --app-chat-bg: #191919;
@@ -250,6 +250,21 @@
   --app-status-idle: #3ddc84;
   --app-status-error: #ff6b6b;
   --app-status-stopped: #6b6b6b;
+}
+
+@media (max-width: 767px) {
+  :root,
+  [data-theme="light"] {
+    --app-list-bg: #fafafa;
+    --app-list-header-bg: #fafafa;
+    --app-list-section-bg: #fafafa;
+  }
+
+  [data-theme="dark"] {
+    --app-list-bg: #191919;
+    --app-list-header-bg: #191919;
+    --app-list-section-bg: #191919;
+  }
 }
 
 html,

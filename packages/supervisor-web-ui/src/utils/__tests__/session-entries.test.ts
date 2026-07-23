@@ -36,6 +36,65 @@ describe("sessionTreeEntryToChatEntry", () => {
 });
 
 describe("buildDisplayGroups with API-shaped entries", () => {
+  it("keeps persisted eval calls visible and attaches their result", () => {
+    const entries = sessionTreeToChatEntries([
+      {
+        id: "a-eval",
+        parentId: null,
+        type: "message",
+        isOld: false,
+        meta: {},
+        createdAt: 1,
+        message: {
+          role: "assistant",
+          content: [
+            {
+              type: "toolCall",
+              id: "call_eval",
+              name: "eval",
+              arguments: { code: "return sessions.length" },
+            },
+          ],
+        },
+      },
+      {
+        id: "tr-eval",
+        parentId: "a-eval",
+        type: "message",
+        isOld: false,
+        meta: {},
+        createdAt: 2,
+        message: {
+          role: "toolResult",
+          toolCallId: "call_eval",
+          toolName: "eval",
+          content: [{ type: "text", text: "17" }],
+          isError: false,
+        },
+      },
+    ] as import("@/api").SessionTreeEntry[]);
+
+    const groups = buildDisplayGroups(entries);
+    const assistant = groups.find((group) => group.type === "grouped_assistant");
+    expect(assistant && "pieces" in assistant ? assistant.pieces : []).toEqual([
+      {
+        kind: "toolStep",
+        callId: "call_eval",
+        toolName: "eval",
+        callArgs: { code: "return sessions.length" },
+        result: {
+          id: "tr-eval",
+          type: "toolResult",
+          toolCallId: "call_eval",
+          toolName: "eval",
+          content: [{ type: "text", text: "17" }],
+          isError: false,
+          createdAt: 2,
+        },
+      },
+    ]);
+  });
+
   it("keeps read output on tool row instead of markdown bubble text", () => {
     const entries = sessionTreeToChatEntries([
       {

@@ -8,8 +8,13 @@
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
       <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">聊天</h1>
-      <button type="button" class="chat-home-settings" title="设置" @click="emit('settings')">
-        <Settings class="h-[19px] w-[19px]" />
+      <button
+        type="button"
+        class="chat-home-settings"
+        title="创建聊天"
+        @click="openAgentPicker('')"
+      >
+        <Plus class="h-[19px] w-[19px]" />
       </button>
     </div>
 
@@ -131,6 +136,14 @@
       :open="agentPickerWorkspaceId != null"
       @close="closeAgentPicker"
       @select="onAgentPicked"
+      @external-import="openExternalImport"
+    />
+
+    <ExternalSessionImportDialog
+      :open="externalImportOpen"
+      :importing="externalImporting"
+      @close="externalImportOpen = false"
+      @select="onExternalSessionPicked"
     />
 
     <SessionListContextMenu
@@ -148,12 +161,13 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronRight, Plus, Search, Settings } from "lucide-vue-next";
+import { ChevronRight, Plus, Search } from "lucide-vue-next";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
 import { groupSessionsByWorkspace, toUISession } from "@/utils/ui-session";
 import { getDefaultWorkspaceCwd, rememberCwd } from "@/config/workspace";
-import { searchMessages } from "@/api";
+import { searchMessages, type ExternalSessionCandidate } from "@/api";
+import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
 import SessionAgentPicker from "./SessionAgentPicker.vue";
 import SessionListContextMenu from "./SessionListContextMenu.vue";
 import SessionListItem from "./SessionListItem.vue";
@@ -179,6 +193,8 @@ const messageMatches = ref<Map<string, string>>(new Map());
 let searchGeneration = 0;
 const collapsedWorkspaceIds = ref<Set<string>>(new Set());
 const agentPickerWorkspaceId = ref<string | null>(null);
+const externalImportOpen = ref(false);
+const externalImporting = ref(false);
 const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null);
 const contextSession = computed(() =>
   contextMenu.value
@@ -301,6 +317,28 @@ function openAgentPicker(workspaceId: string) {
 
 function closeAgentPicker() {
   agentPickerWorkspaceId.value = null;
+}
+
+function openExternalImport() {
+  closeAgentPicker();
+  externalImportOpen.value = true;
+}
+
+async function onExternalSessionPicked(candidate: ExternalSessionCandidate) {
+  if (externalImporting.value) return;
+  externalImporting.value = true;
+  try {
+    const session = await sessionStore.importExternalSession({
+      backend: candidate.backend,
+      externalSessionId: candidate.externalSessionId,
+    });
+    externalImportOpen.value = false;
+    emit("select", session.id);
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : "引入外部对话失败");
+  } finally {
+    externalImporting.value = false;
+  }
 }
 
 function openContextMenu(sessionId: string, pos: { x: number; y: number }) {

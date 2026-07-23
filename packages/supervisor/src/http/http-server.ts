@@ -20,6 +20,10 @@ import { parseSessionTodos } from "../core/session-todos.js";
 import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-manager.js";
 import { isResourceKind } from "../resources/types.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";
+import { encryptApiKey } from "../utils/encrypt.js";
+import { decryptApiKey } from "../utils/encrypt.js";
+import { testApiKey, type ApiKeyProvider } from "../utils/test-api-key.js";
+import { resolveApiKey } from "../tools/web/credentials.js";
 import { listWorktreeCommits } from "../utils/git.js";
 import type { Model, Provider, SessionStatus } from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
@@ -173,9 +177,27 @@ export function createHttpServer(manager: SessionManager): Hono {
       braveApiKeyEncrypted: _brave,
       serperApiKeyEncrypted: _serper,
       firecrawlApiKeyEncrypted: _firecrawl,
+      speechApiKeyEncrypted,
+      doubaoSpeechApiKeyEncrypted,
       ...safeSettings
     } = settings;
-    return c.json(safeSettings);
+    return c.json({
+      ...safeSettings,
+      tavilyApiKeyConfigured: Boolean(
+        _tavily || process.env[safeSettings.tavilyApiKeyEnv ?? "TAVILY_API_KEY"],
+      ),
+      braveApiKeyConfigured: Boolean(
+        _brave || process.env[safeSettings.braveApiKeyEnv ?? "BRAVE_API_KEY"],
+      ),
+      serperApiKeyConfigured: Boolean(
+        _serper || process.env[safeSettings.serperApiKeyEnv ?? "SERPER_API_KEY"],
+      ),
+      firecrawlApiKeyConfigured: Boolean(
+        _firecrawl || process.env[safeSettings.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY"],
+      ),
+      speechApiKeyConfigured: Boolean(speechApiKeyEncrypted),
+      doubaoSpeechApiKeyConfigured: Boolean(doubaoSpeechApiKeyEncrypted),
+    });
   });
 
   app.patch("/settings", async (c) => {
@@ -234,7 +256,127 @@ export function createHttpServer(manager: SessionManager): Hono {
       }
       patch[field] = body[field];
     }
-    return c.json(writeSupervisorSettings(patch));
+    for (const [bodyField, savedField] of [
+      ["tavilyApiKey", "tavilyApiKeyEncrypted"],
+      ["braveApiKey", "braveApiKeyEncrypted"],
+      ["serperApiKey", "serperApiKeyEncrypted"],
+      ["firecrawlApiKey", "firecrawlApiKeyEncrypted"],
+    ] as const) {
+      if (body[bodyField] === undefined) continue;
+      if (typeof body[bodyField] !== "string") {
+        return jsonError(c, 400, `${bodyField} must be a string`);
+      }
+      patch[savedField] = body[bodyField] ? encryptApiKey(body[bodyField]) : undefined;
+    }
+    if (body.speechRecognitionMode !== undefined) {
+      if (!["browser", "qwen", "doubao"].includes(body.speechRecognitionMode)) {
+        return jsonError(c, 400, "invalid speechRecognitionMode");
+      }
+      patch.speechRecognitionMode = body.speechRecognitionMode;
+    }
+    if (body.speechRecognitionLanguage !== undefined) {
+      if (
+        typeof body.speechRecognitionLanguage !== "string" ||
+        body.speechRecognitionLanguage.length > 32
+      ) {
+        return jsonError(c, 400, "invalid speechRecognitionLanguage");
+      }
+      patch.speechRecognitionLanguage = body.speechRecognitionLanguage;
+    }
+    if (body.speechApiKey !== undefined) {
+      if (typeof body.speechApiKey !== "string")
+        return jsonError(c, 400, "speechApiKey must be a string");
+      patch.speechApiKeyEncrypted = body.speechApiKey
+        ? encryptApiKey(body.speechApiKey)
+        : undefined;
+    }
+    if (body.doubaoSpeechApiKey !== undefined) {
+      if (typeof body.doubaoSpeechApiKey !== "string") {
+        return jsonError(c, 400, "doubaoSpeechApiKey must be a string");
+      }
+      patch.doubaoSpeechApiKeyEncrypted = body.doubaoSpeechApiKey
+        ? encryptApiKey(body.doubaoSpeechApiKey)
+        : undefined;
+    }
+    if (body.doubaoSpeechResourceId !== undefined) {
+      if (
+        typeof body.doubaoSpeechResourceId !== "string" ||
+        body.doubaoSpeechResourceId.length > 128
+      ) {
+        return jsonError(c, 400, "invalid doubaoSpeechResourceId");
+      }
+      patch.doubaoSpeechResourceId = body.doubaoSpeechResourceId;
+    }
+    const saved = writeSupervisorSettings(patch);
+    const {
+      tavilyApiKeyEncrypted,
+      braveApiKeyEncrypted,
+      serperApiKeyEncrypted,
+      firecrawlApiKeyEncrypted,
+      speechApiKeyEncrypted,
+      doubaoSpeechApiKeyEncrypted,
+      ...safeSaved
+    } = saved;
+    return c.json({
+      ...safeSaved,
+      tavilyApiKeyConfigured: Boolean(
+        tavilyApiKeyEncrypted || process.env[safeSaved.tavilyApiKeyEnv ?? "TAVILY_API_KEY"],
+      ),
+      braveApiKeyConfigured: Boolean(
+        braveApiKeyEncrypted || process.env[safeSaved.braveApiKeyEnv ?? "BRAVE_API_KEY"],
+      ),
+      serperApiKeyConfigured: Boolean(
+        serperApiKeyEncrypted || process.env[safeSaved.serperApiKeyEnv ?? "SERPER_API_KEY"],
+      ),
+      firecrawlApiKeyConfigured: Boolean(
+        firecrawlApiKeyEncrypted ||
+        process.env[safeSaved.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY"],
+      ),
+      speechApiKeyConfigured: Boolean(speechApiKeyEncrypted),
+      doubaoSpeechApiKeyConfigured: Boolean(doubaoSpeechApiKeyEncrypted),
+    });
+  });
+
+  app.post("/settings/test-api-key", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    const providers: ApiKeyProvider[] = [
+      "qwen",
+      "doubao",
+      "tavily",
+      "brave",
+      "serper",
+      "firecrawl",
+    ];
+    if (!body || !providers.includes(body.provider)) return jsonError(c, 400, "invalid provider");
+    const settings = readSupervisorSettings();
+    try {
+      let apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+      if (!apiKey && body.provider === "qwen" && settings.speechApiKeyEncrypted) {
+        apiKey = decryptApiKey(settings.speechApiKeyEncrypted);
+      } else if (!apiKey && body.provider === "doubao" && settings.doubaoSpeechApiKeyEncrypted) {
+        apiKey = decryptApiKey(settings.doubaoSpeechApiKeyEncrypted);
+      } else if (!apiKey && !["qwen", "doubao"].includes(body.provider)) {
+        const name = body.provider as "tavily" | "brave" | "serper" | "firecrawl";
+        const envNames = {
+          tavily: settings.tavilyApiKeyEnv ?? "TAVILY_API_KEY",
+          brave: settings.braveApiKeyEnv ?? "BRAVE_API_KEY",
+          serper: settings.serperApiKeyEnv ?? "SERPER_API_KEY",
+          firecrawl: settings.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY",
+        };
+        const encrypted = {
+          tavily: settings.tavilyApiKeyEncrypted,
+          brave: settings.braveApiKeyEncrypted,
+          serper: settings.serperApiKeyEncrypted,
+          firecrawl: settings.firecrawlApiKeyEncrypted,
+        };
+        apiKey = resolveApiKey(name, envNames[name], encrypted[name]);
+      }
+      if (!apiKey) return jsonError(c, 409, "API key is not configured");
+      await testApiKey(body.provider, apiKey, { resourceId: settings.doubaoSpeechResourceId });
+      return c.json({ ok: true });
+    } catch (error) {
+      return jsonError(c, 409, error instanceof Error ? error.message : String(error));
+    }
   });
 
   // ============ Agent Endpoints ============
@@ -776,6 +918,39 @@ export function createHttpServer(manager: SessionManager): Hono {
     return c.json(hits);
   });
 
+  // GET /external-sessions — discover recent Codex and Claude Code conversations.
+  app.get("/external-sessions", async (c) => {
+    try {
+      const rawLimit = Number(c.req.query("limit") ?? 40);
+      const limit = Number.isFinite(rawLimit) ? rawLimit : 40;
+      return c.json(await manager.listImportableExternalSessions(limit));
+    } catch (error: unknown) {
+      return jsonError(c, 500, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  // POST /external-sessions/import — import history and resume in a new worktree.
+  app.post("/external-sessions/import", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (
+      !body ||
+      (body.backend !== "codex" && body.backend !== "claude") ||
+      typeof body.externalSessionId !== "string" ||
+      !body.externalSessionId
+    ) {
+      return jsonError(c, 400, "invalid external session import request");
+    }
+    try {
+      const session = await manager.importExternalSession({
+        backend: body.backend,
+        externalSessionId: body.externalSessionId,
+      });
+      return c.json(session, 201);
+    } catch (error: unknown) {
+      return jsonError(c, 409, error instanceof Error ? error.message : String(error));
+    }
+  });
+
   // GET /sessions/:id/messages  — get full conversation history
   app.get("/sessions/:id/messages", async (c) => {
     try {
@@ -1054,10 +1229,37 @@ export function createHttpServer(manager: SessionManager): Hono {
   app.get("/sessions/:id/jobs", (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
-    if (!manager.get(id)) return jsonError(c, 404, `Session ${id} not found`);
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, `Session ${id} not found`);
+    const schedules = manager.jobs.listSchedules(id);
+    const legacySchedules =
+      schedules.length === 0 && Array.isArray(session.meta?.timers)
+        ? session.meta.timers.flatMap((value, index) => {
+            if (!value || typeof value !== "object") return [];
+            const timer = value as Record<string, unknown>;
+            if (typeof timer.prompt !== "string" || typeof timer.nextFireAt !== "number") return [];
+            const createdAt =
+              typeof timer.createdAt === "number" ? timer.createdAt : timer.nextFireAt;
+            return [
+              {
+                id: typeof timer.id === "string" ? timer.id : `legacy-timer-${index}`,
+                sessionId: id,
+                kind: "timer",
+                name: "timer.fire",
+                label: timer.prompt.split("\n")[0]!.slice(0, 120),
+                prompt: timer.prompt,
+                nextRunAt: timer.nextFireAt,
+                ...(typeof timer.intervalMs === "number" ? { intervalMs: timer.intervalMs } : {}),
+                metadata: { legacy: true },
+                createdAt,
+                updatedAt: createdAt,
+              },
+            ];
+          })
+        : [];
     return c.json({
       jobs: manager.jobs.list(id, { limit: 50 }),
-      schedules: manager.jobs.listSchedules(id),
+      schedules: schedules.length ? schedules : legacySchedules,
     });
   });
 

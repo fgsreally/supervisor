@@ -1,6 +1,6 @@
 <template>
   <div
-    class="relative z-50 h-16 md:h-[68px] border-b flex items-center px-3 md:px-6 shrink-0"
+    class="chat-view-header relative z-50 h-12 md:h-[68px] border-b flex items-center px-2.5 md:px-6 shrink-0"
     style="background: var(--app-chat-header-bg); border-color: var(--app-border)"
   >
     <button
@@ -171,10 +171,14 @@ const statusBadgeClass = computed(() => {
 }
 
 @media (max-width: 767px) {
+  .chat-view-header {
+    min-height: 48px;
+  }
+
   .chat-header-title {
     max-width: none;
     flex: 1;
-    font-size: 17px;
+    font-size: 16px;
   }
 
   .chat-header-agent {

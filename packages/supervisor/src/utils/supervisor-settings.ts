@@ -21,6 +21,11 @@ export interface SupervisorSettings {
   braveApiKeyEncrypted?: string;
   serperApiKeyEncrypted?: string;
   firecrawlApiKeyEncrypted?: string;
+  speechRecognitionMode?: "browser" | "qwen" | "doubao";
+  speechRecognitionLanguage?: string;
+  speechApiKeyEncrypted?: string;
+  doubaoSpeechApiKeyEncrypted?: string;
+  doubaoSpeechResourceId?: string;
 }
 
 const DEFAULT_SETTINGS: SupervisorSettings = {};

@@ -38,16 +38,11 @@
         <Scissors class="w-[19px] h-[19px] stroke-[1.5]" />
       </button>
 
-      <button
-        type="button"
-        class="toolbar-icon-btn inline-flex items-center"
-        title="语音"
+      <VoiceInputButton
         :disabled="disabled"
-        @mousedown.prevent
-        @click="emit('action', 'voice')"
-      >
-        <Mic class="w-[19px] h-[19px] stroke-[1.5]" />
-      </button>
+        @transcript="emit('transcript', $event)"
+        @error="emit('voice-error', $event)"
+      />
     </div>
 
     <div class="flex items-center gap-2 shrink-0">
@@ -96,12 +91,12 @@ import {
   AudioLines,
   FolderOpen,
   MessageCircleQuestion,
-  Mic,
   Scissors,
   Smile,
   Sparkles,
   Square,
 } from "lucide-vue-next";
+import VoiceInputButton from "./VoiceInputButton.vue";
 
 export type ChatToolbarAction = "emoji" | "skill" | "attach" | "screenshot" | "voice" | "btw";
 
@@ -117,6 +112,8 @@ const emit = defineEmits<{
   slash: [name: string];
   send: [];
   interrupt: [];
+  transcript: [text: string];
+  "voice-error": [message: string];
 }>();
 
 const leftButtons = [

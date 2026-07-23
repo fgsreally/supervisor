@@ -82,8 +82,11 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/settings": {
-        target: "http://localhost:3030",
-        changeOrigin: true,
+        ...spaAwareProxy(),
+      },
+      "/ws": {
+        target: "ws://localhost:3030",
+        ws: true,
       },
       "/messages": {
         target: "http://localhost:3030",

@@ -36,6 +36,21 @@ export interface SupervisorSettings {
   braveApiKeyEnv?: string;
   serperApiKeyEnv?: string;
   firecrawlApiKeyEnv?: string;
+  tavilyApiKeyConfigured?: boolean;
+  braveApiKeyConfigured?: boolean;
+  serperApiKeyConfigured?: boolean;
+  firecrawlApiKeyConfigured?: boolean;
+  tavilyApiKey?: string;
+  braveApiKey?: string;
+  serperApiKey?: string;
+  firecrawlApiKey?: string;
+  speechRecognitionMode?: "browser" | "qwen" | "doubao";
+  speechRecognitionLanguage?: string;
+  speechApiKeyConfigured?: boolean;
+  speechApiKey?: string;
+  doubaoSpeechApiKeyConfigured?: boolean;
+  doubaoSpeechApiKey?: string;
+  doubaoSpeechResourceId?: string;
 }
 export type SessionBranchType = "subagent" | "fork" | "clone" | "btw";
 export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork" | "clone";
@@ -365,6 +380,15 @@ export interface CreateSessionRequest {
   tools?: unknown[];
 }
 
+export interface ExternalSessionCandidate {
+  backend: "codex" | "claude";
+  externalSessionId: string;
+  cwd: string;
+  title: string;
+  preview: string;
+  lastActiveAt: string;
+}
+
 export interface CreateProjectRequest {
   name?: string;
   cwd: string;
@@ -613,6 +637,13 @@ export function updateSupervisorSettings(
   return patchJson<SupervisorSettings>("/settings", patch);
 }
 
+export function testSettingsApiKey(
+  provider: "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl",
+  apiKey?: string,
+): Promise<{ ok: true }> {
+  return postJson<{ ok: true }>("/settings/test-api-key", { provider, apiKey });
+}
+
 async function putJson<T>(path: string, body: unknown): Promise<T> {
   return fetchJson<T>(path, {
     method: "PUT",
@@ -712,6 +743,18 @@ export function updateSessionMembers(
 /** Create/Spawn a new session. */
 export async function createSession(options: CreateSessionRequest): Promise<Session> {
   const session = await postJson<RawSession>("/sessions", toCreateSessionBody(options));
+  return mapSession(session);
+}
+
+export function listExternalSessions(limit = 40): Promise<ExternalSessionCandidate[]> {
+  return fetchJson<ExternalSessionCandidate[]>(`/external-sessions?limit=${limit}`);
+}
+
+export async function importExternalSession(options: {
+  backend: "codex" | "claude";
+  externalSessionId: string;
+}): Promise<Session> {
+  const session = await postJson<RawSession>("/external-sessions/import", options);
   return mapSession(session);
 }
 

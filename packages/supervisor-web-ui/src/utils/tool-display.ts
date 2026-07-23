@@ -25,6 +25,10 @@ export function isSkillReadPath(path: string): boolean {
 }
 
 export function toolCallSummary(name: string, args: Record<string, unknown> | undefined): string {
+  if (name.toLowerCase().includes("eval")) {
+    const code = typeof args?.code === "string" ? args.code.trim().split("\n")[0] : "";
+    return code ? `eval ${code.slice(0, 48)}` : "eval";
+  }
   if (!args) return name;
   const intent = typeof args.intent === "string" ? args.intent.trim() : "";
   if (intent) return intent.length > 52 ? `${intent.slice(0, 49)}...` : intent;
@@ -76,6 +80,10 @@ export function toolResultSummary(
   content: Array<{ type: string; text: string }> | undefined,
 ): string {
   const text = content?.find((c) => c.type === "text")?.text ?? "";
+  if (name.toLowerCase().includes("eval")) {
+    const lineCount = text.split("\n").filter((line) => line.trim()).length;
+    return `完成 · ${lineCount} 行输出`;
+  }
   switch (name) {
     case "read": {
       const lines = text ? text.split("\n").length : 0;

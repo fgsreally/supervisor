@@ -603,7 +603,7 @@ const seed = db.transaction(() => {
       const row = db
         .prepare(`INSERT INTO sessions
         (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, created_via, show_in_session_list, context_leaf_id, created_at, last_active_at, meta)
-        VALUES (?, ?, NULL, NULL, 'finish', 'none', ?, NULL, ?, 'subagent', 'spawn_agent', 1, NULL, ?, ?, ?)`)
+        VALUES (?, ?, NULL, NULL, 'idle', 'none', ?, NULL, ?, 'subagent', 'spawn_agent', 1, NULL, ?, ?, ?)`)
         .run(
           project.id,
           subagentParentId,

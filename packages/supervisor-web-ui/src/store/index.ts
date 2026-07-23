@@ -168,6 +168,22 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
+  async function importExternalSession(options: {
+    backend: "codex" | "claude";
+    externalSessionId: string;
+  }) {
+    root.clearError();
+    try {
+      const session = await api.importExternalSession(options);
+      sessions.value.unshift(session);
+      await fetchProjects();
+      return session;
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to import external session");
+      throw err;
+    }
+  }
+
   async function deleteSession(id: string) {
     root.clearError();
     try {
@@ -377,6 +393,7 @@ export const useSessionStore = defineStore("session", () => {
     createProject,
     fetchSession,
     createSession,
+    importExternalSession,
     deleteSession,
     updateSessionMeta,
     fetchSessionMessages,

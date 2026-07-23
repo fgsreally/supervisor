@@ -7,6 +7,7 @@ import { ensureBuiltinAssistant, ensurePackagedAgents } from "./agent/index.js";
 import { SupervisorDb } from "./db/db.js";
 import { getDefaultCwd, resolveWorkspacePath, setDefaultCwd } from "./config/default-cwd.js";
 import { createHttpServer } from "./http/http-server.js";
+import { attachWebSocketServer } from "./websocket/server.js";
 import { SessionManager } from "./core/session-manager.js";
 import type { Provider } from "./types.js";
 import { encryptApiKey } from "./utils/encrypt.js";
@@ -157,7 +158,8 @@ async function run() {
       ensureBuiltinAssistant(db, manager);
       ensurePackagedAgents(db);
       const app = createHttpServer(manager);
-      serve({ fetch: app.fetch, port });
+      const server = serve({ fetch: app.fetch, port });
+      attachWebSocketServer(server);
       manager.resumePersistedSessionInputs();
       console.log(`Server listening on http://localhost:${port}`);
       console.log(`Workspace cwd: ${workspaceCwd}`);

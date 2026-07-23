@@ -80,6 +80,14 @@ function rowToAgent(row: AgentRow): Agent {
 }
 
 function rowToProvider(row: ProviderRow): Provider {
+  let apiKey: string | null = null;
+  if (row.api_key) {
+    try {
+      apiKey = decryptApiKey(row.api_key);
+    } catch {
+      // Credentials encrypted with an unavailable legacy key must not prevent startup.
+    }
+  }
   return {
     id: row.id,
     slug: row.slug,
@@ -87,7 +95,7 @@ function rowToProvider(row: ProviderRow): Provider {
     icon: row.icon,
     apiType: row.api_type,
     baseUrl: row.base_url,
-    apiKey: row.api_key ? decryptApiKey(row.api_key) : null,
+    apiKey,
     isEnabled: Boolean(row.is_enabled),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -255,7 +263,6 @@ export class SupervisorDb {
 			CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_id);
 			CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 			CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
-			CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 
       CREATE TABLE IF NOT EXISTS members (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -273,6 +280,7 @@ export class SupervisorDb {
 
     this.ensureProjectColumns();
     this.ensureSessionChildColumns();
+    this.db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id)");
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -353,6 +361,9 @@ export class SupervisorDb {
   private ensureSessionChildColumns(): void {
     const columns = this.db.pragma("table_info(sessions)") as Array<{ name: string }>;
     const names = new Set(columns.map((column) => column.name));
+    if (!names.has("project_id")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN project_id INTEGER REFERENCES projects(id)");
+    }
     if (!names.has("show_in_session_list")) {
       this.db.exec(
         "ALTER TABLE sessions ADD COLUMN show_in_session_list INTEGER NOT NULL DEFAULT 1",

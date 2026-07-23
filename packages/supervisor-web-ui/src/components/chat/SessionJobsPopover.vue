@@ -111,7 +111,7 @@ const open = ref(false);
 const loading = ref(false);
 const expandedId = ref<string>();
 const inputs = reactive<Record<string, string>>({});
-let poll: ReturnType<typeof setInterval> | undefined;
+let poll: ReturnType<typeof setTimeout> | undefined;
 
 const visibleJobs = computed(() => jobs.value.slice(0, 12));
 const activeCount = computed(() => jobs.value.filter((job) => isActive(job.status)).length);
@@ -231,13 +231,34 @@ function formatValue(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-watch(() => props.sessionId, refresh);
+function scheduleRefresh(): void {
+  if (poll) clearTimeout(poll);
+  const delay = open.value || activeCount.value > 0 ? 15_000 : 60_000;
+  poll = setTimeout(async () => {
+    if (document.visibilityState === "visible") await refresh();
+    scheduleRefresh();
+  }, delay);
+}
+
+function onVisibilityChange(): void {
+  if (document.visibilityState !== "visible") return;
+  void refresh().finally(scheduleRefresh);
+}
+
+watch(
+  () => props.sessionId,
+  () => void refresh().finally(scheduleRefresh),
+);
+watch(open, (value) => {
+  if (value) void refresh().finally(scheduleRefresh);
+});
 onMounted(() => {
-  void refresh();
-  poll = setInterval(() => void refresh(), 2_000);
+  document.addEventListener("visibilitychange", onVisibilityChange);
+  void refresh().finally(scheduleRefresh);
 });
 onBeforeUnmount(() => {
-  if (poll) clearInterval(poll);
+  document.removeEventListener("visibilitychange", onVisibilityChange);
+  if (poll) clearTimeout(poll);
 });
 </script>
 

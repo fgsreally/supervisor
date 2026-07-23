@@ -86,17 +86,61 @@
               >
               <div class="session-agent-grid">
                 <button
-                  v-for="agent in configurableAgents"
+                  v-for="agent in selectedSpawnAgents"
                   :key="`spawn-${agent.id}`"
                   type="button"
-                  class="session-agent-card"
-                  :class="{ 'session-agent-card--selected': spawnedAgentIds.includes(agent.id) }"
+                  class="session-agent-card session-agent-card--selected"
+                  :title="`移除 ${agent.name}`"
                   @click="toggleSpawned(agent.id)"
                 >
                   <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.icon" />
                   <small>{{ agent.name }}</small>
+                  <span class="session-agent-card__remove"><X /></span>
+                </button>
+                <button
+                  v-if="availableSpawnAgents.length"
+                  type="button"
+                  class="session-agent-card"
+                  title="添加子代理"
+                  @click="spawnAgentPickerOpen = !spawnAgentPickerOpen"
+                >
+                  <span class="session-agent-card__add"><Plus /></span>
+                  <small>添加</small>
                 </button>
               </div>
+              <div v-if="spawnAgentPickerOpen" class="session-agent-picker">
+                <button
+                  v-for="agent in availableSpawnAgents"
+                  :key="`available-${agent.id}`"
+                  type="button"
+                  @click="addSpawned(agent.id)"
+                >
+                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.icon" />
+                  <span>{{ agent.name }}</span>
+                  <Plus />
+                </button>
+              </div>
+            </section>
+
+            <section
+              v-if="childSessions.length"
+              class="border-b chat-session-menu__section session-children"
+            >
+              <div class="session-children__title">子会话</div>
+              <button
+                v-for="child in childSessions"
+                :key="child.id"
+                type="button"
+                class="chat-session-menu__child-row"
+                @click="emit('navigate', child.id)"
+              >
+                <span class="session-children__avatar">子</span>
+                <span class="session-children__copy">
+                  <strong>{{ childSessionName(child) }}</strong>
+                  <small>{{ child.status === "finish" ? "已完成" : "进行中" }}</small>
+                </span>
+                <ChevronRight class="chat-session-menu__chevron" />
+              </button>
             </section>
 
             <button
@@ -211,7 +255,8 @@
 </template>
 
 <script setup lang="ts">
-import { ChevronRight, X } from "lucide-vue-next";
+import { computed, ref, watch } from "vue";
+import { ChevronRight, Plus, X } from "lucide-vue-next";
 import type { Session } from "@/api";
 import type { Agent } from "@/api";
 import { SESSION_AVATAR_COLORS, type SessionAvatarValue } from "@/utils/session-avatar";
@@ -254,11 +299,39 @@ const emit = defineEmits<{
   "update:spawnedAgents": [value: string[]];
 }>();
 
+const spawnAgentPickerOpen = ref(false);
+const selectedSpawnAgents = computed(() =>
+  props.configurableAgents.filter((agent) => props.spawnedAgentIds.includes(agent.id)),
+);
+const availableSpawnAgents = computed(() =>
+  props.configurableAgents.filter((agent) => !props.spawnedAgentIds.includes(agent.id)),
+);
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) spawnAgentPickerOpen.value = false;
+  },
+);
+
 function toggleSpawned(agentId: string) {
   const next = props.spawnedAgentIds.includes(agentId)
     ? props.spawnedAgentIds.filter((id) => id !== agentId)
     : [...props.spawnedAgentIds, agentId];
   emit("update:spawnedAgents", next);
+}
+
+function addSpawned(agentId: string) {
+  if (!props.spawnedAgentIds.includes(agentId)) {
+    emit("update:spawnedAgents", [...props.spawnedAgentIds, agentId]);
+  }
+  spawnAgentPickerOpen.value = false;
+}
+
+function childSessionName(child: Pick<Session, "id" | "meta">): string {
+  return typeof child.meta.name === "string" && child.meta.name.trim()
+    ? child.meta.name
+    : `子会话 ${child.id}`;
 }
 </script>
 
@@ -308,6 +381,48 @@ function toggleSpawned(agentId: string) {
 .chat-session-menu__child-row:focus-visible {
   background: var(--app-popup-hover);
   outline: none;
+}
+
+.session-children__title {
+  padding: 12px 20px 6px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
+.chat-session-menu__child-row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 36px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px 9px 20px;
+  text-align: left;
+}
+.session-children__avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 7px;
+  color: white;
+  background: #576b95;
+  font-size: 13px;
+}
+.session-children__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.session-children__copy strong {
+  overflow: hidden;
+  color: var(--app-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-children__copy small {
+  color: var(--app-text-muted);
+  font-size: 11px;
 }
 
 .chat-session-menu__muted {
@@ -372,7 +487,8 @@ function toggleSpawned(agentId: string) {
   transform: scale(0.97);
 }
 .session-agent-card :deep(.agent-avatar),
-.session-agent-card__builtin {
+.session-agent-card__builtin,
+.session-agent-card__add {
   width: 44px;
   height: 44px;
 }
@@ -385,6 +501,17 @@ function toggleSpawned(agentId: string) {
   font-size: 18px;
   font-weight: 600;
 }
+.session-agent-card__add {
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--app-border);
+  border-radius: 8px;
+  color: var(--app-text-muted);
+}
+.session-agent-card__add svg {
+  width: 22px;
+  height: 22px;
+}
 .session-agent-card small {
   width: 100%;
   overflow: hidden;
@@ -394,16 +521,52 @@ function toggleSpawned(agentId: string) {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.session-agent-card--selected::after {
+.session-agent-card__remove {
   position: absolute;
-  top: 42px;
-  right: 7px;
-  width: 13px;
-  height: 13px;
-  border: 2px solid var(--app-popup-bg);
+  top: 1px;
+  right: 5px;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
   border-radius: 50%;
-  background: #07c160;
-  content: "";
+  color: white;
+  background: #fa5151;
+}
+.session-agent-card__remove svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2.4;
+}
+.session-agent-picker {
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 8px;
+}
+.session-agent-picker button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 30px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  color: var(--app-text-primary);
+  text-align: left;
+}
+.session-agent-picker button + button {
+  border-top: 1px solid var(--app-border-subtle);
+}
+.session-agent-picker button:hover {
+  background: var(--app-popup-hover);
+}
+.session-agent-picker :deep(.agent-avatar) {
+  width: 30px;
+  height: 30px;
+}
+.session-agent-picker svg {
+  width: 16px;
+  color: #07a65a;
 }
 
 .chat-session-menu__name input:focus {
@@ -436,5 +599,17 @@ function toggleSpawned(agentId: string) {
 .chat-menu-enter-from aside,
 .chat-menu-leave-to aside {
   transform: translateX(100%);
+}
+
+@media (max-width: 767px) {
+  .chat-session-menu {
+    max-width: none;
+    box-shadow: none;
+  }
+
+  .chat-session-menu__header {
+    height: 48px;
+    padding-inline: 12px;
+  }
 }
 </style>

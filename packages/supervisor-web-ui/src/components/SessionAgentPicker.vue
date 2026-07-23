@@ -63,6 +63,15 @@
               </div>
             </li>
           </ul>
+          <footer class="agent-picker-modal__footer border-t p-3">
+            <button
+              type="button"
+              class="agent-picker-modal__import"
+              @click="emit('external-import')"
+            >
+              从外部引入
+            </button>
+          </footer>
         </div>
       </div>
     </Transition>
@@ -82,6 +91,7 @@ defineProps<{
 const emit = defineEmits<{
   close: [];
   select: [agentId: string];
+  "external-import": [];
 }>();
 
 const agentStore = useAgentStore();
@@ -107,6 +117,23 @@ async function detectAgents() {
 
 .agent-picker-modal__header {
   border-color: var(--app-border-subtle);
+}
+
+.agent-picker-modal__footer {
+  border-color: var(--app-border-subtle);
+}
+
+.agent-picker-modal__import {
+  width: 100%;
+  border-radius: 6px;
+  padding: 8px 12px;
+  color: var(--app-text-primary);
+  background: var(--app-hover);
+  font-size: 13px;
+}
+
+.agent-picker-modal__import:hover {
+  background: var(--app-popup-hover);
 }
 
 .agent-picker-modal__close {

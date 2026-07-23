@@ -3,6 +3,7 @@ import { getDefaultCwd, setDefaultCwd, resolveWorkspacePath } from "./config/def
 import { SupervisorDb } from "./db/db.js";
 import { createHttpServer } from "./http/http-server.js";
 import { SessionManager } from "./core/session-manager.js";
+import { attachWebSocketServer } from "./websocket/server.js";
 
 export interface SupervisorOptions {
   port?: number;
@@ -21,11 +22,13 @@ export function startSupervisor(options: SupervisorOptions = {}): {
   const app = createHttpServer(manager);
   const port = options.port ?? 3030;
   const server = serve({ fetch: app.fetch, port });
+  const websocketServer = attachWebSocketServer(server);
   manager.resumePersistedSessionInputs();
   return {
     manager,
     stop: async () => {
       server.close();
+      websocketServer.close();
       await manager.dispose();
     },
   };
@@ -49,6 +52,7 @@ export type {
   ToolDefinition,
 } from "./extension/index.js";
 export { createHttpServer } from "./http/http-server.js";
+export { attachWebSocketServer } from "./websocket/server.js";
 export { extractMessageSearchFields } from "./db/message-search.js";
 export { copyMessagesWithInheritance } from "./core/session-history.js";
 export type { SessionOutputListener } from "./core/session-manager.js";

@@ -42,12 +42,20 @@
             <ClipboardList class="h-[17px] w-[17px]" /><span>{{ tasks.length }}</span>
           </button>
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
-          <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
           <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
         </div>
+        <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
+        <button
+          v-if="hasEvalActivity"
+          class="chat-header-action"
+          type="button"
+          title="查看 Eval"
+          @click="openEvalPanel"
+        >
+          <Terminal class="h-[17px] w-[17px]" />
+        </button>
         <div class="mobile-session-actions">
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
-          <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
           <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
           <button
             class="chat-header-action"
@@ -145,6 +153,7 @@
 
       <TaskWorkspacePanel
         v-if="taskPaneOpen && tasks.length"
+        v-motion="splitPanelMotion"
         :tasks="tasks"
         :todos="[]"
         :selected-path="selectedTaskPath"
@@ -159,12 +168,15 @@
       />
       <SessionLogPanel
         v-if="showLogPanel"
+        v-motion="splitPanelMotion"
         class="chat-workspace__side-panel"
         :session-id="session.id"
         @close="showLogPanel = false"
       />
       <ToolDetailPanel
         v-if="toolPanel"
+        v-motion="splitPanelMotion"
+        class="chat-workspace__tool-panel"
         :title="toolPanel.title"
         :sections="toolPanel.sections"
         :terminal="toolPanel.terminal"
@@ -181,46 +193,45 @@
     />
 
     <Teleport to="body">
-      <Transition name="mobile-actions">
-        <div
-          v-if="sessionActionsOpen"
-          class="mobile-actions-backdrop"
-          @click.self="sessionActionsOpen = false"
-        >
-          <section class="mobile-actions-sheet">
-            <div class="mobile-actions-handle" />
-            <div class="mobile-actions-grid">
-              <button type="button" @click="runMobileAction(openSearch)">
-                <Search /><span>搜索</span>
-              </button>
-              <button
-                type="button"
-                @click="
-                  runMobileAction(() => {
-                    showLogPanel = true;
-                  })
-                "
-              >
-                <ScrollText /><span>日志</span>
-              </button>
-              <button
-                v-if="tasks.length"
-                type="button"
-                @click="
-                  runMobileAction(() => {
-                    taskPaneOpen = true;
-                  })
-                "
-              >
-                <ClipboardList /><span>任务</span>
-              </button>
-            </div>
-            <button class="mobile-actions-cancel" type="button" @click="sessionActionsOpen = false">
-              取消
+      <div
+        v-if="sessionActionsOpen"
+        v-motion="bottomSheetMotion"
+        class="mobile-actions-backdrop"
+        @click.self="sessionActionsOpen = false"
+      >
+        <section class="mobile-actions-sheet">
+          <div class="mobile-actions-handle" />
+          <div class="mobile-actions-grid">
+            <button type="button" @click="runMobileAction(openSearch)">
+              <Search /><span>搜索</span>
             </button>
-          </section>
-        </div>
-      </Transition>
+            <button
+              type="button"
+              @click="
+                runMobileAction(() => {
+                  showLogPanel = true;
+                })
+              "
+            >
+              <ScrollText /><span>日志</span>
+            </button>
+            <button
+              v-if="tasks.length"
+              type="button"
+              @click="
+                runMobileAction(() => {
+                  taskPaneOpen = true;
+                })
+              "
+            >
+              <ClipboardList /><span>任务</span>
+            </button>
+          </div>
+          <button class="mobile-actions-cancel" type="button" @click="sessionActionsOpen = false">
+            取消
+          </button>
+        </section>
+      </div>
     </Teleport>
 
     <ChatSessionMenu
@@ -319,7 +330,14 @@
 
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onBeforeUnmount } from "vue";
-import { ClipboardList, Loader2, SlidersHorizontal, ScrollText, Search } from "lucide-vue-next";
+import {
+  ClipboardList,
+  Loader2,
+  SlidersHorizontal,
+  ScrollText,
+  Search,
+  Terminal,
+} from "lucide-vue-next";
 import { useSessionStore, useAgentStore, useProviderStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
 import * as api from "@/api";
@@ -361,6 +379,7 @@ import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-pu
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
 import { parseWorkflowState } from "../utils/workflow";
 import { sessionAvatar, type SessionAvatarValue } from "../utils/session-avatar";
+import { bottomSheetMotion, splitPanelMotion } from "../motion/presets";
 
 const props = defineProps<{
   session: {
@@ -451,7 +470,7 @@ const toolPanel = ref<{
 } | null>(null);
 
 function openJobDetail(request: JobDetailRequest): void {
-  if (request.presentation === "panel") {
+  if (request.presentation === "panel" || window.matchMedia("(max-width: 767px)").matches) {
     toolPanel.value = {
       title: request.title,
       sections: request.sections,
@@ -946,6 +965,18 @@ onBeforeUnmount(() => {
 });
 
 const displayGroups = computed(() => buildDisplayGroups(chatEntries.value));
+const hasEvalActivity = computed(
+  () =>
+    sessionTitle.value.toLowerCase().includes("eval") ||
+    chatEntries.value.some(
+      (entry) =>
+        entry.type === "message" &&
+        Array.isArray(entry.message.content) &&
+        entry.message.content.some(
+          (part) => part.type === "toolCall" && part.name.toLowerCase().includes("eval"),
+        ),
+    ),
+);
 
 const pendingAsk = computed(() => findPendingAskInDisplayGroups(displayGroups.value));
 
@@ -1036,9 +1067,20 @@ function openToolDetail(
   resultContent?: Array<{ type: string; text: string }>,
 ) {
   const detail = buildToolModal(toolName, callArgs, resultContent);
-  if (toolName === "eval" || toolName === "bash" || toolName === "PersistentBash") {
-    toolPanel.value = { ...detail, terminal: toolName === "eval" ? "eval" : "bash" };
+  const normalizedToolName = toolName.toLowerCase();
+  const isEval = normalizedToolName.includes("eval");
+  const isTerminal = isEval || normalizedToolName.includes("bash");
+  if (isTerminal || window.matchMedia("(max-width: 767px)").matches) {
+    toolPanel.value = { ...detail, ...(isTerminal ? { terminal: isEval ? "eval" : "bash" } : {}) };
   } else toolModal.value = detail;
+}
+
+function openEvalPanel() {
+  toolPanel.value = {
+    title: "Eval",
+    sections: [{ label: "运行环境", content: "正在读取 Eval 历史…" }],
+    terminal: "eval",
+  };
 }
 
 function openBashDetail(
@@ -1364,12 +1406,24 @@ async function executeCustomSlash(name: string) {
 }
 
 @media (max-width: 767px) {
-  .chat-workspace__side-panel {
+  .chat-workspace__side-panel,
+  .chat-workspace__tool-panel {
     position: absolute;
-    inset: 0;
     z-index: 60;
+    right: 0;
+    bottom: 0;
+    left: 0;
     width: 100% !important;
     min-width: 0;
+    height: min(68%, 620px);
+    border-top: 1px solid var(--app-border-subtle);
+    border-left: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px rgb(0 0 0 / 14%);
+  }
+
+  .chat-workspace__side-panel {
+    z-index: 60;
   }
 }
 

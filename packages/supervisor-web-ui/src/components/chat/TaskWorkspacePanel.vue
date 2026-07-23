@@ -250,10 +250,15 @@ function statusLabel(status: string): string {
 @media (max-width: 800px) {
   .task-workspace {
     position: absolute;
-    z-index: 20;
-    inset: 0;
+    z-index: 60;
+    inset: auto 0 0;
     width: 100%;
+    height: min(68%, 620px);
+    flex-basis: auto;
+    border-top: 1px solid var(--app-border-color, rgba(127, 127, 127, 0.22));
     border-left: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -10px 30px rgb(0 0 0 / 14%);
   }
 }
 </style>

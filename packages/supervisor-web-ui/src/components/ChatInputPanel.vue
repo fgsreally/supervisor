@@ -37,6 +37,8 @@
         @slash="onCustomSlash"
         @send="emit('send', { text, images: pendingImages })"
         @interrupt="emit('interrupt')"
+        @transcript="appendTranscript"
+        @voice-error="onVoiceError"
       />
     </div>
   </div>
@@ -48,6 +50,7 @@ import { Bot } from "lucide-vue-next";
 import * as api from "@/api";
 import { useAgentStore } from "@/store";
 import { useResizableHeight } from "../composables/use-resizable-height";
+import { showUiMessage } from "../composables/use-ui-message";
 import type { ChatSendPayload, PendingChatImage } from "@/types/chat-compose";
 import {
   promptsFromAgentResources,
@@ -233,13 +236,22 @@ function onToolbarAction(action: ChatToolbarAction) {
       break;
     case "emoji":
     case "screenshot":
-    case "voice":
       composerRef.value?.focus();
       break;
     case "btw":
       emit("btw");
       break;
   }
+}
+
+function appendTranscript(transcript: string) {
+  const separator = text.value && !/\s$/.test(text.value) ? " " : "";
+  text.value += `${separator}${transcript}`;
+  void nextTick(() => composerRef.value?.focus());
+}
+
+function onVoiceError(message: string) {
+  showUiMessage(message, "error");
 }
 
 function onCustomSlash(name: string) {
@@ -384,6 +396,27 @@ defineExpose({ focus, clearAfterSend });
 }
 
 @media (max-width: 767px) {
+  .chat-input-shell {
+    padding: 0 5px calc(5px + env(safe-area-inset-bottom));
+  }
+
+  .chat-input-island:not(:has(.chat-input-empty-state)) {
+    height: 92px !important;
+  }
+
+  .chat-input-island :deep(.resize-handle) {
+    display: none;
+  }
+
+  .chat-input-editor {
+    max-height: 52px;
+  }
+
+  .chat-input-editor :deep(.cm-editor) {
+    height: 52px !important;
+    max-height: 52px;
+  }
+
   .chat-input-island:has(.chat-input-empty-state) {
     height: 72px !important;
   }

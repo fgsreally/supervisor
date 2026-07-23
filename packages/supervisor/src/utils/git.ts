@@ -6,6 +6,16 @@ import { promisify } from "node:util";
 
 const execGit = promisify(execFile);
 
+/** Trailer appended to every commit created by supervisor. */
+export const SV_COMMIT_TRAILER = "Sv: true";
+
+/** Ensure commit message carries the supervisor (sv) marker. */
+export function withSvCommitMarker(message: string): string {
+  const trimmed = message.replace(/\s+$/u, "").trim() || "sv: changes";
+  if (/(?:^|\n)Sv:\s*true\b/iu.test(trimmed)) return trimmed;
+  return `${trimmed}\n\n${SV_COMMIT_TRAILER}`;
+}
+
 export function ensureGitRepositorySync(cwd: string): string {
   mkdirSync(cwd, { recursive: true });
   const git = (args: string[]) =>
@@ -149,10 +159,11 @@ export async function commitAll(
 ): Promise<{ hash: string; message: string } | null> {
   const status = await getGitStatusPorcelain(cwd);
   if (!status.trim()) return null;
+  const marked = withSvCommitMarker(message);
   await runGit(cwd, ["add", "-A"]);
-  await runGit(cwd, ["commit", "-m", message]);
+  await runGit(cwd, ["commit", "-m", marked]);
   const { stdout: hash } = await runGit(cwd, ["rev-parse", "--short", "HEAD"]);
-  return { hash, message };
+  return { hash, message: marked };
 }
 
 /** Create an immutable commit object representing the worktree without moving HEAD. */
@@ -212,6 +223,7 @@ export async function commitGitSnapshot(
   if (currentHead !== expectedHead) {
     throw new Error("Snapshot base has changed; refusing to commit a stale Shadow result");
   }
+  const marked = withSvCommitMarker(message);
   const { stdout: tree } = await runGit(cwd, ["rev-parse", `${snapshotRef}^{tree}`]);
   const { stdout: commit } = await runGit(cwd, [
     "commit-tree",
@@ -219,12 +231,12 @@ export async function commitGitSnapshot(
     "-p",
     expectedHead,
     "-m",
-    message,
+    marked,
   ]);
   const hash = commit.trim();
   await runGit(cwd, ["update-ref", "HEAD", hash, expectedHead]);
   await runGit(cwd, ["reset", "--mixed", hash]);
-  return { hash: hash.slice(0, 12), message };
+  return { hash: hash.slice(0, 12), message: marked };
 }
 
 export async function mergeSessionBranch(
@@ -233,7 +245,63 @@ export async function mergeSessionBranch(
   baseBranch: string,
 ): Promise<void> {
   await runGit(repoRoot, ["checkout", baseBranch]);
-  await runGit(repoRoot, ["merge", "--no-ff", branch, "-m", `Merge ${branch}`]);
+  await runGit(repoRoot, [
+    "merge",
+    "--no-ff",
+    branch,
+    "-m",
+    withSvCommitMarker(`Merge ${branch}`),
+  ]);
+}
+
+export interface SvCommitInfo {
+  hash: string;
+  shortHash: string;
+  subject: string;
+  author: string;
+  timestamp: number;
+}
+
+/** List supervisor-marked commits in [sinceMs, untilMs) across all refs. */
+export async function listSvCommitsBetween(
+  cwd: string,
+  sinceMs: number,
+  untilMs: number,
+): Promise<SvCommitInfo[]> {
+  const repoRoot = await findGitRoot(cwd);
+  if (!repoRoot) return [];
+  const since = new Date(sinceMs).toISOString();
+  const until = new Date(untilMs).toISOString();
+  const { stdout } = await runGit(repoRoot, [
+    "log",
+    "--all",
+    `--since=${since}`,
+    `--until=${until}`,
+    "--grep=^Sv: true",
+    "--extended-regexp",
+    "--regexp-ignore-case",
+    "--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ct%x1e",
+  ]).catch(() => ({ stdout: "", stderr: "" }));
+
+  const seen = new Set<string>();
+  const commits: SvCommitInfo[] = [];
+  for (const chunk of stdout.split("\x1e")) {
+    const line = chunk.trim();
+    if (!line) continue;
+    const [hash = "", shortHash = "", subject = "", author = "", timestamp = "0"] =
+      line.split("\x1f");
+    if (!hash || seen.has(hash)) continue;
+    seen.add(hash);
+    commits.push({
+      hash,
+      shortHash,
+      subject,
+      author,
+      timestamp: Number(timestamp) * 1000,
+    });
+  }
+  commits.sort((left, right) => left.timestamp - right.timestamp);
+  return commits;
 }
 
 export async function removeSessionWorktree(

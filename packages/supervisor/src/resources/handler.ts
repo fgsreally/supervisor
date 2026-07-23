@@ -15,6 +15,11 @@ export interface ResourceInstallRequest {
   slug?: string;
 }
 
+export interface ResourceWriteContentRequest {
+  slug: string;
+  content: string;
+}
+
 export interface ResourceInstallOutput extends Omit<ResourceDescriptor, "kind"> {
   details?: Record<string, unknown>;
 }
@@ -24,6 +29,10 @@ export interface ResourceHandler {
   readonly kind: ResourceKind;
   discover(): ResourceDescriptor[];
   install?(request: ResourceInstallRequest): ResourceInstallOutput | Promise<ResourceInstallOutput>;
+  /** Create or overwrite resource content (prompt/mcp JSON/markdown). */
+  writeContent?(
+    request: ResourceWriteContentRequest,
+  ): ResourceInstallOutput | Promise<ResourceInstallOutput>;
   update?(slug: string): ResourceInstallOutput | Promise<ResourceInstallOutput>;
   uninstall?(slug: string): void | Promise<void>;
   onCatalogUpdated?(slug: string): void | Promise<void>;

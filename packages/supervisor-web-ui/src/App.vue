@@ -7,7 +7,12 @@
       <ShellNav :tab="mainTab" @update:tab="onTabChange" />
 
       <div class="flex flex-1 min-w-0 min-h-0 overflow-hidden">
-        <SettingsPanel v-if="mainTab === 'settings'" class="flex-1 min-w-0 h-full" />
+        <HomeView
+          v-if="mainTab === 'home'"
+          class="flex-1 min-w-0 h-full"
+          @open-session="openSessionFromHome"
+        />
+        <SettingsPanel v-else-if="mainTab === 'settings'" class="flex-1 min-w-0 h-full" />
         <template v-else>
           <div
             class="relative shrink-0 h-full hidden md:block"
@@ -110,6 +115,7 @@
             <ResourceDetailView
               v-else-if="mainTab === 'resources' && activeResourceId"
               :resource-id="activeResourceId"
+              @deleted="onResourceDeleted"
             />
             <EmptyPlaceholder v-else :tab="mainTab" />
           </main>
@@ -119,10 +125,15 @@
 
     <template v-else>
       <div class="flex-1 flex flex-col min-w-0">
+        <HomeView
+          v-if="mainTab === 'home'"
+          class="flex-1 min-w-0 h-full"
+          @open-session="openSessionFromHome"
+        />
         <SettingsPanel
-          v-if="mainTab === 'settings'"
+          v-else-if="mainTab === 'settings'"
           :show-back="true"
-          @back="onTabChange('chat')"
+          @back="onTabChange('home')"
         />
         <template v-else-if="mobilePage === 'list'">
           <ChatListPanel
@@ -219,6 +230,7 @@
             :resource-id="activeResourceId"
             :show-back="true"
             @back="backToMobileList"
+            @deleted="onResourceDeleted"
           />
         </template>
       </div>
@@ -227,6 +239,15 @@
         class="md:hidden fixed bottom-0 inset-x-0 h-14 border-t z-30 flex mobile-bottom-nav"
         style="background: var(--app-nav-bg); border-color: var(--app-border)"
       >
+        <button
+          type="button"
+          class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
+          :class="mainTab === 'home' ? 'mobile-bottom-nav__btn--active' : ''"
+          @click="onTabChange('home')"
+        >
+          <Home class="w-5 h-5 mb-0.5" />
+          首页
+        </button>
         <button
           type="button"
           class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
@@ -290,7 +311,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Cloud, FolderOpen, MessageSquare, Users } from "lucide-vue-next";
+import { Cloud, FolderOpen, Home, MessageSquare, Users } from "lucide-vue-next";
 import ShellNav, { type MainTab } from "./components/ShellNav.vue";
 import ChatListPanel from "./components/ChatListPanel.vue";
 import ContactsPanel from "./components/ContactsPanel.vue";
@@ -310,6 +331,7 @@ import ProviderModelFormView from "./views/ProviderModelFormView.vue";
 import ProviderEditDialog from "./components/ProviderEditDialog.vue";
 import ProviderModelEditor from "./components/ProviderModelEditor.vue";
 import ChatView from "./views/ChatView.vue";
+import HomeView from "./views/HomeView.vue";
 import GlobalSearchModal from "./components/GlobalSearchModal.vue";
 import UiMessageHost from "./components/UiMessageHost.vue";
 import UiConfirmHost from "./components/UiConfirmHost.vue";
@@ -334,7 +356,7 @@ const agentStore = useAgentStore();
 const providerStore = useProviderStore();
 const resourceStore = useResourceStore();
 
-const mainTab = ref<MainTab>("chat");
+const mainTab = ref<MainTab>("home");
 const activeSessionId = ref<string | null>(null);
 const activeAgentId = ref<string | null>(null);
 const activeProviderId = ref<string | null>(null);
@@ -364,12 +386,14 @@ function applyRoute() {
     activeModelId.value = modelIdFromRoute(route) ?? null;
     providerPage.value = "detail";
   } else if (tab === "resources") activeResourceId.value = id ?? activeResourceId.value;
-  if (id && tab !== "settings" && isMobile.value) mobilePage.value = "detail";
+  if (id && tab !== "settings" && tab !== "home" && isMobile.value) mobilePage.value = "detail";
 }
 
 function pushRoute() {
   const tab = mainTab.value;
-  if (tab === "chat") {
+  if (tab === "home") {
+    void router.push("/home");
+  } else if (tab === "chat") {
     void router.push(activeSessionId.value ? `/chat/${activeSessionId.value}` : "/chat");
   } else if (tab === "contacts") {
     void router.push(activeAgentId.value ? `/contacts/${activeAgentId.value}` : "/contacts");
@@ -408,9 +432,7 @@ onMounted(() => {
   ])
     .then(() => {
       if (route.path === "/" || route.path === "") {
-        const firstSession = sessionStore.sessions.find((s) => s.showInSessionList);
-        if (firstSession) activeSessionId.value = firstSession.id;
-        void router.replace(firstSession ? `/chat/${firstSession.id}` : "/chat");
+        void router.replace("/home");
       } else {
         applyRoute();
         if (mainTab.value === "providers" && !activeProviderId.value) {
@@ -491,9 +513,16 @@ const chatSessionProps = computed(() => {
 
 function selectSession(id: string) {
   activeSessionId.value = id;
-  if (isMobile.value && mainTab.value !== "settings") {
+  if (isMobile.value && mainTab.value !== "settings" && mainTab.value !== "home") {
     mobilePage.value = "detail";
   }
+  pushRoute();
+}
+
+function openSessionFromHome(sessionId: string) {
+  activeSessionId.value = sessionId;
+  mainTab.value = "chat";
+  if (isMobile.value) mobilePage.value = "detail";
   pushRoute();
 }
 
@@ -688,9 +717,15 @@ function selectResource(id: string) {
   pushRoute();
 }
 
+function onResourceDeleted() {
+  activeResourceId.value = resourceStore.resourceItems[0]?.id ?? null;
+  if (isMobile.value) mobilePage.value = "list";
+  pushRoute();
+}
+
 function onTabChange(tab: MainTab) {
   mainTab.value = tab;
-  mobilePage.value = "list";
+  mobilePage.value = tab === "settings" ? "detail" : "list";
   providerPage.value = "detail";
   agentPage.value = "detail";
   if (tab === "resources" && !activeResourceId.value) {

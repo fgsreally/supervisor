@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { promptResourceHandler } from "../src/agent/prompt-resource.js";
+import { mcpResourceHandler } from "../src/extension/builtin/mcp/resource.js";
 import { SupervisorDb } from "../src/db.js";
 import { indexResourceHandlers } from "../src/resources/handler.js";
 import { ResourceManager } from "../src/resources/resource-manager.js";
@@ -23,7 +24,7 @@ beforeEach(() => {
   db = new SupervisorDb(join(tmpDir, "test.db"));
   manager = new ResourceManager({
     db,
-    handlers: indexResourceHandlers([promptResourceHandler]),
+    handlers: indexResourceHandlers([promptResourceHandler, mcpResourceHandler]),
     ensureCatalog: async () => {},
   });
 });
@@ -72,6 +73,42 @@ describe("ResourceManager", () => {
     await manager.unbindResource({ agentId: agent.id, resourceId: installed.resource.id });
     await manager.uninstallResource("prompt", "hello");
     expect(db.getResourceByKindSlug("prompt", "hello")).toBeUndefined();
+  });
+
+  it("creates and updates prompt content from the UI write path", async () => {
+    const created = await manager.upsertResourceContent({
+      kind: "prompt",
+      slug: "ui-prompt",
+      content: "# From UI\n",
+    });
+    expect(created.resource.slug).toBe("ui-prompt");
+    expect(existsSync(created.resource.sourcePath!)).toBe(true);
+
+    const updated = await manager.upsertResourceContent({
+      kind: "prompt",
+      slug: "ui-prompt",
+      content: "# Updated\n",
+    });
+    expect(updated.resource.id).toBe(created.resource.id);
+    expect(readFileSync(updated.resource.sourcePath!, "utf8")).toBe("# Updated\n");
+  });
+
+  it("creates mcp content and rejects invalid json", async () => {
+    const created = await manager.upsertResourceContent({
+      kind: "mcp",
+      slug: "local-tools",
+      content: JSON.stringify({ servers: { local: { type: "stdio", command: "node" } } }, null, 2),
+    });
+    expect(created.resource.slug).toBe("local-tools");
+    expect(existsSync(created.resource.sourcePath!)).toBe(true);
+
+    await expect(
+      manager.upsertResourceContent({
+        kind: "mcp",
+        slug: "bad",
+        content: "{ not json",
+      }),
+    ).rejects.toThrow(/valid JSON/);
   });
 
   it("refuses uninstall when resource is still bound", async () => {

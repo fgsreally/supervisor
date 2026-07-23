@@ -27,6 +27,21 @@
       </div>
     </div>
 
+    <div
+      v-if="showAction"
+      class="px-3 py-1.5 shrink-0 border-b flex items-center justify-end"
+      style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
+    >
+      <button
+        type="button"
+        class="list-header-btn"
+        :title="actionTitle"
+        @click="onAction"
+      >
+        <Plus class="w-5 h-5" />
+      </button>
+    </div>
+
     <div class="flex-1 overflow-y-auto custom-scrollbar">
       <div
         v-for="item in filteredItems"
@@ -47,11 +62,26 @@
         暂无资源
       </div>
     </div>
+
+    <ResourceCreateDialog
+      :open="createOpen"
+      :kind="createKind"
+      @close="createOpen = false"
+      @created="onCreated"
+    />
+    <SkillInstallDialog
+      :open="skillOpen"
+      @close="skillOpen = false"
+      @installed="onSkillInstalled"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
+import { Plus } from "lucide-vue-next";
+import ResourceCreateDialog from "./ResourceCreateDialog.vue";
+import SkillInstallDialog from "./SkillInstallDialog.vue";
 import { useResourceStore } from "@/store";
 import { getResourcesByKind } from "@/utils/resources-ui";
 import type { UIResourceKind } from "@/types/ui";
@@ -61,10 +91,12 @@ defineProps<{
   width?: number;
 }>();
 
-defineEmits<{ select: [id: string] }>();
+const emit = defineEmits<{ select: [id: string] }>();
 
 const resourceStore = useResourceStore();
 const kind = ref<UIResourceKind>("skills");
+const createOpen = ref(false);
+const skillOpen = ref(false);
 
 const kinds = [
   { id: "skills" as const, label: "Skills" },
@@ -74,6 +106,44 @@ const kinds = [
 ];
 
 const filteredItems = computed(() => getResourcesByKind(resourceStore.resourceItems, kind.value));
+
+const showAction = computed(
+  () => kind.value === "skills" || kind.value === "prompts" || kind.value === "mcp",
+);
+
+const actionTitle = computed(() => {
+  if (kind.value === "skills") return "引入 Skill";
+  if (kind.value === "mcp") return "新建 MCP";
+  return "新建 Prompt";
+});
+
+const createKind = computed<"prompt" | "mcp">(() => (kind.value === "mcp" ? "mcp" : "prompt"));
+
+function onAction() {
+  if (kind.value === "skills") {
+    skillOpen.value = true;
+    return;
+  }
+  createOpen.value = true;
+}
+
+async function refreshAndSelect(preferredId?: string) {
+  await resourceStore.fetchGlobalResources();
+  if (preferredId) {
+    const match = filteredItems.value.find(
+      (item) => item.name === preferredId || item.id.endsWith(`/${preferredId}`),
+    );
+    if (match) emit("select", match.id);
+  }
+}
+
+async function onCreated(slug: string) {
+  await refreshAndSelect(slug);
+}
+
+async function onSkillInstalled(slug: string) {
+  await refreshAndSelect(slug);
+}
 </script>
 
 <style scoped>
@@ -86,6 +156,17 @@ const filteredItems = computed(() => getResourcesByKind(resourceStore.resourceIt
   background: var(--app-settings-card);
   color: var(--app-text-secondary);
   border: 1px solid var(--app-border);
+}
+
+.list-header-btn {
+  padding: 6px;
+  border-radius: 6px;
+  color: var(--app-nav-icon);
+  transition: background-color 0.15s;
+}
+
+.list-header-btn:hover {
+  background: var(--app-hover);
 }
 
 .resources-item__name {

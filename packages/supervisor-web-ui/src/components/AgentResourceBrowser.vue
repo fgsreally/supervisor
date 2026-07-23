@@ -96,7 +96,7 @@
       </div>
     </template>
 
-    <!-- Prompts: flat file list -->
+    <!-- Prompts / MCP: flat file list -->
     <template v-else>
       <div
         class="resource-browser-sidebar w-56 shrink-0 border-r overflow-y-auto custom-scrollbar flex flex-col min-h-0"
@@ -123,6 +123,15 @@
             暂无
           </div>
         </div>
+        <GlobalResourceBindBar
+          v-if="unlinkedGlobal.length || props.kind === 'prompts' || props.kind === 'mcp'"
+          :items="unlinkedGlobal"
+          :kind="props.kind"
+          :binding-item-id="bindingItemId"
+          @bind="bindGlobalItem"
+          @installed="refreshAfterInstall"
+          @uninstalled="refreshAfterUninstall"
+        />
       </div>
 
       <div class="resource-browser-main flex-1 overflow-hidden p-5 min-w-0 flex flex-col">
@@ -166,7 +175,6 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import ExtensionInstallBox from "./ExtensionInstallBox.vue";
 import GlobalResourceBindBar from "./GlobalResourceBindBar.vue";
 import ResourceContentView from "./ResourceContentView.vue";
 import ResourceFileListItem from "./ResourceFileListItem.vue";
@@ -188,7 +196,7 @@ import {
   resourceEntryPath,
 } from "@/utils/resource-utils";
 import { getDefaultWorkspaceCwd } from "@/config/workspace";
-import type { UIResourceItem, UIResourceKind, UISkillItem, UIFileItem } from "@/types/ui";
+import type { UIResourceItem, UIResourceKind, UISkillItem } from "@/types/ui";
 
 const props = defineProps<{
   agentId: string;

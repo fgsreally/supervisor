@@ -340,3 +340,71 @@ export interface CommitSessionResult {
   hash: string;
   message: string;
 }
+
+// ============ Home Task Types ============
+
+export const HOME_TASK_STATUSES = [
+  "backlog",
+  "todo",
+  "in_progress",
+  "blocked",
+  "done",
+  "error",
+] as const;
+export type HomeTaskStatus = (typeof HOME_TASK_STATUSES)[number];
+
+export const HOME_TASK_PRIORITIES = ["urgent", "high", "normal", "low"] as const;
+export type HomeTaskPriority = (typeof HOME_TASK_PRIORITIES)[number];
+
+export interface HomeTaskRow {
+  id: number;
+  title: string;
+  description: string;
+  project_id: number | null;
+  status: string;
+  priority: string;
+  parent_id: number | null;
+  session_id: number | null;
+  error: string | null;
+  meta: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface HomeTask {
+  id: number;
+  title: string;
+  description: string;
+  projectId: number | null;
+  status: HomeTaskStatus;
+  priority: HomeTaskPriority;
+  parentId: number | null;
+  sessionId: number | null;
+  error: string | null;
+  meta: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CreateHomeTaskOptions {
+  title: string;
+  description?: string;
+  projectId?: number | null;
+  status?: HomeTaskStatus;
+  priority?: HomeTaskPriority;
+  parentId?: number | null;
+  sessionId?: number | null;
+  meta?: Record<string, unknown>;
+}
+
+export interface UpdateHomeTaskOptions {
+  title?: string;
+  description?: string;
+  projectId?: number | null;
+  status?: HomeTaskStatus;
+  priority?: HomeTaskPriority;
+  parentId?: number | null;
+  sessionId?: number | null;
+  error?: string | null;
+  meta?: Record<string, unknown>;
+}

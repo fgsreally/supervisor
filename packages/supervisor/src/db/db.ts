@@ -15,6 +15,11 @@ import type {
   Agent,
   AgentBackendType,
   AgentRow,
+  CreateHomeTaskOptions,
+  HomeTask,
+  HomeTaskPriority,
+  HomeTaskRow,
+  HomeTaskStatus,
   Member,
   MemberAgent,
   MemberRow,
@@ -28,10 +33,47 @@ import type {
   ProviderRow,
   SessionRow,
   SessionStatus,
+  UpdateHomeTaskOptions,
 } from "../types.js";
+import { HOME_TASK_PRIORITIES, HOME_TASK_STATUSES } from "../types.js";
 import { getProjectDir } from "../core/session-files.js";
 
 const DEFAULT_DB_PATH = join(homedir(), ".pi", "supervisor.db");
+
+function parseHomeTaskStatus(value: string): HomeTaskStatus {
+  return (HOME_TASK_STATUSES as readonly string[]).includes(value)
+    ? (value as HomeTaskStatus)
+    : "todo";
+}
+
+function parseHomeTaskPriority(value: string): HomeTaskPriority {
+  return (HOME_TASK_PRIORITIES as readonly string[]).includes(value)
+    ? (value as HomeTaskPriority)
+    : "normal";
+}
+
+function rowToHomeTask(row: HomeTaskRow): HomeTask {
+  let meta: Record<string, unknown> = {};
+  try {
+    meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
+  } catch {
+    meta = {};
+  }
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description,
+    projectId: row.project_id,
+    status: parseHomeTaskStatus(row.status),
+    priority: parseHomeTaskPriority(row.priority),
+    parentId: row.parent_id,
+    sessionId: row.session_id,
+    error: row.error,
+    meta,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
+}
 
 function rowToSession(row: SessionRow): SessionRow {
   return {
@@ -174,6 +216,7 @@ function rowToModel(row: ModelRow): Model {
 
 export class SupervisorDb {
   public readonly db: Database.Database;
+  private readonly statusListeners = new Set<(id: number, status: SessionStatus) => void>();
 
   constructor(dbPath: string = DEFAULT_DB_PATH) {
     mkdirSync(join(dbPath, ".."), { recursive: true });
@@ -315,6 +358,26 @@ export class SupervisorDb {
         ON session_input_queue(session_id, level DESC, enqueued_at ASC);
       CREATE INDEX IF NOT EXISTS idx_members_session ON members(session_id);
       CREATE INDEX IF NOT EXISTS idx_members_agent ON members(agent_id);
+
+      CREATE TABLE IF NOT EXISTS home_tasks (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        title         TEXT NOT NULL,
+        description   TEXT NOT NULL DEFAULT '',
+        project_id    INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+        status        TEXT NOT NULL DEFAULT 'todo',
+        priority      TEXT NOT NULL DEFAULT 'normal',
+        parent_id     INTEGER REFERENCES home_tasks(id) ON DELETE CASCADE,
+        session_id    INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
+        error         TEXT,
+        meta          TEXT NOT NULL DEFAULT '{}',
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_home_tasks_status ON home_tasks(status);
+      CREATE INDEX IF NOT EXISTS idx_home_tasks_parent ON home_tasks(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_home_tasks_session ON home_tasks(session_id);
+      CREATE INDEX IF NOT EXISTS idx_home_tasks_project ON home_tasks(project_id);
+
       DROP TABLE IF EXISTS extensions;
 
       CREATE TABLE IF NOT EXISTS resources (
@@ -601,6 +664,19 @@ export class SupervisorDb {
     this.db
       .prepare("UPDATE sessions SET status = ?, last_active_at = ? WHERE id = ?")
       .run(status, Date.now(), id);
+    for (const listener of this.statusListeners) {
+      try {
+        listener(id, status);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`session status listener failed [${id}]:`, message);
+      }
+    }
+  }
+
+  onSessionStatusChange(listener: (id: number, status: SessionStatus) => void): () => void {
+    this.statusListeners.add(listener);
+    return () => this.statusListeners.delete(listener);
   }
 
   /** Normalize process-bound Session state after Supervisor starts. */
@@ -1416,6 +1492,122 @@ export class SupervisorDb {
     const resource = this.getResourceByKindSlug(kind, slug);
     if (!resource) return;
     this.unbindAgentResource(agentId, resource.id);
+  }
+
+  // ============ Home Tasks ============
+
+  listHomeTasks(options?: { parentId?: number | null; projectId?: number }): HomeTask[] {
+    let rows: HomeTaskRow[];
+    if (options?.parentId === null) {
+      rows = this.db
+        .prepare(
+          "SELECT * FROM home_tasks WHERE parent_id IS NULL ORDER BY updated_at DESC, id DESC",
+        )
+        .all() as HomeTaskRow[];
+    } else if (typeof options?.parentId === "number") {
+      rows = this.db
+        .prepare(
+          "SELECT * FROM home_tasks WHERE parent_id = ? ORDER BY created_at ASC, id ASC",
+        )
+        .all(options.parentId) as HomeTaskRow[];
+    } else if (typeof options?.projectId === "number") {
+      rows = this.db
+        .prepare(
+          "SELECT * FROM home_tasks WHERE project_id = ? ORDER BY updated_at DESC, id DESC",
+        )
+        .all(options.projectId) as HomeTaskRow[];
+    } else {
+      rows = this.db
+        .prepare("SELECT * FROM home_tasks ORDER BY updated_at DESC, id DESC")
+        .all() as HomeTaskRow[];
+    }
+    return rows.map(rowToHomeTask);
+  }
+
+  getHomeTask(id: number): HomeTask | undefined {
+    const row = this.db.prepare("SELECT * FROM home_tasks WHERE id = ?").get(id) as
+      | HomeTaskRow
+      | undefined;
+    return row ? rowToHomeTask(row) : undefined;
+  }
+
+  getHomeTaskBySessionId(sessionId: number): HomeTask | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM home_tasks WHERE session_id = ? ORDER BY id DESC LIMIT 1")
+      .get(sessionId) as HomeTaskRow | undefined;
+    return row ? rowToHomeTask(row) : undefined;
+  }
+
+  insertHomeTask(options: CreateHomeTaskOptions): HomeTask {
+    const title = options.title.trim();
+    if (!title) throw new Error("title is required");
+    const now = Date.now();
+    const result = this.db
+      .prepare(
+        `INSERT INTO home_tasks (
+          title, description, project_id, status, priority, parent_id, session_id, error, meta, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+      )
+      .run(
+        title,
+        options.description?.trim() ?? "",
+        options.projectId ?? null,
+        options.status ?? "todo",
+        options.priority ?? "normal",
+        options.parentId ?? null,
+        options.sessionId ?? null,
+        JSON.stringify(options.meta ?? {}),
+        now,
+        now,
+      );
+    return this.getHomeTask(Number(result.lastInsertRowid))!;
+  }
+
+  updateHomeTask(id: number, patch: UpdateHomeTaskOptions): HomeTask {
+    const current = this.getHomeTask(id);
+    if (!current) throw new Error(`Home task ${id} not found`);
+    const next = {
+      title: patch.title !== undefined ? patch.title.trim() : current.title,
+      description: patch.description !== undefined ? patch.description : current.description,
+      project_id: patch.projectId !== undefined ? patch.projectId : current.projectId,
+      status: patch.status ?? current.status,
+      priority: patch.priority ?? current.priority,
+      parent_id: patch.parentId !== undefined ? patch.parentId : current.parentId,
+      session_id: patch.sessionId !== undefined ? patch.sessionId : current.sessionId,
+      error: patch.error !== undefined ? patch.error : current.error,
+      meta: JSON.stringify(patch.meta ?? current.meta),
+      updated_at: Date.now(),
+    };
+    if (!next.title) throw new Error("title is required");
+    this.db
+      .prepare(
+        `UPDATE home_tasks SET
+          title = ?, description = ?, project_id = ?, status = ?, priority = ?,
+          parent_id = ?, session_id = ?, error = ?, meta = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        next.title,
+        next.description,
+        next.project_id,
+        next.status,
+        next.priority,
+        next.parent_id,
+        next.session_id,
+        next.error,
+        next.meta,
+        next.updated_at,
+        id,
+      );
+    return this.getHomeTask(id)!;
+  }
+
+  deleteHomeTask(id: number): boolean {
+    return this.db.prepare("DELETE FROM home_tasks WHERE id = ?").run(id).changes > 0;
+  }
+
+  listHomeTaskChildren(parentId: number): HomeTask[] {
+    return this.listHomeTasks({ parentId });
   }
 
   listAgentResources(agentId: number, kind?: ResourceKind): AgentResourceBinding[] {

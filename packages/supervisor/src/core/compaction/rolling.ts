@@ -20,7 +20,7 @@ import {
 import { hasPendingAsks } from "../../tools/ask/tool.js";
 import type { SupervisorDb } from "../../db/db.js";
 import type { SessionRuntime } from "../session-runtime.js";
-import { compactWithUtilityModel, resolveTaggedModelAuth } from "../../utils/utility-llm.js";
+import { compactWithUtilityModel, resolveFeatureModelAuth } from "../../utils/utility-llm.js";
 
 const overflowRecoveryAttempted = new Set<string>();
 const compactingSessions = new Set<string>();
@@ -87,7 +87,7 @@ async function resumeQueuedMessages(runtime: SessionRuntime): Promise<void> {
 async function runCompaction(
   sessionId: string,
   runtime: SessionRuntime,
-  db: Pick<SupervisorDb, "listProviders" | "listModelsByProvider" | "getProvider">,
+  db: Pick<SupervisorDb, "listProviders" | "listModelsByProvider" | "getProvider" | "getModel">,
   meta: Record<string, unknown>,
   options: { overflowRetry: boolean },
 ): Promise<void> {
@@ -99,7 +99,7 @@ async function runCompaction(
     const preparation = prepareCompaction(branchEntries, settings);
     if (!preparation) return;
 
-    const utilityAuth = await resolveTaggedModelAuth(db, "summary");
+    const utilityAuth = await resolveFeatureModelAuth(db, "summary");
     if (utilityAuth) {
       const result = await compactWithUtilityModel(utilityAuth, preparation);
       await runtime.appendCompactionResult(
@@ -139,7 +139,7 @@ export async function maybeRunRollingCompaction(
   runtime: SessionRuntime,
   event: Extract<AgentHarnessEvent, { type: "agent_end" }>,
   meta: Record<string, unknown>,
-  db: Pick<SupervisorDb, "listProviders" | "listModelsByProvider" | "getProvider">,
+  db: Pick<SupervisorDb, "listProviders" | "listModelsByProvider" | "getProvider" | "getModel">,
 ): Promise<void> {
   if (hasPendingAsks(sessionId)) return;
 

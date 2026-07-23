@@ -17,16 +17,39 @@ import type { SessionManager } from "../core/session-manager.js";
 import { getProjectDir, getSessionDir } from "../core/session-files.js";
 import { activeTaskPaths, readTaskArtifact } from "../core/task-artifacts.js";
 import { parseSessionTodos } from "../core/session-todos.js";
-import { parseBindResourceBody, parseInstallResourceBody } from "../resources/resource-manager.js";
+import {
+  parseBindResourceBody,
+  parseInstallResourceBody,
+  parseUpsertResourceContentBody,
+} from "../resources/resource-manager.js";
 import { isResourceKind } from "../resources/types.js";
-import { readSupervisorSettings, writeSupervisorSettings } from "../utils/supervisor-settings.js";
+import {
+  isFeatureModelRef,
+  isUtilityFeature,
+  readSupervisorSettings,
+  writeSupervisorSettings,
+} from "../utils/supervisor-settings.js";
 import { ensureSupervisorPublicDir } from "../utils/supervisor-home.js";
 import { encryptApiKey } from "../utils/encrypt.js";
 import { decryptApiKey } from "../utils/encrypt.js";
 import { testApiKey, type ApiKeyProvider } from "../utils/test-api-key.js";
 import { resolveApiKey } from "../tools/web/credentials.js";
 import { gitPull, gitPush, listWorktreeCommits } from "../utils/git.js";
-import type { Model, Provider, SessionStatus } from "../types.js";
+import {
+  listDailyWorkRecords,
+  runDailyWorkAnalysis,
+  yesterdayDayKey,
+} from "../core/daily-work.js";
+import {
+  HOME_TASK_PRIORITIES,
+  HOME_TASK_STATUSES,
+  type HomeTask,
+  type HomeTaskPriority,
+  type HomeTaskStatus,
+  type Model,
+  type Provider,
+  type SessionStatus,
+} from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
 
 /** Strip apiKey before sending provider to clients. */
@@ -166,10 +189,173 @@ function parseOptionalSource(value: unknown): string | undefined | null {
   return value;
 }
 
+function toHomeTaskResponse(task: HomeTask) {
+  return {
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    projectId: task.projectId,
+    status: task.status,
+    priority: task.priority,
+    parentId: task.parentId,
+    sessionId: task.sessionId,
+    error: task.error,
+    meta: task.meta,
+    createdAt: task.createdAt.toISOString(),
+    updatedAt: task.updatedAt.toISOString(),
+  };
+}
+
 export function createHttpServer(manager: SessionManager): Hono {
   const app = new Hono();
 
   app.get("/healthz", (c) => c.json({ ok: true }));
+
+  // ============ Home ============
+
+  app.get("/home/daily-work", (c) => {
+    const from = c.req.query("from") || undefined;
+    const to = c.req.query("to") || undefined;
+    const limitRaw = c.req.query("limit");
+    const limit = limitRaw ? Number.parseInt(limitRaw, 10) : undefined;
+    return c.json(
+      listDailyWorkRecords({
+        from,
+        to,
+        limit: Number.isFinite(limit) ? limit : undefined,
+      }),
+    );
+  });
+
+  app.post("/home/daily-work/run", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const dayKey =
+      typeof body?.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.day)
+        ? body.day
+        : yesterdayDayKey();
+    try {
+      const record = await runDailyWorkAnalysis(manager.database, dayKey);
+      return c.json(record);
+    } catch (error: unknown) {
+      return jsonError(c, 500, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.get("/home/tasks", (c) => {
+    const parentRaw = c.req.query("parentId");
+    const projectRaw = c.req.query("projectId");
+    const parentId =
+      parentRaw === "null" || parentRaw === ""
+        ? null
+        : parentRaw
+          ? Number.parseInt(parentRaw, 10)
+          : undefined;
+    const projectId = projectRaw ? Number.parseInt(projectRaw, 10) : undefined;
+    if (parentId !== undefined && parentId !== null && !Number.isFinite(parentId)) {
+      return jsonError(c, 400, "invalid parentId");
+    }
+    if (projectId !== undefined && !Number.isFinite(projectId)) {
+      return jsonError(c, 400, "invalid projectId");
+    }
+    const tasks = manager.listHomeTasks({
+      ...(parentId !== undefined ? { parentId } : {}),
+      ...(projectId !== undefined ? { projectId } : {}),
+    });
+    return c.json(tasks.map(toHomeTaskResponse));
+  });
+
+  app.post("/home/tasks", async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body.title !== "string" || !body.title.trim()) {
+      return jsonError(c, 400, "title is required");
+    }
+    const priority =
+      typeof body.priority === "string" &&
+      (HOME_TASK_PRIORITIES as readonly string[]).includes(body.priority)
+        ? (body.priority as HomeTaskPriority)
+        : "normal";
+    const status =
+      typeof body.status === "string" &&
+      (HOME_TASK_STATUSES as readonly string[]).includes(body.status)
+        ? (body.status as HomeTaskStatus)
+        : "todo";
+    try {
+      const task = manager.createHomeTask({
+        title: body.title,
+        description: typeof body.description === "string" ? body.description : "",
+        projectId:
+          body.projectId === null || body.projectId === undefined
+            ? null
+            : Number(body.projectId),
+        priority,
+        status,
+        meta: body.meta && typeof body.meta === "object" ? body.meta : undefined,
+      });
+      return c.json(toHomeTaskResponse(task), 201);
+    } catch (error: unknown) {
+      return jsonError(c, 400, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.patch("/home/tasks/:id", async (c) => {
+    const id = Number.parseInt(c.req.param("id"), 10);
+    if (!Number.isFinite(id)) return jsonError(c, 400, "invalid task id");
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
+    try {
+      const patch: Record<string, unknown> = {};
+      if (typeof body.title === "string") patch.title = body.title;
+      if (typeof body.description === "string") patch.description = body.description;
+      if (body.projectId === null) patch.projectId = null;
+      else if (body.projectId !== undefined) patch.projectId = Number(body.projectId);
+      if (
+        typeof body.status === "string" &&
+        (HOME_TASK_STATUSES as readonly string[]).includes(body.status)
+      ) {
+        patch.status = body.status;
+      }
+      if (
+        typeof body.priority === "string" &&
+        (HOME_TASK_PRIORITIES as readonly string[]).includes(body.priority)
+      ) {
+        patch.priority = body.priority;
+      }
+      if (body.error === null || typeof body.error === "string") patch.error = body.error;
+      if (body.meta && typeof body.meta === "object") patch.meta = body.meta;
+      const task = manager.updateHomeTask(id, patch as never);
+      return c.json(toHomeTaskResponse(task));
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      return jsonError(c, message.includes("not found") ? 404 : 400, message);
+    }
+  });
+
+  app.delete("/home/tasks/:id", (c) => {
+    const id = Number.parseInt(c.req.param("id"), 10);
+    if (!Number.isFinite(id)) return jsonError(c, 400, "invalid task id");
+    if (!manager.deleteHomeTask(id)) return jsonError(c, 404, "not found");
+    return c.json({ ok: true });
+  });
+
+  app.post("/home/tasks/:id/decompose", async (c) => {
+    const id = Number.parseInt(c.req.param("id"), 10);
+    if (!Number.isFinite(id)) return jsonError(c, 400, "invalid task id");
+    try {
+      const result = await manager.decomposeHomeTask(id);
+      return c.json({
+        task: toHomeTaskResponse(result.task),
+        children: result.children.map(toHomeTaskResponse),
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message.includes("not found")
+        ? 404
+        : message.includes("未配置")
+          ? 400
+          : 409;
+      return jsonError(c, status, message);
+    }
+  });
 
   app.get("/settings", (c) => {
     const settings = readSupervisorSettings();
@@ -216,6 +402,42 @@ export function createHttpServer(manager: SessionManager): Hono {
         return jsonError(c, 400, "utilityModelId must be a string");
       }
       patch.utilityModelId = body.utilityModelId;
+    }
+    if (body.featureModels !== undefined) {
+      if (
+        !body.featureModels ||
+        typeof body.featureModels !== "object" ||
+        Array.isArray(body.featureModels)
+      ) {
+        return jsonError(c, 400, "featureModels must be an object");
+      }
+      const next: Record<string, { providerId: number; modelId: string }> = {};
+      for (const [feature, value] of Object.entries(body.featureModels as Record<string, unknown>)) {
+        if (!isUtilityFeature(feature)) {
+          return jsonError(c, 400, `unknown utility feature: ${feature}`);
+        }
+        if (value === null || value === undefined) continue;
+        if (!isFeatureModelRef(value)) {
+          return jsonError(
+            c,
+            400,
+            `featureModels.${feature} must be { providerId, modelId } or null`,
+          );
+        }
+        const provider = manager.getProvider(value.providerId);
+        if (!provider) {
+          return jsonError(c, 400, `provider ${value.providerId} not found for ${feature}`);
+        }
+        if (!manager.getModel(value.providerId, value.modelId.trim())) {
+          return jsonError(
+            c,
+            400,
+            `model ${value.modelId} not found for provider ${value.providerId}`,
+          );
+        }
+        next[feature] = { providerId: value.providerId, modelId: value.modelId.trim() };
+      }
+      patch.featureModels = next;
     }
     if (body.browserMode !== undefined) {
       if (body.browserMode !== "headless" && body.browserMode !== "headed") {
@@ -2143,6 +2365,41 @@ export function createHttpServer(manager: SessionManager): Hono {
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 400, message);
+    }
+  });
+
+  // PUT /resources/content — create or overwrite prompt/mcp content in the global catalog
+  app.put("/resources/content", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const input = parseUpsertResourceContentBody(body as Record<string, unknown>);
+      if (input.kind !== "prompt" && input.kind !== "mcp") {
+        return jsonError(c, 400, "only prompt and mcp content can be edited in the UI");
+      }
+      const result = await manager.resources.upsertResourceContent(input);
+      return c.json(result);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 400, message);
+    }
+  });
+
+  // GET /skills/search — proxy skills.sh registry search
+  app.get("/skills/search", async (c) => {
+    const q = c.req.query("q") ?? "";
+    const owner = c.req.query("owner") ?? undefined;
+    const limitRaw = c.req.query("limit");
+    const limit = limitRaw ? Number.parseInt(limitRaw, 10) : 20;
+    try {
+      const { searchSkillsSh } = await import("../resources/skills-sh.js");
+      const result = await searchSkillsSh(q, {
+        owner,
+        limit: Number.isFinite(limit) ? limit : 20,
+      });
+      return c.json(result);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 502, message);
     }
   });
 

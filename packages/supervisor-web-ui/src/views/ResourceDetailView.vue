@@ -58,18 +58,49 @@
 
       <section class="flex flex-col flex-1 min-w-0 basis-0 min-h-0 overflow-hidden">
         <div
-          class="resource-detail-header h-14 shrink-0 border-b flex items-center px-6 justify-between"
+          class="resource-detail-header h-14 shrink-0 border-b flex items-center px-6 gap-2 justify-between"
         >
-          <span class="text-[15px] resource-detail-subtitle font-mono truncate">{{
+          <span class="text-[15px] resource-detail-subtitle font-mono truncate min-w-0 flex-1">{{
             contentTitle
           }}</span>
+          <span v-if="canEditContent && dirty" class="text-[11px] resource-detail-dirty shrink-0"
+            >未保存</span
+          >
+          <template v-if="canEditContent">
+            <button
+              type="button"
+              class="list-header-btn shrink-0"
+              title="保存"
+              :disabled="saving || !dirty"
+              @click="saveContent"
+            >
+              <Loader2 v-if="saving" class="w-4 h-4 animate-spin" />
+              <Save v-else class="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              class="list-header-btn list-header-btn--danger shrink-0"
+              title="从全局库删除"
+              :disabled="deleting"
+              @click="removeResource"
+            >
+              <Loader2 v-if="deleting" class="w-4 h-4 animate-spin" />
+              <Trash2 v-else class="w-4 h-4" />
+            </button>
+          </template>
+        </div>
+        <div v-if="actionError" class="px-6 py-1.5 text-[11px] resource-detail-error shrink-0">
+          {{ actionError }}
         </div>
         <div class="resource-detail-content-wrap flex-1 min-h-0 min-w-0 overflow-hidden">
           <ResourceContentView
-            v-if="activeContent !== undefined"
-            :content="activeContent"
+            v-if="draftContent !== undefined"
+            :key="`${resource.id}:${canEditContent}`"
+            :content="draftContent"
             :kind="resource.kind"
             :language="activeLanguage"
+            :editable="canEditContent"
+            @update:content="onContentUpdate"
           />
         </div>
       </section>
@@ -79,10 +110,16 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronLeft } from "lucide-vue-next";
+import { ChevronLeft, Loader2, Save, Trash2 } from "lucide-vue-next";
 import ResourceContentView from "../components/ResourceContentView.vue";
 import SkillFileTree from "../components/SkillFileTree.vue";
+import {
+  uninstallCatalogResource,
+  upsertResourceContent,
+  type CatalogResourceKind,
+} from "@/api";
 import { useResourceStore } from "@/store";
+import { showUiMessage } from "@/composables/use-ui-message";
 import { getResourceById } from "@/utils/resources-ui";
 import {
   getSkillFileLanguage,
@@ -96,7 +133,7 @@ const props = defineProps<{
   showBack?: boolean;
 }>();
 
-const emit = defineEmits<{ back: [] }>();
+const emit = defineEmits<{ back: []; deleted: [] }>();
 
 const resourceStore = useResourceStore();
 
@@ -107,6 +144,11 @@ const resource = computed(() =>
 const isSkill = computed(() => {
   const r = resource.value;
   return r ? isSkillItem(r) : false;
+});
+
+const canEditContent = computed(() => {
+  const r = resource.value;
+  return !!r && (r.kind === "prompts" || r.kind === "mcp") && r.layer === "global" && isFileItem(r);
 });
 
 const skillFiles = computed(() => {
@@ -127,19 +169,35 @@ const resourcePath = computed(() => {
 });
 
 const selectedFileId = ref<string | null>(null);
+const draftContent = ref<string | undefined>(undefined);
+const saving = ref(false);
+const deleting = ref(false);
+const actionError = ref<string | null>(null);
 
 watch(
   () => props.resourceId,
   () => {
     const r = resource.value;
+    actionError.value = null;
     if (r && isSkillItem(r)) {
       selectedFileId.value = r.files[0]?.id ?? null;
+      draftContent.value = r.files[0]?.content ?? "";
+    } else if (r && isFileItem(r)) {
+      selectedFileId.value = null;
+      draftContent.value = r.content;
     } else {
       selectedFileId.value = null;
+      draftContent.value = undefined;
     }
   },
   { immediate: true },
 );
+
+watch(selectedFileId, (id) => {
+  const r = resource.value;
+  if (!r || !isSkillItem(r) || !id) return;
+  draftContent.value = r.files.find((f) => f.id === id)?.content ?? "";
+});
 
 const selectedFile = computed(() => {
   const id = selectedFileId.value;
@@ -147,12 +205,10 @@ const selectedFile = computed(() => {
   return skillFiles.value.find((f) => f.id === id);
 });
 
-const activeContent = computed(() => {
+const dirty = computed(() => {
   const r = resource.value;
-  if (!r) return undefined;
-  if (isSkillItem(r)) return selectedFile.value?.content ?? "";
-  if (isFileItem(r)) return r.content;
-  return "";
+  if (!r || !canEditContent.value || !isFileItem(r)) return false;
+  return (draftContent.value ?? "") !== r.content;
 });
 
 const activeLanguage = computed(() => {
@@ -186,6 +242,62 @@ const kindLabel = computed(() => {
       return "—";
   }
 });
+
+function onContentUpdate(value: string) {
+  if (!canEditContent.value) return;
+  draftContent.value = value;
+}
+
+function catalogKind(): CatalogResourceKind | null {
+  const r = resource.value;
+  if (!r) return null;
+  if (r.kind === "prompts") return "prompt";
+  if (r.kind === "mcp") return "mcp";
+  if (r.kind === "skills") return "skill";
+  if (r.kind === "extensions") return "extension";
+  return null;
+}
+
+async function saveContent() {
+  const r = resource.value;
+  if (!r || !canEditContent.value || !isFileItem(r)) return;
+  const kind = catalogKind();
+  if (kind !== "prompt" && kind !== "mcp") return;
+  saving.value = true;
+  actionError.value = null;
+  try {
+    await upsertResourceContent({
+      kind,
+      slug: r.name,
+      content: draftContent.value ?? "",
+    });
+    await resourceStore.fetchGlobalResources();
+    showUiMessage("已保存", "success");
+  } catch (err) {
+    actionError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function removeResource() {
+  const r = resource.value;
+  const kind = catalogKind();
+  if (!r || !kind || (kind !== "prompt" && kind !== "mcp")) return;
+  if (!window.confirm(`确定删除 ${r.name}？`)) return;
+  deleting.value = true;
+  actionError.value = null;
+  try {
+    await uninstallCatalogResource(kind, r.name);
+    await resourceStore.fetchGlobalResources();
+    showUiMessage("已删除", "success");
+    emit("deleted");
+  } catch (err) {
+    actionError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    deleting.value = false;
+  }
+}
 </script>
 
 <style scoped>
@@ -236,5 +348,34 @@ const kindLabel = computed(() => {
 
 .resource-detail-content-wrap {
   background: var(--app-cm-bg);
+}
+
+.list-header-btn {
+  padding: 6px;
+  border-radius: 6px;
+  color: var(--app-nav-icon, var(--app-text-secondary));
+  transition: background-color 0.15s;
+}
+
+.list-header-btn:hover:not(:disabled) {
+  background: var(--app-hover);
+  color: var(--app-text-primary);
+}
+
+.list-header-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.list-header-btn--danger:hover:not(:disabled) {
+  color: var(--app-error, #d33);
+}
+
+.resource-detail-error {
+  color: var(--app-error, #d33);
+}
+
+.resource-detail-dirty {
+  color: var(--app-warning, #c97800);
 }
 </style>

@@ -21,9 +21,22 @@ export type SessionStatus =
   | "stopped";
 export type ToolsPreset = "coding" | "readonly" | "none";
 
+export interface FeatureModelRef {
+  providerId: number;
+  modelId: string;
+}
+
+export type UtilityFeature =
+  | "commit-message"
+  | "session-title"
+  | "summary"
+  | "daily-work"
+  | "task-decompose";
+
 export interface SupervisorSettings {
   utilityProvider?: string;
   utilityModelId?: string;
+  featureModels?: Partial<Record<UtilityFeature, FeatureModelRef>>;
   browserMode?: "headless" | "headed";
   webSearchProvider?: "duckduckgo" | "tavily" | "brave" | "serper" | "firecrawl";
   webFetchProvider?:
@@ -706,6 +719,108 @@ export async function pullProjectGit(id: string): Promise<ProjectGitResult> {
 
 export async function pushProjectGit(id: string): Promise<ProjectGitResult> {
   return postJson<ProjectGitResult>(`/projects/${id}/git/push`, {});
+}
+
+// ============ Home API ============
+
+export type HomeTaskStatus = "backlog" | "todo" | "in_progress" | "blocked" | "done" | "error";
+export type HomeTaskPriority = "urgent" | "high" | "normal" | "low";
+
+export interface HomeTask {
+  id: number;
+  title: string;
+  description: string;
+  projectId: number | null;
+  status: HomeTaskStatus;
+  priority: HomeTaskPriority;
+  parentId: number | null;
+  sessionId: number | null;
+  error: string | null;
+  meta: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DailyWorkRecord {
+  dayKey: string;
+  summary: string;
+  sections: Array<{
+    projectId: number;
+    projectName: string;
+    cwd: string;
+    commits: Array<{
+      hash: string;
+      shortHash: string;
+      subject: string;
+      author: string;
+      timestamp: number;
+    }>;
+  }>;
+  generatedAt: string;
+  usedModel: boolean;
+}
+
+export function listDailyWork(params?: {
+  from?: string;
+  to?: string;
+  limit?: number;
+}): Promise<DailyWorkRecord[]> {
+  const search = new URLSearchParams();
+  if (params?.from) search.set("from", params.from);
+  if (params?.to) search.set("to", params.to);
+  if (params?.limit) search.set("limit", String(params.limit));
+  const qs = search.toString();
+  return fetchJson<DailyWorkRecord[]>(`/home/daily-work${qs ? `?${qs}` : ""}`);
+}
+
+export function runDailyWork(day?: string): Promise<DailyWorkRecord> {
+  return postJson<DailyWorkRecord>("/home/daily-work/run", day ? { day } : {});
+}
+
+export function listHomeTasks(params?: {
+  parentId?: number | null;
+  projectId?: number;
+}): Promise<HomeTask[]> {
+  const search = new URLSearchParams();
+  if (params?.parentId === null) search.set("parentId", "null");
+  else if (typeof params?.parentId === "number") search.set("parentId", String(params.parentId));
+  if (typeof params?.projectId === "number") search.set("projectId", String(params.projectId));
+  const qs = search.toString();
+  return fetchJson<HomeTask[]>(`/home/tasks${qs ? `?${qs}` : ""}`);
+}
+
+export function createHomeTask(body: {
+  title: string;
+  description?: string;
+  projectId?: number | null;
+  status?: HomeTaskStatus;
+  priority?: HomeTaskPriority;
+}): Promise<HomeTask> {
+  return postJson<HomeTask>("/home/tasks", body);
+}
+
+export function updateHomeTask(
+  id: number,
+  patch: Partial<{
+    title: string;
+    description: string;
+    projectId: number | null;
+    status: HomeTaskStatus;
+    priority: HomeTaskPriority;
+    error: string | null;
+  }>,
+): Promise<HomeTask> {
+  return patchJson<HomeTask>(`/home/tasks/${id}`, patch);
+}
+
+export function deleteHomeTask(id: number): Promise<{ ok: boolean }> {
+  return deleteRequest<{ ok: boolean }>(`/home/tasks/${id}`);
+}
+
+export function decomposeHomeTask(
+  id: number,
+): Promise<{ task: HomeTask; children: HomeTask[] }> {
+  return postJson(`/home/tasks/${id}/decompose`, {});
 }
 
 // ============ Session API ============
@@ -1544,6 +1659,21 @@ export async function uninstallCatalogResource(
   return postJson<{ ok: boolean }>("/resources/uninstall", { kind, slug });
 }
 
+export interface UpsertResourceContentRequest {
+  kind: "prompt" | "mcp";
+  slug: string;
+  content: string;
+  name?: string;
+  description?: string;
+}
+
+/** Create or overwrite prompt/mcp content in the global catalog. */
+export async function upsertResourceContent(
+  request: UpsertResourceContentRequest,
+): Promise<InstallCatalogResourceResult> {
+  return putJson<InstallCatalogResourceResult>("/resources/content", request);
+}
+
 export type BindCatalogResourceRequest =
   | { resourceId: number; priority?: number }
   | { kind: CatalogResourceKind; slug: string; priority?: number };
@@ -1620,6 +1750,41 @@ export async function installExtension(source: string): Promise<ExtensionInstall
 /** Remove extension from the global catalog. */
 export async function uninstallExtension(id: string): Promise<{ ok: boolean }> {
   return uninstallCatalogResource("extension", id);
+}
+
+/** Install a skill from a local path, GitHub URL, or owner/repo[/path] source. */
+export async function installSkill(source: string, slug?: string): Promise<CatalogResource> {
+  const result = await installCatalogResource({ kind: "skill", source, slug });
+  return result.resource;
+}
+
+/** Remove a skill from the global catalog. */
+export async function uninstallSkill(slug: string): Promise<{ ok: boolean }> {
+  return uninstallCatalogResource("skill", slug);
+}
+
+export interface SkillsShSearchHit {
+  id: string;
+  name: string;
+  source: string;
+  installs: number;
+}
+
+export interface SkillsShSearchResult {
+  query: string;
+  skills: SkillsShSearchHit[];
+  count: number;
+}
+
+/** Search the public skills.sh registry (proxied by supervisor). */
+export async function searchSkills(
+  query: string,
+  options?: { owner?: string; limit?: number },
+): Promise<SkillsShSearchResult> {
+  const params = new URLSearchParams({ q: query });
+  if (options?.owner) params.set("owner", options.owner);
+  if (options?.limit != null) params.set("limit", String(options.limit));
+  return fetchJson<SkillsShSearchResult>(`/skills/search?${params.toString()}`);
 }
 
 // ============ Message API ============

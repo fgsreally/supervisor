@@ -25,7 +25,7 @@ import type {
 import {
   generateCommitMessage,
   generateSessionTitle,
-  resolveTaggedModelAuth,
+  resolveFeatureModelAuth,
 } from "../utils/utility-llm.js";
 import { normalizeSessionBranchType } from "./session-history.js";
 
@@ -38,6 +38,7 @@ export type SessionLifecycleDb = Pick<
   | "listProviders"
   | "listModelsByProvider"
   | "getProvider"
+  | "getModel"
   | "getProject"
   | "updateProjectMeta"
 >;
@@ -108,14 +109,17 @@ export function isDefaultSessionName(meta: Record<string, unknown>, sessionId: n
 }
 
 function fallbackCommitMessage(sessionId: number): string {
-  return `pi: session ${String(sessionId).slice(0, 8)}`;
+  return `sv: session ${String(sessionId).slice(0, 8)}`;
 }
 
 export async function commitSessionChanges(
   sessionId: number,
   cwd: string,
   meta: Record<string, unknown>,
-  db: Pick<SupervisorDb, "updateMeta" | "listProviders" | "listModelsByProvider" | "getProvider">,
+  db: Pick<
+    SupervisorDb,
+    "updateMeta" | "listProviders" | "listModelsByProvider" | "getProvider" | "getModel"
+  >,
   options: CommitSessionOptions = {},
   summaryText?: string,
 ): Promise<CommitSessionResult | null> {
@@ -131,7 +135,7 @@ export async function commitSessionChanges(
 
   let message = options.message?.trim() || fallbackCommitMessage(sessionId);
   if (!options.message?.trim()) {
-    const auth = await resolveTaggedModelAuth(db, "commit-message");
+    const auth = await resolveFeatureModelAuth(db, "commit-message");
     if (auth) {
       try {
         const diffStat = (await getGitDiffStat(cwd)) || status;
@@ -154,7 +158,10 @@ async function maybeAutoNameSession(
   sessionId: number,
   meta: Record<string, unknown>,
   event: Extract<AgentHarnessEvent, { type: "agent_end" }>,
-  db: Pick<SupervisorDb, "updateMeta" | "listProviders" | "listModelsByProvider" | "getProvider">,
+  db: Pick<
+    SupervisorDb,
+    "updateMeta" | "listProviders" | "listModelsByProvider" | "getProvider" | "getModel"
+  >,
 ): Promise<void> {
   if (!isDefaultSessionName(meta, sessionId)) return;
 
@@ -162,7 +169,7 @@ async function maybeAutoNameSession(
   const assistantText = findLastAssistantText(event.messages);
   if (!userText || !assistantText) return;
 
-  const auth = await resolveTaggedModelAuth(db, "session-title");
+  const auth = await resolveFeatureModelAuth(db, "session-title");
   if (!auth) return;
 
   try {

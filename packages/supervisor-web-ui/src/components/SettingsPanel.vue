@@ -10,6 +10,25 @@
     <div class="flex-1 overflow-y-auto custom-scrollbar p-6">
       <div class="settings-content space-y-5">
         <section class="settings-card">
+          <h2>功能模型</h2>
+          <p class="settings-card__hint">
+            为自动功能指定模型。未配置则跳过该功能。
+          </p>
+          <label v-for="feature in utilityFeatures" :key="feature.id" class="settings-field">
+            <span>
+              {{ feature.label }}
+              <small v-if="feature.hint" class="settings-field__hint">{{ feature.hint }}</small>
+            </span>
+            <select v-model="featureModelKeys[feature.id]">
+              <option value="">未配置</option>
+              <option v-for="option in modelOptions" :key="option.key" :value="option.key">
+                {{ option.label }}
+              </option>
+            </select>
+          </label>
+        </section>
+
+        <section class="settings-card">
           <h2>浏览器</h2>
           <label class="settings-field">
             <span>启动模式</span>
@@ -197,9 +216,13 @@ import { Check, ChevronLeft, ExternalLink, Settings2, X } from "lucide-vue-next"
 import { computed, onMounted, reactive, ref } from "vue";
 import {
   getSupervisorSettings,
+  listProviders,
+  listProviderModels,
   testSettingsApiKey,
   updateSupervisorSettings,
+  type FeatureModelRef,
   type SupervisorSettings,
+  type UtilityFeature,
 } from "../api/api";
 
 type ServiceId = "browser" | "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl";
@@ -207,6 +230,14 @@ type RemoteServiceId = Exclude<ServiceId, "browser">;
 
 defineProps<{ showBack?: boolean }>();
 const emit = defineEmits<{ back: [] }>();
+
+const utilityFeatures: Array<{ id: UtilityFeature; label: string; hint?: string }> = [
+  { id: "commit-message", label: "提交说明", hint: "自动生成 git commit message" },
+  { id: "session-title", label: "会话标题", hint: "自动命名新会话" },
+  { id: "summary", label: "上下文摘要", hint: "会话过长时压缩上下文" },
+  { id: "daily-work", label: "当日工作分析", hint: "汇总前一天的 sv commit" },
+  { id: "task-decompose", label: "任务分解", hint: "首页任务拆解并创建 session" },
+];
 
 const form = reactive({
   browserMode: "headless" as "headless" | "headed",
@@ -216,6 +247,14 @@ const form = reactive({
   speechRecognitionLanguage: "",
   doubaoSpeechResourceId: "volc.seedasr.sauc.duration",
 });
+const featureModelKeys = reactive<Record<UtilityFeature, string>>({
+  "commit-message": "",
+  "session-title": "",
+  summary: "",
+  "daily-work": "",
+  "task-decompose": "",
+});
+const modelOptions = ref<Array<{ key: string; label: string; ref: FeatureModelRef }>>([]);
 const envNames = reactive<Record<"tavily" | "brave" | "serper" | "firecrawl", string>>({
   tavily: "TAVILY_API_KEY",
   brave: "BRAVE_API_KEY",
@@ -293,6 +332,27 @@ function serviceView(id: ServiceId) {
   return { id, ...serviceMeta[id], configured: id === "browser" ? false : configured[id] };
 }
 
+function featureKey(ref: FeatureModelRef): string {
+  return `${ref.providerId}::${ref.modelId}`;
+}
+
+function parseFeatureKey(key: string): FeatureModelRef | null {
+  if (!key) return null;
+  const sep = key.indexOf("::");
+  if (sep <= 0) return null;
+  const providerId = Number.parseInt(key.slice(0, sep), 10);
+  const modelId = key.slice(sep + 2);
+  if (!Number.isInteger(providerId) || providerId <= 0 || !modelId) return null;
+  return { providerId, modelId };
+}
+
+function applyFeatureModels(settings: SupervisorSettings) {
+  for (const feature of utilityFeatures) {
+    const ref = settings.featureModels?.[feature.id];
+    featureModelKeys[feature.id] = ref ? featureKey(ref) : "";
+  }
+}
+
 function apply(settings: SupervisorSettings) {
   form.browserMode = settings.browserMode ?? "headless";
   form.webSearchProvider = settings.webSearchProvider ?? "duckduckgo";
@@ -310,6 +370,7 @@ function apply(settings: SupervisorSettings) {
   configured.brave = settings.braveApiKeyConfigured ?? false;
   configured.serper = settings.serperApiKeyConfigured ?? false;
   configured.firecrawl = settings.firecrawlApiKeyConfigured ?? false;
+  applyFeatureModels(settings);
 }
 
 function openService(id: ServiceId) {
@@ -348,6 +409,15 @@ async function testActiveKey() {
   }
 }
 
+function buildFeatureModels(): NonNullable<SupervisorSettings["featureModels"]> {
+  const next: NonNullable<SupervisorSettings["featureModels"]> = {};
+  for (const feature of utilityFeatures) {
+    const ref = parseFeatureKey(featureModelKeys[feature.id]);
+    if (ref) next[feature.id] = ref;
+  }
+  return next;
+}
+
 function mainPatch(): Partial<SupervisorSettings> {
   return {
     browserMode: form.browserMode,
@@ -360,6 +430,7 @@ function mainPatch(): Partial<SupervisorSettings> {
     braveApiKeyEnv: envNames.brave,
     serperApiKeyEnv: envNames.serper,
     firecrawlApiKeyEnv: envNames.firecrawl,
+    featureModels: buildFeatureModels(),
   };
 }
 
@@ -414,8 +485,26 @@ async function saveMain() {
   }
 }
 
+async function loadModelOptions() {
+  const providers = (await listProviders()).filter((provider) => provider.isEnabled);
+  const options: Array<{ key: string; label: string; ref: FeatureModelRef }> = [];
+  for (const provider of providers) {
+    const models = await listProviderModels(provider.id);
+    for (const model of models) {
+      const ref = { providerId: Number(provider.id), modelId: model.modelId };
+      options.push({
+        key: featureKey(ref),
+        label: `${provider.name} / ${model.name || model.modelId}`,
+        ref,
+      });
+    }
+  }
+  modelOptions.value = options;
+}
+
 onMounted(async () => {
   try {
+    await loadModelOptions();
     apply(await getSupervisorSettings());
   } catch (error) {
     failed.value = true;
@@ -451,6 +540,12 @@ onMounted(async () => {
   font-weight: 600;
   color: var(--app-text-primary);
 }
+.settings-card__hint {
+  margin: 12px 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--app-text-muted);
+}
 .settings-field {
   display: grid;
   grid-template-columns: 180px minmax(0, 1fr);
@@ -460,6 +555,15 @@ onMounted(async () => {
   border-bottom: 1px solid var(--app-border-subtle);
   font-size: 14px;
   color: var(--app-text-primary);
+}
+.settings-field > span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.settings-field__hint {
+  font-size: 11px;
+  color: var(--app-text-muted);
 }
 select,
 input {

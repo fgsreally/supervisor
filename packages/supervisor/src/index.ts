@@ -3,6 +3,7 @@ import { getDefaultCwd, setDefaultCwd, resolveWorkspacePath } from "./config/def
 import { SupervisorDb } from "./db/db.js";
 import { createHttpServer } from "./http/http-server.js";
 import { SessionManager } from "./core/session-manager.js";
+import { startDailyWorkScheduler } from "./core/daily-work.js";
 import { attachWebSocketServer } from "./websocket/server.js";
 
 export interface SupervisorOptions {
@@ -24,9 +25,11 @@ export function startSupervisor(options: SupervisorOptions = {}): {
   const server = serve({ fetch: app.fetch, port });
   const websocketServer = attachWebSocketServer(server);
   manager.resumePersistedSessionInputs();
+  const stopDailyWork = startDailyWorkScheduler(db);
   return {
     manager,
     stop: async () => {
+      stopDailyWork();
       server.close();
       websocketServer.close();
       await manager.dispose();

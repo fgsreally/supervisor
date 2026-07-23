@@ -92,7 +92,8 @@ describe("supervisor: explicit commit", () => {
     const commit = await commitSessionChanges(session.id, repoDir, session.meta, db, {
       message: "explicit commit",
     });
-    expect(commit?.message).toBe("explicit commit");
+    expect(commit?.message).toContain("explicit commit");
+    expect(commit?.message).toContain("Sv: true");
     expect(commit?.hash).toMatch(/^[0-9a-f]+$/);
 
     const refreshed = db.get(session.id)!;

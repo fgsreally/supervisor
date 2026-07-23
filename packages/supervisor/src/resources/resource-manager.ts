@@ -17,6 +17,14 @@ export interface InstallResourceInput {
   description?: string;
 }
 
+export interface UpsertResourceContentInput {
+  kind: ResourceKind;
+  slug: string;
+  content: string;
+  name?: string;
+  description?: string;
+}
+
 export interface InstallResourceResult {
   resource: Resource;
   details?: Record<string, unknown>;
@@ -61,6 +69,24 @@ export class ResourceManager {
     if (!handler.install) throw new Error(`Resource kind is not installable: ${input.kind}`);
     const installed = await handler.install({ source: input.source, slug: input.slug });
     const result = this.saveInstalledResource(input.kind, installed, input);
+    await handler.onCatalogUpdated?.(result.resource.slug);
+    return result;
+  }
+
+  /** Create or overwrite editable resource content (prompt / mcp). */
+  async upsertResourceContent(input: UpsertResourceContentInput): Promise<InstallResourceResult> {
+    await this.deps.ensureCatalog();
+    const handler = this.requireHandler(input.kind, "writeContent");
+    if (!handler.writeContent) {
+      throw new Error(`Resource kind does not support content editing: ${input.kind}`);
+    }
+    const slug = input.slug.trim();
+    if (!slug) throw new Error("slug is required");
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]*$/.test(slug)) {
+      throw new Error("slug must be alphanumeric (dots, dashes, underscores allowed)");
+    }
+    const written = await handler.writeContent({ slug, content: input.content });
+    const result = this.saveInstalledResource(input.kind, written, input);
     await handler.onCatalogUpdated?.(result.resource.slug);
     return result;
   }
@@ -161,6 +187,27 @@ export function parseInstallResourceBody(body: Record<string, unknown>): Install
     kind: body.kind,
     source: body.source.trim(),
     slug: typeof body.slug === "string" ? body.slug : undefined,
+    name: typeof body.name === "string" ? body.name : undefined,
+    description: typeof body.description === "string" ? body.description : undefined,
+  };
+}
+
+export function parseUpsertResourceContentBody(
+  body: Record<string, unknown>,
+): UpsertResourceContentInput {
+  if (typeof body.kind !== "string" || !isResourceKind(body.kind)) {
+    throw new Error("invalid resource kind");
+  }
+  if (typeof body.slug !== "string" || !body.slug.trim()) {
+    throw new Error("slug is required");
+  }
+  if (typeof body.content !== "string") {
+    throw new Error("content is required");
+  }
+  return {
+    kind: body.kind,
+    slug: body.slug.trim(),
+    content: body.content,
     name: typeof body.name === "string" ? body.name : undefined,
     description: typeof body.description === "string" ? body.description : undefined,
   };

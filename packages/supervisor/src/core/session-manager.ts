@@ -44,8 +44,18 @@ import {
   resolveAgentTools,
   skillsToResourceInfo,
 } from "../agent/resource-resolver.js";
-import { assertAgentUserSpawnable } from "../agent/index.js";
+import { assertAgentUserSpawnable, isAgentUserSpawnable } from "../agent/index.js";
 import { findPackagedAgentId } from "../agent/index.js";
+import { attachHomeTaskSessionSync } from "./home-task-sync.js";
+import {
+  generateTaskDecomposition,
+  resolveFeatureModelAuth,
+} from "../utils/utility-llm.js";
+import type {
+  CreateHomeTaskOptions,
+  HomeTask,
+  UpdateHomeTaskOptions,
+} from "../types.js";
 import { cancelPendingApprovals, submitApprovalResolution } from "../extension/runtime/index.js";
 import type { ApprovalResult } from "../extension/index.js";
 import {
@@ -272,10 +282,12 @@ export class SessionManager {
   private readonly resourceManager: ResourceManager;
   private resourcesInitialized = false;
   readonly jobs: JobManager;
+  private readonly detachHomeTaskSync: () => void;
 
   constructor(db: SupervisorDb) {
     this.db = db;
     this.db.reconcileInterruptedSessionStatuses();
+    this.detachHomeTaskSync = attachHomeTaskSessionSync(this.db);
     for (const input of this.db.listPersistedSessionInputs()) {
       this.sessionInputQueues.enqueue(input.sessionId, {
         ...input,
@@ -297,6 +309,11 @@ export class SessionManager {
       ensureCatalog: () => this.ensureResourceCatalog(),
     });
     void this.ensureResourceCatalog();
+  }
+
+  // Expose for home/daily-work helpers that need direct DB access.
+  get database(): SupervisorDb {
+    return this.db;
   }
 
   async ensureResourceCatalog(): Promise<void> {
@@ -1719,6 +1736,7 @@ export class SessionManager {
   }
 
   async dispose(): Promise<void> {
+    this.detachHomeTaskSync();
     await Promise.all([...this.runtimes.keys()].map((id) => this.kill(id).catch(() => {})));
     this.runtimes.clear();
     this.turnTrackers.clear();
@@ -2019,5 +2037,128 @@ export class SessionManager {
     if (!(runtime instanceof CodexSessionRuntime))
       throw new Error("session is not a Codex session");
     return runtime.executeClientCommand(command, argument);
+  }
+
+  // ============ Home Tasks ============
+
+  listHomeTasks(options?: { parentId?: number | null; projectId?: number }): HomeTask[] {
+    return this.db.listHomeTasks(options);
+  }
+
+  getHomeTask(id: number): HomeTask | undefined {
+    return this.db.getHomeTask(id);
+  }
+
+  createHomeTask(options: CreateHomeTaskOptions): HomeTask {
+    if (options.projectId != null && !this.db.getProject(options.projectId)) {
+      throw new Error(`Project ${options.projectId} not found`);
+    }
+    return this.db.insertHomeTask(options);
+  }
+
+  updateHomeTask(id: number, patch: UpdateHomeTaskOptions): HomeTask {
+    if (patch.projectId != null && !this.db.getProject(patch.projectId)) {
+      throw new Error(`Project ${patch.projectId} not found`);
+    }
+    return this.db.updateHomeTask(id, patch);
+  }
+
+  deleteHomeTask(id: number): boolean {
+    return this.db.deleteHomeTask(id);
+  }
+
+  private resolveDefaultSpawnAgentId(): number {
+    const agents = this.db.listAgents().filter((agent) => isAgentUserSpawnable(agent));
+    const preferred =
+      agents.find((agent) => agent.name === "Pi 助手") ??
+      agents.find((agent) => agent.backendType === "native") ??
+      agents[0];
+    if (!preferred) throw new Error("No spawnable agent configured");
+    return preferred.id;
+  }
+
+  async decomposeHomeTask(id: number): Promise<{ task: HomeTask; children: HomeTask[] }> {
+    const task = this.db.getHomeTask(id);
+    if (!task) throw new Error(`Home task ${id} not found`);
+    if (task.parentId != null) throw new Error("Only root tasks can be decomposed");
+    if (!task.projectId) throw new Error("Task must be linked to a project before decompose");
+
+    const project = this.db.getProject(task.projectId);
+    if (!project) throw new Error(`Project ${task.projectId} not found`);
+
+    const existingChildren = this.db.listHomeTaskChildren(id);
+    if (existingChildren.some((child) => child.sessionId != null)) {
+      throw new Error("Task already has spawned subtasks");
+    }
+    for (const child of existingChildren) {
+      this.db.deleteHomeTask(child.id);
+    }
+
+    const auth = await resolveFeatureModelAuth(this.db, "task-decompose");
+    if (!auth) {
+      throw new Error("未配置「任务分解」功能模型，请在设置中绑定模型");
+    }
+
+    const subtasks = await generateTaskDecomposition(auth, {
+      title: task.title,
+      description: task.description,
+      projectName: project.name,
+      cwd: project.cwd,
+    });
+    if (!subtasks.length) throw new Error("模型未返回可执行子任务");
+
+    const agentId = this.resolveDefaultSpawnAgentId();
+    const children: HomeTask[] = [];
+    this.db.updateHomeTask(id, { status: "in_progress", error: null });
+
+    for (const item of subtasks) {
+      const child = this.db.insertHomeTask({
+        title: item.title,
+        description: item.prompt,
+        projectId: project.id,
+        parentId: id,
+        status: "todo",
+        priority: task.priority,
+        meta: { source: "decompose" },
+      });
+      try {
+        const session = await this.spawn({
+          projectId: project.id,
+          cwd: project.cwd,
+          agentId,
+          instructions: item.prompt,
+          meta: {
+            name: item.title,
+            homeTaskId: child.id,
+            homeTaskParentId: id,
+          },
+        });
+        const linked = this.db.updateHomeTask(child.id, {
+          sessionId: session.id,
+          status: "in_progress",
+        });
+        children.push(linked);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        children.push(
+          this.db.updateHomeTask(child.id, {
+            status: "error",
+            error: message,
+          }),
+        );
+      }
+    }
+
+    if (children.every((child) => child.status === "error")) {
+      this.db.updateHomeTask(id, {
+        status: "error",
+        error: "all subtasks failed to spawn",
+      });
+    }
+
+    return {
+      task: this.db.getHomeTask(id)!,
+      children,
+    };
   }
 }

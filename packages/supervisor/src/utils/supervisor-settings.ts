@@ -2,9 +2,31 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
+/** Features that can bind a dedicated utility model in settings. */
+export const UTILITY_FEATURES = [
+  "commit-message",
+  "session-title",
+  "summary",
+  "daily-work",
+  "task-decompose",
+] as const;
+
+export type UtilityFeature = (typeof UTILITY_FEATURES)[number];
+
+export interface FeatureModelRef {
+  providerId: number;
+  modelId: string;
+}
+
+export type FeatureModelMap = Partial<Record<UtilityFeature, FeatureModelRef>>;
+
 export interface SupervisorSettings {
+  /** @deprecated Prefer featureModels */
   utilityProvider?: string;
+  /** @deprecated Prefer featureModels */
   utilityModelId?: string;
+  /** Per-feature model bindings configured in Settings. */
+  featureModels?: FeatureModelMap;
   browserMode?: "headless" | "headed";
   webSearchProvider?: "duckduckgo" | "tavily" | "brave" | "serper" | "firecrawl";
   webFetchProvider?:
@@ -29,6 +51,22 @@ export interface SupervisorSettings {
 }
 
 const DEFAULT_SETTINGS: SupervisorSettings = {};
+
+export function isUtilityFeature(value: string): value is UtilityFeature {
+  return (UTILITY_FEATURES as readonly string[]).includes(value);
+}
+
+export function isFeatureModelRef(value: unknown): value is FeatureModelRef {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Record<string, unknown>;
+  return (
+    typeof item.providerId === "number" &&
+    Number.isInteger(item.providerId) &&
+    item.providerId > 0 &&
+    typeof item.modelId === "string" &&
+    item.modelId.trim().length > 0
+  );
+}
 
 export function getSupervisorSettingsPath(): string {
   return join(homedir(), ".pi", "supervisor", "settings.json");

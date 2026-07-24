@@ -62,7 +62,6 @@ const dailyLoading = ref(false);
 const creating = ref(false);
 const composerOpen = ref(false);
 const busyId = ref<number | null>(null);
-let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 async function loadProjects() {
   await sessionStore.fetchProjects();
@@ -121,15 +120,18 @@ function onOpenSession(task: HomeTask) {
   emit("open-session", String(task.sessionId));
 }
 
+function onVisibilityChange() {
+  if (document.hidden) return;
+  void loadTasks();
+}
+
 onMounted(async () => {
+  document.addEventListener("visibilitychange", onVisibilityChange);
   await Promise.all([loadProjects(), loadTasks(), loadDaily()]);
-  pollTimer = setInterval(() => {
-    void loadTasks();
-  }, 5000);
 });
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer);
+  document.removeEventListener("visibilitychange", onVisibilityChange);
 });
 </script>
 

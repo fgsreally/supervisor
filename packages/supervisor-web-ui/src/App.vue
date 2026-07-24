@@ -447,7 +447,6 @@ onMounted(() => {
           activeResourceId.value = resourceStore.resourceItems[0]?.id ?? null;
         }
       }
-      startSessionListPoll();
     })
     .catch(console.error);
 });
@@ -455,25 +454,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   window.removeEventListener("resize", updateMobileFlag);
   document.removeEventListener("visibilitychange", onVisibilityChange);
-  stopSessionListPoll();
 });
-
-let sessionListPoll: ReturnType<typeof setInterval> | null = null;
-
-function startSessionListPoll() {
-  stopSessionListPoll();
-  sessionListPoll = setInterval(() => {
-    if (mainTab.value !== "chat" && mainTab.value !== "home") return;
-    if (typeof document !== "undefined" && document.hidden) return;
-    void sessionStore.fetchSessions();
-  }, 5000);
-}
-
-function stopSessionListPoll() {
-  if (!sessionListPoll) return;
-  clearInterval(sessionListPoll);
-  sessionListPoll = null;
-}
 
 function onVisibilityChange() {
   if (document.hidden) return;

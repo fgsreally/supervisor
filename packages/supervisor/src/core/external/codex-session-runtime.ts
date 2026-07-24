@@ -1,13 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { SupervisorDb } from "../../db/db.js";
 import type { Agent, Session } from "../../types.js";
 import { ExternalSessionRuntime } from "./external-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
-import { getExternalAgentConfig } from "./external-agent-config.js";
+import { getExternalAgentConfig, resolveExecutable } from "./external-agent-config.js";
 
 type JsonObject = Record<string, any>;
 
@@ -121,6 +121,13 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
       this.turnCompletion?.reject(error);
       this.turnCompletion = undefined;
     });
+    this.child.on("error", (error) => {
+      console.error(`[codex:${this.id}] process error:`, error);
+      for (const request of this.pending.values()) request.reject(error);
+      this.pending.clear();
+      this.turnCompletion?.reject(error);
+      this.turnCompletion = undefined;
+    });
   }
 
   static async create(options: {
@@ -129,11 +136,35 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     agent: Agent;
   }): Promise<CodexSessionRuntime> {
     const config = getExternalAgentConfig(options.agent);
-    const child = spawn(config.command, [...config.args, "app-server", "--stdio"], {
+    const env = { ...process.env, ...config.env };
+    const executable = resolveExecutable(config.command, env);
+    if (!executable) throw new Error(`未找到用户安装的 Codex：${config.command}`);
+    const useShell =
+      process.platform === "win32" && [".cmd", ".bat", ".COM"].includes(extname(executable).toUpperCase());
+    const child = spawn(executable, [...config.args, "app-server", "--stdio"], {
       cwd: options.session.cwd,
-      env: { ...process.env, ...config.env },
+      env,
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
+      shell: useShell,
+    });
+    await new Promise<void>((resolveReady, rejectReady) => {
+      const onError = (error: Error) => {
+        cleanup();
+        rejectReady(
+          new Error(`启动 Codex 失败（${executable}）：${error.message}`),
+        );
+      };
+      const onSpawn = () => {
+        cleanup();
+        resolveReady();
+      };
+      const cleanup = () => {
+        child.off("error", onError);
+        child.off("spawn", onSpawn);
+      };
+      child.once("error", onError);
+      child.once("spawn", onSpawn);
     });
     const runtime = new CodexSessionRuntime({ ...options, child });
     const sandbox = options.session.branchType === "btw" ? "read-only" : "workspace-write";

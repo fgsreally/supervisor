@@ -4,17 +4,19 @@
     :style="{ ...panelStyle, background: 'var(--app-list-bg)' }"
   >
     <div
-      class="h-16 flex items-center px-4 shrink-0 border-b gap-1"
+      class="h-16 flex items-center px-4 shrink-0 border-b"
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
       <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">聊天</h1>
       <button
         type="button"
-        class="chat-home-settings"
-        title="从外部引入会话"
+        class="chat-list-import-icon"
+        :class="{ 'chat-list-import-icon--active': externalImportOpen }"
+        title="从外部引入"
+        aria-label="从外部引入"
         @click="openExternalImport"
       >
-        <Import class="h-[19px] w-[19px]" />
+        <FolderInput class="h-[18px] w-[18px]" />
       </button>
     </div>
 
@@ -222,7 +224,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronRight, GitBranch, Import, Plus, Search, Settings } from "lucide-vue-next";
+import { ChevronRight, FolderInput, GitBranch, Plus, Search, Settings } from "lucide-vue-next";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
 import { groupSessionsByWorkspace, toUISession } from "@/utils/ui-session";
@@ -703,18 +705,25 @@ async function onAgentPicked(agentId: string) {
   color: var(--app-text-secondary);
   font-size: 12px;
 }
-.chat-home-settings {
-  display: inline-grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 7px;
+
+.chat-list-import-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
   color: var(--app-text-secondary);
   cursor: pointer;
-  transition:
-    color 0.15s ease,
-    background-color 0.15s ease,
-    transform 0.1s ease;
+  line-height: 0;
+  transition: color 0.15s ease;
+}
+
+.chat-list-import-icon:hover,
+.chat-list-import-icon:focus-visible,
+.chat-list-import-icon--active {
+  color: var(--app-accent);
+  outline: none;
 }
 
 .workspace-collapse {
@@ -739,17 +748,6 @@ async function onAgentPicked(agentId: string) {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
-}
-
-.chat-home-settings:hover,
-.chat-home-settings:focus-visible {
-  color: #07a65a;
-  background: var(--app-hover);
-  outline: none;
-}
-
-.chat-home-settings:active {
-  transform: scale(0.93);
 }
 
 .list-search-input {

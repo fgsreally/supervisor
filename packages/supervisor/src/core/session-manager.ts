@@ -1662,7 +1662,6 @@ export class SessionManager {
     const storage = new SQLiteSessionStorage(this.db, session.id);
     for (const entry of imported.entries) {
       await storage.appendEntry(entry, {
-        isOld: true,
         source: `external-import:${options.backend}`,
       });
     }

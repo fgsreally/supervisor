@@ -57,9 +57,43 @@ function textContent(content: unknown, kinds: string[]): string {
     .trim();
 }
 
+/** Skip Codex/Claude injected context that is not a real user turn. */
+export function isInjectedExternalUserText(text: string): boolean {
+  const value = text.trim();
+  if (!value) return true;
+  if (/^#\s*AGENTS\.md\b/i.test(value)) return true;
+  if (value.includes("<INSTRUCTIONS>") && /AGENTS\.md/i.test(value)) return true;
+  if (value.startsWith("<environment_context>")) return true;
+  if (value.startsWith("<permissions instructions>")) return true;
+  if (value.startsWith("<collaboration_mode>")) return true;
+  if (value.startsWith("<skills_instructions>")) return true;
+  if (value.startsWith("<apps_instructions>")) return true;
+  if (value.startsWith("<plugins_instructions>")) return true;
+  if (value.startsWith("<multi_agent_mode>")) return true;
+  if (/^You are `\/root`/i.test(value)) return true;
+  if (value.startsWith("Caveat:") && value.toLowerCase().includes("automatically")) return true;
+  return false;
+}
+
 function displayTitle(preview: string, fallback: string): string {
   const firstLine = preview.split(/\r?\n/, 1)[0]?.trim();
-  return firstLine ? firstLine.slice(0, 60) : fallback;
+  return firstLine ? firstLine.slice(0, 80) : fallback;
+}
+
+function asTextMessage(role: "user" | "assistant", content: string, timestamp?: string): SessionTreeEntry {
+  const id = randomUUID();
+  const ts = timestamp ? Date.parse(timestamp) : Date.now();
+  return {
+    id,
+    parentId: null,
+    timestamp: timestamp ?? new Date().toISOString(),
+    type: "message",
+    message: {
+      role,
+      content: [{ type: "text", text: content }],
+      timestamp: Number.isFinite(ts) ? ts : Date.now(),
+    } as AgentMessage,
+  } as SessionTreeEntry;
 }
 
 async function inspectCodex(file: string): Promise<ExternalSessionFile | null> {
@@ -72,7 +106,8 @@ async function inspectCodex(file: string): Promise<ExternalSessionFile | null> {
       cwd = value.payload?.cwd ?? "";
     } else if (value.type === "response_item" && value.payload?.type === "message") {
       if (value.payload.role === "user") {
-        preview ||= textContent(value.payload.content, ["input_text"]);
+        const text = textContent(value.payload.content, ["input_text"]);
+        if (text && !isInjectedExternalUserText(text)) preview ||= text;
       }
     }
     if (externalSessionId && cwd && preview) return false;
@@ -97,7 +132,8 @@ async function inspectClaude(file: string): Promise<ExternalSessionFile | null> 
     if (typeof value.sessionId === "string") externalSessionId = value.sessionId;
     if (typeof value.cwd === "string") cwd = value.cwd;
     if (value.type === "user" && value.message?.role === "user") {
-      preview ||= textContent(value.message.content, ["text"]);
+      const text = textContent(value.message.content, ["text"]);
+      if (text && !isInjectedExternalUserText(text)) preview ||= text;
     }
     if (cwd && preview) return false;
   });
@@ -153,6 +189,7 @@ export async function loadExternalSession(
 
   const entries: SessionTreeEntry[] = [];
   let parentId: string | null = null;
+  let lastAssistantText = "";
   await readJsonLines(match.file, (value) => {
     let role: "user" | "assistant" | null = null;
     let content = "";
@@ -180,19 +217,26 @@ export async function loadExternalSession(
       timestamp = value.timestamp;
     }
     if (!role || !content) return;
-    const id = randomUUID();
-    entries.push({
-      id,
-      parentId,
-      timestamp: timestamp ?? new Date().toISOString(),
-      type: "message",
-      message: {
-        role,
-        content,
-        timestamp: timestamp ? Date.parse(timestamp) : Date.now(),
-      } as AgentMessage,
-    } as SessionTreeEntry);
-    parentId = id;
+    if (role === "user" && isInjectedExternalUserText(content)) return;
+    // Codex may emit progressive assistant snapshots; keep the longest for a run of assistants.
+    if (role === "assistant") {
+      if (lastAssistantText && content.startsWith(lastAssistantText)) {
+        const prev = entries[entries.length - 1];
+        if (prev?.type === "message" && prev.message?.role === "assistant") {
+          entries.pop();
+          parentId = prev.parentId ?? null;
+        }
+      } else if (lastAssistantText && lastAssistantText.startsWith(content)) {
+        return;
+      }
+      lastAssistantText = content;
+    } else {
+      lastAssistantText = "";
+    }
+    const entry = asTextMessage(role, content, timestamp);
+    entry.parentId = parentId;
+    entries.push(entry);
+    parentId = entry.id;
   });
   const { file: _file, ...candidate } = match;
   return { candidate, entries };

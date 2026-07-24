@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { spawn } from "node:child_process";
 import {
   query,
   type PermissionResult,
@@ -17,7 +16,7 @@ import type {
 } from "../managed-session-runtime.js";
 import type { SlashCommandInfo } from "../session-runtime.js";
 import { ExternalSessionRuntime } from "./external-session-runtime.js";
-import { getExternalAgentConfig, resolveExecutable } from "./external-agent-config.js";
+import { getExternalAgentConfig, resolveExecutable, spawnExternalProcess } from "./external-agent-config.js";
 
 type JsonObject = Record<string, any>;
 
@@ -86,11 +85,9 @@ export class ClaudeSessionRuntime extends ExternalSessionRuntime {
         resume: typeof savedId === "string" && savedId ? savedId : undefined,
         canUseTool: (toolName, input, context) => this.handlePermission(toolName, input, context),
         spawnClaudeCodeProcess: (spawnOptions) =>
-          spawn(executable, [...config.args, ...spawnOptions.args], {
+          spawnExternalProcess(executable, [...config.args, ...spawnOptions.args], {
             cwd: spawnOptions.cwd,
             env: spawnOptions.env,
-            stdio: ["pipe", "pipe", "pipe"],
-            windowsHide: true,
           }),
       },
     });

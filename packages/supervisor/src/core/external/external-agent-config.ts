@@ -1,5 +1,5 @@
 import { accessSync, constants, existsSync } from "node:fs";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { homedir, platform } from "node:os";
 import { delimiter, extname, isAbsolute, join } from "node:path";
 import type { Agent } from "../../types.js";
@@ -145,6 +145,30 @@ export function resolveExecutable(command: string, env = process.env): string | 
   return resolveViaWhere(command, env);
 }
 
+/** Windows `.cmd`/`.bat` need `shell: true`; compare extension case-insensitively. */
+export function needsWindowsShell(executable: string): boolean {
+  if (platform() !== "win32") return false;
+  return [".cmd", ".bat", ".com"].includes(extname(executable).toLowerCase());
+}
+
+export function spawnExternalProcess(
+  executable: string,
+  args: string[],
+  options: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    stdio?: ["pipe", "pipe", "pipe"];
+  } = {},
+) {
+  return spawn(executable, args, {
+    cwd: options.cwd,
+    env: options.env ? envWithExtraPath(options.env) : envWithExtraPath(process.env),
+    stdio: options.stdio ?? ["pipe", "pipe", "pipe"],
+    windowsHide: true,
+    shell: needsWindowsShell(executable),
+  });
+}
+
 export function externalAgentAvailability(agent: Agent): {
   available: boolean;
   executablePath: string | null;
@@ -177,7 +201,7 @@ export function externalAgentAvailability(agent: Agent): {
     encoding: "utf8",
     timeout: 5000,
     windowsHide: true,
-    shell: platform() === "win32",
+    shell: needsWindowsShell(executablePath),
   });
   const detectedVersion =
     `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim().split(/\r?\n/)[0] || null;

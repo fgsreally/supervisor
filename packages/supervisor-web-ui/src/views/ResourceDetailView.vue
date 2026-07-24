@@ -120,6 +120,7 @@ import {
 } from "@/api";
 import { useResourceStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { requestUiConfirm } from "@/composables/use-ui-confirm";
 import { getResourceById } from "@/utils/resources-ui";
 import {
   getSkillFileLanguage,
@@ -284,7 +285,13 @@ async function removeResource() {
   const r = resource.value;
   const kind = catalogKind();
   if (!r || !kind || (kind !== "prompt" && kind !== "mcp")) return;
-  if (!window.confirm(`确定删除 ${r.name}？`)) return;
+  const ok = await requestUiConfirm({
+    title: "删除资源",
+    message: `确定删除 ${r.name}？`,
+    confirmText: "删除",
+    danger: true,
+  });
+  if (!ok) return;
   deleting.value = true;
   actionError.value = null;
   try {
@@ -294,6 +301,7 @@ async function removeResource() {
     emit("deleted");
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : String(err);
+    showUiMessage(actionError.value, "error");
   } finally {
     deleting.value = false;
   }

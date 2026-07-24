@@ -1,13 +1,17 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
-import { extname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { SupervisorDb } from "../../db/db.js";
 import type { Agent, Session } from "../../types.js";
 import { ExternalSessionRuntime } from "./external-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
-import { getExternalAgentConfig, resolveExecutable } from "./external-agent-config.js";
+import {
+  getExternalAgentConfig,
+  resolveExecutable,
+  spawnExternalProcess,
+} from "./external-agent-config.js";
 
 type JsonObject = Record<string, any>;
 
@@ -139,15 +143,10 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     const env = { ...process.env, ...config.env };
     const executable = resolveExecutable(config.command, env);
     if (!executable) throw new Error(`未找到用户安装的 Codex：${config.command}`);
-    const useShell =
-      process.platform === "win32" && [".cmd", ".bat", ".COM"].includes(extname(executable).toUpperCase());
-    const child = spawn(executable, [...config.args, "app-server", "--stdio"], {
+    const child = spawnExternalProcess(executable, [...config.args, "app-server", "--stdio"], {
       cwd: options.session.cwd,
       env,
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-      shell: useShell,
-    });
+    }) as ChildProcessWithoutNullStreams;
     await new Promise<void>((resolveReady, rejectReady) => {
       const onError = (error: Error) => {
         cleanup();

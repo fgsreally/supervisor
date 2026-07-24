@@ -299,6 +299,7 @@
     />
     <UiMessageHost />
     <UiConfirmHost />
+    <UiBusyHost />
     <ProviderEditDialog
       :open="providerEditOpen"
       :provider-id="providerEditId ?? ''"
@@ -335,6 +336,7 @@ import HomeView from "./views/HomeView.vue";
 import GlobalSearchModal from "./components/GlobalSearchModal.vue";
 import UiMessageHost from "./components/UiMessageHost.vue";
 import UiConfirmHost from "./components/UiConfirmHost.vue";
+import UiBusyHost from "./components/UiBusyHost.vue";
 import { showUiMessage } from "./composables/use-ui-message";
 import { useSessionStore, useAgentStore, useProviderStore, useResourceStore } from "./store";
 import { providerToUI } from "./utils/provider-ui";

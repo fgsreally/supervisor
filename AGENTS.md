@@ -40,6 +40,34 @@ pnpm docs:dev
 pnpm docs:build
 ```
 
+## UI 交互规范（web-ui）
+
+引入 / 添加 / 修改 / 删除 等写操作必须遵循统一反馈，禁止 `window.alert` / `window.confirm`。
+
+### 表单承载方式
+
+- **轻量操作**（少量字段、短输入）：用弹窗 / 浮层即可。
+- **重表单**（多项字段，或需要填写大段文本/长输入区）：使用独立路由页面或主内容区内容块，不要塞进小弹窗。
+
+### 反馈形态
+
+| 场景 | Loading | 成功 / 失败 |
+| --- | --- | --- |
+| 通过按钮触发的创建 / 保存 | 按钮自身 loading（`UiActionButton`） | `showUiMessage` |
+| 非按钮触发（快捷键、拖放、自动提交等） | 全屏 busy（`withUiBusy` / `UiBusyHost`） | `showUiMessage` |
+| 列表项上的逐条操作（如外部引入某一项） | 该项右侧 loading 图标（`UiListStatus`） | 列表项勾 / 叉 + `showUiMessage` |
+| 删除 | 先 `requestUiConfirm`（非原生 confirm） | `showUiMessage` |
+
+### 对应封装（优先复用）
+
+- `showUiMessage` / `UiMessageHost` — 顶部轻提示
+- `requestUiConfirm` / `UiConfirmHost` — 确认框
+- `withUiBusy` / `showUiBusy` / `UiBusyHost` — 全屏加载
+- `UiActionButton` — 带 loading 的操作按钮
+- `UiListStatus` — 列表项 loading / 成功勾 / 失败叉
+
+新增写操作时，先套用以上组件与 composable，再考虑自定义 UI。
+
 ## Git 约定
 
 - 不修改上游 `CHANGELOG.md`

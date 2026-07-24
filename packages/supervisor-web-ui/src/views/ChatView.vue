@@ -969,15 +969,18 @@ function runMobileAction(action: () => void | Promise<void>) {
 async function onCompleteSession() {
   sessionMenuOpen.value = false;
   if (!canCompleteSession.value || isStreaming.value) return;
-  const confirmed = window.confirm(
-    "完成会话将把 worktree 分支合并到主分支，并关闭此会话。请先提交所有变更。继续？",
-  );
+  const confirmed = await requestUiConfirm({
+    title: "完成会话",
+    message: "完成会话将把 worktree 分支合并到主分支，并关闭此会话。请先提交所有变更。继续？",
+    confirmText: "完成",
+  });
   if (!confirmed) return;
   stopStreaming();
   try {
     await sessionStore.completeSession(props.session.id);
     await sessionStore.fetchSession(props.session.id);
     sessionTitle.value = props.session.meta?.name ?? sessionTitle.value;
+    showUiMessage("会话已完成", "success");
   } catch (err) {
     showUiMessage(err instanceof Error ? err.message : "完成会话失败", "error");
     await sessionStore.fetchSession(props.session.id);
@@ -987,13 +990,12 @@ async function onCompleteSession() {
 async function onCreateCheckpoint() {
   sessionMenuOpen.value = false;
   if (!canCheckpointActions.value) return;
-  const label = window.prompt("存档点名称（可选）") ?? undefined;
   try {
-    await sessionStore.createCheckpoint(props.session.id, label?.trim() || undefined);
-    window.alert("存档点已创建");
+    await sessionStore.createCheckpoint(props.session.id);
+    showUiMessage("存档点已创建", "success");
   } catch (err) {
     console.error("Create checkpoint failed:", err);
-    window.alert(err instanceof Error ? err.message : "创建存档点失败");
+    showUiMessage(err instanceof Error ? err.message : "创建存档点失败", "error");
   }
 }
 
@@ -1003,46 +1005,42 @@ async function onRewindSession() {
   try {
     const checkpoints = await sessionStore.listCheckpoints(props.session.id);
     if (checkpoints.length === 0) {
-      window.alert("没有可用的存档点");
+      showUiMessage("没有可用的存档点", "info");
       return;
     }
-    const lines = checkpoints.map((cp, index) => {
-      const when = new Date(cp.createdAt).toLocaleString();
-      const label = cp.label ? ` ${cp.label}` : "";
-      return `${index + 1}. ${when}${label}`;
+    const target = checkpoints[checkpoints.length - 1]!;
+    const confirmed = await requestUiConfirm({
+      title: "回滚存档点",
+      message: `回滚到最近存档点 ${target.label ?? target.id.slice(0, 8)}？将恢复代码与会话位置。`,
+      confirmText: "回滚",
+      danger: true,
     });
-    const choice = window.prompt(`选择要回滚的存档点编号：\n${lines.join("\n")}`);
-    const index = Number(choice) - 1;
-    if (!Number.isFinite(index) || index < 0 || index >= checkpoints.length) return;
-    const target = checkpoints[index]!;
-    const confirmed = window.confirm(
-      `回滚到存档点 ${target.label ?? target.id.slice(0, 8)}？将恢复代码与会话位置。`,
-    );
     if (!confirmed) return;
     stopStreaming();
     await sessionStore.rewindSession(props.session.id, target.id);
     await reloadMessagesFromServer(props.session.id);
+    showUiMessage("已回滚到存档点", "success");
   } catch (err) {
     console.error("Rewind failed:", err);
-    window.alert(err instanceof Error ? err.message : "回滚失败");
+    showUiMessage(err instanceof Error ? err.message : "回滚失败", "error");
   }
 }
 
 async function onCommitSession() {
   sessionMenuOpen.value = false;
   if (!canCheckpointActions.value) return;
-  const message = window.prompt("提交说明（可选）") ?? undefined;
   try {
-    const result = await sessionStore.commitSession(props.session.id, message?.trim() || undefined);
+    const result = await sessionStore.commitSession(props.session.id);
     if (!result.commit) {
-      window.alert("没有需要提交的变更");
+      showUiMessage("没有需要提交的变更", "info");
       return;
     }
     await reloadMessagesFromServer(props.session.id);
     void scrollToBottom();
+    showUiMessage("已提交变更", "success");
   } catch (err) {
     console.error("Commit failed:", err);
-    window.alert(err instanceof Error ? err.message : "提交失败");
+    showUiMessage(err instanceof Error ? err.message : "提交失败", "error");
   }
 }
 

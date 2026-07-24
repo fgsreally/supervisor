@@ -180,9 +180,8 @@
 
     <ExternalSessionImportDialog
       :open="externalImportOpen"
-      :importing="externalImporting"
       @close="externalImportOpen = false"
-      @select="onExternalSessionPicked"
+      @imported="onExternalSessionImported"
     />
 
     <SessionListContextMenu
@@ -234,9 +233,9 @@ import {
   pushProjectGit,
   regenerateProjectDescription as apiRegenerateProjectDescription,
   searchMessages,
-  type ExternalSessionCandidate,
 } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { requestUiConfirm } from "@/composables/use-ui-confirm";
 import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
 import ProjectCreateDialog from "./ProjectCreateDialog.vue";
 import ProjectGitMenu from "./ProjectGitMenu.vue";
@@ -271,7 +270,6 @@ const projectCreateOpen = ref(false);
 const projectCreating = ref(false);
 const projectDescribing = ref(false);
 const externalImportOpen = ref(false);
-const externalImporting = ref(false);
 const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null);
 const contextSession = computed(() =>
   contextMenu.value
@@ -511,6 +509,11 @@ function openExternalImport() {
   externalImportOpen.value = true;
 }
 
+function onExternalSessionImported(sessionId: string) {
+  externalImportOpen.value = false;
+  emit("select", sessionId);
+}
+
 async function createProjectFromDialog(cwd: string) {
   if (projectCreating.value) return;
   projectCreating.value = true;
@@ -553,23 +556,6 @@ async function regenerateProjectDescription() {
   }
 }
 
-async function onExternalSessionPicked(candidate: ExternalSessionCandidate) {
-  if (externalImporting.value) return;
-  externalImporting.value = true;
-  try {
-    const session = await sessionStore.importExternalSession({
-      backend: candidate.backend,
-      externalSessionId: candidate.externalSessionId,
-    });
-    externalImportOpen.value = false;
-    emit("select", session.id);
-  } catch (error) {
-    window.alert(error instanceof Error ? error.message : "引入外部对话失败");
-  } finally {
-    externalImporting.value = false;
-  }
-}
-
 function openContextMenu(sessionId: string, pos: { x: number; y: number }) {
   const menuWidth = 120;
   const menuHeight = 80;
@@ -586,9 +572,20 @@ async function confirmDeleteSession() {
   const target = contextMenu.value;
   closeContextMenu();
   if (!target) return;
-  if (!window.confirm("确定删除该会话？子会话也会一并删除。")) return;
-  await sessionStore.deleteSession(target.sessionId);
-  emit("delete", target.sessionId);
+  const ok = await requestUiConfirm({
+    title: "删除会话",
+    message: "确定删除该会话？子会话也会一并删除。",
+    confirmText: "删除",
+    danger: true,
+  });
+  if (!ok) return;
+  try {
+    await sessionStore.deleteSession(target.sessionId);
+    emit("delete", target.sessionId);
+    showUiMessage("会话已删除", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "删除失败", "error");
+  }
 }
 
 async function achieveSession() {
@@ -600,9 +597,15 @@ async function achieveSession() {
     session?.creationMethod === "spawn_agent"
       ? "完成该子代理会话？完成后会从会话列表隐藏，不会提交或合并代码。"
       : "完成并归档该会话？系统会提交剩余修改并合并到项目默认分支。";
-  if (!window.confirm(prompt)) return;
+  const ok = await requestUiConfirm({
+    title: "完成会话",
+    message: prompt,
+    confirmText: "完成",
+  });
+  if (!ok) return;
   try {
     await sessionStore.completeSession(target.sessionId);
+    showUiMessage("会话已归档", "success");
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : "归档失败", "error");
   }
@@ -620,8 +623,9 @@ async function forkFinishedSession() {
       label: `${typeof source.meta.name === "string" ? source.meta.name : "会话"} · 继续`,
     });
     emit("select", forked.id);
+    showUiMessage("已创建继续会话", "success");
   } catch (error) {
-    window.alert(error instanceof Error ? error.message : "Fork 失败");
+    showUiMessage(error instanceof Error ? error.message : "Fork 失败", "error");
   }
 }
 

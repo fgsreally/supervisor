@@ -4,7 +4,7 @@
       <div
         v-if="open"
         class="fixed inset-0 z-[210] flex items-center justify-center p-4"
-        @mousedown.self="emit('close')"
+        @mousedown.self="onBackdrop"
       >
         <div class="absolute inset-0 bg-black/40" />
         <div
@@ -26,12 +26,17 @@
             <button
               type="button"
               class="external-import-modal__icon"
-              :disabled="loading"
+              :disabled="loading || !!importingKey"
               @click="load"
             >
               <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" />
             </button>
-            <button type="button" class="external-import-modal__icon" @click="emit('close')">
+            <button
+              type="button"
+              class="external-import-modal__icon"
+              :disabled="!!importingKey"
+              @click="emit('close')"
+            >
               <X class="h-5 w-5" />
             </button>
           </header>
@@ -50,6 +55,7 @@
                 type="search"
                 placeholder="筛选标题、路径或来源"
                 class="external-import-modal__search w-full rounded-md py-1.5 pl-8 pr-2 text-[13px] focus:outline-none"
+                :disabled="!!importingKey"
               />
             </div>
             <div class="mt-2 flex flex-wrap gap-1.5">
@@ -59,6 +65,7 @@
                 type="button"
                 class="external-import-modal__chip"
                 :class="{ 'external-import-modal__chip--active': backendFilter === option.value }"
+                :disabled="!!importingKey"
                 @click="backendFilter = option.value"
               >
                 {{ option.label }}
@@ -81,20 +88,20 @@
           <ul v-else class="custom-scrollbar flex-1 overflow-y-auto">
             <li
               v-for="session in filteredSessions"
-              :key="`${session.backend}:${session.externalSessionId}`"
+              :key="sessionKey(session)"
             >
               <button
                 type="button"
                 class="external-import-modal__item flex w-full items-center gap-3 px-4 py-3 text-left"
-                :disabled="importing"
-                @click="emit('select', session)"
+                :disabled="!!importingKey"
+                @click="onSelect(session)"
               >
                 <span class="external-import-modal__badge shrink-0">{{
                   session.backend === "codex" ? "Codex" : "CC"
                 }}</span>
                 <span class="min-w-0 flex-1">
                   <span class="flex items-baseline gap-2">
-                    <strong class="min-w-0 flex-1 truncate text-[15px] font-normal">{{
+                    <strong class="external-import-modal__title min-w-0 flex-1 truncate">{{
                       session.title
                     }}</strong>
                     <time class="external-import-modal__time shrink-0">{{
@@ -105,12 +112,13 @@
                     session.cwd
                   }}</small>
                 </span>
+                <UiListStatus
+                  :status="rowStatus(session)"
+                  :title="rowStatusTitle(session)"
+                />
               </button>
             </li>
           </ul>
-          <div v-if="importing" class="external-import-modal__busy">
-            正在提交原目录修改并创建 worktree…
-          </div>
         </div>
       </div>
     </Transition>
@@ -121,17 +129,24 @@
 import { computed, ref, watch } from "vue";
 import { RefreshCw, Search, X } from "lucide-vue-next";
 import { listExternalSessions, type ExternalSessionCandidate } from "@/api";
+import { showUiMessage } from "@/composables/use-ui-message";
+import { useSessionStore } from "@/store";
+import UiListStatus, { type UiListStatusKind } from "./UiListStatus.vue";
 
-const props = defineProps<{ open: boolean; importing?: boolean }>();
+const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{
   close: [];
-  select: [session: ExternalSessionCandidate];
+  imported: [sessionId: string];
 }>();
+
+const sessionStore = useSessionStore();
 const sessions = ref<ExternalSessionCandidate[]>([]);
 const loading = ref(false);
 const error = ref("");
 const filterQuery = ref("");
 const backendFilter = ref<"all" | ExternalSessionCandidate["backend"]>("all");
+const importingKey = ref<string | null>(null);
+const rowResults = ref<Record<string, "success" | "error">>({});
 
 const filterOptions = [
   { value: "all" as const, label: "全部" },
@@ -152,6 +167,24 @@ const filteredSessions = computed(() => {
     );
   });
 });
+
+function sessionKey(session: ExternalSessionCandidate): string {
+  return `${session.backend}:${session.externalSessionId}`;
+}
+
+function rowStatus(session: ExternalSessionCandidate): UiListStatusKind {
+  const key = sessionKey(session);
+  if (importingKey.value === key) return "loading";
+  return rowResults.value[key] ?? "idle";
+}
+
+function rowStatusTitle(session: ExternalSessionCandidate): string | undefined {
+  const status = rowStatus(session);
+  if (status === "loading") return "正在引入…";
+  if (status === "success") return "引入成功";
+  if (status === "error") return "引入失败";
+  return undefined;
+}
 
 async function load() {
   loading.value = true;
@@ -186,12 +219,43 @@ function formatDate(value: string): string {
   }).format(date);
 }
 
+function onBackdrop() {
+  if (importingKey.value) return;
+  emit("close");
+}
+
+async function onSelect(session: ExternalSessionCandidate) {
+  if (importingKey.value) return;
+  const key = sessionKey(session);
+  importingKey.value = key;
+  const nextResults = { ...rowResults.value };
+  delete nextResults[key];
+  rowResults.value = nextResults;
+  try {
+    const imported = await sessionStore.importExternalSession({
+      backend: session.backend,
+      externalSessionId: session.externalSessionId,
+    });
+    rowResults.value = { ...rowResults.value, [key]: "success" };
+    showUiMessage("外部对话已引入", "success");
+    emit("imported", imported.id);
+    emit("close");
+  } catch (value) {
+    rowResults.value = { ...rowResults.value, [key]: "error" };
+    showUiMessage(value instanceof Error ? value.message : "引入外部对话失败", "error");
+  } finally {
+    importingKey.value = null;
+  }
+}
+
 watch(
   () => props.open,
   (open) => {
     if (open) {
       filterQuery.value = "";
       backendFilter.value = "all";
+      importingKey.value = null;
+      rowResults.value = {};
       void load();
     }
   },
@@ -215,12 +279,17 @@ watch(
 }
 .external-import-modal__icon {
   padding: 4px;
-  border-radius: 6px;
+  border: none;
+  background: transparent;
   color: var(--app-text-muted);
+  cursor: pointer;
 }
-.external-import-modal__icon:hover {
-  color: var(--app-text-primary);
-  background: var(--app-hover);
+.external-import-modal__icon:hover:not(:disabled) {
+  color: var(--app-accent);
+}
+.external-import-modal__icon:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .external-import-modal__search {
   background: var(--app-list-search-bg);
@@ -240,23 +309,39 @@ watch(
   background: color-mix(in srgb, var(--app-accent) 12%, transparent);
 }
 .external-import-modal__item {
+  border: none;
   border-bottom: 1px solid var(--app-border-subtle);
+  background: transparent;
+  cursor: pointer;
 }
-.external-import-modal__item:hover {
+.external-import-modal__item:hover:not(:disabled) {
   background: var(--app-popup-hover);
+}
+.external-import-modal__item:hover:not(:disabled) .external-import-modal__title {
+  color: var(--app-accent);
+}
+.external-import-modal__item:disabled {
+  cursor: wait;
 }
 .external-import-modal__item:last-child {
   border-bottom: none;
 }
 .external-import-modal__badge {
-  min-width: 44px;
-  border-radius: 6px;
-  padding: 10px 6px;
+  min-width: 36px;
+  border-radius: 4px;
+  padding: 3px 6px;
   text-align: center;
-  font-size: 11px;
-  line-height: 1;
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--app-text-muted);
+  background: color-mix(in srgb, var(--app-hover) 80%, transparent);
+}
+.external-import-modal__title {
   color: var(--app-text-secondary);
-  background: var(--app-hover);
+  font-size: 15px;
+  font-weight: 400;
+  line-height: 1.35;
+  transition: color 0.12s ease;
 }
 .external-import-modal__time {
   font-size: 11px;
@@ -266,16 +351,11 @@ watch(
   font-size: 12px;
   line-height: 1.4;
 }
-.external-import-modal__state,
-.external-import-modal__busy {
+.external-import-modal__state {
   padding: 36px 16px;
   text-align: center;
   font-size: 13px;
   color: var(--app-text-muted);
-}
-.external-import-modal__busy {
-  padding: 10px 16px;
-  border-top: 1px solid var(--app-border-subtle);
 }
 .external-import-modal__error {
   color: var(--app-danger, #dc2626);

@@ -46,14 +46,15 @@
             <p class="project-create__hint">
               创建后会用「项目描述」功能模型启动临时 Coding Agent，只读整理描述写入项目。
             </p>
-            <button
-              type="button"
+            <UiActionButton
               class="project-create__primary"
-              :disabled="busy || !cwd.trim()"
+              :loading="busy"
+              :disabled="!cwd.trim()"
+              block
               @click="submit"
             >
-              {{ busy ? "创建中…" : "创建项目" }}
-            </button>
+              创建项目
+            </UiActionButton>
           </div>
         </div>
       </div>
@@ -67,6 +68,7 @@ import { FolderSearch, X } from "lucide-vue-next";
 import { pickDirectory } from "@/api";
 import { getDefaultWorkspaceCwd } from "@/config/workspace";
 import { showUiMessage } from "@/composables/use-ui-message";
+import UiActionButton from "./UiActionButton.vue";
 
 const props = defineProps<{
   open: boolean;

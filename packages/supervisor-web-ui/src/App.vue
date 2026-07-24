@@ -556,11 +556,10 @@ async function markActiveSessionRead(id: string) {
 }
 
 function onSessionDelete(id: string) {
-  if (activeSessionId.value !== id) return;
-  const next = sessionStore.sessions.find((s) => s.showInSessionList);
-  activeSessionId.value = next?.id ?? null;
-  if (isMobile.value && !next) mobilePage.value = "list";
-  pushRoute();
+  if (activeSessionId.value === id) activeSessionId.value = null;
+  if (isMobile.value) mobilePage.value = "list";
+  mainTab.value = "chat";
+  void router.push("/chat");
 }
 
 function selectAgent(id: string) {

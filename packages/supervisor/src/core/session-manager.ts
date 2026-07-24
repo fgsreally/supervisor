@@ -846,6 +846,11 @@ export class SessionManager {
     );
     await ensureSessionDir(this.requireProjectId(activeSession), activeSession.id);
 
+    if (options.skipRuntime) {
+      this.db.updateStatus(activeSession.id, "idle");
+      return rowToSession(this.db.get(activeSession.id)!);
+    }
+
     if (
       agentInDb?.backendType === "native" &&
       (agentInDb.providerId == null || agentInDb.modelId == null) &&
@@ -1650,10 +1655,13 @@ export class SessionManager {
         : "checkpoint before importing claude code session";
     await commitAll(normalizedCwd, commitMessage);
 
+    // Import history first; attach Codex/Claude later so a runtime crash cannot
+    // leave an empty session row without messages.
     const session = await this.spawn({
       projectId: project.id,
       cwd: normalizedCwd,
       agentId: agent.id,
+      skipRuntime: true,
       meta: {
         name: imported.candidate.title,
         externalSessionId: imported.candidate.externalSessionId,
@@ -1665,6 +1673,15 @@ export class SessionManager {
         source: `external-import:${options.backend}`,
       });
     }
+
+    try {
+      await this.ensureRuntime(session.id);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`external import runtime attach failed [${session.id}]:`, message);
+      this.db.updateMeta(session.id, { runtimeStartError: message });
+    }
+
     return rowToSession(this.db.get(session.id)!);
   }
 

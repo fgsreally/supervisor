@@ -124,6 +124,8 @@ export interface SpawnSessionOptions extends CreateSessionOptions {
   model?: string;
   toolsPreset?: ToolsPreset;
   tools?: AgentTool[];
+  /** Create worktree / session row only; attach runtime later via ensureRuntime. */
+  skipRuntime?: boolean;
 }
 
 // ============ Agent Types ============

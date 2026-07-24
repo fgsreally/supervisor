@@ -1,7 +1,7 @@
-import { accessSync, constants, existsSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
 import { homedir, platform } from "node:os";
-import { delimiter, extname, isAbsolute, join } from "node:path";
+import { basename, delimiter, extname, isAbsolute, join } from "node:path";
 import type { Agent } from "../../types.js";
 
 export interface ExternalAgentConfig {
@@ -60,12 +60,14 @@ function extraUserBinDirs(): string[] {
   if (platform() === "win32") {
     return [
       join(localAppData, "Volta", "bin"),
+      process.env.ProgramFiles ? join(process.env.ProgramFiles, "Volta") : "",
+      process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"], "Volta") : "",
       join(home, ".local", "bin"),
       join(appData, "npm"),
       join(localAppData, "pnpm"),
       join(home, ".bun", "bin"),
       join(localAppData, "Programs", "cursor", "resources", "app", "bin"),
-    ].filter((dir) => existsSync(dir));
+    ].filter((dir) => dir && existsSync(dir));
   }
   return [
     join(home, ".local", "bin"),
@@ -151,6 +153,22 @@ export function needsWindowsShell(executable: string): boolean {
   return [".cmd", ".bat", ".com"].includes(extname(executable).toLowerCase());
 }
 
+function isVoltaShim(executable: string): boolean {
+  if (platform() !== "win32") return false;
+  if (!/[\\/]Volta[\\/]bin[\\/]/i.test(executable)) return false;
+  if (!needsWindowsShell(executable)) return false;
+  try {
+    const body = readFileSync(executable, "utf8");
+    return /\bvolta\s+run\b/i.test(body);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Spawn an external CLI. Volta shims (`volta run %~n0`) are expanded to
+ * `volta run <tool> ...` so Windows shell PATH quirks do not break startup.
+ */
 export function spawnExternalProcess(
   executable: string,
   args: string[],
@@ -160,9 +178,28 @@ export function spawnExternalProcess(
     stdio?: ["pipe", "pipe", "pipe"];
   } = {},
 ) {
+  const env = options.env ? envWithExtraPath(options.env) : envWithExtraPath(process.env);
+  if (isVoltaShim(executable)) {
+    const volta =
+      resolveExecutable("volta", env) ??
+      (process.env.ProgramFiles
+        ? join(process.env.ProgramFiles, "Volta", "volta.exe")
+        : null);
+    if (!volta || !isExecutable(volta)) {
+      throw new Error(`Volta shim ${executable} 需要 volta.exe，但未找到`);
+    }
+    const toolName = basename(executable, extname(executable));
+    return spawn(volta, ["run", toolName, ...args], {
+      cwd: options.cwd,
+      env,
+      stdio: options.stdio ?? ["pipe", "pipe", "pipe"],
+      windowsHide: true,
+      shell: false,
+    });
+  }
   return spawn(executable, args, {
     cwd: options.cwd,
-    env: options.env ? envWithExtraPath(options.env) : envWithExtraPath(process.env),
+    env,
     stdio: options.stdio ?? ["pipe", "pipe", "pipe"],
     windowsHide: true,
     shell: needsWindowsShell(executable),

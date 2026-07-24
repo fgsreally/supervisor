@@ -192,10 +192,10 @@ export const useSessionStore = defineStore("session", () => {
     root.clearError();
     try {
       const session = await api.importExternalSession(options);
-      sessions.value.unshift(session);
-      await fetchProjects();
-      return session;
+      await Promise.all([fetchSessions(), fetchProjects()]);
+      return getSessionById.value(session.id) ?? session;
     } catch (err) {
+      await fetchSessions().catch(() => undefined);
       root.setError(err instanceof Error ? err.message : "Failed to import external session");
       throw err;
     }

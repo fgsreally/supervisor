@@ -1,13 +1,13 @@
 <template>
   <div class="changes-wrap">
-    <button
-      class="chat-context-button"
-      type="button"
+    <ChatHeaderAction
       :title="`${files.length} 个变更文件`"
+      :active="open"
+      :count="files.length"
       @click="open = !open"
     >
-      <Files class="h-[17px] w-[17px]" /><span>{{ files.length }}</span>
-    </button>
+      <Files />
+    </ChatHeaderAction>
     <section v-if="open" class="changes-popover">
       <header>
         <strong>文件变更</strong><span>{{ files.length }} Files</span>
@@ -25,6 +25,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { FileCode2, Files } from "lucide-vue-next";
+import ChatHeaderAction from "./ChatHeaderAction.vue";
 
 export interface SessionChangedFileView {
   path: string;

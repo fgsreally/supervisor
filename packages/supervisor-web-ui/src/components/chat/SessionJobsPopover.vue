@@ -1,14 +1,13 @@
 <template>
   <div v-if="totalCount" class="jobs-popover-wrap">
-    <button
-      class="jobs-summary chat-context-button"
-      type="button"
+    <ChatHeaderAction
       :title="summaryTitle"
+      :active="open"
+      :count="totalCount"
       @click="open = !open"
     >
-      <Activity class="h-4 w-4" />
-      <span>{{ totalCount }}</span>
-    </button>
+      <Activity />
+    </ChatHeaderAction>
 
     <section v-if="open" class="jobs-popover" aria-label="Jobs">
       <header>
@@ -95,6 +94,7 @@ import {
   type SessionJob,
   type SessionJobSchedule,
 } from "@/api";
+import ChatHeaderAction from "./ChatHeaderAction.vue";
 
 export interface JobDetailRequest {
   title: string;
@@ -265,10 +265,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .jobs-popover-wrap {
   position: relative;
-}
-.jobs-summary {
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 8px;
 }
 .jobs-popover {
   position: absolute;

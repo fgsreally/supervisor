@@ -1,5 +1,6 @@
-import { accessSync, constants } from "node:fs";
+import { accessSync, constants, existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { homedir, platform } from "node:os";
 import { delimiter, extname, isAbsolute, join } from "node:path";
 import type { Agent } from "../../types.js";
 
@@ -51,6 +52,79 @@ function isExecutable(path: string): boolean {
   }
 }
 
+/** Extra dirs often missing when supervisor is launched from IDE / service managers. */
+function extraUserBinDirs(): string[] {
+  const home = homedir();
+  const localAppData = process.env.LOCALAPPDATA ?? join(home, "AppData", "Local");
+  const appData = process.env.APPDATA ?? join(home, "AppData", "Roaming");
+  if (platform() === "win32") {
+    return [
+      join(localAppData, "Volta", "bin"),
+      join(home, ".local", "bin"),
+      join(appData, "npm"),
+      join(localAppData, "pnpm"),
+      join(home, ".bun", "bin"),
+      join(localAppData, "Programs", "cursor", "resources", "app", "bin"),
+    ].filter((dir) => existsSync(dir));
+  }
+  return [
+    join(home, ".local", "bin"),
+    join(home, ".volta", "bin"),
+    join(home, ".npm-global", "bin"),
+    join(home, ".bun", "bin"),
+    "/usr/local/bin",
+    "/opt/homebrew/bin",
+  ].filter((dir) => existsSync(dir));
+}
+
+function pathSearchDirs(env: NodeJS.ProcessEnv): string[] {
+  const fromEnv = (env.PATH ?? "").split(delimiter).filter(Boolean);
+  const seen = new Set<string>();
+  const dirs: string[] = [];
+  for (const directory of [...fromEnv, ...extraUserBinDirs()]) {
+    const normalized = directory.replace(/^"|"$/g, "");
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    dirs.push(normalized);
+  }
+  return dirs;
+}
+
+function envWithExtraPath(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const dirs = pathSearchDirs(env);
+  return {
+    ...env,
+    PATH: dirs.join(delimiter),
+  };
+}
+
+function resolveViaWhere(command: string, env: NodeJS.ProcessEnv): string | null {
+  const searchEnv = envWithExtraPath(env);
+  if (platform() === "win32") {
+    const result = spawnSync("where.exe", [command], {
+      env: searchEnv,
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 5000,
+      shell: true,
+    });
+    if (result.status !== 0) return null;
+    const first = (result.stdout ?? "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find(Boolean);
+    return first && isExecutable(first) ? first : null;
+  }
+  const result = spawnSync("which", [command], {
+    env: searchEnv,
+    encoding: "utf8",
+    timeout: 5000,
+  });
+  if (result.status !== 0) return null;
+  const first = (result.stdout ?? "").trim().split(/\r?\n/)[0]?.trim();
+  return first && isExecutable(first) ? first : null;
+}
+
 export function resolveExecutable(command: string, env = process.env): string | null {
   if (!command) return null;
   if (isAbsolute(command) || command.includes("/") || command.includes("\\")) {
@@ -62,13 +136,13 @@ export function resolveExecutable(command: string, env = process.env): string | 
         ? [""]
         : (env.PATHEXT ?? ".COM;.EXE;.BAT;.CMD").split(";")
       : [""];
-  for (const directory of (env.PATH ?? "").split(delimiter).filter(Boolean)) {
+  for (const directory of pathSearchDirs(env)) {
     for (const extension of extensions) {
-      const candidate = join(directory.replace(/^"|"$/g, ""), `${command}${extension}`);
+      const candidate = join(directory, `${command}${extension}`);
       if (isExecutable(candidate)) return candidate;
     }
   }
-  return null;
+  return resolveViaWhere(command, env);
 }
 
 export function externalAgentAvailability(agent: Agent): {
@@ -88,7 +162,8 @@ export function externalAgentAvailability(agent: Agent): {
     };
   }
   const { command, env } = getExternalAgentConfig(agent);
-  const executablePath = resolveExecutable(command, { ...process.env, ...env });
+  const mergedEnv = envWithExtraPath({ ...process.env, ...env });
+  const executablePath = resolveExecutable(command, mergedEnv);
   if (!executablePath)
     return {
       available: false,
@@ -98,10 +173,11 @@ export function externalAgentAvailability(agent: Agent): {
       compatibility: "unavailable",
     };
   const result = spawnSync(executablePath, ["--version"], {
-    env: { ...process.env, ...env },
+    env: mergedEnv,
     encoding: "utf8",
-    timeout: 3000,
+    timeout: 5000,
     windowsHide: true,
+    shell: platform() === "win32",
   });
   const detectedVersion =
     `${result.stdout ?? ""}\n${result.stderr ?? ""}`.trim().split(/\r?\n/)[0] || null;

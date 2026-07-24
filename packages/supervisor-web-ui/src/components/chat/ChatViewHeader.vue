@@ -33,15 +33,6 @@
     <div class="ml-auto flex items-center gap-1">
       <slot name="actions" />
       <button
-        v-if="searchOpen"
-        type="button"
-        class="p-1.5 rounded-md transition-colors chat-header-btn"
-        title="关闭搜索"
-        @click="emit('close-search')"
-      >
-        <X class="w-[18px] h-[18px]" />
-      </button>
-      <button
         type="button"
         class="p-1.5 rounded-md transition-colors chat-header-btn"
         title="聊天信息"
@@ -55,7 +46,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { ChevronLeft, MoreHorizontal, X } from "lucide-vue-next";
+import { ChevronLeft, MoreHorizontal } from "lucide-vue-next";
 import type { WorkflowState } from "@/utils/workflow";
 import WorkflowStageTag from "../WorkflowStageTag.vue";
 
@@ -76,7 +67,6 @@ const props = defineProps<{
   agentId?: string;
   statusKey: ChatHeaderStatus | string;
   showBack?: boolean;
-  searchOpen?: boolean;
   workflow?: WorkflowState | null;
 }>();
 
@@ -84,7 +74,6 @@ const emit = defineEmits<{
   back: [];
   "view-agent": [agentId: string];
   "open-menu": [];
-  "close-search": [];
 }>();
 
 const statusLabel = computed(() => {
@@ -132,6 +121,7 @@ const statusBadgeClass = computed(() => {
 <style scoped>
 .chat-header-btn {
   color: var(--app-nav-icon);
+  cursor: pointer;
 }
 
 .chat-header-status {

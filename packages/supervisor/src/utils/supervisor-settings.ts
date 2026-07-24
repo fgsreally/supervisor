@@ -9,6 +9,7 @@ export const UTILITY_FEATURES = [
   "summary",
   "daily-work",
   "task-decompose",
+  "project-description",
 ] as const;
 
 export type UtilityFeature = (typeof UTILITY_FEATURES)[number];

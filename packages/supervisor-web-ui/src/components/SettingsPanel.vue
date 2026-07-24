@@ -237,6 +237,11 @@ const utilityFeatures: Array<{ id: UtilityFeature; label: string; hint?: string 
   { id: "summary", label: "上下文摘要", hint: "会话过长时压缩上下文" },
   { id: "daily-work", label: "当日工作分析", hint: "汇总前一天的 sv commit" },
   { id: "task-decompose", label: "任务分解", hint: "首页任务拆解并创建 session" },
+  {
+    id: "project-description",
+    label: "项目描述",
+    hint: "创建/刷新项目时用临时 Coding Agent 整理描述",
+  },
 ];
 
 const form = reactive({
@@ -253,6 +258,7 @@ const featureModelKeys = reactive<Record<UtilityFeature, string>>({
   summary: "",
   "daily-work": "",
   "task-decompose": "",
+  "project-description": "",
 });
 const modelOptions = ref<Array<{ key: string; label: string; ref: FeatureModelRef }>>([]);
 const envNames = reactive<Record<"tavily" | "brave" | "serper" | "firecrawl", string>>({

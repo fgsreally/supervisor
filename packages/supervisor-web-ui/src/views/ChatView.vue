@@ -12,59 +12,58 @@
       :status-key="headerStatusKey"
       :workflow="workflow"
       :show-back="showBack"
-      :search-open="searchOpen"
       @back="emit('back')"
       @view-agent="emit('view-agent', $event)"
       @open-menu="sessionMenuOpen = true"
-      @close-search="closeSearch"
     >
       <template #actions>
         <div class="desktop-session-actions">
-          <button class="chat-header-action" type="button" title="搜索消息" @click="openSearch">
-            <Search class="h-[17px] w-[17px]" />
-          </button>
-          <button
-            class="chat-header-action"
-            type="button"
-            title="查看会话日志"
-            @click="showLogPanel = true"
+          <ChatHeaderAction
+            title="搜索消息"
+            :active="searchOpen"
+            @click="toggleSearch"
           >
-            <ScrollText class="h-[17px] w-[17px]" />
-          </button>
+            <Search />
+          </ChatHeaderAction>
+          <ChatHeaderAction
+            title="查看会话日志"
+            :active="showLogPanel"
+            @click="showLogPanel = !showLogPanel"
+          >
+            <ScrollText />
+          </ChatHeaderAction>
           <SessionCommitPopover :session-id="session.id" />
-          <button
+          <ChatHeaderAction
             v-if="tasks.length"
-            class="chat-header-action context-count"
-            type="button"
             :title="`任务 · ${taskTypeSummary}`"
+            :active="taskPaneOpen"
+            :count="tasks.length"
             @click="taskPaneOpen = !taskPaneOpen"
           >
-            <ClipboardList class="h-[17px] w-[17px]" /><span>{{ tasks.length }}</span>
-          </button>
+            <ClipboardList />
+          </ChatHeaderAction>
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
           <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
         </div>
         <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
-        <button
+        <ChatHeaderAction
           v-if="hasEvalActivity"
-          class="chat-header-action"
-          type="button"
           title="查看 Eval"
-          @click="openEvalPanel"
+          :active="toolPanel?.terminal === 'eval'"
+          @click="toggleEvalPanel"
         >
-          <Braces class="h-[17px] w-[17px]" />
-        </button>
+          <Braces />
+        </ChatHeaderAction>
         <div class="mobile-session-actions">
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
           <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
-          <button
-            class="chat-header-action"
-            type="button"
+          <ChatHeaderAction
             title="会话工具"
+            :active="sessionActionsOpen"
             @click="sessionActionsOpen = true"
           >
-            <SlidersHorizontal class="h-[18px] w-[18px]" />
-          </button>
+            <SlidersHorizontal />
+          </ChatHeaderAction>
         </div>
       </template>
     </ChatViewHeader>
@@ -386,6 +385,7 @@ import TaskWorkspacePanel from "../components/chat/TaskWorkspacePanel.vue";
 import SessionJobsPopover, {
   type JobDetailRequest,
 } from "../components/chat/SessionJobsPopover.vue";
+import ChatHeaderAction from "../components/chat/ChatHeaderAction.vue";
 import SessionTodoPopover from "../components/chat/SessionTodoPopover.vue";
 import SessionChangesPopover, {
   type SessionChangedFileView,
@@ -890,6 +890,14 @@ async function onSpawnedAgentsChange(spawnedAgentIds: string[]) {
   }
 }
 
+function toggleSearch() {
+  if (searchOpen.value) {
+    closeSearch();
+    return;
+  }
+  openSearch();
+}
+
 function openSearch() {
   searchOpen.value = true;
   sessionMenuOpen.value = false;
@@ -1210,6 +1218,14 @@ function openEvalPanel() {
   };
 }
 
+function toggleEvalPanel() {
+  if (toolPanel.value?.terminal === "eval") {
+    toolPanel.value = null;
+    return;
+  }
+  openEvalPanel();
+}
+
 async function openBashDetail(
   command: string,
   resultContent?: Array<{ type: string; text: string }>,
@@ -1473,33 +1489,6 @@ async function executeCustomSlash(name: string) {
 
 .mobile-session-actions {
   display: none;
-}
-
-.chat-header-action {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  min-width: 30px;
-  height: 30px;
-  border-radius: 6px;
-  color: var(--app-text-secondary);
-  font-size: 11px;
-  transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    transform 0.1s ease;
-}
-
-.chat-header-action:hover,
-.chat-header-action:focus-visible {
-  color: #07a65a;
-  background: var(--app-hover);
-  outline: none;
-}
-
-.chat-header-action:active {
-  transform: scale(0.94);
 }
 
 .chat-workspace {

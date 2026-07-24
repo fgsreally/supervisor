@@ -51,6 +51,7 @@ import {
   type SessionStatus,
 } from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
+import { pickDirectory } from "../utils/pick-directory.js";
 
 /** Strip apiKey before sending provider to clients. */
 function toProviderResponse(p: Provider): Omit<Provider, "apiKey"> & { apiKey: null } {
@@ -611,6 +612,19 @@ export function createHttpServer(manager: SessionManager): Hono {
 
   app.post("/agents/detect", (c) => c.json(manager.detectExternalAgents()));
 
+  // POST /system/pick-directory — native folder dialog on the supervisor host
+  app.post("/system/pick-directory", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const defaultPath = typeof body.defaultPath === "string" ? body.defaultPath : undefined;
+    try {
+      const path = pickDirectory(defaultPath);
+      if (!path) return c.json({ cancelled: true, path: null });
+      return c.json({ cancelled: false, path });
+    } catch (error) {
+      return jsonError(c, 500, error instanceof Error ? error.message : String(error));
+    }
+  });
+
   // GET /agents/:id
   app.get("/agents/:id", (c) => {
     const id = parseIntegerId(c.req.param("id"));
@@ -1021,6 +1035,19 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (!project) return jsonError(c, 404, "not found");
     manager.deleteProject(id);
     return c.json({ ok: true });
+  });
+
+  app.post("/projects/:id/describe", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid project id");
+    if (!manager.getProject(id)) return jsonError(c, 404, "not found");
+    try {
+      const result = await manager.generateProjectDescription(id);
+      return c.json({ ...result, project: manager.getProject(id) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return jsonError(c, message.includes("未配置") || message.includes("不可用") ? 400 : 500, message);
+    }
   });
 
   app.post("/projects/:id/git/pull", async (c) => {
@@ -1860,21 +1887,25 @@ export function createHttpServer(manager: SessionManager): Hono {
 
   // GET /sessions/:id/commands — dynamic slash commands (skills + prompt templates)
   app.get("/sessions/:id/commands", async (c) => {
+    const sessionId = parseIntegerId(c.req.param("id"));
+    if (sessionId === null) return jsonError(c, 400, "invalid session id");
+    if (!manager.get(sessionId)) return jsonError(c, 404, "not found");
+    let commands: ReturnType<SessionManager["listTaskSlashCommands"]> = [];
     try {
-      const sessionId = parseIntegerId(c.req.param("id"));
-      if (sessionId === null) return jsonError(c, 400, "invalid session id");
-      if (!manager.get(sessionId)) return jsonError(c, 404, "not found");
-      let commands: ReturnType<SessionManager["listTaskSlashCommands"]> = [];
-      try {
-        const runtime = await manager.ensureRuntime(sessionId);
-        commands = runtime.getSlashCommands();
-      } catch {
-        // Idle/external/unrestorable sessions still expose builtin task commands.
-      }
+      const runtime = await manager.ensureRuntime(sessionId);
+      commands = runtime.getSlashCommands();
+    } catch {
+      // Idle/external/unrestorable sessions still expose builtin task commands.
+    }
+    try {
       return c.json(manager.mergeSessionSlashCommands(commands));
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      return jsonError(c, 409, message);
+      // Listing commands must not fail the composer; fall back to builtins.
+      console.error(
+        `[commands] merge failed for session ${sessionId}:`,
+        e instanceof Error ? e.message : String(e),
+      );
+      return c.json(manager.listTaskSlashCommands());
     }
   });
 

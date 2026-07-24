@@ -23,7 +23,7 @@
             <button
               type="button"
               class="project-settings-modal__icon"
-              :disabled="busy || saving"
+              :disabled="busy || saving || regenerating"
               title="关闭"
               @click="emit('close')"
             >
@@ -39,13 +39,13 @@
                   v-model="draftName"
                   type="text"
                   class="project-settings-modal__input"
-                  :disabled="busy || saving"
+                  :disabled="busy || saving || regenerating"
                   @keydown.enter.prevent="saveName"
                 />
                 <button
                   type="button"
                   class="project-settings-modal__save"
-                  :disabled="busy || saving || !nameDirty"
+                  :disabled="busy || saving || regenerating || !nameDirty"
                   @click="saveName"
                 >
                   {{ saving ? "..." : "保存" }}
@@ -57,6 +57,43 @@
               <label class="project-settings-modal__label">路径</label>
               <div class="project-settings-modal__path" :title="cwd">{{ cwd || "—" }}</div>
             </div>
+
+            <div>
+              <div class="project-settings-modal__desc-head">
+                <label class="project-settings-modal__label">项目描述</label>
+                <button
+                  type="button"
+                  class="project-settings-modal__refresh"
+                  title="重新生成项目描述"
+                  :disabled="busy || regenerating"
+                  @click="emit('regenerate-description')"
+                >
+                  <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': regenerating }" />
+                  刷新
+                </button>
+              </div>
+              <div class="project-settings-modal__desc">
+                <template v-if="regenerating || descriptionStatus === 'pending'">
+                  <span class="project-settings-modal__muted">正在生成项目描述…</span>
+                </template>
+                <template v-else-if="description">
+                  {{ description }}
+                </template>
+                <template v-else-if="descriptionStatus === 'skipped'">
+                  <span class="project-settings-modal__muted">
+                    {{ descriptionError || "未配置「项目描述」功能模型" }}
+                  </span>
+                </template>
+                <template v-else-if="descriptionStatus === 'error'">
+                  <span class="project-settings-modal__error">
+                    {{ descriptionError || "生成失败" }}
+                  </span>
+                </template>
+                <template v-else>
+                  <span class="project-settings-modal__muted">暂无描述，可点刷新生成</span>
+                </template>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -66,18 +103,23 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { X } from "lucide-vue-next";
+import { RefreshCw, X } from "lucide-vue-next";
 
 const props = defineProps<{
   open: boolean;
   name?: string;
   cwd?: string;
+  description?: string | null;
+  descriptionStatus?: string | null;
+  descriptionError?: string | null;
   busy?: boolean;
+  regenerating?: boolean;
 }>();
 
 const emit = defineEmits<{
   close: [];
   rename: [name: string];
+  "regenerate-description": [];
 }>();
 
 const draftName = ref("");
@@ -98,20 +140,15 @@ watch(
 );
 
 function onBackdrop() {
-  if (busyOrSaving()) return;
+  if (props.busy || props.regenerating) return;
   emit("close");
 }
 
-function busyOrSaving() {
-  return Boolean(props.busy) || saving.value;
-}
-
 async function saveName() {
-  if (!nameDirty.value || busyOrSaving()) return;
-  const next = draftName.value.trim();
+  if (!nameDirty.value || props.busy || saving.value) return;
   saving.value = true;
   try {
-    emit("rename", next);
+    emit("rename", draftName.value.trim());
   } finally {
     saving.value = false;
   }
@@ -120,36 +157,20 @@ async function saveName() {
 
 <style scoped>
 .project-settings-modal {
-  color: var(--app-text-primary);
   background: var(--app-popup-bg);
   border-color: var(--app-popup-border);
+  color: var(--app-text-primary);
 }
 
 .project-settings-modal__header {
   border-color: var(--app-border-subtle);
 }
 
-.project-settings-modal__icon {
-  padding: 4px;
-  border-radius: 6px;
-  color: var(--app-text-muted);
-}
-
-.project-settings-modal__icon:hover:not(:disabled) {
-  color: var(--app-text-primary);
-  background: var(--app-hover);
-}
-
-.project-settings-modal__icon:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
 .project-settings-modal__label {
   display: block;
+  margin-bottom: 6px;
   font-size: 12px;
   color: var(--app-text-secondary);
-  margin-bottom: 6px;
 }
 
 .project-settings-modal__row {
@@ -160,53 +181,118 @@ async function saveName() {
 .project-settings-modal__input {
   flex: 1;
   min-width: 0;
+  height: 34px;
+  padding: 0 10px;
   border: 1px solid var(--app-border);
-  background: var(--app-settings-card, var(--app-popup-bg));
+  border-radius: 6px;
+  background: var(--app-chat-bg);
   color: var(--app-text-primary);
-  border-radius: 6px;
-  padding: 8px 10px;
   font-size: 13px;
 }
 
-.project-settings-modal__input:focus {
-  outline: none;
-  border-color: #07c160;
-}
-
-.project-settings-modal__save {
-  flex: none;
-  padding: 0 14px;
+.project-settings-modal__save,
+.project-settings-modal__refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 12px;
   border-radius: 6px;
-  font-size: 13px;
-  background: #07c160;
+  background: var(--app-accent);
   color: #fff;
+  font-size: 13px;
+  white-space: nowrap;
 }
 
-.project-settings-modal__save:disabled {
+.project-settings-modal__save:disabled,
+.project-settings-modal__refresh:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.project-settings-modal__path {
-  padding: 8px 10px;
+.project-settings-modal__refresh {
+  height: 28px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--app-btn-secondary-border);
+  color: var(--app-btn-secondary-text);
+}
+
+.project-settings-modal__refresh:hover:not(:disabled) {
+  background: var(--app-btn-secondary-hover-bg);
+}
+
+.project-settings-modal__icon {
+  padding: 4px;
   border-radius: 6px;
-  border: 1px solid var(--app-border);
-  background: var(--app-settings-card, transparent);
-  color: var(--app-text-secondary);
-  font-size: 12px;
-  line-height: 1.45;
+  color: var(--app-text-muted);
+}
+
+.project-settings-modal__icon:hover:not(:disabled) {
+  background: var(--app-hover);
+  color: var(--app-text-primary);
+}
+
+.project-settings-modal__path,
+.project-settings-modal__desc {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--app-chat-bg);
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--app-text-primary);
   word-break: break-all;
-  max-height: 6.2em;
-  overflow: auto;
+}
+
+.project-settings-modal__desc {
+  min-height: 72px;
+  max-height: 220px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.project-settings-modal__desc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.project-settings-modal__desc-head .project-settings-modal__label {
+  margin-bottom: 0;
+}
+
+.project-settings-modal__muted {
+  color: var(--app-text-muted);
+}
+
+.project-settings-modal__error {
+  color: #e54d42;
 }
 
 .project-settings-enter-active,
 .project-settings-leave-active {
-  transition: opacity 0.2s ease;
+  transition: opacity 0.18s ease;
+}
+
+.project-settings-enter-active .project-settings-modal,
+.project-settings-leave-active .project-settings-modal {
+  transition:
+    transform 0.2s ease,
+    opacity 0.18s ease;
 }
 
 .project-settings-enter-from,
 .project-settings-leave-to {
+  opacity: 0;
+}
+
+.project-settings-enter-from .project-settings-modal,
+.project-settings-leave-to .project-settings-modal {
+  transform: scale(0.96);
   opacity: 0;
 }
 </style>

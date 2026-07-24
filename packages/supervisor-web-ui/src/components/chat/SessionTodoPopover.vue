@@ -1,14 +1,13 @@
 <template>
   <div class="todo-popover-wrap">
-    <button
-      class="chat-context-button"
-      type="button"
+    <ChatHeaderAction
       :title="`Todo · ${todos.length}`"
+      :active="open"
+      :count="todos.length"
       @click="open = !open"
     >
-      <ClipboardList class="h-[17px] w-[17px]" />
-      <span>{{ todos.length }}</span>
-    </button>
+      <ClipboardList />
+    </ChatHeaderAction>
     <section v-if="open" class="todo-popover" aria-label="Todo">
       <header>
         Todo <span>{{ completedCount }}/{{ todos.length }}</span>
@@ -29,6 +28,7 @@
 import { computed, ref } from "vue";
 import { CheckCircle2, Circle, ClipboardList, Loader2 } from "lucide-vue-next";
 import type { TodoItem } from "@/api";
+import ChatHeaderAction from "./ChatHeaderAction.vue";
 
 const props = defineProps<{ todos: TodoItem[] }>();
 const open = ref(false);
@@ -53,52 +53,56 @@ const completedCount = computed(() => props.todos.filter((todo) => todo.status =
 }
 .todo-popover header {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
-  padding: 11px 13px;
+  gap: 8px;
+  padding: 10px 12px 8px;
   color: var(--app-text-primary);
   font-size: 13px;
   font-weight: 600;
 }
 .todo-popover header span {
   color: var(--app-text-muted);
+  font-size: 12px;
   font-weight: 400;
 }
 .todo-popover ul {
-  padding: 0 6px 7px;
+  margin: 0;
+  max-height: min(50vh, 360px);
+  overflow-y: auto;
+  padding: 0 0 8px;
+  list-style: none;
 }
 .todo-popover li {
   display: flex;
   align-items: flex-start;
-  gap: 9px;
-  padding: 8px;
-  border-radius: 7px;
+  gap: 8px;
+  padding: 8px 12px;
   color: var(--app-text-primary);
   font-size: 13px;
-}
-.todo-popover li:hover {
-  background: var(--app-popup-hover);
+  line-height: 1.4;
 }
 .todo-popover li svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   margin-top: 2px;
+  flex-shrink: 0;
   color: var(--app-text-muted);
 }
-.todo-popover li .todo-done,
-.todo-popover li .todo-progress {
-  color: var(--app-accent);
+.todo-done {
+  color: var(--app-accent) !important;
 }
-.completed {
+.todo-progress {
+  color: #f0c040 !important;
+  animation: spin 1s linear infinite;
+}
+.todo-popover .completed {
   color: var(--app-text-muted);
   text-decoration: line-through;
 }
-@media (max-width: 767px) {
-  .todo-popover {
-    position: fixed;
-    top: 64px;
-    right: 10px;
-    left: 10px;
-    width: auto;
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 </style>

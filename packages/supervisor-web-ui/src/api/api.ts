@@ -31,7 +31,8 @@ export type UtilityFeature =
   | "session-title"
   | "summary"
   | "daily-work"
-  | "task-decompose";
+  | "task-decompose"
+  | "project-description";
 
 export interface SupervisorSettings {
   utilityProvider?: string;
@@ -740,6 +741,32 @@ export async function pushProjectGit(id: string): Promise<ProjectGitResult> {
   return postJson<ProjectGitResult>(`/projects/${id}/git/push`, {});
 }
 
+export async function pickDirectory(
+  defaultPath?: string,
+): Promise<{ cancelled: boolean; path: string | null }> {
+  return postJson<{ cancelled: boolean; path: string | null }>("/system/pick-directory", {
+    defaultPath,
+  });
+}
+
+export async function regenerateProjectDescription(id: string): Promise<{
+  description: string | null;
+  status: "ready" | "skipped" | "error";
+  error?: string;
+  project: Project;
+}> {
+  const result = await postJson<{
+    description: string | null;
+    status: "ready" | "skipped" | "error";
+    error?: string;
+    project: RawProject;
+  }>(`/projects/${id}/describe`, {});
+  return {
+    ...result,
+    project: mapProject(result.project),
+  };
+}
+
 // ============ Home API ============
 
 export type HomeTaskStatus = "backlog" | "todo" | "in_progress" | "blocked" | "done" | "error";
@@ -1279,7 +1306,24 @@ export async function getSessionMessagesPage(
   params.set("limit", String(options?.limit ?? 80));
   if (options?.beforeId != null) params.set("beforeId", String(options.beforeId));
   if (options?.view) params.set("view", options.view);
-  return fetchJson<SessionMessagesPage>(`/sessions/${id}/messages?${params.toString()}`);
+  const data = await fetchJson<SessionMessagesPage | SessionTreeEntry[]>(
+    `/sessions/${id}/messages?${params.toString()}`,
+  );
+  // Legacy backends ignore limit/view and return a bare array.
+  if (Array.isArray(data)) {
+    return {
+      messages: data,
+      hasMore: false,
+      oldestRowId: null,
+      newestRowId: null,
+    };
+  }
+  return {
+    messages: Array.isArray(data.messages) ? data.messages : [],
+    hasMore: Boolean(data.hasMore),
+    oldestRowId: typeof data.oldestRowId === "number" ? data.oldestRowId : null,
+    newestRowId: typeof data.newestRowId === "number" ? data.newestRowId : null,
+  };
 }
 
 /** Full single message payload (for opening truncated tool results etc.). */

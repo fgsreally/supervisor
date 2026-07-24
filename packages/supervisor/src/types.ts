@@ -79,6 +79,8 @@ export interface CreateSessionOptions {
   branchType?: SessionBranchType | null;
   creationMethod?: SessionCreationMethod;
   contextLeafId?: string | null;
+  /** Override default list visibility (root sessions are visible by default). */
+  showInSessionList?: boolean;
 }
 
 export interface ProjectRow {
@@ -114,8 +116,10 @@ export interface SpawnSessionOptions extends CreateSessionOptions {
   systemPrompt?: string;
   /** Optional first user message, run after spawn. */
   instructions?: string;
-  /** LLM provider (default: anthropic). */
+  /** LLM provider slug (default: anthropic). Used when providerId is absent. */
   provider?: string;
+  /** DB provider id — preferred when binding a settings feature model. */
+  providerId?: number;
   /** Model ID (default: claude-sonnet-4-6). */
   model?: string;
   toolsPreset?: ToolsPreset;

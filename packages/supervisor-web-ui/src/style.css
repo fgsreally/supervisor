@@ -7,10 +7,12 @@
   align-items: center;
   justify-content: center;
   gap: 3px;
-  padding: 0 7px;
+  padding: 0 6px;
   border-radius: 6px;
   color: var(--app-text-secondary);
   font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
   transition:
     background-color 0.15s ease,
     color 0.15s ease,
@@ -22,10 +24,102 @@
   color: var(--app-accent);
   background: var(--app-hover);
   outline: none;
+  cursor: pointer;
 }
 
 .chat-context-button:active {
   transform: scale(0.94);
+}
+
+.chat-header-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.chat-header-action svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.chat-header-action span {
+  min-width: 12px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  color: inherit;
+}
+
+/** Job-style count pill — use on goal / job / todo count buttons. */
+.chat-header-action--count {
+  gap: 2px;
+}
+
+.chat-header-action--count > span {
+  min-width: 14px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-accent) 16%, transparent);
+  color: var(--app-accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
+.chat-header-action:hover,
+.chat-header-action:focus-visible {
+  color: var(--app-accent);
+  background: var(--app-hover);
+  outline: none;
+  cursor: pointer;
+}
+
+.chat-header-action--count:hover > span,
+.chat-header-action--count:focus-visible > span {
+  background: color-mix(in srgb, var(--app-accent) 22%, transparent);
+  color: var(--app-accent);
+}
+
+.chat-header-action--active {
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent) 12%, transparent);
+}
+
+.chat-header-action--active:hover,
+.chat-header-action--active:focus-visible {
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent) 18%, transparent);
+}
+
+.chat-header-action--active.chat-header-action--count > span {
+  background: color-mix(in srgb, var(--app-accent) 22%, transparent);
+  color: var(--app-accent);
+}
+
+.chat-header-action:active {
+  transform: scale(0.94);
+}
+
+.chat-header-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
 }
 
 /* ========== Light (WeChat PC) ========== */

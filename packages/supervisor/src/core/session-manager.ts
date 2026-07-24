@@ -59,7 +59,14 @@ import { attachHomeTaskSessionSync } from "./home-task-sync.js";
 import {
   generateTaskDecomposition,
   resolveFeatureModelAuth,
+  resolveFeatureModelRef,
 } from "../utils/utility-llm.js";
+import {
+  buildProjectDescriptionInstructions,
+  normalizeProjectDescription,
+  PROJECT_DESCRIPTION_META,
+  readAssistantTextFromPayload,
+} from "./project-description.js";
 import type {
   CreateHomeTaskOptions,
   HomeTask,
@@ -781,10 +788,11 @@ export class SessionManager {
       options.creationMethod ??
       (branchType === "subagent" ? "spawn_agent" : branchType === null ? "user" : branchType);
     const showInSessionList =
-      options.parentId == null ||
-      creationMethod === "spawn_agent" ||
-      branchType === "fork" ||
-      branchType === "clone";
+      options.showInSessionList ??
+      (options.parentId == null ||
+        creationMethod === "spawn_agent" ||
+        branchType === "fork" ||
+        branchType === "clone");
     const agent = options.agentId ? this.db.getAgent(options.agentId) : undefined;
     const meta = withDefaultSessionAvatar(options.meta, agent);
     const row = this.db.insert({
@@ -840,7 +848,8 @@ export class SessionManager {
 
     if (
       agentInDb?.backendType === "native" &&
-      (agentInDb.providerId == null || agentInDb.modelId == null)
+      (agentInDb.providerId == null || agentInDb.modelId == null) &&
+      !(options.providerId != null && options.model)
     ) {
       this.db.updateMeta(activeSession.id, { modelRequired: true });
       this.db.updateStatus(activeSession.id, "idle");
@@ -864,12 +873,15 @@ export class SessionManager {
     }
 
     const modelId = options.model ?? agentInDb?.modelId ?? DEFAULT_MODEL_ID;
-    const provider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
     let model =
-      agentInDb?.providerId != null
-        ? resolveModelWithProviderOverrides(this.db, agentInDb.providerId, modelId)
+      options.providerId != null
+        ? resolveModelWithProviderOverrides(this.db, options.providerId, modelId)
         : undefined;
+    if (!model && agentInDb?.providerId != null) {
+      model = resolveModelWithProviderOverrides(this.db, agentInDb.providerId, modelId);
+    }
     if (!model) {
+      const provider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
       model = getModel(provider, modelId as never);
     }
 
@@ -1477,13 +1489,138 @@ export class SessionManager {
 
   createProject(options: { name?: string; cwd: string; meta?: Record<string, unknown> }) {
     const branch = ensureGitRepositorySync(options.cwd);
-    const project = this.db.insertProject(options);
+    const project = this.db.insertProject({
+      ...options,
+      meta: {
+        ...(options.meta ?? {}),
+        [PROJECT_DESCRIPTION_META.status]: "pending",
+      },
+    });
     if (project.defaultBranch !== branch) this.db.updateProjectDefaultBranch(project.id, branch);
-    return this.db.getProject(project.id)!;
+    const created = this.db.getProject(project.id)!;
+    void this.generateProjectDescription(created.id).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      try {
+        this.db.updateProjectMeta(created.id, {
+          [PROJECT_DESCRIPTION_META.status]: "error",
+          [PROJECT_DESCRIPTION_META.error]: message,
+        });
+      } catch {
+        // project may have been deleted
+      }
+    });
+    return created;
   }
 
   updateProject(id: number, patch: { name?: string; meta?: Record<string, unknown> }) {
     return this.db.updateProject(id, patch);
+  }
+
+  /**
+   * Spawn a temporary readonly coding agent with the project-description feature model,
+   * explore the repo, and write `meta.description`.
+   */
+  async generateProjectDescription(projectId: number): Promise<{
+    description: string | null;
+    status: "ready" | "skipped" | "error";
+    error?: string;
+  }> {
+    const project = this.db.getProject(projectId);
+    if (!project) throw new Error(`Project ${projectId} not found`);
+
+    const ref = resolveFeatureModelRef("project-description");
+    if (!ref) {
+      this.db.updateProjectMeta(projectId, {
+        [PROJECT_DESCRIPTION_META.status]: "skipped",
+        [PROJECT_DESCRIPTION_META.error]: "未配置「项目描述」功能模型",
+      });
+      return { description: null, status: "skipped", error: "未配置「项目描述」功能模型" };
+    }
+
+    const auth = await resolveFeatureModelAuth(this.db, "project-description");
+    if (!auth) {
+      const message = "「项目描述」功能模型不可用（检查 Provider / API Key）";
+      this.db.updateProjectMeta(projectId, {
+        [PROJECT_DESCRIPTION_META.status]: "pending",
+        [PROJECT_DESCRIPTION_META.error]: message,
+      });
+      throw new Error(message);
+    }
+
+    const agentId =
+      findPackagedAgentId(this.db, "coding") ?? this.resolveDefaultSpawnAgentId();
+
+    this.db.updateProjectMeta(projectId, {
+      [PROJECT_DESCRIPTION_META.status]: "pending",
+      [PROJECT_DESCRIPTION_META.error]: null,
+    });
+
+    let sessionId: number | null = null;
+    try {
+      const session = await this.spawn({
+        projectId,
+        cwd: project.cwd,
+        agentId,
+        toolsPreset: "readonly",
+        providerId: ref.providerId,
+        model: ref.modelId,
+        showInSessionList: false,
+        instructions: buildProjectDescriptionInstructions(project),
+        meta: {
+          name: `项目描述 · ${project.name}`,
+          source: "project-description",
+          ephemeral: true,
+        },
+      });
+      sessionId = session.id;
+      this.db.updateProjectMeta(projectId, {
+        [PROJECT_DESCRIPTION_META.sessionId]: session.id,
+      });
+
+      await this.waitForSessionIdle(session.id, { timeoutMs: 10 * 60 * 1000 });
+
+      const message = this.db.db
+        .prepare(
+          `SELECT payload
+           FROM messages
+           WHERE session_id = ? AND message_role = 'assistant'
+           ORDER BY created_at DESC
+           LIMIT 1`,
+        )
+        .get(session.id) as { payload?: string } | undefined;
+      const raw = message?.payload ? readAssistantTextFromPayload(message.payload) : "";
+      const description = normalizeProjectDescription(raw);
+      if (!description) throw new Error("模型未返回项目描述");
+
+      this.db.updateProjectMeta(projectId, {
+        [PROJECT_DESCRIPTION_META.description]: description,
+        [PROJECT_DESCRIPTION_META.status]: "ready",
+        [PROJECT_DESCRIPTION_META.error]: null,
+        [PROJECT_DESCRIPTION_META.updatedAt]: new Date().toISOString(),
+      });
+
+      try {
+        this.delete(session.id);
+      } catch {
+        this.db.updateSessionListVisibility(session.id, false);
+      }
+
+      return { description, status: "ready" };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.db.updateProjectMeta(projectId, {
+        [PROJECT_DESCRIPTION_META.status]: "error",
+        [PROJECT_DESCRIPTION_META.error]: message,
+      });
+      if (sessionId != null) {
+        try {
+          this.db.updateSessionListVisibility(sessionId, false);
+        } catch {
+          // ignore
+        }
+      }
+      throw error;
+    }
   }
 
   listImportableExternalSessions(limit?: number) {

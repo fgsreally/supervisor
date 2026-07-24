@@ -4,17 +4,17 @@
     :style="{ ...panelStyle, background: 'var(--app-list-bg)' }"
   >
     <div
-      class="h-16 flex items-center px-4 shrink-0 border-b"
+      class="h-16 flex items-center px-4 shrink-0 border-b gap-1"
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
       <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">聊天</h1>
       <button
         type="button"
         class="chat-home-settings"
-        title="创建聊天"
-        @click="openAgentPicker('')"
+        title="从外部引入会话"
+        @click="openExternalImport"
       >
-        <Plus class="h-[19px] w-[19px]" />
+        <Import class="h-[19px] w-[19px]" />
       </button>
     </div>
 
@@ -115,7 +115,7 @@
             <button
               type="button"
               class="section-action-btn"
-              title="添加 Agent"
+              title="在此项目添加会话"
               @click="openAgentPicker(group.workspace.id)"
             >
               <Plus class="w-4 h-4" />
@@ -163,9 +163,17 @@
 
     <SessionAgentPicker
       :open="agentPickerWorkspaceId != null"
+      :project-id="agentPickerWorkspaceId"
+      :projects="sessionStore.projects"
       @close="closeAgentPicker"
       @select="onAgentPicked"
-      @external-import="openExternalImport"
+    />
+
+    <ProjectCreateDialog
+      :open="projectCreateOpen"
+      :busy="projectCreating"
+      @close="projectCreateOpen = false"
+      @create="createProjectFromDialog"
     />
 
     <ExternalSessionImportDialog
@@ -190,9 +198,14 @@
       :open="projectSettingsId != null"
       :name="projectSettingsProject?.name"
       :cwd="projectSettingsProject?.cwd"
+      :description="projectDescription"
+      :description-status="projectDescriptionStatus"
+      :description-error="projectDescriptionError"
       :busy="projectBusy"
+      :regenerating="projectDescribing"
       @close="closeProjectSettings"
       @rename="renameProject"
+      @regenerate-description="regenerateProjectDescription"
     />
 
     <ProjectGitMenu
@@ -209,19 +222,21 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronRight, GitBranch, Plus, Search, Settings } from "lucide-vue-next";
+import { ChevronRight, GitBranch, Import, Plus, Search, Settings } from "lucide-vue-next";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
 import { groupSessionsByWorkspace, toUISession } from "@/utils/ui-session";
-import { getDefaultWorkspaceCwd, rememberCwd } from "@/config/workspace";
+import { rememberCwd } from "@/config/workspace";
 import {
   pullProjectGit,
   pushProjectGit,
+  regenerateProjectDescription as apiRegenerateProjectDescription,
   searchMessages,
   type ExternalSessionCandidate,
 } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
+import ProjectCreateDialog from "./ProjectCreateDialog.vue";
 import ProjectGitMenu from "./ProjectGitMenu.vue";
 import ProjectSettingsMenu from "./ProjectSettingsMenu.vue";
 import SessionAgentPicker from "./SessionAgentPicker.vue";
@@ -250,6 +265,9 @@ const messageMatches = ref<Map<string, string>>(new Map());
 let searchGeneration = 0;
 const collapsedWorkspaceIds = ref<Set<string>>(new Set());
 const agentPickerWorkspaceId = ref<string | null>(null);
+const projectCreateOpen = ref(false);
+const projectCreating = ref(false);
+const projectDescribing = ref(false);
 const externalImportOpen = ref(false);
 const externalImporting = ref(false);
 const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null);
@@ -265,6 +283,29 @@ const projectSettingsProject = computed(() =>
   projectSettingsId.value
     ? sessionStore.projects.find((project) => project.id === projectSettingsId.value)
     : undefined,
+);
+const projectDescription = computed(() => {
+  const value = projectSettingsProject.value?.meta?.description;
+  return typeof value === "string" ? value : null;
+});
+const projectDescriptionStatus = computed(() => {
+  const value = projectSettingsProject.value?.meta?.descriptionStatus;
+  return typeof value === "string" ? value : null;
+});
+const projectDescriptionError = computed(() => {
+  const value = projectSettingsProject.value?.meta?.descriptionError;
+  return typeof value === "string" ? value : null;
+});
+
+watch(
+  () => [projectSettingsId.value, projectDescriptionStatus.value, projectDescribing.value] as const,
+  ([projectId, status, describing], _prev, onCleanup) => {
+    if (!projectId || describing || status !== "pending") return;
+    const timer = window.setInterval(() => {
+      void sessionStore.fetchProjects().catch(() => undefined);
+    }, 2500);
+    onCleanup(() => window.clearInterval(timer));
+  },
 );
 
 const panelStyle = computed(() => {
@@ -468,6 +509,48 @@ function openExternalImport() {
   externalImportOpen.value = true;
 }
 
+async function createProjectFromDialog(cwd: string) {
+  if (projectCreating.value) return;
+  projectCreating.value = true;
+  try {
+    const project = await sessionStore.createProject({ cwd });
+    rememberCwd(cwd);
+    projectCreateOpen.value = false;
+    const next = new Set(collapsedWorkspaceIds.value);
+    next.delete(project.id);
+    collapsedWorkspaceIds.value = next;
+    showUiMessage("项目已创建，正在生成描述", "success");
+    projectSettingsId.value = project.id;
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "创建项目失败", "error");
+  } finally {
+    projectCreating.value = false;
+  }
+}
+
+async function regenerateProjectDescription() {
+  const projectId = projectSettingsId.value;
+  if (!projectId || projectDescribing.value) return;
+  projectDescribing.value = true;
+  try {
+    const result = await apiRegenerateProjectDescription(projectId);
+    const index = sessionStore.projects.findIndex((project) => project.id === result.project.id);
+    if (index >= 0) sessionStore.projects[index] = result.project;
+    else sessionStore.projects.unshift(result.project);
+    if (result.status === "ready") showUiMessage("项目描述已更新", "success");
+    else if (result.status === "skipped") {
+      showUiMessage(result.error || "未配置「项目描述」功能模型", "error");
+    } else {
+      showUiMessage(result.error || "生成失败", "error");
+    }
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "重新生成描述失败", "error");
+    await sessionStore.fetchProjects().catch(() => undefined);
+  } finally {
+    projectDescribing.value = false;
+  }
+}
+
 async function onExternalSessionPicked(candidate: ExternalSessionCandidate) {
   if (externalImporting.value) return;
   externalImporting.value = true;
@@ -541,36 +624,29 @@ async function forkFinishedSession() {
 }
 
 async function onAgentPicked(agentId: string) {
-  const workspaceId = agentPickerWorkspaceId.value;
+  const projectId = agentPickerWorkspaceId.value;
   closeAgentPicker();
-
-  let cwd: string;
-  let projectId: string | null = null;
-  const existingProject = workspaceId
-    ? sessionStore.projects.find((p) => p.id === workspaceId)
-    : undefined;
-  if (existingProject) {
-    projectId = existingProject.id;
-    cwd = existingProject.cwd;
-  } else {
-    const dir = window.prompt("工作目录路径（留空使用默认）:", getDefaultWorkspaceCwd());
-    if (dir === null) return;
-    cwd = dir.trim() || getDefaultWorkspaceCwd();
-    const project = await sessionStore.createProject({ cwd });
-    projectId = project.id;
+  if (!projectId) {
+    showUiMessage("请先在项目下添加会话", "error");
+    return;
   }
-  rememberCwd(cwd);
+  const project = sessionStore.projects.find((item) => item.id === projectId);
+  if (!project) {
+    showUiMessage("项目不存在", "error");
+    return;
+  }
+  rememberCwd(project.cwd);
 
   const agent = agentStore.getAgentById(agentId);
   const session = await sessionStore.createSession({
-    projectId,
+    projectId: project.id,
     agentId,
-    cwd,
+    cwd: project.cwd,
     meta: { name: agent?.name ?? agentId },
   });
 
   const next = new Set(collapsedWorkspaceIds.value);
-  if (projectId) next.delete(projectId);
+  next.delete(project.id);
   collapsedWorkspaceIds.value = next;
 
   emit("select", session.id);

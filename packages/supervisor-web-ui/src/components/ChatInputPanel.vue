@@ -32,9 +32,7 @@
         :disabled="disabled"
         :can-send="canSend"
         :interrupting="interrupting"
-        :custom-commands="customCommands"
         @action="onToolbarAction"
-        @slash="onCustomSlash"
         @send="emit('send', { text, images: pendingImages })"
         @interrupt="emit('interrupt')"
         @transcript="appendTranscript"
@@ -270,17 +268,6 @@ function appendTranscript(transcript: string) {
 
 function onVoiceError(message: string) {
   showUiMessage(message, "error");
-}
-
-function onCustomSlash(name: string) {
-  const command = customCommands.value.find((item) => item.name === name);
-  if (!command) return;
-  if (command.arguments?.type === "none") {
-    emit("slash", name);
-    return;
-  }
-  text.value = `/${name} `;
-  void nextTick(() => composerRef.value?.focus());
 }
 
 function addPendingImage(file: File) {

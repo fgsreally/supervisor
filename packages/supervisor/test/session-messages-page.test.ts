@@ -100,9 +100,33 @@ describe("session message pagination + lite", () => {
     }
   });
 
-  it("toLiteSessionMessage strips image data", () => {
-    const lite = toLiteSessionMessage({
+  it("toLiteSessionMessage keeps mediaId image refs and strips legacy data", () => {
+    const withMedia = toLiteSessionMessage({
       id: "u1",
+      parentId: null,
+      type: "message",
+      isOld: false,
+      source: null,
+      origin: null,
+      meta: {},
+      createdAt: 1,
+      message: {
+        role: "user",
+        content: [
+          { type: "text", text: "see" },
+          { type: "image", name: "[Image #1]", mediaId: "abc.png", mimeType: "image/png" },
+        ],
+      },
+    } as SessionMessageResponse);
+    const mediaParts = (
+      withMedia.message as { content: Array<{ type: string; mediaId?: string; data?: string }> }
+    ).content;
+    const mediaImage = mediaParts.find((p) => p.type === "image");
+    expect(mediaImage?.mediaId).toBe("abc.png");
+    expect(withMedia.meta.liteTruncated).toBeFalsy();
+
+    const legacy = toLiteSessionMessage({
+      id: "u2",
       parentId: null,
       type: "message",
       isOld: false,
@@ -118,9 +142,11 @@ describe("session message pagination + lite", () => {
         ],
       },
     } as SessionMessageResponse);
-    const parts = (lite.message as { content: Array<{ type: string; data?: string }> }).content;
-    const image = parts.find((p) => p.type === "image");
-    expect(image?.data).toBe("");
-    expect(lite.meta.liteTruncated).toBe(true);
+    const legacyParts = (
+      legacy.message as { content: Array<{ type: string; data?: string }> }
+    ).content;
+    const legacyImage = legacyParts.find((p) => p.type === "image");
+    expect(legacyImage?.data).toBeUndefined();
+    expect(legacy.meta.liteTruncated).toBe(true);
   });
 });

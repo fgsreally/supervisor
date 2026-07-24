@@ -183,9 +183,19 @@ describe("external CLI runtimes", () => {
   it("uses structured Codex skill, mention, image, and native turn steering inputs", async () => {
     const records = createRecords("codex", "mock-codex-app-server.mjs");
     const runtime = await CodexSessionRuntime.create({ db, ...records });
+    const { writeSessionMediaFile } = await import("../src/core/session-media.js");
     try {
+      const promptImage = await writeSessionMediaFile(records.session.id, {
+        mimeType: "image/png",
+        data: Buffer.from("image"),
+        name: "prompt.png",
+      });
       await runtime.prompt("inspect input $review @.", [
-        { mimeType: "image/png", data: "aW1hZ2U=" },
+        {
+          mediaId: promptImage.mediaId,
+          mimeType: promptImage.mimeType,
+          name: promptImage.name,
+        },
       ]);
       expect(runtime.getLastAssistantText()).toContain('"type":"skill"');
       expect(runtime.getLastAssistantText()).toContain('"name":"review"');
@@ -194,11 +204,24 @@ describe("external CLI runtimes", () => {
 
       const turn = runtime.prompt("hold for steer");
       await new Promise((resolve) => setTimeout(resolve, 30));
-      await runtime.steer("change direction", [{ mimeType: "image/png", data: "c3RlZXI=" }]);
+      const steerImage = await writeSessionMediaFile(records.session.id, {
+        mimeType: "image/png",
+        data: Buffer.from("steer"),
+        name: "steer.png",
+      });
+      await runtime.steer("change direction", [
+        {
+          mediaId: steerImage.mediaId,
+          mimeType: steerImage.mimeType,
+          name: steerImage.name,
+        },
+      ]);
       await turn;
       expect(runtime.getLastAssistantText()).toContain("steer:");
       expect(runtime.getLastAssistantText()).toContain('"expectedTurnId":"mock-codex-turn"');
-      expect(runtime.getLastAssistantText()).toContain("data:image/png;base64,c3RlZXI=");
+      expect(runtime.getLastAssistantText()).toContain(
+        `data:image/png;base64,${Buffer.from("steer").toString("base64")}`,
+      );
     } finally {
       await runtime.clear();
     }

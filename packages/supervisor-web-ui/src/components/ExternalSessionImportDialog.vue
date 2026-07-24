@@ -55,7 +55,6 @@
                 type="search"
                 placeholder="筛选标题、路径或来源"
                 class="external-import-modal__search w-full rounded-md py-1.5 pl-8 pr-2 text-[13px] focus:outline-none"
-                :disabled="!!importingKey"
               />
             </div>
             <div class="mt-2 flex flex-wrap gap-1.5">
@@ -65,7 +64,6 @@
                 type="button"
                 class="external-import-modal__chip"
                 :class="{ 'external-import-modal__chip--active': backendFilter === option.value }"
-                :disabled="!!importingKey"
                 @click="backendFilter = option.value"
               >
                 {{ option.label }}
@@ -86,14 +84,15 @@
             没有匹配的对话
           </div>
           <ul v-else class="custom-scrollbar flex-1 overflow-y-auto">
-            <li
-              v-for="session in filteredSessions"
-              :key="sessionKey(session)"
-            >
+            <li v-for="session in filteredSessions" :key="sessionKey(session)">
               <button
                 type="button"
                 class="external-import-modal__item flex w-full items-center gap-3 px-4 py-3 text-left"
-                :disabled="!!importingKey"
+                :class="{
+                  'external-import-modal__item--imported': session.imported,
+                  'external-import-modal__item--busy': importingKey === sessionKey(session),
+                }"
+                :disabled="!!session.imported"
                 @click="onSelect(session)"
               >
                 <span class="external-import-modal__badge shrink-0">{{
@@ -175,13 +174,14 @@ function sessionKey(session: ExternalSessionCandidate): string {
 function rowStatus(session: ExternalSessionCandidate): UiListStatusKind {
   const key = sessionKey(session);
   if (importingKey.value === key) return "loading";
+  if (session.imported || rowResults.value[key] === "success") return "success";
   return rowResults.value[key] ?? "idle";
 }
 
 function rowStatusTitle(session: ExternalSessionCandidate): string | undefined {
   const status = rowStatus(session);
   if (status === "loading") return "正在引入…";
-  if (status === "success") return "引入成功";
+  if (status === "success") return session.imported ? "已引入" : "引入成功";
   if (status === "error") return "引入失败";
   return undefined;
 }
@@ -225,7 +225,7 @@ function onBackdrop() {
 }
 
 async function onSelect(session: ExternalSessionCandidate) {
-  if (importingKey.value) return;
+  if (session.imported || importingKey.value) return;
   const key = sessionKey(session);
   importingKey.value = key;
   const nextResults = { ...rowResults.value };
@@ -236,6 +236,11 @@ async function onSelect(session: ExternalSessionCandidate) {
       backend: session.backend,
       externalSessionId: session.externalSessionId,
     });
+    sessions.value = sessions.value.map((item) =>
+      sessionKey(item) === key
+        ? { ...item, imported: true, importedSessionId: Number(imported.id) }
+        : item,
+    );
     rowResults.value = { ...rowResults.value, [key]: "success" };
     showUiMessage("外部对话已引入", "success");
     emit("imported", imported.id);
@@ -302,6 +307,7 @@ watch(
   color: var(--app-text-secondary);
   font-size: 12px;
   background: transparent;
+  cursor: pointer;
 }
 .external-import-modal__chip--active {
   border-color: color-mix(in srgb, var(--app-accent) 40%, transparent);
@@ -320,8 +326,13 @@ watch(
 .external-import-modal__item:hover:not(:disabled) .external-import-modal__title {
   color: var(--app-accent);
 }
-.external-import-modal__item:disabled {
-  cursor: wait;
+.external-import-modal__item--imported {
+  cursor: default;
+  opacity: 0.72;
+}
+.external-import-modal__item--busy {
+  cursor: default;
+  pointer-events: none;
 }
 .external-import-modal__item:last-child {
   border-bottom: none;

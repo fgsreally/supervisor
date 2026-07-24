@@ -113,7 +113,7 @@ export function getFilePathFromToken(token: string): string {
 }
 
 export function getFileBaseName(path: string): string {
-  const normalized = path.replace(/\/$/, "");
+  const normalized = path.replace(/[\\/]+$/, "").replace(/\\/g, "/");
   const idx = normalized.lastIndexOf("/");
   return idx >= 0 ? normalized.slice(idx + 1) : normalized;
 }

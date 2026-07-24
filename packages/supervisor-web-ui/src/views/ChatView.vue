@@ -1,7 +1,7 @@
 <template>
   <div
     class="relative flex flex-col h-full w-full"
-    style="background: var(--app-chat-bg)"
+    :style="{ background: 'var(--app-chat-bg)', '--chat-msg-font-size': fontSizePx }"
     v-if="session"
   >
     <ChatViewHeader
@@ -9,6 +9,7 @@
       :title-readonly="!!session.meta?.builtin"
       :agent-name="agentName"
       :agent-id="agentId"
+      :external-agent="isExternalAgent"
       :status-key="headerStatusKey"
       :workflow="workflow"
       :show-back="showBack"
@@ -264,6 +265,7 @@
       :configurable-agents="configurableAgents"
       :shadow-enabled="shadowEnabled"
       :spawned-agent-ids="spawnedAgentIds"
+      :external-agent="isExternalAgent"
       @close="sessionMenuOpen = false"
       @search="openSearchFromMenu"
       @log="showLogPanel = true"
@@ -393,6 +395,7 @@ import SessionChangesPopover, {
 import SessionCommitPopover from "../components/chat/SessionCommitPopover.vue";
 import type { ChatSendPayload } from "@/types/chat-compose";
 import { getShowThinking, setShowThinking } from "../composables/use-chat-session-prefs";
+import { useChatFontSize } from "../composables/use-chat-font-size";
 import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-push-notifications";
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
 import { parseWorkflowState } from "../utils/workflow";
@@ -462,6 +465,10 @@ const sessionAvatarValue = computed(() =>
 const agentBackendType = computed(() =>
   props.agentId ? agentStore.getAgentById(props.agentId)?.backendType : undefined,
 );
+const isExternalAgent = computed(
+  () => !!agentBackendType.value && agentBackendType.value !== "native",
+);
+const { fontSizePx } = useChatFontSize();
 const modelMissing = computed(() => {
   if (!props.agentId) return false;
   const agent = agentStore.getAgentById(props.agentId);
@@ -1354,7 +1361,11 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
   chatEntries.value.push(createStreamingAssistantEntry(assistantId));
   void scrollToBottom();
 
-  const imagePayload = images.map((img) => ({ mimeType: img.mimeType, data: img.data }));
+  const imagePayload = images.map((img) => ({
+    mediaId: img.mediaId,
+    mimeType: img.mimeType,
+    name: img.name,
+  }));
   const sessionName = props.session.meta?.name ?? "会话";
 
   streamCleanup = api.promptSession(
@@ -1445,7 +1456,11 @@ const sendMessage = async (payload: ChatSendPayload) => {
   inputPanelRef.value?.clearAfterSend();
   void scrollToBottom();
   if (isStreaming.value) {
-    const images = payload.images.map((image) => ({ mimeType: image.mimeType, data: image.data }));
+    const images = payload.images.map((image) => ({
+      mediaId: image.mediaId,
+      mimeType: image.mimeType,
+      name: image.name,
+    }));
     const send =
       streamingSendMode.value === "steer"
         ? api.steerSession(props.session.id, text, images)

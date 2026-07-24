@@ -35,9 +35,13 @@ function liteContentParts(parts: ContentPart[], textMax: number): {
   let truncated = false;
   const next = parts.map((part) => {
     if (part.type === "image") {
-      truncated = truncated || typeof part.data === "string" && part.data.length > 0;
-      const { data: _data, ...rest } = part;
-      return { ...rest, data: "", truncated: true };
+      // Path-ref images keep mediaId; strip any legacy embedded data.
+      if (typeof part.data === "string" && part.data.length > 0) {
+        truncated = true;
+        const { data: _data, ...rest } = part;
+        return { ...rest };
+      }
+      return part;
     }
     if (part.type === "thinking" && typeof part.thinking === "string") {
       const { text, truncated: cut } = truncateText(part.thinking, textMax);

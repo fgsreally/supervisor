@@ -5,6 +5,7 @@
   >
     <FileTypeIcon v-if="variant === 'file'" :kind="fileIconKind" class="chat-tag-chip-icon" />
     <Sparkles v-else class="chat-tag-chip-icon" />
+    <span v-if="source" class="chat-tag-chip-source">{{ source }}</span>
     <span class="chat-tag-chip-label">{{ label }}</span>
   </span>
 </template>
@@ -17,6 +18,8 @@ import FileTypeIcon from "./FileTypeIcon.vue";
 defineProps<{
   variant: "file" | "skill";
   label: string;
+  /** Cross-project source name (e.g. from @@) */
+  source?: string;
   fileIconKind?: FileIconKind;
 }>();
 </script>
@@ -52,6 +55,24 @@ defineProps<{
 .chat-tag-chip :deep(.file-type-icon svg) {
   width: 14px;
   height: 14px;
+}
+
+.chat-tag-chip-source {
+  flex-shrink: 0;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.78;
+}
+
+.chat-tag-chip-source::after {
+  content: "·";
+  margin-left: 4px;
+  font-weight: 500;
+  opacity: 0.7;
 }
 
 .chat-tag-chip-label {

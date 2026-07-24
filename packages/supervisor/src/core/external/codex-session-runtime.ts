@@ -5,6 +5,10 @@ import { createInterface } from "node:readline";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { SupervisorDb } from "../../db/db.js";
 import type { Agent, Session } from "../../types.js";
+import {
+  resolveSessionPromptImages,
+  type SessionPromptImage,
+} from "../session-media.js";
 import { ExternalSessionRuntime } from "./external-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
 import {
@@ -606,15 +610,18 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     }
   }
 
-  override async steer(message: string, images?: ImageContent[]): Promise<void> {
+  override async steer(message: string, images?: SessionPromptImage[]): Promise<void> {
     if (!this.activeTurnId) {
       await super.steer(message, images);
       return;
     }
+    const imageContent = images?.length
+      ? await resolveSessionPromptImages(this.id, images)
+      : undefined;
     await this.request("turn/steer", {
       threadId: this.threadId,
       expectedTurnId: this.activeTurnId,
-      input: this.buildUserInput(message, images),
+      input: this.buildUserInput(message, imageContent),
     });
   }
 

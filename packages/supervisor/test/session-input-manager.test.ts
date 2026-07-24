@@ -75,7 +75,15 @@ describe("session input queue", () => {
     const inst = await manager.spawn(SPAWN_OPTS);
     const harness = MockAgentHarness.instances[0]!;
     harness.agent.emit({ type: "agent_start" } as AgentEvent);
-    const images = [{ mimeType: "image/png", data: "cXVldWVk" }];
+    const { writeSessionMediaFile } = await import("../src/core/session-media.js");
+    const saved = await writeSessionMediaFile(inst.id, {
+      mimeType: "image/png",
+      data: Buffer.from("queued"),
+      name: "queued.png",
+    });
+    const images = [
+      { mediaId: saved.mediaId, mimeType: saved.mimeType, name: saved.name },
+    ];
 
     await expect(
       manager.submitSessionInput(inst.id, { message: "queued image", images }),
@@ -84,6 +92,14 @@ describe("session input queue", () => {
 
     harness.agent.emit({ type: "agent_end", messages: [] } as AgentEvent);
     await flushLifecycle();
-    expect(harness.agent.prompt).toHaveBeenCalledWith("queued image", { images });
+    expect(harness.agent.prompt).toHaveBeenCalledWith("queued image", {
+      images: [
+        {
+          type: "image",
+          mimeType: "image/png",
+          data: Buffer.from("queued").toString("base64"),
+        },
+      ],
+    });
   });
 });

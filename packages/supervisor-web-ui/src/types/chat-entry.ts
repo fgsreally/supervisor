@@ -36,6 +36,14 @@ export interface ChatTextPart {
   text: string;
 }
 
+export interface ChatImagePart {
+  type: "image";
+  name?: string;
+  mediaId?: string;
+  mimeType?: string;
+  missing?: boolean;
+}
+
 export interface ChatUserFileAttachment {
   type: "file";
   name: string;
@@ -43,7 +51,10 @@ export interface ChatUserFileAttachment {
   ext?: "docx" | "pdf" | "xlsx" | "generic";
 }
 
-export type ChatUserMessageContent = string | ChatUserFileAttachment;
+export type ChatUserMessageContent =
+  | string
+  | ChatUserFileAttachment
+  | Array<ChatTextPart | ChatImagePart>;
 
 export type ChatCompactionEntry = ChatEntryBase & {
   id: string;

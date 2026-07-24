@@ -27,21 +27,34 @@
 import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
-import { chatInputTagExtension, chatInputTheme } from "../codemirror/chat-input-tags";
+import * as api from "@/api";
+import { chatInputTagExtension, chatInputTheme, slashCatalogFacet } from "../codemirror/chat-input-tags";
 import ChatAutocompletePopup from "./ChatAutocompletePopup.vue";
 import {
+  applyAutocompleteCompletion,
   getAutocompleteContext,
   getAutocompleteSuggestions,
   type ChatAutocompleteItem,
+  type PathBrowseState,
+  type ProjectAutocompleteEntry,
+  type WorkspaceFileEntry,
 } from "../utils/chat-autocomplete";
+import type { SlashCommandCatalog } from "../utils/slash-command-source";
 
 const props = withDefaults(
   defineProps<{
     modelValue: string;
-    workspaceFiles?: Array<{ path: string; isDirectory: boolean }>;
+    workspaceFiles?: WorkspaceFileEntry[];
+    projects?: ProjectAutocompleteEntry[];
+    workspaceCwd?: string;
+    currentProjectId?: string | null;
     skills?: Array<{ name: string; description: string }>;
     prompts?: Array<{ name: string; description: string }>;
-    commands?: Array<{ name: string; description: string; source?: "custom" | "mcp" }>;
+    commands?: Array<{
+      name: string;
+      description: string;
+      source?: "skill" | "prompt" | "custom" | "mcp";
+    }>;
     skillTrigger?: "slash" | "dollar";
     disabled?: boolean;
     editorHeight?: number;
@@ -49,6 +62,9 @@ const props = withDefaults(
   }>(),
   {
     workspaceFiles: () => [],
+    projects: () => [],
+    workspaceCwd: "",
+    currentProjectId: null,
     skills: () => [],
     prompts: () => [],
     commands: () => [],
@@ -75,8 +91,25 @@ const autocompleteDismissed = ref(false);
 const isFocused = ref(false);
 const editorRevision = ref(0);
 
+const atatProject = ref<ProjectAutocompleteEntry | null>(null);
+const atatFiles = ref<WorkspaceFileEntry[]>([]);
+let atatLoadToken = 0;
+
 const editableCompartment = new Compartment();
 const themeCompartment = new Compartment();
+const slashCatalogCompartment = new Compartment();
+
+function buildSlashCatalog(): SlashCommandCatalog {
+  return {
+    skills: props.skills.map((s) => ({ name: s.name })),
+    prompts: props.prompts.map((p) => ({ name: p.name })),
+    commands: props.commands.map((c) => ({ name: c.name, source: c.source })),
+  };
+}
+
+const browseState = computed<PathBrowseState>(() => ({
+  atatProject: atatProject.value,
+}));
 
 const context = computed(() => {
   void editorRevision.value;
@@ -91,6 +124,11 @@ const suggestions = computed(() => {
   if (!ctx) return [];
   return getAutocompleteSuggestions(ctx, {
     workspaceFiles: props.workspaceFiles,
+    projects: props.projects,
+    atatFiles: atatFiles.value,
+    browse: browseState.value,
+    currentWorkspaceCwd: props.workspaceCwd,
+    currentProjectId: props.currentProjectId,
     skills: props.skills,
     prompts: props.prompts,
     commands: props.commands,
@@ -107,6 +145,18 @@ const showPlaceholder = computed(() => !props.modelValue && !isFocused.value);
 watch(suggestions, () => {
   selectedIndex.value = 0;
 });
+
+watch(
+  () => context.value?.trigger ?? null,
+  (trigger, prev) => {
+    if (trigger !== prev) resetBrowseState();
+  },
+);
+
+function resetBrowseState() {
+  atatProject.value = null;
+  atatFiles.value = [];
+}
 
 function syncCursorFromView(view: EditorView) {
   cursor.value = view.state.selection.main.head;
@@ -125,28 +175,75 @@ function syncFromView(view: EditorView) {
   emit("update:modelValue", text);
 }
 
-function applyItem(item: ChatAutocompleteItem) {
+function replaceRange(from: number, to: number, insertion: string, cursorPos: number) {
   const view = viewRef.value;
   if (!view) return;
-  const ctx = getAutocompleteContext(view.state.doc.toString(), view.state.selection.main.head);
+  view.dispatch({
+    changes: { from, to, insert: insertion },
+    selection: { anchor: cursorPos },
+  });
+  syncFromView(view);
+  view.focus();
+}
+
+function rewriteTriggerPrefixInPlace() {
+  const view = viewRef.value;
+  if (!view) return;
+  const text = view.state.doc.toString();
+  const ctx = getAutocompleteContext(text, view.state.selection.main.head);
+  if (!ctx || (ctx.trigger !== "at" && ctx.trigger !== "atat")) return;
+  const insertion = ctx.trigger === "atat" ? "@@" : "@";
+  replaceRange(ctx.replaceStart, ctx.replaceEnd, insertion, ctx.replaceStart + insertion.length);
+}
+
+async function loadAtatProjectFiles(project: ProjectAutocompleteEntry) {
+  const token = ++atatLoadToken;
+  try {
+    const files = await api.listWorkspaceFiles(project.cwd);
+    if (token !== atatLoadToken) return;
+    atatFiles.value = files;
+  } catch {
+    if (token !== atatLoadToken) return;
+    atatFiles.value = [];
+  }
+}
+
+async function applyItem(item: ChatAutocompleteItem) {
+  const view = viewRef.value;
+  if (!view) return;
+  const text = view.state.doc.toString();
+  const ctx = getAutocompleteContext(text, view.state.selection.main.head);
   if (!ctx) return;
   clearBlurTimer();
 
-  const isDirectory = item.isDirectory ?? false;
-  const insertion =
-    ctx.trigger === "slash"
-      ? `/${item.value} `
-      : ctx.trigger === "skill"
-        ? `$${item.value} `
-        : item.value + (isDirectory ? "" : " ");
-  const nextCursor = ctx.replaceStart + insertion.length;
+  if (item.kind === "project" && item.projectCwd) {
+    atatProject.value = {
+      id: item.projectId ?? item.value,
+      name: item.label,
+      cwd: item.projectCwd,
+    };
+    await loadAtatProjectFiles(atatProject.value);
+    rewriteTriggerPrefixInPlace();
+    autocompleteDismissed.value = false;
+    return;
+  }
 
+  if (item.kind === "nav-projects") {
+    atatProject.value = null;
+    atatFiles.value = [];
+    rewriteTriggerPrefixInPlace();
+    autocompleteDismissed.value = false;
+    return;
+  }
+
+  const result = applyAutocompleteCompletion(text, ctx, item);
   view.dispatch({
-    changes: { from: ctx.replaceStart, to: ctx.replaceEnd, insert: insertion },
-    selection: { anchor: nextCursor },
+    changes: { from: 0, to: view.state.doc.length, insert: result.text },
+    selection: { anchor: result.cursor },
   });
   syncFromView(view);
-  autocompleteDismissed.value = isDirectory;
+  autocompleteDismissed.value = false;
+  resetBrowseState();
   view.focus();
 }
 
@@ -185,12 +282,13 @@ function handleAutocompleteKey(event: KeyboardEvent): boolean {
   ) {
     event.preventDefault();
     const item = suggestions.value[selectedIndex.value];
-    if (item) applyItem(item);
+    if (item) void applyItem(item);
     return true;
   }
   if (event.key === "Escape") {
     event.preventDefault();
     autocompleteDismissed.value = true;
+    resetBrowseState();
     return true;
   }
   return false;
@@ -199,6 +297,7 @@ function handleAutocompleteKey(event: KeyboardEvent): boolean {
 function buildExtensions() {
   return [
     themeCompartment.of(chatInputTheme(props.editorHeight)),
+    slashCatalogCompartment.of(slashCatalogFacet.of(buildSlashCatalog())),
     chatInputTagExtension,
     EditorView.lineWrapping,
     editableCompartment.of(EditorView.editable.of(!props.disabled)),
@@ -321,18 +420,37 @@ watch(
   },
 );
 
+watch(
+  () => [props.skills, props.prompts, props.commands] as const,
+  () => {
+    const view = viewRef.value;
+    if (!view) return;
+    view.dispatch({
+      effects: slashCatalogCompartment.reconfigure(slashCatalogFacet.of(buildSlashCatalog())),
+    });
+  },
+  { deep: true },
+);
+
 function focus() {
   clearBlurTimer();
   autocompleteDismissed.value = false;
   viewRef.value?.focus();
 }
 
-function insertTrigger(trigger: "@" | "/") {
+function insertTrigger(trigger: "@" | "@@" | "/") {
   const view = viewRef.value;
   if (!view) return;
   clearBlurTimer();
   autocompleteDismissed.value = false;
+  resetBrowseState();
   view.focus();
+
+  if (trigger === "@") {
+    insertAtCursor(" @");
+    return;
+  }
+
   insertAtCursor(trigger);
 }
 

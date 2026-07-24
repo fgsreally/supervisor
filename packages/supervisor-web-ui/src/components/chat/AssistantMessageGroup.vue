@@ -27,11 +27,12 @@
         <span v-if="durationLabel" class="chat-msg-duration">· {{ durationLabel }}</span>
       </span>
       <div
-        class="relative px-3.5 py-2.5 text-[14px] w-full chat-bubble"
+        class="relative px-3.5 py-2.5 w-full chat-bubble"
         :style="{
           background: 'var(--app-bubble-assistant)',
           color: 'var(--app-text-primary)',
           borderRadius: 'var(--app-bubble-radius)',
+          fontSize: 'var(--chat-msg-font-size, 14px)',
         }"
         :class="{ 'ring-2 ring-[#07c160]/40': searchHit }"
       >
@@ -39,8 +40,13 @@
           class="absolute top-3 w-2 h-2 rotate-45 -left-1 chat-bubble-tail"
           :style="{ background: 'var(--app-bubble-assistant)' }"
         />
-        <div class="relative z-10 font-sans leading-snug flex flex-col gap-2">
+        <div class="relative z-10 leading-[1.42] flex flex-col gap-2.5">
           <template v-for="{ piece, index: pieceIndex } in displayPieces" :key="pieceIndex">
+            <hr
+              v-if="showTextDivider(pieceIndex)"
+              class="assistant-piece-divider"
+              aria-hidden="true"
+            />
             <ThinkingBlock
               v-if="piece.kind === 'thinking'"
               :content="piece.text"
@@ -49,6 +55,7 @@
 
             <MarkdownContent
               v-else-if="piece.kind === 'text'"
+              variant="terminal"
               :content="piece.text + (isStreamingPiece(pieceIndex) ? '▍' : '')"
             />
 
@@ -126,6 +133,13 @@ const displayPieces = computed(() =>
     .map((piece, index) => ({ piece, index }))
     .filter(({ piece }) => props.showThinkingBlocks || piece.kind !== "thinking"),
 );
+
+function showTextDivider(pieceIndex: number): boolean {
+  if (pieceIndex <= 0) return false;
+  const prev = displayPieces.value[pieceIndex - 1]?.piece;
+  const curr = displayPieces.value[pieceIndex]?.piece;
+  return prev?.kind === "text" && curr?.kind === "text";
+}
 
 const isActiveStreamGroup = computed(
   () => props.isStreaming && props.streamingGroupId === props.group.id,
@@ -237,5 +251,12 @@ onBeforeUnmount(cancelLongPress);
   gap: 0.5rem;
   color: var(--app-text-muted);
   font-size: 13px;
+}
+
+.assistant-piece-divider {
+  margin: 0.15em 0;
+  border: none;
+  border-top: 1px dashed color-mix(in srgb, var(--app-text-secondary) 80%, #94a3b8);
+  width: 100%;
 }
 </style>

@@ -27,6 +27,7 @@
     >
       {{ agentName }}
     </button>
+    <span v-if="externalAgent" class="chat-header-external-badge ml-2 shrink-0">外部 Agent</span>
     <div class="chat-header-status ml-4 text-xs" :class="statusBadgeClass">
       {{ statusLabel }}
     </div>
@@ -65,6 +66,7 @@ const props = defineProps<{
   titleReadonly?: boolean;
   agentName?: string | null;
   agentId?: string;
+  externalAgent?: boolean;
   statusKey: ChatHeaderStatus | string;
   showBack?: boolean;
   workflow?: WorkflowState | null;
@@ -160,6 +162,25 @@ const statusBadgeClass = computed(() => {
   color: var(--app-text-primary);
 }
 
+.chat-header-external-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: #5640a3;
+  background: rgb(238 234 255 / 94%);
+  border: 1px solid rgb(91 78 180 / 28%);
+}
+
+html[data-theme="dark"] .chat-header-external-badge {
+  color: #c4b5fd;
+  background: rgb(76 61 139 / 35%);
+  border-color: rgb(167 139 250 / 35%);
+}
+
 @media (max-width: 767px) {
   .chat-view-header {
     min-height: 48px;
@@ -173,6 +194,10 @@ const statusBadgeClass = computed(() => {
 
   .chat-header-agent {
     display: none;
+  }
+
+  .chat-header-external-badge {
+    margin-left: 6px;
   }
 
   .chat-header-status {

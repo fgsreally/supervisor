@@ -1,6 +1,6 @@
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { SessionTreeEntry } from "@/api";
-import type { ChatEntry, ChatThinkingPart, ChatToolPart } from "@/types/chat-entry";
+import type { ChatEntry, ChatTextPart, ChatThinkingPart, ChatToolPart } from "@/types/chat-entry";
 import { normalizeStreamingToolResult } from "./ask-tool";
 import type { MessageAsset } from "@/types/chat-entry";
 
@@ -238,7 +238,9 @@ export function applyAgentEventToChatEntries(
       name: event.toolName,
       arguments: event.args ?? {},
     };
-    entry.message.content.push(part);
+    (
+      entry.message.content as Array<ChatTextPart | ChatThinkingPart | ChatToolPart>
+    ).push(part);
     return;
   }
 

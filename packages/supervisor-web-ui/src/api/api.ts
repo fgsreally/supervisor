@@ -420,6 +420,8 @@ export interface ExternalSessionCandidate {
   title: string;
   preview: string;
   lastActiveAt: string;
+  imported?: boolean;
+  importedSessionId?: number;
 }
 
 export interface CreateProjectRequest {
@@ -1943,8 +1945,35 @@ export async function listWorkspaceFiles(cwd: string): Promise<WorkspaceFileEntr
 }
 
 export interface PromptImageInput {
+  mediaId: string;
   mimeType: string;
-  data: string;
+  name?: string;
+}
+
+export async function uploadSessionMedia(
+  sessionId: string,
+  file: File,
+): Promise<PromptImageInput> {
+  const body = new FormData();
+  body.append("file", file, file.name || "image.png");
+  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/media`, {
+    method: "POST",
+    body,
+  });
+  if (!res.ok) {
+    const err = await res.text().catch(() => "upload failed");
+    throw new Error(`HTTP ${res.status}: ${err}`);
+  }
+  const json = (await res.json()) as { mediaId: string; mimeType: string; name?: string };
+  return {
+    mediaId: json.mediaId,
+    mimeType: json.mimeType,
+    name: json.name,
+  };
+}
+
+export function sessionMediaUrl(sessionId: string, mediaId: string): string {
+  return `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/media/${encodeURIComponent(mediaId)}`;
 }
 
 // ============ Health API ============

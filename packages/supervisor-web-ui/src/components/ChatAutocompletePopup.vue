@@ -9,7 +9,7 @@
       <ul class="max-h-52 overflow-y-auto custom-scrollbar py-1">
         <li
           v-for="(item, index) in items"
-          :key="`${item.trigger}-${item.value}-${index}`"
+          :key="`${item.trigger}-${item.kind ?? 'x'}-${item.value}-${index}`"
           role="option"
           :aria-selected="index === selectedIndex"
           class="px-3 py-2 cursor-pointer flex items-start gap-2 min-w-0 autocomplete-item"
@@ -17,8 +17,16 @@
           @mousedown.prevent
           @click="emit('select', item)"
         >
+          <FolderKanban
+            v-if="item.kind === 'project'"
+            class="w-4 h-4 shrink-0 mt-0.5 autocomplete-icon autocomplete-icon--project"
+          />
+          <CornerLeftUp
+            v-else-if="item.kind === 'nav-projects'"
+            class="w-4 h-4 shrink-0 mt-0.5 autocomplete-icon"
+          />
           <FileTypeIcon
-            v-if="item.trigger === 'at'"
+            v-else-if="item.trigger === 'at' || item.trigger === 'atat'"
             :kind="item.fileIconKind"
             :path="item.label"
             :is-directory="item.isDirectory"
@@ -36,7 +44,7 @@
           <div class="min-w-0 flex-1">
             <div
               class="text-[13px] truncate autocomplete-label"
-              :class="item.trigger === 'at' ? 'font-mono' : ''"
+              :class="item.trigger === 'at' || item.trigger === 'atat' ? 'font-mono' : ''"
             >
               {{ displayLabel(item) }}
               <span v-if="item.source" class="autocomplete-source">{{ item.source }}</span>
@@ -48,7 +56,7 @@
         </li>
       </ul>
       <div class="px-3 py-1.5 border-t text-[10px] autocomplete-footer">
-        ↑↓ 选择 · Tab/Enter 确认 · Ctrl+Enter 换行 · Esc 关闭
+        ↑↓ 选择 · Tab/Enter 确认 · Esc 关闭 · @@ 其它项目
       </div>
     </div>
   </Teleport>
@@ -56,9 +64,8 @@
 
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
-import { FileText, Sparkles } from "lucide-vue-next";
+import { CornerLeftUp, FileText, FolderKanban, Sparkles } from "lucide-vue-next";
 import type { ChatAutocompleteItem } from "../utils/chat-autocomplete";
-import { getFileBaseName } from "../utils/file-type-icon";
 import FileTypeIcon from "./FileTypeIcon.vue";
 
 const props = defineProps<{
@@ -110,7 +117,11 @@ onBeforeUnmount(() => {
 
 function displayLabel(item: ChatAutocompleteItem): string {
   if (item.trigger === "slash") return item.label.replace(/^\//, "");
-  return getFileBaseName(item.label.replace(/\/$/, ""));
+  if (item.kind === "project" || item.kind === "nav-projects") {
+    return item.label;
+  }
+  // Flat path list: show full relative/absolute label like Codex/Cursor
+  return item.label;
 }
 </script>
 
@@ -138,6 +149,14 @@ function displayLabel(item: ChatAutocompleteItem): string {
 }
 
 .autocomplete-icon--prompt {
+  color: #576b95;
+}
+
+.autocomplete-icon--project {
+  color: #07c160;
+}
+
+.autocomplete-icon--dir {
   color: #576b95;
 }
 

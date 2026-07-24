@@ -15,6 +15,13 @@ import {
 import type { ExtensionEvent } from "../extension/index.js";
 import type { SessionManager } from "../core/session-manager.js";
 import { getProjectDir, getSessionDir } from "../core/session-files.js";
+import {
+  isSafeMediaId,
+  mimeTypeFromFilename,
+  readSessionMediaFile,
+  writeSessionMediaFile,
+  type SessionPromptImage,
+} from "../core/session-media.js";
 import { activeTaskPaths, readTaskArtifact } from "../core/task-artifacts.js";
 import { parseSessionTodos } from "../core/session-todos.js";
 import {
@@ -162,7 +169,7 @@ function hasAgentManagedTaskMeta(value: Record<string, unknown>): boolean {
   );
 }
 
-type PromptImageInput = { mimeType: string; data: string };
+type PromptImageInput = SessionPromptImage;
 
 function parsePromptImages(value: unknown): PromptImageInput[] | null | undefined {
   if (value === undefined) return undefined;
@@ -170,16 +177,17 @@ function parsePromptImages(value: unknown): PromptImageInput[] | null | undefine
   const images: PromptImageInput[] = [];
   for (const item of value) {
     if (!item || typeof item !== "object") return null;
-    const mimeType = (item as PromptImageInput).mimeType;
-    const data = (item as PromptImageInput).data;
-    if (
-      typeof mimeType !== "string" ||
-      typeof data !== "string" ||
-      !mimeType.startsWith("image/")
-    ) {
-      return null;
-    }
-    images.push({ mimeType, data });
+    const mediaId = (item as { mediaId?: unknown }).mediaId;
+    const mimeType = (item as { mimeType?: unknown }).mimeType;
+    const name = (item as { name?: unknown }).name;
+    if (typeof mediaId !== "string" || !isSafeMediaId(mediaId)) return null;
+    if (typeof mimeType !== "string" || !mimeType.startsWith("image/")) return null;
+    if ("data" in (item as object)) return null;
+    images.push({
+      mediaId,
+      mimeType,
+      ...(typeof name === "string" && name ? { name } : {}),
+    });
   }
   return images;
 }
@@ -1140,6 +1148,58 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
+  // Prompt image media cache (not session workdir assets).
+  app.post("/sessions/:id/media", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "session not found");
+    try {
+      const form = await c.req.parseBody({ all: true });
+      const file = form.file;
+      if (!file || typeof file === "string") {
+        return jsonError(c, 400, "file is required");
+      }
+      const blob = file as File;
+      const mimeType =
+        typeof blob.type === "string" && blob.type.startsWith("image/")
+          ? blob.type
+          : mimeTypeFromFilename(blob.name || "image.png");
+      if (!mimeType.startsWith("image/")) {
+        return jsonError(c, 400, "only image uploads are supported");
+      }
+      const data = Buffer.from(await blob.arrayBuffer());
+      const saved = await writeSessionMediaFile(id, {
+        mimeType,
+        data,
+        name: blob.name || undefined,
+      });
+      return c.json(saved);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 400, message);
+    }
+  });
+
+  app.get("/sessions/:id/media/:mediaId", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "session not found");
+    const mediaId = c.req.param("mediaId");
+    if (!mediaId) return jsonError(c, 400, "mediaId is required");
+    const file = await readSessionMediaFile(id, mediaId);
+    if (!file) return jsonError(c, 404, "media not found");
+    return new Response(new Uint8Array(file.bytes), {
+      headers: {
+        "Content-Type": file.mimeType,
+        "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(mediaId)}`,
+        "Cache-Control": "private, max-age=3600",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
+  });
+
   // Assets referenced by message.meta.assets. The session determines which owned roots are visible.
   app.get("/sessions/:id/assets/:scope/*", async (c) => {
     const id = parseIntegerId(c.req.param("id"));
@@ -1401,13 +1461,8 @@ export function createHttpServer(manager: SessionManager): Hono {
       typeof body.level === "number" && Number.isFinite(body.level) ? body.level : undefined;
     const images = parsePromptImages(body.images);
     if (images === null) {
-      return jsonError(c, 400, "invalid images, expected [{ mimeType, data }]");
+      return jsonError(c, 400, "invalid images, expected [{ mediaId, mimeType }]");
     }
-    const imageContent = images?.map((img) => ({
-      type: "image" as const,
-      mimeType: img.mimeType,
-      data: img.data,
-    }));
     const sessionId = parseIntegerId(c.req.param("id"));
     if (sessionId === null) return jsonError(c, 400, "invalid session id");
     const clientId = randomUUID();
@@ -1460,7 +1515,7 @@ export function createHttpServer(manager: SessionManager): Hono {
         await writeSse({ type: "started", sessionId });
         const disposition = await manager.submitSessionInput(sessionId, {
           message: body.message,
-          images: imageContent,
+          images,
           source,
           level,
         });
@@ -1509,7 +1564,7 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const images = parsePromptImages(body.images);
       if (images === null) {
-        return jsonError(c, 400, "invalid images, expected [{ mimeType, data }]");
+        return jsonError(c, 400, "invalid images, expected [{ mediaId, mimeType }]");
       }
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
@@ -1531,7 +1586,7 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (source === null) return jsonError(c, 400, "source must be a non-empty string");
     const images = parsePromptImages(body.images);
     if (images === null) {
-      return jsonError(c, 400, "invalid images, expected [{ mimeType, data }]");
+      return jsonError(c, 400, "invalid images, expected [{ mediaId, mimeType }]");
     }
     try {
       const id = parseIntegerId(c.req.param("id"));

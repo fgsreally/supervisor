@@ -15,7 +15,6 @@ import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import {
   getEnvApiKey,
   getModel,
-  type ImageContent,
   type KnownProvider,
 } from "@earendil-works/pi-ai";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
@@ -119,6 +118,8 @@ import { ClaudeSessionRuntime } from "./external/claude-session-runtime.js";
 import {
   listExternalSessions,
   loadExternalSession,
+  materializeImportedImages,
+  type ExternalSessionCandidate,
   type ImportableExternalBackend,
 } from "./external/external-session-import.js";
 import {
@@ -144,6 +145,7 @@ import {
 } from "./session-llm-error.js";
 import { setSessionUnreadHandler } from "./session-unread.js";
 import { ensureSessionDir, removeProjectDirSync, removeSessionDirSync } from "./session-files.js";
+import { removeSessionMediaDirSync, type SessionPromptImage } from "./session-media.js";
 import { runShadow } from "../extension/builtin/shadow/index.js";
 import {
   DEFAULT_SESSION_INPUT_LEVEL,
@@ -328,7 +330,7 @@ export class SessionManager {
     for (const input of this.db.listPersistedSessionInputs()) {
       this.sessionInputQueues.enqueue(input.sessionId, {
         ...input,
-        images: input.images as ImageContent[] | undefined,
+        images: input.images as SessionPromptImage[] | undefined,
       });
     }
     this.jobs = new JobManager(db);
@@ -1046,7 +1048,7 @@ export class SessionManager {
   async prompt(
     id: number,
     message: string,
-    images?: ImageContent[],
+    images?: SessionPromptImage[],
     source?: string | null,
     origin?: string,
   ): Promise<void> {
@@ -1073,7 +1075,7 @@ export class SessionManager {
       message: string;
       level?: number;
       source?: string | null;
-      images?: ImageContent[];
+      images?: SessionPromptImage[];
       origin?: string;
     },
   ): Promise<SessionInputDisposition> {
@@ -1153,7 +1155,7 @@ export class SessionManager {
   async interruptAndPrompt(
     id: number,
     message: string,
-    images?: ImageContent[],
+    images?: SessionPromptImage[],
     source?: string | null,
     origin?: string,
   ): Promise<void> {
@@ -1253,14 +1255,14 @@ export class SessionManager {
     throw new Error(`Timed out waiting for session ${sessionId}`);
   }
 
-  async steer(id: number, message: string, images?: ImageContent[]): Promise<void> {
+  async steer(id: number, message: string, images?: SessionPromptImage[]): Promise<void> {
     this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
     await runtime.steer(message, images);
   }
 
-  followUp(id: number, message: string, source?: string | null, images?: ImageContent[]): void {
+  followUp(id: number, message: string, source?: string | null, images?: SessionPromptImage[]): void {
     this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
@@ -1629,13 +1631,40 @@ export class SessionManager {
   }
 
   listImportableExternalSessions(limit?: number) {
-    return listExternalSessions(limit);
+    return this.annotateImportedExternalSessions(listExternalSessions(limit));
+  }
+
+  private async annotateImportedExternalSessions(
+    pending: Promise<ExternalSessionCandidate[]>,
+  ): Promise<ExternalSessionCandidate[]> {
+    const candidates = await pending;
+    const importedByExternalId = new Map<string, number>();
+    for (const session of this.list()) {
+      const externalId = session.meta?.externalSessionId;
+      if (typeof externalId !== "string" || !externalId) continue;
+      if (!importedByExternalId.has(externalId)) {
+        importedByExternalId.set(externalId, session.id);
+      }
+    }
+    return candidates.map((candidate) => {
+      const importedSessionId = importedByExternalId.get(candidate.externalSessionId);
+      return importedSessionId == null
+        ? { ...candidate, imported: false }
+        : { ...candidate, imported: true, importedSessionId };
+    });
   }
 
   async importExternalSession(options: {
     backend: ImportableExternalBackend;
     externalSessionId: string;
   }): Promise<Session> {
+    const existing = this.list().find(
+      (session) => session.meta?.externalSessionId === options.externalSessionId,
+    );
+    if (existing) {
+      throw new Error(`该外部对话已导入为会话 #${existing.id}，不可重复引入`);
+    }
+
     const imported = await loadExternalSession(options.backend, options.externalSessionId);
     const agent = this.db.listAgents().find((item) => item.backendType === options.backend);
     if (!agent) throw new Error(`${options.backend} Agent is not configured`);
@@ -1667,8 +1696,9 @@ export class SessionManager {
         externalSessionId: imported.candidate.externalSessionId,
       },
     });
+    const entries = await materializeImportedImages(session.id, imported.entries);
     const storage = new SQLiteSessionStorage(this.db, session.id);
-    for (const entry of imported.entries) {
+    for (const entry of entries) {
       await storage.appendEntry(entry, {
         source: `external-import:${options.backend}`,
       });
@@ -1954,6 +1984,7 @@ export class SessionManager {
     }
     this.db.delete(id);
     if (session?.projectId != null) removeSessionDirSync(session.projectId, id);
+    removeSessionMediaDirSync(id);
   }
 
   // ============ Session Tree Methods ============

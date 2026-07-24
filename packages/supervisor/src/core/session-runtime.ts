@@ -6,7 +6,7 @@ import type {
   SessionTreeEntry,
   ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import { getModel, type ImageContent, type KnownProvider, type Model } from "@earendil-works/pi-ai";
+import { getModel, type KnownProvider, type Model } from "@earendil-works/pi-ai";
 import type { Session } from "../types.js";
 import type {
   AgentResource,
@@ -18,6 +18,10 @@ import { activatePackagedTools } from "../tools/loader.js";
 import { isPackagedToolId } from "../tools/catalog.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { SessionManager } from "./session-manager.js";
+import {
+  resolveSessionPromptImages,
+  type SessionPromptImage,
+} from "./session-media.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
 import { Context } from "../extension/runtime/index.js";
 import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
@@ -233,7 +237,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
 
   async prompt(
     message: string,
-    images?: ImageContent[],
+    images?: SessionPromptImage[],
     source?: string | null,
     origin?: string,
   ): Promise<void> {
@@ -263,26 +267,33 @@ export class SessionRuntime implements ManagedSessionRuntime {
       ? this.storage?.queueUserMessageOrigin(effectiveOrigin)
       : undefined;
     try {
-      await this.harness.prompt(expanded, images?.length ? { images } : undefined);
+      const imageContent = images?.length
+        ? await resolveSessionPromptImages(this.id, images)
+        : undefined;
+      await this.harness.prompt(expanded, imageContent?.length ? { images: imageContent } : undefined);
     } finally {
       cancelQueuedSource?.();
       cancelQueuedOrigin?.();
     }
   }
 
-  async steer(message: string, images?: ImageContent[]): Promise<void> {
+  async steer(message: string, images?: SessionPromptImage[]): Promise<void> {
     if (images?.length) {
       await this.harness.abort();
-      await this.harness.prompt(message, { images });
+      const imageContent = await resolveSessionPromptImages(this.id, images);
+      await this.harness.prompt(message, { images: imageContent });
       return;
     }
     this.harness.steer(message);
   }
 
-  followUp(message: string, source?: string | null, images?: ImageContent[]): void {
+  followUp(message: string, source?: string | null, images?: SessionPromptImage[]): void {
     if (source !== undefined) this.storage?.queueUserMessageSource(source);
     if (images?.length) {
-      void this.harness.waitForIdle().then(() => this.harness.prompt(message, { images }));
+      void this.harness.waitForIdle().then(async () => {
+        const imageContent = await resolveSessionPromptImages(this.id, images);
+        await this.harness.prompt(message, { images: imageContent });
+      });
       return;
     }
     this.harness.followUp(message);

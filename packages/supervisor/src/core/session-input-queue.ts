@@ -1,4 +1,4 @@
-import type { ImageContent } from "@earendil-works/pi-ai";
+import type { SessionPromptImage } from "./session-media.js";
 
 /** Default level for routine queued inputs (user follow-ups, shadow notes). */
 export const DEFAULT_SESSION_INPUT_LEVEL = 50;
@@ -19,7 +19,7 @@ export interface SessionQueuedInput {
   source: string | null;
   origin?: string;
   enqueuedAt: number;
-  images?: ImageContent[];
+  images?: SessionPromptImage[];
 }
 
 export type SessionInputDisposition = "interrupt" | "queued" | "drained";

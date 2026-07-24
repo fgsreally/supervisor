@@ -4,8 +4,9 @@ import type {
   SessionTreeEntry,
   ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Model } from "@earendil-works/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import type { SessionExtensionHost } from "../extension/runtime/index.js";
+import type { SessionPromptImage } from "./session-media.js";
 import type { SessionState, SlashCommandInfo } from "./session-runtime.js";
 
 export interface ManagedSessionRuntime {
@@ -15,12 +16,12 @@ export interface ManagedSessionRuntime {
   clear(): Promise<void>;
   prompt(
     message: string,
-    images?: ImageContent[],
+    images?: SessionPromptImage[],
     source?: string | null,
     origin?: string,
   ): Promise<void>;
-  steer(message: string, images?: ImageContent[]): void | Promise<void>;
-  followUp(message: string, source?: string | null, images?: ImageContent[]): void;
+  steer(message: string, images?: SessionPromptImage[]): void | Promise<void>;
+  followUp(message: string, source?: string | null, images?: SessionPromptImage[]): void;
   abort(): Promise<void>;
   waitForIdle(): Promise<void>;
   compact(customInstructions?: string): Promise<{

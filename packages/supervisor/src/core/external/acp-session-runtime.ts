@@ -18,13 +18,17 @@ import type {
   SessionTreeEntry,
   ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Model } from "@earendil-works/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import type { Agent, Session } from "../../types.js";
 import type { SupervisorDb } from "../../db/db.js";
 import type { SessionExtensionHost } from "../../extension/runtime/index.js";
 import type { ManagedSessionRuntime } from "../managed-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
 import type { SessionState, SlashCommandInfo } from "../session-runtime.js";
+import {
+  resolveSessionPromptImages,
+  type SessionPromptImage,
+} from "../session-media.js";
 import { SQLiteSessionStorage } from "../session-storage.js";
 import { getExternalAgentConfig } from "./external-agent-config.js";
 
@@ -295,7 +299,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     });
   }
 
-  async prompt(message: string, images?: ImageContent[], source?: string | null): Promise<void> {
+  async prompt(message: string, images?: SessionPromptImage[], source?: string | null): Promise<void> {
     if (this.running) throw new Error(`Session ${this.id} is already running`);
     const work = this.runPrompt(message, images, source);
     this.running = work;
@@ -308,19 +312,37 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
 
   private async runPrompt(
     message: string,
-    images?: ImageContent[],
+    images?: SessionPromptImage[],
     source?: string | null,
   ): Promise<void> {
     const userId = randomUUID();
     const parentId = await this.storage.getLeafId();
+    const imageContent = images?.length
+      ? await resolveSessionPromptImages(this.id, images)
+      : undefined;
+    const contentParts: Array<Record<string, unknown>> = [{ type: "text", text: message }];
+    if (images?.length) {
+      for (const image of images) {
+        contentParts.push({
+          type: "image",
+          name: image.name ?? "[Image]",
+          mediaId: image.mediaId,
+          mimeType: image.mimeType,
+        });
+      }
+    }
     await this.storage.appendEntry(
       {
         id: userId,
         parentId,
         timestamp: new Date().toISOString(),
         type: "message",
-        message: { role: "user", content: message, timestamp: Date.now() },
-      } as SessionTreeEntry,
+        message: {
+          role: "user",
+          content: contentParts,
+          timestamp: Date.now(),
+        },
+      } as unknown as SessionTreeEntry,
       { source },
     );
     this.assistantText = "";
@@ -333,7 +355,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
         messageId: userId,
         prompt: [
           { type: "text", text: message },
-          ...(images ?? []).map((image) => ({
+          ...(imageContent ?? []).map((image) => ({
             type: "image" as const,
             data: image.data,
             mimeType: image.mimeType,

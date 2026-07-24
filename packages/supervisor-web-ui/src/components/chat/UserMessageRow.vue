@@ -27,14 +27,36 @@
       <ChatFileBubble v-if="file" :file="file" class="relative" />
       <div
         v-else
-        class="relative px-3.5 py-2.5 text-[14px] chat-bubble chat-bubble--user"
-        :style="{ background: 'var(--app-bubble-user)', borderRadius: 'var(--app-bubble-radius)' }"
+        class="relative px-3.5 py-2.5 chat-bubble chat-bubble--user"
+        :style="{
+          background: 'var(--app-bubble-user)',
+          borderRadius: 'var(--app-bubble-radius)',
+          fontSize: 'var(--chat-msg-font-size, 14px)',
+        }"
         :class="{ 'ring-2 ring-[#07c160]/40': searchHit }"
       >
         <div
           class="absolute top-3 w-2 h-2 rotate-45 -right-1 chat-bubble-tail"
           :style="{ background: 'var(--app-bubble-user)' }"
         />
+        <div v-if="images.length" class="user-message-images relative z-10">
+          <img
+            v-for="(image, index) in images"
+            :key="image.mediaId || `${image.name}-${index}`"
+            v-show="image.mediaId && !image.missing"
+            class="user-message-images__thumb"
+            :src="image.mediaId ? mediaUrl(image.mediaId) : undefined"
+            :alt="image.name"
+            loading="lazy"
+          />
+          <span
+            v-for="(image, index) in images.filter((item) => item.missing || !item.mediaId)"
+            :key="`missing-${image.name}-${index}`"
+            class="user-message-images__missing"
+          >
+            {{ image.name }} 缺失
+          </span>
+        </div>
         <div v-if="slashCommand" class="relative z-10 slash-message">
           <span class="slash-command-tag" :class="`slash-command-tag--${slashSource ?? 'custom'}`">
             <Sparkles v-if="slashSource === 'skill'" class="w-3.5 h-3.5" />
@@ -50,7 +72,7 @@
             :content="slashRemainder"
           />
         </div>
-        <ChatRichText v-else :content="text" class="relative z-10" />
+        <ChatRichText v-else-if="text" :content="text" class="relative z-10" />
       </div>
     </div>
     <div class="chat-avatar chat-avatar--user shrink-0">U</div>
@@ -62,10 +84,13 @@ import { computed, onBeforeUnmount } from "vue";
 import ChatFileBubble from "../ChatFileBubble.vue";
 import ChatRichText from "../ChatRichText.vue";
 import type { ChatUserFileAttachment } from "@/types/chat-entry";
+import { sessionMediaUrl } from "@/api";
 import { FileText, Plug, Sparkles, Terminal, Undo2 } from "lucide-vue-next";
 
 const props = defineProps<{
+  sessionId: string;
   text: string;
+  images?: Array<{ name: string; mediaId?: string; mimeType?: string; missing?: boolean }>;
   file?: ChatUserFileAttachment | null;
   timeLabel: string;
   searchHit?: boolean;
@@ -78,6 +103,12 @@ const emit = defineEmits<{
   rewind: [];
   "open-actions": [payload: { mode: "menu" | "sheet"; x: number; y: number }];
 }>();
+
+const images = computed(() => props.images ?? []);
+
+function mediaUrl(mediaId: string): string {
+  return sessionMediaUrl(props.sessionId, mediaId);
+}
 
 let longPressTimer: ReturnType<typeof setTimeout> | undefined;
 let longPressStart = { x: 0, y: 0 };
@@ -265,6 +296,26 @@ onBeforeUnmount(cancelLongPress);
 .chat-avatar--user {
   background: #d1d5db;
   color: #4b5563;
+}
+
+.user-message-images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+
+.user-message-images__thumb {
+  width: min(7.5rem, 42vw);
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+  background: color-mix(in srgb, #000 12%, transparent);
+}
+
+.user-message-images__missing {
+  font-size: 12px;
+  opacity: 0.75;
 }
 
 .chat-bubble--user {

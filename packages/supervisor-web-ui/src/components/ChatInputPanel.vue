@@ -19,6 +19,9 @@
         class="chat-input-editor flex-1 min-h-0"
         :editor-height="editorHeight"
         :workspace-files="workspaceFiles"
+        :projects="projectOptions"
+        :workspace-cwd="workspaceId"
+        :current-project-id="currentProjectId"
         :skills="skills"
         :prompts="prompts"
         :commands="autocompleteCommands"
@@ -55,13 +58,14 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { Bot } from "lucide-vue-next";
 import * as api from "@/api";
-import { useAgentStore } from "@/store";
+import { useAgentStore, useSessionStore } from "@/store";
 import { useResizableHeight } from "../composables/use-resizable-height";
 import { showUiMessage } from "../composables/use-ui-message";
 import type { ChatSendPayload, PendingChatImage } from "@/types/chat-compose";
 import {
   promptsFromAgentResources,
   skillsFromAgentResources,
+  type ProjectAutocompleteEntry,
   type PromptAutocompleteEntry,
   type SkillAutocompleteEntry,
   type WorkspaceFileEntry,
@@ -96,11 +100,24 @@ const emit = defineEmits<{
 }>();
 
 const agentStore = useAgentStore();
+const sessionStore = useSessionStore();
 const workspaceFiles = ref<WorkspaceFileEntry[]>([]);
 const skills = ref<SkillAutocompleteEntry[]>([]);
 const prompts = ref<PromptAutocompleteEntry[]>([]);
 const customCommands = ref<api.SlashCommandInfo[]>([]);
 const imageInputRef = ref<HTMLInputElement | null>(null);
+const projectOptions = computed<ProjectAutocompleteEntry[]>(() =>
+  sessionStore.projects.map((p) => ({ id: p.id, name: p.name, cwd: p.cwd })),
+);
+const currentProjectId = computed(() => {
+  if (props.sessionId) {
+    const session = sessionStore.getSessionById(props.sessionId);
+    if (session?.projectId != null) return String(session.projectId);
+  }
+  return sessionStore.currentSession?.projectId != null
+    ? String(sessionStore.currentSession.projectId)
+    : null;
+});
 const autocompleteCommands = computed(() =>
   customCommands.value.map((command) => ({
     name: command.name.replace(/^\//, ""),
@@ -152,6 +169,10 @@ async function loadAutocompleteData() {
     }
   } else {
     workspaceFiles.value = [];
+  }
+
+  if (sessionStore.projects.length === 0) {
+    void sessionStore.fetchProjects();
   }
 
   if (props.agentId && !isExternalAgent.value) {
@@ -272,21 +293,31 @@ function onVoiceError(message: string) {
 
 function addPendingImage(file: File) {
   if (!file.type.startsWith("image/")) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    const result = reader.result;
-    if (typeof result !== "string") return;
-    const comma = result.indexOf(",");
-    const data = comma >= 0 ? result.slice(comma + 1) : result;
-    pendingImages.value.push({
-      id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      name: file.name || "image.png",
-      mimeType: file.type,
-      previewUrl: result,
-      data,
-    });
-  };
-  reader.readAsDataURL(file);
+  if (!props.sessionId) {
+    showUiMessage("请先打开会话再添加图片", "error");
+    return;
+  }
+  const sessionId = props.sessionId;
+  void (async () => {
+    try {
+      const uploaded = await api.uploadSessionMedia(sessionId, file);
+      const index = pendingImages.value.length + 1;
+      const label = `[Image #${index}]`;
+      const previewUrl = URL.createObjectURL(file);
+      pendingImages.value.push({
+        id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: uploaded.name || file.name || label,
+        mimeType: uploaded.mimeType,
+        previewUrl,
+        mediaId: uploaded.mediaId,
+      });
+      const separator = text.value && !/\s$/.test(text.value) ? " " : "";
+      text.value += `${separator}${label}`;
+      void nextTick(() => composerRef.value?.focus());
+    } catch (error) {
+      showUiMessage(error instanceof Error ? error.message : "图片上传失败", "error");
+    }
+  })();
 }
 
 function onImageInputChange(event: Event) {

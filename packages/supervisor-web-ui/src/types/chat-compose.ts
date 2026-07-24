@@ -2,8 +2,10 @@ export interface PendingChatImage {
   id: string;
   name: string;
   mimeType: string;
+  /** Local blob preview only (not sent to API). */
   previewUrl: string;
-  data: string;
+  /** Session media id after upload. */
+  mediaId: string;
 }
 
 export interface ChatSendPayload {

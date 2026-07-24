@@ -4,6 +4,10 @@ import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
+import {
+  copyPathIntoSessionMedia,
+  writeDataUrlIntoSessionMedia,
+} from "../session-media.js";
 
 export type ImportableExternalBackend = "codex" | "claude";
 
@@ -14,6 +18,9 @@ export interface ExternalSessionCandidate {
   title: string;
   preview: string;
   lastActiveAt: string;
+  /** Already imported into a supervisor session. */
+  imported?: boolean;
+  importedSessionId?: number;
 }
 
 interface ExternalSessionFile extends ExternalSessionCandidate {
@@ -76,24 +83,371 @@ export function isInjectedExternalUserText(text: string): boolean {
 }
 
 function displayTitle(preview: string, fallback: string): string {
-  const firstLine = preview.split(/\r?\n/, 1)[0]?.trim();
+  const cleaned = stripCodexImageTags(preview).text.trim();
+  const firstLine = cleaned.split(/\r?\n/, 1)[0]?.trim();
   return firstLine ? firstLine.slice(0, 80) : fallback;
 }
 
-function asTextMessage(role: "user" | "assistant", content: string, timestamp?: string): SessionTreeEntry {
-  const id = randomUUID();
-  const ts = timestamp ? Date.parse(timestamp) : Date.now();
+const CODEX_IMAGE_TAG_RE =
+  /<image\b[^>]*\bname=(?:\[([^\]]+)\]|"([^"]+)"|'([^']+)')[^>]*\bpath="([^"]*)"[^>]*\/?\s*>\s*(?:<\/image\s*>)?/gi;
+
+export type ImportedImagePart = {
+  type: "image";
+  name: string;
+  /** Absolute source path from Codex/Claude (may be missing after Temp GC). */
+  importPath?: string;
+  /** Fallback data URL from jsonl when path is gone. */
+  importDataUrl?: string;
+  mediaId?: string;
+  mimeType?: string;
+};
+
+function stripCodexImageTags(text: string): {
+  text: string;
+  images: Array<{ name: string; path: string }>;
+} {
+  const images: Array<{ name: string; path: string }> = [];
+  let cleaned = text.replace(CODEX_IMAGE_TAG_RE, (_full, n1, n2, n3, path) => {
+    const raw = String(n1 || n2 || n3 || "").trim() || `Image #${images.length + 1}`;
+    const name = raw.startsWith("[") ? raw : `[${raw}]`;
+    images.push({ name, path: String(path ?? "") });
+    return "";
+  });
+  // Orphans left by older / partial tags.
+  cleaned = cleaned
+    .replace(/<\/image\s*>/gi, "")
+    .replace(/(^|\n)\s*>\s*(?=\n|$)/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+  return { text: cleaned, images };
+}
+
+function ensureImagePlaceholders(text: string, imageNames: string[]): string {
+  let next = text.trim();
+  for (const name of imageNames) {
+    if (!next.includes(name)) {
+      next = next ? `${name}${next}` : name;
+    }
+  }
+  return next;
+}
+
+function asUserMessageWithImages(
+  text: string,
+  images: ImportedImagePart[],
+  timestamp?: string,
+): SessionTreeEntry {
+  const { iso, ms } = entryTimestamp(timestamp);
+  const content: Array<Record<string, unknown>> = [];
+  if (text.trim()) content.push({ type: "text", text: text.trim() });
+  for (const image of images) {
+    content.push({ ...image });
+  }
   return {
-    id,
+    id: randomUUID(),
     parentId: null,
-    timestamp: timestamp ?? new Date().toISOString(),
+    timestamp: iso,
+    type: "message",
+    message: {
+      role: "user",
+      content,
+      timestamp: ms,
+    },
+  } as unknown as SessionTreeEntry;
+}
+
+function parseCodexUserPayload(content: unknown): {
+  text: string;
+  images: ImportedImagePart[];
+} {
+  const images: ImportedImagePart[] = [];
+  const texts: string[] = [];
+  const dataUrls: string[] = [];
+
+  if (typeof content === "string") {
+    const stripped = stripCodexImageTags(content);
+    for (const image of stripped.images) {
+      images.push({
+        type: "image",
+        name: image.name,
+        importPath: image.path || undefined,
+      });
+    }
+    if (stripped.text) texts.push(stripped.text);
+  } else if (Array.isArray(content)) {
+    for (const part of content) {
+      if (!part || typeof part !== "object") continue;
+      const type = (part as { type?: string }).type;
+      if (type === "input_text" && typeof (part as { text?: string }).text === "string") {
+        const stripped = stripCodexImageTags((part as { text: string }).text);
+        for (const image of stripped.images) {
+          images.push({
+            type: "image",
+            name: image.name,
+            importPath: image.path || undefined,
+          });
+        }
+        if (stripped.text) texts.push(stripped.text);
+      } else if (
+        type === "input_image" &&
+        typeof (part as { image_url?: string }).image_url === "string"
+      ) {
+        dataUrls.push((part as { image_url: string }).image_url);
+      }
+    }
+  }
+
+  // Attach data URLs to images missing paths, in order.
+  let dataIndex = 0;
+  for (const image of images) {
+    if (!image.importPath && dataUrls[dataIndex]) {
+      image.importDataUrl = dataUrls[dataIndex++];
+    }
+  }
+  while (dataIndex < dataUrls.length) {
+    images.push({
+      type: "image",
+      name: `[Image #${images.length + 1}]`,
+      importDataUrl: dataUrls[dataIndex++],
+    });
+  }
+
+  const text = ensureImagePlaceholders(texts.join("\n").trim(), images.map((image) => image.name));
+  return { text, images };
+}
+
+export async function materializeImportedImages(
+  sessionId: number,
+  entries: SessionTreeEntry[],
+): Promise<SessionTreeEntry[]> {
+  for (const entry of entries) {
+    if (entry.type !== "message" || entry.message?.role !== "user") continue;
+    const content = entry.message.content;
+    if (!Array.isArray(content)) continue;
+    const parts = content as unknown as Array<Record<string, unknown>>;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i]!;
+      if (part.type !== "image") continue;
+      if (typeof part.mediaId === "string" && part.mediaId) continue;
+      let saved = null;
+      if (typeof part.importPath === "string" && part.importPath) {
+        saved = await copyPathIntoSessionMedia(sessionId, part.importPath, {
+          name: typeof part.name === "string" ? part.name : undefined,
+        });
+      }
+      if (!saved && typeof part.importDataUrl === "string" && part.importDataUrl) {
+        saved = await writeDataUrlIntoSessionMedia(sessionId, part.importDataUrl, {
+          name: typeof part.name === "string" ? part.name : undefined,
+        });
+      }
+      if (!saved) {
+        parts[i] = {
+          type: "image",
+          name: (typeof part.name === "string" && part.name) || "[Image]",
+          missing: true,
+        };
+        continue;
+      }
+      parts[i] = {
+        type: "image",
+        name: (typeof part.name === "string" && part.name) || saved.name || "[Image]",
+        mediaId: saved.mediaId,
+        mimeType: saved.mimeType,
+      };
+    }
+  }
+  return entries;
+}
+
+function entryTimestamp(timestamp?: string): { iso: string; ms: number } {
+  const ms = timestamp ? Date.parse(timestamp) : Date.now();
+  const safe = Number.isFinite(ms) ? ms : Date.now();
+  return { iso: timestamp ?? new Date(safe).toISOString(), ms: safe };
+}
+
+function asTextMessage(role: "user" | "assistant", content: string, timestamp?: string): SessionTreeEntry {
+  const { iso, ms } = entryTimestamp(timestamp);
+  return {
+    id: randomUUID(),
+    parentId: null,
+    timestamp: iso,
     type: "message",
     message: {
       role,
       content: [{ type: "text", text: content }],
-      timestamp: Number.isFinite(ts) ? ts : Date.now(),
+      timestamp: ms,
     } as AgentMessage,
   } as SessionTreeEntry;
+}
+
+type AssistantContentPart =
+  | { type: "text"; text: string }
+  | { type: "thinking"; thinking: string }
+  | { type: "toolCall"; id: string; name: string; arguments: Record<string, unknown> };
+
+function asAssistantPartsMessage(
+  parts: AssistantContentPart[],
+  timestamp?: string,
+): SessionTreeEntry | null {
+  if (parts.length === 0) return null;
+  const { iso, ms } = entryTimestamp(timestamp);
+  return {
+    id: randomUUID(),
+    parentId: null,
+    timestamp: iso,
+    type: "message",
+    message: {
+      role: "assistant",
+      content: parts,
+      timestamp: ms,
+    } as AgentMessage,
+  } as SessionTreeEntry;
+}
+
+function asToolResultEntry(
+  toolCallId: string,
+  toolName: string,
+  output: string,
+  timestamp?: string,
+  isError = false,
+): SessionTreeEntry {
+  const { iso } = entryTimestamp(timestamp);
+  return {
+    id: randomUUID(),
+    parentId: null,
+    timestamp: iso,
+    type: "toolResult",
+    toolCallId,
+    toolName,
+    content: [{ type: "text", text: output }],
+    isError,
+  } as SessionTreeEntry;
+}
+
+function unescapeQuoted(value: string): string {
+  try {
+    return JSON.parse(`"${value}"`) as string;
+  } catch {
+    return value
+      .replace(/\\n/g, "\n")
+      .replace(/\\r/g, "\r")
+      .replace(/\\t/g, "\t")
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, "\\");
+  }
+}
+
+function extractJsStringProp(source: string, key: string): string | undefined {
+  const match = source.match(new RegExp(`${key}\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+  return match ? unescapeQuoted(match[1]!) : undefined;
+}
+
+function parseJsonObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      return { input: value };
+    }
+  }
+  return {};
+}
+
+function normalizeToolName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return "tool";
+  const lower = trimmed.toLowerCase();
+  const aliases: Record<string, string> = {
+    bash: "bash",
+    shell: "bash",
+    shell_command: "bash",
+    read: "read",
+    write: "write",
+    edit: "edit",
+    glob: "glob",
+    grep: "grep",
+  };
+  return aliases[lower] ?? trimmed;
+}
+
+function extractPatchPaths(input: string): string[] {
+  const paths: string[] = [];
+  const re = /\*\*\*\s+(?:Update|Add|Delete)\s+File:\s+(.+)/g;
+  for (const match of input.matchAll(re)) {
+    const raw = match[1]?.trim();
+    if (raw) paths.push(raw.replace(/\\/g, "/"));
+  }
+  return [...new Set(paths)];
+}
+
+function classifyCodexExec(input: string, command: string | undefined): {
+  name: string;
+  arguments: Record<string, unknown>;
+} {
+  if (
+    input.includes("*** Begin Patch") ||
+    input.includes("*** Update File:") ||
+    /apply[_ ]?patch/i.test(input)
+  ) {
+    const paths = extractPatchPaths(input);
+    return {
+      name: "edit",
+      arguments: {
+        path: paths[0] ?? "",
+        paths,
+        input,
+      },
+    };
+  }
+  if (command) {
+    const readMatch = command.match(
+      /^(?:Get-Content|type|cat|bat)\s+(?:-Path\s+)?["']?([^\s"']+)/i,
+    );
+    if (readMatch?.[1]) {
+      return { name: "read", arguments: { path: readMatch[1].replace(/\\/g, "/") } };
+    }
+    return { name: "bash", arguments: { command } };
+  }
+  return { name: "exec", arguments: { input } };
+}
+
+function codexToolCall(
+  payload: Record<string, any>,
+): { id: string; name: string; arguments: Record<string, unknown> } | null {
+  const id =
+    (typeof payload.call_id === "string" && payload.call_id) ||
+    (typeof payload.id === "string" && payload.id) ||
+    "";
+  if (!id) return null;
+  const rawName = typeof payload.name === "string" ? payload.name : "tool";
+  if (payload.type === "custom_tool_call" && typeof payload.input === "string") {
+    const command = extractJsStringProp(payload.input, "command");
+    return { id, ...classifyCodexExec(payload.input, command) };
+  }
+  return {
+    id,
+    name: normalizeToolName(rawName),
+    arguments: parseJsonObject(payload.arguments),
+  };
+}
+
+function codexToolOutput(output: unknown): string {
+  if (typeof output === "string") return output;
+  return textContent(output, ["input_text", "output_text", "text"]);
+}
+
+function looksLikeToolError(output: string): boolean {
+  return /script\s+failed|script\s+error|exit code:\s*[1-9]/i.test(output);
+}
+
+function claudeToolName(name: unknown): string {
+  return normalizeToolName(typeof name === "string" ? name : "tool");
 }
 
 async function inspectCodex(file: string): Promise<ExternalSessionFile | null> {
@@ -106,7 +460,8 @@ async function inspectCodex(file: string): Promise<ExternalSessionFile | null> {
       cwd = value.payload?.cwd ?? "";
     } else if (value.type === "response_item" && value.payload?.type === "message") {
       if (value.payload.role === "user") {
-        const text = textContent(value.payload.content, ["input_text"]);
+        const parsed = parseCodexUserPayload(value.payload.content);
+        const text = parsed.text.replace(/\[Image #[^\]]+\]/g, "").trim() || parsed.text;
         if (text && !isInjectedExternalUserText(text)) preview ||= text;
       }
     }
@@ -190,54 +545,165 @@ export async function loadExternalSession(
   const entries: SessionTreeEntry[] = [];
   let parentId: string | null = null;
   let lastAssistantText = "";
-  await readJsonLines(match.file, (value) => {
-    let role: "user" | "assistant" | null = null;
-    let content = "";
-    let timestamp: string | undefined;
-    if (
-      backend === "codex" &&
-      value.type === "response_item" &&
-      value.payload?.type === "message"
-    ) {
-      role =
-        value.payload.role === "user" || value.payload.role === "assistant"
-          ? value.payload.role
-          : null;
-      content = textContent(
-        value.payload.content,
-        role === "user" ? ["input_text"] : ["output_text"],
-      );
-      timestamp = value.timestamp;
-    } else if (backend === "claude" && (value.type === "user" || value.type === "assistant")) {
-      role =
-        value.message?.role === "user" || value.message?.role === "assistant"
-          ? value.message.role
-          : null;
-      content = textContent(value.message?.content, ["text"]);
-      timestamp = value.timestamp;
-    }
-    if (!role || !content) return;
-    if (role === "user" && isInjectedExternalUserText(content)) return;
-    // Codex may emit progressive assistant snapshots; keep the longest for a run of assistants.
-    if (role === "assistant") {
-      if (lastAssistantText && content.startsWith(lastAssistantText)) {
-        const prev = entries[entries.length - 1];
-        if (prev?.type === "message" && prev.message?.role === "assistant") {
-          entries.pop();
-          parentId = prev.parentId ?? null;
-        }
-      } else if (lastAssistantText && lastAssistantText.startsWith(content)) {
-        return;
-      }
-      lastAssistantText = content;
-    } else {
-      lastAssistantText = "";
-    }
-    const entry = asTextMessage(role, content, timestamp);
+  const toolNames = new Map<string, string>();
+
+  const push = (entry: SessionTreeEntry | null | undefined) => {
+    if (!entry) return;
     entry.parentId = parentId;
     entries.push(entry);
     parentId = entry.id;
+  };
+
+  await readJsonLines(match.file, (value) => {
+    if (backend === "codex" && value.type === "response_item") {
+      const payload = value.payload as Record<string, any> | undefined;
+      const kind = payload?.type;
+      const timestamp = typeof value.timestamp === "string" ? value.timestamp : undefined;
+
+      if (kind === "function_call" || kind === "custom_tool_call") {
+        const call = payload ? codexToolCall(payload) : null;
+        if (!call) return;
+        lastAssistantText = "";
+        toolNames.set(call.id, call.name);
+        push(
+          asAssistantPartsMessage(
+            [{ type: "toolCall", id: call.id, name: call.name, arguments: call.arguments }],
+            timestamp,
+          ),
+        );
+        return;
+      }
+
+      if (kind === "function_call_output" || kind === "custom_tool_call_output") {
+        const callId = typeof payload?.call_id === "string" ? payload.call_id : "";
+        if (!callId) return;
+        lastAssistantText = "";
+        const output = codexToolOutput(payload?.output);
+        const toolName = toolNames.get(callId) ?? "tool";
+        push(asToolResultEntry(callId, toolName, output, timestamp, looksLikeToolError(output)));
+        return;
+      }
+
+      if (kind === "message") {
+        const role =
+          payload?.role === "user" || payload?.role === "assistant" ? payload.role : null;
+        if (!role) return;
+        if (role === "user") {
+          const parsed = parseCodexUserPayload(payload?.content);
+          const textForInjectCheck = parsed.text.replace(/\[Image #[^\]]+\]/g, "").trim();
+          if (
+            parsed.images.length === 0 &&
+            (!parsed.text || isInjectedExternalUserText(parsed.text))
+          ) {
+            return;
+          }
+          if (
+            parsed.images.length === 0 &&
+            textForInjectCheck &&
+            isInjectedExternalUserText(textForInjectCheck)
+          ) {
+            return;
+          }
+          if (
+            parsed.images.length > 0 &&
+            textForInjectCheck &&
+            isInjectedExternalUserText(textForInjectCheck)
+          ) {
+            // Keep images, drop injected instruction text.
+            parsed.text = ensureImagePlaceholders("", parsed.images.map((image) => image.name));
+          }
+          lastAssistantText = "";
+          if (parsed.images.length > 0) {
+            push(asUserMessageWithImages(parsed.text, parsed.images, timestamp));
+          } else if (parsed.text) {
+            push(asTextMessage("user", parsed.text, timestamp));
+          }
+          return;
+        }
+        const content = textContent(payload?.content, ["output_text"]);
+        if (!content) return;
+        if (lastAssistantText && content.startsWith(lastAssistantText)) {
+          const prev = entries[entries.length - 1];
+          if (prev?.type === "message" && prev.message?.role === "assistant") {
+            const prevContent = prev.message.content;
+            const onlyText =
+              Array.isArray(prevContent) &&
+              prevContent.length === 1 &&
+              prevContent[0]?.type === "text";
+            if (onlyText) {
+              entries.pop();
+              parentId = prev.parentId ?? null;
+            }
+          }
+        } else if (lastAssistantText && lastAssistantText.startsWith(content)) {
+          return;
+        }
+        lastAssistantText = content;
+        push(asTextMessage("assistant", content, timestamp));
+      }
+      return;
+    }
+
+    if (backend === "claude" && (value.type === "user" || value.type === "assistant")) {
+      const timestamp = typeof value.timestamp === "string" ? value.timestamp : undefined;
+      const rawContent = value.message?.content;
+      if (value.type === "user") {
+        lastAssistantText = "";
+        if (Array.isArray(rawContent)) {
+          for (const part of rawContent) {
+            if (!part || typeof part !== "object") continue;
+            if ((part as { type?: string }).type !== "tool_result") continue;
+            const callId =
+              typeof (part as { tool_use_id?: string }).tool_use_id === "string"
+                ? (part as { tool_use_id: string }).tool_use_id
+                : "";
+            if (!callId) continue;
+            const output =
+              typeof (part as { content?: unknown }).content === "string"
+                ? (part as { content: string }).content
+                : textContent((part as { content?: unknown }).content, ["text"]);
+            const isError = !!(part as { is_error?: boolean }).is_error || looksLikeToolError(output);
+            const toolName = toolNames.get(callId) ?? "tool";
+            push(asToolResultEntry(callId, toolName, output, timestamp, isError));
+          }
+        }
+        const text = textContent(rawContent, ["text"]);
+        if (text && !isInjectedExternalUserText(text)) {
+          push(asTextMessage("user", text, timestamp));
+        }
+        return;
+      }
+
+      // assistant
+      const parts: AssistantContentPart[] = [];
+      if (typeof rawContent === "string" && rawContent.trim()) {
+        parts.push({ type: "text", text: rawContent.trim() });
+      } else if (Array.isArray(rawContent)) {
+        for (const part of rawContent) {
+          if (!part || typeof part !== "object") continue;
+          const type = (part as { type?: string }).type;
+          if (type === "text" && typeof (part as { text?: string }).text === "string") {
+            const text = (part as { text: string }).text.trim();
+            if (text) parts.push({ type: "text", text });
+          } else if (type === "thinking" && typeof (part as { thinking?: string }).thinking === "string") {
+            const thinking = (part as { thinking: string }).thinking.trim();
+            if (thinking) parts.push({ type: "thinking", thinking });
+          } else if (type === "tool_use") {
+            const id = typeof (part as { id?: string }).id === "string" ? (part as { id: string }).id : "";
+            if (!id) continue;
+            const name = claudeToolName((part as { name?: string }).name);
+            const args = parseJsonObject((part as { input?: unknown }).input);
+            toolNames.set(id, name);
+            parts.push({ type: "toolCall", id, name, arguments: args });
+          }
+        }
+      }
+      if (parts.length === 0) return;
+      lastAssistantText = "";
+      push(asAssistantPartsMessage(parts, timestamp));
+    }
   });
+
   const { file: _file, ...candidate } = match;
   return { candidate, entries };
 }

@@ -51,7 +51,9 @@
       />
       <UserMessageRow
         v-else-if="group.type === 'message' && group.message?.role === 'user'"
+        :session-id="sessionId"
         :text="userText"
+        :images="userImages"
         :file="userFile"
         :time-label="timeLabel"
         :search-hit="searchHit"
@@ -117,7 +119,7 @@ import {
   isGroupedAssistantGroup,
   type DisplayGroup,
 } from "@/utils/flatten-messages";
-import { messageTextContent } from "@/utils/message-content";
+import { messageImageParts, messageTextContent, stripImagePlaceholders } from "@/utils/message-content";
 import UserMessageRow from "./UserMessageRow.vue";
 import ShadowMessageRow from "./ShadowMessageRow.vue";
 import AssistantMessageGroup from "./AssistantMessageGroup.vue";
@@ -172,9 +174,17 @@ const messageRowClass = computed(() => {
   return isDisplayGroupInherited(props.group) ? `${pad} chat-row-inherited` : `${pad} chat-row`;
 });
 
+const userImages = computed(() => {
+  if (props.group.type !== "message" || props.group.message?.role !== "user") return [];
+  return messageImageParts(props.group.message.content);
+});
+
 const userText = computed(() => {
   if (props.group.type !== "message") return "";
-  return messageTextContent(props.group.message?.content);
+  const text = messageTextContent(props.group.message?.content);
+  // Avoid duplicate [Image #N] chips when thumbs exist; also hide orphan placeholders
+  // from imports that never materialized mediaId.
+  return stripImagePlaceholders(text);
 });
 
 const userFile = computed((): ChatUserFileAttachment | null => {

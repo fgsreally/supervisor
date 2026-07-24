@@ -13,6 +13,10 @@ import type { Agent, Session } from "../../types.js";
 import type { ManagedSessionRuntime } from "../managed-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
 import type { SessionState, SlashCommandInfo } from "../session-runtime.js";
+import {
+  resolveSessionPromptImages,
+  type SessionPromptImage,
+} from "../session-media.js";
 import { SQLiteSessionStorage } from "../session-storage.js";
 
 type Listener = (event: AgentHarnessEvent) => void | Promise<void>;
@@ -99,7 +103,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     });
   }
 
-  async prompt(message: string, images?: ImageContent[], source?: string | null): Promise<void> {
+  async prompt(message: string, images?: SessionPromptImage[], source?: string | null): Promise<void> {
     if (this.running) throw new Error(`Session ${this.id} is already running`);
     const work = this.runPrompt(message, images, source);
     this.running = work;
@@ -112,18 +116,36 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
 
   private async runPrompt(
     message: string,
-    images?: ImageContent[],
+    images?: SessionPromptImage[],
     source?: string | null,
   ): Promise<void> {
     const userId = randomUUID();
+    const imageContent = images?.length
+      ? await resolveSessionPromptImages(this.id, images)
+      : undefined;
+    const contentParts: Array<Record<string, unknown>> = [{ type: "text", text: message }];
+    if (images?.length) {
+      for (const image of images) {
+        contentParts.push({
+          type: "image",
+          name: image.name ?? "[Image]",
+          mediaId: image.mediaId,
+          mimeType: image.mimeType,
+        });
+      }
+    }
     await this.storage.appendEntry(
       {
         id: userId,
         parentId: await this.storage.getLeafId(),
         timestamp: new Date().toISOString(),
         type: "message",
-        message: { role: "user", content: message, timestamp: Date.now() },
-      } as SessionTreeEntry,
+        message: {
+          role: "user",
+          content: contentParts,
+          timestamp: Date.now(),
+        },
+      } as unknown as SessionTreeEntry,
       { source },
     );
     this.assistantText = "";
@@ -142,7 +164,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
       const externalMessage = sideQuestionPrompt
         ? `${sideQuestionPrompt}\n\nSide question from the user:\n${message}`
         : message;
-      await this.runExternalTurn(externalMessage, images);
+      await this.runExternalTurn(externalMessage, imageContent);
       const assistantMessage = {
         role: "assistant",
         content: this.assistantText,
@@ -163,7 +185,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     }
   }
 
-  steer(message: string, images?: ImageContent[]): void {
+  steer(message: string, images?: SessionPromptImage[]): void {
     void (async () => {
       if (this.running) {
         await this.interruptExternal();
@@ -173,7 +195,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     })();
   }
 
-  followUp(message: string, source?: string | null, images?: ImageContent[]): void {
+  followUp(message: string, source?: string | null, images?: SessionPromptImage[]): void {
     void (async () => {
       await this.running?.catch(() => {});
       await this.prompt(message, images, source);

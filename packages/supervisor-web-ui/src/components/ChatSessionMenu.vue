@@ -52,7 +52,7 @@
                 />
               </div>
               <label class="chat-session-menu__name mt-4">
-                <span>聊天名称</span>
+                <span>聊天标题</span>
                 <input
                   :value="sessionTitle"
                   type="text"
@@ -60,6 +60,26 @@
                   @change="emit('update:title', ($event.target as HTMLInputElement).value)"
                 />
               </label>
+              <p v-if="externalAgent" class="mt-3">
+                <span class="session-external-badge">外部 Agent</span>
+              </p>
+              <div class="chat-session-menu__font mt-4">
+                <span class="chat-session-menu__muted text-[12px]">字号</span>
+                <div class="chat-font-size" role="radiogroup" aria-label="聊天字号">
+                  <button
+                    v-for="option in fontSizeOptions"
+                    :key="option.value"
+                    type="button"
+                    role="radio"
+                    :aria-checked="chatFontSize === option.value"
+                    class="chat-font-size__btn"
+                    :class="{ 'chat-font-size__btn--active': chatFontSize === option.value }"
+                    @click="setChatFontSize(option.value)"
+                  >
+                    {{ option.label }}
+                  </button>
+                </div>
+              </div>
               <p v-if="gitBranch" class="mt-4 text-[12px] chat-session-menu__muted break-all">
                 分支：<code class="text-[11px]">{{ gitBranch }}</code>
               </p>
@@ -71,7 +91,10 @@
               </p>
             </section>
 
-            <section class="px-5 py-4 border-b chat-session-menu__section session-agent-settings">
+            <section
+              v-if="!externalAgent"
+              class="px-5 py-4 border-b chat-session-menu__section session-agent-settings"
+            >
               <div class="flex items-center justify-between">
                 <span class="session-agent-settings__label">影子代理</span>
                 <button
@@ -268,6 +291,7 @@ import { ChevronRight, Plus, X } from "lucide-vue-next";
 import type { Session } from "@/api";
 import type { Agent } from "@/api";
 import { SESSION_AVATAR_COLORS, type SessionAvatarValue } from "@/utils/session-avatar";
+import { type ChatFontSize, useChatFontSize } from "../composables/use-chat-font-size";
 import AgentAvatar from "./AgentAvatar.vue";
 
 const props = defineProps<{
@@ -289,6 +313,7 @@ const props = defineProps<{
   configurableAgents: Agent[];
   shadowEnabled: boolean;
   spawnedAgentIds: string[];
+  externalAgent?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -308,6 +333,13 @@ const emit = defineEmits<{
   "update:shadowEnabled": [value: boolean];
   "update:spawnedAgents": [value: string[]];
 }>();
+
+const { chatFontSize, setChatFontSize } = useChatFontSize();
+const fontSizeOptions: Array<{ value: ChatFontSize; label: string }> = [
+  { value: "small", label: "小" },
+  { value: "medium", label: "中" },
+  { value: "large", label: "大" },
+];
 
 const spawnAgentPickerOpen = ref(false);
 const selectedSpawnAgents = computed(() =>
@@ -469,6 +501,57 @@ function childSessionName(child: Pick<Session, "id" | "meta">): string {
   outline: none;
   color: var(--app-text-primary);
   background: var(--app-chat-bg);
+}
+
+.chat-session-menu__font {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.chat-font-size {
+  display: inline-flex;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--app-chat-bg);
+}
+
+.chat-font-size__btn {
+  flex: 1;
+  min-width: 36px;
+  padding: 6px 0;
+  border: 0;
+  border-right: 1px solid var(--app-border-subtle);
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+
+.chat-font-size__btn:last-child {
+  border-right: 0;
+}
+
+.chat-font-size__btn--active {
+  color: #075f32;
+  background: rgb(231 248 239 / 92%);
+  font-weight: 600;
+}
+
+.session-external-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5640a3;
+  background: rgb(238 234 255 / 94%);
+  border: 1px solid rgb(91 78 180 / 28%);
 }
 
 .session-agent-settings__label {

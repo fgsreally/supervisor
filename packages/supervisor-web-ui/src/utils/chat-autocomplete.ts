@@ -3,11 +3,19 @@ import { isTokenStart } from "./chat-token-patterns";
 import { type FileIconKind, getFileIconKind } from "./file-type-icon";
 import { fuzzyFilter } from "./fuzzy-filter";
 
-export type AutocompleteTrigger = "at" | "slash" | "skill";
+export type AutocompleteTrigger = "at" | "atat" | "slash" | "skill";
+
+export type AutocompleteItemKind = "file" | "project" | "nav-projects";
 
 export interface WorkspaceFileEntry {
   path: string;
   isDirectory: boolean;
+}
+
+export interface ProjectAutocompleteEntry {
+  id: string;
+  name: string;
+  cwd: string;
 }
 
 export interface SkillAutocompleteEntry {
@@ -33,21 +41,33 @@ export interface ChatAutocompleteItem {
   label: string;
   description?: string;
   trigger: AutocompleteTrigger;
+  kind?: AutocompleteItemKind;
   isDirectory?: boolean;
   fileIconKind?: FileIconKind;
   source?: "skill" | "prompt" | "custom" | "mcp";
+  /** Absolute path for @@ inserts */
+  absolutePath?: string;
+  projectId?: string;
+  projectCwd?: string;
 }
 
 export interface ChatAutocompleteContext {
   trigger: AutocompleteTrigger;
-  /** Full token including @ or / */
+  /** Full token including @ / @@ / / */
   prefix: string;
   /** Replace range in plain text */
   replaceStart: number;
   replaceEnd: number;
 }
 
+export interface PathBrowseState {
+  /** When set, @@ is listing files in this project; null = project picker */
+  atatProject: ProjectAutocompleteEntry | null;
+}
+
 const PATH_DELIMITERS = new Set([" ", "\t", '"', "'", "="]);
+const FILE_LIMIT = 12;
+const PROJECT_LIMIT = 40;
 
 function findUnclosedQuoteStart(text: string): number | null {
   let inQuotes = false;
@@ -64,12 +84,14 @@ function findUnclosedQuoteStart(text: string): number | null {
 function extractAtPrefix(textBeforeCursor: string): string | null {
   const quoteStart = findUnclosedQuoteStart(textBeforeCursor);
   if (quoteStart !== null) {
-    if (
-      quoteStart > 0 &&
-      textBeforeCursor[quoteStart - 1] === "@" &&
-      isTokenStart(textBeforeCursor, quoteStart - 1)
-    ) {
-      return textBeforeCursor.slice(quoteStart - 1);
+    if (quoteStart > 0 && textBeforeCursor[quoteStart - 1] === "@") {
+      const atIndex =
+        quoteStart >= 2 && textBeforeCursor[quoteStart - 2] === "@"
+          ? quoteStart - 2
+          : quoteStart - 1;
+      if (isTokenStart(textBeforeCursor, atIndex)) {
+        return textBeforeCursor.slice(atIndex);
+      }
     }
     if (isTokenStart(textBeforeCursor, quoteStart)) {
       return textBeforeCursor.slice(quoteStart);
@@ -112,7 +134,7 @@ function extractSkillPrefix(textBeforeCursor: string): string | null {
   return null;
 }
 
-/** Detect active @ or / autocomplete at cursor. */
+/** Detect active @ / @@ / / / $ autocomplete at cursor. */
 export function getAutocompleteContext(
   text: string,
   cursor: number,
@@ -121,8 +143,9 @@ export function getAutocompleteContext(
 
   const atPrefix = extractAtPrefix(textBeforeCursor);
   if (atPrefix) {
+    const trigger: AutocompleteTrigger = atPrefix.startsWith("@@") ? "atat" : "at";
     return {
-      trigger: "at",
+      trigger,
       prefix: atPrefix,
       replaceStart: cursor - atPrefix.length,
       replaceEnd: cursor,
@@ -152,36 +175,139 @@ export function getAutocompleteContext(
   return null;
 }
 
-function buildFileCompletionValue(path: string, isDirectory: boolean, quoted: boolean): string {
-  const needsQuotes = quoted || path.includes(" ");
-  if (!needsQuotes) {
-    return `@${path}${isDirectory ? "" : ""}`;
+export function joinWorkspacePath(root: string, relativePath: string): string {
+  const rel = relativePath.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/$/, "");
+  if (!rel || rel === ".") return root.replace(/[\\/]+$/, "") || root;
+  const useBackslash = root.includes("\\");
+  const sep = useBackslash ? "\\" : "/";
+  const base = root.replace(/[\\/]+$/, "");
+  const joined = rel.split("/").filter(Boolean).join(sep);
+  return `${base}${sep}${joined}`;
+}
+
+function buildAtCompletionValue(path: string, quoted: boolean): string {
+  const needsQuotes = quoted || /[\s"]/.test(path);
+  return needsQuotes ? `@"${path}"` : `@${path}`;
+}
+
+function atQuery(prefix: string, trigger: "at" | "atat"): { quoted: boolean; query: string } {
+  if (trigger === "atat") {
+    if (prefix.startsWith('@@"')) return { quoted: true, query: prefix.slice(3) };
+    return { quoted: false, query: prefix.slice(2) };
   }
-  return `@"${path}"`;
+  if (prefix.startsWith('@"')) return { quoted: true, query: prefix.slice(2) };
+  return { quoted: false, query: prefix.slice(1) };
+}
+
+function normalizeCwdKey(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+
+/** Exclude the session's own project from @@ picker (by id, cwd, or worktree under project). */
+export function isCurrentProjectForAtat(
+  project: ProjectAutocompleteEntry,
+  currentWorkspaceCwd?: string,
+  currentProjectId?: string | null,
+): boolean {
+  if (currentProjectId != null && String(currentProjectId) === String(project.id)) return true;
+
+  const projectCwd = normalizeCwdKey(project.cwd);
+  if (!projectCwd) return false;
+
+  const current = normalizeCwdKey(currentWorkspaceCwd ?? "");
+  if (!current) return false;
+
+  return current === projectCwd || current.startsWith(`${projectCwd}/`);
+}
+
+/** Flat fuzzy file list (Codex / Cursor / Claude Code style). */
+function buildFlatFileItems(
+  trigger: "at" | "atat",
+  files: WorkspaceFileEntry[],
+  query: string,
+  quoted: boolean,
+  absoluteRoot?: string,
+): ChatAutocompleteItem[] {
+  const filtered = fuzzyFilter(files, query, (f) => f.path);
+  return filtered.slice(0, FILE_LIMIT).map((f) => {
+    const rel = f.isDirectory ? f.path.replace(/\/$/, "") : f.path;
+    const abs = absoluteRoot ? joinWorkspacePath(absoluteRoot, rel) : undefined;
+    const insertPath = absoluteRoot ? (abs ?? rel) : rel;
+    return {
+      trigger,
+      kind: "file" as const,
+      label: f.isDirectory ? `${rel}/` : rel,
+      value: buildAtCompletionValue(insertPath, quoted),
+      absolutePath: abs,
+      isDirectory: f.isDirectory,
+      fileIconKind: getFileIconKind(f.path, f.isDirectory),
+      description: f.isDirectory
+        ? absoluteRoot
+          ? "其它项目目录"
+          : "目录"
+        : absoluteRoot
+          ? "其它项目文件"
+          : "文件",
+    };
+  });
 }
 
 export function getAutocompleteSuggestions(
   context: ChatAutocompleteContext,
   options: {
     workspaceFiles: WorkspaceFileEntry[];
+    projects?: ProjectAutocompleteEntry[];
+    atatFiles?: WorkspaceFileEntry[];
+    browse?: PathBrowseState;
+    currentWorkspaceCwd?: string;
+    currentProjectId?: string | null;
     skills: SkillAutocompleteEntry[];
     prompts: PromptAutocompleteEntry[];
     commands?: CommandAutocompleteEntry[];
     skillTrigger?: "slash" | "dollar";
   },
 ): ChatAutocompleteItem[] {
+  const browse: PathBrowseState = options.browse ?? { atatProject: null };
+
   if (context.trigger === "at") {
-    const quoted = context.prefix.startsWith('@"');
-    const rawQuery = quoted ? context.prefix.slice(2) : context.prefix.slice(1);
-    const filtered = fuzzyFilter(options.workspaceFiles, rawQuery, (f) => f.path);
-    return filtered.slice(0, 12).map((f) => ({
-      trigger: "at" as const,
-      label: f.isDirectory ? `${f.path}/` : f.path,
-      value: buildFileCompletionValue(f.path, f.isDirectory, quoted),
-      isDirectory: f.isDirectory,
-      fileIconKind: getFileIconKind(f.path, f.isDirectory),
-      description: f.isDirectory ? "目录" : "文件",
-    }));
+    const { quoted, query } = atQuery(context.prefix, "at");
+    return buildFlatFileItems("at", options.workspaceFiles, query, quoted);
+  }
+
+  if (context.trigger === "atat") {
+    const { quoted, query } = atQuery(context.prefix, "atat");
+    if (!browse.atatProject) {
+      const projects = (options.projects ?? []).filter(
+        (p) => !isCurrentProjectForAtat(p, options.currentWorkspaceCwd, options.currentProjectId),
+      );
+      const filtered = fuzzyFilter(projects, query, (p) => `${p.name} ${p.cwd}`);
+      return filtered.slice(0, PROJECT_LIMIT).map((p) => ({
+        trigger: "atat" as const,
+        kind: "project" as const,
+        value: p.id,
+        label: p.name,
+        description: p.cwd,
+        projectId: p.id,
+        projectCwd: p.cwd,
+      }));
+    }
+
+    return [
+      {
+        trigger: "atat" as const,
+        kind: "nav-projects" as const,
+        value: "__nav_projects__",
+        label: "返回项目列表",
+        description: browse.atatProject.name,
+      },
+      ...buildFlatFileItems(
+        "atat",
+        options.atatFiles ?? [],
+        query,
+        quoted,
+        browse.atatProject.cwd,
+      ),
+    ];
   }
 
   const query = context.prefix.slice(1);
@@ -261,11 +387,13 @@ export function applyAutocompleteCompletion(
     return { text: next, cursor: before.length + insertion.length };
   }
 
-  const isDirectory = item.isDirectory ?? false;
-  const suffix = isDirectory ? "" : " ";
-  const insertion = item.value + suffix;
+  if (context.trigger === "atat" && item.absolutePath) {
+    const insertion = `${buildAtCompletionValue(item.absolutePath, false)} `;
+    const next = before + insertion + after;
+    return { text: next, cursor: before.length + insertion.length };
+  }
+
+  const insertion = `${item.value} `;
   const next = before + insertion + after;
-  let cursor = before.length + item.value.length;
-  if (!isDirectory) cursor += suffix.length;
-  return { text: next, cursor };
+  return { text: next, cursor: before.length + insertion.length };
 }

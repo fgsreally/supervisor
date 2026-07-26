@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { parseWorkflowState, workflowStageLabel } from "../workflow";
+import { parseSessionStage, workflowStageLabel } from "../workflow";
 
 describe("workflow UI helpers", () => {
-  it("reads a persisted workflow from Session meta", () => {
-    expect(
-      parseWorkflowState({ workflow: { stage: "mockup", status: "waiting_confirmation" } }),
-    ).toEqual({ stage: "mockup", status: "waiting_confirmation" });
+  it("prefers the top-level stage column", () => {
+    expect(parseSessionStage({ stage: "mockup" })).toBe("mockup");
   });
 
-  it("rejects malformed workflow metadata", () => {
-    expect(parseWorkflowState({ workflow: { stage: "spec" } })).toBeNull();
-    expect(parseWorkflowState({ workflow: { stage: "spec", status: "unknown" } })).toBeNull();
+  it("falls back to the legacy meta.workflow.stage shape", () => {
+    expect(parseSessionStage({ meta: { workflow: { stage: "spec" } } })).toBe("spec");
+  });
+
+  it("returns null when no stage is present", () => {
+    expect(parseSessionStage({})).toBeNull();
+    expect(parseSessionStage({ meta: {} })).toBeNull();
   });
 
   it("uses readable labels and preserves custom stage names", () => {

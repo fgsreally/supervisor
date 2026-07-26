@@ -17,7 +17,7 @@
     >
       {{ title }}
     </h1>
-    <WorkflowStageTag v-if="workflow" class="ml-3" :workflow="workflow" />
+    <WorkflowStageTag v-if="stage" class="ml-3" :stage="stage" />
     <button
       v-if="agentName"
       type="button"
@@ -48,14 +48,13 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { ChevronLeft, MoreHorizontal } from "lucide-vue-next";
-import type { WorkflowState } from "@/utils/workflow";
 import WorkflowStageTag from "../WorkflowStageTag.vue";
 
 /** UI-facing session phase (overrides backend idle while streaming / waiting on ask). */
 export type ChatHeaderStatus =
-  | "starting"
+  | "initializing"
   | "running"
-  | "waiting_user"
+  | "blocked"
   | "idle"
   | "error"
   | "stopped"
@@ -69,7 +68,7 @@ const props = defineProps<{
   externalAgent?: boolean;
   statusKey: ChatHeaderStatus | string;
   showBack?: boolean;
-  workflow?: WorkflowState | null;
+  stage?: string | null;
 }>();
 
 const emit = defineEmits<{
@@ -80,12 +79,12 @@ const emit = defineEmits<{
 
 const statusLabel = computed(() => {
   switch (props.statusKey) {
-    case "starting":
-      return "启动中";
+    case "initializing":
+      return "正在初始化";
     case "running":
       return "生成中";
-    case "waiting_user":
-      return "等待你操作";
+    case "blocked":
+      return "阻塞";
     case "idle":
       return "空闲";
     case "finish":
@@ -101,11 +100,11 @@ const statusLabel = computed(() => {
 
 const statusBadgeClass = computed(() => {
   switch (props.statusKey) {
-    case "starting":
-      return "status-blue";
+    case "initializing":
+      return "status-blue animate-pulse";
     case "running":
       return "status-yellow animate-pulse";
-    case "waiting_user":
+    case "blocked":
       return "status-orange";
     case "idle":
     case "finish":

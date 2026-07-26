@@ -6,12 +6,12 @@
   >
     <ChatViewHeader
       :title="sessionTitle"
-      :title-readonly="!!session.meta?.builtin"
+      :title-readonly="!!session.isBuiltin"
       :agent-name="agentName"
       :agent-id="agentId"
       :external-agent="isExternalAgent"
       :status-key="headerStatusKey"
-      :workflow="workflow"
+      :stage="stage"
       :show-back="showBack"
       @back="emit('back')"
       @view-agent="emit('view-agent', $event)"
@@ -29,9 +29,16 @@
           <ChatHeaderAction
             title="查看会话日志"
             :active="showLogPanel"
-            @click="showLogPanel = !showLogPanel"
+            @click="toggleLogPanel"
           >
             <ScrollText />
+          </ChatHeaderAction>
+          <ChatHeaderAction
+            title="查看工作区文件"
+            :active="showFilesPanel"
+            @click="toggleFilesPanel"
+          >
+            <FolderTree />
           </ChatHeaderAction>
           <SessionCommitPopover :session-id="session.id" />
           <ChatHeaderAction
@@ -92,9 +99,9 @@
           :streaming-time-label="streamingTimeLabel"
           :search-open="searchOpen"
           :search-query="searchQuery"
-          :assistant-avatar-label="session.meta?.builtin ? 'π' : sessionAvatarValue.text"
+          :assistant-avatar-label="session.isBuiltin ? 'π' : sessionAvatarValue.text"
           :assistant-avatar-color="sessionAvatarValue.color"
-          :assistant-avatar-icon="session.meta?.builtin ? null : sessionAvatarValue.icon"
+          :assistant-avatar-icon="session.isBuiltin ? null : sessionAvatarValue.icon"
           :assistant-avatar-agent-id="agentId ?? session.id"
           :rewindable-entry-ids="rewindableEntryIds"
           :retrying="retryingError"
@@ -106,6 +113,7 @@
           @open-compaction="openCompactionDetail"
           @navigate="navigateToSubagent"
           @answered="onAskAnswered"
+          @open-external-detail="openExternalInteractionDetail"
           @rewind="rewindToMessage"
           @fork="forkFromMessage"
           @retry-error="onRetryLlmError"
@@ -123,13 +131,13 @@
           </button>
         </div>
 
-        <div v-if="isStreaming" class="streaming-send-mode">
-          <span>回复进行中，发送方式</span>
-          <select v-model="streamingSendMode">
-            <option value="steer">立即干预（中断当前回复）</option>
-            <option value="follow_up">轮后追加</option>
-          </select>
-        </div>
+        <QueuedInputsBar
+          :inputs="queuedInputs"
+          :busy-id="queuedActionBusyId"
+          @edit="editQueuedInput"
+          @submit="submitQueuedInputNow"
+          @delete="deleteQueuedInput"
+        />
 
         <ChatInputPanel
           ref="inputPanelRef"
@@ -138,7 +146,7 @@
           :workspace-id="workspaceId"
           :agent-id="agentId"
           :disabled="inputDisabled"
-          :interrupting="isStreaming"
+          :interrupting="canInterrupt"
           :placeholder="inputPlaceholder"
           :empty-state-title="modelMissing ? '需要先配置模型' : undefined"
           :empty-state-description="modelMissing ? '选择模型后即可继续这段对话' : undefined"
@@ -183,6 +191,15 @@
         </div>
       </Transition>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
+        <div v-if="showFilesPanel" class="chat-panel-host">
+          <SessionFilesPanel
+            class="chat-panel-host__body chat-workspace__side-panel"
+            :session-id="session.id"
+            @close="showFilesPanel = false"
+          />
+        </div>
+      </Transition>
+      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
         <div v-if="toolPanel" class="chat-panel-host">
           <ToolDetailPanel
             class="chat-panel-host__body chat-workspace__tool-panel"
@@ -216,15 +233,11 @@
               <button type="button" @click="runMobileAction(openSearch)">
                 <Search /><span>搜索</span>
               </button>
-              <button
-                type="button"
-                @click="
-                  runMobileAction(() => {
-                    showLogPanel = true;
-                  })
-                "
-              >
+              <button type="button" @click="runMobileAction(openLogPanel)">
                 <ScrollText /><span>日志</span>
+              </button>
+              <button type="button" @click="runMobileAction(openFilesPanel)">
+                <FolderTree /><span>文件</span>
               </button>
               <button
                 v-if="tasks.length"
@@ -248,9 +261,9 @@
 
     <ChatSessionMenu
       :open="sessionMenuOpen"
-      :agent-name="agentName ?? session.meta?.name ?? 'Agent'"
+      :agent-name="agentName ?? session.title ?? 'Agent'"
       :session-title="sessionTitle"
-      :title-readonly="!!session.meta?.builtin"
+      :title-readonly="!!session.isBuiltin"
       :avatar-label="sessionAvatarValue.text"
       :avatar-color="sessionAvatarValue.color"
       :avatar-icon="sessionAvatarValue.icon"
@@ -268,7 +281,8 @@
       :external-agent="isExternalAgent"
       @close="sessionMenuOpen = false"
       @search="openSearchFromMenu"
-      @log="showLogPanel = true"
+      @log="openLogPanel"
+      @files="openFilesPanel"
       @complete="onCompleteSession"
       @checkpoint="onCreateCheckpoint"
       @rewind="onRewindSession"
@@ -350,6 +364,7 @@ import { ref, computed, nextTick, watch, onBeforeUnmount } from "vue";
 import {
   Braces,
   ClipboardList,
+  FolderTree,
   Loader2,
   SlidersHorizontal,
   ScrollText,
@@ -370,9 +385,10 @@ import {
   applyAgentEventToChatEntries,
   createStreamingAssistantEntry,
   createUserChatEntry,
+  mergeStreamingToolsIntoPersistedEntries,
   sessionTreeToChatEntries,
 } from "../utils/session-entries";
-import { buildToolModal, buildBashModal } from "../utils/tool-detail";
+import { buildToolModal, buildBashModal, buildExternalInteractionModal } from "../utils/tool-detail";
 import ToolDetailModal from "../components/ToolDetailModal.vue";
 import ToolDetailPanel from "../components/ToolDetailPanel.vue";
 import BtwSplitPanel from "../components/BtwSplitPanel.vue";
@@ -380,9 +396,11 @@ import ChatInputPanel from "../components/ChatInputPanel.vue";
 import ExternalAgentCommandHost from "../components/external-agents/ExternalAgentCommandHost.vue";
 import ChatSessionMenu from "../components/ChatSessionMenu.vue";
 import SessionLogPanel from "../components/SessionLogPanel.vue";
+import SessionFilesPanel from "../components/SessionFilesPanel.vue";
 import ChatViewHeader from "../components/chat/ChatViewHeader.vue";
 import ChatSearchBar from "../components/chat/ChatSearchBar.vue";
 import ChatMessageList from "../components/chat/ChatMessageList.vue";
+import QueuedInputsBar from "../components/chat/QueuedInputsBar.vue";
 import TaskWorkspacePanel from "../components/chat/TaskWorkspacePanel.vue";
 import SessionJobsPopover, {
   type JobDetailRequest,
@@ -398,7 +416,7 @@ import { getShowThinking, setShowThinking } from "../composables/use-chat-sessio
 import { useChatFontSize } from "../composables/use-chat-font-size";
 import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-push-notifications";
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
-import { parseWorkflowState } from "../utils/workflow";
+import { parseSessionStage } from "../utils/workflow";
 import { sessionAvatar, type SessionAvatarValue } from "../utils/session-avatar";
 
 const props = defineProps<{
@@ -406,14 +424,15 @@ const props = defineProps<{
     id: string;
     status: string;
     parentId?: string | null;
+    title?: string | null;
+    isBuiltin?: boolean;
+    avatar?: Partial<SessionAvatarValue> | null;
+    shadowEnabled?: boolean;
+    stage?: string | null;
     meta?: {
-      name?: string;
-      builtin?: boolean;
-      shadowDisabled?: boolean;
       shadow?: { suggestedQuestions?: string[]; status?: string };
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
       workflow?: { stage: string; status: string };
-      avatar?: SessionAvatarValue;
       changedFiles?: SessionChangedFileView[];
       turns?: Array<{ files?: { added?: string[]; modified?: string[]; deleted?: string[] } }>;
     };
@@ -421,6 +440,8 @@ const props = defineProps<{
     pinned?: boolean;
     muted?: boolean;
     currentTask?: string | null;
+    gitSessionBranch?: string | null;
+    gitWorktreeEnabled?: boolean;
   };
   agentId?: string;
   showBack?: boolean;
@@ -432,7 +453,7 @@ const emit = defineEmits<{
   "view-agent": [agentId: string];
 }>();
 
-const workflow = computed(() => parseWorkflowState(props.session.meta));
+const stage = computed(() => parseSessionStage(props.session));
 const sessionChangedFiles = computed<SessionChangedFileView[]>(() => {
   if (Array.isArray(props.session.meta?.changedFiles)) return props.session.meta.changedFiles;
   const files = new Map<string, SessionChangedFileView>();
@@ -457,8 +478,8 @@ const agentName = computed(() => {
 const sessionAvatarValue = computed(() =>
   sessionAvatar(
     props.session.id,
-    props.session.meta?.name ?? agentName.value ?? "Agent",
-    props.session.meta?.avatar,
+    props.session.title ?? agentName.value ?? "Agent",
+    props.session.avatar ?? undefined,
     props.agentId ? agentStore.getAgentById(props.agentId)?.icon : null,
   ),
 );
@@ -507,7 +528,6 @@ function openJobDetail(request: JobDetailRequest): void {
   toolModal.value = { title: request.title, sections: request.sections };
 }
 const isStreaming = ref(false);
-const streamingSendMode = ref<"steer" | "follow_up">("follow_up");
 const streamingAssistantId = ref<string | null>(null);
 const activeTurn = ref<{
   userEntryId: string;
@@ -522,6 +542,27 @@ const modelPickerSaving = ref(false);
 const modelSearch = ref("");
 const sessionActionsOpen = ref(false);
 const showLogPanel = ref(false);
+const showFilesPanel = ref(false);
+
+function toggleLogPanel() {
+  showLogPanel.value = !showLogPanel.value;
+  if (showLogPanel.value) showFilesPanel.value = false;
+}
+
+function toggleFilesPanel() {
+  showFilesPanel.value = !showFilesPanel.value;
+  if (showFilesPanel.value) showLogPanel.value = false;
+}
+
+function openLogPanel() {
+  showLogPanel.value = true;
+  showFilesPanel.value = false;
+}
+
+function openFilesPanel() {
+  showFilesPanel.value = true;
+  showLogPanel.value = false;
+}
 const searchOpen = ref(false);
 const searchQuery = ref("");
 const tasks = ref<api.TaskArtifact[]>([]);
@@ -530,6 +571,7 @@ const selectedTaskPath = ref<string | null>(null);
 const taskPaneOpen = ref(false);
 let streamCleanup: (() => void) | null = null;
 let shadowSuggestionCleanup: (() => void) | null = null;
+let streamingReconcileTimer: ReturnType<typeof setInterval> | null = null;
 
 const workspaceId = computed(() => props.session.workspaceId ?? "");
 const sessionMuted = computed(() => !!props.session.muted);
@@ -613,13 +655,79 @@ async function selectAgentModel(providerId: string, modelId: string) {
   }
 }
 
-const inputDisabled = computed(
-  () => modelMissing.value || providerDisabled.value || terminalStatuses.has(props.session.status),
+const isInitializing = computed(
+  () => props.session.status === "initializing",
 );
+
+const queuedInputs = ref<api.QueuedSessionInput[]>([]);
+const queuedActionBusyId = ref<string | null>(null);
+
+async function refreshQueuedInputs(sessionId = props.session.id) {
+  queuedInputs.value = await api.getQueuedSessionInputs(sessionId).catch(() => []);
+}
+
+async function editQueuedInput(input: api.QueuedSessionInput) {
+  if (queuedActionBusyId.value) return;
+  queuedActionBusyId.value = input.id;
+  try {
+    await api.cancelQueuedSessionInput(props.session.id, input.id);
+    const next = [input.message.trim(), inputText.value.trim()].filter(Boolean).join("\n\n");
+    inputText.value = next;
+    await refreshQueuedInputs();
+    await nextTick(() => inputPanelRef.value?.focus());
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "取回排队消息失败", "error");
+  } finally {
+    queuedActionBusyId.value = null;
+  }
+}
+
+async function deleteQueuedInput(input: api.QueuedSessionInput) {
+  if (queuedActionBusyId.value) return;
+  queuedActionBusyId.value = input.id;
+  try {
+    await api.cancelQueuedSessionInput(props.session.id, input.id);
+    await refreshQueuedInputs();
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "删除排队消息失败", "error");
+  } finally {
+    queuedActionBusyId.value = null;
+  }
+}
+
+async function submitQueuedInputNow(input: api.QueuedSessionInput) {
+  if (queuedActionBusyId.value) return;
+  queuedActionBusyId.value = input.id;
+  try {
+    stopStreaming();
+    await api.submitQueuedSessionInput(props.session.id, input.id);
+    await refreshQueuedInputs();
+    await reloadMessagesFromServer(props.session.id);
+    attachToRunningSession();
+    void scrollToBottom();
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "立即发送失败", "error");
+    await refreshQueuedInputs();
+  } finally {
+    queuedActionBusyId.value = null;
+  }
+}
+
+const inputDisabled = computed(
+  () =>
+    modelMissing.value ||
+    providerDisabled.value ||
+    isInitializing.value ||
+    terminalStatuses.has(props.session.status),
+);
+
+/** Stop only while generating — never during create-time initialization. */
+const canInterrupt = computed(() => isStreaming.value && !isInitializing.value);
 
 const inputPlaceholder = computed(() => {
   if (modelMissing.value) return "请先为 Agent 配置模型";
   if (providerDisabled.value) return "模型供应商已禁用，无法发送消息";
+  if (isInitializing.value) return "正在初始化工作区，请稍候，马上就能开始对话…";
   if (props.session.status === "finish") return "会话已完成";
   if (props.session.status === "error") {
     return chatEntries.value.some((entry) => entry.type === "llm_error")
@@ -627,17 +735,12 @@ const inputPlaceholder = computed(() => {
       : "会话出错，请查看菜单中的合并状态";
   }
   if (props.session.status === "stopped") return "会话已停止";
-  if (isStreaming.value)
-    return streamingSendMode.value === "steer" ? "输入立即干预内容" : "输入轮后追加内容";
+  if (isStreaming.value) return "回复结束后发送";
   if (props.session.meta?.shadow?.status) return props.session.meta.shadow.status;
   return "输入消息";
 });
 
-const gitBranch = computed(() => {
-  const git = props.session.meta?.git;
-  if (!git || typeof git !== "object") return null;
-  return typeof git.branch === "string" ? git.branch : null;
-});
+const gitBranch = computed(() => props.session.gitSessionBranch ?? null);
 
 const childSessions = computed(() =>
   sessionStore.sessions.filter((session) => session.parentId === props.session.id),
@@ -646,7 +749,7 @@ const configurableAgents = computed(() =>
   agentStore.agents.filter((agent) => !agent.meta?.builtin),
 );
 const sessionMembers = ref<api.SessionMember[]>([]);
-const shadowEnabled = computed(() => props.session.meta?.shadowDisabled === false);
+const shadowEnabled = computed(() => !!props.session.shadowEnabled);
 const spawnedAgentIds = computed(() =>
   sessionMembers.value
     .filter((member) => member.role === "spawned")
@@ -665,23 +768,21 @@ function onCreateBtw() {
 }
 
 const canCompleteSession = computed(() => {
-  if (props.session.meta?.builtin || props.session.parentId) return false;
-  const git = props.session.meta?.git;
-  if (!git || typeof git !== "object") return false;
-  if (git.worktreeEnabled === false) return false;
+  if (props.session.isBuiltin || props.session.parentId) return false;
+  if (!props.session.gitWorktreeEnabled) return false;
   return !terminalStatuses.has(props.session.status);
 });
 
 const canCheckpointActions = computed(() => {
-  if (props.session.meta?.builtin) return false;
+  if (props.session.isBuiltin) return false;
   if (isStreaming.value) return false;
-  return props.session.status === "idle" || props.session.status === "starting";
+  return props.session.status === "idle";
 });
 
 watch(
-  () => props.session.meta?.name,
-  (name) => {
-    if (name) sessionTitle.value = name;
+  () => props.session.title,
+  (title) => {
+    if (title) sessionTitle.value = title;
   },
 );
 
@@ -696,8 +797,19 @@ watch(
 function stopStreaming() {
   streamCleanup?.();
   streamCleanup = null;
+  if (streamingReconcileTimer) {
+    clearInterval(streamingReconcileTimer);
+    streamingReconcileTimer = null;
+  }
   isStreaming.value = false;
   streamingAssistantId.value = null;
+}
+
+function startStreamingReconcilePoll() {
+  if (streamingReconcileTimer) clearInterval(streamingReconcileTimer);
+  streamingReconcileTimer = setInterval(() => {
+    void reconcileStreamingWithServer();
+  }, 8000);
 }
 
 async function interruptCurrentTurn() {
@@ -725,8 +837,8 @@ async function interruptCurrentTurn() {
   }
 }
 
-async function reloadMessagesFromServer(sessionId: string) {
-  const [, queuedInputs, nextTasks, nextTodos, checkpoints, members] = await Promise.all([
+async function reloadMessagesFromServer(sessionId: string, localSnapshot = chatEntries.value) {
+  const [, nextQueued, nextTasks, nextTodos, checkpoints, members] = await Promise.all([
     sessionStore.fetchSessionMessages(sessionId),
     api.getQueuedSessionInputs(sessionId).catch(() => []),
     api.getSessionTasks(sessionId).catch(() => []),
@@ -737,19 +849,11 @@ async function reloadMessagesFromServer(sessionId: string) {
   sessionMembers.value = members;
   historyHasMore.value = sessionStore.messageCursors[sessionId]?.hasMore ?? false;
   const entries = sessionStore.messages[sessionId] ?? [];
-  chatEntries.value = [
-    ...sessionTreeToChatEntries(entries),
-    ...queuedInputs.map((input) => {
-      const entry = createUserChatEntry(
-        `queued-${input.id}`,
-        input.message,
-        "queued",
-        input.source,
-      );
-      entry.createdAt = input.enqueuedAt;
-      return entry;
-    }),
-  ];
+  chatEntries.value = mergeStreamingToolsIntoPersistedEntries(
+    sessionTreeToChatEntries(entries),
+    localSnapshot,
+  );
+  queuedInputs.value = nextQueued;
   rewindableEntryIds.value = checkpoints.map((checkpoint) => checkpoint.entryId);
   tasks.value = nextTasks;
   todos.value = nextTodos;
@@ -777,8 +881,7 @@ async function loadOlderMessages() {
     const page = await sessionStore.fetchOlderSessionMessages(props.session.id);
     historyHasMore.value = page.hasMore;
     const entries = sessionStore.messages[props.session.id] ?? [];
-    const queued = chatEntries.value.filter((entry) => entry.deliveryState === "queued");
-    chatEntries.value = [...sessionTreeToChatEntries(entries), ...queued];
+    chatEntries.value = sessionTreeToChatEntries(entries);
     await nextTick();
     if (listEl) {
       listEl.scrollTop = listEl.scrollHeight - prevHeight + prevTop;
@@ -811,7 +914,7 @@ async function loadSessionMessages(sessionId: string) {
   } finally {
     sessionLoading.value = false;
   }
-  sessionTitle.value = props.session.meta?.name ?? `Session ${sessionId.substring(0, 8)}`;
+  sessionTitle.value = props.session.title ?? `Session ${sessionId.substring(0, 8)}`;
   toolModal.value = null;
   searchOpen.value = false;
   searchQuery.value = "";
@@ -822,6 +925,25 @@ async function loadSessionMessages(sessionId: string) {
           typeof question === "string" && question.trim().length > 0,
       )
     : [];
+  await maybeResumeRunningSession(sessionId);
+}
+
+/** After refresh/open: if the turn is still running, restore the thinking UI + SSE. */
+async function maybeResumeRunningSession(sessionId: string) {
+  if (sessionId !== props.session.id || isStreaming.value) return;
+  let running = props.session.status === "running";
+  let streamingReply: string | undefined;
+  try {
+    const state = await api.getSessionState(sessionId);
+    running = running || state.isStreaming;
+    if (typeof state.streamingReply === "string" && state.streamingReply.trim()) {
+      streamingReply = state.streamingReply;
+    }
+  } catch {
+    // Ignore — status from session row is enough to attempt attach.
+  }
+  if (!running) return;
+  attachToRunningSession(streamingReply);
 }
 
 function handleUiNotifyEvent(event: { type?: string } | undefined) {
@@ -843,10 +965,17 @@ function subscribeShadowSuggestions(sessionId: string) {
     (payload) => {
       if (payload.type !== "agent" || !payload.event) return;
       if (handleUiNotifyEvent(payload.event)) return;
+      if (payload.event.type === "session_status") {
+        void sessionStore.fetchSession(sessionId);
+        return;
+      }
       if (payload.event.type !== "shadow_suggestions") return;
       suggestedQuestions.value = payload.event.questions;
     },
-    (error) => console.error("Shadow suggestion events error:", error),
+    (error) => {
+      if (error.name === "AbortError") return;
+      console.error("Shadow suggestion events error:", error);
+    },
   );
 }
 
@@ -861,10 +990,10 @@ function insertExternalAgentText(text: string) {
 }
 
 async function saveSessionTitle() {
-  if (props.session.meta?.builtin) return;
-  const name = sessionTitle.value.trim();
-  if (!name) return;
-  await sessionStore.updateSessionMeta(props.session.id, { name });
+  if (props.session.isBuiltin) return;
+  const title = sessionTitle.value.trim();
+  if (!title) return;
+  await sessionStore.updateSessionMeta(props.session.id, { title });
 }
 
 async function onSessionTitleChange(value: string) {
@@ -878,7 +1007,7 @@ async function onShadowEnabledChange(value: boolean) {
       shadowAgentId: null,
       spawnedAgentIds: spawnedAgentIds.value,
     });
-    await sessionStore.updateSessionMeta(props.session.id, { shadowDisabled: !value });
+    await sessionStore.updateSessionMeta(props.session.id, { shadowEnabled: value });
     sessionMembers.value = members;
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : "影子代理设置更新失败", "error");
@@ -986,7 +1115,7 @@ async function onCompleteSession() {
   try {
     await sessionStore.completeSession(props.session.id);
     await sessionStore.fetchSession(props.session.id);
-    sessionTitle.value = props.session.meta?.name ?? sessionTitle.value;
+    sessionTitle.value = props.session.title ?? sessionTitle.value;
     showUiMessage("会话已完成", "success");
   } catch (err) {
     showUiMessage(err instanceof Error ? err.message : "完成会话失败", "error");
@@ -1083,10 +1212,35 @@ watch(
   { immediate: true },
 );
 
+// Create returns as `initializing` while worktree/runtime prepare; refresh until ready.
+let initializingPollTimer: ReturnType<typeof setInterval> | null = null;
+watch(
+  () => [props.session.id, props.session.status] as const,
+  ([id, status]) => {
+    if (initializingPollTimer) {
+      clearInterval(initializingPollTimer);
+      initializingPollTimer = null;
+    }
+    if (status !== "initializing") return;
+    initializingPollTimer = setInterval(() => {
+      void sessionStore.fetchSession(id);
+    }, 500);
+  },
+  { immediate: true },
+);
+
 onBeforeUnmount(() => {
   stopStreaming();
   shadowSuggestionCleanup?.();
   shadowSuggestionCleanup = null;
+  if (initializingPollTimer) {
+    clearInterval(initializingPollTimer);
+    initializingPollTimer = null;
+  }
+  if (streamingReconcileTimer) {
+    clearInterval(streamingReconcileTimer);
+    streamingReconcileTimer = null;
+  }
 });
 
 const displayGroups = computed(() => buildDisplayGroups(chatEntries.value));
@@ -1106,8 +1260,9 @@ const hasEvalActivity = computed(
 const pendingAsk = computed(() => findPendingAskInDisplayGroups(displayGroups.value));
 
 const headerStatusKey = computed(() => {
+  if (isInitializing.value) return "initializing";
   if (isStreaming.value) return "running";
-  if (props.session.status === "waiting_user" || pendingAsk.value) return "waiting_user";
+  if (props.session.status === "blocked" || pendingAsk.value) return "blocked";
   return props.session.status;
 });
 
@@ -1125,7 +1280,7 @@ watch(pendingAsk, (ask, prev) => {
   lastNotifiedAskId.value = ask.toolCallId;
   notifyAskUserInput({
     sessionId: props.session.id,
-    sessionName: props.session.meta?.name ?? sessionTitle.value,
+    sessionName: props.session.title ?? sessionTitle.value,
     prompt: ask.prompt,
     muted: sessionMuted.value,
   });
@@ -1190,6 +1345,10 @@ async function openToolDetail(
   resultContent?: Array<{ type: string; text: string }>,
   resultEntryId?: string,
 ) {
+  if (toolName === "external_interaction" || callArgs?.externalInteraction === true) {
+    openExternalInteractionDetail(callArgs, resultContent);
+    return;
+  }
   let content = resultContent;
   const truncated = chatEntries.value.some(
     (entry) =>
@@ -1213,6 +1372,13 @@ async function openToolDetail(
   if (isTerminal || window.matchMedia("(max-width: 767px)").matches) {
     toolPanel.value = { ...detail, ...(isTerminal ? { terminal: isEval ? "eval" : "bash" } : {}) };
   } else toolModal.value = detail;
+}
+
+function openExternalInteractionDetail(
+  callArgs?: Record<string, unknown>,
+  resultContent?: Array<{ type: string; text: string }>,
+) {
+  toolModal.value = buildExternalInteractionModal(callArgs, resultContent);
 }
 
 function openEvalPanel() {
@@ -1302,30 +1468,52 @@ function onAskAnswered() {
   attachToRunningSession();
 }
 
-function attachToRunningSession() {
+function attachToRunningSession(streamingReply?: string) {
   if (isStreaming.value) return;
 
   const groups = displayGroups.value;
-  const lastAssistant = [...groups]
-    .reverse()
-    .find(
-      (g): g is Extract<DisplayGroup, { type: "grouped_assistant" }> =>
-        g.type === "grouped_assistant",
-    );
-  const assistantId = streamingAssistantId.value ?? lastAssistant?.id ?? `stream-${Date.now()}`;
+  const lastGroup = groups[groups.length - 1];
+  const trailingUser =
+    !!lastGroup && lastGroup.type === "message" && lastGroup.message?.role === "user";
+  // Codex only persists the assistant message at turn end — after refresh the
+  // trailing entry is usually the user message, so always open a fresh bubble.
+  const assistantId = trailingUser || !lastGroup
+    ? `stream-${Date.now()}`
+    : (streamingAssistantId.value ??
+      (lastGroup.type === "grouped_assistant" ? lastGroup.id : `stream-${Date.now()}`));
 
-  if (!lastAssistant) {
-    chatEntries.value.push(createStreamingAssistantEntry(assistantId));
+  const hasStreamingEntry = chatEntries.value.some((entry) => entry.id === assistantId);
+  if (!hasStreamingEntry) {
+    const entry = createStreamingAssistantEntry(assistantId);
+    if (
+      streamingReply?.trim() &&
+      entry.type === "message" &&
+      Array.isArray(entry.message.content)
+    ) {
+      entry.message.content = [{ type: "text", text: streamingReply }];
+    }
+    chatEntries.value.push(entry);
   }
 
   streamingAssistantId.value = assistantId;
   isStreaming.value = true;
+  startStreamingReconcilePoll();
+  void sessionStore.fetchSession(props.session.id);
 
   streamCleanup = api.subscribeSessionEvents(
     props.session.id,
     (payload) => {
       if (payload.type !== "agent" || !payload.event) return;
       if (handleUiNotifyEvent(payload.event)) return;
+      if (payload.event.type === "session_status") {
+        void sessionStore.fetchSession(props.session.id);
+        if (payload.event.status === "idle" || payload.event.status === "error") {
+          stopStreaming();
+          void reloadMessagesFromServer(props.session.id).then(() => scrollToBottom());
+          void sessionStore.fetchSessions();
+        }
+        return;
+      }
       if (payload.event.type === "shadow_suggestions") return;
       applyAgentEventToChatEntries(
         chatEntries.value,
@@ -1334,22 +1522,47 @@ function attachToRunningSession() {
       );
       void scrollToBottom();
       if (payload.event.type === "agent_end") {
+        const snapshot = chatEntries.value;
         stopStreaming();
-        void reloadMessagesFromServer(props.session.id).then(() => scrollToBottom());
+        void reloadMessagesFromServer(props.session.id, snapshot).then(() => scrollToBottom());
         void sessionStore.fetchSessions();
       }
     },
     (err) => {
+      if (err.name === "AbortError") return;
       console.error("Session events error:", err);
       showUiMessage(err.message, "error");
+      void reconcileStreamingWithServer();
+    },
+    () => {
+      // Connected after refresh: if the turn already finished, drop thinking UI.
+      void reconcileStreamingWithServer();
+    },
+    () => {
+      // SSE dropped (server restart / network). Don't leave the UI stuck on 思考中.
+      void reconcileStreamingWithServer();
     },
   );
+}
+
+async function reconcileStreamingWithServer() {
+  if (!isStreaming.value) return;
+  try {
+    const state = await api.getSessionState(props.session.id);
+    if (state.isStreaming || state.status === "running") return;
+  } catch {
+    // Session gone or API down — still clear local thinking UI.
+  }
+  stopStreaming();
+  void reloadMessagesFromServer(props.session.id).then(() => scrollToBottom());
+  void sessionStore.fetchSessions();
 }
 
 async function sendStreamReply(userText: string, images: ChatSendPayload["images"]) {
   const assistantId = `stream-${Date.now()}`;
   streamingAssistantId.value = assistantId;
   isStreaming.value = true;
+  startStreamingReconcilePoll();
 
   const userEntry = [...chatEntries.value]
     .reverse()
@@ -1366,7 +1579,7 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
     mimeType: img.mimeType,
     name: img.name,
   }));
-  const sessionName = props.session.meta?.name ?? "会话";
+  const sessionName = props.session.title ?? "会话";
 
   streamCleanup = api.promptSession(
     props.session.id,
@@ -1392,13 +1605,29 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
     (err) => {
       console.error("Stream error:", err);
       showUiMessage(err.message, "error");
-    },
-    () => {
+      // Drop the optimistic streaming bubble; server persists llm_error on failure.
+      chatEntries.value = chatEntries.value.filter((entry) => entry.id !== assistantId);
+      if (userEntry && userEntry.type === "message") {
+        userEntry.deliveryState = "failed";
+      }
       isStreaming.value = false;
       streamingAssistantId.value = null;
       streamCleanup = null;
       activeTurn.value = null;
       void reloadMessagesFromServer(props.session.id).then(() => scrollToBottom());
+      void sessionStore.fetchSessions();
+    },
+    () => {
+      if (!isStreaming.value && !streamingAssistantId.value) {
+        // Error path already finalized the turn.
+        return;
+      }
+      const snapshot = chatEntries.value;
+      isStreaming.value = false;
+      streamingAssistantId.value = null;
+      streamCleanup = null;
+      activeTurn.value = null;
+      void reloadMessagesFromServer(props.session.id, snapshot).then(() => scrollToBottom());
       void sessionStore.fetchSessions();
       notifyMessageComplete({
         sessionId: props.session.id,
@@ -1446,37 +1675,28 @@ const sendMessage = async (payload: ChatSendPayload) => {
     }
   }
 
-  const userEntry = createUserChatEntry(
-    Date.now().toString(),
-    text || " ",
-    isStreaming.value && streamingSendMode.value === "follow_up" ? "queued" : undefined,
-  );
-  chatEntries.value.push(userEntry);
   inputText.value = "";
   inputPanelRef.value?.clearAfterSend();
-  void scrollToBottom();
   if (isStreaming.value) {
+    // Queue above the composer; do not inject a chat bubble with "排队中".
     const images = payload.images.map((image) => ({
       mediaId: image.mediaId,
       mimeType: image.mimeType,
       name: image.name,
     }));
-    const send =
-      streamingSendMode.value === "steer"
-        ? api.steerSession(props.session.id, text, images)
-        : api.followUpSession(props.session.id, text, images);
-    void send
-      .then((result) => {
-        if ("disposition" in result && result.disposition !== "queued") {
-          userEntry.deliveryState = undefined;
-        }
-      })
+    void api
+      .followUpSession(props.session.id, text, images)
+      .then(() => refreshQueuedInputs())
       .catch((error) => {
-        userEntry.deliveryState = "failed";
         console.error("Send during streaming failed:", error);
+        showUiMessage(error instanceof Error ? error.message : "排队发送失败", "error");
+        void refreshQueuedInputs();
       });
     return;
   }
+  const userEntry = createUserChatEntry(Date.now().toString(), text || " ");
+  chatEntries.value.push(userEntry);
+  void scrollToBottom();
   void sendStreamReply(text, payload.images);
 };
 
@@ -1572,16 +1792,6 @@ async function executeCustomSlash(name: string) {
     border-radius: 16px 16px 0 0;
     box-shadow: 0 -10px 30px rgb(0 0 0 / 14%);
   }
-}
-
-.streaming-send-mode {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 4px 12px;
-  color: var(--app-text-muted);
-  font-size: 12px;
 }
 
 .suggested-questions {
@@ -1805,13 +2015,5 @@ async function executeCustomSlash(name: string) {
 
 .suggested-questions button:hover {
   background: var(--app-hover);
-}
-
-.streaming-send-mode select {
-  border: 1px solid var(--app-chat-input-island-border);
-  border-radius: 6px;
-  padding: 3px 6px;
-  background: var(--app-chat-bg);
-  color: inherit;
 }
 </style>

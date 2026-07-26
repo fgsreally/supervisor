@@ -2,7 +2,12 @@ import type { HomeTaskStatus, SessionStatus } from "../types.js";
 import type { SupervisorDb } from "../db/db.js";
 
 function mapSessionStatusToHomeTask(status: SessionStatus): HomeTaskStatus | null {
-  if (status === "running" || status === "waiting_user" || status === "idle" || status === "starting") {
+  if (
+    status === "running" ||
+    status === "blocked" ||
+    status === "idle" ||
+    status === "initializing"
+  ) {
     return "in_progress";
   }
   if (status === "finish" || status === "finished") return "done";

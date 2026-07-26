@@ -68,7 +68,7 @@ packages/supervisor/
 | `shadow/prompt.md`    | Shadow 协作者（`is_internal`）：每轮主对话结束后分析记忆与安全，按需向父 session 投递消息；**不可**用于创建用户 session |
 | `btw/prompt.md`       | BTW 只读侧问代理（`is_internal`）；**不可**用于创建用户 session                                                         |
 | `intro/prompt.md`     | Intro 引导和扩展开发助手，使用 coding 工具；**可以**创建用户 session                                                    |
-| `coding/prompt.md`    | 通用 Coding agent：项目开发与验证；端口经环境变量注入；**可以**创建用户 session               |
+| `coding/prompt.md`    | 通用 Coding agent：项目开发与验证；端口经 session 环境变量注入；**可以**创建用户 session          |
 | `assistant/prompt.md` | 默认 Pi Assistant 的 system prompt                                                                                      |
 
 内置 / 打包 Agent 的 meta 使用 `builtin`、`userSpawnable`（以及 `packagedKind` 等）。HTTP：禁止 PATCH/DELETE 内置 Agent 及其资源绑定；**允许** `PUT /agents/:id/system-md` 自定义 SYSTEM.md。打包 kinds：`shadow` / `btw`（不可用户建会话）、`intro` / `coding`（可用户建会话），另有「Pi 助手」。BTW 使用 packaged `btw` agent 的 SYSTEM.md（由 `btw/prompt.md` 种子写入），经 `POST /sessions/:id/btw` 创建，不经 members `tag=btw`。
@@ -167,7 +167,7 @@ packages/supervisor/
 | `db.ts`             | **SupervisorDb**：projects、sessions、messages、agents（含 `is_internal`）、providers、members 的 CRUD |
 | `message-search.ts` | 消息全文搜索（FTS）查询封装                                                                            |
 
-数据库默认路径：`~/.pi/supervisor.db`（可通过 CLI `--db` 覆盖）。
+数据库路径：优先读项目 `.supervisor/config.json` 的 `dbPath`，其次 `~/.pi/supervisor/settings.json`，缺省 `~/.pi/supervisor.db`。
 
 ---
 

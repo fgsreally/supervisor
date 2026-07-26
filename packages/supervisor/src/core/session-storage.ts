@@ -20,6 +20,21 @@ export interface AppendEntryOptions {
   source?: string | null;
 }
 
+/** Prefer entry/payload timestamps (e.g. external imports) over wall-clock insert time. */
+export function resolveEntryCreatedAt(entry: SessionTreeEntry, fallback = Date.now()): number {
+  if (typeof entry.timestamp === "string" && entry.timestamp.trim()) {
+    const fromIso = Date.parse(entry.timestamp);
+    if (Number.isFinite(fromIso)) return fromIso;
+  }
+  if (entry.type === "message") {
+    const messageTs = (entry.message as { timestamp?: unknown } | undefined)?.timestamp;
+    if (typeof messageTs === "number" && Number.isFinite(messageTs) && messageTs > 0) {
+      return messageTs;
+    }
+  }
+  return fallback;
+}
+
 export class SQLiteSessionStorage implements SessionStorage {
   private db: SupervisorDb;
   private sessionId: number;
@@ -54,9 +69,11 @@ export class SQLiteSessionStorage implements SessionStorage {
   }
 
   async setLeafId(leafId: string | null): Promise<void> {
+    const now = Date.now();
     this.db.db
       .prepare("UPDATE sessions SET leaf_id = ?, last_active_at = ? WHERE id = ?")
-      .run(leafId, Date.now(), this.sessionId);
+      .run(leafId, now, this.sessionId);
+    this.db.touchSessionActivityTree(this.sessionId, now);
   }
 
   async createEntryId(): Promise<string> {
@@ -129,7 +146,7 @@ export class SQLiteSessionStorage implements SessionStorage {
         origin,
         message_role: messageRole,
         search_text: searchText,
-        created_at: Date.now(),
+        created_at: resolveEntryCreatedAt(entry),
       });
     await this.setLeafId(entry.id);
     for (const listener of this.entryListeners) await listener(entry, options);
@@ -331,6 +348,7 @@ export function toSessionMessageResponse(stored: {
     source: stored.source,
     origin: stored.origin,
     meta: stored.meta,
-    createdAt: stored.createdAt,
+    // Payload timestamps win so previously-imported sessions still show real times.
+    createdAt: resolveEntryCreatedAt(stored.entry, stored.createdAt),
   };
 }

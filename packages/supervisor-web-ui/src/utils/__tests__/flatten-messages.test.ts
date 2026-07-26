@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { buildDisplayGroups, compactAssistantPieces } from "../flatten-messages";
 
 describe("compactAssistantPieces", () => {
+  it("coalesces adjacent text pieces from split assistant messages", () => {
+    const pieces = compactAssistantPieces([
+      { kind: "text", text: "第一段" },
+      { kind: "text", text: "第二段" },
+    ]);
+    expect(pieces).toEqual([{ kind: "text", text: "第一段\n\n第二段" }]);
+  });
+
   it("removes skill markdown echoed as assistant text after read", () => {
     const skillBody = `---\nname: neko-doc-writer\ndescription: test\n---\n\n# Skill`;
     const pieces = compactAssistantPieces([

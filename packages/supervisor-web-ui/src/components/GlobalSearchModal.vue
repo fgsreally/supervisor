@@ -124,7 +124,7 @@ function roleBadgeClass(role: string | null): string {
 
 function sessionName(sessionId: string): string {
   const s = sessionStore.getSessionById(sessionId);
-  if (s?.meta?.name && typeof s.meta.name === "string") return s.meta.name;
+  if (s?.title) return s.title;
   return `Session ${sessionId.substring(0, 8)}`;
 }
 

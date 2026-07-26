@@ -75,8 +75,31 @@ pnpm docs:build
 - 提交信息简明扼要
 - `npm run check` 通过后方可提交
 
+## Session / Project 的 `meta` 字段
+
+- **`sessions.meta` 与 `projects.meta` 以扩展数据为主**（用户插件、Shadow 输出、`meta.services` 运行实例等）。
+- 核心 UI / 身份字段用 **列**：`title`、`system_prompt`、`avatar`、`is_builtin`、`pinned`、`muted`、`unread`、`external_session_id`、`error_msg`、`stage`、`shadow_enabled`、`current_task_id`、`created_by`。
+- 任务 / 待办用表：`session_tasks`、`session_todos`（与 `job_schedules` 同级，勿再塞回 meta）。
+- Git / worktree 状态放在 **`sessions.meta.git`**：`{ worktreePath, branch, lastCommit, mergeError }`；有 `worktreePath` 即启用 worktree。
+- 扩展自定义键请带前缀（如 `myExt.*`）。
+
+### Git worktree 与 Achieve
+
+- 创建 worktree：从 **`project.cwd` 当时 checkout 的分支** 切出；merge 目标**不**缓存在 session。
+- Achieve / Complete：**始终 merge 进执行当下 `project.cwd` 的当前 checkout 分支**。
+- 模型 / toolsPreset：只跟 **`agent_id` → agents 表**；`system_prompt` 列存本 session 运行时完整 system（不含 skills 目录、不含 servicesPrompt）。
+- 需用户介入（未配模型、审批等）：`status = blocked`（不是 `error`）；原因写 **`error_msg`**（有则展示）。
+
 ## 沟通风格
 
 - 简洁、精练
 - 中文优先
 - 引用源码时标注文件路径和行号
+
+## 华生（助手模型）
+
+- 设置页只配置一个**助手模型**（`featureModels.assistant`），不再按功能拆分模型。
+- **华生**是内部 runner（`packagedKind: watson`）：`AgentHarness` + 简单工具（`createDefaultTools`）+ 助手模型；**不**再走 `pi-coding-agent` 的 `createAgentSession`（避免两套 agent 系统）。
+- 不创建用户 session；任务提示词临时注入；结构化结果只用终止型 `submit_result` tool（pi 官方方式，无文本托底）。
+- 入口：`SessionManager.runWatson` / 扩展 `ctx.watson.run(...)`；日志在 agent home `logs/`，Agent 详情 Logs 可见。
+- 项目脚本在 `project_scripts` 表；session 创建时起 bash Job 并注入启动提示。

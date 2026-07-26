@@ -188,6 +188,7 @@ export const useSessionStore = defineStore("session", () => {
   async function importExternalSession(options: {
     backend: "codex" | "claude";
     externalSessionId: string;
+    replace?: boolean;
   }) {
     root.clearError();
     try {
@@ -243,9 +244,7 @@ export const useSessionStore = defineStore("session", () => {
     try {
       const updated = await api.updateSessionMeta(id, meta);
       const session = getSessionById.value(id);
-      if (session) {
-        session.meta = updated;
-      }
+      if (session) Object.assign(session, updated);
       return updated;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to update session meta");
@@ -258,9 +257,7 @@ export const useSessionStore = defineStore("session", () => {
     try {
       const updated = await api.markSessionRead(id);
       const session = getSessionById.value(id);
-      if (session) {
-        session.meta = updated;
-      }
+      if (session) Object.assign(session, updated);
       return updated;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to mark session read");

@@ -1,8 +1,8 @@
-import type { ChatEntry } from "@/types/chat-entry";
+import type { ChatEntry, MessageAsset } from "@/types/chat-entry";
 import { askResultSummary, isAskToolName, parseAskResultFromToolResult } from "./ask-tool";
 import { isOldEntry } from "./session-branch";
 import { toolResultDetail } from "./tool-display";
-import type { MessageAsset } from "@/types/chat-entry";
+import { dedupeApprovalToolPieces } from "./external-interaction-display";
 
 export type ToolResultEntry = Extract<ChatEntry, { type: "toolResult" }>;
 
@@ -116,7 +116,7 @@ export function compactAssistantPieces(pieces: RenderPiece[]): RenderPiece[] {
     }
   }
 
-  return pieces.filter((piece) => {
+  const filtered = pieces.filter((piece) => {
     if (piece.kind !== "text") return true;
     const text = piece.text.trim();
     if (!text) return false;
@@ -127,6 +127,21 @@ export function compactAssistantPieces(pieces: RenderPiece[]): RenderPiece[] {
     }
     return true;
   });
+  return dedupeApprovalToolPieces(coalesceAdjacentTextPieces(filtered));
+}
+
+/** Merge consecutive text pieces so import-split assistant messages don't get UI dividers. */
+export function coalesceAdjacentTextPieces(pieces: RenderPiece[]): RenderPiece[] {
+  const out: RenderPiece[] = [];
+  for (const piece of pieces) {
+    const prev = out[out.length - 1];
+    if (piece.kind === "text" && prev?.kind === "text") {
+      prev.text = `${prev.text.replace(/\s*$/, "")}\n\n${piece.text.replace(/^\s*/, "")}`;
+      continue;
+    }
+    out.push({ ...piece });
+  }
+  return out;
 }
 
 function appendMessagePieces(

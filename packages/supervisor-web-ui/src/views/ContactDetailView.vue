@@ -125,6 +125,21 @@
           :agent-id="agentId"
         />
 
+        <div
+          v-else-if="rightTab === 'logs'"
+          class="flex-1 min-h-0 overflow-auto p-5 contact-detail-content"
+        >
+          <div class="mb-3 flex items-center justify-between gap-2">
+            <div class="text-[13px] contact-detail-subtitle">华生运行日志（不创建 session）</div>
+            <button type="button" class="wechat-secondary-btn" :disabled="logsLoading" @click="loadLogs">
+              {{ logsLoading ? "..." : "刷新" }}
+            </button>
+          </div>
+          <pre class="contact-detail-logs whitespace-pre-wrap break-words text-[12px] leading-relaxed">{{
+            logsText || "暂无日志"
+          }}</pre>
+        </div>
+
         <AgentResourceBrowser v-else class="flex-1 min-h-0" :agent-id="agentId" :kind="rightTab" />
       </div>
 
@@ -154,11 +169,12 @@ import ProviderAvatar from "../components/ProviderAvatar.vue";
 import AgentAvatar from "../components/AgentAvatar.vue";
 import AgentEditDialog from "../components/AgentEditDialog.vue";
 import ExternalAgentDetails from "../components/ExternalAgentDetails.vue";
+import { getAgentLogs } from "@/api";
 import { useAgentStore, useProviderStore } from "@/store";
 import type { UIResourceKind } from "@/types/ui";
 import { providerToUI } from "@/utils/provider-ui";
 
-type AgentTab = "config" | "system" | UIResourceKind;
+type AgentTab = "config" | "system" | "logs" | UIResourceKind;
 
 const props = defineProps<{
   agentId: string;
@@ -178,20 +194,51 @@ const agent = computed(() => agentStore.getAgentById(props.agentId) ?? null);
 
 const rightTab = ref<AgentTab>("config");
 const editOpen = ref(false);
+const logsText = ref("");
+const logsLoading = ref(false);
 
-const rightTabs = [
-  { id: "config" as const, label: "Config" },
-  { id: "system" as const, label: "System Prompt" },
-  { id: "skills" as const, label: "Skills" },
-  { id: "extensions" as const, label: "Extensions" },
-  { id: "prompts" as const, label: "Prompts" },
-  { id: "mcp" as const, label: "MCP" },
-];
+const isWatson = computed(() => {
+  const meta = agent.value?.meta as { packagedKind?: string } | undefined;
+  return meta?.packagedKind === "watson" || agent.value?.name === "华生";
+});
+
+const rightTabs = computed(() => {
+  const tabs: Array<{ id: AgentTab; label: string }> = [
+    { id: "config", label: "Config" },
+    { id: "system", label: "System Prompt" },
+    { id: "skills", label: "Skills" },
+    { id: "extensions", label: "Extensions" },
+    { id: "prompts", label: "Prompts" },
+    { id: "mcp", label: "MCP" },
+  ];
+  if (isWatson.value) tabs.push({ id: "logs", label: "Logs" });
+  return tabs;
+});
+
+async function loadLogs() {
+  logsLoading.value = true;
+  try {
+    const result = await getAgentLogs(props.agentId, { limit: 500 });
+    logsText.value = result.text;
+  } catch (error) {
+    logsText.value = error instanceof Error ? error.message : "加载日志失败";
+  } finally {
+    logsLoading.value = false;
+  }
+}
 
 watch(
   () => props.agentId,
   () => {
     rightTab.value = "config";
+    logsText.value = "";
+  },
+);
+
+watch(
+  () => [rightTab.value, props.agentId] as const,
+  ([tab]) => {
+    if (tab === "logs") void loadLogs();
   },
 );
 
@@ -275,6 +322,16 @@ function onAgentSaved() {
 
 .contact-detail-content {
   background: var(--app-settings-bg);
+}
+
+.contact-detail-logs {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--app-chat-bg);
+  color: var(--app-text-primary);
+  max-height: 100%;
+  overflow: auto;
 }
 
 .wechat-secondary-btn {

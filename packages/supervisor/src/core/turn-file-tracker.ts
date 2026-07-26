@@ -202,7 +202,6 @@ export function mergeTurnIntoMeta(
   meta: Record<string, unknown>,
   turn: TurnRecord,
 ): Record<string, unknown> {
-  const existing = Array.isArray(meta.turns) ? (meta.turns as TurnRecord[]) : [];
   const changed = new Map<string, SessionChangedFile>();
   if (Array.isArray(meta.changedFiles)) {
     for (const value of meta.changedFiles as SessionChangedFile[]) {
@@ -223,9 +222,9 @@ export function mergeTurnIntoMeta(
   for (const path of turn.files.deleted) {
     changed.set(path, { path, status: "deleted", lastTurn: turn.index });
   }
+  const { turns: _droppedTurns, ...rest } = meta;
   return {
-    ...meta,
-    turns: [...existing, turn],
+    ...rest,
     changedFiles: [...changed.values()].sort((a, b) => a.path.localeCompare(b.path)),
   };
 }

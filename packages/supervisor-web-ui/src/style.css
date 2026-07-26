@@ -227,7 +227,8 @@
 
   --app-list-tree-line: #bfc6d1;
   --app-list-status-ring: #e6e6e6;
-  --app-status-starting: #60a5fa;
+  --app-status-initializing: #60a5fa;
+  --app-status-starting: var(--app-status-initializing);
   --app-status-running: #eab308;
   --app-status-waiting-user: #f97316;
   --app-status-idle: #22c55e;
@@ -340,7 +341,8 @@
   --app-list-tree-line: #4a4a4a;
   --app-list-tree-line-active: #8de4be;
   --app-list-status-ring: #262626;
-  --app-status-starting: #5eb3ff;
+  --app-status-initializing: #5eb3ff;
+  --app-status-starting: var(--app-status-initializing);
   --app-status-running: #f0c040;
   --app-status-waiting-user: #fb923c;
   --app-status-idle: #3ddc84;

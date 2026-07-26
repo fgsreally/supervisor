@@ -1,5 +1,6 @@
 import { serve } from "@hono/node-server";
 import { getDefaultCwd, setDefaultCwd, resolveWorkspacePath } from "./config/default-cwd.js";
+import { resolveDbPath } from "./config/resolve-db-path.js";
 import { SupervisorDb } from "./db/db.js";
 import { createHttpServer } from "./http/http-server.js";
 import { SessionManager } from "./core/session-manager.js";
@@ -8,6 +9,7 @@ import { attachWebSocketServer } from "./websocket/server.js";
 
 export interface SupervisorOptions {
   port?: number;
+  /** @deprecated Prefer `.supervisor/config.json` or settings `dbPath`. */
   dbPath?: string;
   cwd?: string;
 }
@@ -17,7 +19,7 @@ export function startSupervisor(options: SupervisorOptions = {}): {
   stop: () => Promise<void>;
 } {
   if (options.cwd) setDefaultCwd(resolveWorkspacePath(options.cwd));
-  const db = new SupervisorDb(options.dbPath);
+  const db = new SupervisorDb(resolveDbPath(options.dbPath));
   const manager = new SessionManager(db);
   manager.createProject({ cwd: getDefaultCwd() });
   const app = createHttpServer(manager);

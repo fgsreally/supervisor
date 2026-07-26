@@ -39,3 +39,38 @@ export function buildBashModal(
     })();
   return { title, sections };
 }
+
+export function buildExternalInteractionModal(
+  callArgs?: Record<string, unknown>,
+  resultContent?: Array<{ type: string; text: string }>,
+): { title: string; sections: ToolDetailSection[] } {
+  const title =
+    typeof callArgs?.title === "string" && callArgs.title.trim()
+      ? callArgs.title.trim()
+      : "外部 Agent 请求";
+  const sections: ToolDetailSection[] = [];
+
+  const detail = typeof callArgs?.detail === "string" ? callArgs.detail.trim() : "";
+  if (detail) sections.push({ label: "摘要", content: detail });
+
+  const request = callArgs?.request;
+  if (request && typeof request === "object") {
+    try {
+      sections.push({
+        label: "请求详情",
+        content: JSON.stringify(request, null, 2),
+      });
+    } catch {
+      sections.push({ label: "请求详情", content: String(request) });
+    }
+  }
+
+  const result = toolResultDetail(resultContent);
+  if (result) sections.push({ label: "处理结果", content: result });
+
+  if (sections.length === 0) {
+    sections.push({ label: "详情", content: "无附加信息" });
+  }
+
+  return { title, sections };
+}

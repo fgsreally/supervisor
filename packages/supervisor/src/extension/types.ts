@@ -12,7 +12,40 @@ import type {
   JobSchedule,
   UpdateJobInput,
 } from "../core/jobs.js";
-import type { SessionWorkflowState, WorkflowStatePatch } from "../core/session-workflow.js";
+import type { SessionTaskKind, SessionTodoStatus } from "../types.js";
+
+/**
+ * Thin session-stage view, replacing the former meta.workflow { stage, status }.
+ * Backed by SessionManager.getStage/setStage (sessions.stage column).
+ */
+export interface SessionWorkflowState {
+  stage: string;
+  status: "working";
+}
+
+export interface WorkflowStatePatch {
+  stage?: string | null;
+  [key: string]: unknown;
+}
+
+/** Extension-facing view of a session_tasks row (Goal/Plan artifacts). */
+export interface SessionTaskInfo {
+  id: number;
+  path: string;
+  kind: SessionTaskKind;
+  title: string | null;
+  status: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** Extension-facing view of a session_todos row. */
+export interface SessionTodoInfo {
+  id: number;
+  title: string;
+  status: SessionTodoStatus;
+  sortOrder: number;
+}
 
 // ============================================================================
 // Extension Entry
@@ -133,6 +166,26 @@ export interface ExtensionSession {
     get(): Promise<SessionWorkflowState | null>;
     set(patch: WorkflowStatePatch): Promise<SessionWorkflowState>;
     clear(): Promise<void>;
+  };
+  /** Goal/Plan task artifacts backed by the session_tasks table. */
+  readonly tasks: {
+    list(): Promise<SessionTaskInfo[]>;
+    upsert(input: {
+      path: string;
+      kind: SessionTaskKind;
+      title?: string | null;
+      status?: string | null;
+    }): Promise<SessionTaskInfo>;
+    remove(path: string): Promise<boolean>;
+    getCurrentPath(): Promise<string | null>;
+    setCurrentPath(path: string | null): Promise<void>;
+  };
+  /** Session todo list backed by the session_todos table. */
+  readonly todos: {
+    list(): Promise<SessionTodoInfo[]>;
+    replace(
+      todos: Array<{ title: string; status: SessionTodoStatus }>,
+    ): Promise<SessionTodoInfo[]>;
   };
   readonly tools: {
     beforeUse(handler: ToolGuardHandler, options?: { priority?: number }): () => void;
@@ -324,6 +377,26 @@ export interface ExtensionContext {
 
   /** Turn 边界注入（plan/goal 等） */
   readonly inject: TurnInjectorFacade;
+
+  /**
+   * 华生：内部助手 runner（AgentHarness + 简单工具 + 助手模型）。
+   * 不创建用户 session；可用于项目解析、清理等，支持 structured 结果。
+   */
+  readonly watson: {
+    run<T = unknown>(options: {
+      kind: string;
+      prompt: string;
+      cwd?: string;
+      systemPrompt?: string;
+      injectSystem?: string;
+      toolsPreset?: "coding" | "readonly" | "none";
+      structured?: boolean;
+    }): Promise<{
+      text: string;
+      result: T | null;
+      agentId: number | null;
+    }>;
+  };
 }
 
 export interface ExtensionToolCallResult<TResult = unknown> {
@@ -868,7 +941,7 @@ export interface MemberAgentInfo {
   id: number;
   name: string;
   description: string | null;
-  providerId: number;
+  providerId: number | null;
   modelId: string | null;
   toolsPreset: string | null;
   tags: string[];

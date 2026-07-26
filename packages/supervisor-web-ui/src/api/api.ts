@@ -12,9 +12,9 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
 // ============ Base Types (from supervisor types) ============
 
 export type SessionStatus =
-  | "starting"
+  | "initializing"
   | "running"
-  | "waiting_user"
+  | "blocked"
   | "idle"
   | "finish"
   | "error"
@@ -26,13 +26,7 @@ export interface FeatureModelRef {
   modelId: string;
 }
 
-export type UtilityFeature =
-  | "commit-message"
-  | "session-title"
-  | "summary"
-  | "daily-work"
-  | "task-decompose"
-  | "project-description";
+export type UtilityFeature = "assistant";
 
 export interface SupervisorSettings {
   utilityProvider?: string;
@@ -83,10 +77,20 @@ export interface Project {
   cwd: string;
   workDir: string;
   defaultBranch: string;
+  installCommand?: string | null;
+  startCommand?: string | null;
+  destroyCommand?: string | null;
   meta: Record<string, unknown>;
   origin?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Session avatar (persisted in the `avatar` column, falls back to meta.avatar on legacy rows). */
+export interface SessionAvatar {
+  text?: string;
+  color?: string;
+  icon?: string | null;
 }
 
 /** Session with UI-specific fields */
@@ -106,8 +110,29 @@ export interface Session {
   contextLeafId: string | null;
   createdAt: string; // ISO date
   lastActiveAt: string; // ISO date
+  /** Session title (was meta.name). */
+  title?: string | null;
+  systemPrompt?: string | null;
+  /** Session avatar (was meta.avatar). */
+  avatar?: SessionAvatar | null;
+  /** Builtin/internal session (was meta.builtin). */
+  isBuiltin?: boolean;
+  pinned?: boolean;
+  muted?: boolean;
+  unread?: number;
+  externalSessionId?: string | null;
+  errorMsg?: string | null;
+  /** Current workflow stage label (was meta.workflow.stage). */
+  stage?: string | null;
+  /** Whether the shadow agent is enabled (was meta.shadowDisabled === false — inverted). */
+  shadowEnabled?: boolean;
+  currentTaskId?: number | null;
   meta: Record<string, unknown>;
   currentTask: string | null;
+  gitSessionBranch?: string | null;
+  gitWorktreeEnabled?: boolean;
+  gitMergeError?: string | null;
+  gitLastCommit?: { hash: string; message: string } | null;
   /** UI-specific: last message preview */
   lastMessagePreview?: string;
 }
@@ -345,6 +370,8 @@ export interface SupervisorSessionState {
   isStreaming: boolean;
   messageCount: number;
   leafId: string | null;
+  /** Reply text currently streaming; used to resume the thinking UI after refresh. */
+  streamingReply?: string;
 }
 
 export interface CompactResult {
@@ -382,7 +409,18 @@ export interface UiNotifyEvent {
   timestamp: number;
 }
 
-export type SessionStreamEvent = AgentEvent | ShadowSuggestionsEvent | UiNotifyEvent;
+/** Create-time readiness updates (worktree / runtime prep). */
+export interface SessionStatusEvent {
+  type: "session_status";
+  status: SessionStatus;
+  timestamp: number;
+}
+
+export type SessionStreamEvent =
+  | AgentEvent
+  | ShadowSuggestionsEvent
+  | UiNotifyEvent
+  | SessionStatusEvent;
 
 export interface SseEvent {
   type: SseEventType;
@@ -591,6 +629,18 @@ interface RawSession {
   contextLeafId?: string | null;
   createdAt: string;
   lastActiveAt: string;
+  title?: string | null;
+  systemPrompt?: string | null;
+  avatar?: SessionAvatar | null;
+  isBuiltin?: boolean;
+  pinned?: boolean;
+  muted?: boolean;
+  unread?: number;
+  externalSessionId?: string | null;
+  errorMsg?: string | null;
+  stage?: string | null;
+  shadowEnabled?: boolean;
+  currentTaskId?: number | null;
   meta: Record<string, unknown>;
   currentTask?: Session["currentTask"];
   lastMessagePreview?: string;
@@ -630,6 +680,16 @@ function toCreateSessionBody(options: CreateSessionRequest) {
 }
 
 // ============ HTTP Utilities ============
+
+/** True when a fetch/stream was intentionally cancelled via AbortController. */
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = (error as { name?: unknown }).name;
+  if (name === "AbortError") return true;
+  // Some browsers surface aborted body reads without a standard AbortError name.
+  const message = error instanceof Error ? error.message : String(error);
+  return /BodyStreamBuffer was aborted|The user aborted a request/i.test(message);
+}
 
 async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, options);
@@ -735,8 +795,21 @@ export interface ProjectGitResult {
   stderr: string;
 }
 
+export interface ProjectGitInfo {
+  currentBranch: string;
+  branches: string[];
+}
+
+export async function getProjectGitInfo(id: string): Promise<ProjectGitInfo> {
+  return fetchJson<ProjectGitInfo>(`/projects/${id}/git`);
+}
+
 export async function pullProjectGit(id: string): Promise<ProjectGitResult> {
   return postJson<ProjectGitResult>(`/projects/${id}/git/pull`, {});
+}
+
+export async function checkoutProjectGit(id: string, branch: string): Promise<ProjectGitResult> {
+  return postJson<ProjectGitResult>(`/projects/${id}/git/checkout`, { branch });
 }
 
 export async function pushProjectGit(id: string): Promise<ProjectGitResult> {
@@ -751,22 +824,46 @@ export async function pickDirectory(
   });
 }
 
+export interface ProjectScript {
+  id: number;
+  projectId: number;
+  kind: "install" | "start" | "destroy";
+  name: string;
+  command: string;
+  sortOrder: number;
+}
+
+export async function listProjectScripts(id: string): Promise<ProjectScript[]> {
+  return fetchJson<ProjectScript[]>(`/projects/${id}/scripts`);
+}
+
 export async function regenerateProjectDescription(id: string): Promise<{
   description: string | null;
   status: "ready" | "skipped" | "error";
   error?: string;
   project: Project;
+  scripts: ProjectScript[];
 }> {
   const result = await postJson<{
     description: string | null;
     status: "ready" | "skipped" | "error";
     error?: string;
     project: RawProject;
+    scripts?: ProjectScript[];
   }>(`/projects/${id}/describe`, {});
   return {
     ...result,
     project: mapProject(result.project),
+    scripts: result.scripts ?? [],
   };
+}
+
+export async function getAgentLogs(
+  id: string,
+  options?: { limit?: number },
+): Promise<{ agentId: number; files: string[]; text: string }> {
+  const query = options?.limit != null ? `?limit=${options.limit}` : "";
+  return fetchJson(`/agents/${id}/logs${query}`);
 }
 
 // ============ Home API ============
@@ -947,6 +1044,7 @@ export function listExternalSessions(limit = 40): Promise<ExternalSessionCandida
 export async function importExternalSession(options: {
   backend: "codex" | "claude";
   externalSessionId: string;
+  replace?: boolean;
 }): Promise<Session> {
   const session = await postJson<RawSession>("/external-sessions/import", options);
   return mapSession(session);
@@ -1080,6 +1178,7 @@ export function promptSession(
 
       onComplete?.();
     } catch (error) {
+      if (isAbortError(error) || abortController.signal.aborted) return;
       onError?.(error instanceof Error ? error : new Error(String(error)));
     }
   })();
@@ -1105,6 +1204,7 @@ export interface QueuedSessionInput {
   level: number;
   source: string | null;
   enqueuedAt: number;
+  images?: PromptImageInput[];
 }
 
 export async function followUpSession(
@@ -1121,6 +1221,25 @@ export async function followUpSession(
 /** List inputs that have been accepted but have not started executing. */
 export async function getQueuedSessionInputs(id: string): Promise<QueuedSessionInput[]> {
   return fetchJson<QueuedSessionInput[]>(`/sessions/${id}/queued-inputs`);
+}
+
+/** Remove a queued input without sending. */
+export async function cancelQueuedSessionInput(
+  sessionId: string,
+  inputId: string,
+): Promise<{ ok: boolean }> {
+  return deleteRequest<{ ok: boolean }>(`/sessions/${sessionId}/queued-inputs/${inputId}`);
+}
+
+/** Interrupt the active turn and send this queued input immediately. */
+export async function submitQueuedSessionInput(
+  sessionId: string,
+  inputId: string,
+): Promise<{ ok: boolean; input: QueuedSessionInput }> {
+  return postJson<{ ok: boolean; input: QueuedSessionInput }>(
+    `/sessions/${sessionId}/queued-inputs/${inputId}/submit`,
+    {},
+  );
 }
 
 export interface PersistentBashSession {
@@ -1273,15 +1392,6 @@ export async function compactSession(
   return postJson<CompactResult>(`/sessions/${id}/compact`, { customInstructions });
 }
 
-/** Switch the model for a running session. */
-export async function setSessionModel(
-  id: string,
-  provider: string,
-  modelId: string,
-): Promise<{ ok: boolean }> {
-  return postJson<{ ok: boolean }>(`/sessions/${id}/model`, { provider, modelId });
-}
-
 /** Set the thinking level for a session. */
 export async function setSessionThinkingLevel(id: string, level: string): Promise<{ ok: boolean }> {
   return postJson<{ ok: boolean }>(`/sessions/${id}/thinking-level`, { level });
@@ -1421,17 +1531,24 @@ export async function executeCodexSessionCommand(
   });
 }
 
-/** Update session meta (merges with existing). */
+/**
+ * Update session fields/meta (merges with existing). Known column keys
+ * (title/name, avatar, pinned, muted, unread, shadowEnabled/shadowDisabled,
+ * stage, isBuiltin/builtin) are promoted to their own columns server-side;
+ * everything else is merged into `meta`. Returns the full updated Session.
+ */
 export async function updateSessionMeta(
   id: string,
   meta: Record<string, unknown>,
-): Promise<Record<string, unknown>> {
-  return patchJson<Record<string, unknown>>(`/sessions/${id}/meta`, meta);
+): Promise<Session> {
+  const session = await patchJson<RawSession>(`/sessions/${id}/meta`, meta);
+  return mapSession(session);
 }
 
 /** Mark all session messages as read and clear unread count. */
-export async function markSessionRead(id: string): Promise<Record<string, unknown>> {
-  return postJson<Record<string, unknown>>(`/sessions/${id}/read`, {});
+export async function markSessionRead(id: string): Promise<Session> {
+  const session = await postJson<RawSession>(`/sessions/${id}/read`, {});
+  return mapSession(session);
 }
 
 /** Replace session meta completely. */
@@ -1460,6 +1577,7 @@ export function subscribeSessionEvents(
   onEvent: (event: { type: string; event?: SessionStreamEvent }) => void,
   onError?: (error: Error) => void,
   onConnected?: () => void,
+  onClose?: () => void,
 ): () => void {
   const abortController = new AbortController();
 
@@ -1506,7 +1624,11 @@ export function subscribeSessionEvents(
         }
       }
     } catch (error) {
+      // Cleanup aborts the SSE on purpose (session switch / unmount).
+      if (isAbortError(error) || abortController.signal.aborted) return;
       onError?.(error instanceof Error ? error : new Error(String(error)));
+    } finally {
+      if (!abortController.signal.aborted) onClose?.();
     }
   })();
 
@@ -1667,6 +1789,49 @@ export async function getSessionLog(
   const qs = params.toString();
   const body = await fetchJson<{ entries: LogEntry[] }>(`/sessions/${id}/log${qs ? `?${qs}` : ""}`);
   return body.entries;
+}
+
+// ============ Session Files API ============
+
+export interface SessionWorkspaceFileEntry {
+  path: string;
+  isDirectory: boolean;
+}
+
+export type SessionFileKind =
+  | "text"
+  | "markdown"
+  | "json"
+  | "code"
+  | "image"
+  | "pdf"
+  | "binary";
+
+export interface SessionFileContent {
+  path: string;
+  kind: SessionFileKind;
+  size: number;
+  encoding: "utf8" | "base64" | "none";
+  content: string | null;
+  mimeType: string;
+  truncated?: boolean;
+  language?: string;
+}
+
+/** List files under the session workspace (cwd / worktree). */
+export async function getSessionFiles(
+  id: string,
+): Promise<{ cwd: string; files: SessionWorkspaceFileEntry[] }> {
+  return fetchJson<{ cwd: string; files: SessionWorkspaceFileEntry[] }>(`/sessions/${id}/files`);
+}
+
+/** Read a file relative to the session workspace for preview. */
+export async function getSessionFileContent(
+  id: string,
+  path: string,
+): Promise<SessionFileContent> {
+  const params = new URLSearchParams({ path });
+  return fetchJson<SessionFileContent>(`/sessions/${id}/files/content?${params}`);
 }
 
 // ============ Resource API ============

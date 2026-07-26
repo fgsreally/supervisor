@@ -622,20 +622,38 @@ export async function loadExternalSession(
         }
         const content = textContent(payload?.content, ["output_text"]);
         if (!content) return;
-        if (lastAssistantText && content.startsWith(lastAssistantText)) {
-          const prev = entries[entries.length - 1];
-          if (prev?.type === "message" && prev.message?.role === "assistant") {
-            const prevContent = prev.message.content;
-            const onlyText =
-              Array.isArray(prevContent) &&
-              prevContent.length === 1 &&
-              prevContent[0]?.type === "text";
-            if (onlyText) {
-              entries.pop();
-              parentId = prev.parentId ?? null;
-            }
+        const prev = entries[entries.length - 1];
+        const prevTextPart =
+          prev?.type === "message" &&
+          prev.message?.role === "assistant" &&
+          Array.isArray(prev.message.content) &&
+          prev.message.content.length === 1 &&
+          prev.message.content[0]?.type === "text"
+            ? (prev.message.content[0] as { type: "text"; text: string })
+            : null;
+        if (prevTextPart) {
+          const prevText = prevTextPart.text;
+          if (prevText.startsWith(content)) {
+            // Shorter / duplicate prefix of the previous assistant text.
+            return;
           }
-        } else if (lastAssistantText && lastAssistantText.startsWith(content)) {
+          if (content.startsWith(prevText)) {
+            // Streaming-style extension of the previous assistant text.
+            prevTextPart.text = content;
+            lastAssistantText = content;
+            if (timestamp) {
+              prev.timestamp = timestamp;
+              (prev.message as { timestamp?: number }).timestamp = entryTimestamp(timestamp).ms;
+            }
+            return;
+          }
+          // Distinct consecutive assistant texts → one bubble (no UI text-text divider).
+          prevTextPart.text = `${prevText.replace(/\s*$/, "")}\n\n${content.replace(/^\s*/, "")}`;
+          lastAssistantText = prevTextPart.text;
+          if (timestamp) {
+            prev.timestamp = timestamp;
+            (prev.message as { timestamp?: number }).timestamp = entryTimestamp(timestamp).ms;
+          }
           return;
         }
         lastAssistantText = content;

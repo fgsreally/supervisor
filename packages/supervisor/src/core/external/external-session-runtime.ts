@@ -18,6 +18,9 @@ import {
   type SessionPromptImage,
 } from "../session-media.js";
 import { SQLiteSessionStorage } from "../session-storage.js";
+import { appendLlmErrorMessage } from "../session-llm-error.js";
+import { beginSessionTiming, timedSessionStep } from "../../utils/session-timing.js";
+import { ExternalTurnBuffer } from "./external-turn-buffer.js";
 
 type Listener = (event: AgentHarnessEvent) => void | Promise<void>;
 
@@ -30,6 +33,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
   protected readonly agent: Agent;
   protected readonly storage: SQLiteSessionStorage;
   protected assistantText = "";
+  private readonly turnBuffer = new ExternalTurnBuffer();
 
   private readonly listeners = new Set<Listener>();
   private readonly activeTools = new Map<string, { name: string; ended: boolean }>();
@@ -57,12 +61,13 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
   }
 
   protected setExternalSessionId(value: string): void {
-    this.db.updateMeta(this.id, { externalSessionId: value });
+    this.db.updateSessionFields(this.id, { externalSessionId: value });
   }
 
   protected async appendText(delta: string): Promise<void> {
     if (!delta) return;
     this.assistantText += delta;
+    this.turnBuffer.appendText(delta);
     await this.emit({
       type: "message_update",
       message: { role: "assistant", content: this.assistantText } as AgentMessage,
@@ -72,6 +77,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
 
   protected async appendThinking(delta: string): Promise<void> {
     if (!delta) return;
+    this.turnBuffer.appendThinking(delta);
     await this.emit({
       type: "message_update",
       message: { role: "assistant", content: this.assistantText } as AgentMessage,
@@ -82,6 +88,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
   protected async startTool(id: string, name: string, args: unknown): Promise<void> {
     if (this.activeTools.has(id)) return;
     this.activeTools.set(id, { name, ended: false });
+    this.turnBuffer.recordToolStart(id, name, args);
     await this.emit({
       type: "tool_execution_start",
       toolCallId: id,
@@ -90,10 +97,21 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     });
   }
 
+  /** Codex may emit turn/completed before the last item/completed notification is handled. */
+  private async waitForActiveToolsIdle(timeoutMs = 5000): Promise<void> {
+    const started = Date.now();
+    while (this.activeTools.size > 0) {
+      if (Date.now() - started >= timeoutMs) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+
   protected async endTool(id: string, result: unknown, isError = false): Promise<void> {
     const tool = this.activeTools.get(id);
     if (!tool || tool.ended) return;
     tool.ended = true;
+    this.activeTools.delete(id);
+    this.turnBuffer.recordToolEnd(id, tool.name, result, isError);
     await this.emit({
       type: "tool_execution_end",
       toolCallId: id,
@@ -119,70 +137,98 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     images?: SessionPromptImage[],
     source?: string | null,
   ): Promise<void> {
-    const userId = randomUUID();
-    const imageContent = images?.length
-      ? await resolveSessionPromptImages(this.id, images)
-      : undefined;
-    const contentParts: Array<Record<string, unknown>> = [{ type: "text", text: message }];
-    if (images?.length) {
-      for (const image of images) {
-        contentParts.push({
-          type: "image",
-          name: image.name ?? "[Image]",
-          mediaId: image.mediaId,
-          mimeType: image.mimeType,
-        });
-      }
-    }
-    await this.storage.appendEntry(
-      {
-        id: userId,
-        parentId: await this.storage.getLeafId(),
-        timestamp: new Date().toISOString(),
-        type: "message",
-        message: {
-          role: "user",
-          content: contentParts,
-          timestamp: Date.now(),
-        },
-      } as unknown as SessionTreeEntry,
-      { source },
-    );
-    this.assistantText = "";
-    this.activeTools.clear();
-    await this.emit({ type: "agent_start" });
-    await this.emit({ type: "message_start", message: { role: "assistant", content: "" } });
+    const doneRun = beginSessionTiming(this.id, "external/runPrompt");
     try {
-      const runtimeConfig = this.session.meta.runtimeConfig;
-      const sideQuestionPrompt =
-        this.session.branchType === "btw" &&
-        runtimeConfig &&
-        typeof runtimeConfig === "object" &&
-        typeof (runtimeConfig as { systemPrompt?: unknown }).systemPrompt === "string"
-          ? (runtimeConfig as { systemPrompt: string }).systemPrompt
-          : "";
-      const externalMessage = sideQuestionPrompt
-        ? `${sideQuestionPrompt}\n\nSide question from the user:\n${message}`
-        : message;
-      await this.runExternalTurn(externalMessage, imageContent);
-      const assistantMessage = {
-        role: "assistant",
-        content: this.assistantText,
-        timestamp: Date.now(),
-      } as AgentMessage;
-      await this.storage.appendEntry({
-        id: randomUUID(),
-        parentId: userId,
-        timestamp: new Date().toISOString(),
-        type: "message",
-        message: assistantMessage,
-      } as SessionTreeEntry);
-      await this.emit({ type: "message_end", message: assistantMessage });
-      await this.emit({ type: "agent_end", messages: [assistantMessage] });
-    } catch (error) {
-      await this.emit({ type: "agent_end", messages: [] });
-      throw error;
+      const imageContent = images?.length
+        ? await timedSessionStep(this.id, "resolvePromptImages", () =>
+            resolveSessionPromptImages(this.id, images),
+          )
+        : undefined;
+      // Retry / queue-drain after a killed turn often re-prompts the same text.
+      // Reuse the existing leaf user message so the timeline doesn't duplicate.
+      let userId = await this.findReusableUserLeafId(message);
+      if (!userId) {
+        userId = randomUUID();
+        const contentParts: Array<Record<string, unknown>> = [{ type: "text", text: message }];
+        if (images?.length) {
+          for (const image of images) {
+            contentParts.push({
+              type: "image",
+              name: image.name ?? "[Image]",
+              mediaId: image.mediaId,
+              mimeType: image.mimeType,
+            });
+          }
+        }
+        await this.storage.appendEntry(
+          {
+            id: userId,
+            parentId: await this.storage.getLeafId(),
+            timestamp: new Date().toISOString(),
+            type: "message",
+            message: {
+              role: "user",
+              content: contentParts,
+              timestamp: Date.now(),
+            },
+          } as unknown as SessionTreeEntry,
+          { source },
+        );
+      }
+      this.assistantText = "";
+      this.activeTools.clear();
+      this.turnBuffer.reset();
+      await this.emit({ type: "agent_start" });
+      await this.emit({ type: "message_start", message: { role: "assistant", content: "" } });
+      try {
+        const sideQuestionPrompt =
+          this.session.branchType === "btw" && this.session.systemPrompt
+            ? this.session.systemPrompt
+            : "";
+        const externalMessage = sideQuestionPrompt
+          ? `${sideQuestionPrompt}\n\nSide question from the user:\n${message}`
+          : message;
+        await this.runExternalTurn(externalMessage, imageContent);
+        await this.waitForActiveToolsIdle();
+        await this.turnBuffer.persist(this.storage, userId);
+        const assistantMessage = {
+          role: "assistant",
+          content: this.assistantText,
+          timestamp: Date.now(),
+        } as AgentMessage;
+        await this.emit({ type: "message_end", message: assistantMessage });
+        await this.emit({ type: "agent_end", messages: [assistantMessage] });
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        // Persist immediately so the UI can reload an llm_error card even if the
+        // SSE client disconnects before SessionManager finishes bookkeeping.
+        await appendLlmErrorMessage(this.storage, detail).catch(() => {});
+        await this.emit({
+          type: "agent_end",
+          messages: [
+            {
+              role: "assistant",
+              content: [],
+              stopReason: "error",
+              errorMessage: detail,
+              timestamp: Date.now(),
+            } as AgentMessage,
+          ],
+        });
+        throw error;
+      }
+    } finally {
+      doneRun();
     }
+  }
+
+  /** If the leaf is already this user text (failed/retried turn), reuse it. */
+  private async findReusableUserLeafId(message: string): Promise<string | null> {
+    const leafId = await this.storage.getLeafId();
+    if (!leafId) return null;
+    const entry = await this.storage.getEntry(leafId);
+    if (!entry || entry.type !== "message" || entry.message?.role !== "user") return null;
+    return userMessageText(entry.message) === message ? leafId : null;
   }
 
   steer(message: string, images?: SessionPromptImage[]): void {
@@ -237,6 +283,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     const session = this.db.get(this.id);
     if (!session) throw new Error(`Session ${this.id} not found`);
     const messages = await this.storage.getEntries();
+    const streamingReply = this.assistantText.trim();
     return {
       id: this.id,
       sessionId: session.session_id,
@@ -247,6 +294,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
       isStreaming: this.running !== null,
       messageCount: messages.filter((entry) => entry.type === "message").length,
       leafId: session.leaf_id,
+      ...(streamingReply ? { streamingReply: this.assistantText } : {}),
     };
   }
 
@@ -268,4 +316,21 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
   ): boolean {
     return false;
   }
+}
+
+function userMessageText(message: { content?: unknown } | undefined): string {
+  const content = message?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (!part || typeof part !== "object") return "";
+      if ((part as { type?: string }).type === "text") {
+        return typeof (part as { text?: unknown }).text === "string"
+          ? (part as { text: string }).text
+          : "";
+      }
+      return "";
+    })
+    .join("");
 }

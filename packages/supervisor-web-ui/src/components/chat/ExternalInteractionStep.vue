@@ -1,28 +1,32 @@
 <template>
-  <section class="external-interaction" :class="`external-interaction--${kind}`">
+  <section
+    class="external-interaction"
+    :class="[
+      `external-interaction--${kind}`,
+      { 'external-interaction--clickable': pending && kind === 'approval' },
+    ]"
+    @click="onCardClick"
+  >
     <header class="external-interaction__header">
-      <ShieldAlert v-if="kind === 'approval'" class="w-5 h-5" />
-      <MessageCircleQuestion v-else class="w-5 h-5" />
-      <div class="min-w-0">
+      <ShieldAlert v-if="kind === 'approval'" class="w-5 h-5 shrink-0" />
+      <MessageCircleQuestion v-else class="w-5 h-5 shrink-0" />
+      <div class="min-w-0 flex-1">
         <div class="external-interaction__title">{{ title }}</div>
+        <div v-if="summary" class="external-interaction__summary">{{ summary }}</div>
         <div class="external-interaction__source">{{ backendLabel }}</div>
       </div>
     </header>
 
-    <div v-if="detail" class="external-interaction__detail">{{ detail }}</div>
     <a
       v-if="requestUrl"
       class="external-interaction__url"
       :href="requestUrl"
       target="_blank"
       rel="noopener noreferrer"
+      @click.stop
     >
       在浏览器中继续
     </a>
-    <details v-if="requestJson" class="external-interaction__request">
-      <summary>查看请求详情</summary>
-      <pre>{{ requestJson }}</pre>
-    </details>
 
     <template v-if="kind === 'question' && pending">
       <div v-for="question in questions" :key="question.id" class="external-interaction__question">
@@ -33,7 +37,7 @@
           type="button"
           class="external-interaction__option"
           :class="{ 'external-interaction__option--active': answers[question.id] === option.label }"
-          @click="answers[question.id] = option.label"
+          @click.stop="answers[question.id] = option.label"
         >
           <span>{{ option.label }}</span>
           <small>{{ option.description }}</small>
@@ -44,13 +48,14 @@
           :type="question.isSecret ? 'password' : 'text'"
           class="external-interaction__input"
           :placeholder="question.isSecret ? '输入敏感信息' : '输入回答'"
+          @click.stop
         />
       </div>
       <button
         type="button"
         class="external-interaction__primary"
         :disabled="submitting || !canSubmitAnswers"
-        @click="submitAnswers"
+        @click.stop="submitAnswers"
       >
         提交回答
       </button>
@@ -61,7 +66,7 @@
         type="button"
         class="external-interaction__deny"
         :disabled="submitting"
-        @click="decide('deny')"
+        @click.stop="decide('deny')"
       >
         拒绝
       </button>
@@ -69,7 +74,7 @@
         type="button"
         class="external-interaction__secondary"
         :disabled="submitting"
-        @click="decide('approve_session')"
+        @click.stop="decide('approve_session')"
       >
         本次会话允许
       </button>
@@ -77,7 +82,7 @@
         type="button"
         class="external-interaction__primary"
         :disabled="submitting"
-        @click="decide('approve')"
+        @click.stop="decide('approve')"
       >
         仅本次允许
       </button>
@@ -91,6 +96,7 @@
 import { computed, reactive, ref } from "vue";
 import { MessageCircleQuestion, ShieldAlert } from "lucide-vue-next";
 import { respondToExternalInteraction, type ExternalInteractionResponse } from "@/api";
+import { externalInteractionSummary } from "@/utils/external-interaction-display";
 
 interface QuestionOption {
   label: string;
@@ -111,33 +117,27 @@ const props = defineProps<{
   result?: Array<{ type: string; text: string }>;
   pending?: boolean;
 }>();
-const emit = defineEmits<{ resolved: [] }>();
+const emit = defineEmits<{ resolved: []; "open-detail": [] }>();
 const submitting = ref(false);
 const answers = reactive<Record<string, string>>({});
 
 const interactionId = computed(() => String(props.args?.interactionId ?? ""));
 const kind = computed(() => (props.args?.kind === "question" ? "question" : "approval"));
 const title = computed(() => String(props.args?.title ?? "外部 Agent 请求交互"));
-const detail = computed(() => String(props.args?.detail ?? ""));
+const summary = computed(() => externalInteractionSummary(props.args));
 const requestUrl = computed(() => {
   const request = props.args?.request;
   if (!request || typeof request !== "object" || !("url" in request)) return "";
   const url = String(request.url ?? "");
   return /^https?:\/\//i.test(url) ? url : "";
 });
-const backendLabel = computed(() => String(props.args?.backend ?? "external").toUpperCase());
+const backendLabel = computed(() => {
+  const backend = String(props.args?.backend ?? "external").toUpperCase();
+  return props.pending && kind.value === "approval" ? `${backend} · 点击查看详情` : backend;
+});
 const questions = computed(
   () => (Array.isArray(props.args?.questions) ? props.args.questions : []) as Question[],
 );
-const requestJson = computed(() => {
-  const request = props.args?.request;
-  if (!request || typeof request !== "object") return "";
-  try {
-    return JSON.stringify(request, null, 2);
-  } catch {
-    return String(request);
-  }
-});
 const canSubmitAnswers = computed(() =>
   questions.value.every((question) => question.required === false || Boolean(answers[question.id])),
 );
@@ -147,6 +147,11 @@ const resultLabel = computed(() => {
   if (text.includes("answer")) return "已回答";
   return text ? "已处理" : "等待外部 Agent 继续";
 });
+
+function onCardClick() {
+  if (!props.pending || kind.value !== "approval") return;
+  emit("open-detail");
+}
 
 async function respond(response: ExternalInteractionResponse) {
   if (!interactionId.value || submitting.value) return;
@@ -174,64 +179,48 @@ function submitAnswers() {
 <style scoped>
 .external-interaction {
   max-width: 720px;
-  padding: 14px;
+  padding: 12px 14px;
   border: 1px solid var(--app-border);
   border-radius: 8px;
   background: var(--app-settings-card);
   color: var(--app-text-primary);
 }
+.external-interaction--clickable {
+  cursor: pointer;
+}
+.external-interaction--clickable:hover {
+  border-color: color-mix(in srgb, #07c160 35%, var(--app-border));
+}
 .external-interaction__header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 10px;
 }
 .external-interaction__title {
   font-size: 14px;
   font-weight: 600;
 }
+.external-interaction__summary {
+  margin-top: 6px;
+  font:
+    12px/1.5 ui-monospace,
+    monospace;
+  color: var(--app-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .external-interaction__source,
 .external-interaction__resolved {
-  margin-top: 2px;
-  font-size: 12px;
+  margin-top: 4px;
+  font-size: 11px;
   color: var(--app-text-secondary);
-}
-.external-interaction__detail {
-  margin-top: 12px;
-  padding: 10px;
-  border-radius: 6px;
-  background: var(--app-hover);
-  font:
-    12px/1.6 ui-monospace,
-    monospace;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-.external-interaction__request {
-  margin-top: 10px;
-  color: var(--app-text-secondary);
-  font-size: 12px;
 }
 .external-interaction__url {
   display: inline-block;
   margin-top: 10px;
   color: #07c160;
   font-size: 13px;
-}
-.external-interaction__request summary {
-  cursor: pointer;
-}
-.external-interaction__request pre {
-  max-height: 240px;
-  margin-top: 8px;
-  padding: 10px;
-  overflow: auto;
-  border-radius: 6px;
-  background: var(--app-hover);
-  color: var(--app-text-primary);
-  font:
-    12px/1.5 ui-monospace,
-    monospace;
-  white-space: pre-wrap;
 }
 .external-interaction__question {
   margin-top: 14px;
@@ -273,7 +262,7 @@ function submitAnswers() {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 14px;
+  margin-top: 12px;
 }
 .external-interaction__actions button,
 .external-interaction__primary {

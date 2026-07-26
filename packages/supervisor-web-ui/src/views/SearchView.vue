@@ -91,12 +91,12 @@
                 ]
               "
             >
-              {{ (typeof s.meta?.name === "string" ? s.meta.name : "S").charAt(0).toUpperCase() }}
+              {{ (s.title || "S").charAt(0).toUpperCase() }}
             </div>
             <div class="flex-1 min-w-0">
               <div class="text-[13px] font-medium truncate" style="color: var(--app-text-primary)">
                 <span
-                  v-for="(part, i) in highlight(String(s.meta?.name || '会话'), query)"
+                  v-for="(part, i) in highlight(s.title || '会话', query)"
                   :key="i"
                 >
                   <span v-if="part.highlight" class="text-[#07c160] font-semibold">{{
@@ -215,7 +215,7 @@ const sessionResults = computed(() => {
   return sessionStore.sessions
     .filter((s: Session) => s.showInSessionList)
     .filter((s: Session) => {
-      const name = (s.meta?.name as string) || "";
+      const name = s.title || "";
       const preview = s.lastMessagePreview || "";
       return name.toLowerCase().includes(q) || preview.toLowerCase().includes(q);
     })
@@ -270,7 +270,7 @@ async function performSearch() {
             hits.push({
               id: entry.id,
               sessionId: session.id,
-              sessionName: (session.meta?.name as string) || "",
+              sessionName: session.title || "",
               snippet:
                 (start > 0 ? "..." : "") +
                 text.slice(start, end) +

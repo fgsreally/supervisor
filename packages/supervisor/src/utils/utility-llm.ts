@@ -5,6 +5,7 @@ import type { SupervisorDb } from "../db/db.js";
 import { resolveModelWithProviderOverrides } from "./model-utils.js";
 import {
   isFeatureModelRef,
+  LEGACY_UTILITY_FEATURES,
   readSupervisorSettings,
   type FeatureModelRef,
   type SupervisorSettings,
@@ -40,30 +41,43 @@ function extractText(content: Array<{ type: string; text?: string }> | string): 
     .trim();
 }
 
-/** Read the configured model ref for a feature (no fallback). */
-export function getFeatureModelRef(
-  feature: UtilityFeature,
+/** Resolve the unified 助手模型 (Watson). Falls back to legacy per-feature bindings. */
+export function resolveAssistantModelRef(
   settings: SupervisorSettings = readSupervisorSettings(),
 ): FeatureModelRef | null {
-  const configured = settings.featureModels?.[feature];
-  if (isFeatureModelRef(configured)) {
+  const assistant = settings.featureModels?.assistant;
+  if (isFeatureModelRef(assistant)) {
     return {
-      providerId: configured.providerId,
-      modelId: configured.modelId.trim(),
+      providerId: assistant.providerId,
+      modelId: assistant.modelId.trim(),
     };
+  }
+  for (const feature of LEGACY_UTILITY_FEATURES) {
+    const configured = settings.featureModels?.[feature];
+    if (isFeatureModelRef(configured)) {
+      return {
+        providerId: configured.providerId,
+        modelId: configured.modelId.trim(),
+      };
+    }
   }
   return null;
 }
 
-/**
- * Resolve feature model binding.
- * Only the feature-specific setting counts; missing => null (caller skips).
- */
-export function resolveFeatureModelRef(
-  feature: UtilityFeature,
+/** @deprecated Prefer resolveAssistantModelRef — all features share 助手模型. */
+export function getFeatureModelRef(
+  _feature: UtilityFeature | string,
   settings: SupervisorSettings = readSupervisorSettings(),
 ): FeatureModelRef | null {
-  return getFeatureModelRef(feature, settings);
+  return resolveAssistantModelRef(settings);
+}
+
+/** @deprecated Prefer resolveAssistantModelRef */
+export function resolveFeatureModelRef(
+  _feature: UtilityFeature | string,
+  settings: SupervisorSettings = readSupervisorSettings(),
+): FeatureModelRef | null {
+  return resolveAssistantModelRef(settings);
 }
 
 async function resolveAuthFromRef(
@@ -83,18 +97,25 @@ async function resolveAuthFromRef(
   return null;
 }
 
+/** Resolve auth for the unified 助手模型. */
+export async function resolveAssistantModelAuth(
+  db: FeatureModelDb,
+  settings: SupervisorSettings = readSupervisorSettings(),
+): Promise<UtilityModelAuth | null> {
+  const ref = resolveAssistantModelRef(settings);
+  if (!ref) return null;
+  return resolveAuthFromRef(db, ref);
+}
+
 /**
- * Resolve an LLM for a settings-configured utility feature.
- * Missing binding / missing credentials => null (caller should skip the feature).
+ * @deprecated Prefer resolveAssistantModelAuth — feature name is ignored.
  */
 export async function resolveFeatureModelAuth(
   db: FeatureModelDb,
-  feature: UtilityFeature,
+  _feature: UtilityFeature | string,
   settings: SupervisorSettings = readSupervisorSettings(),
 ): Promise<UtilityModelAuth | null> {
-  const ref = resolveFeatureModelRef(feature, settings);
-  if (!ref) return null;
-  return resolveAuthFromRef(db, ref);
+  return resolveAssistantModelAuth(db, settings);
 }
 
 async function completeUtilityText(auth: UtilityModelAuth, prompt: string): Promise<string> {

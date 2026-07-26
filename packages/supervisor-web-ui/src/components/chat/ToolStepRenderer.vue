@@ -16,6 +16,7 @@
     :result="piece.result?.content"
     :pending="pending"
     @resolved="emit('answered')"
+    @open-detail="emit('open-external-detail', piece.callArgs, piece.result?.content)"
   />
   <BashStep
     v-else-if="piece.kind === 'bash'"
@@ -83,6 +84,10 @@ const emit = defineEmits<{
   ];
   navigate: [sessionId: string];
   answered: [];
+  "open-external-detail": [
+    callArgs?: Record<string, unknown>,
+    result?: Array<{ type: string; text: string }>,
+  ];
 }>();
 
 const isAsk = computed(

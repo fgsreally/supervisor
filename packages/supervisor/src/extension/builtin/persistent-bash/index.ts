@@ -1,4 +1,5 @@
 import { Type } from "typebox";
+import { sessionServicePortEnv } from "../../../core/session-services.js";
 import type { ExtensionDefinition } from "../../types.js";
 import {
   getPersistentBashSession,
@@ -30,12 +31,14 @@ export default {
       }),
       async execute(params) {
         if (params.action === "start") {
+          const meta = await ctx.session.meta.get();
           const item = await startPersistentBashSession({
             sessionId: ctx.session.id,
             cwd: ctx.session.cwd,
             jobs: ctx.jobs,
             command: params.command,
             label: params.label,
+            env: sessionServicePortEnv(meta),
           });
           return { content: [{ type: "text", text: JSON.stringify(item) }], details: item };
         }

@@ -19,10 +19,16 @@ export interface UISession {
   agentId?: string | null;
   status: SessionStatus;
   lastActiveAt: string;
+  /** Session title (was meta.name). */
+  title: string;
+  /** Builtin/internal session (was meta.builtin). */
+  isBuiltin?: boolean;
+  avatar?: Partial<SessionAvatarValue> | null;
+  /** Current workflow stage label (was meta.workflow.stage). */
+  stage?: string | null;
+  /** Extension data only; core fields (title/avatar/pinned/...) live on the session itself. */
   meta: {
-    name: string;
     description?: string;
-    avatar?: SessionAvatarValue;
     [key: string]: unknown;
   };
   lastMessagePreview: string;

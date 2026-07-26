@@ -232,6 +232,15 @@
             </button>
 
             <button
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('files')"
+            >
+              <span>查看工作区文件</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <button
               v-if="canComplete"
               type="button"
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors text-[#576b95]"
@@ -309,7 +318,7 @@ const props = defineProps<{
   gitBranch?: string | null;
   canComplete?: boolean;
   canCheckpoint?: boolean;
-  childSessions: Array<Pick<Session, "id" | "status" | "branchType" | "meta">>;
+  childSessions: Array<Pick<Session, "id" | "status" | "branchType" | "title" | "meta">>;
   configurableAgents: Agent[];
   shadowEnabled: boolean;
   spawnedAgentIds: string[];
@@ -320,6 +329,7 @@ const emit = defineEmits<{
   close: [];
   search: [];
   log: [];
+  files: [];
   complete: [];
   checkpoint: [];
   rewind: [];
@@ -370,10 +380,8 @@ function addSpawned(agentId: string) {
   spawnAgentPickerOpen.value = false;
 }
 
-function childSessionName(child: Pick<Session, "id" | "meta">): string {
-  return typeof child.meta.name === "string" && child.meta.name.trim()
-    ? child.meta.name
-    : `子会话 ${child.id}`;
+function childSessionName(child: Pick<Session, "id" | "title">): string {
+  return child.title?.trim() ? child.title : `子会话 ${child.id}`;
 }
 </script>
 

@@ -31,6 +31,8 @@ import {
 } from "../session-media.js";
 import { SQLiteSessionStorage } from "../session-storage.js";
 import { getExternalAgentConfig } from "./external-agent-config.js";
+import { sessionServicePortEnv } from "../session-services.js";
+import { ExternalTurnBuffer } from "./external-turn-buffer.js";
 
 export interface AcpAgentConfig {
   command: string;
@@ -73,6 +75,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
   private readonly tools = new Map<string, { name: string; args: unknown; ended: boolean }>();
   private backendSessionId = "";
   private assistantText = "";
+  private readonly turnBuffer = new ExternalTurnBuffer();
   private running: Promise<void> | null = null;
   private readonly interactions = new Map<
     string,
@@ -105,9 +108,10 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     agent: Agent;
   }): Promise<AcpSessionRuntime> {
     const config = parseAcpConfig(options.agent);
+    const portEnv = sessionServicePortEnv(options.session.meta);
     const child = spawn(config.command, config.args ?? [], {
       cwd: options.session.cwd,
-      env: { ...process.env, ...config.env },
+      env: { ...process.env, ...config.env, ...portEnv },
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -141,7 +145,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
           child.once("error", reject);
         }),
       ]);
-      const savedId = options.session.meta?.externalSessionId;
+      const savedId = options.session.externalSessionId;
       if (typeof savedId === "string" && savedId.length > 0) {
         await connection.loadSession({
           sessionId: savedId,
@@ -152,7 +156,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
       } else {
         const created = await connection.newSession({ cwd: options.session.cwd, mcpServers: [] });
         runtime.backendSessionId = created.sessionId;
-        options.db.updateMeta(options.session.id, { externalSessionId: created.sessionId });
+        options.db.updateSessionFields(options.session.id, { externalSessionId: created.sessionId });
       }
       return runtime;
     } catch (error) {
@@ -227,6 +231,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     const update = notification.update;
     if (update.sessionUpdate === "agent_message_chunk" && update.content.type === "text") {
       this.assistantText += update.content.text;
+      this.turnBuffer.appendText(update.content.text);
       await this.emit({
         type: "message_update",
         message: { role: "assistant", content: this.assistantText } as AgentMessage,
@@ -235,6 +240,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
       return;
     }
     if (update.sessionUpdate === "agent_thought_chunk" && update.content.type === "text") {
+      this.turnBuffer.appendThinking(update.content.text);
       await this.emit({
         type: "message_update",
         message: { role: "assistant", content: this.assistantText } as AgentMessage,
@@ -249,6 +255,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     if (update.sessionUpdate === "tool_call") {
       const record = { name: update.title, args: update.rawInput ?? {}, ended: false };
       this.tools.set(update.toolCallId, record);
+      this.turnBuffer.recordToolStart(update.toolCallId, record.name, record.args);
       await this.emit({
         type: "tool_execution_start",
         toolCallId: update.toolCallId,
@@ -269,6 +276,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
           ended: false,
         };
         this.tools.set(update.toolCallId, record);
+        this.turnBuffer.recordToolStart(update.toolCallId, record.name, record.args);
         await this.emit({
           type: "tool_execution_start",
           toolCallId: update.toolCallId,
@@ -282,6 +290,14 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     }
   }
 
+  private async waitForActiveToolsIdle(timeoutMs = 5000): Promise<void> {
+    const started = Date.now();
+    while (this.tools.size > 0) {
+      if (Date.now() - started >= timeoutMs) break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+  }
+
   private async endTool(
     toolCallId: string,
     update: ToolCall | ToolCallUpdate,
@@ -290,6 +306,8 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     const record = this.tools.get(toolCallId);
     if (!record || record.ended) return;
     record.ended = true;
+    this.tools.delete(toolCallId);
+    this.turnBuffer.recordToolEnd(toolCallId, record.name, toolResult(update), isError);
     await this.emit({
       type: "tool_execution_end",
       toolCallId,
@@ -347,6 +365,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     );
     this.assistantText = "";
     this.tools.clear();
+    this.turnBuffer.reset();
     await this.emit({ type: "agent_start" });
     await this.emit({ type: "message_start", message: { role: "assistant", content: "" } });
     try {
@@ -362,19 +381,13 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
           })),
         ],
       });
+      await this.waitForActiveToolsIdle();
       const assistantMessage = {
         role: "assistant",
         content: this.assistantText,
         timestamp: Date.now(),
       } as AgentMessage;
-      const assistantId = randomUUID();
-      await this.storage.appendEntry({
-        id: assistantId,
-        parentId: userId,
-        timestamp: new Date().toISOString(),
-        type: "message",
-        message: assistantMessage,
-      } as SessionTreeEntry);
+      await this.turnBuffer.persist(this.storage, userId);
       await this.emit({ type: "message_end", message: assistantMessage });
       await this.emit({ type: "agent_end", messages: [assistantMessage] });
     } catch (error) {

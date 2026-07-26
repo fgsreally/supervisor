@@ -10,9 +10,9 @@
     <div class="flex-1 overflow-y-auto custom-scrollbar p-6">
       <div class="settings-content space-y-5">
         <section class="settings-card">
-          <h2>功能模型</h2>
+          <h2>助手模型</h2>
           <p class="settings-card__hint">
-            为自动功能指定模型。未配置则跳过该功能。
+            华生（内部助手）与 pi-coding-agent 共用此模型，处理项目解析、清理与其它内部任务。未配置则相关功能跳过。
           </p>
           <label v-for="feature in utilityFeatures" :key="feature.id" class="settings-field">
             <span>
@@ -232,15 +232,10 @@ defineProps<{ showBack?: boolean }>();
 const emit = defineEmits<{ back: [] }>();
 
 const utilityFeatures: Array<{ id: UtilityFeature; label: string; hint?: string }> = [
-  { id: "commit-message", label: "提交说明", hint: "自动生成 git commit message" },
-  { id: "session-title", label: "会话标题", hint: "自动命名新会话" },
-  { id: "summary", label: "上下文摘要", hint: "会话过长时压缩上下文" },
-  { id: "daily-work", label: "当日工作分析", hint: "汇总前一天的 sv commit" },
-  { id: "task-decompose", label: "任务分解", hint: "首页任务拆解并创建 session" },
   {
-    id: "project-description",
-    label: "项目描述",
-    hint: "创建/刷新项目时用临时 Coding Agent 整理描述",
+    id: "assistant",
+    label: "助手模型",
+    hint: "华生（内部助手）与 pi-coding-agent 共用：项目解析、worktree 清理、提交说明/标题/摘要等内部任务",
   },
 ];
 
@@ -253,12 +248,7 @@ const form = reactive({
   doubaoSpeechResourceId: "volc.seedasr.sauc.duration",
 });
 const featureModelKeys = reactive<Record<UtilityFeature, string>>({
-  "commit-message": "",
-  "session-title": "",
-  summary: "",
-  "daily-work": "",
-  "task-decompose": "",
-  "project-description": "",
+  assistant: "",
 });
 const modelOptions = ref<Array<{ key: string; label: string; ref: FeatureModelRef }>>([]);
 const envNames = reactive<Record<"tavily" | "brave" | "serper" | "firecrawl", string>>({
@@ -353,10 +343,25 @@ function parseFeatureKey(key: string): FeatureModelRef | null {
 }
 
 function applyFeatureModels(settings: SupervisorSettings) {
-  for (const feature of utilityFeatures) {
-    const ref = settings.featureModels?.[feature.id];
-    featureModelKeys[feature.id] = ref ? featureKey(ref) : "";
+  const models = settings.featureModels ?? {};
+  let ref = models.assistant;
+  if (!ref) {
+    for (const key of [
+      "project-description",
+      "commit-message",
+      "session-title",
+      "summary",
+      "daily-work",
+      "task-decompose",
+    ] as const) {
+      const legacy = models[key];
+      if (legacy && typeof legacy === "object") {
+        ref = legacy as FeatureModelRef;
+        break;
+      }
+    }
   }
+  featureModelKeys.assistant = ref ? featureKey(ref) : "";
 }
 
 function apply(settings: SupervisorSettings) {

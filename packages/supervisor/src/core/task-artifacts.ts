@@ -43,9 +43,3 @@ export async function readTaskArtifact(
     content,
   };
 }
-
-export function activeTaskPaths(meta: Record<string, unknown>): string[] {
-  return Array.isArray(meta.tasks)
-    ? meta.tasks.filter((path): path is string => typeof path === "string")
-    : [];
-}

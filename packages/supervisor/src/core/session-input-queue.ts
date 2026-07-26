@@ -60,6 +60,17 @@ export class SessionInputQueue {
     return [...(this.queues.get(sessionId) ?? [])];
   }
 
+  remove(sessionId: number, inputId: string): SessionQueuedInput | undefined {
+    const queue = this.queues.get(sessionId);
+    if (!queue?.length) return undefined;
+    const index = queue.findIndex((item) => item.id === inputId);
+    if (index < 0) return undefined;
+    const [removed] = queue.splice(index, 1);
+    if (queue.length === 0) this.queues.delete(sessionId);
+    else this.queues.set(sessionId, queue);
+    return removed;
+  }
+
   sessionIds(): number[] {
     return [...this.queues.keys()];
   }

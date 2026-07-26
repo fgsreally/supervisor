@@ -29,6 +29,7 @@
           :date-divider-label="dateDividerLabel(groups[virtualRow.index]!)"
           :time-label="messageTimeLabel(groups[virtualRow.index]!)"
           :duration-label="assistantDurationLabel(virtualRow.index)"
+          :duration-pinned="isLatestAssistantGroup(virtualRow.index)"
           :search-hit="isSearchHit(groups[virtualRow.index]!)"
           :rewindable="rewindableEntryIds.includes(groups[virtualRow.index]!.id)"
           :show-thinking-blocks="showThinkingBlocks"
@@ -45,6 +46,7 @@
           @navigate="emit('navigate', $event)"
           @open-compaction="emit('open-compaction', $event)"
           @answered="emit('answered')"
+          @open-external-detail="(args, result) => emit('open-external-detail', args, result)"
           @rewind="emit('rewind', $event)"
           @retry-error="emit('retry-error')"
           @open-actions="openActions(groups[virtualRow.index]!, $event)"
@@ -161,6 +163,10 @@ const emit = defineEmits<{
   navigate: [sessionId: string];
   "open-compaction": [entry: ChatCompactionEntry];
   answered: [];
+  "open-external-detail": [
+    callArgs?: Record<string, unknown>,
+    result?: Array<{ type: string; text: string }>,
+  ];
   rewind: [entryId: string];
   fork: [entryId: string];
   "retry-error": [];
@@ -245,6 +251,18 @@ function messageTimeLabel(group: DisplayGroup): string {
   const ts = groupTimestamp(group);
   if (ts != null) return formatMessageClock(ts);
   return formatMessageClock(Date.now());
+}
+
+function latestAssistantGroupIndex(): number {
+  for (let i = props.groups.length - 1; i >= 0; i -= 1) {
+    const group = props.groups[i];
+    if (group && isGroupedAssistantGroup(group)) return i;
+  }
+  return -1;
+}
+
+function isLatestAssistantGroup(groupIndex: number): boolean {
+  return groupIndex === latestAssistantGroupIndex();
 }
 
 function assistantDurationLabel(groupIndex: number): string | null {

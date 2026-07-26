@@ -17,6 +17,7 @@ import type {
 import type { SlashCommandInfo } from "../session-runtime.js";
 import { ExternalSessionRuntime } from "./external-session-runtime.js";
 import { getExternalAgentConfig, resolveExecutable, spawnExternalProcess } from "./external-agent-config.js";
+import { sessionServicePortEnv } from "../session-services.js";
 
 type JsonObject = Record<string, any>;
 
@@ -70,15 +71,17 @@ export class ClaudeSessionRuntime extends ExternalSessionRuntime {
   }) {
     super(options);
     const config = getExternalAgentConfig(options.agent);
-    const executable = resolveExecutable(config.command, { ...process.env, ...config.env });
+    const portEnv = sessionServicePortEnv(options.session.meta);
+    const mergedEnv = { ...process.env, ...config.env, ...portEnv };
+    const executable = resolveExecutable(config.command, mergedEnv);
     if (!executable) throw new Error(`未找到用户安装的 Claude Code：${config.command}`);
-    const savedId = options.session.meta?.externalSessionId;
+    const savedId = options.session.externalSessionId;
     this.query = (options.queryFactory ?? query)({
       prompt: this.input,
       options: {
         cwd: options.session.cwd,
         pathToClaudeCodeExecutable: executable,
-        env: { ...process.env, ...config.env },
+        env: mergedEnv,
         includePartialMessages: true,
         persistSession: true,
         settingSources: ["user", "project", "local"],

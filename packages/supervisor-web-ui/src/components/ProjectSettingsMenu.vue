@@ -60,38 +60,52 @@
 
             <div>
               <div class="project-settings-modal__desc-head">
-                <label class="project-settings-modal__label">项目描述</label>
+                <label class="project-settings-modal__label">项目描述 / 脚本</label>
                 <button
                   type="button"
                   class="project-settings-modal__refresh"
-                  title="重新生成项目描述"
+                  title="让华生重新解析项目"
                   :disabled="busy || regenerating"
                   @click="emit('regenerate-description')"
                 >
                   <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': regenerating }" />
-                  刷新
+                  华生解析
                 </button>
               </div>
               <div class="project-settings-modal__desc">
                 <template v-if="regenerating || descriptionStatus === 'pending'">
-                  <span class="project-settings-modal__muted">正在生成项目描述…</span>
+                  <span class="project-settings-modal__muted">华生正在解析项目…</span>
                 </template>
                 <template v-else-if="description">
                   {{ description }}
                 </template>
                 <template v-else-if="descriptionStatus === 'skipped'">
                   <span class="project-settings-modal__muted">
-                    {{ descriptionError || "未配置「项目描述」功能模型" }}
+                    {{ descriptionError || "未配置「助手模型」" }}
                   </span>
                 </template>
                 <template v-else-if="descriptionStatus === 'error'">
                   <span class="project-settings-modal__error">
-                    {{ descriptionError || "生成失败" }}
+                    {{ descriptionError || "解析失败" }}
                   </span>
                 </template>
                 <template v-else>
-                  <span class="project-settings-modal__muted">暂无描述，可点刷新生成</span>
+                  <span class="project-settings-modal__muted">暂无描述，可点「华生解析」</span>
                 </template>
+              </div>
+              <div v-if="scripts?.length" class="project-settings-modal__scripts">
+                <div
+                  v-for="script in scripts"
+                  :key="`${script.kind}-${script.id}`"
+                  class="project-settings-modal__script"
+                >
+                  <span class="project-settings-modal__script-kind">{{ script.kind }}</span>
+                  <span class="project-settings-modal__script-name">{{ script.name }}</span>
+                  <code class="project-settings-modal__script-cmd">{{ script.command }}</code>
+                </div>
+              </div>
+              <div v-else-if="!regenerating && descriptionStatus === 'ready'" class="project-settings-modal__muted" style="margin-top: 8px">
+                无需安装/启动/销毁脚本
               </div>
             </div>
           </div>
@@ -112,6 +126,7 @@ const props = defineProps<{
   description?: string | null;
   descriptionStatus?: string | null;
   descriptionError?: string | null;
+  scripts?: Array<{ id: number; kind: string; name: string; command: string }>;
   busy?: boolean;
   regenerating?: boolean;
 }>();
@@ -271,6 +286,42 @@ async function saveName() {
 
 .project-settings-modal__error {
   color: #e54d42;
+}
+
+.project-settings-modal__scripts {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-settings-modal__script {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 6px 8px;
+  align-items: baseline;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--app-chat-bg);
+  font-size: 12px;
+}
+
+.project-settings-modal__script-kind {
+  color: var(--app-accent);
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.project-settings-modal__script-name {
+  color: var(--app-text-muted);
+}
+
+.project-settings-modal__script-cmd {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--app-text-primary);
 }
 
 .project-settings-enter-active,

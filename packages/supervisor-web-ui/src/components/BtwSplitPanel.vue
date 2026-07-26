@@ -94,7 +94,7 @@ function entryText(entry: SessionTreeEntry): string {
 }
 
 function sessionName(session: Session): string {
-  return typeof session.meta.name === "string" ? session.meta.name : "侧问";
+  return session.title?.trim() ? session.title : "侧问";
 }
 
 function startDraft() {

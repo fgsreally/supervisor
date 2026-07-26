@@ -50,9 +50,9 @@
           <SessionAvatar
             class="chat-search-result__avatar"
             :session-id="result.session.id"
-            :name="result.session.meta.name"
+            :name="result.session.title"
             :agent-id="result.session.agentId"
-            :avatar="result.session.meta.avatar"
+            :avatar="result.session.avatar"
             :agent-icon="
               result.session.agentId
                 ? agentStore.getAgentById(result.session.agentId)?.icon
@@ -61,7 +61,7 @@
             :size="42"
           />
           <span class="chat-search-result__body">
-            <strong>{{ result.session.meta.name }}</strong>
+            <strong>{{ result.session.title }}</strong>
             <small>{{ result.description }}</small>
           </span>
         </button>
@@ -83,7 +83,7 @@
         </div>
       </template>
 
-      <template v-if="!query.trim() && regularRoots.length">
+      <template v-if="!query.trim() && workspaceGroups.length">
         <template v-for="group in workspaceGroups" :key="group.workspace.id">
           <div class="list-section-header sticky top-0 z-10">
             <button
@@ -129,6 +129,12 @@
             :class="{ 'workspace-collapse--open': !isWorkspaceCollapsed(group.workspace.id) }"
           >
             <div class="workspace-collapse__inner">
+              <div
+                v-if="!group.sessions.length"
+                class="workspace-empty"
+              >
+                暂无会话
+              </div>
               <div v-for="root in group.sessions" :key="root.id" class="workspace-session-block">
                 <SessionListItem
                   :session="root"
@@ -155,11 +161,11 @@
       </template>
 
       <div
-        v-if="!query.trim() && !pinnedRoots.length && !regularRoots.length"
+        v-if="!query.trim() && !pinnedRoots.length && !workspaceGroups.length"
         class="py-12 text-center text-sm"
         style="color: var(--app-text-muted)"
       >
-        无匹配会话
+        暂无项目
       </div>
     </div>
 
@@ -202,6 +208,7 @@
       :description="projectDescription"
       :description-status="projectDescriptionStatus"
       :description-error="projectDescriptionError"
+      :scripts="projectScripts"
       :busy="projectBusy"
       :regenerating="projectDescribing"
       @close="closeProjectSettings"
@@ -214,9 +221,14 @@
       :x="projectGit?.x ?? 0"
       :y="projectGit?.y ?? 0"
       :busy="projectBusy"
+      :loading="projectGitLoading"
+      :error="projectGitError"
+      :current-branch="projectGitInfo?.currentBranch"
+      :branches="projectGitInfo?.branches ?? []"
       @close="closeProjectGit"
       @pull="runProjectGit('pull')"
       @push="runProjectGit('push')"
+      @checkout="runProjectGitCheckout"
     />
   </div>
 </template>
@@ -226,13 +238,17 @@ import { computed, ref, watch } from "vue";
 import { ChevronRight, FolderInput, GitBranch, Plus, Search, Settings } from "lucide-vue-next";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
-import { groupSessionsByWorkspace, toUISession } from "@/utils/ui-session";
+import { groupSessionsByWorkspace, toUISession, compareSessionsByRecentActivity } from "@/utils/ui-session";
 import { rememberCwd } from "@/config/workspace";
 import {
   pullProjectGit,
   pushProjectGit,
+  getProjectGitInfo,
+  checkoutProjectGit,
+  listProjectScripts,
   regenerateProjectDescription as apiRegenerateProjectDescription,
   searchMessages,
+  type ProjectScript,
 } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { requestUiConfirm } from "@/composables/use-ui-confirm";
@@ -278,6 +294,9 @@ const contextSession = computed(() =>
 );
 const projectSettingsId = ref<string | null>(null);
 const projectGit = ref<{ projectId: string; x: number; y: number } | null>(null);
+const projectGitLoading = ref(false);
+const projectGitError = ref<string | null>(null);
+const projectGitInfo = ref<{ currentBranch: string; branches: string[] } | null>(null);
 const projectBusy = ref(false);
 const projectSettingsProject = computed(() =>
   projectSettingsId.value
@@ -296,13 +315,28 @@ const projectDescriptionError = computed(() => {
   const value = projectSettingsProject.value?.meta?.descriptionError;
   return typeof value === "string" ? value : null;
 });
+const projectScripts = ref<ProjectScript[]>([]);
+
+async function refreshProjectScripts(projectId: string | null) {
+  if (!projectId) {
+    projectScripts.value = [];
+    return;
+  }
+  try {
+    projectScripts.value = await listProjectScripts(projectId);
+  } catch {
+    projectScripts.value = [];
+  }
+}
 
 watch(
   () => [projectSettingsId.value, projectDescriptionStatus.value, projectDescribing.value] as const,
   ([projectId, status, describing], _prev, onCleanup) => {
+    if (projectId) void refreshProjectScripts(projectId);
     if (!projectId || describing || status !== "pending") return;
     const timer = window.setInterval(() => {
       void sessionStore.fetchProjects().catch(() => undefined);
+      void refreshProjectScripts(projectId);
     }, 2500);
     onCleanup(() => window.clearInterval(timer));
   },
@@ -318,20 +352,22 @@ function filterSessions(list: UISession[]): UISession[] {
   if (!q) return list;
   return list.filter(
     (s) =>
-      s.meta.name.toLowerCase().includes(q) ||
+      s.title.toLowerCase().includes(q) ||
       s.lastMessagePreview.toLowerCase().includes(q) ||
       s.meta.description?.toLowerCase().includes(q),
   );
 }
 
 const uiSessions = computed(() => sessionStore.sessions.map(toUISession));
+const sortByRecentActivity = (left: UISession, right: UISession) =>
+  compareSessionsByRecentActivity(left, right, uiSessions.value);
 const searchResults = computed(() => {
   const q = query.value.trim().toLowerCase();
   if (!q) return [];
   return uiSessions.value
     .filter((session) => session.showInSessionList)
     .map((session) => {
-      const titleMatch = session.meta.name.toLowerCase().includes(q);
+      const titleMatch = session.title.toLowerCase().includes(q);
       const description =
         messageMatches.value.get(session.id) ??
         (titleMatch ? session.lastMessagePreview || session.meta.description || "标题匹配" : "");
@@ -342,11 +378,7 @@ const searchResults = computed(() => {
       };
     })
     .filter((result) => result.matched)
-    .sort(
-      (left, right) =>
-        new Date(right.session.lastActiveAt).getTime() -
-        new Date(left.session.lastActiveAt).getTime(),
-    );
+    .sort((a, b) => sortByRecentActivity(a.session, b.session));
 });
 
 watch(query, async (value) => {
@@ -380,11 +412,11 @@ const rootsToShow = computed(() => {
   const visibleIds = new Set(listVisible.value.map((session) => session.id));
   return listVisible.value
     .filter((session) => !session.parentId || !visibleIds.has(session.parentId))
-    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
+    .sort(sortByRecentActivity);
 });
 
 function isPinnedRoot(session: UISession): boolean {
-  return !!session.pinned || session.meta.builtin === true;
+  return !!session.pinned || !!session.isBuiltin;
 }
 
 const pinnedRoots = computed(() => rootsToShow.value.filter(isPinnedRoot));
@@ -394,16 +426,14 @@ const workspaceGroups = computed(() => {
   const groups = groupSessionsByWorkspace(regularRoots.value, sessionStore.projects);
   return groups.map((g) => ({
     ...g,
-    sessions: g.sessions.sort(
-      (a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime(),
-    ),
+    sessions: g.sessions.sort(sortByRecentActivity),
   }));
 });
 
 function childrenOf(parentId: string): UISession[] {
   return listVisible.value
     .filter((s) => s.parentId === parentId)
-    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime());
+    .sort(sortByRecentActivity);
 }
 
 function isWorkspaceCollapsed(workspaceId: string): boolean {
@@ -435,18 +465,34 @@ function openProjectGit(projectId: string, event: MouseEvent) {
   closeProjectSettings();
   const target = event.currentTarget as HTMLElement | null;
   const rect = target?.getBoundingClientRect();
-  const width = 180;
+  const width = 240;
   const left = rect ? rect.right - width : event.clientX;
   projectGit.value = {
     projectId,
     x: Math.max(8, Math.min(left, window.innerWidth - width - 8)),
-    y: rect ? Math.min(rect.bottom + 4, window.innerHeight - 120) : event.clientY,
+    y: rect ? Math.min(rect.bottom + 4, window.innerHeight - 320) : event.clientY,
   };
+  void refreshProjectGitInfo(projectId);
+}
+
+async function refreshProjectGitInfo(projectId: string) {
+  projectGitLoading.value = true;
+  projectGitError.value = null;
+  projectGitInfo.value = null;
+  try {
+    projectGitInfo.value = await getProjectGitInfo(projectId);
+  } catch (error) {
+    projectGitError.value = error instanceof Error ? error.message : "读取 Git 分支失败";
+  } finally {
+    projectGitLoading.value = false;
+  }
 }
 
 function closeProjectGit() {
   if (projectBusy.value) return;
   projectGit.value = null;
+  projectGitInfo.value = null;
+  projectGitError.value = null;
 }
 
 async function renameProject(name: string) {
@@ -458,6 +504,22 @@ async function renameProject(name: string) {
     showUiMessage("项目名已更新", "success");
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : "项目名更新失败", "error");
+  } finally {
+    projectBusy.value = false;
+  }
+}
+
+async function runProjectGitCheckout(branch: string) {
+  const target = projectGit.value;
+  if (!target || projectBusy.value) return;
+  projectBusy.value = true;
+  try {
+    const result = await checkoutProjectGit(target.projectId, branch);
+    const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
+    showUiMessage(detail || `已切换到 ${branch}`, "success");
+    await refreshProjectGitInfo(target.projectId);
+  } catch (error) {
+    showUiMessage(formatProjectGitError(error, "checkout"), "error");
   } finally {
     projectBusy.value = false;
   }
@@ -485,8 +547,9 @@ async function runProjectGit(action: "pull" | "push") {
   }
 }
 
-function formatProjectGitError(error: unknown, action: "pull" | "push"): string {
-  const fallback = action === "pull" ? "Git Pull 失败" : "Git Push 失败";
+function formatProjectGitError(error: unknown, action: "pull" | "push" | "checkout"): string {
+  const fallback =
+    action === "pull" ? "Git Pull 失败" : action === "push" ? "Git Push 失败" : "切换分支失败";
   if (!(error instanceof Error)) return fallback;
   const match = error.message.match(/\{[\s\S]*\}/);
   if (match) {
@@ -542,7 +605,8 @@ async function regenerateProjectDescription() {
     const index = sessionStore.projects.findIndex((project) => project.id === result.project.id);
     if (index >= 0) sessionStore.projects[index] = result.project;
     else sessionStore.projects.unshift(result.project);
-    if (result.status === "ready") showUiMessage("项目描述已更新", "success");
+    projectScripts.value = result.scripts ?? [];
+    if (result.status === "ready") showUiMessage("华生已完成项目解析", "success");
     else if (result.status === "skipped") {
       showUiMessage(result.error || "未配置「项目描述」功能模型", "error");
     } else {
@@ -620,7 +684,7 @@ async function forkFinishedSession() {
   try {
     const forked = await sessionStore.forkSession(target.sessionId, {
       entryId: source.leafId,
-      label: `${typeof source.meta.name === "string" ? source.meta.name : "会话"} · 继续`,
+      label: `${source.title || "会话"} · 继续`,
     });
     emit("select", forked.id);
     showUiMessage("已创建继续会话", "success");
@@ -752,6 +816,13 @@ async function onAgentPicked(agentId: string) {
   opacity: 1;
   transform: translateY(0);
   pointer-events: auto;
+}
+
+.workspace-empty {
+  padding: 14px 16px 16px 40px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .list-search-input {

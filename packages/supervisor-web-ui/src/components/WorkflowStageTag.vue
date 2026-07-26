@@ -12,14 +12,14 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { GitBranch } from "lucide-vue-next";
-import { workflowStageLabel, type WorkflowState } from "@/utils/workflow";
+import { workflowStageLabel } from "@/utils/workflow";
 
 const props = defineProps<{
-  workflow: WorkflowState;
+  stage: string;
   compact?: boolean;
 }>();
 
-const label = computed(() => workflowStageLabel(props.workflow.stage));
+const label = computed(() => workflowStageLabel(props.stage));
 </script>
 
 <style scoped>

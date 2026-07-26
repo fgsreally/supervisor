@@ -99,6 +99,7 @@ export async function startPersistentBashSession(options: {
   jobs: ExtensionJobFacade;
   command?: string;
   label?: string;
+  env?: NodeJS.ProcessEnv;
 }): Promise<PersistentBashSession> {
   const running = (await options.jobs.list({ kind: "shell" })).filter(
     (job) => job.status === "running",
@@ -108,11 +109,12 @@ export async function startPersistentBashSession(options: {
   }
 
   const command = options.command?.trim() ?? "";
+  const env = options.env ? { ...process.env, ...options.env } : process.env;
   const child = command
-    ? spawn(command, { cwd: options.cwd, shell: true, stdio: "pipe" })
+    ? spawn(command, { cwd: options.cwd, env, shell: true, stdio: "pipe" })
     : process.platform === "win32"
-      ? spawn(process.env.ComSpec ?? "cmd.exe", ["/Q"], { cwd: options.cwd, stdio: "pipe" })
-      : spawn(process.env.SHELL ?? "/bin/bash", [], { cwd: options.cwd, stdio: "pipe" });
+      ? spawn(process.env.ComSpec ?? "cmd.exe", ["/Q"], { cwd: options.cwd, env, stdio: "pipe" })
+      : spawn(process.env.SHELL ?? "/bin/bash", [], { cwd: options.cwd, env, stdio: "pipe" });
   const job = await options.jobs.create({
     kind: "shell",
     name: "persistent-bash",

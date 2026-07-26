@@ -92,7 +92,8 @@
                   'external-import-modal__item--imported': session.imported,
                   'external-import-modal__item--busy': importingKey === sessionKey(session),
                 }"
-                :disabled="!!session.imported"
+                :disabled="!!importingKey"
+                :title="session.imported ? '已引入，点击可重新导入（覆盖旧会话）' : undefined"
                 @click="onSelect(session)"
               >
                 <span class="external-import-modal__badge shrink-0">{{
@@ -181,7 +182,7 @@ function rowStatus(session: ExternalSessionCandidate): UiListStatusKind {
 function rowStatusTitle(session: ExternalSessionCandidate): string | undefined {
   const status = rowStatus(session);
   if (status === "loading") return "正在引入…";
-  if (status === "success") return session.imported ? "已引入" : "引入成功";
+  if (status === "success") return session.imported ? "已引入（可点选重新导入）" : "引入成功";
   if (status === "error") return "引入失败";
   return undefined;
 }
@@ -225,7 +226,13 @@ function onBackdrop() {
 }
 
 async function onSelect(session: ExternalSessionCandidate) {
-  if (session.imported || importingKey.value) return;
+  if (importingKey.value) return;
+  if (session.imported) {
+    const ok = window.confirm(
+      `该对话已导入为会话 #${session.importedSessionId ?? "?"}。重新导入将删除旧会话并覆盖，是否继续？`,
+    );
+    if (!ok) return;
+  }
   const key = sessionKey(session);
   importingKey.value = key;
   const nextResults = { ...rowResults.value };
@@ -235,6 +242,7 @@ async function onSelect(session: ExternalSessionCandidate) {
     const imported = await sessionStore.importExternalSession({
       backend: session.backend,
       externalSessionId: session.externalSessionId,
+      replace: !!session.imported,
     });
     sessions.value = sessions.value.map((item) =>
       sessionKey(item) === key
@@ -242,7 +250,7 @@ async function onSelect(session: ExternalSessionCandidate) {
         : item,
     );
     rowResults.value = { ...rowResults.value, [key]: "success" };
-    showUiMessage("外部对话已引入", "success");
+    showUiMessage(session.imported ? "外部对话已重新导入" : "外部对话已引入", "success");
     emit("imported", imported.id);
     emit("close");
   } catch (value) {

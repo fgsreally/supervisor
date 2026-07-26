@@ -57,15 +57,20 @@ import { findPackagedAgentId } from "../agent/index.js";
 import { attachHomeTaskSessionSync } from "./home-task-sync.js";
 import {
   generateTaskDecomposition,
+  resolveAssistantModelRef,
   resolveFeatureModelAuth,
-  resolveFeatureModelRef,
 } from "../utils/utility-llm.js";
 import {
-  buildProjectDescriptionInstructions,
-  normalizeProjectDescription,
+  applyProjectRuntimeParse,
   PROJECT_DESCRIPTION_META,
-  readAssistantTextFromPayload,
-} from "./project-description.js";
+  PROJECT_RUNTIME_META,
+  runProjectRuntimeParse,
+} from "./project-runtime.js";
+import {
+  parseSessionServicesMeta,
+  stopSessionProjectServices,
+} from "./session-services.js";
+import { runWatsonTask, type WatsonRunOptions, type WatsonRunResult } from "./watson.js";
 import type {
   CreateHomeTaskOptions,
   HomeTask,
@@ -73,12 +78,7 @@ import type {
 } from "../types.js";
 import { cancelPendingApprovals, submitApprovalResolution } from "../extension/runtime/index.js";
 import type { ApprovalResult } from "../extension/index.js";
-import {
-  applyWorkflowPatch,
-  parseWorkflowState,
-  type SessionWorkflowState,
-  type WorkflowStatePatch,
-} from "./session-workflow.js";
+import { normalizeSessionStage } from "./session-workflow.js";
 import {
   type AskAnswer,
   cancelPendingAsks,
@@ -93,12 +93,19 @@ import {
 import { appendContextFilesToSystemPrompt } from "../agent/context-files.js";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
-import { commitAll, commitGitSnapshot, ensureGitRepositorySync } from "../utils/git.js";
+import {
+  commitAll,
+  commitGitSnapshot,
+  ensureGitRepositorySync,
+  resolveSessionGitContext,
+  removeSessionWorktree,
+} from "../utils/git.js";
+import { configureSessionLogProjectResolver, sessionLog } from "../utils/session-log.js";
+import { beginSessionTiming, timedSessionStep } from "../utils/session-timing.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "../agent/prompt-templates.js";
 import { appendReadOrchestrationHint } from "../agent/system-prompts.js";
 import { copyMessagesWithInheritance } from "./session-history.js";
-import { normalizeSessionBranchType } from "./session-history.js";
 import {
   createSessionCheckpoint,
   listSessionCheckpoints,
@@ -179,13 +186,27 @@ import type {
   MessageSearchHit,
   Provider,
   Session,
+  SessionAvatar,
   SessionCheckpoint,
   SessionMessageResponse,
   SessionMessagesPage,
   SessionRow,
+  SessionStatus,
+  SessionTask,
+  SessionTaskKind,
+  SessionTaskRow,
+  SessionTodoItem,
+  SessionTodoRow,
+  SessionTodoStatus,
   SpawnSessionOptions,
   UpdateModelOptions,
 } from "../types.js";
+import {
+  mapRowToSession,
+  parseSessionMeta,
+  serializeSessionAvatar,
+  type SessionFieldsPatch,
+} from "./session-fields.js";
 
 const DEFAULT_PROVIDER: KnownProvider = "anthropic";
 const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
@@ -204,15 +225,19 @@ export type UiNotifyEvent = {
   timestamp: number;
 };
 
-export type SessionOutputEvent = AgentHarnessEvent | ShadowSuggestionsEvent | UiNotifyEvent;
-export type SessionOutputListener = (sessionId: number, event: SessionOutputEvent) => void;
+/** Session readiness / lifecycle status pushed over the session SSE stream. */
+export type SessionStatusEvent = {
+  type: "session_status";
+  status: SessionStatus;
+  timestamp: number;
+};
 
-interface RuntimeConfigSnapshot {
-  provider: string;
-  modelId: string;
-  systemPrompt: string;
-  toolsPreset: "coding" | "readonly" | "none";
-}
+export type SessionOutputEvent =
+  | AgentHarnessEvent
+  | ShadowSuggestionsEvent
+  | UiNotifyEvent
+  | SessionStatusEvent;
+export type SessionOutputListener = (sessionId: number, event: SessionOutputEvent) => void;
 
 function isTrackedAgentEvent(event: AgentHarnessEvent): event is AgentEvent {
   return (
@@ -230,59 +255,50 @@ interface SessionToolConfig {
   overrideTools?: AgentTool[];
 }
 
-/** Convert a SessionRow to the Session type. */
-function rowToSession(row: SessionRow): Session {
-  const meta = typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta;
+function toSessionTask(row: SessionTaskRow): SessionTask {
   return {
     id: row.id,
-    projectId: row.project_id,
-    parentId: row.parent_id,
     sessionId: row.session_id,
-    pid: row.pid,
+    path: row.path,
+    kind: row.kind,
+    title: row.title,
     status: row.status,
-    thinkingLevel: row.thinking_level,
-    cwd: row.cwd,
-    leafId: row.leaf_id,
-    agentId: row.agent_id,
-    branchType: normalizeSessionBranchType(row.branch_type),
-    creationMethod: row.created_via ?? "user",
-    showInSessionList: row.show_in_session_list !== 0,
-    contextLeafId: row.context_leaf_id ?? null,
     createdAt: new Date(row.created_at),
-    lastActiveAt: new Date(row.last_active_at),
-    meta,
-    currentTask: parseCurrentTask(meta.currentTask),
+    updatedAt: new Date(row.updated_at),
   };
 }
 
-function parseCurrentTask(value: unknown): Session["currentTask"] {
-  return typeof value === "string" && value.length > 0 ? value : null;
+function toSessionTodo(row: SessionTodoRow): SessionTodoItem {
+  return {
+    id: row.id,
+    sessionId: row.session_id,
+    title: row.title,
+    status: row.status,
+    sortOrder: row.sort_order,
+    createdAt: new Date(row.created_at),
+    updatedAt: new Date(row.updated_at),
+  };
 }
 
-/** Helper to parse session meta JSON when dealing with SessionRow from the DB layer. */
-function parseSessionMeta<T = Record<string, unknown>>(meta: string | Record<string, unknown>): T {
-  return typeof meta === "string" ? (JSON.parse(meta) as T) : (meta as T);
+/** Convert a SessionRow to the Session type, resolving currentTask via session_tasks. */
+function rowToSession(row: SessionRow, db?: Pick<SupervisorDb, "getSessionTask">): Session {
+  const currentTaskPath =
+    row.current_task_id != null ? (db?.getSessionTask(row.current_task_id)?.path ?? null) : null;
+  return mapRowToSession(row, { currentTaskPath });
 }
 
 /** Seed session avatar.icon from the linked agent when the client did not set one. */
 function withDefaultSessionAvatar(
-  meta: Record<string, unknown> | undefined,
+  avatar: SessionAvatar | null | undefined,
   agent: { name: string; icon: string | null } | null | undefined,
-): Record<string, unknown> {
-  const next: Record<string, unknown> = { ...(meta ?? {}) };
+): SessionAvatar | null {
   const icon = typeof agent?.icon === "string" ? agent.icon.trim() : "";
-  if (!icon) return next;
+  if (!icon) return avatar ?? null;
 
-  const rawAvatar = next.avatar;
-  const avatar =
-    rawAvatar && typeof rawAvatar === "object" && !Array.isArray(rawAvatar)
-      ? { ...(rawAvatar as Record<string, unknown>) }
-      : {};
-  const existingIcon = typeof avatar.icon === "string" ? avatar.icon.trim() : "";
-  if (existingIcon) return next;
+  const existingIcon = typeof avatar?.icon === "string" ? avatar.icon.trim() : "";
+  if (existingIcon) return avatar ?? null;
 
-  next.avatar = { ...avatar, icon };
-  return next;
+  return { ...(avatar ?? {}), icon };
 }
 
 function isUserRoleEntry(entry: SessionMessageResponse): boolean {
@@ -316,6 +332,7 @@ export class SessionManager {
   private sessionToolConfigs = new Map<number, SessionToolConfig>();
   private readonly sessionInputQueues = new SessionInputQueue();
   private readonly drainingSessionInputs = new Set<number>();
+  private readonly pendingSpawns = new Map<number, Promise<Session>>();
   private readonly extensionRegistry = new ExtensionModuleRegistry();
   private readonly resourceHandlers: ReturnType<typeof createResourceHandlers>;
   private readonly resourceManager: ResourceManager;
@@ -325,6 +342,7 @@ export class SessionManager {
 
   constructor(db: SupervisorDb) {
     this.db = db;
+    configureSessionLogProjectResolver((sessionId) => this.db.get(sessionId)?.project_id ?? null);
     this.db.reconcileInterruptedSessionStatuses();
     this.detachHomeTaskSync = attachHomeTaskSessionSync(this.db);
     for (const input of this.db.listPersistedSessionInputs()) {
@@ -379,27 +397,7 @@ export class SessionManager {
   private _getSession(id: number): Session | undefined {
     const row = this.db.get(id);
     if (!row) return undefined;
-    const meta = parseSessionMeta(row.meta);
-    return {
-      id: row.id,
-      projectId: row.project_id,
-      parentId: row.parent_id,
-      sessionId: row.session_id,
-      pid: row.pid,
-      status: row.status,
-      thinkingLevel: row.thinking_level,
-      cwd: row.cwd,
-      leafId: row.leaf_id,
-      agentId: row.agent_id,
-      branchType: normalizeSessionBranchType(row.branch_type),
-      creationMethod: row.created_via ?? "user",
-      showInSessionList: row.show_in_session_list !== 0,
-      contextLeafId: row.context_leaf_id ?? null,
-      createdAt: new Date(row.created_at),
-      lastActiveAt: new Date(row.last_active_at),
-      meta,
-      currentTask: parseCurrentTask(meta.currentTask),
-    };
+    return rowToSession(row, this.db);
   }
 
   private _listSessions(filter?: Parameters<SupervisorDb["list"]>[0]): Session[] {
@@ -494,40 +492,47 @@ export class SessionManager {
     return project.workDir;
   }
 
-  private buildSystemPrompt(
-    sessionOverride: string,
-    skillsText: string,
-    systemMd: string,
-    cwd: string,
-  ): string {
-    const parts = [sessionOverride, systemMd, skillsText].filter((p) => p.length > 0);
+  private buildSystemPrompt(sessionOverride: string, systemMd: string, cwd: string): string {
+    const parts = [sessionOverride, systemMd].filter((p) => p.length > 0);
     const base = appendContextFilesToSystemPrompt(parts.join("\n\n"), cwd);
     return appendReadOrchestrationHint(base);
   }
 
   private setupRuntime(sessionId: number, runtime: ManagedSessionRuntime): void {
     this.runtimes.set(sessionId, runtime);
-    const existing = this.db.get(sessionId) as unknown as Session | undefined;
-    const existingMeta = existing?.meta ?? {};
-    const nextTurnIndex = Array.isArray(existingMeta.turns)
-      ? (existingMeta.turns as unknown[]).length
-      : 0;
-    this.turnTrackers.set(
-      sessionId,
-      new TurnFileTracker(existing?.cwd ?? getDefaultCwd(), nextTurnIndex),
-    );
+    const existing = this.db.get(sessionId);
+    this.turnTrackers.set(sessionId, new TurnFileTracker(existing?.cwd ?? getDefaultCwd(), 0));
     this.db.updateSessionId(sessionId, String(sessionId));
     this.db.updatePid(sessionId, process.pid);
 
     runtime.subscribe((event: AgentHarnessEvent) => {
       if (event.type === "agent_start") {
         this.db.updateStatus(sessionId, "running");
+        this.publishSessionStatus(sessionId);
         if (runtime instanceof SessionRuntime) {
           const current = this.db.get(sessionId);
           const meta = current ? parseSessionMeta(current.meta) : {};
           const shadow = meta.shadow && typeof meta.shadow === "object" ? meta.shadow : {};
           this.db.updateMeta(sessionId, { shadow: { ...shadow, suggestedQuestions: [] } });
           this.publishShadowSuggestions(sessionId, []);
+        }
+      } else if (event.type === "tool_execution_start") {
+        const args = (event as { args?: Record<string, unknown> }).args;
+        const toolName = (event as { toolName?: string }).toolName;
+        if (toolName === "external_interaction" || args?.externalInteraction === true) {
+          // Surface Codex/Claude approval cards in Web as blocked.
+          this.db.updateStatus(sessionId, "blocked");
+          this.publishSessionStatus(sessionId);
+        }
+      } else if (event.type === "tool_execution_end") {
+        const toolName = (event as { toolName?: string }).toolName;
+        const args = (event as { args?: Record<string, unknown> }).args;
+        if (
+          (toolName === "external_interaction" || args?.externalInteraction === true) &&
+          this.db.get(sessionId)?.status === "blocked"
+        ) {
+          this.db.updateStatus(sessionId, "running");
+          this.publishSessionStatus(sessionId);
         }
       } else if (event.type === "agent_end") {
         const llmError = extractAgentEndLlmError(event);
@@ -542,14 +547,18 @@ export class SessionManager {
 
         if (llmError && !overflowRecovery && !hasPendingAsks(sessionId)) {
           this.db.updateStatus(sessionId, "error");
-          void this.recordLlmError(sessionId, formatLlmErrorMessage(llmError)).catch(
-            (error: unknown) => {
-              const detail = error instanceof Error ? error.message : String(error);
-              console.error(`recordLlmError failed [${sessionId}]:`, detail);
-            },
-          );
+          this.publishSessionStatus(sessionId);
+          if (!this.leafIsLlmError(sessionId)) {
+            void this.recordLlmError(sessionId, formatLlmErrorMessage(llmError)).catch(
+              (error: unknown) => {
+                const detail = error instanceof Error ? error.message : String(error);
+                console.error(`recordLlmError failed [${sessionId}]:`, detail);
+              },
+            );
+          }
         } else if (!hasPendingAsks(sessionId)) {
           this.db.updateStatus(sessionId, "idle");
+          this.publishSessionStatus(sessionId);
           void (async () => {
             let shadowCheckpoint;
             if (runtime instanceof SessionRuntime && !hasPendingAsks(sessionId)) {
@@ -636,26 +645,38 @@ export class SessionManager {
     this.db.updateMessageMeta(sessionId, entry.id, { read: false });
     const row = this.db.get(sessionId);
     if (!row) return;
-    const meta = parseSessionMeta(row.meta);
-    const current = typeof meta.unread === "number" && meta.unread > 0 ? meta.unread : 0;
-    this.db.updateMeta(sessionId, { unread: current + 1 });
+    const current = typeof row.unread === "number" && row.unread > 0 ? row.unread : 0;
+    this.db.updateSessionFields(sessionId, { unread: current + 1 });
   }
 
-  private extractRuntimeConfig(session: Session): RuntimeConfigSnapshot {
-    const saved = session.meta?.runtimeConfig as Partial<RuntimeConfigSnapshot> | undefined;
-    const provider = typeof saved?.provider === "string" ? saved.provider : DEFAULT_PROVIDER;
-    const modelId = typeof saved?.modelId === "string" ? saved.modelId : DEFAULT_MODEL_ID;
-    const systemPrompt = typeof saved?.systemPrompt === "string" ? saved.systemPrompt : "";
-    const toolsPreset =
-      saved?.toolsPreset === "readonly" ||
-      saved?.toolsPreset === "none" ||
-      saved?.toolsPreset === "coding"
-        ? saved.toolsPreset
-        : "coding";
-    return { provider, modelId, systemPrompt, toolsPreset };
+  /** Child sessions (BTW / subagent / fork / clone / …) must stay on native agents. */
+  private assertNativeAgentForChildSession(
+    parentId: number | null | undefined,
+    agent: Agent | undefined | null,
+    context: string,
+  ): void {
+    if (parentId == null || !agent) return;
+    if (agent.backendType !== "native") {
+      throw new Error(`${context}：子会话不能使用外部 Agent（${agent.backendType}）`);
+    }
+  }
+
+  /** When forking/cloning an external-agent parent, remap to packaged Coding. */
+  private resolveAgentIdForChildSession(parentAgentId: number | null | undefined): number | null {
+    if (parentAgentId == null) return null;
+    const agent = this.db.getAgent(parentAgentId);
+    if (!agent || agent.backendType === "native") return parentAgentId;
+    const codingId = findPackagedAgentId(this.db, "coding");
+    if (codingId === undefined) {
+      throw new Error("子会话不能使用外部 Agent，且未配置可用的原生 Coding Agent");
+    }
+    return codingId;
   }
 
   private createExternalRuntime(session: Session, agent: Agent): Promise<ManagedSessionRuntime> {
+    if (session.parentId != null) {
+      throw new Error("子会话不能使用外部 Agent");
+    }
     const availability = externalAgentAvailability(agent);
     if (!availability.available)
       throw new Error(availability.unavailableReason ?? "外部 Agent 不可用");
@@ -668,7 +689,9 @@ export class SessionManager {
   }
 
   private async restoreRuntime(id: number): Promise<ManagedSessionRuntime> {
-    const session = rowToSession(this.db.get(id)!);
+    const doneRestore = beginSessionTiming(id, "restoreRuntime");
+    try {
+    const session = rowToSession(this.db.get(id)!, this.db);
     if (!session) throw new Error(`Session ${id} not found`);
     if (
       session.status === "finish" ||
@@ -681,28 +704,31 @@ export class SessionManager {
 
     const agent = this.getAgentForSession(session.agentId);
     if (agent && agent.backendType !== "native") {
-      const runtime = await this.createExternalRuntime(session, agent);
+      this.assertNativeAgentForChildSession(session.parentId, agent, "恢复子会话");
+      const runtime = await timedSessionStep(id, "restoreRuntime/createExternalRuntime", () =>
+        this.createExternalRuntime(session, agent),
+      );
       this.setupRuntime(session.id, runtime);
       this.db.updateStatus(session.id, "idle");
       return runtime;
     }
 
-    const config = this.extractRuntimeConfig(session);
     if (agent?.backendType === "native" && (!agent.providerId || !agent.modelId)) {
       throw new Error(`Agent ${agent.id} has no model configured`);
     }
+    const toolsPreset = agent?.toolsPreset ?? "coding";
     const model =
       agent?.backendType === "native" && agent.providerId && agent.modelId
         ? resolveModelWithProviderOverrides(this.db, agent.providerId, agent.modelId)
-        : getModel(config.provider as KnownProvider, config.modelId as never);
+        : getModel(DEFAULT_PROVIDER, DEFAULT_MODEL_ID as never);
     if (!model) {
-      throw new Error(`Model ${config.modelId} from provider ${config.provider} not found`);
+      throw new Error(`Model not found for session ${id}`);
     }
 
     await this.ensureResourceCatalog();
     const resource = new AgentResource({
       sessionId: session.id,
-      agentId: session.agentId ?? session.id,
+      agentId: session.agentId ?? 0,
       agent,
       cwd: session.cwd,
       db: this.db,
@@ -717,14 +743,14 @@ export class SessionManager {
       session.id,
       session.agentId,
       session.cwd,
-      config.toolsPreset,
+      toolsPreset,
     );
     const tools = sessionTools;
 
     const systemPrompt =
-      session.branchType === "btw" || config.systemPrompt.length === 0
-        ? this.buildSystemPrompt("", resource.getSkillsPrompt(), resource.systemMd, session.cwd)
-        : config.systemPrompt;
+      session.systemPrompt && session.systemPrompt.length > 0
+        ? session.systemPrompt
+        : this.buildSystemPrompt("", resource.systemMd, session.cwd);
 
     const harness = new AgentHarness({
       env,
@@ -755,7 +781,7 @@ export class SessionManager {
     });
 
     await runtime.initExtensions(
-      session.agentId ?? session.id,
+      session.agentId ?? 0,
       agent?.name ?? "Session",
       session.cwd,
       this.db,
@@ -775,6 +801,9 @@ export class SessionManager {
     this.setupRuntime(session.id, runtime);
     this.db.updateStatus(session.id, "idle");
     return runtime;
+    } finally {
+      doneRestore();
+    }
   }
 
   private async getOrRestoreRuntime(id: number): Promise<ManagedSessionRuntime> {
@@ -796,29 +825,43 @@ export class SessionManager {
         branchType === "fork" ||
         branchType === "clone");
     const agent = options.agentId ? this.db.getAgent(options.agentId) : undefined;
-    const meta = withDefaultSessionAvatar(options.meta, agent);
+    this.assertNativeAgentForChildSession(options.parentId, agent, "创建子会话");
+    const avatar = withDefaultSessionAvatar(options.avatar ?? null, agent);
     const row = this.db.insert({
       parent_id: options.parentId ?? null,
       project_id: this.resolveProjectId(options),
       session_id: null,
       pid: null,
-      status: "starting",
+      // DB-only create: idle until spawn/restore attaches a runtime.
+      // `initializing` is reserved for in-flight spawn finalize.
+      status: "idle",
       thinking_level: "none",
       cwd: options.cwd ?? getDefaultCwd(),
       agent_id: options.agentId ?? null,
       branch_type: branchType,
-      created_via: creationMethod,
+      created_by: creationMethod,
       show_in_session_list: showInSessionList ? 1 : 0,
       context_leaf_id: branchType === "btw" ? (options.contextLeafId ?? null) : null,
-      meta: JSON.stringify(meta),
+      meta: JSON.stringify(options.meta ?? {}),
+      title: options.title ?? null,
+      system_prompt: options.systemPrompt ?? null,
+      avatar: serializeSessionAvatar(avatar),
+      is_builtin: options.isBuiltin ? 1 : 0,
+      pinned: options.pinned ? 1 : 0,
+      muted: options.muted ? 1 : 0,
+      shadow_enabled: options.shadowEnabled ? 1 : 0,
+      external_session_id: options.externalSessionId ?? null,
+      stage: options.stage ?? null,
     });
-    const session = rowToSession(row);
-    return session;
+    return rowToSession(row, this.db);
   }
 
   /**
    * Spawn an embedded agent (AgentHarness + SQLite session).
    * Resources (skills/prompts/extensions) follow session.agentId — main or child session.
+   *
+   * With `awaitReady: false`, returns immediately as `initializing` while worktree + runtime
+   * prepare in the background. Prompt paths wait via `waitUntilSpawnReady`.
    */
   async spawn(options: SpawnSessionOptions = {}): Promise<Session> {
     const agentInDb = this.getAgentForSession(options.agentId ?? null);
@@ -827,6 +870,7 @@ export class SessionManager {
     }
     if (agentInDb) {
       assertAgentUserSpawnable(agentInDb, options.agentId);
+      this.assertNativeAgentForChildSession(options.parentId, agentInDb, "创建子会话");
       const availability = externalAgentAvailability(agentInDb);
       if (!availability.available) {
         throw new Error(
@@ -839,18 +883,87 @@ export class SessionManager {
       ...options,
       branchType: options.parentId ? "subagent" : null,
     });
+    // Mark in-flight spawn so UI/prompt can wait; create() itself stays idle.
+    this.db.updateStatus(session.id, "initializing");
 
-    const activeSession = await prepareSessionLifecycleSpawn(
-      this.db,
-      session,
-      options,
-      agentInDb?.name,
+    const ready = this.finalizeSpawn(session, options, agentInDb).finally(() => {
+      this.pendingSpawns.delete(session.id);
+    });
+    this.pendingSpawns.set(session.id, ready);
+
+    if (options.awaitReady === false) {
+      void ready.catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`session runtime start failed [${session.id}]:`, message);
+        sessionLog(session.id, "error", `Runtime start failed: ${message}`, [
+          "system",
+          "runtime",
+        ], { error: message });
+        if (this.db.get(session.id)?.status === "initializing") {
+          this.db.updateStatus(session.id, "error");
+        }
+        this.db.updateSessionFields(session.id, { errorMsg: message });
+        this.reportOperationalError(session.id, message);
+        this.publishSessionStatus(session.id);
+      });
+      return rowToSession(this.db.get(session.id)!, this.db);
+    }
+
+    return ready;
+  }
+
+  /** Wait until create-time worktree/runtime prep finishes (no-op if already ready). */
+  async waitUntilSpawnReady(id: number): Promise<Session> {
+    const pending = this.pendingSpawns.get(id);
+    if (pending) return pending;
+    const session = this.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    if (session.status === "initializing") {
+      throw new Error(`Session ${id} is still initializing`);
+    }
+    return session;
+  }
+
+  private publishSessionStatus(sessionId: number): void {
+    const session = this.db.get(sessionId);
+    if (!session) return;
+    const event: SessionStatusEvent = {
+      type: "session_status",
+      status: session.status,
+      timestamp: Date.now(),
+    };
+    for (const listener of this.outputListeners.get(sessionId) ?? []) {
+      listener(sessionId, event);
+    }
+  }
+
+  private async finalizeSpawn(
+    session: Session,
+    options: SpawnSessionOptions,
+    agentInDb: Agent | undefined,
+  ): Promise<Session> {
+    const doneFinalize = beginSessionTiming(session.id, "finalizeSpawn");
+    try {
+    sessionLog(session.id, "info", "Session finalizeSpawn started", ["system", "setup"], {
+      agentId: agentInDb?.id,
+      backendType: agentInDb?.backendType,
+      skipRuntime: !!options.skipRuntime,
+    });
+    const activeSession = await timedSessionStep(session.id, "prepareLifecycle/worktree", () =>
+      prepareSessionLifecycleSpawn(this.db, session, options, agentInDb?.name, this.jobs),
     );
-    await ensureSessionDir(this.requireProjectId(activeSession), activeSession.id);
+    await timedSessionStep(session.id, "ensureSessionDir", async () => {
+      await ensureSessionDir(this.requireProjectId(activeSession), activeSession.id);
+    });
+    sessionLog(session.id, "info", "Session directory ready", ["system", "setup"], {
+      cwd: activeSession.cwd,
+    });
 
     if (options.skipRuntime) {
+      sessionLog(session.id, "info", "Skipping runtime attach (skipRuntime)", ["system", "setup"]);
       this.db.updateStatus(activeSession.id, "idle");
-      return rowToSession(this.db.get(activeSession.id)!);
+      this.publishSessionStatus(activeSession.id);
+      return rowToSession(this.db.get(activeSession.id)!, this.db);
     }
 
     if (
@@ -858,13 +971,27 @@ export class SessionManager {
       (agentInDb.providerId == null || agentInDb.modelId == null) &&
       !(options.providerId != null && options.model)
     ) {
-      this.db.updateMeta(activeSession.id, { modelRequired: true });
-      this.db.updateStatus(activeSession.id, "idle");
-      return rowToSession(this.db.get(activeSession.id)!);
+      this.db.updateSessionFields(activeSession.id, { errorMsg: "Agent 未配置模型" });
+      this.db.updateStatus(activeSession.id, "blocked");
+      this.publishSessionStatus(activeSession.id);
+      return rowToSession(this.db.get(activeSession.id)!, this.db);
     }
 
     if (agentInDb && agentInDb.backendType !== "native") {
-      const runtime = await this.createExternalRuntime(activeSession, agentInDb);
+      this.assertNativeAgentForChildSession(activeSession.parentId, agentInDb, "启动子会话");
+      sessionLog(
+        activeSession.id,
+        "info",
+        `Creating external runtime (${agentInDb.backendType})`,
+        ["system", "runtime"],
+        { backendType: agentInDb.backendType, agentName: agentInDb.name },
+      );
+      const runtime = await timedSessionStep(activeSession.id, "createExternalRuntime", () =>
+        this.createExternalRuntime(activeSession, agentInDb),
+      );
+      sessionLog(activeSession.id, "info", "External runtime ready", ["system", "runtime"], {
+        backendType: agentInDb.backendType,
+      });
       this.setupRuntime(activeSession.id, runtime);
       if (options.instructions) {
         void runtime.prompt(options.instructions).catch((error: unknown) => {
@@ -876,10 +1003,12 @@ export class SessionManager {
         });
       }
       this.db.updateStatus(activeSession.id, options.instructions ? "running" : "idle");
-      return rowToSession(this.db.get(activeSession.id)!);
+      this.publishSessionStatus(activeSession.id);
+      return rowToSession(this.db.get(activeSession.id)!, this.db);
     }
 
     const modelId = options.model ?? agentInDb?.modelId ?? DEFAULT_MODEL_ID;
+    const fallbackProvider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
     let model =
       options.providerId != null
         ? resolveModelWithProviderOverrides(this.db, options.providerId, modelId)
@@ -888,12 +1017,11 @@ export class SessionManager {
       model = resolveModelWithProviderOverrides(this.db, agentInDb.providerId, modelId);
     }
     if (!model) {
-      const provider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
-      model = getModel(provider, modelId as never);
+      model = getModel(fallbackProvider, modelId as never);
     }
 
     if (!model) {
-      throw new Error(`Model ${modelId} from provider ${provider} not found`);
+      throw new Error(`Model ${modelId} from provider ${fallbackProvider} not found`);
     }
 
     const storage = createRuntimeSessionStorage(this.db, activeSession);
@@ -906,7 +1034,7 @@ export class SessionManager {
     await this.ensureResourceCatalog();
     const resource = new AgentResource({
       sessionId: activeSession.id,
-      agentId: activeSession.agentId ?? activeSession.id,
+      agentId: activeSession.agentId ?? 0,
       agent: agentInDb,
       cwd: activeSession.cwd,
       db: this.db,
@@ -925,10 +1053,10 @@ export class SessionManager {
     const baseSystemPrompt = options.systemPrompt ?? "";
     const systemPrompt = this.buildSystemPrompt(
       baseSystemPrompt,
-      resource.getSkillsPrompt(),
       resource.systemMd,
       activeSession.cwd,
     );
+    this.db.updateSessionFields(activeSession.id, { systemPrompt });
 
     const harness = new AgentHarness({
       env,
@@ -946,14 +1074,6 @@ export class SessionManager {
     });
     await harness.setThinkingLevel(activeSession.thinkingLevel);
 
-    const runtimeConfig: RuntimeConfigSnapshot = {
-      provider: model.provider,
-      modelId: model.id,
-      systemPrompt,
-      toolsPreset,
-    };
-    this.db.updateMeta(activeSession.id, { runtimeConfig });
-
     const runtime = new SessionRuntime({
       session: activeSession,
       harness,
@@ -967,7 +1087,7 @@ export class SessionManager {
     });
 
     await runtime.initExtensions(
-      activeSession.agentId ?? activeSession.id,
+      activeSession.agentId ?? 0,
       agentInDb?.name ?? "Session",
       activeSession.cwd,
       this.db,
@@ -985,6 +1105,10 @@ export class SessionManager {
     }
 
     this.setupRuntime(activeSession.id, runtime);
+    sessionLog(activeSession.id, "info", "Native runtime ready", ["system", "runtime"], {
+      modelId: model.id,
+      provider: model.provider,
+    });
 
     if (options.instructions) {
       void runtime.prompt(options.instructions).catch((err: unknown) => {
@@ -997,7 +1121,17 @@ export class SessionManager {
     }
 
     this.db.updateStatus(activeSession.id, options.instructions ? "running" : "idle");
-    return rowToSession(this.db.get(activeSession.id)!);
+    this.publishSessionStatus(activeSession.id);
+    sessionLog(
+      activeSession.id,
+      "info",
+      `Session ready (status=${options.instructions ? "running" : "idle"})`,
+      ["system", "setup"],
+    );
+    return rowToSession(this.db.get(activeSession.id)!, this.db);
+    } finally {
+      doneFinalize();
+    }
   }
 
   onOutput(sessionId: number, listener: SessionOutputListener): () => void {
@@ -1052,10 +1186,27 @@ export class SessionManager {
     source?: string | null,
     origin?: string,
   ): Promise<void> {
-    const session = this.db.get(id);
-    if (!session) throw new Error(`Session ${id} not found`);
-    this.assertSessionProviderEnabled(id);
-    await (await this.getOrRestoreRuntime(id)).prompt(message, images, source, origin);
+    const donePrompt = beginSessionTiming(id, "prompt");
+    try {
+      await timedSessionStep(id, "waitUntilSpawnReady", () => this.waitUntilSpawnReady(id));
+      const session = this.db.get(id);
+      if (!session) throw new Error(`Session ${id} not found`);
+      if (session.status === "initializing") {
+        throw new Error(`Session ${id} is still initializing`);
+      }
+      if (session.status === "blocked" && session.error_msg) {
+        throw new Error(`Session ${id} is blocked: ${session.error_msg}`);
+      }
+      this.assertSessionProviderEnabled(id);
+      const runtime = await timedSessionStep(id, "getOrRestoreRuntime", () =>
+        this.getOrRestoreRuntime(id),
+      );
+      await timedSessionStep(id, "runtime.prompt", () =>
+        runtime.prompt(message, images, source, origin),
+      );
+    } finally {
+      donePrompt();
+    }
   }
 
   private assertSessionProviderEnabled(sessionId: number): void {
@@ -1079,6 +1230,7 @@ export class SessionManager {
       origin?: string;
     },
   ): Promise<SessionInputDisposition> {
+    await this.waitUntilSpawnReady(id);
     const level = input.level ?? DEFAULT_SESSION_INPUT_LEVEL;
     const entry: SessionQueuedInput = {
       id: randomUUID(),
@@ -1179,6 +1331,31 @@ export class SessionManager {
     return this.sessionInputQueues.list(sessionId);
   }
 
+  /** Remove a queued input without sending it. */
+  cancelSessionInput(sessionId: number, inputId: string): SessionQueuedInput {
+    if (!this.db.get(sessionId)) throw new Error(`Session ${sessionId} not found`);
+    const removed = this.sessionInputQueues.remove(sessionId, inputId);
+    if (!removed) throw new Error(`Queued input ${inputId} not found`);
+    this.db.deleteSessionInput(inputId);
+    return removed;
+  }
+
+  /**
+   * Pull a queued input out of the queue and send it immediately,
+   * aborting the active turn first (interrupt level).
+   */
+  async submitQueuedSessionInput(sessionId: number, inputId: string): Promise<SessionQueuedInput> {
+    const removed = this.cancelSessionInput(sessionId, inputId);
+    await this.interruptAndPrompt(
+      sessionId,
+      removed.message,
+      removed.images,
+      removed.source,
+      removed.origin,
+    );
+    return removed;
+  }
+
   resumePersistedSessionInputs(): void {
     for (const sessionId of this.sessionInputQueues.sessionIds()) {
       const session = this.get(sessionId);
@@ -1202,7 +1379,12 @@ export class SessionManager {
       delivered = true;
       return true;
     } catch (error) {
-      this.sessionInputQueues.enqueue(sessionId, next);
+      const detail = error instanceof Error ? error.message : String(error);
+      // Failures must not bounce the message back into the queue — that shows
+      // as "排队中" forever. Persist the user turn (if needed) + custom error.
+      await this.abandonFailedSessionInput(sessionId, next, detail).catch((persistError) => {
+        console.error(`abandonFailedSessionInput failed [${sessionId}]:`, persistError);
+      });
       throw error;
     } finally {
       this.drainingSessionInputs.delete(sessionId);
@@ -1216,6 +1398,84 @@ export class SessionManager {
           console.error(`Queued Session input failed [${sessionId}]:`, detail);
         });
       }
+    }
+  }
+
+  /** Drop a failed queued input and surface it as an LLM error card. */
+  private async abandonFailedSessionInput(
+    sessionId: number,
+    input: SessionQueuedInput,
+    errorMessage: string,
+  ): Promise<void> {
+    this.db.deleteSessionInput(input.id);
+    const storage = new SQLiteSessionStorage(this.db, sessionId);
+    if (!this.isLatestUserMessage(sessionId, input.message)) {
+      const contentParts: Array<Record<string, unknown>> = [{ type: "text", text: input.message }];
+      if (input.images?.length) {
+        for (const image of input.images) {
+          contentParts.push({
+            type: "image",
+            name: image.name ?? "[Image]",
+            mediaId: image.mediaId,
+            mimeType: image.mimeType,
+          });
+        }
+      }
+      await storage.appendEntry(
+        {
+          id: randomUUID(),
+          parentId: await storage.getLeafId(),
+          timestamp: new Date().toISOString(),
+          type: "message",
+          message: {
+            role: "user",
+            content: contentParts,
+            timestamp: Date.now(),
+          },
+        } as unknown as SessionTreeEntry,
+        { source: input.source },
+      );
+    }
+    const notice = errorMessage.trim() || "消息发送失败";
+    // External runtimes already emit agent_end(error) → recordLlmError; avoid duplicates.
+    if (!this.leafIsLlmError(sessionId)) {
+      await this.recordLlmError(sessionId, notice);
+    }
+    sessionLog(sessionId, "error", `Session input abandoned: ${notice}`, ["system", "queue"], {
+      inputId: input.id,
+      error: notice,
+    });
+    this.publishUiNotify(sessionId, notice, "error");
+    if (this.db.get(sessionId)?.status !== "error") {
+      this.db.updateStatus(sessionId, "error");
+      this.publishSessionStatus(sessionId);
+    }
+  }
+
+  private leafIsLlmError(sessionId: number): boolean {
+    const leafId = this.db.get(sessionId)?.leaf_id;
+    if (!leafId) return false;
+    const row = this.db.getMessageRowByEntryId(sessionId, leafId);
+    if (!row?.payload || row.type !== "custom") return false;
+    try {
+      const entry = JSON.parse(row.payload) as SessionTreeEntry;
+      return entry.type === "custom" && entry.customType === LLM_ERROR_CUSTOM_TYPE;
+    } catch {
+      return false;
+    }
+  }
+
+  private isLatestUserMessage(sessionId: number, message: string): boolean {
+    const leafId = this.db.get(sessionId)?.leaf_id;
+    if (!leafId) return false;
+    const row = this.db.getMessageRowByEntryId(sessionId, leafId);
+    if (!row?.payload) return false;
+    try {
+      const entry = JSON.parse(row.payload) as SessionTreeEntry;
+      if (entry.type !== "message" || entry.message?.role !== "user") return false;
+      return sessionUserMessageText(entry.message) === message;
+    } catch {
+      return false;
     }
   }
 
@@ -1244,9 +1504,9 @@ export class SessionManager {
         this.drainingSessionInputs.has(sessionId) || this.sessionInputQueues.size(sessionId) > 0;
       if (
         !hasPendingInput &&
-        row.status !== "starting" &&
+        row.status !== "initializing" &&
         row.status !== "running" &&
-        row.status !== "waiting_user"
+        row.status !== "blocked"
       ) {
         return;
       }
@@ -1346,21 +1606,10 @@ export class SessionManager {
     return (await this.getOrRestoreRuntime(id)).compact(customInstructions);
   }
 
+  /** Runtime hot-switch only; the bound Agent (providerId/modelId) remains source of truth on restart. */
   async setModel(id: number, provider: string, modelId: string) {
     const runtime = await this.getOrRestoreRuntime(id);
-    const model = await runtime.setModel(provider, modelId);
-    const session = rowToSession(this.db.get(id)!);
-    if (session) {
-      const config = this.extractRuntimeConfig(session);
-      this.db.updateMeta(id, {
-        runtimeConfig: {
-          ...config,
-          provider: model.provider,
-          modelId: model.id,
-        },
-      });
-    }
-    return model;
+    return runtime.setModel(provider, modelId);
   }
 
   async setThinkingLevel(id: number, level: ThinkingLevel): Promise<void> {
@@ -1369,7 +1618,27 @@ export class SessionManager {
   }
 
   async getState(id: number): Promise<SessionState> {
-    return (await this.getOrRestoreRuntime(id)).getState();
+    // Do not restore a runtime just to read state — that can spawn Codex and
+    // is slow / wrong while checking whether a turn is still in flight.
+    const runtime = this.runtimes.get(id);
+    if (runtime) return runtime.getState();
+    const session = this.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    const agent = session.agentId == null ? undefined : this.db.getAgent(session.agentId);
+    return {
+      id: session.id,
+      sessionId: session.sessionId,
+      cwd: session.cwd,
+      status: session.status,
+      model: {
+        provider: agent?.backendType ?? "native",
+        modelId: agent?.name ?? "unknown",
+      },
+      thinkingLevel: session.thinkingLevel,
+      isStreaming: session.status === "running",
+      messageCount: 0,
+      leafId: session.leafId,
+    };
   }
 
   async send(_id: number, _command: Record<string, unknown>): Promise<void> {
@@ -1392,19 +1661,19 @@ export class SessionManager {
     this.sessionToolConfigs.delete(id);
     if (current.status !== "error") {
       this.db.updateStatus(id, "finish");
-      if (current.created_via === "spawn_agent" && current.parent_id != null) {
+      if (current.created_by === "spawn_agent" && current.parent_id != null) {
         this.db.updateSessionListVisibility(id, false);
       }
     }
   }
 
   async complete(id: number): Promise<Session> {
-    let session = rowToSession(this.db.get(id)!);
+    let session = rowToSession(this.db.get(id)!, this.db);
     if (!session) throw new Error(`Session ${id} not found`);
     if (session.status === "finish" || session.status === "finished") {
       if (session.creationMethod === "spawn_agent" && session.parentId != null) {
         this.db.updateSessionListVisibility(id, false);
-        session = rowToSession(this.db.get(id)!);
+        session = rowToSession(this.db.get(id)!, this.db);
       }
       return session;
     }
@@ -1432,7 +1701,6 @@ export class SessionManager {
         const commit = await commitSessionChanges(
           id,
           session.cwd,
-          session.meta,
           this.db,
           externalCommitMessage ? { message: externalCommitMessage } : {},
         );
@@ -1444,17 +1712,12 @@ export class SessionManager {
             },
           );
         }
-        session = rowToSession(this.db.get(id)!);
-        await finalizeSessionLifecycleGit(this.db, session);
+        session = rowToSession(this.db.get(id)!, this.db);
+        await finalizeSessionLifecycleGit(this.db, session, this.jobs);
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      const gitMeta = session.meta?.git;
-      if (gitMeta && typeof gitMeta === "object") {
-        this.db.updateMeta(id, {
-          git: { ...(gitMeta as Record<string, unknown>), mergeError: message },
-        });
-      }
+      this.db.updateSessionGitState(id, { mergeError: message });
       // Operational failure (git/merge) — toast to UI, do NOT mark session as LLM error.
       this.reportOperationalError(id, message);
       throw new Error(message);
@@ -1471,7 +1734,7 @@ export class SessionManager {
     }
     this.db.updateStatus(id, "finish");
     if (isSpawnedSubagent) this.db.updateSessionListVisibility(id, false);
-    return rowToSession(this.db.get(id)!);
+    return rowToSession(this.db.get(id)!, this.db);
   }
 
   list(filter?: Parameters<SupervisorDb["list"]>[0]): Session[] {
@@ -1495,15 +1758,15 @@ export class SessionManager {
   }
 
   createProject(options: { name?: string; cwd: string; meta?: Record<string, unknown> }) {
-    const branch = ensureGitRepositorySync(options.cwd);
+    ensureGitRepositorySync(options.cwd);
     const project = this.db.insertProject({
       ...options,
       meta: {
         ...(options.meta ?? {}),
         [PROJECT_DESCRIPTION_META.status]: "pending",
+        [PROJECT_RUNTIME_META.status]: "pending",
       },
     });
-    if (project.defaultBranch !== branch) this.db.updateProjectDefaultBranch(project.id, branch);
     const created = this.db.getProject(project.id)!;
     void this.generateProjectDescription(created.id).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -1511,6 +1774,8 @@ export class SessionManager {
         this.db.updateProjectMeta(created.id, {
           [PROJECT_DESCRIPTION_META.status]: "error",
           [PROJECT_DESCRIPTION_META.error]: message,
+          [PROJECT_RUNTIME_META.status]: "error",
+          [PROJECT_RUNTIME_META.error]: message,
         });
       } catch {
         // project may have been deleted
@@ -1523,9 +1788,15 @@ export class SessionManager {
     return this.db.updateProject(id, patch);
   }
 
+  /** 华生内部任务入口（扩展 / 生命周期共用）。 */
+  runWatson<T = unknown>(
+    options: Omit<WatsonRunOptions, "db">,
+  ): Promise<WatsonRunResult<T>> {
+    return runWatsonTask<T>({ ...options, db: this.db });
+  }
+
   /**
-   * Spawn a temporary readonly coding agent with the project-description feature model,
-   * explore the repo, and write `meta.description`.
+   * 华生解析项目：写 project_scripts + 描述。
    */
   async generateProjectDescription(projectId: number): Promise<{
     description: string | null;
@@ -1535,97 +1806,37 @@ export class SessionManager {
     const project = this.db.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
 
-    const ref = resolveFeatureModelRef("project-description");
+    const ref = resolveAssistantModelRef();
     if (!ref) {
+      const message = "未配置「助手模型」";
       this.db.updateProjectMeta(projectId, {
         [PROJECT_DESCRIPTION_META.status]: "skipped",
-        [PROJECT_DESCRIPTION_META.error]: "未配置「项目描述」功能模型",
-      });
-      return { description: null, status: "skipped", error: "未配置「项目描述」功能模型" };
-    }
-
-    const auth = await resolveFeatureModelAuth(this.db, "project-description");
-    if (!auth) {
-      const message = "「项目描述」功能模型不可用（检查 Provider / API Key）";
-      this.db.updateProjectMeta(projectId, {
-        [PROJECT_DESCRIPTION_META.status]: "pending",
         [PROJECT_DESCRIPTION_META.error]: message,
+        [PROJECT_RUNTIME_META.status]: "skipped",
+        [PROJECT_RUNTIME_META.error]: message,
       });
-      throw new Error(message);
+      return { description: null, status: "skipped", error: message };
     }
-
-    const agentId =
-      findPackagedAgentId(this.db, "coding") ?? this.resolveDefaultSpawnAgentId();
 
     this.db.updateProjectMeta(projectId, {
       [PROJECT_DESCRIPTION_META.status]: "pending",
       [PROJECT_DESCRIPTION_META.error]: null,
+      [PROJECT_RUNTIME_META.status]: "pending",
+      [PROJECT_RUNTIME_META.error]: null,
     });
 
-    let sessionId: number | null = null;
     try {
-      const session = await this.spawn({
-        projectId,
-        cwd: project.cwd,
-        agentId,
-        toolsPreset: "readonly",
-        providerId: ref.providerId,
-        model: ref.modelId,
-        showInSessionList: false,
-        instructions: buildProjectDescriptionInstructions(project),
-        meta: {
-          name: `项目描述 · ${project.name}`,
-          source: "project-description",
-          ephemeral: true,
-        },
-      });
-      sessionId = session.id;
-      this.db.updateProjectMeta(projectId, {
-        [PROJECT_DESCRIPTION_META.sessionId]: session.id,
-      });
-
-      await this.waitForSessionIdle(session.id, { timeoutMs: 10 * 60 * 1000 });
-
-      const message = this.db.db
-        .prepare(
-          `SELECT payload
-           FROM messages
-           WHERE session_id = ? AND message_role = 'assistant'
-           ORDER BY created_at DESC
-           LIMIT 1`,
-        )
-        .get(session.id) as { payload?: string } | undefined;
-      const raw = message?.payload ? readAssistantTextFromPayload(message.payload) : "";
-      const description = normalizeProjectDescription(raw);
-      if (!description) throw new Error("模型未返回项目描述");
-
-      this.db.updateProjectMeta(projectId, {
-        [PROJECT_DESCRIPTION_META.description]: description,
-        [PROJECT_DESCRIPTION_META.status]: "ready",
-        [PROJECT_DESCRIPTION_META.error]: null,
-        [PROJECT_DESCRIPTION_META.updatedAt]: new Date().toISOString(),
-      });
-
-      try {
-        this.delete(session.id);
-      } catch {
-        this.db.updateSessionListVisibility(session.id, false);
-      }
-
-      return { description, status: "ready" };
+      const spec = await runProjectRuntimeParse({ db: this.db, project });
+      await applyProjectRuntimeParse(this.db, projectId, spec);
+      return { description: spec.description, status: "ready" };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       this.db.updateProjectMeta(projectId, {
         [PROJECT_DESCRIPTION_META.status]: "error",
         [PROJECT_DESCRIPTION_META.error]: message,
+        [PROJECT_RUNTIME_META.status]: "error",
+        [PROJECT_RUNTIME_META.error]: message,
       });
-      if (sessionId != null) {
-        try {
-          this.db.updateSessionListVisibility(sessionId, false);
-        } catch {
-          // ignore
-        }
-      }
       throw error;
     }
   }
@@ -1640,8 +1851,8 @@ export class SessionManager {
     const candidates = await pending;
     const importedByExternalId = new Map<string, number>();
     for (const session of this.list()) {
-      const externalId = session.meta?.externalSessionId;
-      if (typeof externalId !== "string" || !externalId) continue;
+      const externalId = session.externalSessionId;
+      if (!externalId) continue;
       if (!importedByExternalId.has(externalId)) {
         importedByExternalId.set(externalId, session.id);
       }
@@ -1657,12 +1868,17 @@ export class SessionManager {
   async importExternalSession(options: {
     backend: ImportableExternalBackend;
     externalSessionId: string;
+    /** Delete the previously imported session and import again. */
+    replace?: boolean;
   }): Promise<Session> {
     const existing = this.list().find(
-      (session) => session.meta?.externalSessionId === options.externalSessionId,
+      (session) => session.externalSessionId === options.externalSessionId,
     );
     if (existing) {
-      throw new Error(`该外部对话已导入为会话 #${existing.id}，不可重复引入`);
+      if (!options.replace) {
+        throw new Error(`该外部对话已导入为会话 #${existing.id}，不可重复引入`);
+      }
+      this.delete(existing.id);
     }
 
     const imported = await loadExternalSession(options.backend, options.externalSessionId);
@@ -1691,10 +1907,8 @@ export class SessionManager {
       cwd: normalizedCwd,
       agentId: agent.id,
       skipRuntime: true,
-      meta: {
-        name: imported.candidate.title,
-        externalSessionId: imported.candidate.externalSessionId,
-      },
+      title: imported.candidate.title,
+      externalSessionId: imported.candidate.externalSessionId,
     });
     const entries = await materializeImportedImages(session.id, imported.entries);
     const storage = new SQLiteSessionStorage(this.db, session.id);
@@ -1708,11 +1922,14 @@ export class SessionManager {
       await this.ensureRuntime(session.id);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`external import runtime attach failed [${session.id}]:`, message);
-      this.db.updateMeta(session.id, { runtimeStartError: message });
+      console.error(`external import runtime start failed [${session.id}]:`, message);
+      sessionLog(session.id, "error", `Runtime start failed: ${message}`, ["system", "runtime"], {
+        error: message,
+      });
+      this.db.updateSessionFields(session.id, { errorMsg: message });
     }
 
-    return rowToSession(this.db.get(session.id)!);
+    return rowToSession(this.db.get(session.id)!, this.db);
   }
 
   deleteProject(id: number): void {
@@ -1876,6 +2093,20 @@ export class SessionManager {
     spawnedAgentIds: number[],
   ): Member[] {
     if (!this.db.get(sessionId)) throw new Error(`Session ${sessionId} not found`);
+    if (shadowAgentId != null) {
+      const shadowAgent = this.db.getAgent(shadowAgentId);
+      if (!shadowAgent) throw new Error(`Shadow agent ${shadowAgentId} not found`);
+      if (shadowAgent.backendType !== "native") {
+        throw new Error("影子代理只能使用原生 Agent，不能使用外部 Agent（Codex/Claude 等）");
+      }
+    }
+    for (const agentId of spawnedAgentIds) {
+      const spawned = this.db.getAgent(agentId);
+      if (!spawned) throw new Error(`Spawned agent ${agentId} not found`);
+      if (spawned.backendType !== "native") {
+        throw new Error("子 Agent 成员只能使用原生 Agent，不能使用外部 Agent（Codex/Claude 等）");
+      }
+    }
     return this.db.replaceSessionAgentMembers(sessionId, shadowAgentId, spawnedAgentIds);
   }
 
@@ -1884,76 +2115,118 @@ export class SessionManager {
   }
 
   updateMeta(id: number, patch: Record<string, unknown>): Record<string, unknown> {
-    const before = this.getWorkflow(id);
-    const meta = this.db.updateMeta(id, patch);
-    void this.emitWorkflowChanges(id, before, parseWorkflowState(meta.workflow));
-    return meta;
+    return this.db.updateMeta(id, patch);
   }
 
-  /** Mark all unread messages as read and clear session.meta.unread. */
-  markSessionRead(id: number): Record<string, unknown> {
-    if (!this.db.get(id)) throw new Error(`Session ${id} not found`);
+  /** Promote known column keys (title, avatar, pinned, ...) onto the sessions row. */
+  updateSessionFields(id: number, patch: SessionFieldsPatch): void {
+    this.db.updateSessionFields(id, patch);
+  }
+
+  /** Mark all unread messages as read and clear session.unread. */
+  markSessionRead(id: number): Session {
+    const row = this.db.get(id);
+    if (!row) throw new Error(`Session ${id} not found`);
     this.db.markSessionMessagesRead(id);
-    return this.updateMeta(id, { unread: 0 });
+    this.db.updateSessionFields(id, { unread: 0 });
+    const session = this._getSession(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    return session;
   }
 
   setMeta(id: number, meta: Record<string, unknown>): void {
-    const before = this.getWorkflow(id);
     this.db.setMeta(id, meta);
-    void this.emitWorkflowChanges(id, before, parseWorkflowState(meta.workflow));
   }
 
-  getWorkflow(id: number): SessionWorkflowState | null {
+  /** Current session stage label (replaces the former meta.workflow.stage). */
+  getStage(id: number): string | null {
     const session = this.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
-    return parseWorkflowState(session.meta.workflow);
+    return session.stage;
   }
 
-  async setWorkflow(id: number, patch: WorkflowStatePatch): Promise<SessionWorkflowState> {
-    const before = this.getWorkflow(id);
-    const workflow = applyWorkflowPatch(before, patch);
-    this.db.updateMeta(id, { workflow });
-    await this.emitWorkflowChanges(id, before, workflow);
-    return workflow;
+  async setStage(id: number, stage: string | null): Promise<string | null> {
+    const before = this.getStage(id);
+    const normalized = normalizeSessionStage(stage);
+    this.db.updateSessionFields(id, { stage: normalized });
+    await this.emitStageChange(id, before, normalized);
+    return normalized;
   }
 
-  async clearWorkflow(id: number): Promise<void> {
-    const session = this.get(id);
-    if (!session) throw new Error(`Session ${id} not found`);
-    const before = parseWorkflowState(session.meta.workflow);
-    if (!before && !Object.hasOwn(session.meta, "workflow")) return;
-    const meta = { ...session.meta };
-    delete meta.workflow;
-    this.db.setMeta(id, meta);
-    await this.emitWorkflowChanges(id, before, null);
+  async clearStage(id: number): Promise<void> {
+    await this.setStage(id, null);
   }
 
-  private async emitWorkflowChanges(
+  private async emitStageChange(
     id: number,
-    before: SessionWorkflowState | null,
-    after: SessionWorkflowState | null,
+    before: string | null,
+    after: string | null,
   ): Promise<void> {
+    if (before === after) return;
     const extension = this.runtimes.get(id)?.extension;
     if (!extension) return;
-    if (before?.stage !== after?.stage) {
-      await extension.emit({
-        type: "workflow.stage_changed",
-        sessionId: id,
-        from: before?.stage ?? null,
-        to: after?.stage ?? null,
-        workflow: after,
-      });
-    }
-    if (after && before?.status !== after.status) {
-      await extension.emit({
-        type: "workflow.status_changed",
-        sessionId: id,
-        stage: after.stage,
-        from: before?.status ?? null,
-        to: after.status,
-        workflow: after,
-      });
-    }
+    await extension.emit({
+      type: "workflow.stage_changed",
+      sessionId: id,
+      from: before,
+      to: after,
+      workflow: after ? { stage: after, status: "working" } : null,
+    } as any);
+  }
+
+  /** @deprecated thin adapter over getStage; kept for extension API compatibility. */
+  getWorkflow(id: number): { stage: string; status: "working" } | null {
+    const stage = this.getStage(id);
+    return stage ? { stage, status: "working" } : null;
+  }
+
+  /** @deprecated thin adapter over setStage; kept for extension API compatibility. */
+  async setWorkflow(
+    id: number,
+    patch: { stage?: string | null } & Record<string, unknown>,
+  ): Promise<{ stage: string; status: "working" }> {
+    const nextStage = typeof patch?.stage === "string" ? patch.stage : this.getStage(id);
+    const applied = await this.setStage(id, nextStage ?? null);
+    return { stage: applied ?? "", status: "working" };
+  }
+
+  /** @deprecated thin adapter over clearStage; kept for extension API compatibility. */
+  async clearWorkflow(id: number): Promise<void> {
+    await this.clearStage(id);
+  }
+
+  // ============ Session Tasks (Goal / Plan) ============
+
+  listSessionTasks(id: number): SessionTask[] {
+    return this.db.listSessionTasks(id).map(toSessionTask);
+  }
+
+  upsertSessionTask(
+    id: number,
+    input: { path: string; kind: SessionTaskKind; title?: string | null; status?: string | null },
+  ): SessionTask {
+    return toSessionTask(this.db.upsertSessionTask({ sessionId: id, ...input }));
+  }
+
+  deleteSessionTask(id: number, path: string): boolean {
+    return this.db.deleteSessionTask(id, path);
+  }
+
+  setCurrentSessionTaskId(id: number, taskId: number | null): void {
+    this.db.updateSessionFields(id, { currentTaskId: taskId });
+  }
+
+  // ============ Session Todos ============
+
+  listSessionTodos(id: number): SessionTodoItem[] {
+    return this.db.listSessionTodos(id).map(toSessionTodo);
+  }
+
+  replaceSessionTodos(
+    id: number,
+    todos: Array<{ title: string; status: SessionTodoStatus }>,
+  ): SessionTodoItem[] {
+    return this.db.replaceSessionTodos(id, todos).map(toSessionTodo);
   }
 
   updateMessageMeta(
@@ -1974,17 +2247,125 @@ export class SessionManager {
         this.delete(child.id);
       }
     }
-    const session = this._getSession(id);
+    const row = this.db.get(id);
+    const session = row ? rowToSession(row, this.db) : undefined;
     const runtime = this.runtimes.get(id);
     if (runtime) {
-      void runtime.clear().catch(() => {});
       this.runtimes.delete(id);
       this.turnTrackers.delete(id);
       this.sessionToolConfigs.delete(id);
     }
+    const meta = session?.meta;
+    const projectCwd =
+      session?.projectId != null ? this.db.getProject(session.projectId)?.cwd : undefined;
+    const gitCleanup =
+      row && session
+        ? resolveSessionGitContext({
+            sessionId: id,
+            cwd: session.cwd,
+            projectCwd,
+            meta: parseSessionMeta(row.meta),
+          })
+        : null;
+    const services = meta ? parseSessionServicesMeta(meta) : null;
+    const cwd = session?.cwd;
+    const projectId = session?.projectId ?? null;
     this.db.delete(id);
     if (session?.projectId != null) removeSessionDirSync(session.projectId, id);
     removeSessionMediaDirSync(id);
+    // Stop services + external agent first; otherwise Windows keeps the worktree
+    // cwd locked (vite/codex/etc.) and `git worktree remove` fails.
+    void this.cleanupDeletedSessionResources(id, runtime, gitCleanup, {
+      cwd,
+      services,
+      projectId,
+    });
+  }
+
+  private async cleanupDeletedSessionResources(
+    id: number,
+    runtime: ManagedSessionRuntime | undefined,
+    gitCleanup: ReturnType<typeof resolveSessionGitContext>,
+    serviceCleanup?: {
+      cwd?: string;
+      services: ReturnType<typeof parseSessionServicesMeta>;
+      projectId?: number | null;
+    },
+  ): Promise<void> {
+    if (serviceCleanup?.cwd) {
+      const destroyScripts =
+        serviceCleanup.projectId != null
+          ? this.db.listProjectScripts(serviceCleanup.projectId, "destroy")
+          : [];
+      await stopSessionProjectServices({
+        sessionId: id,
+        cwd: serviceCleanup.cwd,
+        services: serviceCleanup.services,
+        destroyScripts,
+        jobs: this.jobs,
+      }).catch((error: unknown) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`stopSessionProjectServices on delete failed [${id}]:`, detail);
+      });
+    }
+    if (runtime) {
+      await runtime.clear().catch((error: unknown) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`runtime.clear on delete failed [${id}]:`, detail);
+      });
+      // Give Windows a moment to release directory handles.
+      await new Promise((resolve) => setTimeout(resolve, 400));
+    }
+    if (!gitCleanup) return;
+    const tryRemove = () =>
+      removeSessionWorktree(
+        gitCleanup.repoRoot,
+        gitCleanup.worktreePath,
+        gitCleanup.branch,
+        { forceBranch: true },
+      );
+    try {
+      await tryRemove();
+      sessionLog(
+        id,
+        "info",
+        `Worktree removed on session delete: ${gitCleanup.worktreePath}`,
+        ["system", "git", "worktree"],
+        {
+          worktreePath: gitCleanup.worktreePath,
+          branch: gitCleanup.branch,
+        },
+      );
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`removeSessionWorktree on delete failed [${id}]:`, detail);
+      try {
+        await runWatsonTask({
+          db: this.db,
+          cwd: gitCleanup.repoRoot,
+          kind: "worktree-cleanup",
+          prompt: [
+            "`git worktree remove` 失败，请诊断并尽量安全修复。",
+            "优先结束占用该目录的进程；不要 rm -rf 整个仓库。",
+            "",
+            `worktreePath: ${gitCleanup.worktreePath}`,
+            `branch: ${gitCleanup.branch}`,
+            `error: ${detail}`,
+          ].join("\n"),
+        });
+        await tryRemove();
+        sessionLog(id, "info", "Worktree removed after Watson cleanup", [
+          "system",
+          "git",
+          "worktree",
+          "watson",
+        ]);
+      } catch (watsonError: unknown) {
+        const watsonDetail =
+          watsonError instanceof Error ? watsonError.message : String(watsonError);
+        console.error(`Watson worktree cleanup failed [${id}]:`, watsonDetail);
+      }
+    }
   }
 
   // ============ Session Tree Methods ============
@@ -1995,12 +2376,9 @@ export class SessionManager {
     const btwAgentId = findPackagedAgentId(this.db, "btw");
     const btwAgent = btwAgentId === undefined ? undefined : this.db.getAgent(btwAgentId);
     if (!btwAgent) throw new Error("BTW agent is not configured");
-    const runtimeConfig: RuntimeConfigSnapshot = {
-      provider: DEFAULT_PROVIDER,
-      modelId: btwAgent.modelId ?? DEFAULT_MODEL_ID,
-      systemPrompt: "",
-      toolsPreset: btwAgent.toolsPreset === "none" ? "none" : "readonly",
-    };
+    if (btwAgent.backendType !== "native") {
+      throw new Error("顺便问（BTW）只能使用原生 Agent，不能使用外部 Agent");
+    }
     return this.create({
       projectId: parent.projectId,
       parentId: parent.id,
@@ -2008,7 +2386,7 @@ export class SessionManager {
       agentId: btwAgent.id,
       branchType: "btw",
       contextLeafId: null,
-      meta: { runtimeConfig, name: "顺便问" },
+      title: "顺便问",
     });
   }
 
@@ -2021,13 +2399,14 @@ export class SessionManager {
     if (!session) throw new Error(`Session ${id} not found`);
 
     const project = session.project_id == null ? undefined : this.db.getProject(session.project_id);
-    const createOptions: CreateSessionOptions = {
+    const parentAgentId = (session as { agentId?: number | null }).agentId ?? session.agent_id;
+    const createOptions: SpawnSessionOptions = {
       projectId: session.project_id,
       parentId: id,
       cwd: project?.cwd ?? session.cwd,
-      agentId: (session as any).agentId ?? (session as any).agent_id,
+      agentId: this.resolveAgentIdForChildSession(parentAgentId),
       branchType: "fork",
-      meta: options?.label ? { name: options.label } : {},
+      title: options?.label ?? null,
     };
     let newSession = this.create(createOptions);
     newSession = await prepareSessionLifecycleSpawn(this.db, newSession, createOptions);
@@ -2050,12 +2429,13 @@ export class SessionManager {
     const session = this.db.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
 
+    const parentAgentId = (session as { agentId?: number | null }).agentId ?? session.agent_id;
     // Create a new session as a child
     const newSession = this.create({
       projectId: session.project_id,
       parentId: id,
       cwd: session.cwd,
-      agentId: (session as any).agentId ?? (session as any).agent_id,
+      agentId: this.resolveAgentIdForChildSession(parentAgentId),
       branchType: "clone",
     });
 
@@ -2171,13 +2551,12 @@ export class SessionManager {
   ): Promise<CommitSessionResult | null> {
     const session = this.db.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
-    if (session.status === "running" || session.status === "waiting_user") {
+    if (session.status === "running" || session.status === "blocked") {
       throw new Error(`Session ${id} is busy (status: ${session.status})`);
     }
     const commit = await commitSessionChanges(
       id,
       session.cwd,
-      typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta,
       this.db,
       options,
     );
@@ -2202,9 +2581,7 @@ export class SessionManager {
       checkpoint.gitHead,
       message,
     );
-    const meta = typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta;
-    const git = meta.git && typeof meta.git === "object" ? meta.git : undefined;
-    if (git) this.db.updateMeta(id, { git: { ...git, lastCommit: commit } });
+    this.db.updateSessionGitState(id, { lastCommit: commit });
     await this.sendCustomMessage(id, formatGitCommitCustomMessage(commit));
     return commit;
   }
@@ -2339,7 +2716,7 @@ export class SessionManager {
         void this.recordLlmError(id, message).catch(() => {});
       });
 
-    return rowToSession(this.db.get(id)!)!;
+    return rowToSession(this.db.get(id)!, this.db)!;
   }
 
   searchMessages(
@@ -2493,6 +2870,7 @@ export class SessionManager {
 
   /** Restore idle session runtime when needed (slash commands, delayed ops). */
   async ensureRuntime(id: number): Promise<ManagedSessionRuntime> {
+    await this.waitUntilSpawnReady(id);
     return this.getOrRestoreRuntime(id);
   }
 
@@ -2634,11 +3012,7 @@ export class SessionManager {
           cwd: project.cwd,
           agentId,
           instructions: item.prompt,
-          meta: {
-            name: item.title,
-            homeTaskId: child.id,
-            homeTaskParentId: id,
-          },
+          title: item.title,
         });
         const linked = this.db.updateHomeTask(child.id, {
           sessionId: session.id,
@@ -2668,4 +3042,21 @@ export class SessionManager {
       children,
     };
   }
+}
+
+function sessionUserMessageText(message: { content?: unknown } | undefined): string {
+  const content = message?.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => {
+      if (!part || typeof part !== "object") return "";
+      if ((part as { type?: string }).type === "text") {
+        return typeof (part as { text?: unknown }).text === "string"
+          ? (part as { text: string }).text
+          : "";
+      }
+      return "";
+    })
+    .join("");
 }

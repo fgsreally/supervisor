@@ -1,8 +1,9 @@
 <template>
   <div
-    class="cursor-pointer relative transition-colors"
-    :class="rowClass"
+    class="relative transition-colors"
+    :class="[rowClass, isAchieved ? 'cursor-default' : 'cursor-pointer']"
     :style="rowStyle"
+    :aria-disabled="isAchieved ? 'true' : undefined"
     @click="onRowClick"
     @contextmenu.prevent="onContextMenu"
     @touchstart.passive="onTouchStart"
@@ -37,9 +38,9 @@
       <div class="relative shrink-0">
         <SessionAvatar
           :session-id="session.id"
-          :name="session.meta.name"
+          :name="session.title"
           :agent-id="session.agentId"
-          :avatar="session.meta.avatar"
+          :avatar="session.avatar"
           :agent-icon="agentIcon"
           :size="AVATAR_PX"
         />
@@ -52,10 +53,13 @@
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between gap-2">
           <div class="flex items-center gap-1.5 min-w-0">
-            <span class="text-[13px] font-medium truncate session-name">
-              {{ session.meta.name }}
+            <span
+              class="text-[13px] font-medium truncate session-name"
+              :class="{ 'session-name--achieved': isAchieved }"
+            >
+              {{ session.title }}
             </span>
-            <WorkflowStageTag v-if="workflow" :workflow="workflow" compact />
+            <WorkflowStageTag v-if="stage" :stage="stage" compact />
           </div>
           <span class="text-[10px] shrink-0 session-time">{{
             formatListTime(session.lastActiveAt)
@@ -80,7 +84,7 @@ import { computed, onBeforeUnmount } from "vue";
 import type { UISession } from "@/types/ui";
 import { branchDotColor } from "../utils/session-branch";
 import { formatListTime } from "../utils/format-time";
-import { parseWorkflowState } from "../utils/workflow";
+import { parseSessionStage } from "../utils/workflow";
 import WorkflowStageTag from "./WorkflowStageTag.vue";
 import SessionAvatar from "./SessionAvatar.vue";
 import { useAgentStore } from "@/store";
@@ -155,7 +159,7 @@ const TREE_STEP_PX = 18;
 const AVATAR_PX = 40;
 const ROW_PAD_Y_PX = 12;
 
-const workflow = computed(() => parseWorkflowState(props.session.meta));
+const stage = computed(() => parseSessionStage(props.session));
 
 const depth = computed(() => props.depth ?? 0);
 const isChild = computed(() => depth.value > 0);
@@ -175,9 +179,16 @@ const ancestorTrunkStyle = (ancestorDepth: number) => ({
   left: `${TREE_ROOT_PX + (ancestorDepth - 1) * TREE_STEP_PX}px`,
 });
 
+const isAchieved = computed(
+  () => props.session.status === "finish" || props.session.status === "finished",
+);
+
 const rowClass = computed(() => {
-  if (props.active) return "session-row session-row--active";
-  return isChild.value ? "session-row session-row--child" : "session-row";
+  const classes = ["session-row"];
+  if (isChild.value) classes.push("session-row--child");
+  if (props.active) classes.push("session-row--active");
+  if (isAchieved.value) classes.push("session-row--achieved");
+  return classes.join(" ");
 });
 
 const rowStyle = computed(() => {
@@ -203,16 +214,19 @@ const preview = computed(() =>
 
 const statusDotClass = computed(() => {
   switch (props.session.status) {
-    case "starting":
-      return "session-status-dot session-status-dot--starting";
+    case "initializing":
+      return "session-status-dot session-status-dot--initializing";
     case "running":
       return "session-status-dot session-status-dot--running";
-    case "waiting_user":
+    case "blocked":
       return "session-status-dot session-status-dot--waiting-user";
     case "idle":
       return "session-status-dot session-status-dot--idle";
     case "error":
       return "session-status-dot session-status-dot--error";
+    case "finish":
+    case "finished":
+      return "session-status-dot session-status-dot--finish";
     case "stopped":
       return "session-status-dot session-status-dot--stopped";
     default:
@@ -230,8 +244,8 @@ const statusDotClass = computed(() => {
   border-color: var(--app-list-status-ring);
 }
 
-.session-status-dot--starting {
-  background: var(--app-status-starting);
+.session-status-dot--initializing {
+  background: var(--app-status-initializing);
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
@@ -255,16 +269,20 @@ const statusDotClass = computed(() => {
   background: var(--app-status-stopped);
 }
 
+.session-status-dot--finish {
+  background: color-mix(in srgb, var(--app-text-muted) 70%, transparent);
+}
+
 .session-row {
   color: var(--app-text-primary);
 }
 
-.session-row:hover:not(.session-row--active) {
+.session-row:hover:not(.session-row--active):not(.session-row--achieved) {
   background: var(--app-list-item-hover);
   box-shadow: inset 3px 0 0 color-mix(in srgb, #07c160 65%, transparent);
 }
 
-.session-row--child:hover:not(.session-row--active) {
+.session-row--child:hover:not(.session-row--active):not(.session-row--achieved) {
   background: var(--app-list-item-child-hover);
 }
 
@@ -291,8 +309,42 @@ const statusDotClass = computed(() => {
   box-shadow: inset 3px 0 0 rgb(255 255 255 / 72%);
 }
 
+.session-row--achieved {
+  opacity: 0.62;
+  color: var(--app-text-muted);
+}
+
+.session-row--achieved .session-name,
+.session-row--achieved .session-preview,
+.session-row--achieved .session-time {
+  color: var(--app-text-muted);
+}
+
+.session-row--achieved.session-row--active {
+  opacity: 0.78;
+  background: color-mix(in srgb, var(--app-list-item-active) 55%, var(--app-list-bg, transparent));
+  box-shadow: none;
+}
+
+.session-row--achieved.session-row--active .session-name,
+.session-row--achieved.session-row--active .session-preview,
+.session-row--achieved.session-row--active .session-time {
+  color: var(--app-list-item-active-secondary, rgb(255 255 255 / 72%));
+}
+
+.session-row--achieved:hover {
+  background: transparent;
+  box-shadow: none;
+}
+
 .session-name {
   color: var(--app-text-primary);
+}
+
+.session-name--achieved {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--app-text-muted) 80%, transparent);
 }
 
 .session-preview {

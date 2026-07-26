@@ -1,5 +1,6 @@
-import { type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createConnection } from "node:net";
 import { resolve } from "node:path";
 import { createInterface } from "node:readline";
 import type { ImageContent } from "@earendil-works/pi-ai";
@@ -16,6 +17,9 @@ import {
   resolveExecutable,
   spawnExternalProcess,
 } from "./external-agent-config.js";
+import { sessionLog } from "../../utils/session-log.js";
+import { beginSessionTiming, timedSessionStep } from "../../utils/session-timing.js";
+import { sessionServicePortEnv } from "../session-services.js";
 
 type JsonObject = Record<string, any>;
 
@@ -86,9 +90,11 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
   private threadId = "";
   private activeTurnId: string | null = null;
   private turnCompletion: { resolve: () => void; reject: (error: Error) => void } | undefined;
+  private turnStartedAt = 0;
+  private firstDeltaAt = 0;
   private readonly interactions = new Map<
     string,
-    { requestId: number; method: string; params: JsonObject }
+    { requestId: number; method: string; params: JsonObject; requestedAt: number }
   >();
   private slashCommands: Array<{ name: string; description: string; source?: string }> = [
     ...CODEX_CLIENT_COMMANDS.map(([name, description]) => ({
@@ -143,62 +149,126 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     session: Session;
     agent: Agent;
   }): Promise<CodexSessionRuntime> {
-    const config = getExternalAgentConfig(options.agent);
-    const env = { ...process.env, ...config.env };
-    const executable = resolveExecutable(config.command, env);
-    if (!executable) throw new Error(`未找到用户安装的 Codex：${config.command}`);
-    const child = spawnExternalProcess(executable, [...config.args, "app-server", "--stdio"], {
-      cwd: options.session.cwd,
-      env,
-    }) as ChildProcessWithoutNullStreams;
-    await new Promise<void>((resolveReady, rejectReady) => {
-      const onError = (error: Error) => {
-        cleanup();
-        rejectReady(
-          new Error(`启动 Codex 失败（${executable}）：${error.message}`),
-        );
-      };
-      const onSpawn = () => {
-        cleanup();
-        resolveReady();
-      };
-      const cleanup = () => {
-        child.off("error", onError);
-        child.off("spawn", onSpawn);
-      };
-      child.once("error", onError);
-      child.once("spawn", onSpawn);
-    });
-    const runtime = new CodexSessionRuntime({ ...options, child });
-    const sandbox = options.session.branchType === "btw" ? "read-only" : "workspace-write";
+    const sessionId = options.session.id;
+    const doneCreate = beginSessionTiming(sessionId, "CodexSessionRuntime.create");
     try {
-      await runtime.request("initialize", {
-        clientInfo: { name: "pi-supervisor", title: "Pi Supervisor", version: "0.1.0" },
-        capabilities: { experimentalApi: true, requestAttestation: false },
+      const config = getExternalAgentConfig(options.agent);
+      const portEnv = sessionServicePortEnv(options.session.meta);
+      const env = await withDetectedWindowsProxy({
+        ...process.env,
+        ...config.env,
+        ...portEnv,
       });
-      runtime.notify("initialized");
-      const savedId = options.session.meta?.externalSessionId;
-      const response =
-        typeof savedId === "string" && savedId.length > 0
-          ? await runtime.request("thread/resume", {
-              threadId: savedId,
-              cwd: options.session.cwd,
-              approvalPolicy: "on-request",
-              sandbox,
-            })
-          : await runtime.request("thread/start", {
-              cwd: options.session.cwd,
-              approvalPolicy: "on-request",
-              sandbox,
-            });
-      runtime.threadId = response.thread.id;
-      runtime.setExternalSessionId(runtime.threadId);
-      await runtime.refreshSkills().catch(() => {});
-      return runtime;
-    } catch (error) {
-      child.kill();
-      const detail = error instanceof Error ? error.message : String(error);
-      throw new Error(`Failed to start Codex: ${detail}`);
+      const executable = resolveExecutable(config.command, env);
+      if (!executable) throw new Error(`未找到用户安装的 Codex：${config.command}`);
+      // Rich UI clients (VS Code included) use app-server, not @openai/codex-sdk.
+      // Disable only the remote Apps product surface that can block first turns
+      // via https://chatgpt.com/backend-api/ps/mcp — local /mcp /skills stay available.
+      const child = spawnExternalProcess(
+        executable,
+        [
+          ...config.args,
+          "--disable",
+          "apps",
+          "--disable",
+          "remote_plugin",
+          "app-server",
+          "--stdio",
+        ],
+        {
+          cwd: options.session.cwd,
+          env,
+        },
+      ) as ChildProcessWithoutNullStreams;
+      await timedSessionStep(sessionId, "codex/process.spawn", () =>
+        new Promise<void>((resolveReady, rejectReady) => {
+          const onError = (error: Error) => {
+            cleanup();
+            rejectReady(new Error(`启动 Codex 失败（${executable}）：${error.message}`));
+          };
+          const onSpawn = () => {
+            cleanup();
+            resolveReady();
+          };
+          const cleanup = () => {
+            child.off("error", onError);
+            child.off("spawn", onSpawn);
+          };
+          child.once("error", onError);
+          child.once("spawn", onSpawn);
+        }),
+      );
+      const runtime = new CodexSessionRuntime({ ...options, child });
+      const isBtw = options.session.branchType === "btw";
+      const sandbox = isBtw ? "read-only" : "workspace-write";
+      // Match typical local CLI: never park normal sessions on Web approval cards.
+      const approvalPolicy = isBtw ? "on-request" : "never";
+      try {
+        await timedSessionStep(sessionId, "codex/initialize", () =>
+          runtime.request("initialize", {
+            clientInfo: { name: "pi-supervisor", title: "Pi Supervisor", version: "0.1.0" },
+            // Same opt-in VS Code-style rich clients use for full protocol surface.
+            capabilities: { experimentalApi: true, requestAttestation: false },
+          }),
+        );
+        runtime.notify("initialized");
+        const effectiveConfig = await timedSessionStep(sessionId, "codex/config.read", () =>
+          runtime.request("config/read", { includeLayers: false }).catch(() => null),
+        );
+        const configuredModel =
+          typeof effectiveConfig?.config?.model === "string"
+            ? effectiveConfig.config.model
+            : typeof options.agent.modelId === "string" && options.agent.modelId.trim()
+              ? options.agent.modelId.trim()
+              : undefined;
+        const savedId = options.session.externalSessionId;
+        const response = await timedSessionStep(
+          sessionId,
+          typeof savedId === "string" && savedId.length > 0
+            ? "codex/thread.resume"
+            : "codex/thread.start",
+          () =>
+            typeof savedId === "string" && savedId.length > 0
+              ? runtime.request("thread/resume", {
+                  threadId: savedId,
+                  cwd: options.session.cwd,
+                  approvalPolicy,
+                  sandbox,
+                })
+              : runtime.request("thread/start", {
+                  cwd: options.session.cwd,
+                  approvalPolicy,
+                  sandbox,
+                  serviceName: "pi-supervisor",
+                }),
+        );
+        sessionLog(
+          sessionId,
+          "info",
+          `codex app-server ready (model=${configuredModel ?? "default"}, approval=${approvalPolicy}, sandbox=${sandbox})`,
+          ["system", "runtime", "codex"],
+          {
+            transport: "app-server",
+            configuredModel: configuredModel ?? null,
+            modelSelection: "codex-default-with-migrations",
+            approvalPolicy,
+            sandbox,
+            proxy: proxySummary(env),
+          },
+        );
+        runtime.threadId = response.thread.id;
+        runtime.setExternalSessionId(runtime.threadId);
+        await timedSessionStep(sessionId, "codex/skills.list", () =>
+          runtime.refreshSkills().catch(() => {}),
+        );
+        return runtime;
+      } catch (error) {
+        child.kill();
+        const detail = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to start Codex: ${detail}`);
+      }
+    } finally {
+      doneCreate();
     }
   }
 
@@ -438,7 +508,15 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     }
 
     const interactionId = `codex-${requestId}`;
-    this.interactions.set(interactionId, { requestId, method, params });
+    const requestedAt = Date.now();
+    this.interactions.set(interactionId, { requestId, method, params, requestedAt });
+    sessionLog(
+      this.id,
+      "info",
+      `Waiting for user (${kind}): ${method}`,
+      ["system", "runtime", "approval"],
+      { method, kind, interactionId },
+    );
     await this.startTool(interactionId, "external_interaction", {
       externalInteraction: true,
       interactionId,
@@ -462,6 +540,17 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     const pending = this.interactions.get(interactionId);
     if (!pending) return false;
     this.interactions.delete(interactionId);
+    sessionLog(
+      this.id,
+      "info",
+      `User resolved ${pending.method}: ${response.action} (waited ${Date.now() - pending.requestedAt}ms)`,
+      ["system", "runtime", "approval"],
+      {
+        method: pending.method,
+        action: response.action,
+        waitedMs: Date.now() - pending.requestedAt,
+      },
+    );
 
     let result: JsonObject;
     if (pending.method === "mcpServer/elicitation/request") {
@@ -541,10 +630,16 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
 
   private async handleNotification(method: string, params: JsonObject): Promise<void> {
     if (method === "item/agentMessage/delta") {
+      if (!this.firstDeltaAt && this.turnStartedAt) {
+        this.firstDeltaAt = Date.now();
+      }
       await this.appendText(params.delta ?? "");
       return;
     }
     if (method === "item/reasoning/summaryTextDelta" || method === "item/reasoning/textDelta") {
+      if (!this.firstDeltaAt && this.turnStartedAt) {
+        this.firstDeltaAt = Date.now();
+      }
       await this.appendThinking(params.delta ?? "");
       return;
     }
@@ -594,19 +689,58 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
   }
 
   protected async runExternalTurn(message: string, images?: ImageContent[]): Promise<void> {
+    const doneTurn = beginSessionTiming(this.id, "codex/runExternalTurn");
+    this.turnStartedAt = Date.now();
+    this.firstDeltaAt = 0;
+    if (this.session.branchType !== "btw") {
+      await this.request("thread/settings/update", {
+        threadId: this.threadId,
+        approvalPolicy: "never",
+      }).catch(() => {});
+    }
     const completion = new Promise<void>((resolve, reject) => {
       this.turnCompletion = { resolve, reject };
     });
     try {
-      const response = await this.request("turn/start", {
-        threadId: this.threadId,
-        input: this.buildUserInput(message, images),
-      });
+      const response = await timedSessionStep(this.id, "codex/turn.start", () =>
+        this.request("turn/start", {
+          threadId: this.threadId,
+          input: this.buildUserInput(message, images),
+        }),
+      );
       this.activeTurnId = response.turn.id;
-      await completion;
+      const turnWaitMs = 180_000;
+      await timedSessionStep(this.id, "codex/turn.completed(wait)", () =>
+        Promise.race([
+          completion,
+          new Promise<never>((_, reject) => {
+            const timer = setTimeout(() => {
+              this.turnCompletion = undefined;
+              sessionLog(
+                this.id,
+                "error",
+                `Codex turn timed out after ${turnWaitMs}ms (no turn/completed)`,
+                ["system", "runtime", "codex"],
+                { turnWaitMs, turnId: this.activeTurnId },
+              );
+              reject(
+                new Error(
+                  `Codex 回合超时（${Math.round(turnWaitMs / 1000)}s 内未收到 turn/completed）。常见原因：网络/MCP 失败或进程卡住，请重试或检查 Codex 登录状态。`,
+                ),
+              );
+            }, turnWaitMs);
+            void completion.then(
+              () => clearTimeout(timer),
+              () => clearTimeout(timer),
+            );
+          }),
+        ]),
+      );
     } catch (error) {
       this.turnCompletion = undefined;
       throw error;
+    } finally {
+      doneTurn();
     }
   }
 
@@ -641,5 +775,95 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     this.child.stdin.end();
     this.child.kill();
     await exited;
+  }
+}
+
+const PROXY_ENV_KEYS = [
+  "HTTPS_PROXY",
+  "HTTP_PROXY",
+  "ALL_PROXY",
+  "https_proxy",
+  "http_proxy",
+  "all_proxy",
+] as const;
+
+function proxySummary(env: NodeJS.ProcessEnv): string | null {
+  for (const key of PROXY_ENV_KEYS) {
+    const value = env[key];
+    if (value) return value;
+  }
+  return null;
+}
+
+/**
+ * IDE/service-launched Supervisor often misses proxy variables that exist in
+ * the user's interactive terminal. On Windows, reuse a reachable proxy saved
+ * in Internet Settings (proxy clients commonly leave ProxyServer populated).
+ */
+async function withDetectedWindowsProxy(
+  env: NodeJS.ProcessEnv,
+): Promise<NodeJS.ProcessEnv> {
+  if (proxySummary(env) || process.platform !== "win32") return env;
+
+  const result = spawnSync(
+    "reg.exe",
+    [
+      "query",
+      "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings",
+      "/v",
+      "ProxyServer",
+    ],
+    { encoding: "utf8", windowsHide: true, timeout: 2000 },
+  );
+  if (result.status !== 0) return env;
+
+  const match = /^\s*ProxyServer\s+REG_\w+\s+(.+?)\s*$/im.exec(result.stdout ?? "");
+  const proxy = normalizeWindowsProxy(match?.[1]);
+  if (!proxy || !(await isProxyReachable(proxy))) return env;
+
+  return {
+    ...env,
+    HTTP_PROXY: proxy,
+    HTTPS_PROXY: proxy,
+    ALL_PROXY: proxy,
+    http_proxy: proxy,
+    https_proxy: proxy,
+    all_proxy: proxy,
+  };
+}
+
+function normalizeWindowsProxy(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const entries = raw
+    .split(";")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const keyed = Object.fromEntries(
+    entries
+      .map((entry) => entry.split("=", 2))
+      .filter((entry): entry is [string, string] => entry.length === 2),
+  );
+  const value = keyed.https ?? keyed.http ?? entries.find((entry) => !entry.includes("="));
+  if (!value) return null;
+  return /^[a-z][a-z\d+.-]*:\/\//i.test(value) ? value : `http://${value}`;
+}
+
+async function isProxyReachable(proxy: string): Promise<boolean> {
+  try {
+    const url = new URL(proxy);
+    const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
+    if (!url.hostname || !Number.isFinite(port)) return false;
+    return await new Promise<boolean>((resolveReachable) => {
+      const socket = createConnection({ host: url.hostname, port });
+      const finish = (reachable: boolean) => {
+        socket.destroy();
+        resolveReachable(reachable);
+      };
+      socket.setTimeout(500, () => finish(false));
+      socket.once("connect", () => finish(true));
+      socket.once("error", () => finish(false));
+    });
+  } catch {
+    return false;
   }
 }

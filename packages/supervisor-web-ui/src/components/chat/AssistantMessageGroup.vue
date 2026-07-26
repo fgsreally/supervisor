@@ -22,19 +22,16 @@
       {{ avatarLabel }}
     </div>
     <div class="max-w-[75%] flex flex-col items-start min-w-0">
-      <span class="chat-msg-time chat-msg-time--agent">
-        {{ timeLabel }}
-        <span v-if="durationLabel" class="chat-msg-duration">· {{ durationLabel }}</span>
-      </span>
+      <span class="chat-msg-time chat-msg-time--agent">{{ timeLabel }}</span>
       <div
         class="relative px-3.5 py-2.5 w-full chat-bubble"
+        :class="{ 'ring-2 ring-[#07c160]/40': searchHit }"
         :style="{
           background: 'var(--app-bubble-assistant)',
           color: 'var(--app-text-primary)',
           borderRadius: 'var(--app-bubble-radius)',
           fontSize: 'var(--chat-msg-font-size, 14px)',
         }"
-        :class="{ 'ring-2 ring-[#07c160]/40': searchHit }"
       >
         <div
           class="absolute top-3 w-2 h-2 rotate-45 -left-1 chat-bubble-tail"
@@ -70,6 +67,7 @@
               @open-bash="(cmd, result, intent, entryId) => emit('open-bash', cmd, result, intent, entryId)"
               @navigate="emit('navigate', $event)"
               @answered="emit('answered')"
+              @open-external-detail="(args, result) => emit('open-external-detail', args, result)"
             />
           </template>
 
@@ -79,6 +77,13 @@
           </div>
         </div>
       </div>
+      <span
+        v-if="durationLabel"
+        class="chat-msg-duration"
+        :class="{ 'chat-msg-duration--pinned': durationPinned }"
+      >
+        耗时 {{ durationLabel }}
+      </span>
     </div>
   </div>
 </template>
@@ -100,6 +105,8 @@ const props = defineProps<{
   streamingGroupId: string | null;
   timeLabel: string;
   durationLabel?: string | null;
+  /** Latest assistant turn: always show duration; older turns show on hover. */
+  durationPinned?: boolean;
   searchHit?: boolean;
   avatarLabel?: string;
   avatarColor?: string;
@@ -122,6 +129,10 @@ const emit = defineEmits<{
   ];
   navigate: [sessionId: string];
   answered: [];
+  "open-external-detail": [
+    callArgs?: Record<string, unknown>,
+    result?: Array<{ type: string; text: string }>,
+  ];
   "open-actions": [payload: { mode: "menu" | "sheet"; x: number; y: number }];
 }>();
 
@@ -218,14 +229,21 @@ onBeforeUnmount(cancelLongPress);
 }
 
 .chat-msg-duration {
+  align-self: flex-end;
+  margin-top: 4px;
+  margin-right: 2px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--app-text-muted);
   opacity: 0;
-  margin-left: 2px;
   transition: opacity 0.15s ease;
   pointer-events: none;
+  white-space: nowrap;
 }
 
+.chat-msg-duration--pinned,
 .assistant-message-row:hover .chat-msg-duration {
-  opacity: 0.95;
+  opacity: 0.85;
 }
 
 .chat-avatar {

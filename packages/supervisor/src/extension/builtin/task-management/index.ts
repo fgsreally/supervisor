@@ -1,32 +1,38 @@
 import { Type } from "typebox";
-import {
-  activeTaskPaths,
-  readTaskArtifact,
-  taskArtifactPath,
-  writeTaskArtifact,
-} from "../../../core/task-artifacts.js";
+import { readTaskArtifact, taskArtifactPath, writeTaskArtifact } from "../../../core/task-artifacts.js";
 import { parseSessionTodos, renderSessionTodos } from "../../../core/session-todos.js";
 import type { ExtensionDefinition } from "../../types.js";
 
 type Todo = { title: string; status: "pending" | "in_progress" | "done" };
 
+const FINISHED_GOAL_STATUSES = new Set(["completed", "cancelled"]);
+
+type GoalResult = {
+  content: Array<{ type: "text"; text: string }>;
+  details?: { path: string };
+  isError?: boolean;
+};
+
 const taskManagementExtension: ExtensionDefinition = {
   name: "task-management",
   async setup(ctx) {
-    const initialMeta = await ctx.session.meta.get();
-    let planPath = activeTaskPaths(initialMeta).find((path) => path.includes("/plan-")) ?? null;
-    const setActive = async (path: string) => {
-      const meta = await ctx.session.meta.get();
-      const tasks = [...new Set([...activeTaskPaths(meta), path])];
-      await ctx.session.meta.patch({ tasks, currentTask: path });
+    const initialTasks = await ctx.session.tasks.list();
+    let planPath =
+      initialTasks.find((task) => task.kind === "plan" && task.status !== "completed")?.path ??
+      null;
+
+    const setActive = async (
+      path: string,
+      kind: "goal" | "plan",
+      title: string,
+      status: string,
+    ) => {
+      await ctx.session.tasks.upsert({ path, kind, title, status });
+      await ctx.session.tasks.setCurrentPath(path);
     };
     const finish = async (path: string) => {
-      const meta = await ctx.session.meta.get();
-      const tasks = activeTaskPaths(meta).filter((item) => item !== path);
-      await ctx.session.meta.patch({
-        tasks,
-        currentTask: meta.currentTask === path ? (tasks.at(-1) ?? null) : meta.currentTask,
-      });
+      const current = await ctx.session.tasks.getCurrentPath();
+      if (current === path) await ctx.session.tasks.setCurrentPath(null);
     };
 
     ctx.session.tools.beforeUse((call) => {
@@ -56,15 +62,15 @@ const taskManagementExtension: ExtensionDefinition = {
         ),
       }),
       async execute(params: { todos?: Todo[] }) {
-        const meta = await ctx.session.meta.get();
         if (params.todos === undefined) {
+          const todos = await ctx.session.todos.list();
           return {
-            content: [{ type: "text", text: renderSessionTodos(parseSessionTodos(meta.todos)) }],
+            content: [{ type: "text" as const, text: renderSessionTodos(todos) }],
           };
         }
         const todos = parseSessionTodos(params.todos);
-        await ctx.session.meta.patch({ todos });
-        return { content: [{ type: "text", text: renderSessionTodos(todos) }] };
+        const saved = await ctx.session.todos.replace(todos);
+        return { content: [{ type: "text" as const, text: renderSessionTodos(saved) }] };
       },
     });
 
@@ -132,7 +138,7 @@ const taskManagementExtension: ExtensionDefinition = {
           status: "planning",
           body: "# Implementation plan\n\nWrite the plan here.",
         });
-        await setActive(planPath);
+        await setActive(planPath, "plan", "Implementation plan", "planning");
         return {
           type: "handled",
           message: `Plan mode active. Write the plan to ${planPath}, then call ExitPlanMode.`,
@@ -140,32 +146,42 @@ const taskManagementExtension: ExtensionDefinition = {
       },
     });
 
-    async function executeGoal(params: { action: string; objective?: string; reason?: string }) {
-      const meta = await ctx.session.meta.get();
-      let path = activeTaskPaths(meta).find((item) => item.includes("/goal-"));
+    async function executeGoal(params: {
+      action: string;
+      objective?: string;
+      reason?: string;
+    }): Promise<GoalResult> {
+      const tasks = await ctx.session.tasks.list();
+      const task = tasks.find(
+        (item) => item.kind === "goal" && !FINISHED_GOAL_STATUSES.has(item.status ?? ""),
+      );
       if (params.action === "create") {
         if (!params.objective) throw new Error("objective is required");
-        if (path) throw new Error("An active Goal already exists");
-        path = taskArtifactPath("goal");
+        if (task) throw new Error("An active Goal already exists");
+        const path = taskArtifactPath("goal");
+        const title = params.objective.split("\n")[0]!.slice(0, 120);
         await writeTaskArtifact(ctx.session.dir, path, {
           type: "goal",
-          title: params.objective.split("\n")[0]!.slice(0, 120),
+          title,
           status: "active",
           body: `# Goal\n\n${params.objective}`,
         });
-        await setActive(path);
+        await setActive(path, "goal", title, "active");
         return { content: [{ type: "text", text: `Goal created: ${path}` }], details: { path } };
       }
-      if (!path)
+      if (!task) {
         return {
           content: [{ type: "text", text: "No active Goal." }],
           isError: params.action !== "status",
         };
-      const artifact = await readTaskArtifact(ctx.session.dir, path);
-      if (!artifact)
+      }
+      const artifact = await readTaskArtifact(ctx.session.dir, task.path);
+      if (!artifact) {
         return { content: [{ type: "text", text: "Goal file is missing." }], isError: true };
-      if (params.action === "status")
-        return { content: [{ type: "text", text: artifact.content }], details: { path } };
+      }
+      if (params.action === "status") {
+        return { content: [{ type: "text", text: artifact.content }], details: { path: task.path } };
+      }
       const status = {
         pause: "paused",
         resume: "active",
@@ -176,14 +192,23 @@ const taskManagementExtension: ExtensionDefinition = {
       const body =
         artifact.content.replace(/^---[\s\S]*?---\s*/m, "") +
         (params.reason ? `\n\n## Status reason\n\n${params.reason}` : "");
-      await writeTaskArtifact(ctx.session.dir, path, {
+      await writeTaskArtifact(ctx.session.dir, task.path, {
         type: "goal",
         title: artifact.title,
         status,
         body,
       });
-      if (status === "completed" || status === "cancelled") await finish(path);
-      return { content: [{ type: "text", text: `Goal ${status}: ${path}` }], details: { path } };
+      await ctx.session.tasks.upsert({
+        path: task.path,
+        kind: "goal",
+        title: artifact.title,
+        status,
+      });
+      if (FINISHED_GOAL_STATUSES.has(status)) await finish(task.path);
+      return {
+        content: [{ type: "text", text: `Goal ${status}: ${task.path}` }],
+        details: { path: task.path },
+      };
     }
 
     ctx.agent.registerTool({
@@ -203,7 +228,7 @@ const taskManagementExtension: ExtensionDefinition = {
           status: "planning",
           body: "# Implementation plan\n\nWrite the plan here.",
         });
-        await setActive(planPath);
+        await setActive(planPath, "plan", "Implementation plan", "planning");
         return {
           content: [
             {
@@ -246,6 +271,12 @@ const taskManagementExtension: ExtensionDefinition = {
           title: artifact.title,
           status: "completed",
           body: artifact.content.replace(/^---[\s\S]*?---\s*/m, ""),
+        });
+        await ctx.session.tasks.upsert({
+          path: completedPath,
+          kind: "plan",
+          title: artifact.title,
+          status: "completed",
         });
         await finish(completedPath);
         planPath = null;

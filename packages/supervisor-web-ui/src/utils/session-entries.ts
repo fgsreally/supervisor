@@ -105,6 +105,17 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
         : typeof data.message === "string"
           ? data.message.trim()
           : "系统事件";
+    // Legacy path: some external-agent failures were stored as custom_message.
+    // Render them as llm_error cards so they match LobeChat-style error bubbles.
+    if (looksLikeLlmFailureNotice(text)) {
+      return {
+        ...base,
+        id: entry.id,
+        type: "llm_error",
+        content: text,
+        createdAt: entry.createdAt,
+      };
+    }
     return {
       ...base,
       id: entry.id,
@@ -256,4 +267,105 @@ export function applyAgentEventToChatEntries(
       ...(normalized.details !== undefined ? { details: normalized.details } : {}),
     });
   }
+}
+
+function looksLikeLlmFailureNotice(text: string): boolean {
+  return /回合超时|turn\/completed|模型调用失败|Codex app-server exited|Failed to start Codex|消息发送失败|Insufficient balance|rate limit|context.*(overflow|length)/i.test(
+    text,
+  );
+}
+
+function tailHasAssistantToolCalls(entries: ChatEntry[], userIndex: number): boolean {
+  for (let index = userIndex + 1; index < entries.length; index += 1) {
+    const entry = entries[index];
+    if (entry?.type !== "message" || entry.message.role !== "assistant") continue;
+    const content = entry.message.content;
+    if (Array.isArray(content) && content.some((part) => part.type === "toolCall")) return true;
+  }
+  return false;
+}
+
+function lastUserEntryIndex(entries: ChatEntry[]): number {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry?.type === "message" && entry.message.role === "user") return index;
+  }
+  return -1;
+}
+
+function captureStreamingToolSnapshot(localEntries: ChatEntry[]): {
+  assistantEntry: Extract<ChatEntry, { type: "message" }>;
+  toolResults: Array<Extract<ChatEntry, { type: "toolResult" }>>;
+} | null {
+  for (let index = localEntries.length - 1; index >= 0; index -= 1) {
+    const entry = localEntries[index];
+    if (entry?.type !== "message" || entry.message.role !== "assistant") continue;
+    if (!String(entry.id).startsWith("stream-")) continue;
+    const content = Array.isArray(entry.message.content) ? entry.message.content : [];
+    const toolCalls = content.filter((part): part is ChatToolPart => part.type === "toolCall");
+    const toolResults = localEntries.filter(
+      (candidate): candidate is Extract<ChatEntry, { type: "toolResult" }> =>
+        candidate.type === "toolResult" && String(candidate.id).startsWith("tool-result-"),
+    );
+    if (toolCalls.length === 0 && toolResults.length === 0) return null;
+    return { assistantEntry: entry, toolResults };
+  }
+  return null;
+}
+
+/** Keep optimistic streaming tool rows when reload returns text-only assistant messages. */
+export function mergeStreamingToolsIntoPersistedEntries(
+  serverEntries: ChatEntry[],
+  localEntries: ChatEntry[],
+): ChatEntry[] {
+  const snapshot = captureStreamingToolSnapshot(localEntries);
+  if (!snapshot) return serverEntries;
+
+  const userIndex = lastUserEntryIndex(serverEntries);
+  if (userIndex < 0) return serverEntries;
+
+  const tail = serverEntries.slice(userIndex + 1);
+  if (tailHasAssistantToolCalls(serverEntries, userIndex)) return serverEntries;
+
+  const merged = [...serverEntries];
+  const lastAssistantIndex = merged.length - 1;
+  const lastAssistant = merged[lastAssistantIndex];
+  if (lastAssistant?.type !== "message" || lastAssistant.message.role !== "assistant") {
+    return serverEntries;
+  }
+
+  const localContent = Array.isArray(snapshot.assistantEntry.message.content)
+    ? snapshot.assistantEntry.message.content
+    : [];
+  const toolCalls = localContent.filter((part): part is ChatToolPart => part.type === "toolCall");
+  if (toolCalls.length === 0 && snapshot.toolResults.length === 0) return serverEntries;
+
+  const existingContent = Array.isArray(lastAssistant.message.content)
+    ? [...lastAssistant.message.content]
+    : typeof lastAssistant.message.content === "string" && lastAssistant.message.content.trim()
+      ? [{ type: "text" as const, text: lastAssistant.message.content }]
+      : [];
+
+  const withoutLocalToolCalls = existingContent.filter((part) => part.type !== "toolCall");
+  merged[lastAssistantIndex] = {
+    ...lastAssistant,
+    message: {
+      ...lastAssistant.message,
+      content: [...withoutLocalToolCalls, ...toolCalls],
+    },
+  };
+
+  const resultByCallId = new Map(
+    snapshot.toolResults.map((entry) => [entry.toolCallId, entry] as const),
+  );
+  for (const toolCall of toolCalls) {
+    const result = resultByCallId.get(toolCall.id);
+    if (!result) continue;
+    merged.push({
+      ...result,
+      id: `merged-tool-result-${toolCall.id}`,
+    });
+  }
+
+  return merged;
 }

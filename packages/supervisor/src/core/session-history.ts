@@ -63,7 +63,7 @@ export function parseCheckpoints(meta: Record<string, unknown>): SessionCheckpoi
 }
 
 function assertSessionIdle(session: SessionRow): void {
-  if (session.status === "running" || session.status === "waiting_user") {
+  if (session.status === "running" || session.status === "blocked") {
     throw new Error(
       `Session ${session.id} is busy (status: ${session.status}); wait until idle before checkpoint/rewind`,
     );

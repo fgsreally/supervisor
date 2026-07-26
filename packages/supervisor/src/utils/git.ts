@@ -1,7 +1,7 @@
 import { execFile, execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 
 const execGit = promisify(execFile);
@@ -16,41 +16,67 @@ export function withSvCommitMarker(message: string): string {
   return `${trimmed}\n\n${SV_COMMIT_TRAILER}`;
 }
 
-export function ensureGitRepositorySync(cwd: string): string {
-  mkdirSync(cwd, { recursive: true });
-  const git = (args: string[]) =>
-    execFileSync("git", args, {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-    }).trim();
+function runGitSync(cwd: string, args: string[]): string {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  }).trim();
+}
+
+/**
+ * Ensure `projectCwd` itself is a git repository root.
+ *
+ * Important: if the project sits inside a parent monorepo (e.g. playground/
+ * under supervisor/), we still `git init` a nested repo at the project path
+ * so session worktrees belong to the project — not the parent repo.
+ */
+export function ensureProjectGitRootSync(projectCwd: string): string {
+  mkdirSync(projectCwd, { recursive: true });
+  const root = resolve(projectCwd);
+  let toplevel: string | null = null;
   try {
-    git(["rev-parse", "--show-toplevel"]);
+    toplevel = resolve(runGitSync(root, ["rev-parse", "--show-toplevel"]));
   } catch {
-    git(["init", "-b", "main"]);
+    toplevel = null;
+  }
+  if (toplevel !== root) {
+    runGitSync(root, ["init", "-b", "main"]);
   }
   let branch = "";
   try {
-    branch = git(["branch", "--show-current"]);
+    branch = runGitSync(root, ["branch", "--show-current"]);
   } catch {
     // handled below
   }
   if (!branch) {
     branch = "main";
-    git(["symbolic-ref", "HEAD", `refs/heads/${branch}`]);
+    runGitSync(root, ["symbolic-ref", "HEAD", `refs/heads/${branch}`]);
   }
-  return branch;
+  // `git worktree add` needs at least one commit.
+  try {
+    runGitSync(root, ["rev-parse", "HEAD"]);
+  } catch {
+    runGitSync(root, ["commit", "--allow-empty", "-m", withSvCommitMarker("sv: init project")]);
+  }
+  return root;
 }
 
-export interface SessionGitMeta {
+export function ensureGitRepositorySync(cwd: string): string {
+  ensureProjectGitRootSync(cwd);
+  try {
+    return runGitSync(cwd, ["branch", "--show-current"]) || "main";
+  } catch {
+    return "main";
+  }
+}
+
+export interface CreatedSessionWorktree {
   repoRoot: string;
   worktreePath: string;
   branch: string;
-  baseBranch: string;
-  worktreeEnabled: true;
-  turnCount?: number;
-  lastCommit?: { hash: string; message: string };
-  mergeError?: string;
+  /** Branch checked out at project root when the worktree was created (log only). */
+  startBranch: string;
 }
 
 export function sessionBranchName(sessionId: string): string {
@@ -59,6 +85,95 @@ export function sessionBranchName(sessionId: string): string {
 
 export function sessionWorktreePath(repoRoot: string, sessionId: string): string {
   return join(repoRoot, ".pi", "supervisor", "worktrees", sessionId);
+}
+
+export type SessionGitCommit = { hash: string; message: string };
+
+/** Core runtime view of a session worktree (from sessions.meta.git). */
+export type SessionGitContext = {
+  repoRoot: string;
+  worktreePath: string;
+  branch: string;
+  worktreeEnabled: boolean;
+  lastCommit?: SessionGitCommit;
+  mergeError?: string;
+};
+
+function normalizeRepoPath(path: string): string {
+  return path.replace(/\\/g, "/");
+}
+
+export function parseGitLastCommit(raw: string | null | undefined): SessionGitCommit | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as { hash?: unknown; message?: unknown };
+    if (typeof parsed.hash === "string" && typeof parsed.message === "string") {
+      return { hash: parsed.hash, message: parsed.message };
+    }
+  } catch {
+    // ignore invalid JSON
+  }
+  return null;
+}
+
+function parseGitMetaFromSessionMeta(meta: Record<string, unknown> | undefined | null): {
+  worktreePath: string | null;
+  branch?: string;
+  lastCommit?: SessionGitCommit;
+  mergeError?: string;
+} {
+  const raw = meta?.git;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { worktreePath: null };
+  }
+  const git = raw as Record<string, unknown>;
+  const last =
+    git.lastCommit && typeof git.lastCommit === "object"
+      ? (git.lastCommit as { hash?: unknown; message?: unknown })
+      : null;
+  return {
+    worktreePath: typeof git.worktreePath === "string" ? git.worktreePath : null,
+    branch: typeof git.branch === "string" ? git.branch : undefined,
+    lastCommit:
+      last && typeof last.hash === "string" && typeof last.message === "string"
+        ? { hash: last.hash, message: last.message }
+        : undefined,
+    mergeError: typeof git.mergeError === "string" ? git.mergeError : undefined,
+  };
+}
+
+/** Resolve worktree paths from sessions.meta.git + project cwd. */
+export function resolveSessionGitContext(input: {
+  sessionId: number;
+  cwd: string;
+  projectCwd?: string | null;
+  meta?: Record<string, unknown> | null;
+  /** @deprecated Prefer meta.git.worktreePath */
+  gitWorktreeEnabled?: boolean;
+}): SessionGitContext | null {
+  const repoRoot = input.projectCwd;
+  if (!repoRoot) return null;
+
+  const git = parseGitMetaFromSessionMeta(input.meta);
+  const defaultWorktreePath = sessionWorktreePath(repoRoot, String(input.sessionId));
+  const worktreePath = git.worktreePath ?? defaultWorktreePath;
+  const onWorktree = normalizeRepoPath(input.cwd) === normalizeRepoPath(worktreePath);
+  const worktreeEnabled = Boolean(git.worktreePath) || input.gitWorktreeEnabled === true;
+  if (!onWorktree && !worktreeEnabled) return null;
+
+  return {
+    repoRoot,
+    worktreePath: onWorktree ? input.cwd : worktreePath,
+    branch: git.branch ?? sessionBranchName(String(input.sessionId)),
+    worktreeEnabled: true,
+    ...(git.lastCommit ? { lastCommit: git.lastCommit } : {}),
+    ...(git.mergeError ? { mergeError: git.mergeError } : {}),
+  };
+}
+
+/** Achieve merge target: project repo current checkout (never stored on session). */
+export async function resolveMergeTargetBranch(repoRoot: string): Promise<string> {
+  return getCurrentBranch(repoRoot);
 }
 
 async function runGit(
@@ -98,31 +213,52 @@ export async function getDefaultBranch(repoRoot: string): Promise<string> {
   } catch {
     // fall through
   }
+  return getCurrentBranch(repoRoot);
+}
+
+/** Branch checked out at the project repo root — source of truth for new session worktrees. */
+export async function getCurrentBranch(repoRoot: string): Promise<string> {
   try {
     const { stdout } = await runGit(repoRoot, ["branch", "--show-current"]);
-    if (stdout) return stdout;
+    if (stdout.trim()) return stdout.trim();
+  } catch {
+    // fall through
+  }
+  try {
+    const { stdout } = await runGit(repoRoot, ["rev-parse", "--short", "HEAD"]);
+    if (stdout.trim()) return stdout.trim();
   } catch {
     // fall through
   }
   return "main";
 }
 
+export async function listLocalBranches(repoRoot: string): Promise<string[]> {
+  try {
+    const { stdout } = await runGit(repoRoot, ["branch", "--format=%(refname:short)"]);
+    return stdout
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export async function createSessionWorktree(
   repoRoot: string,
   sessionId: string,
-): Promise<SessionGitMeta> {
+): Promise<CreatedSessionWorktree> {
   const branch = sessionBranchName(sessionId);
   const worktreePath = sessionWorktreePath(repoRoot, sessionId);
   mkdirSync(join(repoRoot, ".pi", "supervisor", "worktrees"), { recursive: true });
-  const baseBranch = await getDefaultBranch(repoRoot);
-  await runGit(repoRoot, ["worktree", "add", "-b", branch, worktreePath, baseBranch]);
+  const startBranch = await getCurrentBranch(repoRoot);
+  await runGit(repoRoot, ["worktree", "add", "-b", branch, worktreePath, startBranch]);
   return {
     repoRoot,
     worktreePath,
     branch,
-    baseBranch,
-    worktreeEnabled: true,
-    turnCount: 0,
+    startBranch,
   };
 }
 
@@ -242,9 +378,9 @@ export async function commitGitSnapshot(
 export async function mergeSessionBranch(
   repoRoot: string,
   branch: string,
-  baseBranch: string,
+  targetBranch: string,
 ): Promise<void> {
-  await runGit(repoRoot, ["checkout", baseBranch]);
+  await runGit(repoRoot, ["checkout", targetBranch]);
   await runGit(repoRoot, [
     "merge",
     "--no-ff",
@@ -308,54 +444,31 @@ export async function removeSessionWorktree(
   repoRoot: string,
   worktreePath: string,
   branch: string,
+  options?: { forceBranch?: boolean },
 ): Promise<void> {
   try {
     await runGit(repoRoot, ["worktree", "remove", worktreePath, "--force"]);
   } catch {
-    // worktree may already be gone
+    // worktree may already be gone / not registered
   }
+  const branchFlag = options?.forceBranch ? "-D" : "-d";
   try {
-    await runGit(repoRoot, ["branch", "-d", branch]);
+    await runGit(repoRoot, ["branch", branchFlag, branch]);
   } catch {
-    // branch may already be deleted
+    // branch may already be deleted or still has commits (non-force)
   }
-}
-
-export function parseSessionGitMeta(meta: Record<string, unknown>): SessionGitMeta | null {
-  const git = meta.git;
-  if (!git || typeof git !== "object") return null;
-  const item = git as Record<string, unknown>;
-  if (item.worktreeEnabled !== true) return null;
-  if (
-    typeof item.repoRoot !== "string" ||
-    typeof item.worktreePath !== "string" ||
-    typeof item.branch !== "string" ||
-    typeof item.baseBranch !== "string"
-  ) {
-    return null;
-  }
-  return {
-    repoRoot: item.repoRoot,
-    worktreePath: item.worktreePath,
-    branch: item.branch,
-    baseBranch: item.baseBranch,
-    worktreeEnabled: true,
-    ...(typeof item.turnCount === "number" ? { turnCount: item.turnCount } : {}),
-    ...(item.lastCommit && typeof item.lastCommit === "object"
-      ? { lastCommit: item.lastCommit as SessionGitMeta["lastCommit"] }
-      : {}),
-    ...(typeof item.mergeError === "string" ? { mergeError: item.mergeError } : {}),
-  };
 }
 
 export async function listWorktreeCommits(
   cwd: string,
+  sinceBranch: string,
   limit = 30,
 ): Promise<
   Array<{ hash: string; shortHash: string; subject: string; author: string; timestamp: number }>
 > {
   const { stdout } = await runGit(cwd, [
     "log",
+    `${sinceBranch}..HEAD`,
     `-${Math.max(1, Math.min(limit, 100))}`,
     "--pretty=format:%H%x1f%h%x1f%s%x1f%an%x1f%ct%x1e",
   ]).catch(() => ({ stdout: "", stderr: "" }));
@@ -374,6 +487,21 @@ export interface GitRemoteResult {
   ok: true;
   stdout: string;
   stderr: string;
+}
+
+export interface ProjectGitInfo {
+  currentBranch: string;
+  branches: string[];
+}
+
+export async function getProjectGitInfo(cwd: string): Promise<ProjectGitInfo> {
+  const repoRoot = await findGitRoot(cwd);
+  if (!repoRoot) throw new Error("not a git repository");
+  const [currentBranch, branches] = await Promise.all([
+    getCurrentBranch(repoRoot),
+    listLocalBranches(repoRoot),
+  ]);
+  return { currentBranch, branches };
 }
 
 function formatGitError(error: unknown): Error {
@@ -408,6 +536,20 @@ export async function gitPush(cwd: string): Promise<GitRemoteResult> {
   if (!repoRoot) throw new Error("not a git repository");
   try {
     const result = await runGit(repoRoot, ["push"]);
+    return { ok: true, stdout: result.stdout, stderr: result.stderr };
+  } catch (error) {
+    throw formatGitError(error);
+  }
+}
+
+/** Checkout a local branch at the project repo root. */
+export async function gitCheckout(cwd: string, branch: string): Promise<GitRemoteResult> {
+  const repoRoot = await findGitRoot(cwd);
+  if (!repoRoot) throw new Error("not a git repository");
+  const name = branch.trim();
+  if (!name) throw new Error("branch name is required");
+  try {
+    const result = await runGit(repoRoot, ["checkout", name]);
     return { ok: true, stdout: result.stdout, stderr: result.stderr };
   } catch (error) {
     throw formatGitError(error);

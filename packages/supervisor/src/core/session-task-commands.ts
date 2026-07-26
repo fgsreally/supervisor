@@ -1,10 +1,5 @@
 import { randomUUID } from "node:crypto";
-import {
-  activeTaskPaths,
-  readTaskArtifact,
-  taskArtifactPath,
-  writeTaskArtifact,
-} from "./task-artifacts.js";
+import { readTaskArtifact, taskArtifactPath, writeTaskArtifact } from "./task-artifacts.js";
 import { ensureSessionDir } from "./session-files.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { SlashCommandInfo } from "./session-runtime.js";
@@ -25,6 +20,8 @@ export const TASK_SLASH_COMMANDS: SlashCommandInfo[] = [
     arguments: { type: "none" },
   },
 ];
+
+const FINISHED_GOAL_STATUSES = new Set(["completed", "cancelled"]);
 
 export function isTaskSlashCommand(name: string): boolean {
   const normalized = name.replace(/^\//, "").toLowerCase();
@@ -71,9 +68,9 @@ function appendSlashMessage(
 }
 
 async function executeGoalCommand(
+  db: SupervisorDb,
+  sessionId: number,
   sessionDir: string,
-  meta: Record<string, unknown>,
-  patchMeta: (patch: Record<string, unknown>) => void,
   args: string,
 ): Promise<{ ok: boolean; message: string }> {
   const trimmed = args.trim();
@@ -81,31 +78,31 @@ async function executeGoalCommand(
   const actions = new Set(["status", "pause", "resume", "complete", "blocked", "cancel"]);
   const action = actions.has(first) ? first : trimmed ? "create" : "status";
   const tail = actions.has(first) ? rest.join(" ") : trimmed;
-  let path = activeTaskPaths(meta).find((item) => item.includes("/goal-"));
+  const task = db
+    .listSessionTasks(sessionId)
+    .find((item) => item.kind === "goal" && !FINISHED_GOAL_STATUSES.has(item.status ?? ""));
 
   if (action === "create") {
     if (!tail) return { ok: false, message: "objective is required" };
-    if (path) return { ok: false, message: "An active Goal already exists" };
-    path = taskArtifactPath("goal");
+    if (task) return { ok: false, message: "An active Goal already exists" };
+    const path = taskArtifactPath("goal");
+    const title = tail.split("\n")[0]!.slice(0, 120);
     await writeTaskArtifact(sessionDir, path, {
       type: "goal",
-      title: tail.split("\n")[0]!.slice(0, 120),
+      title,
       status: "active",
       body: `# Goal\n\n${tail}`,
     });
-    const tasks = [...new Set([...activeTaskPaths(meta), path])];
-    patchMeta({ tasks, currentTask: path });
+    const row = db.upsertSessionTask({ sessionId, path, kind: "goal", title, status: "active" });
+    db.updateSessionFields(sessionId, { currentTaskId: row.id });
     return { ok: true, message: `Goal created: ${path}` };
   }
 
-  if (!path) {
-    return {
-      ok: action === "status",
-      message: "No active Goal.",
-    };
+  if (!task) {
+    return { ok: action === "status", message: "No active Goal." };
   }
 
-  const artifact = await readTaskArtifact(sessionDir, path);
+  const artifact = await readTaskArtifact(sessionDir, task.path);
   if (!artifact) return { ok: false, message: "Goal file is missing." };
   if (action === "status") return { ok: true, message: artifact.content };
 
@@ -123,30 +120,38 @@ async function executeGoalCommand(
     (tail && (action === "pause" || action === "blocked")
       ? `\n\n## Status reason\n\n${tail}`
       : "");
-  await writeTaskArtifact(sessionDir, path, {
+  await writeTaskArtifact(sessionDir, task.path, {
     type: "goal",
     title: artifact.title,
     status,
     body,
   });
-  if (status === "completed" || status === "cancelled") {
-    const tasks = activeTaskPaths(meta).filter((item) => item !== path);
-    patchMeta({
-      tasks,
-      currentTask: meta.currentTask === path ? (tasks.at(-1) ?? null) : meta.currentTask,
-    });
+  const updated = db.upsertSessionTask({
+    sessionId,
+    path: task.path,
+    kind: "goal",
+    title: artifact.title,
+    status,
+  });
+  if (FINISHED_GOAL_STATUSES.has(status)) {
+    const current = db.get(sessionId);
+    if (current?.current_task_id === updated.id) {
+      db.updateSessionFields(sessionId, { currentTaskId: null });
+    }
   }
-  return { ok: true, message: `Goal ${status}: ${path}` };
+  return { ok: true, message: `Goal ${status}: ${task.path}` };
 }
 
 async function executePlanCommand(
+  db: SupervisorDb,
+  sessionId: number,
   sessionDir: string,
-  meta: Record<string, unknown>,
-  patchMeta: (patch: Record<string, unknown>) => void,
 ): Promise<{ ok: boolean; message: string }> {
-  const existing = activeTaskPaths(meta).find((item) => item.includes("/plan-"));
+  const existing = db
+    .listSessionTasks(sessionId)
+    .find((item) => item.kind === "plan" && item.status !== "completed");
   if (existing) {
-    return { ok: true, message: `Plan mode is already active: ${existing}` };
+    return { ok: true, message: `Plan mode is already active: ${existing.path}` };
   }
   const path = taskArtifactPath("plan");
   await writeTaskArtifact(sessionDir, path, {
@@ -155,8 +160,14 @@ async function executePlanCommand(
     status: "planning",
     body: "# Implementation plan\n\nWrite the plan here.",
   });
-  const tasks = [...new Set([...activeTaskPaths(meta), path])];
-  patchMeta({ tasks, currentTask: path });
+  const row = db.upsertSessionTask({
+    sessionId,
+    path,
+    kind: "plan",
+    title: "Implementation plan",
+    status: "planning",
+  });
+  db.updateSessionFields(sessionId, { currentTaskId: row.id });
   return {
     ok: true,
     message: `Plan mode active. Write the plan to ${path}, then call ExitPlanMode.`,
@@ -175,16 +186,12 @@ export async function executeTaskSlashCommand(options: {
 
   const session = options.db.get(options.sessionId);
   if (!session) throw new Error(`Session ${options.sessionId} not found`);
-  const meta = JSON.parse(session.meta || "{}") as Record<string, unknown>;
   const sessionDir = await ensureSessionDir(options.projectId, options.sessionId);
-  const patchMeta = (patch: Record<string, unknown>) => {
-    options.db.updateMeta(options.sessionId, patch);
-  };
 
   const result =
     name === "plan"
-      ? await executePlanCommand(sessionDir, meta, patchMeta)
-      : await executeGoalCommand(sessionDir, meta, patchMeta, options.args ?? "");
+      ? await executePlanCommand(options.db, options.sessionId, sessionDir)
+      : await executeGoalCommand(options.db, options.sessionId, sessionDir, options.args ?? "");
 
   const raw = `/${name}${options.args?.trim() ? ` ${options.args.trim()}` : ""}`;
   appendSlashMessage(options.db, options.sessionId, "slash_input", raw, { name });

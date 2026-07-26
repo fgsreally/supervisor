@@ -59,6 +59,11 @@ function extraUserBinDirs(): string[] {
   const appData = process.env.APPDATA ?? join(home, "AppData", "Roaming");
   if (platform() === "win32") {
     return [
+      // Codex/npm shims invoke `node` from PATH; ensure stock Node installs are visible
+      // even when Supervisor was launched from an IDE with a trimmed environment.
+      process.env.ProgramFiles ? join(process.env.ProgramFiles, "nodejs") : "",
+      process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"], "nodejs") : "",
+      join(localAppData, "Programs", "nodejs"),
       join(localAppData, "Volta", "bin"),
       process.env.ProgramFiles ? join(process.env.ProgramFiles, "Volta") : "",
       process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"], "Volta") : "",

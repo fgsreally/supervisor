@@ -30,6 +30,7 @@ export function ensureBuiltinExtensionResources(db: SupervisorDb): void {
  * Does not reset enabled when the row already exists.
  */
 export function ensureAgentBuiltinExtensionBindings(db: SupervisorDb, agentId: number): void {
+  if (!db.getAgent(agentId)) return;
   ensureBuiltinExtensionResources(db);
   for (const spec of BUILTIN_EXTENSIONS) {
     const resource = db.getResourceByKindSlug("extension", spec.slug);

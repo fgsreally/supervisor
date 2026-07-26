@@ -513,11 +513,20 @@ const chatSessionProps = computed(() => {
   return {
     id: s.id,
     status: s.status,
+    parentId: s.parentId,
+    title: s.title,
+    isBuiltin: s.isBuiltin,
+    avatar: s.avatar,
+    shadowEnabled: s.shadowEnabled,
+    stage: s.stage,
     meta: s.meta,
     agentId: s.agentId ?? undefined,
     workspaceId: s.cwd,
-    pinned: !!s.meta?.pinned,
-    muted: !!s.meta?.muted,
+    pinned: !!s.pinned,
+    muted: !!s.muted,
+    currentTask: s.currentTask,
+    gitSessionBranch: s.gitSessionBranch,
+    gitWorktreeEnabled: s.gitWorktreeEnabled,
   };
 });
 
@@ -537,7 +546,7 @@ function openSessionFromHome(sessionId: string) {
 }
 
 watch(
-  [activeSessionId, mainTab, () => sessionStore.sessions.map((s) => [s.id, s.meta?.unread])],
+  [activeSessionId, mainTab, () => sessionStore.sessions.map((s) => [s.id, s.unread])],
   ([id, tab]) => {
     if (!id || tab !== "chat") return;
     void markActiveSessionRead(id);
@@ -546,7 +555,7 @@ watch(
 
 async function markActiveSessionRead(id: string) {
   const session = sessionStore.sessions.find((s) => s.id === id);
-  const unread = session?.meta?.unread;
+  const unread = session?.unread;
   if (typeof unread !== "number" || unread <= 0) return;
   try {
     await sessionStore.markSessionRead(id);

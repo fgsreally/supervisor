@@ -1,10 +1,5 @@
 import type { AgentTool, SessionMetadata, SessionTreeEntry } from "@earendil-works/pi-agent-core";
 import type { SessionBranchType } from "./core/session-history.js";
-export type {
-  SessionWorkflowState,
-  WorkflowStatePatch,
-  WorkflowStatus,
-} from "./core/session-workflow.js";
 
 /** Runtime shape of SQLiteSessionStorage.getMetadata() in supervisor. */
 export interface SupervisorHarnessMetadata extends SessionMetadata {
@@ -14,16 +9,55 @@ export interface SupervisorHarnessMetadata extends SessionMetadata {
 export type ToolsPreset = "coding" | "readonly" | "none";
 export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork" | "clone";
 
-/** `stopped` is kept for backward compatibility with old DB rows. */
+/**
+ * Session lifecycle status.
+ * `initializing` = spawn prep (worktree / runtime); legacy DB value `starting` maps here.
+ * `blocked` = needs user intervention (approval, missing model, etc.); detail in `error_msg` when applicable.
+ * Legacy: `waiting_user` / `needs_model` → `blocked`.
+ * `stopped` is kept for backward compatibility with old DB rows.
+ */
 export type SessionStatus =
-  | "starting"
+  | "initializing"
   | "running"
-  | "waiting_user"
+  | "blocked"
   | "idle"
   | "finish"
   | "finished"
   | "error"
   | "stopped";
+
+/** Normalize persisted status values (including legacy aliases). */
+export function normalizeSessionStatus(status: string | null | undefined): SessionStatus {
+  if (status === "starting") return "initializing";
+  if (status === "waiting_user" || status === "needs_model") return "blocked";
+  if (
+    status === "initializing" ||
+    status === "running" ||
+    status === "blocked" ||
+    status === "idle" ||
+    status === "finish" ||
+    status === "finished" ||
+    status === "error" ||
+    status === "stopped"
+  ) {
+    return status;
+  }
+  return "idle";
+}
+
+export interface SessionAvatar {
+  text?: string;
+  color?: string;
+  icon?: string | null;
+}
+
+/** Git/worktree state stored in sessions.meta.git (not dedicated columns). */
+export interface SessionGitMeta {
+  branch?: string;
+  worktreePath?: string | null;
+  lastCommit?: { hash: string; message: string } | null;
+  mergeError?: string | null;
+}
 
 export interface SessionRow {
   id: number;
@@ -37,9 +71,23 @@ export interface SessionRow {
   leaf_id: string | null;
   agent_id: number | null;
   branch_type: string | null;
+  created_by?: SessionCreationMethod;
+  /** @deprecated Use created_by. Present only during migration from older DBs. */
   created_via?: SessionCreationMethod;
   show_in_session_list?: number;
   context_leaf_id?: string | null;
+  title?: string | null;
+  system_prompt?: string | null;
+  avatar?: string | null;
+  is_builtin?: number;
+  pinned?: number;
+  muted?: number;
+  unread?: number;
+  external_session_id?: string | null;
+  error_msg?: string | null;
+  stage?: string | null;
+  shadow_enabled?: number;
+  current_task_id?: number | null;
   created_at: number;
   last_active_at: number;
   meta: string;
@@ -62,12 +110,29 @@ export interface Session {
   showInSessionList: boolean;
   /** BTW context snapshot in the parent session. */
   contextLeafId: string | null;
+  title: string | null;
+  systemPrompt: string | null;
+  avatar: SessionAvatar | null;
+  isBuiltin: boolean;
+  pinned: boolean;
+  muted: boolean;
+  unread: number;
+  externalSessionId: string | null;
+  errorMsg: string | null;
+  stage: string | null;
+  shadowEnabled: boolean;
+  currentTaskId: number | null;
   createdAt: Date;
   lastActiveAt: Date;
-  /** User/orchestrator extensions only. */
+  /** Extension data + meta.git (worktree/commit). Core UI fields live in columns. */
   meta: Record<string, unknown>;
-  /** The task currently driving this session, mirrored from meta.currentTask. */
+  /** Path of the current session_tasks row, when set. */
   currentTask: string | null;
+  /** Derived from meta.git.worktreePath / branch. */
+  gitSessionBranch: string | null;
+  gitWorktreeEnabled: boolean;
+  gitMergeError: string | null;
+  gitLastCommit: { hash: string; message: string } | null;
 }
 
 export interface CreateSessionOptions {
@@ -81,6 +146,61 @@ export interface CreateSessionOptions {
   contextLeafId?: string | null;
   /** Override default list visibility (root sessions are visible by default). */
   showInSessionList?: boolean;
+  title?: string | null;
+  systemPrompt?: string | null;
+  avatar?: SessionAvatar | null;
+  isBuiltin?: boolean;
+  pinned?: boolean;
+  muted?: boolean;
+  shadowEnabled?: boolean;
+  externalSessionId?: string | null;
+  stage?: string | null;
+}
+
+export type SessionTaskKind = "goal" | "plan";
+
+export interface SessionTaskRow {
+  id: number;
+  session_id: number;
+  path: string;
+  kind: SessionTaskKind;
+  title: string | null;
+  status: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface SessionTask {
+  id: number;
+  sessionId: number;
+  path: string;
+  kind: SessionTaskKind;
+  title: string | null;
+  status: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type SessionTodoStatus = "pending" | "in_progress" | "done";
+
+export interface SessionTodoRow {
+  id: number;
+  session_id: number;
+  title: string;
+  status: SessionTodoStatus;
+  sort_order: number;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface SessionTodoItem {
+  id: number;
+  sessionId: number;
+  title: string;
+  status: SessionTodoStatus;
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface ProjectRow {
@@ -89,6 +209,9 @@ export interface ProjectRow {
   cwd: string;
   work_dir: string;
   default_branch: string;
+  install_command: string | null;
+  start_command: string | null;
+  destroy_command: string | null;
   meta: string;
   created_at: number;
   updated_at: number;
@@ -100,6 +223,9 @@ export interface Project {
   cwd: string;
   workDir: string;
   defaultBranch: string;
+  installCommand: string | null;
+  startCommand: string | null;
+  destroyCommand: string | null;
   meta: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
@@ -126,6 +252,11 @@ export interface SpawnSessionOptions extends CreateSessionOptions {
   tools?: AgentTool[];
   /** Create worktree / session row only; attach runtime later via ensureRuntime. */
   skipRuntime?: boolean;
+  /**
+   * When false, return the session row immediately with status `initializing` while
+   * worktree + runtime prepare in the background. Defaults to true.
+   */
+  awaitReady?: boolean;
 }
 
 // ============ Agent Types ============

@@ -29,11 +29,19 @@ import type {
   ToolGuardHandler,
   ToolInfo,
   ToolResultHandler,
+  ExtensionContext,
 } from "../index.js";
 import { getProjectDir, getSessionDir } from "../../core/session-files.js";
 import type { SessionManager } from "../../core/session-manager.js";
 import type { SessionRuntime } from "../../core/session-runtime.js";
-import type { SessionWorkflowState, WorkflowStatePatch } from "../../core/session-workflow.js";
+import { runWatsonTask } from "../../core/watson.js";
+import type {
+  SessionTaskInfo,
+  SessionTodoInfo,
+  SessionWorkflowState,
+  WorkflowStatePatch,
+} from "../types.js";
+import type { SessionTaskKind, SessionTodoStatus } from "../../types.js";
 
 export interface ContextSessionMessages {
   list: ExtensionDatabase["getMessages"];
@@ -84,6 +92,22 @@ interface ContextSessionOptions {
     get(): Promise<SessionWorkflowState | null>;
     set(patch: WorkflowStatePatch): Promise<SessionWorkflowState>;
     clear(): Promise<void>;
+  };
+  tasks: {
+    list(): Promise<SessionTaskInfo[]>;
+    upsert(input: {
+      path: string;
+      kind: SessionTaskKind;
+      title?: string | null;
+      status?: string | null;
+    }): Promise<SessionTaskInfo>;
+    remove(path: string): Promise<boolean>;
+    getCurrentPath(): Promise<string | null>;
+    setCurrentPath(path: string | null): Promise<void>;
+  };
+  todos: {
+    list(): Promise<SessionTodoInfo[]>;
+    replace(todos: Array<{ title: string; status: SessionTodoStatus }>): Promise<SessionTodoInfo[]>;
   };
   tools: ContextSessionTools;
   getParent: () => Promise<SessionInfo | undefined>;
@@ -207,6 +231,7 @@ export class Context {
   readonly services: SessionExtensionServices;
   /** Internal session resource bridge used by built-in extensions. */
   readonly agentResource: SessionRuntime["resource"];
+  readonly watson: ExtensionContext["watson"];
 
   private activeExtensionId: string | undefined;
   private extensionHost: ContextExtensionHost | undefined;
@@ -317,6 +342,17 @@ export class Context {
         get: deps.getWorkflow,
         set: deps.setWorkflow,
         clear: deps.clearWorkflow,
+      },
+      tasks: {
+        list: deps.listTasks,
+        upsert: deps.upsertTask,
+        remove: deps.deleteTask,
+        getCurrentPath: deps.getCurrentTaskPath,
+        setCurrentPath: deps.setCurrentTaskPath,
+      },
+      todos: {
+        list: deps.listTodos,
+        replace: deps.setTodos,
       },
       tools: sessionTools,
       getParent: extensionDb.getParentSession,
@@ -473,6 +509,19 @@ export class Context {
     };
     this.logger = deps.log;
     this.commandExecutor = deps.exec;
+    this.watson = {
+      run: (options) =>
+        runWatsonTask({
+          db,
+          cwd: options.cwd?.trim() || session.cwd,
+          kind: options.kind,
+          prompt: options.prompt,
+          systemPrompt: options.systemPrompt,
+          injectSystem: options.injectSystem,
+          toolsPreset: options.toolsPreset,
+          structured: options.structured,
+        }),
+    };
   }
 
   /** Internal bridge used by the session's extension runtime. */
@@ -575,6 +624,12 @@ export class ContextSession {
   }
   get workflow(): ContextSessionOptions["workflow"] {
     return this.options.workflow;
+  }
+  get tasks(): ContextSessionOptions["tasks"] {
+    return this.options.tasks;
+  }
+  get todos(): ContextSessionOptions["todos"] {
+    return this.options.todos;
   }
   get tools(): ContextSessionTools {
     return this.options.tools;

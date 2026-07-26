@@ -66,6 +66,8 @@ export interface SessionState {
   isStreaming: boolean;
   messageCount: number;
   leafId: string | null;
+  /** Text currently being streamed (external agents); used to resume UI after refresh. */
+  streamingReply?: string;
 }
 
 export interface SessionRuntimeOptions {

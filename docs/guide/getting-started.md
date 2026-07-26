@@ -29,12 +29,12 @@ pnpm run build
 pnpm run serve
 ```
 
-默认监听 `http://localhost:3030`，工作目录为仓库内 `playground/`，数据库为 `playground/.supervisor/supervisor.db`。
+默认监听 `http://localhost:3030`，工作目录为仓库内 `playground/`，数据库路径由 `.supervisor/config.json` 的 `dbPath` 配置（默认 `.supervisor/supervisor.db`）。
 
-也可用 CLI 显式指定：
+也可用 CLI 显式指定工作目录：
 
 ```bash
-node packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground --db playground/.supervisor/supervisor.db
+node packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground
 ```
 
 健康检查：`GET http://localhost:3030/healthz` 应返回 `{ "ok": true }`。
@@ -122,7 +122,7 @@ node packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
 ### 端口冲突
 
 ```bash
-node packages/supervisor/dist/cli.mjs serve --port 3031 --cwd playground --db playground/.supervisor/supervisor.db
+node packages/supervisor/dist/cli.mjs serve --port 3031 --cwd playground
 ```
 
 ### Web UI 无法连接后端

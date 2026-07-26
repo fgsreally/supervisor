@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseSessionGitMeta, sessionBranchName, sessionWorktreePath } from "../src/utils/git.js";
+import {
+  resolveSessionGitContext,
+  sessionBranchName,
+  sessionWorktreePath,
+} from "../src/utils/git.js";
 import { isDefaultSessionName } from "../src/core/session-lifecycle.js";
 
 describe("supervisor: git-worktree helpers", () => {
@@ -12,34 +16,38 @@ describe("supervisor: git-worktree helpers", () => {
     expect(path).toBe("/repo/.pi/supervisor/worktrees/sess-1");
   });
 
-  it("parseSessionGitMeta returns null when worktree disabled", () => {
-    expect(parseSessionGitMeta({ git: { worktreeEnabled: false } })).toBeNull();
-    expect(parseSessionGitMeta({})).toBeNull();
+  it("resolveSessionGitContext uses meta.git.worktreePath and project cwd", () => {
+    const repoRoot = "/repo";
+    const sessionId = 42;
+    const worktreePath = sessionWorktreePath(repoRoot, String(sessionId));
+    const ctx = resolveSessionGitContext({
+      sessionId,
+      cwd: worktreePath,
+      projectCwd: repoRoot,
+      meta: { git: { worktreePath, branch: "pi/session-42" } },
+    });
+    expect(ctx?.branch).toBe("pi/session-42");
+    expect(ctx?.worktreeEnabled).toBe(true);
   });
 
-  it("parseSessionGitMeta parses active worktree meta", () => {
-    const meta = parseSessionGitMeta({
-      git: {
-        repoRoot: "/repo",
-        worktreePath: "/repo/.pi/supervisor/worktrees/s1",
-        branch: "pi/session-abc",
-        baseBranch: "main",
-        worktreeEnabled: true,
-        turnCount: 2,
-      },
-    });
-    expect(meta?.branch).toBe("pi/session-abc");
-    expect(meta?.turnCount).toBe(2);
+  it("resolveSessionGitContext returns null without project cwd", () => {
+    expect(
+      resolveSessionGitContext({
+        sessionId: 1,
+        cwd: "/repo/.pi/supervisor/worktrees/1",
+        meta: { git: { worktreePath: "/repo/.pi/supervisor/worktrees/1" } },
+      }),
+    ).toBeNull();
   });
 });
 
 describe("supervisor: session-git-hooks", () => {
   it("isDefaultSessionName detects placeholder names", () => {
-    const id = "abcdef12-0000-0000-0000-000000000000";
-    expect(isDefaultSessionName({}, id)).toBe(true);
-    expect(isDefaultSessionName({ name: "New chat" }, id)).toBe(true);
-    expect(isDefaultSessionName({ name: "Session abcdef12" }, id)).toBe(true);
-    expect(isDefaultSessionName({ name: "Agent", nameDefault: "Agent" }, id)).toBe(true);
-    expect(isDefaultSessionName({ name: "我的功能分支" }, id)).toBe(false);
+    const id = 0xabcdef12;
+    expect(isDefaultSessionName(null, id)).toBe(true);
+    expect(isDefaultSessionName("New chat", id)).toBe(true);
+    expect(isDefaultSessionName(`Session ${String(id).slice(0, 8)}`, id)).toBe(true);
+    expect(isDefaultSessionName("Agent", id, "Agent")).toBe(true);
+    expect(isDefaultSessionName("我的功能分支", id)).toBe(false);
   });
 });

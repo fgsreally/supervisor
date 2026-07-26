@@ -16,7 +16,7 @@ function packageRootCandidates(): string[] {
 /** Resolve playground path when present in the monorepo layout. */
 export function resolvePlaygroundPath(): string | null {
   for (const candidate of packageRootCandidates()) {
-    if (existsSync(resolve(candidate, "TASK.md"))) return candidate;
+    if (existsSync(candidate)) return candidate;
   }
   return null;
 }

@@ -21,7 +21,7 @@
 
 ## 端口与本地服务
 
-端口通过环境变量配置，启动时在 bash 中携带（如 `PORT=xxxx npm run dev`）。
+端口通过环境变量注入。若 Supervisor 已在本 session 启动项目服务，环境中会带有分配好的 `PORT` / `API_PORT` 等；自行再起服务时请复用这些变量（如 `PORT=$PORT npm run dev`），不要硬编码端口。
 
 ## 边界
 

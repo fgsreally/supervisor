@@ -13,6 +13,7 @@ import {
 import type { SupervisorDb } from "../../../db/db.js";
 import type { Session, SessionCheckpoint } from "../../../types.js";
 import { resolveModelWithProviderOverrides } from "../../../utils/model-utils.js";
+import { resolveAssistantModelAuth } from "../../../utils/utility-llm.js";
 import { applyShadowMemoryUpdate, readShadowMemory } from "./memory.js";
 import {
   formatShadowRunPrompt,
@@ -20,15 +21,9 @@ import {
   parseShadowProtocolResponse,
 } from "./protocol.js";
 
-function parseMeta(meta: Session["meta"]): Record<string, unknown> {
-  if (!meta) return {};
-  return typeof meta === "string" ? JSON.parse(meta) : (meta as Record<string, unknown>);
-}
-
 function shouldRunShadow(session: Session): boolean {
   if (session.parentId !== null) return false;
-  const meta = parseMeta(session.meta);
-  return meta.builtin !== true && meta.shadowDisabled === false;
+  return session.shadowEnabled && !session.isBuiltin;
 }
 
 function formatHarnessMessages(messages: unknown[]): string {
@@ -79,15 +74,34 @@ export async function runShadow(
   if (!latestTurn) return;
 
   const configuredShadow = db.listMembers(session.id).find((member) => member.role === "shadow");
-  const shadowAgentId = configuredShadow?.agentId ?? findPackagedAgentId(db, "shadow");
+  let shadowAgentId = configuredShadow?.agentId ?? findPackagedAgentId(db, "shadow");
   if (shadowAgentId === undefined) return;
-  const shadowAgent = db.getAgent(shadowAgentId);
-  if (!shadowAgent?.modelId) return;
+  let shadowAgent = db.getAgent(shadowAgentId);
+  // Shadow must stay native — never run Codex/Claude/etc. as the silent observer.
+  if (shadowAgent && shadowAgent.backendType !== "native") {
+    console.warn(
+      `shadow agent ${shadowAgentId} is external (${shadowAgent.backendType}); falling back to packaged Shadow`,
+    );
+    shadowAgentId = findPackagedAgentId(db, "shadow");
+    if (shadowAgentId === undefined) return;
+    shadowAgent = db.getAgent(shadowAgentId);
+  }
+  if (!shadowAgent) return;
 
-  const model = resolveModelWithProviderOverrides(db, shadowAgent.providerId, shadowAgent.modelId);
-  if (!model) return;
-  const provider = db.getProvider(shadowAgent.providerId);
-  const apiKey = getEnvApiKey(model.provider) ?? provider?.apiKey ?? undefined;
+  let model =
+    shadowAgent.modelId && shadowAgent.providerId != null
+      ? resolveModelWithProviderOverrides(db, shadowAgent.providerId, shadowAgent.modelId)
+      : null;
+  let apiKey: string | undefined;
+  if (model && shadowAgent.providerId != null) {
+    const provider = db.getProvider(shadowAgent.providerId);
+    apiKey = getEnvApiKey(model.provider) ?? provider?.apiKey ?? undefined;
+  } else {
+    const assistantAuth = await resolveAssistantModelAuth(db);
+    if (!assistantAuth) return;
+    model = assistantAuth.model;
+    apiKey = assistantAuth.apiKey;
+  }
   const basePrompt = readAgentHomeSystemPrompt(getAgentHomeDir(shadowAgent.id));
   const systemPrompt = [basePrompt, getShadowProtocolPrompt()].filter(Boolean).join("\n\n");
   const shadowMemory = readShadowMemory(session.projectId, session.id);
@@ -106,7 +120,7 @@ export async function runShadow(
           },
         ],
       },
-      { apiKey, reasoning: "off", timeoutMs: 120_000 },
+      { apiKey, timeoutMs: 120_000 },
     );
     responseText = extractAssistantText(response.content);
   } catch (error: unknown) {
@@ -137,7 +151,7 @@ export async function runShadow(
   manager.publishShadowSuggestions(session.id, suggestedQuestions);
 
   const title = result.title?.replace(/\s+/g, " ").trim().slice(0, 80);
-  if (title) db.updateMeta(session.id, { name: title });
+  if (title) db.updateSessionFields(session.id, { title });
 
   const commitMessage = result.commitMessage?.replace(/\s+/g, " ").trim().slice(0, 120);
   if (commitMessage) {

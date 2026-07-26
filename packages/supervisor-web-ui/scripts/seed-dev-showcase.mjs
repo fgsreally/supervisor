@@ -9,9 +9,7 @@ const Database = require("better-sqlite3");
 if (process.env.NODE_ENV === "production") throw new Error("Development-only seed");
 
 const repoRoot = resolve(fileURLToPath(new URL("../../..", import.meta.url)));
-const dbPath = resolve(
-  process.argv[2] ?? resolve(repoRoot, "playground/.supervisor/supervisor.db"),
-);
+const dbPath = resolve(process.argv[2] ?? resolve(repoRoot, ".supervisor/supervisor.db"));
 if (!existsSync(dbPath)) throw new Error(`Database not found: ${dbPath}`);
 
 const db = new Database(dbPath);
@@ -482,9 +480,7 @@ const seed = db.transaction(() => {
         createdAt: now - (scenario.messages.length - messageIndex) * 65_000,
       }));
     const meta = {
-      name: scenario.name,
       description: scenario.description,
-      avatar: scenario.avatar,
       timers: scenario.timers,
       todos: scenario.todos,
       changedFiles: scenario.changedFiles,
@@ -496,14 +492,16 @@ const seed = db.transaction(() => {
     };
     const session = db
       .prepare(`INSERT INTO sessions
-      (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, show_in_session_list, context_leaf_id, created_at, last_active_at, meta)
-      VALUES (?, NULL, NULL, NULL, 'idle', 'none', ?, NULL, ?, NULL, 1, NULL, ?, ?, ?)`)
+      (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, show_in_session_list, context_leaf_id, created_at, last_active_at, title, avatar, meta)
+      VALUES (?, NULL, NULL, NULL, 'idle', 'none', ?, NULL, ?, NULL, 1, NULL, ?, ?, ?, ?, ?)`)
       .run(
         project.id,
         project.cwd,
         Number(agent.lastInsertRowid),
         now - index * 300_000,
         now - index * 300_000,
+        scenario.name,
+        JSON.stringify(scenario.avatar ?? null),
         JSON.stringify(meta),
       );
     const sessionId = Number(session.lastInsertRowid);
@@ -602,8 +600,8 @@ const seed = db.transaction(() => {
       const createdAt = now - (childIndex + 1) * 120_000;
       const row = db
         .prepare(`INSERT INTO sessions
-        (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, created_via, show_in_session_list, context_leaf_id, created_at, last_active_at, meta)
-        VALUES (?, ?, NULL, NULL, 'idle', 'none', ?, NULL, ?, 'subagent', 'spawn_agent', 1, NULL, ?, ?, ?)`)
+        (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, created_by, show_in_session_list, context_leaf_id, created_at, last_active_at, title, meta)
+        VALUES (?, ?, NULL, NULL, 'idle', 'none', ?, NULL, ?, 'subagent', 'spawn_agent', 1, NULL, ?, ?, ?, ?)`)
         .run(
           project.id,
           subagentParentId,
@@ -611,7 +609,8 @@ const seed = db.transaction(() => {
           parent.agent_id,
           createdAt,
           createdAt,
-          JSON.stringify({ name: child.name, devShowcase: marker }),
+          child.name,
+          JSON.stringify({ devShowcase: marker }),
         );
       const childId = Number(row.lastInsertRowid);
       childIds.push(childId);
@@ -688,8 +687,8 @@ const seed = db.transaction(() => {
       };
       const child = db
         .prepare(`INSERT INTO sessions
-        (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, show_in_session_list, context_leaf_id, created_at, last_active_at, meta)
-        VALUES (?, ?, NULL, NULL, 'idle', 'none', ?, NULL, ?, 'btw', 0, ?, ?, ?, ?)`)
+        (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, show_in_session_list, context_leaf_id, created_at, last_active_at, title, meta)
+        VALUES (?, ?, NULL, NULL, 'idle', 'none', ?, NULL, ?, 'btw', 0, ?, ?, ?, ?, ?)`)
         .run(
           project.id,
           btwParentId,
@@ -698,7 +697,8 @@ const seed = db.transaction(() => {
           parent.leaf_id,
           createdAt,
           createdAt,
-          JSON.stringify({ name: example.name, devShowcase: marker, runtimeConfig }),
+          example.name,
+          JSON.stringify({ devShowcase: marker, runtimeConfig }),
         );
       addMessages(Number(child.lastInsertRowid), scenarios.length + index, example.messages);
     });

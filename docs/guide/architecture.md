@@ -36,7 +36,7 @@ Pi Supervisor 由两个包组成：
 
 ### 数据存储
 
-- SQLite：默认 `~/.pi/supervisor.db`（playground 场景见根 `pnpm run serve`）
+- SQLite：由 `.supervisor/config.json` / settings 的 `dbPath` 配置，缺省 `~/.pi/supervisor.db`
 - Agent 工作目录：`~/.pi/supervisor/agents/<agent-id>/`
 
 ## 前端：`pi-supervisor-ui`

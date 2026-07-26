@@ -16,7 +16,7 @@ function insertSession(
     parent_id: null,
     session_id: null,
     pid: null,
-    status: "starting",
+    status: "idle",
     cwd: "/",
     meta: "{}",
     ...overrides,
@@ -36,9 +36,9 @@ afterEach(() => {
 
 describe("supervisor: SupervisorDb", () => {
   it("inserts and retrieves an instance", () => {
-    const inst = insertSession(db, { status: "starting", cwd: "/tmp" });
+    const inst = insertSession(db, { status: "idle", cwd: "/tmp" });
     expect(inst.id).toBeGreaterThan(0);
-    expect(inst.status).toBe("starting");
+    expect(inst.status).toBe("idle");
     expect(inst.meta).toEqual({});
     expect(typeof inst.created_at).toBe("number");
 
@@ -96,7 +96,7 @@ describe("supervisor: SupervisorDb", () => {
   });
 
   it("updateStatus changes status and updates lastActiveAt", async () => {
-    const inst = insertSession(db, { status: "starting" });
+    const inst = insertSession(db, { status: "idle" });
     await new Promise((r) => setTimeout(r, 5));
     db.updateStatus(inst.id, "running");
     const updated = db.get(inst.id)!;

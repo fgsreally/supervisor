@@ -6,6 +6,7 @@ import { BUILT_IN_PROVIDERS } from "./config/built-in-providers.js";
 import { ensureBuiltinAssistant, ensurePackagedAgents } from "./agent/index.js";
 import { SupervisorDb } from "./db/db.js";
 import { getDefaultCwd, resolveWorkspacePath, setDefaultCwd } from "./config/default-cwd.js";
+import { resolveDbPath } from "./config/resolve-db-path.js";
 import { createHttpServer } from "./http/http-server.js";
 import { attachWebSocketServer } from "./websocket/server.js";
 import { SessionManager } from "./core/session-manager.js";
@@ -14,7 +15,7 @@ import type { Provider } from "./types.js";
 import { encryptApiKey } from "./utils/encrypt.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "./utils/supervisor-settings.js";
 
-const KNOWN_CLI_OPTIONS = new Set(["port", "p", "db", "cwd", "h", "help"]);
+const KNOWN_CLI_OPTIONS = new Set(["port", "p", "cwd", "h", "help"]);
 
 function _parseExtensionFlags(argv: string[]): Record<string, string | boolean | undefined> {
   const flags: Record<string, string | boolean | undefined> = {};
@@ -38,7 +39,6 @@ const { values } = parseArgs({
   args: process.argv.slice(2),
   options: {
     port: { type: "string", short: "p", default: "3030" },
-    db: { type: "string" },
     cwd: { type: "string" },
     help: { type: "boolean", short: "h" },
   },
@@ -129,10 +129,12 @@ Extension Commands:
 
 Options:
   -p, --port <port>         HTTP server port (default: 3030)
-  --db <path>               SQLite database path (default: ~/.pi/supervisor.db)
   --cwd <path>              Default workspace directory (default: ./playground when present, else process.cwd())
   --<extension-flag>        Extension-registered CLI flags (see extension docs)
   -h, --help                Show this help
+
+Database path is read from .supervisor/config.json (dbPath), then
+~/.pi/supervisor/settings.json (dbPath), else ~/.pi/supervisor.db.
 `.trim(),
   );
 }
@@ -146,7 +148,7 @@ async function run() {
   const cwdArg = values.cwd as string | undefined;
   if (cwdArg) setDefaultCwd(resolveWorkspacePath(cwdArg));
 
-  const db = new SupervisorDb(values.db as string | undefined);
+  const db = new SupervisorDb(resolveDbPath());
   const manager = new SessionManager(db);
   const { command, cmdArgs } = parseCommand();
 
@@ -165,6 +167,7 @@ async function run() {
       startDailyWorkScheduler(db);
       console.log(`Server listening on http://localhost:${port}`);
       console.log(`Workspace cwd: ${workspaceCwd}`);
+      console.log(`Database: ${resolveDbPath()}`);
       break;
     }
 

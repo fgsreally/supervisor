@@ -49,7 +49,10 @@ function walkDir(root: string, dir: string, depth: number, out: WorkspaceFileEnt
       continue;
     }
 
-    if (entry.isFile()) {
+    // Skip gitdir pointer files (`.git` is a file inside worktrees).
+    if (name === ".git") continue;
+
+    if (entry.isFile() || entry.isSymbolicLink()) {
       out.push({ path: rel, isDirectory: false });
     }
   }

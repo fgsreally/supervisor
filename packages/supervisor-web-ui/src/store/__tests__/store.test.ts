@@ -91,15 +91,25 @@ describe("Session Store", () => {
   });
 
   it("should update session meta", async () => {
-    vi.mocked(api.updateSessionMeta).mockResolvedValue({ name: "Updated", pinned: true });
+    vi.mocked(api.updateSessionMeta).mockResolvedValue({
+      id: "1",
+      status: "idle",
+      cwd: "/test",
+      title: "Updated",
+      pinned: true,
+      meta: {},
+    } as any);
 
     const store = useSessionStore();
-    store.sessions = [{ id: "1", status: "idle", cwd: "/test", meta: { name: "Test" } } as any];
+    store.sessions = [
+      { id: "1", status: "idle", cwd: "/test", title: "Test", meta: {} } as any,
+    ];
 
     await store.updateSessionMeta("1", { pinned: true });
 
     expect(api.updateSessionMeta).toHaveBeenCalledWith("1", { pinned: true });
-    expect(store.sessions[0].meta).toEqual({ name: "Updated", pinned: true });
+    expect(store.sessions[0].title).toBe("Updated");
+    expect(store.sessions[0].pinned).toBe(true);
   });
 });
 

@@ -10,7 +10,6 @@ import {
   createGitSnapshot,
   getGitHead,
   getGitStatusPorcelain,
-  parseSessionGitMeta,
 } from "../src/utils/git.js";
 import { handleSessionLifecycleAgentEnd } from "../src/core/session-lifecycle.js";
 import { commitSessionChanges } from "../src/core/session-lifecycle.js";
@@ -27,16 +26,6 @@ function initGitRepo(dir: string): void {
   writeFileSync(join(dir, "README.md"), "init\n");
   execFileSync("git", ["add", "README.md"], { cwd: dir });
   execFileSync("git", ["commit", "-m", "init"], { cwd: dir });
-}
-
-function sessionGitMeta() {
-  return {
-    repoRoot: repoDir,
-    worktreePath: repoDir,
-    branch: "pi/session-test",
-    baseBranch: "main",
-    worktreeEnabled: true as const,
-  };
 }
 
 beforeEach(() => {
@@ -77,19 +66,21 @@ describe("supervisor: explicit commit", () => {
   });
 
   it("commitSessionChanges updates meta.git.lastCommit", async () => {
+    const project = db.findOrCreateProjectByCwd(repoDir);
     const session = db.insert({
-      project_id: null,
+      project_id: project.id,
       parent_id: null,
       session_id: null,
       pid: null,
       status: "idle",
       cwd: repoDir,
-      meta: JSON.stringify({ git: sessionGitMeta() }),
+      meta: JSON.stringify({}),
     });
+    db.updateSessionGitState(session.id, { worktreeEnabled: true });
 
     writeFileSync(join(repoDir, "feature.txt"), "new work\n");
 
-    const commit = await commitSessionChanges(session.id, repoDir, session.meta, db, {
+    const commit = await commitSessionChanges(session.id, repoDir, db, {
       message: "explicit commit",
     });
     expect(commit?.message).toContain("explicit commit");
@@ -97,21 +88,23 @@ describe("supervisor: explicit commit", () => {
     expect(commit?.hash).toMatch(/^[0-9a-f]+$/);
 
     const refreshed = db.get(session.id)!;
-    const gitMeta = parseSessionGitMeta(refreshed.meta);
-    expect(gitMeta?.lastCommit?.hash).toBe(commit?.hash);
+    const git = (refreshed.meta as { git?: { lastCommit?: { hash: string } } }).git;
+    expect(git?.lastCommit?.hash).toBe(commit?.hash);
     expect(await getGitStatusPorcelain(repoDir)).toBe("");
   });
 
   it("agent_end does not auto-commit dirty worktree", async () => {
+    const project = db.findOrCreateProjectByCwd(repoDir);
     const session = db.insert({
-      project_id: null,
+      project_id: project.id,
       parent_id: null,
       session_id: null,
       pid: null,
       status: "idle",
       cwd: repoDir,
-      meta: JSON.stringify({ git: sessionGitMeta(), name: "Named session" }),
+      meta: JSON.stringify({ name: "Named session" }),
     });
+    db.updateSessionGitState(session.id, { worktreeEnabled: true });
 
     writeFileSync(join(repoDir, "dirty.txt"), "uncommitted\n");
 
@@ -133,7 +126,8 @@ describe("supervisor: explicit commit", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
 
     const refreshed = db.get(session.id)!;
-    expect(parseSessionGitMeta(refreshed.meta)?.lastCommit).toBeUndefined();
+    const git = (refreshed.meta as { git?: { lastCommit?: unknown } }).git;
+    expect(git?.lastCommit).toBeUndefined();
     expect((await getGitStatusPorcelain(repoDir)).trim()).toContain("dirty.txt");
   });
 });

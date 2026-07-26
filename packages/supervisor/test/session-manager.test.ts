@@ -33,7 +33,7 @@ afterEach(async () => {
 describe("supervisor: SessionManager", () => {
   it("create() inserts a record without starting a harness", () => {
     const inst = manager.create({ cwd: "/proj", meta: { phase: "brainstorm" } });
-    expect(inst.status).toBe("starting");
+    expect(inst.status).toBe("idle");
     expect(inst.pid).toBeNull();
     expect(inst.meta).toEqual({ phase: "brainstorm" });
     expect(MockAgentHarness.instances).toHaveLength(0);
@@ -50,6 +50,7 @@ describe("supervisor: SessionManager", () => {
     const parent = manager.create({ cwd: "/proj" });
     const subagent = manager.create({ parentId: parent.id, cwd: parent.cwd });
     const btw = manager.createBtw(parent.id);
+    const btwAgent = db.getAgent(btw.agentId!)!;
 
     expect(parent.branchType).toBeNull();
     expect(parent.showInSessionList).toBe(true);
@@ -59,8 +60,8 @@ describe("supervisor: SessionManager", () => {
     expect(btw.showInSessionList).toBe(false);
     expect(btw.contextLeafId).toBeNull();
     expect(btw.agentId).toBe(findPackagedAgentId(db, "btw"));
-    expect((btw.meta.runtimeConfig as { toolsPreset: string }).toolsPreset).toBe("readonly");
-    expect((btw.meta.runtimeConfig as { systemPrompt: string }).systemPrompt).toBe("");
+    expect(btwAgent.toolsPreset).toBe("readonly");
+    expect(btw.systemPrompt ?? "").toBe("");
   });
 
   it("spawn() creates AgentHarness and marks instance idle when no instructions", async () => {
@@ -71,14 +72,14 @@ describe("supervisor: SessionManager", () => {
     expect(manager.isAlive(inst.id)).toBe(true);
   });
 
-  it("spawn() keeps a native Agent without a model as a disabled Session", async () => {
+  it("spawn() keeps a native Agent without a model as blocked", async () => {
     const agent = db.insertAgent({ name: "model pending" });
     const inst = await manager.spawn({ ...SPAWN_OPTS, agentId: agent.id });
 
-    expect(inst.status).toBe("idle");
-    expect(inst.meta.modelRequired).toBe(true);
+    expect(inst.status).toBe("blocked");
+    expect(inst.errorMsg).toBe("Agent 未配置模型");
     expect(MockAgentHarness.instances).toHaveLength(0);
-    await expect(manager.prompt(inst.id, "hello")).rejects.toThrow("has no model configured");
+    await expect(manager.prompt(inst.id, "hello")).rejects.toThrow(/blocked|未配置模型/i);
   });
 
   it("spawn() does not create a git worktree when parentId is set", async () => {
@@ -92,9 +93,9 @@ describe("supervisor: SessionManager", () => {
     const parent = await manager.spawn({ cwd: repoDir });
     const child = await manager.spawn({ parentId: parent.id, cwd: parent.cwd });
 
-    expect(parent.meta.git).toBeDefined();
+    expect(parent.gitWorktreeEnabled).toBe(true);
     expect(child.parentId).toBe(parent.id);
-    expect(child.meta.git).toBeUndefined();
+    expect(child.gitWorktreeEnabled).toBe(false);
     expect(child.cwd).toBe(parent.cwd);
   });
 
@@ -103,8 +104,7 @@ describe("supervisor: SessionManager", () => {
     const received: AgentHarnessEvent[] = [];
     manager.onOutput(inst.id, (_id, event) => received.push(event));
     MockAgentHarness.instances[0]!.agent.emit({ type: "agent_end" } as AgentEvent);
-    expect(received).toHaveLength(1);
-    expect(received[0]?.type).toBe("agent_end");
+    expect(received.some((event) => event.type === "agent_end")).toBe(true);
   });
 
   it("status transitions to idle on agent_end event", async () => {
@@ -265,36 +265,35 @@ describe("supervisor: SessionManager", () => {
     expect(manager.get(inst.id)!.meta).toEqual({ new: true });
   });
 
-  it("persists workflow state and automatically emits stage changes", async () => {
+  it("persists stage and emits stage changes", async () => {
     const inst = await manager.spawn(SPAWN_OPTS);
     const events: Array<{ from: string | null; to: string | null }> = [];
     manager.getRuntime(inst.id).extension!.on("workflow.stage_changed", (event) => {
       events.push({ from: event.from, to: event.to });
     });
 
-    await manager.setWorkflow(inst.id, { stage: "brainstorm", status: "working" });
+    await manager.setStage(inst.id, "brainstorm");
     await manager.setWorkflow(inst.id, { status: "waiting_confirmation" });
-    await manager.setWorkflow(inst.id, { stage: "design", status: "working" });
+    await manager.setStage(inst.id, "design");
 
+    expect(manager.getStage(inst.id)).toBe("design");
     expect(manager.getWorkflow(inst.id)).toEqual({ stage: "design", status: "working" });
-    expect(manager.get(inst.id)!.meta.workflow).toEqual({ stage: "design", status: "working" });
+    expect(manager.get(inst.id)!.stage).toBe("design");
     expect(events).toEqual([
       { from: null, to: "brainstorm" },
       { from: "brainstorm", to: "design" },
     ]);
   });
 
-  it("rejects incomplete and invalid workflow state", async () => {
+  it("setWorkflow without stage keeps current stage", async () => {
     const inst = manager.create();
-    await expect(manager.setWorkflow(inst.id, { status: "working" })).rejects.toThrow(
-      "workflow stage is required",
-    );
-    await expect(
-      manager.setWorkflow(inst.id, { stage: "brainstorm", status: "unknown" as never }),
-    ).rejects.toThrow("invalid workflow status");
+    await manager.setStage(inst.id, "brainstorm");
+    const kept = await manager.setWorkflow(inst.id, { status: "working" });
+    expect(kept).toEqual({ stage: "brainstorm", status: "working" });
+    expect(manager.getStage(inst.id)).toBe("brainstorm");
   });
 
-  it("records file changes in meta.turns on agent_end", async () => {
+  it("records file changes in meta.changedFiles on agent_end", async () => {
     const inst = await manager.spawn(SPAWN_OPTS);
     const tracker = MockAgentHarness.instances[0]!;
     tracker.agent.emit({ type: "agent_start" } as AgentEvent);
@@ -314,9 +313,8 @@ describe("supervisor: SessionManager", () => {
     tracker.agent.emit({ type: "agent_end", messages: [] } as AgentEvent);
 
     const updated = manager.get(inst.id)!;
-    const turns = updated.meta.turns as Array<{ files: { modified: string[] } }>;
-    expect(turns).toHaveLength(1);
-    expect(turns[0]!.files.modified).toContain("src/app.ts");
+    const changed = updated.meta.changedFiles as Array<{ path: string; status: string }>;
+    expect(changed.some((file) => file.path === "src/app.ts")).toBe(true);
   });
 
   it("delete() removes the session-owned directory", async () => {
@@ -421,19 +419,20 @@ describe("supervisor: SessionManager", () => {
   });
 
   it("normalizes interrupted Session states when Supervisor restarts", async () => {
-    const starting = manager.create();
+    const initializing = manager.create();
     const running = manager.create();
     const waiting = manager.create();
-    const finished = manager.create({ parentId: starting.id });
+    const finished = manager.create({ parentId: initializing.id });
+    db.updateStatus(initializing.id, "initializing");
     db.updateStatus(running.id, "running");
-    db.updateStatus(waiting.id, "waiting_user");
+    db.updateStatus(waiting.id, "blocked");
     db.updateStatus(finished.id, "finish");
 
     await manager.dispose();
     db = new SupervisorDb(join(tmpDir, "test.db"));
     manager = new SessionManager(db);
 
-    expect(manager.get(starting.id)?.status).toBe("idle");
+    expect(manager.get(initializing.id)?.status).toBe("idle");
     expect(manager.get(running.id)?.status).toBe("idle");
     expect(manager.get(waiting.id)?.status).toBe("idle");
     expect(manager.get(finished.id)?.status).toBe("finish");

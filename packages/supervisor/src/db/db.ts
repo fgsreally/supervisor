@@ -1,8 +1,8 @@
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 import { ensureAgentHome, getAgentHomeDir } from "../agent/index.js";
+import { resolveDbPath } from "../config/resolve-db-path.js";
 import { encryptApiKey, decryptApiKey } from "../utils/encrypt.js";
 import type {
   AgentResourceBinding,
@@ -33,12 +33,20 @@ import type {
   ProviderRow,
   SessionRow,
   SessionStatus,
+  SessionTaskRow,
+  SessionTodoRow,
   UpdateHomeTaskOptions,
 } from "../types.js";
-import { HOME_TASK_PRIORITIES, HOME_TASK_STATUSES } from "../types.js";
+import { HOME_TASK_PRIORITIES, HOME_TASK_STATUSES, normalizeSessionStatus } from "../types.js";
 import { getProjectDir } from "../core/session-files.js";
-
-const DEFAULT_DB_PATH = join(homedir(), ".pi", "supervisor.db");
+import {
+  ensureProjectScriptsTable,
+  listProjectScripts,
+  migrateLegacyProjectCommands,
+  replaceProjectScripts,
+  type ProjectScriptInput,
+  type ProjectScriptKind,
+} from "../core/project-scripts.js";
 
 function parseHomeTaskStatus(value: string): HomeTaskStatus {
   return (HOME_TASK_STATUSES as readonly string[]).includes(value)
@@ -76,17 +84,32 @@ function rowToHomeTask(row: HomeTaskRow): HomeTask {
 }
 
 function rowToSession(row: SessionRow): SessionRow {
+  const createdBy =
+    row.created_by ??
+    row.created_via ??
+    (row.branch_type === "subagent" || row.branch_type === "spawn"
+      ? "spawn_agent"
+      : (row.branch_type as SessionRow["created_by"]) ?? "user");
   return {
     ...row,
+    status: normalizeSessionStatus(row.status),
     branch_type: row.branch_type === "spawn" ? "subagent" : row.branch_type,
-    created_via:
-      row.created_via ??
-      (row.branch_type === "subagent" || row.branch_type === "spawn"
-        ? "spawn_agent"
-        : (row.branch_type ?? "user")),
+    created_by: createdBy,
     show_in_session_list: row.show_in_session_list ?? 1,
     context_leaf_id: row.context_leaf_id ?? null,
-    meta: JSON.parse(row.meta) as any,
+    title: row.title ?? null,
+    system_prompt: row.system_prompt ?? null,
+    avatar: row.avatar ?? null,
+    is_builtin: row.is_builtin ?? 0,
+    pinned: row.pinned ?? 0,
+    muted: row.muted ?? 0,
+    unread: row.unread ?? 0,
+    external_session_id: row.external_session_id ?? null,
+    error_msg: row.error_msg ?? null,
+    stage: row.stage ?? null,
+    shadow_enabled: row.shadow_enabled ?? 0,
+    current_task_id: row.current_task_id ?? null,
+    meta: JSON.parse(typeof row.meta === "string" ? row.meta : JSON.stringify(row.meta ?? {})) as any,
   };
 }
 
@@ -97,6 +120,9 @@ function rowToProject(row: ProjectRow): Project {
     cwd: row.cwd,
     workDir: row.work_dir,
     defaultBranch: row.default_branch,
+    installCommand: row.install_command ?? null,
+    startCommand: row.start_command ?? null,
+    destroyCommand: row.destroy_command ?? null,
     meta: JSON.parse(row.meta),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -218,9 +244,10 @@ export class SupervisorDb {
   public readonly db: Database.Database;
   private readonly statusListeners = new Set<(id: number, status: SessionStatus) => void>();
 
-  constructor(dbPath: string = DEFAULT_DB_PATH) {
-    mkdirSync(join(dbPath, ".."), { recursive: true });
-    this.db = new Database(dbPath);
+  constructor(dbPath?: string) {
+    const resolved = resolveDbPath(dbPath);
+    mkdirSync(join(resolved, ".."), { recursive: true });
+    this.db = new Database(resolved);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.migrate();
@@ -279,6 +306,9 @@ export class SupervisorDb {
 				cwd           TEXT NOT NULL UNIQUE,
 				work_dir      TEXT NOT NULL,
 				default_branch TEXT NOT NULL DEFAULT 'main',
+				install_command TEXT,
+				start_command TEXT,
+				destroy_command TEXT,
 				meta          TEXT NOT NULL DEFAULT '{}',
 				created_at    INTEGER NOT NULL,
 				updated_at    INTEGER NOT NULL
@@ -290,15 +320,27 @@ export class SupervisorDb {
 				parent_id     INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
 				session_id    TEXT,
 				pid           INTEGER,
-				status        TEXT NOT NULL DEFAULT 'starting',
+				status        TEXT NOT NULL DEFAULT 'initializing',
 				thinking_level TEXT NOT NULL DEFAULT 'none',
 				cwd           TEXT NOT NULL DEFAULT '',
 				leaf_id       TEXT,
 				agent_id      INTEGER REFERENCES agents(id) ON DELETE SET NULL,
 				branch_type   TEXT,
-				created_via  TEXT NOT NULL DEFAULT 'user',
+				created_by    TEXT NOT NULL DEFAULT 'user',
 				show_in_session_list INTEGER NOT NULL DEFAULT 1,
 				context_leaf_id TEXT,
+				title         TEXT,
+				system_prompt TEXT,
+				avatar        TEXT,
+				is_builtin    INTEGER NOT NULL DEFAULT 0,
+				pinned        INTEGER NOT NULL DEFAULT 0,
+				muted         INTEGER NOT NULL DEFAULT 0,
+				unread        INTEGER NOT NULL DEFAULT 0,
+				external_session_id TEXT,
+				error_msg     TEXT,
+				stage         TEXT,
+				shadow_enabled INTEGER NOT NULL DEFAULT 0,
+				current_task_id INTEGER,
 				created_at    INTEGER NOT NULL,
 				last_active_at INTEGER NOT NULL,
 				meta          TEXT NOT NULL DEFAULT '{}'
@@ -322,7 +364,10 @@ export class SupervisorDb {
 		`);
 
     this.ensureProjectColumns();
+    this.ensureProjectScripts();
     this.ensureSessionChildColumns();
+    this.ensureSessionSchemaColumns();
+    this.ensureSessionTaskTables();
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id)");
 
     this.db.exec(`
@@ -416,9 +461,32 @@ export class SupervisorDb {
 
   private ensureProjectColumns(): void {
     const columns = this.db.pragma("table_info(projects)") as Array<{ name: string }>;
-    if (!columns.some((column) => column.name === "default_branch")) {
+    const names = new Set(columns.map((column) => column.name));
+    if (!names.has("default_branch")) {
       this.db.exec("ALTER TABLE projects ADD COLUMN default_branch TEXT NOT NULL DEFAULT 'main'");
     }
+    if (!names.has("install_command")) {
+      this.db.exec("ALTER TABLE projects ADD COLUMN install_command TEXT");
+    }
+    if (!names.has("start_command")) {
+      this.db.exec("ALTER TABLE projects ADD COLUMN start_command TEXT");
+    }
+    if (!names.has("destroy_command")) {
+      this.db.exec("ALTER TABLE projects ADD COLUMN destroy_command TEXT");
+    }
+  }
+
+  private ensureProjectScripts(): void {
+    ensureProjectScriptsTable(this.db);
+    migrateLegacyProjectCommands(this.db);
+  }
+
+  listProjectScripts(projectId: number, kind?: ProjectScriptKind) {
+    return listProjectScripts(this.db, projectId, kind);
+  }
+
+  replaceProjectScripts(projectId: number, scripts: ProjectScriptInput[]) {
+    return replaceProjectScripts(this.db, projectId, scripts);
   }
 
   private ensureSessionChildColumns(): void {
@@ -442,9 +510,9 @@ export class SupervisorDb {
     if (!names.has("context_leaf_id")) {
       this.db.exec("ALTER TABLE sessions ADD COLUMN context_leaf_id TEXT");
     }
-    if (!names.has("created_via")) {
-      this.db.exec("ALTER TABLE sessions ADD COLUMN created_via TEXT NOT NULL DEFAULT 'user'");
-      this.db.exec(`UPDATE sessions SET created_via = CASE
+    if (!names.has("created_by") && !names.has("created_via")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN created_by TEXT NOT NULL DEFAULT 'user'");
+      this.db.exec(`UPDATE sessions SET created_by = CASE
         WHEN branch_type = 'subagent' OR branch_type = 'spawn' THEN 'spawn_agent'
         WHEN branch_type IN ('btw', 'fork', 'clone') THEN branch_type
         ELSE 'user' END`);
@@ -456,6 +524,316 @@ export class SupervisorDb {
       SET branch_type = 'subagent'
       WHERE branch_type = 'spawn';
     `);
+  }
+
+  private ensureSessionSchemaColumns(): void {
+    const columns = this.db.pragma("table_info(sessions)") as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+
+    if (names.has("created_via") && !names.has("created_by")) {
+      this.db.exec("ALTER TABLE sessions RENAME COLUMN created_via TO created_by");
+      names.delete("created_via");
+      names.add("created_by");
+    } else if (!names.has("created_by")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN created_by TEXT NOT NULL DEFAULT 'user'");
+      names.add("created_by");
+    }
+
+    const addText = (name: string) => {
+      if (!names.has(name)) {
+        this.db.exec(`ALTER TABLE sessions ADD COLUMN ${name} TEXT`);
+        names.add(name);
+      }
+    };
+    const addInt = (name: string, def: number) => {
+      if (!names.has(name)) {
+        this.db.exec(
+          `ALTER TABLE sessions ADD COLUMN ${name} INTEGER NOT NULL DEFAULT ${def}`,
+        );
+        names.add(name);
+      }
+    };
+
+    addText("title");
+    addText("system_prompt");
+    addText("avatar");
+    addInt("is_builtin", 0);
+    addInt("pinned", 0);
+    addInt("muted", 0);
+    addInt("unread", 0);
+    addText("external_session_id");
+    addText("error_msg");
+    addText("stage");
+    addInt("shadow_enabled", 0);
+    if (!names.has("current_task_id")) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN current_task_id INTEGER");
+      names.add("current_task_id");
+    }
+
+    // One-time backfill from legacy meta keys / git_* columns into dedicated columns + meta.git.
+    this.db.exec(`
+      UPDATE sessions SET title = json_extract(meta, '$.name')
+      WHERE title IS NULL AND json_extract(meta, '$.name') IS NOT NULL
+    `);
+    this.db.exec(`
+      UPDATE sessions SET avatar = json_extract(meta, '$.avatar')
+      WHERE avatar IS NULL AND json_extract(meta, '$.avatar') IS NOT NULL
+    `);
+    this.db.exec(`
+      UPDATE sessions SET is_builtin = 1
+      WHERE is_builtin = 0 AND json_extract(meta, '$.builtin') = 1
+    `);
+    this.db.exec(`
+      UPDATE sessions SET pinned = 1
+      WHERE pinned = 0 AND json_extract(meta, '$.pinned') = 1
+    `);
+    this.db.exec(`
+      UPDATE sessions SET muted = 1
+      WHERE muted = 0 AND json_extract(meta, '$.muted') = 1
+    `);
+    this.db.exec(`
+      UPDATE sessions SET unread = CAST(json_extract(meta, '$.unread') AS INTEGER)
+      WHERE unread = 0 AND json_extract(meta, '$.unread') IS NOT NULL
+    `);
+    this.db.exec(`
+      UPDATE sessions SET external_session_id = json_extract(meta, '$.externalSessionId')
+      WHERE external_session_id IS NULL
+        AND json_extract(meta, '$.externalSessionId') IS NOT NULL
+    `);
+    this.db.exec(`
+      UPDATE sessions SET error_msg = json_extract(meta, '$.runtimeStartError')
+      WHERE error_msg IS NULL AND json_extract(meta, '$.runtimeStartError') IS NOT NULL
+    `);
+    this.db.exec(`
+      UPDATE sessions SET stage = json_extract(meta, '$.workflow.stage')
+      WHERE stage IS NULL AND json_extract(meta, '$.workflow.stage') IS NOT NULL
+    `);
+    this.db.exec(`
+      UPDATE sessions SET shadow_enabled = 1
+      WHERE shadow_enabled = 0 AND json_extract(meta, '$.shadowDisabled') = 0
+    `);
+    this.db.exec(`
+      UPDATE sessions SET system_prompt = json_extract(meta, '$.runtimeConfig.systemPrompt')
+      WHERE system_prompt IS NULL
+        AND json_extract(meta, '$.runtimeConfig.systemPrompt') IS NOT NULL
+    `);
+    this.db.exec(`
+      UPDATE sessions SET status = 'blocked',
+        error_msg = COALESCE(error_msg, 'Agent 未配置模型')
+      WHERE status = 'idle' AND json_extract(meta, '$.modelRequired') = 1
+    `);
+    this.db.exec(`
+      UPDATE sessions SET status = 'blocked'
+      WHERE status IN ('needs_model', 'waiting_user')
+    `);
+
+    // Move git_* columns (if present) and legacy meta.git into meta.git.worktreePath shape.
+    if (names.has("git_worktree_enabled") || names.has("git_last_commit") || names.has("git_merge_error")) {
+      const rows = this.db
+        .prepare(
+          `SELECT id, cwd, project_id, meta,
+            ${names.has("git_worktree_enabled") ? "git_worktree_enabled" : "0"} AS git_worktree_enabled,
+            ${names.has("git_last_commit") ? "git_last_commit" : "NULL"} AS git_last_commit,
+            ${names.has("git_merge_error") ? "git_merge_error" : "NULL"} AS git_merge_error
+           FROM sessions`,
+        )
+        .all() as Array<{
+        id: number;
+        cwd: string;
+        project_id: number | null;
+        meta: string;
+        git_worktree_enabled: number;
+        git_last_commit: string | null;
+        git_merge_error: string | null;
+      }>;
+      const updateMeta = this.db.prepare("UPDATE sessions SET meta = ? WHERE id = ?");
+      for (const row of rows) {
+        let meta: Record<string, unknown> = {};
+        try {
+          meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
+        } catch {
+          meta = {};
+        }
+        const legacyGit =
+          meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)
+            ? ({ ...(meta.git as Record<string, unknown>) } as Record<string, unknown>)
+            : {};
+        let lastCommit = legacyGit.lastCommit ?? null;
+        if (!lastCommit && row.git_last_commit) {
+          try {
+            lastCommit = JSON.parse(row.git_last_commit);
+          } catch {
+            lastCommit = null;
+          }
+        }
+        const mergeError =
+          (typeof legacyGit.mergeError === "string" ? legacyGit.mergeError : null) ??
+          row.git_merge_error ??
+          null;
+        const worktreeEnabled =
+          row.git_worktree_enabled === 1 ||
+          legacyGit.worktreeEnabled === true ||
+          typeof legacyGit.worktreePath === "string";
+        let worktreePath =
+          typeof legacyGit.worktreePath === "string" ? legacyGit.worktreePath : null;
+        if (worktreeEnabled && !worktreePath && row.project_id != null) {
+          const project = this.getProject(row.project_id);
+          if (project) {
+            worktreePath = `${project.cwd.replace(/\\/g, "/")}/.pi/supervisor/worktrees/${row.id}`;
+          }
+        }
+        if (worktreeEnabled && !worktreePath && row.cwd) {
+          worktreePath = row.cwd;
+        }
+        meta.git = {
+          ...(typeof legacyGit.branch === "string" ? { branch: legacyGit.branch } : {}),
+          worktreePath: worktreeEnabled ? worktreePath : null,
+          ...(lastCommit ? { lastCommit } : {}),
+          ...(mergeError ? { mergeError } : {}),
+        };
+        updateMeta.run(JSON.stringify(meta), row.id);
+      }
+    }
+  }
+
+  private ensureSessionTaskTables(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS session_tasks (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        path          TEXT NOT NULL,
+        kind          TEXT NOT NULL,
+        title         TEXT,
+        status        TEXT,
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL,
+        UNIQUE(session_id, path)
+      );
+      CREATE INDEX IF NOT EXISTS idx_session_tasks_session ON session_tasks(session_id);
+
+      CREATE TABLE IF NOT EXISTS session_todos (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        title         TEXT NOT NULL,
+        status        TEXT NOT NULL DEFAULT 'pending',
+        sort_order    INTEGER NOT NULL DEFAULT 0,
+        created_at    INTEGER NOT NULL,
+        updated_at    INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_session_todos_session ON session_todos(session_id);
+    `);
+
+    // One-time migrate meta.tasks / meta.todos into tables.
+    const sessions = this.db
+      .prepare(
+        `SELECT id, meta FROM sessions
+         WHERE json_extract(meta, '$.tasks') IS NOT NULL
+            OR json_extract(meta, '$.todos') IS NOT NULL
+            OR json_extract(meta, '$.currentTask') IS NOT NULL`,
+      )
+      .all() as Array<{ id: number; meta: string }>;
+    for (const row of sessions) {
+      let meta: Record<string, unknown> = {};
+      try {
+        meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+      const now = Date.now();
+      const paths = Array.isArray(meta.tasks)
+        ? meta.tasks.filter((p): p is string => typeof p === "string")
+        : [];
+      const insertTask = this.db.prepare(
+        `INSERT OR IGNORE INTO session_tasks (session_id, path, kind, title, status, created_at, updated_at)
+         VALUES (?, ?, ?, NULL, NULL, ?, ?)`,
+      );
+      for (const path of paths) {
+        const kind = path.includes("/plan-") ? "plan" : "goal";
+        insertTask.run(row.id, path, kind, now, now);
+      }
+      if (typeof meta.currentTask === "string" && meta.currentTask) {
+        const task = this.db
+          .prepare("SELECT id FROM session_tasks WHERE session_id = ? AND path = ?")
+          .get(row.id, meta.currentTask) as { id: number } | undefined;
+        if (task) {
+          this.db
+            .prepare("UPDATE sessions SET current_task_id = ? WHERE id = ?")
+            .run(task.id, row.id);
+        }
+      }
+      if (Array.isArray(meta.todos)) {
+        const existing = this.db
+          .prepare("SELECT COUNT(*) AS n FROM session_todos WHERE session_id = ?")
+          .get(row.id) as { n: number };
+        if (existing.n === 0) {
+          const insertTodo = this.db.prepare(
+            `INSERT INTO session_todos (session_id, title, status, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          );
+          meta.todos.forEach((item, index) => {
+            if (!item || typeof item !== "object") return;
+            const todo = item as { title?: unknown; status?: unknown };
+            if (typeof todo.title !== "string" || !todo.title.trim()) return;
+            if (
+              todo.status !== "pending" &&
+              todo.status !== "in_progress" &&
+              todo.status !== "done"
+            ) {
+              return;
+            }
+            insertTodo.run(row.id, todo.title.trim(), todo.status, index, now, now);
+          });
+        }
+      }
+    }
+  }
+
+  /** Patch sessions.meta.git (worktree / lastCommit / mergeError). */
+  updateSessionGitState(
+    id: number,
+    patch: {
+      worktreeEnabled?: boolean;
+      worktreePath?: string | null;
+      branch?: string | null;
+      lastCommit?: { hash: string; message: string } | null;
+      mergeError?: string | null;
+    },
+  ): void {
+    const row = this.get(id);
+    if (!row) return;
+    const meta =
+      typeof row.meta === "string"
+        ? (JSON.parse(row.meta) as Record<string, unknown>)
+        : ({ ...(row.meta as Record<string, unknown>) } as Record<string, unknown>);
+    const prev =
+      meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)
+        ? ({ ...(meta.git as Record<string, unknown>) } as Record<string, unknown>)
+        : {};
+    if (patch.worktreeEnabled === false) {
+      prev.worktreePath = null;
+    } else if (patch.worktreeEnabled === true && patch.worktreePath === undefined) {
+      // Keep existing path, or fall back to current session cwd as worktree root.
+      if (typeof prev.worktreePath !== "string") {
+        prev.worktreePath = row.cwd || null;
+      }
+    }
+    if (patch.worktreePath !== undefined) prev.worktreePath = patch.worktreePath;
+    if (patch.branch !== undefined) {
+      if (patch.branch) prev.branch = patch.branch;
+      else delete prev.branch;
+    }
+    if (patch.lastCommit !== undefined) {
+      if (patch.lastCommit) prev.lastCommit = patch.lastCommit;
+      else delete prev.lastCommit;
+    }
+    if (patch.mergeError !== undefined) {
+      if (patch.mergeError) prev.mergeError = patch.mergeError;
+      else delete prev.mergeError;
+    }
+    meta.git = prev;
+    this.db
+      .prepare("UPDATE sessions SET meta = ?, last_active_at = ? WHERE id = ?")
+      .run(JSON.stringify(meta), Date.now(), id);
   }
 
   private ensureMessageColumns(): void {
@@ -551,6 +929,36 @@ export class SupervisorDb {
     return meta;
   }
 
+  updateProjectCommands(
+    id: number,
+    commands: {
+      installCommand?: string | null;
+      startCommand?: string | null;
+      destroyCommand?: string | null;
+    },
+  ): Project {
+    const project = this.getProject(id);
+    if (!project) throw new Error(`Project ${id} not found`);
+    this.db
+      .prepare(
+        `UPDATE projects
+         SET install_command = ?, start_command = ?, destroy_command = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(
+        commands.installCommand !== undefined
+          ? commands.installCommand
+          : project.installCommand,
+        commands.startCommand !== undefined ? commands.startCommand : project.startCommand,
+        commands.destroyCommand !== undefined
+          ? commands.destroyCommand
+          : project.destroyCommand,
+        Date.now(),
+        id,
+      );
+    return this.getProject(id)!;
+  }
+
   deleteProject(id: number): void {
     this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
   }
@@ -566,7 +974,7 @@ export class SupervisorDb {
       | "leaf_id"
       | "agent_id"
       | "branch_type"
-      | "created_via"
+      | "created_by"
       | "show_in_session_list"
       | "context_leaf_id"
       | "thinking_level"
@@ -576,10 +984,22 @@ export class SupervisorDb {
       leaf_id?: string | null;
       agent_id?: number | null;
       branch_type?: SessionBranchType | null;
-      created_via?: SessionRow["created_via"];
+      created_by?: SessionRow["created_by"];
       show_in_session_list?: number;
       context_leaf_id?: string | null;
       thinking_level?: "none" | "low" | "medium" | "high";
+      title?: string | null;
+      system_prompt?: string | null;
+      avatar?: string | null;
+      is_builtin?: number;
+      pinned?: number;
+      muted?: number;
+      unread?: number;
+      external_session_id?: string | null;
+      error_msg?: string | null;
+      stage?: string | null;
+      shadow_enabled?: number;
+      current_task_id?: number | null;
     },
   ): SessionRow {
     const now = Date.now();
@@ -588,7 +1008,7 @@ export class SupervisorDb {
       parent_id: row.parent_id ?? null,
       session_id: row.session_id ?? null,
       pid: row.pid ?? null,
-      status: row.status ?? "starting",
+      status: normalizeSessionStatus(row.status ?? "initializing"),
       cwd: row.cwd ?? "",
       meta: typeof row.meta === "string" ? row.meta : JSON.stringify(row.meta ?? {}),
       created_at: now,
@@ -596,9 +1016,21 @@ export class SupervisorDb {
       leaf_id: row.leaf_id ?? null,
       agent_id: row.agent_id ?? null,
       branch_type: row.branch_type ?? null,
-      created_via: row.created_via ?? "user",
+      created_by: row.created_by ?? "user",
       show_in_session_list: row.show_in_session_list ?? 1,
       context_leaf_id: row.context_leaf_id ?? null,
+      title: row.title ?? null,
+      system_prompt: row.system_prompt ?? null,
+      avatar: row.avatar ?? null,
+      is_builtin: row.is_builtin ?? 0,
+      pinned: row.pinned ?? 0,
+      muted: row.muted ?? 0,
+      unread: row.unread ?? 0,
+      external_session_id: row.external_session_id ?? null,
+      error_msg: row.error_msg ?? null,
+      stage: row.stage ?? null,
+      shadow_enabled: row.shadow_enabled ?? 0,
+      current_task_id: row.current_task_id ?? null,
       ...row,
       thinking_level:
         row.thinking_level === "low" ||
@@ -609,8 +1041,19 @@ export class SupervisorDb {
     };
     const result = this.db
       .prepare(
-        `INSERT INTO sessions (project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id, branch_type, created_via, show_in_session_list, context_leaf_id, created_at, last_active_at, meta)
-				 VALUES (@project_id, @parent_id, @session_id, @pid, @status, @thinking_level, @cwd, @leaf_id, @agent_id, @branch_type, @created_via, @show_in_session_list, @context_leaf_id, @created_at, @last_active_at, @meta)`,
+        `INSERT INTO sessions (
+          project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id,
+          branch_type, created_by, show_in_session_list, context_leaf_id,
+          title, system_prompt, avatar, is_builtin, pinned, muted, unread,
+          external_session_id, error_msg, stage, shadow_enabled, current_task_id,
+          created_at, last_active_at, meta
+        ) VALUES (
+          @project_id, @parent_id, @session_id, @pid, @status, @thinking_level, @cwd, @leaf_id, @agent_id,
+          @branch_type, @created_by, @show_in_session_list, @context_leaf_id,
+          @title, @system_prompt, @avatar, @is_builtin, @pinned, @muted, @unread,
+          @external_session_id, @error_msg, @stage, @shadow_enabled, @current_task_id,
+          @created_at, @last_active_at, @meta
+        )`,
       )
       .run(full);
     return rowToSession({ ...full, id: Number(result.lastInsertRowid) });
@@ -648,7 +1091,7 @@ export class SupervisorDb {
       sql += " AND show_in_session_list = ?";
       params.push(filter.showInSessionList ? 1 : 0);
     }
-    sql += " ORDER BY created_at DESC";
+    sql += " ORDER BY last_active_at DESC, created_at DESC";
     const rows = this.db.prepare(sql).all(...params) as SessionRow[];
     return rows.map(rowToSession);
   }
@@ -661,9 +1104,11 @@ export class SupervisorDb {
   }
 
   updateStatus(id: number, status: SessionStatus): void {
+    const now = Date.now();
     this.db
       .prepare("UPDATE sessions SET status = ?, last_active_at = ? WHERE id = ?")
-      .run(status, Date.now(), id);
+      .run(status, now, id);
+    this.touchSessionActivityTree(id, now);
     for (const listener of this.statusListeners) {
       try {
         listener(id, status);
@@ -679,20 +1124,39 @@ export class SupervisorDb {
     return () => this.statusListeners.delete(listener);
   }
 
+  /** Bubble activity timestamp to parent sessions so project lists stay fresh. */
+  touchSessionActivityTree(id: number, at = Date.now()): void {
+    let current = this.get(id);
+    while (current) {
+      this.db
+        .prepare("UPDATE sessions SET last_active_at = ? WHERE id = ?")
+        .run(at, current.id);
+      current = current.parent_id != null ? this.get(current.parent_id) : undefined;
+    }
+  }
+
   /** Normalize process-bound Session state after Supervisor starts. */
   reconcileInterruptedSessionStatuses(): number {
+    // Transient busy / in-flight states → idle.
+    // `blocked` with error_msg (e.g. missing model) is kept; empty blocked was approval wait.
     const normalized = this.db
       .prepare(
         `UPDATE sessions
          SET status = 'idle', pid = NULL
-         WHERE status IN ('starting', 'running', 'waiting_user')`,
+         WHERE status IN ('initializing', 'starting', 'running', 'waiting_user')
+            OR (status = 'blocked' AND (error_msg IS NULL OR trim(error_msg) = ''))
+            OR (status = 'needs_model' AND (error_msg IS NULL OR trim(error_msg) = ''))`,
       )
       .run().changes;
+    this.db.exec(`
+      UPDATE sessions SET status = 'blocked'
+      WHERE status IN ('needs_model', 'waiting_user')
+    `);
     const hidden = this.db
       .prepare(
         `UPDATE sessions
          SET show_in_session_list = 0
-         WHERE created_via = 'spawn_agent' AND status IN ('finish', 'finished')`,
+         WHERE created_by = 'spawn_agent' AND status IN ('finish', 'finished')`,
       )
       .run().changes;
     return normalized + hidden;
@@ -738,6 +1202,126 @@ export class SupervisorDb {
       .prepare("UPDATE sessions SET meta = ?, last_active_at = ? WHERE id = ?")
       .run(JSON.stringify(merged), Date.now(), id);
     return merged;
+  }
+
+  updateSessionFields(
+    id: number,
+    patch: {
+      title?: string | null;
+      systemPrompt?: string | null;
+      avatar?: string | null;
+      isBuiltin?: boolean;
+      pinned?: boolean;
+      muted?: boolean;
+      unread?: number;
+      externalSessionId?: string | null;
+      errorMsg?: string | null;
+      stage?: string | null;
+      shadowEnabled?: boolean;
+      currentTaskId?: number | null;
+    },
+  ): void {
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    const put = (column: string, value: unknown) => {
+      sets.push(`${column} = ?`);
+      params.push(value);
+    };
+    if (patch.title !== undefined) put("title", patch.title);
+    if (patch.systemPrompt !== undefined) put("system_prompt", patch.systemPrompt);
+    if (patch.avatar !== undefined) put("avatar", patch.avatar);
+    if (patch.isBuiltin !== undefined) put("is_builtin", patch.isBuiltin ? 1 : 0);
+    if (patch.pinned !== undefined) put("pinned", patch.pinned ? 1 : 0);
+    if (patch.muted !== undefined) put("muted", patch.muted ? 1 : 0);
+    if (patch.unread !== undefined) put("unread", patch.unread);
+    if (patch.externalSessionId !== undefined) put("external_session_id", patch.externalSessionId);
+    if (patch.errorMsg !== undefined) put("error_msg", patch.errorMsg);
+    if (patch.stage !== undefined) put("stage", patch.stage);
+    if (patch.shadowEnabled !== undefined) put("shadow_enabled", patch.shadowEnabled ? 1 : 0);
+    if (patch.currentTaskId !== undefined) put("current_task_id", patch.currentTaskId);
+    if (sets.length === 0) return;
+    sets.push("last_active_at = ?");
+    params.push(Date.now(), id);
+    this.db.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  }
+
+  listSessionTasks(sessionId: number): SessionTaskRow[] {
+    return this.db
+      .prepare("SELECT * FROM session_tasks WHERE session_id = ? ORDER BY created_at ASC, id ASC")
+      .all(sessionId) as SessionTaskRow[];
+  }
+
+  getSessionTask(id: number): SessionTaskRow | undefined {
+    return this.db.prepare("SELECT * FROM session_tasks WHERE id = ?").get(id) as
+      | SessionTaskRow
+      | undefined;
+  }
+
+  upsertSessionTask(row: {
+    sessionId: number;
+    path: string;
+    kind: "goal" | "plan";
+    title?: string | null;
+    status?: string | null;
+  }): SessionTaskRow {
+    const now = Date.now();
+    this.db
+      .prepare(
+        `INSERT INTO session_tasks (session_id, path, kind, title, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(session_id, path) DO UPDATE SET
+           kind = excluded.kind,
+           title = COALESCE(excluded.title, session_tasks.title),
+           status = COALESCE(excluded.status, session_tasks.status),
+           updated_at = excluded.updated_at`,
+      )
+      .run(
+        row.sessionId,
+        row.path,
+        row.kind,
+        row.title ?? null,
+        row.status ?? null,
+        now,
+        now,
+      );
+    return this.db
+      .prepare("SELECT * FROM session_tasks WHERE session_id = ? AND path = ?")
+      .get(row.sessionId, row.path) as SessionTaskRow;
+  }
+
+  deleteSessionTask(sessionId: number, path: string): boolean {
+    return (
+      this.db
+        .prepare("DELETE FROM session_tasks WHERE session_id = ? AND path = ?")
+        .run(sessionId, path).changes > 0
+    );
+  }
+
+  listSessionTodos(sessionId: number): SessionTodoRow[] {
+    return this.db
+      .prepare(
+        "SELECT * FROM session_todos WHERE session_id = ? ORDER BY sort_order ASC, id ASC",
+      )
+      .all(sessionId) as SessionTodoRow[];
+  }
+
+  replaceSessionTodos(
+    sessionId: number,
+    todos: Array<{ title: string; status: "pending" | "in_progress" | "done" }>,
+  ): SessionTodoRow[] {
+    const now = Date.now();
+    const tx = this.db.transaction(() => {
+      this.db.prepare("DELETE FROM session_todos WHERE session_id = ?").run(sessionId);
+      const insert = this.db.prepare(
+        `INSERT INTO session_todos (session_id, title, status, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      );
+      todos.forEach((todo, index) => {
+        insert.run(sessionId, todo.title, todo.status, index, now, now);
+      });
+    });
+    tx();
+    return this.listSessionTodos(sessionId);
   }
 
   enqueueSessionInput(input: {

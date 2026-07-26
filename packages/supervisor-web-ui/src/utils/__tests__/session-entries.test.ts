@@ -74,6 +74,27 @@ describe("sessionTreeEntryToChatEntry", () => {
     });
   });
 
+  it("maps legacy llm-failure custom_message entries to error cards", () => {
+    const entry = sessionTreeEntryToChatEntry({
+      id: "e2",
+      parentId: "u1",
+      type: "custom",
+      customType: "custom_message",
+      data: {
+        text: "Codex 回合超时（180s 内未收到 turn/completed）。常见原因：网络/MCP 失败或进程卡住，请重试或检查 Codex 登录状态。",
+      },
+      isOld: false,
+      meta: {},
+      createdAt: 8,
+    } as import("@/api").SessionTreeEntry);
+
+    expect(entry).toMatchObject({
+      id: "e2",
+      type: "llm_error",
+      createdAt: 8,
+    });
+  });
+
   it("hides unknown custom entries from the chat timeline", () => {
     expect(
       sessionTreeEntryToChatEntry({

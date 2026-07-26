@@ -83,6 +83,7 @@
         :streaming-group-id="streamingGroupId"
         :time-label="timeLabel"
         :duration-label="durationLabel"
+        :duration-pinned="durationPinned"
         :search-hit="searchHit"
         :avatar-label="assistantAvatarLabel"
         :avatar-color="assistantAvatarColor"
@@ -92,6 +93,7 @@
         @open-bash="(cmd, result, intent, entryId) => emit('open-bash', cmd, result, intent, entryId)"
         @navigate="emit('navigate', $event)"
         @answered="emit('answered')"
+        @open-external-detail="(args, result) => emit('open-external-detail', args, result)"
         @open-actions="emit('open-actions', $event)"
       />
       <MessageAssets
@@ -135,6 +137,7 @@ const props = defineProps<{
   dateDividerLabel: string;
   timeLabel: string;
   durationLabel: string | null;
+  durationPinned?: boolean;
   searchHit: boolean;
   rewindable: boolean;
   showThinkingBlocks: boolean;
@@ -164,6 +167,10 @@ const emit = defineEmits<{
   navigate: [sessionId: string];
   "open-compaction": [entry: ChatCompactionEntry];
   answered: [];
+  "open-external-detail": [
+    callArgs?: Record<string, unknown>,
+    result?: Array<{ type: string; text: string }>,
+  ];
   rewind: [entryId: string];
   "retry-error": [];
   "open-actions": [payload: { mode: "menu" | "sheet"; x: number; y: number }];

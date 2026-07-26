@@ -113,6 +113,13 @@
         >
           {{ entry.m }}
         </div>
+        <div
+          v-if="entry.meta && Object.keys(entry.meta).length"
+          class="mt-1 font-mono text-[11px] whitespace-pre-wrap break-all opacity-70"
+          style="color: var(--app-text-muted)"
+        >
+          {{ formatMeta(entry.meta) }}
+        </div>
       </div>
     </div>
   </div>
@@ -153,14 +160,21 @@ function levelBg(l: string): string {
 // Tag color wheel for tags without explicit mapping
 const TAG_COLORS: Record<string, string> = {
   extension: "#6366f1",
-  api: "#f59e0b",
+  system: "#0ea5e9",
+  git: "#22c55e",
+  worktree: "#84cc16",
+  runtime: "#f97316",
+  approval: "#eab308",
+  timing: "#64748b",
   setup: "#10b981",
+  api: "#f59e0b",
   tool: "#3b82f6",
   error: "#ef4444",
   auth: "#8b5cf6",
   config: "#ec4899",
   db: "#14b8a6",
   network: "#f97316",
+  legacy: "#94a3b8",
 };
 
 const COLOR_WHEEL = [
@@ -228,6 +242,14 @@ function formatTime(ts: number): string {
   const d = new Date(ts);
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function formatMeta(meta: Record<string, unknown>): string {
+  try {
+    return JSON.stringify(meta);
+  } catch {
+    return String(meta);
+  }
 }
 
 async function fetchLogs() {

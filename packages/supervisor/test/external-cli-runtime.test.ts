@@ -42,7 +42,7 @@ function createRecords(
     parent_id: null,
     session_id: null,
     pid: null,
-    status: "starting",
+    status: "idle",
     cwd: root,
     agent_id: agent.id,
     meta: "{}",

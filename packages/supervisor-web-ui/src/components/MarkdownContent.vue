@@ -160,8 +160,12 @@ const html = computed(() => {
 }
 .md-content--prose :deep(ul),
 .md-content--prose :deep(ol) {
-  margin: 0.35em 0 0.55em;
+  margin: 0.45em 0;
   padding-left: 1.35em;
+}
+.md-content--prose :deep(p:has(+ ul)),
+.md-content--prose :deep(p:has(+ ol)) {
+  margin-bottom: 0;
 }
 .md-content--prose :deep(li) {
   margin: 0.22em 0;
@@ -216,20 +220,26 @@ const html = computed(() => {
 }
 .md-content--terminal :deep(ul),
 .md-content--terminal :deep(ol) {
-  margin: 0.35em 0 0.95em;
+  margin: 0.45em 0;
   padding: 0;
   list-style: none;
 }
-.md-content--terminal :deep(p + ul),
-.md-content--terminal :deep(p + ol) {
-  margin-top: 0.2em;
+.md-content--terminal :deep(p:has(+ ul)),
+.md-content--terminal :deep(p:has(+ ol)) {
+  margin-bottom: 0;
 }
 .md-content--terminal :deep(li) {
   display: flex;
   align-items: flex-start;
   gap: 0.5em;
-  margin: 0.28em 0;
+  margin: 0.22em 0;
   line-height: 1.5;
+}
+.md-content--terminal :deep(li:first-child) {
+  margin-top: 0;
+}
+.md-content--terminal :deep(li:last-child) {
+  margin-bottom: 0;
 }
 .md-content--terminal :deep(.md-term-bullet) {
   flex: none;

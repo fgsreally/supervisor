@@ -141,15 +141,21 @@ function onPrimaryAction() {
 
 .send-btn {
   min-width: 56px;
+  height: 32px;
   padding: 5px 16px;
   border-radius: 8px;
   font-size: 13px;
   font-weight: 400;
   background: var(--app-send-disabled-bg);
   color: var(--app-send-disabled-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition:
     background-color 0.15s,
-    color 0.15s;
+    color 0.15s,
+    min-width 0.15s,
+    padding 0.15s;
 }
 
 .send-btn--active {
@@ -161,13 +167,21 @@ function onPrimaryAction() {
   background: var(--app-accent-hover);
 }
 
+/* Compact square stop control — avoid the wide “发送” pill with only an icon. */
 .send-btn--interrupt {
-  background: var(--app-danger, #dc2626);
+  min-width: 32px;
+  width: 32px;
+  padding: 0;
+  background: var(--app-accent);
+}
+
+.send-btn--interrupt:hover:not(:disabled) {
+  background: var(--app-accent-hover);
 }
 
 .send-btn__stop-icon {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   fill: currentColor;
 }
 

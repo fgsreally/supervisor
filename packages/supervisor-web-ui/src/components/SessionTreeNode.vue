@@ -37,8 +37,8 @@
             :class="depth === 0 ? 'bg-blue-500' : 'bg-indigo-400'"
           >
             {{
-              session.meta?.name
-                ? session.meta.name.substring(0, 1).toUpperCase()
+              session.title
+                ? session.title.substring(0, 1).toUpperCase()
                 : session.id.substring(0, 1).toUpperCase()
             }}
           </div>
@@ -52,7 +52,7 @@
         <div class="ml-3 flex-1 overflow-hidden">
           <div class="flex justify-between items-center">
             <span class="text-[15px] font-medium text-gray-900 truncate">
-              {{ session.meta?.name || `Agent ${session.id.substring(0, 4)}` }}
+              {{ session.title || `Agent ${session.id.substring(0, 4)}` }}
             </span>
             <span class="text-xs text-gray-400 shrink-0 ml-2">{{
               formatTime(session.lastActiveAt)
@@ -102,7 +102,7 @@ const statusColor = computed(() => {
   switch (props.session.status) {
     case "running":
       return "bg-yellow-500";
-    case "waiting_user":
+    case "blocked":
       return "bg-orange-500";
     case "idle":
       return "bg-green-500";

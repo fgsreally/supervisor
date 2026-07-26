@@ -43,22 +43,24 @@ defineEmits<{ retry: [] }>();
   width: 100%;
   padding: 12px 14px;
   border-radius: var(--app-bubble-radius, 12px);
-  border: 1px solid color-mix(in srgb, #e11d48 35%, transparent);
-  background: color-mix(in srgb, #e11d48 8%, var(--app-bubble-assistant, #fff));
-  color: var(--app-text-primary);
+  border: 1px solid color-mix(in srgb, #ff4d4f 55%, transparent);
+  background: color-mix(in srgb, #ff4d4f 18%, transparent);
+  backdrop-filter: blur(6px);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #ff4d4f 12%, transparent);
+  color: #ff7875;
 }
 
 .llm-error-card__title {
   font-size: 13px;
   font-weight: 600;
-  color: #e11d48;
+  color: #ff4d4f;
   margin-bottom: 6px;
 }
 
 .llm-error-card__body {
   font-size: 13px;
-  line-height: 1.5;
-  color: var(--app-text-secondary);
+  line-height: 1.55;
+  color: #ff7875;
   white-space: pre-wrap;
   word-break: break-word;
   margin-bottom: 10px;
@@ -73,7 +75,7 @@ defineEmits<{ retry: [] }>();
   font-size: 12px;
   font-weight: 500;
   color: #fff;
-  background: #e11d48;
+  background: #ff4d4f;
   transition: opacity 0.15s;
 }
 

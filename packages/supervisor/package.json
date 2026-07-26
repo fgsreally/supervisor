@@ -22,7 +22,7 @@
   "scripts": {
     "clean": "shx rm -rf dist",
     "dev": "tsdown --watch",
-    "serve:playground": "node dist/cli.mjs serve --port 3030 --cwd ../../playground --db ../../playground/.supervisor/supervisor.db",
+    "serve:playground": "node dist/cli.mjs serve --port 3030 --cwd ../../playground",
     "build": "tsdown",
     "test": "vitest --run --config vitest.config.ts",
     "test:unit": "vitest --run --config vitest.config.ts",

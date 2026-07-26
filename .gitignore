@@ -1,5 +1,8 @@
 node_modules/
 dist/
+.supervisor/
+.pi/
+supervisor-db-*.zip
 dist-chrome/
 dist-firefox/
 *.log

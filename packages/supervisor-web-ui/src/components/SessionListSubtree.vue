@@ -27,6 +27,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { UISession } from "@/types/ui";
+import { compareSessionsByRecentActivity } from "@/utils/ui-session";
 import SessionListItem from "./SessionListItem.vue";
 import SessionListSubtree from "./SessionListSubtree.vue";
 
@@ -49,7 +50,7 @@ const children = computed(() =>
       (s) =>
         s.parentId === props.parentId && s.showInSessionList && s.creationMethod === "spawn_agent",
     )
-    .sort((a, b) => new Date(b.lastActiveAt).getTime() - new Date(a.lastActiveAt).getTime()),
+    .sort((a, b) => compareSessionsByRecentActivity(a, b, props.sessions)),
 );
 
 const ancestorOpenDepths = computed(() => props.ancestorOpenDepths ?? []);

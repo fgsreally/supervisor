@@ -22,8 +22,8 @@ import {
   writeSessionMediaFile,
   type SessionPromptImage,
 } from "../core/session-media.js";
-import { activeTaskPaths, readTaskArtifact } from "../core/task-artifacts.js";
-import { parseSessionTodos } from "../core/session-todos.js";
+import { readTaskArtifact } from "../core/task-artifacts.js";
+import { extractSessionFieldsFromMetaPatch } from "../core/session-fields.js";
 import {
   parseBindResourceBody,
   parseInstallResourceBody,
@@ -41,12 +41,13 @@ import { encryptApiKey } from "../utils/encrypt.js";
 import { decryptApiKey } from "../utils/encrypt.js";
 import { testApiKey, type ApiKeyProvider } from "../utils/test-api-key.js";
 import { resolveApiKey } from "../tools/web/credentials.js";
-import { gitPull, gitPush, listWorktreeCommits } from "../utils/git.js";
+import { getCurrentBranch, gitCheckout, gitPull, gitPush, getProjectGitInfo, listWorktreeCommits, resolveSessionGitContext } from "../utils/git.js";
 import {
   listDailyWorkRecords,
   runDailyWorkAnalysis,
   yesterdayDayKey,
 } from "../core/daily-work.js";
+import { listWatsonLogFiles, readWatsonLogs } from "../core/watson.js";
 import {
   HOME_TASK_PRIORITIES,
   HOME_TASK_STATUSES,
@@ -58,6 +59,11 @@ import {
   type SessionStatus,
 } from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
+import {
+  listSessionWorkspaceFiles,
+  readSessionWorkspaceFile,
+} from "./session-workspace-files.js";
+import { readSessionLog } from "../utils/session-log.js";
 import { pickDirectory } from "../utils/pick-directory.js";
 
 /** Strip apiKey before sending provider to clients. */
@@ -422,6 +428,8 @@ export function createHttpServer(manager: SessionManager): Hono {
       }
       const next: Record<string, { providerId: number; modelId: string }> = {};
       for (const [feature, value] of Object.entries(body.featureModels as Record<string, unknown>)) {
+        // Only `assistant` is written by Settings; ignore legacy keys on write.
+        if (feature !== "assistant") continue;
         if (!isUtilityFeature(feature)) {
           return jsonError(c, 400, `unknown utility feature: ${feature}`);
         }
@@ -749,6 +757,23 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
+  // GET /agents/:id/logs — Watson / internal agent run logs
+  app.get("/agents/:id/logs", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid agent id");
+    const agent = manager.getAgent(id);
+    if (!agent) return jsonError(c, 404, "not found");
+    const limitParam = c.req.query("limit");
+    const limit = limitParam ? Number.parseInt(limitParam, 10) : 400;
+    return c.json({
+      agentId: id,
+      files: listWatsonLogFiles(id),
+      text: readWatsonLogs(id, {
+        limit: Number.isFinite(limit) ? limit : 400,
+      }),
+    });
+  });
+
   // GET /agents/:id/system-md
   app.get("/agents/:id/system-md", (c) => {
     try {
@@ -1051,11 +1076,22 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (!manager.getProject(id)) return jsonError(c, 404, "not found");
     try {
       const result = await manager.generateProjectDescription(id);
-      return c.json({ ...result, project: manager.getProject(id) });
+      return c.json({
+        ...result,
+        project: manager.getProject(id),
+        scripts: manager.database.listProjectScripts(id),
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return jsonError(c, message.includes("未配置") || message.includes("不可用") ? 400 : 500, message);
     }
+  });
+
+  app.get("/projects/:id/scripts", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid project id");
+    if (!manager.getProject(id)) return jsonError(c, 404, "not found");
+    return c.json(manager.database.listProjectScripts(id));
   });
 
   app.post("/projects/:id/git/pull", async (c) => {
@@ -1065,6 +1101,35 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (!project) return jsonError(c, 404, "not found");
     try {
       return c.json(await gitPull(project.cwd));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 500, message);
+    }
+  });
+
+  app.get("/projects/:id/git", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid project id");
+    const project = manager.getProject(id);
+    if (!project) return jsonError(c, 404, "not found");
+    try {
+      return c.json(await getProjectGitInfo(project.cwd));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 500, message);
+    }
+  });
+
+  app.post("/projects/:id/git/checkout", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid project id");
+    const project = manager.getProject(id);
+    if (!project) return jsonError(c, 404, "not found");
+    const body = await c.req.json().catch(() => ({}));
+    const branch = typeof body?.branch === "string" ? body.branch : "";
+    if (!branch.trim()) return jsonError(c, 400, "branch is required");
+    try {
+      return c.json(await gitCheckout(project.cwd, branch));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 500, message);
@@ -1125,6 +1190,69 @@ export function createHttpServer(manager: SessionManager): Hono {
       ...session,
       lastMessagePreview: manager.getLastMessagePreview(session.id),
     });
+  });
+
+  // GET /sessions/:id/log — structured session + extension logs for UI
+  app.get("/sessions/:id/log", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "not found");
+    if (session.projectId == null) return jsonError(c, 404, "session project not found");
+    const levelRaw = c.req.query("level");
+    const level =
+      levelRaw === "debug" || levelRaw === "info" || levelRaw === "warn" || levelRaw === "error"
+        ? levelRaw
+        : undefined;
+    const tagsRaw = c.req.query("tags");
+    const tags = tagsRaw
+      ? tagsRaw
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean)
+      : undefined;
+    try {
+      return c.json({
+        entries: readSessionLog(session.projectId, session.id, { level, tags }),
+      });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 500, message);
+    }
+  });
+
+  // GET /sessions/:id/files — list workspace files under session cwd
+  app.get("/sessions/:id/files", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "not found");
+    if (!session.cwd) return jsonError(c, 400, "session has no cwd");
+    try {
+      return c.json({ cwd: session.cwd, files: listSessionWorkspaceFiles(session.cwd) });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 500, message);
+    }
+  });
+
+  // GET /sessions/:id/files/content?path= — read a file relative to session cwd
+  app.get("/sessions/:id/files/content", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "not found");
+    if (!session.cwd) return jsonError(c, 400, "session has no cwd");
+    const path = c.req.query("path");
+    if (!path) return jsonError(c, 400, "path is required");
+    try {
+      return c.json(readSessionWorkspaceFile(session.cwd, path));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (/outside|invalid path/i.test(message)) return jsonError(c, 403, message);
+      if (/not found|not a file/i.test(message)) return jsonError(c, 404, message);
+      return jsonError(c, 500, message);
+    }
   });
 
   app.get("/sessions/:id/recordings/:filename", async (c) => {
@@ -1219,7 +1347,7 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
     if (!root) return jsonError(c, 404, "asset scope not found");
 
-    const relativePath = c.req.param("*");
+    const relativePath = c.req.param("*") ?? "";
     const content = await readOwnedAsset(root, relativePath);
     if (!content) return jsonError(c, 404, "asset not found");
     return new Response(content, {
@@ -1237,10 +1365,9 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (id === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(id);
     if (!session || session.projectId == null) return jsonError(c, 404, "session not found");
+    const tasks = manager.listSessionTasks(id);
     const artifacts = await Promise.all(
-      activeTaskPaths(session.meta).map((path) =>
-        readTaskArtifact(getSessionDir(session.projectId!, session.id), path),
-      ),
+      tasks.map((task) => readTaskArtifact(getSessionDir(session.projectId!, session.id), task.path)),
     );
     return c.json(artifacts.filter((artifact) => artifact !== null));
   });
@@ -1250,7 +1377,7 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (id === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, "session not found");
-    return c.json(parseSessionTodos(session.meta.todos));
+    return c.json(manager.listSessionTodos(id));
   });
 
   // GET /sessions/:id/children
@@ -1304,6 +1431,7 @@ export function createHttpServer(manager: SessionManager): Hono {
       const session = await manager.importExternalSession({
         backend: body.backend,
         externalSessionId: body.externalSessionId,
+        replace: body.replace === true,
       });
       return c.json(session, 201);
     } catch (error: unknown) {
@@ -1415,6 +1543,8 @@ export function createHttpServer(manager: SessionManager): Hono {
         toolsPreset: body.toolsPreset,
         tools: body.tools,
         agentId,
+        // Return as `initializing` so the UI can show readiness; worktree/runtime finish in background.
+        awaitReady: false,
       });
       return c.json(session, 201);
     } catch (e: unknown) {
@@ -1612,6 +1742,36 @@ export function createHttpServer(manager: SessionManager): Hono {
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 404, message);
+    }
+  });
+
+  // DELETE /sessions/:id/queued-inputs/:inputId — drop a queued input
+  app.delete("/sessions/:id/queued-inputs/:inputId", (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      const inputId = c.req.param("inputId");
+      if (!inputId) return jsonError(c, 400, "inputId is required");
+      manager.cancelSessionInput(id, inputId);
+      return c.json({ ok: true });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, /not found/i.test(message) ? 404 : 409, message);
+    }
+  });
+
+  // POST /sessions/:id/queued-inputs/:inputId/submit — interrupt current turn and send now
+  app.post("/sessions/:id/queued-inputs/:inputId/submit", async (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      const inputId = c.req.param("inputId");
+      if (!inputId) return jsonError(c, 400, "inputId is required");
+      const input = await manager.submitQueuedSessionInput(id, inputId);
+      return c.json({ ok: true, input });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, /not found/i.test(message) ? 404 : 409, message);
     }
   });
 
@@ -1897,7 +2057,17 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (sessionId === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(sessionId);
     if (!session) return jsonError(c, 404, "session not found");
-    return c.json(await listWorktreeCommits(session.cwd));
+    const projectCwd =
+      session.projectId != null ? manager.getProject(session.projectId)?.cwd : undefined;
+    const git = resolveSessionGitContext({
+      sessionId,
+      cwd: session.cwd,
+      projectCwd,
+      meta: session.meta,
+    });
+    if (!git) return c.json([]);
+    const mergeBase = await getCurrentBranch(git.repoRoot);
+    return c.json(await listWorktreeCommits(session.cwd, mergeBase));
   });
 
   app.get("/sessions/:id/members", (c) => {
@@ -2134,7 +2304,10 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // PATCH /sessions/:id/meta
+  // PATCH /sessions/:id/meta — promotes known column keys (title, avatar,
+  // pinned, muted, unread, shadowEnabled/shadowDisabled, stage, isBuiltin/builtin)
+  // onto the sessions row and merges the remaining keys into meta. Returns the
+  // full updated Session so the client can sync columns and meta in one shot.
   app.patch("/sessions/:id/meta", async (c) => {
     const body = await c.req.json().catch(() => null);
     if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
@@ -2147,7 +2320,12 @@ export function createHttpServer(manager: SessionManager): Hono {
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
-      return c.json(manager.updateMeta(id, body));
+      const { fields, rest } = extractSessionFieldsFromMetaPatch(body as Record<string, unknown>);
+      if (Object.keys(fields).length > 0) manager.updateSessionFields(id, fields);
+      if (Object.keys(rest).length > 0) manager.updateMeta(id, rest);
+      const session = manager.get(id);
+      if (!session) return jsonError(c, 404, "session not found");
+      return c.json(session);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 404, message);

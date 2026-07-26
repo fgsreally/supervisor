@@ -2,8 +2,16 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-/** Features that can bind a dedicated utility model in settings. */
-export const UTILITY_FEATURES = [
+/**
+ * Settings bind a single 助手模型 (Watson / 华生).
+ * Legacy per-feature keys are still accepted when reading for migration.
+ */
+export const UTILITY_FEATURES = ["assistant"] as const;
+
+export type UtilityFeature = (typeof UTILITY_FEATURES)[number];
+
+/** Old keys — still read as fallback when `assistant` is unset. */
+export const LEGACY_UTILITY_FEATURES = [
   "commit-message",
   "session-title",
   "summary",
@@ -12,22 +20,22 @@ export const UTILITY_FEATURES = [
   "project-description",
 ] as const;
 
-export type UtilityFeature = (typeof UTILITY_FEATURES)[number];
-
 export interface FeatureModelRef {
   providerId: number;
   modelId: string;
 }
 
-export type FeatureModelMap = Partial<Record<UtilityFeature, FeatureModelRef>>;
+export type FeatureModelMap = Partial<Record<string, FeatureModelRef>>;
 
 export interface SupervisorSettings {
-  /** @deprecated Prefer featureModels */
+  /** @deprecated Prefer featureModels.assistant */
   utilityProvider?: string;
-  /** @deprecated Prefer featureModels */
+  /** @deprecated Prefer featureModels.assistant */
   utilityModelId?: string;
-  /** Per-feature model bindings configured in Settings. */
+  /** Model bindings; only `assistant` is written by Settings UI. */
   featureModels?: FeatureModelMap;
+  /** Optional SQLite path; project `.supervisor/config.json` takes precedence. */
+  dbPath?: string;
   browserMode?: "headless" | "headed";
   webSearchProvider?: "duckduckgo" | "tavily" | "brave" | "serper" | "firecrawl";
   webFetchProvider?:

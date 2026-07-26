@@ -13,7 +13,7 @@ import {
   ensureBuiltinExtensionResources,
 } from "../../extension/builtin/ensure.js";
 
-export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro", "coding"] as const;
+export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro", "coding", "watson"] as const;
 export type PackagedAgentKind = (typeof PACKAGED_AGENT_KINDS)[number];
 
 const PACKAGED_AGENT_LABELS: Record<
@@ -48,6 +48,13 @@ const PACKAGED_AGENT_LABELS: Record<
     description: "General-purpose coding agent for project work across sessions/worktrees",
     toolsPreset: "coding",
     userSpawnable: true,
+  },
+  watson: {
+    name: "华生",
+    description:
+      "内部助手：与设置中的助手模型 + pi-coding-agent 协作，处理项目解析、worktree 清理等内部任务（不创建用户 session）",
+    toolsPreset: "coding",
+    userSpawnable: false,
   },
 };
 
@@ -228,10 +235,7 @@ function findBuiltinAssistantId(db: SupervisorDb): number | undefined {
 function findBuiltinAssistantSessionId(db: SupervisorDb, agentId: number): number | undefined {
   const sessions = db
     .list()
-    .filter((session) => {
-      const meta = typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta;
-      return session.agent_id === agentId && meta?.builtin === true;
-    })
+    .filter((session) => session.agent_id === agentId && session.is_builtin === 1)
     .sort((left, right) => left.id - right.id);
   const primary = sessions[0];
   for (const duplicate of sessions.slice(1)) db.delete(duplicate.id);
@@ -291,10 +295,10 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
     sessionId = manager.create({
       agentId: agent.id,
       cwd: getDefaultCwd(),
+      title: BUILTIN_ASSISTANT_NAME,
+      pinned: true,
+      isBuiltin: true,
       meta: {
-        name: BUILTIN_ASSISTANT_NAME,
-        pinned: true,
-        builtin: true,
         description: "Supervisor 内置助手会话",
       },
     }).id;
@@ -302,11 +306,9 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
 
   const session = db.get(sessionId);
   if (!session) return;
-  const meta = typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta;
-  db.updateMeta(sessionId, {
-    ...meta,
-    name: BUILTIN_ASSISTANT_NAME,
+  db.updateSessionFields(sessionId, {
+    title: BUILTIN_ASSISTANT_NAME,
     pinned: true,
-    builtin: true,
+    isBuiltin: true,
   });
 }

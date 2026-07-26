@@ -1,14 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
-import { appendFileSync, mkdirSync } from "node:fs";
-import { join } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { SessionRuntime } from "../../core/session-runtime.js";
 import type { SessionManager } from "../../core/session-manager.js";
 import type { SupervisorDb } from "../../db/db.js";
-import { ensureProjectDir, ensureSessionDir, getSessionDir } from "../../core/session-files.js";
+import { ensureProjectDir, ensureSessionDir } from "../../core/session-files.js";
 import { DEFAULT_SESSION_INPUT_LEVEL } from "../../core/session-input-queue.js";
 import { execCommand } from "../../utils/exec.js";
+import { appendSessionLog } from "../../utils/session-log.js";
 import type {
   EventBus,
   ExecResult,
@@ -18,13 +17,50 @@ import type {
   MessageEntry,
   MessageNode,
   SessionResultSummary,
+  SessionTaskInfo,
+  SessionTodoInfo,
+  SessionWorkflowState,
   SubagentStatusSnapshot,
   SessionInfo,
   SpawnSessionRequest,
   SpawnSessionResult,
   ToolInfo,
+  WorkflowStatePatch,
 } from "../index.js";
-import type { WorkflowStatePatch } from "../../core/session-workflow.js";
+import type { SessionTaskKind, SessionTaskRow, SessionTodoRow, SessionTodoStatus } from "../../types.js";
+
+function toTaskInfo(row: SessionTaskRow): SessionTaskInfo {
+  return {
+    id: row.id,
+    path: row.path,
+    kind: row.kind,
+    title: row.title,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toTodoInfo(row: SessionTodoRow): SessionTodoInfo {
+  return {
+    id: row.id,
+    title: row.title,
+    status: row.status,
+    sortOrder: row.sort_order,
+  };
+}
+
+/** AgentHarness's public type omits `.agent`; bridge to the runtime instance state. */
+function getHarnessAgentState(runtime: SessionRuntime): {
+  model: { provider: string; id: string };
+  thinkingLevel: string;
+} {
+  return (
+    runtime.harness as unknown as {
+      agent: { state: { model: { provider: string; id: string }; thinkingLevel: string } };
+    }
+  ).agent.state;
+}
 
 /**
  * 为 Extension 创建事件总线。
@@ -234,7 +270,7 @@ export function buildExtensionDeps(deps: {
         parentId: sessionId,
         agentName: agent?.name,
         queuedInputCount: manager.listSessionInputs(targetSessionId).length,
-        lastActiveAt: child.lastActiveAt,
+        lastActiveAt: child.lastActiveAt.getTime(),
       };
     },
 
@@ -288,7 +324,7 @@ export function buildExtensionDeps(deps: {
     getMemberAgentsByRole: async (role: string): Promise<MemberAgentInfo[]> => {
       const members = db.listMembers(sessionId).filter((member) => member.role === role);
       return members
-        .map((member) => {
+        .map((member): MemberAgentInfo | undefined => {
           const agent = manager.getAgent(member.agentId);
           if (!agent) return undefined;
           return {
@@ -353,13 +389,13 @@ export function buildExtensionDeps(deps: {
 
     pausing: async <T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T> => {
       const before = db.get(sessionId)?.status;
-      db.updateStatus(sessionId, "waiting_user");
+      db.updateStatus(sessionId, "blocked");
       try {
         const result = typeof work === "function" ? await work() : await work;
         return result;
       } finally {
         const current = db.get(sessionId)?.status;
-        if (current === "waiting_user") {
+        if (current === "blocked") {
           db.updateStatus(sessionId, before === "running" ? "running" : "idle");
         }
         if (reason.trim()) {
@@ -382,6 +418,38 @@ export function buildExtensionDeps(deps: {
     setWorkflow: async (patch: WorkflowStatePatch) => manager.setWorkflow(sessionId, patch),
 
     clearWorkflow: async () => manager.clearWorkflow(sessionId),
+
+    listTasks: async () => db.listSessionTasks(sessionId).map(toTaskInfo),
+
+    upsertTask: async (input: {
+      path: string;
+      kind: SessionTaskKind;
+      title?: string | null;
+      status?: string | null;
+    }) => toTaskInfo(db.upsertSessionTask({ sessionId, ...input })),
+
+    deleteTask: async (path: string) => db.deleteSessionTask(sessionId, path),
+
+    getCurrentTaskPath: async () => {
+      const row = db.get(sessionId);
+      if (!row?.current_task_id) return null;
+      return db.getSessionTask(row.current_task_id)?.path ?? null;
+    },
+
+    setCurrentTaskPath: async (path: string | null) => {
+      if (path === null) {
+        db.updateSessionFields(sessionId, { currentTaskId: null });
+        return;
+      }
+      const match = db.listSessionTasks(sessionId).find((task) => task.path === path);
+      if (!match) throw new Error(`Task not found: ${path}`);
+      db.updateSessionFields(sessionId, { currentTaskId: match.id });
+    },
+
+    listTodos: async () => db.listSessionTodos(sessionId).map(toTodoInfo),
+
+    setTodos: async (todos: Array<{ title: string; status: SessionTodoStatus }>) =>
+      db.replaceSessionTodos(sessionId, todos).map(toTodoInfo),
 
     setMessageMeta: async (messageId: string, meta: Record<string, unknown>) => {
       db.setMessageMeta(sessionId, messageId, meta);
@@ -415,13 +483,13 @@ export function buildExtensionDeps(deps: {
         state?.status === "idle" ||
         state?.status === "finish" ||
         state?.status === "finished" ||
-        state?.status === "starting"
+        state?.status === "initializing"
       );
     },
 
     isStreaming: () => {
       const state = db.get(sessionId);
-      return state?.status === "running" || state?.status === "waiting_user";
+      return state?.status === "running" || state?.status === "blocked";
     },
 
     getSignal: () => {
@@ -496,7 +564,7 @@ export function buildExtensionDeps(deps: {
 
     // ── Model control ────────────────────────────────────────────
     setModel: async (provider: string, modelId: string) => {
-      const previous = runtime.harness.agent.state.model;
+      const previous = getHarnessAgentState(runtime).model;
       await runtime.setModel(provider, modelId);
       await emitExtensionEvent({
         type: "model.change",
@@ -512,7 +580,8 @@ export function buildExtensionDeps(deps: {
     },
 
     getThinkingLevel: () => {
-      const level = db.get(sessionId)?.thinking_level ?? runtime.harness.agent.state.thinkingLevel;
+      const level =
+        db.get(sessionId)?.thinking_level ?? getHarnessAgentState(runtime).thinkingLevel;
       if (level === "low" || level === "medium" || level === "high") return level;
       return "none";
     },
@@ -520,16 +589,15 @@ export function buildExtensionDeps(deps: {
     getModel: () => {
       try {
         const state = db.get(sessionId);
-        if (!state) return undefined;
-        const meta = typeof state.meta === "string" ? JSON.parse(state.meta) : state.meta;
-        const config = meta?.runtimeConfig as { provider?: string; modelId?: string } | undefined;
-        if (config?.provider && config?.modelId) {
-          return {
-            provider: config.provider,
-            id: config.modelId,
-            contextWindow: 128000,
-          };
-        }
+        if (!state?.agent_id) return undefined;
+        const agent = db.getAgent(state.agent_id);
+        if (!agent?.providerId || !agent.modelId) return undefined;
+        const provider = db.getProvider(agent.providerId);
+        return {
+          provider: provider?.slug ?? String(agent.providerId),
+          id: agent.modelId,
+          contextWindow: 128000,
+        };
       } catch {
         // ignore
       }
@@ -570,20 +638,15 @@ export function buildExtensionDeps(deps: {
       if (level === "error") console.error(prefix, message, meta ?? "");
       else if (level === "warn") console.warn(prefix, message, meta ?? "");
       else console.log(prefix, message, meta ?? "");
-      try {
-        const logDir = join(getSessionDir(projectId, sessionId), "logs");
-        mkdirSync(logDir, { recursive: true });
-        const suffix = meta && Object.keys(meta).length > 0 ? ` ${JSON.stringify(meta)}` : "";
-        appendFileSync(
-          join(logDir, "extensions.log"),
-          `${new Date().toISOString()} ${level.toUpperCase()} ${message}${suffix}\n`,
-          "utf8",
-        );
-      } catch (error) {
-        console.error(prefix, "Failed to persist extension log", {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
+      appendSessionLog(projectId, sessionId, {
+        level,
+        message,
+        tags: ["extension"],
+        meta: {
+          ...(meta ?? {}),
+          source: "extension",
+        },
+      });
     },
 
     // ── Broadcast ────────────────────────────────────────────────
@@ -634,11 +697,23 @@ type RuntimeDeps = {
   pausing: <T>(reason: string, work: Promise<T> | (() => Promise<T>)) => Promise<T>;
   setSessionMeta: (meta: Record<string, unknown>) => Promise<void>;
   patchSessionMeta: (patch: Record<string, unknown>) => Promise<Record<string, unknown>>;
-  getWorkflow: () => Promise<import("../../core/session-workflow.js").SessionWorkflowState | null>;
-  setWorkflow: (
-    patch: WorkflowStatePatch,
-  ) => Promise<import("../../core/session-workflow.js").SessionWorkflowState>;
+  getWorkflow: () => Promise<SessionWorkflowState | null>;
+  setWorkflow: (patch: WorkflowStatePatch) => Promise<SessionWorkflowState>;
   clearWorkflow: () => Promise<void>;
+  listTasks: () => Promise<SessionTaskInfo[]>;
+  upsertTask: (input: {
+    path: string;
+    kind: SessionTaskKind;
+    title?: string | null;
+    status?: string | null;
+  }) => Promise<SessionTaskInfo>;
+  deleteTask: (path: string) => Promise<boolean>;
+  getCurrentTaskPath: () => Promise<string | null>;
+  setCurrentTaskPath: (path: string | null) => Promise<void>;
+  listTodos: () => Promise<SessionTodoInfo[]>;
+  setTodos: (
+    todos: Array<{ title: string; status: SessionTodoStatus }>,
+  ) => Promise<SessionTodoInfo[]>;
   setMessageMeta: (messageId: string, meta: Record<string, unknown>) => Promise<void>;
   patchMessageMeta: (
     messageId: string,

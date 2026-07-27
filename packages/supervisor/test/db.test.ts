@@ -144,9 +144,7 @@ describe("supervisor: SupervisorDb", () => {
       )
       .run(session.id);
     db.db
-      .prepare(
-        "INSERT INTO session_todos VALUES (1, ?, 'from table', 'completed', 0, 1, 1)",
-      )
+      .prepare("INSERT INTO session_todos VALUES (1, ?, 'from table', 'completed', 0, 1, 1)")
       .run(session.id);
     db.db.prepare("UPDATE sessions SET current_task_id = 1 WHERE id = ?").run(session.id);
     db.close();
@@ -167,7 +165,9 @@ describe("supervisor: SupervisorDb", () => {
     expect(db.listSessionTasks(session.id)).toHaveLength(2);
     expect(db.listSessionTodos(session.id)).toHaveLength(2);
     expect(
-      db.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_tasks'").get(),
+      db.db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_tasks'")
+        .get(),
     ).toBeUndefined();
   });
 
@@ -253,34 +253,99 @@ describe("supervisor: SupervisorDb", () => {
 
   it("uses the target columns for converged tables", () => {
     const names = (table: string) =>
-      (db.db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((column) => column.name);
+      (db.db.pragma(`table_info(${table})`) as Array<{ name: string }>).map(
+        (column) => column.name,
+      );
     expect(names("models")).toEqual([
-      "id", "provider_id", "model_id", "name", "context_window", "supports_vision",
-      "created_at", "updated_at",
+      "id",
+      "provider_id",
+      "model_id",
+      "name",
+      "context_window",
+      "supports_vision",
+      "created_at",
+      "updated_at",
     ]);
     expect(names("agents")).toEqual([
-      "id", "name", "description", "avatar", "backend_type", "model_id", "system_prompt",
-      "tools_preset", "home_dir", "is_builtin", "external_config", "disabled_tools", "meta",
-      "created_at", "updated_at",
+      "id",
+      "name",
+      "description",
+      "avatar",
+      "backend_type",
+      "model_id",
+      "system_prompt",
+      "tools_preset",
+      "home_dir",
+      "is_builtin",
+      "external_config",
+      "disabled_tools",
+      "meta",
+      "created_at",
+      "updated_at",
     ]);
     expect(names("projects")).toEqual([
-      "id", "name", "description", "cwd", "home_dir", "created_at", "updated_at",
+      "id",
+      "name",
+      "description",
+      "cwd",
+      "home_dir",
+      "created_at",
+      "updated_at",
     ]);
     expect(names("project_scripts")).toEqual([
-      "id", "project_id", "kind", "name", "command", "created_at", "updated_at",
+      "id",
+      "project_id",
+      "kind",
+      "name",
+      "command",
+      "created_at",
+      "updated_at",
     ]);
     expect(names("sessions")).toEqual([
-      "id", "project_id", "parent_id", "status", "thinking_level", "cwd", "leaf_id",
-      "agent_id", "spawn_type", "created_by", "title", "system_prompt", "avatar", "is_builtin",
-      "pinned", "muted", "unread", "external_session_id", "error_msg", "stage",
-      "shadow_enabled", "created_at", "last_active_at", "meta",
+      "id",
+      "project_id",
+      "parent_id",
+      "status",
+      "thinking_level",
+      "cwd",
+      "leaf_id",
+      "agent_id",
+      "spawn_type",
+      "created_by",
+      "title",
+      "system_prompt",
+      "avatar",
+      "is_builtin",
+      "external_session_id",
+      "error_msg",
+      "stage",
+      "shadow_enabled",
+      "created_at",
+      "last_active_at",
+      "meta",
     ]);
     expect(names("messages")).toEqual([
-      "id", "entry_id", "session_id", "parent_entry_id", "type", "payload", "meta", "is_old",
-      "origin_msg", "role", "search_text", "created_at",
+      "id",
+      "entry_id",
+      "session_id",
+      "parent_entry_id",
+      "type",
+      "payload",
+      "meta",
+      "is_old",
+      "origin_msg",
+      "role",
+      "search_text",
+      "created_at",
     ]);
     expect(names("session_input_queue")).toEqual([
-      "id", "session_id", "message", "level", "origin_msg", "images", "enqueued_at",
+      "id",
+      "session_id",
+      "message",
+      "level",
+      "origin_msg",
+      "images",
+      "enqueued_at",
     ]);
   });
 });

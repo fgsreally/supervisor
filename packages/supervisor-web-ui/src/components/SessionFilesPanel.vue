@@ -40,6 +40,7 @@
     <div class="flex-1 min-h-0 flex flex-col md:flex-row">
       <div
         class="session-files-panel__tree border-b md:border-b-0 md:border-r shrink-0 overflow-hidden flex flex-col"
+        :style="{ '--session-tree-width': `${treePaneWidth}px` }"
         style="border-color: var(--app-border)"
       >
         <div
@@ -70,7 +71,7 @@
           >
             暂无文件
           </div>
-          <BaseTree v-else v-model="treeNodes" :indent="14" default-open>
+          <BaseTree v-else v-model="treeNodes" :indent="14">
             <template #default="{ node, stat }">
               <div
                 class="file-tree-row flex items-center gap-1 min-w-0 py-0.5 pr-2 rounded-sm transition-colors"
@@ -112,6 +113,14 @@
         </div>
       </div>
 
+      <div
+        class="session-files-panel__resize-handle"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="调整文件树宽度"
+        @pointerdown="startTreeResize"
+      />
+
       <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
         <div
           v-if="!selectedPath"
@@ -125,23 +134,25 @@
             class="px-4 py-2 border-b flex items-center gap-2 shrink-0"
             style="border-color: var(--app-border-subtle)"
           >
-            <span
-              class="text-[12px] font-mono truncate flex-1"
-              style="color: var(--app-text-primary)"
-              :title="selectedPath"
-            >
-              {{ selectedPath }}
-            </span>
-            <span
-              v-if="preview"
-              class="text-[11px] shrink-0"
-              style="color: var(--app-text-muted)"
-            >
-              {{ formatSize(preview.size)
-              }}<template v-if="preview.truncated"> · 已截断</template>
+            <nav class="file-breadcrumb flex-1 min-w-0" :title="selectedPath">
+              <template v-for="(segment, index) in breadcrumbSegments" :key="`${segment}-${index}`">
+                <ChevronRight v-if="index > 0" class="file-breadcrumb__separator" />
+                <span
+                  class="file-breadcrumb__segment"
+                  :class="{
+                    'file-breadcrumb__segment--current': index === breadcrumbSegments.length - 1,
+                  }"
+                  >{{ segment }}</span
+                >
+              </template>
+            </nav>
+            <span v-if="preview" class="text-[11px] shrink-0" style="color: var(--app-text-muted)">
+              {{ formatSize(preview.size) }}<template v-if="preview.truncated"> · 已截断</template>
             </span>
           </div>
-          <div class="flex-1 min-h-0 overflow-auto custom-scrollbar">
+          <div
+            class="session-files-panel__preview-scroll flex-1 min-h-0 overflow-auto custom-scrollbar"
+          >
             <div
               v-if="previewLoading"
               class="py-12 text-center text-[13px]"
@@ -172,12 +183,9 @@
               <div v-else-if="preview.kind === 'markdown' && preview.content != null" class="p-4">
                 <MarkdownContent :content="preview.content" prose />
               </div>
-              <pre
-                v-else-if="preview.content != null"
-                class="p-4 text-[12px] font-mono whitespace-pre-wrap break-all leading-relaxed m-0"
-                style="color: var(--app-text-primary)"
-                >{{ formatTextContent(preview) }}</pre
-              >
+              <div v-else-if="preview.content != null" class="p-4 session-file-code">
+                <MarkdownContent :content="highlightedPreviewMarkdown" variant="terminal" />
+              </div>
               <div
                 v-else
                 class="py-12 text-center text-[13px] px-4"
@@ -215,6 +223,7 @@ interface FileTreeNode {
 
 const props = defineProps<{
   sessionId: string;
+  initialPath?: string | null;
 }>();
 
 defineEmits<{ close: [] }>();
@@ -231,6 +240,34 @@ const previewError = ref<string | null>(null);
 const imageUrl = ref<string | null>(null);
 
 const fileCount = computed(() => files.value.filter((f) => !f.isDirectory).length);
+const breadcrumbSegments = computed(() => selectedPath.value?.split("/").filter(Boolean) ?? []);
+const treePaneWidth = ref(Number(localStorage.getItem("pi-supervisor:file-tree-width")) || 280);
+let stopTreeResize: (() => void) | null = null;
+
+function startTreeResize(event: PointerEvent) {
+  event.preventDefault();
+  const startX = event.clientX;
+  const startWidth = treePaneWidth.value;
+  const onMove = (moveEvent: PointerEvent) => {
+    treePaneWidth.value = Math.min(520, Math.max(180, startWidth + moveEvent.clientX - startX));
+  };
+  const onUp = () => {
+    localStorage.setItem("pi-supervisor:file-tree-width", String(treePaneWidth.value));
+    stopTreeResize?.();
+  };
+  window.addEventListener("pointermove", onMove);
+  window.addEventListener("pointerup", onUp, { once: true });
+  stopTreeResize = () => {
+    window.removeEventListener("pointermove", onMove);
+    window.removeEventListener("pointerup", onUp);
+    stopTreeResize = null;
+  };
+}
+const highlightedPreviewMarkdown = computed(() => {
+  if (!preview.value) return "";
+  const language = preview.value.language || (preview.value.kind === "json" ? "json" : "text");
+  return `\`\`\`${language}\n${formatTextContent(preview.value)}\n\`\`\``;
+});
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -305,7 +342,11 @@ function revokeImageUrl() {
 
 function setBinaryPreview(file: SessionFileContent) {
   revokeImageUrl();
-  if ((file.kind === "image" || file.kind === "pdf") && file.encoding === "base64" && file.content) {
+  if (
+    (file.kind === "image" || file.kind === "pdf") &&
+    file.encoding === "base64" &&
+    file.content
+  ) {
     const binary = atob(file.content);
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -330,6 +371,42 @@ async function loadPreview(path: string) {
   }
 }
 
+function normalizeRequestedPath(rawPath: string): string | null {
+  let value = rawPath
+    .trim()
+    .replace(/^file:\/\//i, "")
+    .replace(/\\/g, "/");
+  value = value.replace(/[?#].*$/, "").replace(/:(\d+)(?::\d+)?$/, "");
+  if (/^\/[A-Za-z]:\//.test(value)) value = value.slice(1);
+  const normalizedCwd = cwd.value.replace(/\\/g, "/").replace(/\/$/, "");
+  if (normalizedCwd && value.toLowerCase().startsWith(`${normalizedCwd.toLowerCase()}/`)) {
+    value = value.slice(normalizedCwd.length + 1);
+  }
+  value = value.replace(/^\.\//, "").replace(/^\//, "");
+  const paths = files.value
+    .filter((file) => !file.isDirectory)
+    .map((file) => file.path.replace(/\\/g, "/"));
+  const exact = paths.find((path) => path.toLowerCase() === value.toLowerCase());
+  if (exact) return exact;
+  const suffix = paths
+    .filter((path) => value.toLowerCase().endsWith(`/${path.toLowerCase()}`))
+    .sort((left, right) => right.length - left.length)[0];
+  if (suffix) return suffix;
+  const base = value.split("/").pop();
+  const basenameMatches = paths.filter((path) => path.split("/").pop() === base);
+  return basenameMatches.length === 1 ? basenameMatches[0]! : null;
+}
+
+function openRequestedPath(rawPath: string) {
+  const path = normalizeRequestedPath(rawPath);
+  if (!path) {
+    previewError.value = `文件不在当前会话工作区：${rawPath}`;
+    return;
+  }
+  selectedPath.value = path;
+  void loadPreview(path);
+}
+
 function onNodeClick(node: FileTreeNode) {
   if (!node.filePath) return;
   selectedPath.value = node.filePath;
@@ -344,6 +421,7 @@ async function refresh() {
     cwd.value = result.cwd;
     files.value = result.files;
     treeNodes.value = buildTree(result.files);
+    if (props.initialPath) openRequestedPath(props.initialPath);
   } catch (e: unknown) {
     files.value = [];
     treeNodes.value = [];
@@ -365,7 +443,16 @@ watch(
   { immediate: true },
 );
 
+watch(
+  () => props.initialPath,
+  (path) => {
+    if (!path || files.value.length === 0) return;
+    openRequestedPath(path);
+  },
+);
+
 onBeforeUnmount(() => {
+  stopTreeResize?.();
   revokeImageUrl();
 });
 </script>
@@ -376,11 +463,87 @@ onBeforeUnmount(() => {
   width: 100%;
 }
 
+.session-files-panel__resize-handle {
+  display: none;
+}
+
+.session-file-code {
+  min-width: max-content;
+}
+
+.session-file-code :deep(.md-term-pre) {
+  width: max-content;
+  min-width: 100%;
+  overflow: visible;
+}
+
 @media (min-width: 768px) {
   .session-files-panel__tree {
     height: 100%;
-    width: min(280px, 38%);
+    width: min(var(--session-tree-width, 280px), 55%);
   }
+
+  .session-files-panel__resize-handle {
+    display: block;
+    width: 5px;
+    margin-left: -3px;
+    margin-right: -2px;
+    cursor: col-resize;
+    z-index: 2;
+    background: transparent;
+  }
+
+  .session-files-panel__resize-handle:hover,
+  .session-files-panel__resize-handle:active {
+    background: var(--app-accent);
+  }
+}
+
+.file-breadcrumb {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  white-space: nowrap;
+  color: var(--app-text-muted);
+  font:
+    12px/1.4 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  scrollbar-width: none;
+}
+
+.file-breadcrumb::-webkit-scrollbar {
+  display: none;
+}
+
+.file-breadcrumb__separator {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  margin: 0 2px;
+}
+
+.file-breadcrumb__segment--current {
+  color: var(--app-text-primary);
+  font-weight: 600;
+}
+
+.session-files-panel__preview-scroll {
+  scrollbar-width: auto;
+  scrollbar-color: color-mix(in srgb, var(--app-text-muted) 70%, transparent) transparent;
+}
+
+.session-files-panel__preview-scroll::-webkit-scrollbar:horizontal {
+  height: 14px;
+}
+
+.session-files-panel__preview-scroll::-webkit-scrollbar-thumb {
+  min-width: 44px;
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-text-muted) 72%, transparent);
+  background-clip: padding-box;
 }
 
 .session-files-panel :deep(.he-tree) {

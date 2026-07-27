@@ -342,6 +342,7 @@ import { useSessionStore, useAgentStore, useProviderStore, useResourceStore } fr
 import { providerToUI } from "./utils/provider-ui";
 import { getDefaultWorkspaceCwd } from "./config/workspace";
 import { idFromRoute, modelIdFromRoute, tabFromRoute } from "./router";
+import { viewPreferences } from "./utils/view-preferences";
 
 const { width: chatListWidth, startResize: startListResize } = useResizableWidth({
   defaultWidth: 288,
@@ -520,8 +521,8 @@ const chatSessionProps = computed(() => {
     meta: s.meta,
     agentId: s.agentId ?? undefined,
     workspaceId: s.cwd,
-    pinned: !!s.pinned,
-    muted: !!s.muted,
+    pinned: viewPreferences.pinnedSessionIds.includes(s.id),
+    muted: viewPreferences.mutedSessionIds.includes(s.id),
     currentTask: s.currentTask,
   };
 });
@@ -541,17 +542,13 @@ function openSessionFromHome(sessionId: string) {
   pushRoute();
 }
 
-watch(
-  [activeSessionId, mainTab, () => sessionStore.sessions.map((s) => [s.id, s.unread])],
-  ([id, tab]) => {
-    if (!id || tab !== "chat") return;
-    void markActiveSessionRead(id);
-  },
-);
+watch([activeSessionId, mainTab, () => ({ ...viewPreferences.unreadBySession })], ([id, tab]) => {
+  if (!id || tab !== "chat") return;
+  void markActiveSessionRead(id);
+});
 
 async function markActiveSessionRead(id: string) {
-  const session = sessionStore.sessions.find((s) => s.id === id);
-  const unread = session?.unread;
+  const unread = viewPreferences.unreadBySession[id];
   if (typeof unread !== "number" || unread <= 0) return;
   try {
     await sessionStore.markSessionRead(id);

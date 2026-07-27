@@ -19,18 +19,10 @@
     >
       <template #actions>
         <div class="desktop-session-actions">
-          <ChatHeaderAction
-            title="搜索消息"
-            :active="searchOpen"
-            @click="toggleSearch"
-          >
+          <ChatHeaderAction title="搜索消息" :active="searchOpen" @click="toggleSearch">
             <Search />
           </ChatHeaderAction>
-          <ChatHeaderAction
-            title="查看会话日志"
-            :active="showLogPanel"
-            @click="toggleLogPanel"
-          >
+          <ChatHeaderAction title="查看会话日志" :active="showLogPanel" @click="toggleLogPanel">
             <ScrollText />
           </ChatHeaderAction>
           <ChatHeaderAction
@@ -107,6 +99,7 @@
           :retrying="retryingError"
           :has-older="hasOlderMessages"
           :loading-older="loadingOlder"
+          :external-agent="isExternalAgent"
           @load-older="loadOlderMessages"
           @open-tool="openToolDetail"
           @open-bash="openBashDetail"
@@ -195,6 +188,7 @@
           <SessionFilesPanel
             class="chat-panel-host__body chat-workspace__side-panel"
             :session-id="session.id"
+            :initial-path="requestedFilePath"
             @close="showFilesPanel = false"
           />
         </div>
@@ -309,44 +303,44 @@
               <strong>选择模型</strong
               ><button type="button" @click="modelPickerOpen = false">取消</button>
             </header>
-          <div class="model-picker-search">
-            <Search class="h-4 w-4" />
-            <input v-model="modelSearch" type="search" placeholder="搜索供应商或模型" autofocus />
-          </div>
-          <div class="model-picker-list">
-            <div v-if="modelPickerLoading" class="model-picker-empty">
-              <Loader2 class="model-picker-spinner" />正在加载模型
+            <div class="model-picker-search">
+              <Search class="h-4 w-4" />
+              <input v-model="modelSearch" type="search" placeholder="搜索供应商或模型" autofocus />
             </div>
-            <details
-              v-for="provider in filteredModelProviders"
-              v-else
-              :key="provider.id"
-              class="model-picker-provider"
-              :open="!!modelSearch || filteredModelProviders.length === 1"
-            >
-              <summary>
-                {{ provider.name }}<small>{{ provider.models.length }}</small>
-              </summary>
-              <button
-                v-for="model in provider.models"
-                :key="`${provider.id}:${model.modelId}`"
-                type="button"
-                :disabled="modelPickerSaving"
-                @click="selectAgentModel(model.id)"
+            <div class="model-picker-list">
+              <div v-if="modelPickerLoading" class="model-picker-empty">
+                <Loader2 class="model-picker-spinner" />正在加载模型
+              </div>
+              <details
+                v-for="provider in filteredModelProviders"
+                v-else
+                :key="provider.id"
+                class="model-picker-provider"
+                :open="!!modelSearch || filteredModelProviders.length === 1"
               >
-                <span>{{ model.name || model.modelId }}</span
-                ><small>{{ model.modelId }}</small>
-              </button>
-            </details>
-            <div
-              v-if="!modelPickerLoading && !filteredModelProviders.length"
-              class="model-picker-empty"
-            >
-              {{ modelSearch ? "没有匹配的模型" : "暂无可用模型，请先在“模型”中添加。" }}
+                <summary>
+                  {{ provider.name }}<small>{{ provider.models.length }}</small>
+                </summary>
+                <button
+                  v-for="model in provider.models"
+                  :key="`${provider.id}:${model.modelId}`"
+                  type="button"
+                  :disabled="modelPickerSaving"
+                  @click="selectAgentModel(model.id)"
+                >
+                  <span>{{ model.name || model.modelId }}</span
+                  ><small>{{ model.modelId }}</small>
+                </button>
+              </details>
+              <div
+                v-if="!modelPickerLoading && !filteredModelProviders.length"
+                class="model-picker-empty"
+              >
+                {{ modelSearch ? "没有匹配的模型" : "暂无可用模型，请先在“模型”中添加。" }}
+              </div>
             </div>
-          </div>
-        </section>
-      </div>
+          </section>
+        </div>
       </Transition>
     </Teleport>
 
@@ -360,7 +354,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, watch, onBeforeUnmount } from "vue";
+import { ref, computed, nextTick, watch, onBeforeUnmount, onMounted } from "vue";
 import {
   Braces,
   ClipboardList,
@@ -388,7 +382,11 @@ import {
   mergeStreamingToolsIntoPersistedEntries,
   sessionTreeToChatEntries,
 } from "../utils/session-entries";
-import { buildToolModal, buildBashModal, buildExternalInteractionModal } from "../utils/tool-detail";
+import {
+  buildToolModal,
+  buildBashModal,
+  buildExternalInteractionModal,
+} from "../utils/tool-detail";
 import ToolDetailModal from "../components/ToolDetailModal.vue";
 import ToolDetailPanel from "../components/ToolDetailPanel.vue";
 import BtwSplitPanel from "../components/BtwSplitPanel.vue";
@@ -544,6 +542,19 @@ const modelSearch = ref("");
 const sessionActionsOpen = ref(false);
 const showLogPanel = ref(false);
 const showFilesPanel = ref(false);
+const requestedFilePath = ref<string | null>(null);
+
+function onOpenFileEvent(event: Event) {
+  const path = (event as CustomEvent<{ path?: string }>).detail?.path;
+  if (!path) return;
+  requestedFilePath.value = null;
+  openFilesPanel();
+  void nextTick(() => {
+    requestedFilePath.value = path;
+  });
+}
+
+onMounted(() => window.addEventListener("supervisor:open-file", onOpenFileEvent));
 
 function toggleLogPanel() {
   showLogPanel.value = !showLogPanel.value;
@@ -656,9 +667,7 @@ async function selectAgentModel(modelId: string) {
   }
 }
 
-const isInitializing = computed(
-  () => props.session.status === "initializing",
-);
+const isInitializing = computed(() => props.session.status === "initializing");
 
 const queuedInputs = ref<api.QueuedSessionInput[]>([]);
 const queuedActionBusyId = ref<string | null>(null);
@@ -746,9 +755,7 @@ const gitBranch = computed(() => props.session.gitSessionBranch ?? null);
 const childSessions = computed(() =>
   sessionStore.sessions.filter((session) => session.parentId === props.session.id),
 );
-const configurableAgents = computed(() =>
-  agentStore.agents.filter((agent) => !agent.isBuiltin),
-);
+const configurableAgents = computed(() => agentStore.agents.filter((agent) => !agent.isBuiltin));
 const shadowEnabled = computed(() => !!props.session.shadowEnabled);
 const spawnedAgentIds = computed(() =>
   Array.isArray(props.session.meta?.subagentIds)
@@ -1223,6 +1230,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  window.removeEventListener("supervisor:open-file", onOpenFileEvent);
   stopStreaming();
   shadowSuggestionCleanup?.();
   shadowSuggestionCleanup = null;
@@ -1286,9 +1294,7 @@ const visibleGroups = computed(() => {
   return displayGroups.value;
 });
 
-const hasOlderMessages = computed(
-  () => !searchOpen.value && historyHasMore.value,
-);
+const hasOlderMessages = computed(() => !searchOpen.value && historyHasMore.value);
 
 const searchHitCount = computed(() => visibleGroups.value.length);
 
@@ -1345,9 +1351,7 @@ async function openToolDetail(
   let content = resultContent;
   const truncated = chatEntries.value.some(
     (entry) =>
-      entry.type === "toolResult" &&
-      entry.id === resultEntryId &&
-      entry.truncated === true,
+      entry.type === "toolResult" && entry.id === resultEntryId && entry.truncated === true,
   );
   if (truncated && resultEntryId) {
     try {
@@ -1399,9 +1403,7 @@ async function openBashDetail(
   let content = resultContent;
   const truncated = chatEntries.value.some(
     (entry) =>
-      entry.type === "toolResult" &&
-      entry.id === resultEntryId &&
-      entry.truncated === true,
+      entry.type === "toolResult" && entry.id === resultEntryId && entry.truncated === true,
   );
   if (truncated && resultEntryId) {
     try {
@@ -1470,10 +1472,11 @@ function attachToRunningSession(streamingReply?: string) {
     !!lastGroup && lastGroup.type === "message" && lastGroup.message?.role === "user";
   // Codex only persists the assistant message at turn end — after refresh the
   // trailing entry is usually the user message, so always open a fresh bubble.
-  const assistantId = trailingUser || !lastGroup
-    ? `stream-${Date.now()}`
-    : (streamingAssistantId.value ??
-      (lastGroup.type === "grouped_assistant" ? lastGroup.id : `stream-${Date.now()}`));
+  const assistantId =
+    trailingUser || !lastGroup
+      ? `stream-${Date.now()}`
+      : (streamingAssistantId.value ??
+        (lastGroup.type === "grouped_assistant" ? lastGroup.id : `stream-${Date.now()}`));
 
   const hasStreamingEntry = chatEntries.value.some((entry) => entry.id === assistantId);
   if (!hasStreamingEntry) {

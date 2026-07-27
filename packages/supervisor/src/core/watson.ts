@@ -9,12 +9,11 @@ import {
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { Type } from "typebox";
-import { findPackagedAgentId } from "../agent/builtin/registry.js";
-import { getAgentHomeDir } from "../agent/agent-paths.js";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
 import { resolveAssistantModelAuth, type UtilityModelAuth } from "../utils/utility-llm.js";
 import { loadPackagedAgentPrompt } from "../agent/builtin/prompts.js";
+import { getSupervisorHome } from "../utils/supervisor-home.js";
 
 export type WatsonTaskKind =
   | "project-parse"
@@ -51,19 +50,19 @@ export interface WatsonRunResult<T = unknown> {
   agentId: number | null;
 }
 
-function watsonLogDir(agentId: number): string {
-  const dir = join(getAgentHomeDir(agentId), "logs");
+function watsonLogDir(): string {
+  const dir = join(getSupervisorHome(), "logs", "watson");
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function appendWatsonLog(agentId: number, line: string): void {
-  const path = join(watsonLogDir(agentId), "watson.log");
+function appendWatsonLog(line: string): void {
+  const path = join(watsonLogDir(), "watson.log");
   appendFileSync(path, `${new Date().toISOString()} ${line}\n`, "utf8");
 }
 
-export function readWatsonLogs(agentId: number, options?: { limit?: number }): string {
-  const path = join(watsonLogDir(agentId), "watson.log");
+export function readWatsonLogs(options?: { limit?: number }): string {
+  const path = join(watsonLogDir(), "watson.log");
   if (!existsSync(path)) return "";
   const text = readFileSync(path, "utf8");
   const limit = options?.limit ?? 400;
@@ -71,8 +70,8 @@ export function readWatsonLogs(agentId: number, options?: { limit?: number }): s
   return lines.slice(Math.max(0, lines.length - limit)).join("\n");
 }
 
-export function listWatsonLogFiles(agentId: number): string[] {
-  const dir = watsonLogDir(agentId);
+export function listWatsonLogFiles(): string[] {
+  const dir = watsonLogDir();
   if (!existsSync(dir)) return [];
   return readdirSync(dir)
     .filter((name) => name.endsWith(".log"))
@@ -106,8 +105,7 @@ function createSubmitResultTool(capture: { value?: unknown }): AgentTool {
   return {
     name: "submit_result",
     label: "Submit Result",
-    description:
-      "提交最终结构化结果。完成探索/改动后必须作为最后一步调用一次；调用后任务结束。",
+    description: "提交最终结构化结果。完成探索/改动后必须作为最后一步调用一次；调用后任务结束。",
     parameters: Type.Object({
       result: Type.Unknown({ description: "任务要求的 JSON 对象" }),
     }),
@@ -143,19 +141,15 @@ function defaultWatsonSystemPrompt(kind: WatsonTaskKind, structured: boolean): s
 export async function runWatsonTask<T = unknown>(
   options: WatsonRunOptions,
 ): Promise<WatsonRunResult<T>> {
-  const agentId = findPackagedAgentId(options.db, "watson") ?? null;
   const auth = options.auth ?? (await resolveAssistantModelAuth(options.db));
   if (!auth) {
     throw new Error("未配置「助手模型」，华生无法运行");
   }
 
   const structured = options.structured === true;
-  if (agentId != null) {
-    appendWatsonLog(
-      agentId,
-      `[start] kind=${options.kind} cwd=${options.cwd} model=${auth.model.provider}/${auth.model.id} structured=${structured}`,
-    );
-  }
+  appendWatsonLog(
+    `[start] kind=${options.kind} cwd=${options.cwd} model=${auth.model.provider}/${auth.model.id} structured=${structured}`,
+  );
 
   const capture: { value?: unknown } = {};
   const baseTools = createDefaultTools(options.cwd, options.toolsPreset ?? "coding");
@@ -197,13 +191,12 @@ export async function runWatsonTask<T = unknown>(
       throw new Error("华生未调用 submit_result，无法得到结构化结果");
     }
 
-    if (agentId != null) {
+    {
       appendWatsonLog(
-        agentId,
         `[done] kind=${options.kind} chars=${text.length} hasResult=${result != null}`,
       );
       const runPath = join(
-        watsonLogDir(agentId),
+        watsonLogDir(),
         `${new Date().toISOString().replace(/[:.]/g, "-")}-${String(options.kind).replace(/[^\w.-]+/g, "_")}.log`,
       );
       const body = [
@@ -216,12 +209,10 @@ export async function runWatsonTask<T = unknown>(
       appendFileSync(runPath, body, "utf8");
     }
 
-    return { text, result, agentId };
+    return { text, result, agentId: null };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    if (agentId != null) {
-      appendWatsonLog(agentId, `[error] kind=${options.kind} ${message}`);
-    }
+    appendWatsonLog(`[error] kind=${options.kind} ${message}`);
     throw error;
   }
 }

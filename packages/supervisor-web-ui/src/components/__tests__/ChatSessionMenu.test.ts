@@ -47,6 +47,7 @@ describe("ChatSessionMenu", () => {
 
     expect(wrapper.find('[aria-label="启用影子代理"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain("可用子代理");
-    expect(wrapper.text()).toContain("外部 Agent");
+    expect(wrapper.text()).not.toContain("外部 Agent");
+    expect(wrapper.text()).toContain("仅显示结论");
   });
 });

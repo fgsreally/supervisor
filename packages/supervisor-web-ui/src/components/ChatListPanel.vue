@@ -85,7 +85,15 @@
 
       <template v-if="!query.trim() && workspaceGroups.length">
         <template v-for="group in workspaceGroups" :key="group.workspace.id">
-          <div class="list-section-header sticky top-0 z-10">
+          <div
+            class="list-section-header sticky top-0 z-10"
+            draggable="true"
+            :class="{ 'list-section-header--dragging': draggedProjectId === group.workspace.id }"
+            @dragstart="onProjectDragStart(group.workspace.id, $event)"
+            @dragover.prevent
+            @drop="onProjectDrop(group.workspace.id)"
+            @dragend="draggedProjectId = null"
+          >
             <button
               type="button"
               class="section-action-btn"
@@ -129,12 +137,7 @@
             :class="{ 'workspace-collapse--open': !isWorkspaceCollapsed(group.workspace.id) }"
           >
             <div class="workspace-collapse__inner">
-              <div
-                v-if="!group.sessions.length"
-                class="workspace-empty"
-              >
-                暂无会话
-              </div>
+              <div v-if="!group.sessions.length" class="workspace-empty">暂无会话</div>
               <div v-for="root in group.sessions" :key="root.id" class="workspace-session-block">
                 <SessionListItem
                   :session="root"
@@ -236,9 +239,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { ChevronRight, FolderInput, GitBranch, Plus, Search, Settings } from "lucide-vue-next";
+import { setProjectOrder } from "@/utils/view-preferences";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
-import { groupSessionsByWorkspace, toUISession, compareSessionsByRecentActivity } from "@/utils/ui-session";
+import {
+  groupSessionsByWorkspace,
+  toUISession,
+  compareSessionsByRecentActivity,
+} from "@/utils/ui-session";
 import { rememberCwd } from "@/config/workspace";
 import {
   pullProjectGit,
@@ -277,6 +285,28 @@ const sessionStore = useSessionStore();
 const agentStore = useAgentStore();
 
 const query = ref("");
+const draggedProjectId = ref<string | null>(null);
+
+function onProjectDragStart(projectId: string, event: DragEvent) {
+  draggedProjectId.value = projectId;
+  event.dataTransfer?.setData("text/plain", projectId);
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+}
+
+function onProjectDrop(targetId: string) {
+  const sourceId = draggedProjectId.value;
+  if (!sourceId || sourceId === targetId) return;
+  const next = [...sessionStore.projects];
+  const sourceIndex = next.findIndex((project) => project.id === sourceId);
+  const targetIndex = next.findIndex((project) => project.id === targetId);
+  if (sourceIndex < 0 || targetIndex < 0) return;
+  const [project] = next.splice(sourceIndex, 1);
+  if (!project) return;
+  next.splice(targetIndex, 0, project);
+  sessionStore.projects = next;
+  setProjectOrder(next.map((item) => item.id));
+  draggedProjectId.value = null;
+}
 const searching = ref(false);
 const messageMatches = ref<Map<string, string>>(new Map());
 let searchGeneration = 0;
@@ -419,9 +449,7 @@ const workspaceGroups = computed(() => {
 });
 
 function childrenOf(parentId: string): UISession[] {
-  return listVisible.value
-    .filter((s) => s.parentId === parentId)
-    .sort(sortByRecentActivity);
+  return listVisible.value.filter((s) => s.parentId === parentId).sort(sortByRecentActivity);
 }
 
 function isWorkspaceCollapsed(workspaceId: string): boolean {
@@ -523,10 +551,7 @@ async function runProjectGit(action: "pull" | "push") {
         ? await pullProjectGit(target.projectId)
         : await pushProjectGit(target.projectId);
     const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-    showUiMessage(
-      detail || (action === "pull" ? "Git Pull 完成" : "Git Push 完成"),
-      "success",
-    );
+    showUiMessage(detail || (action === "pull" ? "Git Pull 完成" : "Git Push 完成"), "success");
     projectGit.value = null;
   } catch (error) {
     showUiMessage(formatProjectGitError(error, action), "error");

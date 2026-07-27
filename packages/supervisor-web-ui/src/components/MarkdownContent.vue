@@ -7,6 +7,7 @@
         : 'md-content--prose text-[14px] leading-relaxed'
     "
     v-html="html"
+    @click="onContentClick"
   />
 </template>
 
@@ -41,19 +42,46 @@ function escapeHtml(value: string): string {
     .replaceAll('"', "&quot;");
 }
 
+function highlightCode(text: string, lang?: string): string {
+  if (
+    !lang ||
+    !/^(?:js|jsx|ts|tsx|javascript|typescript|json|css|html|vue|sh|bash|sql)$/i.test(lang)
+  ) {
+    return escapeHtml(text);
+  }
+  const highlightPlain = (value: string) =>
+    escapeHtml(value)
+      .replace(
+        /\b(const|let|var|function|return|if|else|for|while|class|interface|type|import|export|from|async|await|new|throw|try|catch|true|false|null|undefined|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|TABLE)\b/g,
+        '<span class="tok-keyword">$1</span>',
+      )
+      .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-number">$1</span>');
+
+  let html = "";
+  let cursor = 0;
+  const strings = /(["'`])(?:\\.|(?!\1)[^\\\r\n])*\1/g;
+  for (const match of text.matchAll(strings)) {
+    const index = match.index ?? cursor;
+    html += highlightPlain(text.slice(cursor, index));
+    html += `<span class="tok-string">${escapeHtml(match[0])}</span>`;
+    cursor = index + match[0].length;
+  }
+  html += highlightPlain(text.slice(cursor));
+  return html;
+}
+
 function createTerminalRenderer(): Renderer {
   const renderer = new Renderer();
   renderer.hr = () => '<hr class="md-term-hr" />\n';
   renderer.heading = function ({ text, depth, tokens }) {
     const level = Math.min(Math.max(depth, 1), 6);
-    const marks = "#".repeat(level);
     const body = tokens?.length ? this.parser.parseInline(tokens) : escapeHtml(text);
-    return `<div class="md-term-h" role="heading" aria-level="${level}"><span class="md-term-h__mark">${marks}</span> ${body}</div>\n`;
+    return `<div class="md-term-h" role="heading" aria-level="${level}">${body}</div>\n`;
   };
   renderer.codespan = ({ text }) => `<code class="md-term-code">${escapeHtml(text)}</code>`;
   renderer.code = ({ text, lang }) => {
     const language = lang ? ` data-lang="${escapeHtml(lang)}"` : "";
-    return `<pre class="md-term-pre"${language}><code>${escapeHtml(text)}</code></pre>\n`;
+    return `<pre class="md-term-pre"${language}><code>${highlightCode(text, lang)}</code></pre>\n`;
   };
   renderer.listitem = function (item) {
     const marker = item.task ? (item.checked ? "[x]" : "[ ]") : "•";
@@ -77,6 +105,16 @@ const html = computed(() => {
   });
   return typeof raw === "string" ? raw : "";
 });
+
+function onContentClick(event: MouseEvent) {
+  const anchor = (event.target as HTMLElement).closest("a");
+  const href = anchor?.getAttribute("href");
+  if (!href || /^(?:https?:|mailto:|#)/i.test(href)) return;
+  event.preventDefault();
+  window.dispatchEvent(
+    new CustomEvent("supervisor:open-file", { detail: { path: decodeURIComponent(href) } }),
+  );
+}
 </script>
 
 <style scoped>
@@ -210,6 +248,15 @@ const html = computed(() => {
 .md-content--terminal :deep(.md-term-h__mark) {
   color: #64748b;
   font-weight: 500;
+}
+.md-content :deep(.tok-keyword) {
+  color: #c084fc;
+}
+.md-content :deep(.tok-string) {
+  color: #86efac;
+}
+.md-content :deep(.tok-number) {
+  color: #fbbf24;
 }
 .md-content--terminal :deep(hr.md-term-hr) {
   margin: 1.05em 0;

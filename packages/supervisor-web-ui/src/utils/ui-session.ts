@@ -2,6 +2,7 @@ import type { Project, Session } from "@/api";
 import type { UISession, UIWorkspace } from "@/types/ui";
 import type { SessionAvatarValue } from "@/utils/session-avatar";
 import { parseSessionStage } from "@/utils/workflow";
+import { viewPreferences } from "@/utils/view-preferences";
 
 export function workspaceNameFromCwd(cwd: string): string {
   if (!cwd || cwd === "unknown") return "unknown";
@@ -36,14 +37,9 @@ export function toUISession(session: Session): UISession {
         typeof session.meta?.description === "string" ? session.meta.description : undefined,
     },
     lastMessagePreview: session.lastMessagePreview ?? "",
-    pinned: !!session.pinned || !!session.meta?.pinned,
-    muted: !!session.muted || !!session.meta?.muted,
-    unread:
-      typeof session.unread === "number"
-        ? session.unread
-        : typeof session.meta?.unread === "number"
-          ? session.meta.unread
-          : undefined,
+    pinned: viewPreferences.pinnedSessionIds.includes(session.id),
+    muted: viewPreferences.mutedSessionIds.includes(session.id),
+    unread: viewPreferences.unreadBySession[session.id],
   };
 }
 

@@ -27,7 +27,6 @@
     >
       {{ agentName }}
     </button>
-    <span v-if="externalAgent" class="chat-header-external-badge ml-2 shrink-0">外部 Agent</span>
     <div class="chat-header-status ml-4 text-xs" :class="statusBadgeClass">
       {{ statusLabel }}
     </div>

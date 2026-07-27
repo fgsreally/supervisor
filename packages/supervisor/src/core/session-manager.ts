@@ -12,15 +12,9 @@ import {
   type ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
-import {
-  getEnvApiKey,
-  getModel,
-  type KnownProvider,
-} from "@earendil-works/pi-ai";
+import { getEnvApiKey, getModel, type KnownProvider } from "@earendil-works/pi-ai";
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
-import {
-  getAgentHomeDir,
-} from "../agent/index.js";
+import { getAgentHomeDir } from "../agent/index.js";
 import { getDefaultCwd } from "../config/default-cwd.js";
 import { initializeResourceCatalog } from "../resources/catalog-sync.js";
 import { ExtensionModuleRegistry } from "../extension/registry.js";
@@ -29,10 +23,7 @@ import {
   ensureAgentBuiltinExtensionBindings,
   ensureBuiltinExtensionResources,
 } from "../extension/builtin/ensure.js";
-import {
-  BUILTIN_EXTENSIONS,
-  isBuiltinExtensionResource,
-} from "../extension/builtin/catalog.js";
+import { BUILTIN_EXTENSIONS, isBuiltinExtensionResource } from "../extension/builtin/catalog.js";
 import { JobManager } from "./jobs.js";
 import {
   executeTaskSlashCommand,
@@ -50,30 +41,17 @@ import {
   resolveAgentTools,
   skillsToResourceInfo,
 } from "../agent/resource-resolver.js";
-import {
-  findPackagedAgentId,
-  loadPackagedAgentPrompt,
-} from "../agent/index.js";
+import { findPackagedAgentId, loadPackagedAgentPrompt } from "../agent/index.js";
 import { attachHomeTaskSessionSync } from "./home-task-sync.js";
 import {
   generateTaskDecomposition,
   resolveAssistantModelRef,
   resolveFeatureModelAuth,
 } from "../utils/utility-llm.js";
-import {
-  applyProjectRuntimeParse,
-  runProjectRuntimeParse,
-} from "./project-runtime.js";
-import {
-  parseSessionServicesMeta,
-  stopSessionProjectServices,
-} from "./session-services.js";
+import { applyProjectRuntimeParse, runProjectRuntimeParse } from "./project-runtime.js";
+import { parseSessionServicesMeta, stopSessionProjectServices } from "./session-services.js";
 import { runWatsonTask, type WatsonRunOptions, type WatsonRunResult } from "./watson.js";
-import type {
-  CreateHomeTaskOptions,
-  HomeTask,
-  UpdateHomeTaskOptions,
-} from "../types.js";
+import type { CreateHomeTaskOptions, HomeTask, UpdateHomeTaskOptions } from "../types.js";
 import { cancelPendingApprovals, submitApprovalResolution } from "../extension/runtime/index.js";
 import type { ApprovalResult } from "../extension/index.js";
 import { normalizeSessionStage } from "./session-workflow.js";
@@ -132,14 +110,8 @@ import {
   SQLiteSessionStorage,
   toSessionMessageResponse,
 } from "./session-storage.js";
-import {
-  getSessionMessageByEntryId,
-  querySessionMessagesPage,
-} from "./session-message-query.js";
-import {
-  appendCustomMessage,
-  formatGitCommitCustomMessage,
-} from "./session-notice.js";
+import { getSessionMessageByEntryId, querySessionMessagesPage } from "./session-message-query.js";
+import { appendCustomMessage, formatGitCommitCustomMessage } from "./session-notice.js";
 import {
   appendLlmErrorMessage,
   assistantHasVisibleContent,
@@ -706,119 +678,119 @@ export class SessionManager {
   private async restoreRuntime(id: number): Promise<ManagedSessionRuntime> {
     const doneRestore = beginSessionTiming(id, "restoreRuntime");
     try {
-    const session = rowToSession(this.db.get(id)!, this.db);
-    if (!session) throw new Error(`Session ${id} not found`);
-    if (
-      session.status === "finish" ||
-      session.status === "finished" ||
-      session.status === "stopped"
-    ) {
-      throw new Error(`Session ${id} is not resumable (status: ${session.status})`);
-    }
-    // `error` is resumable via retryAfterLlmError / prompt after clearing error state.
+      const session = rowToSession(this.db.get(id)!, this.db);
+      if (!session) throw new Error(`Session ${id} not found`);
+      if (
+        session.status === "finish" ||
+        session.status === "finished" ||
+        session.status === "stopped"
+      ) {
+        throw new Error(`Session ${id} is not resumable (status: ${session.status})`);
+      }
+      // `error` is resumable via retryAfterLlmError / prompt after clearing error state.
 
-    const agent = this.getAgentForSession(session.agentId);
-    if (agent && agent.backendType !== "native") {
-      this.assertNativeAgentForChildSession(session.parentId, agent, "恢复子会话");
-      const runtime = await timedSessionStep(id, "restoreRuntime/createExternalRuntime", () =>
-        this.createExternalRuntime(session, agent),
+      const agent = this.getAgentForSession(session.agentId);
+      if (agent && agent.backendType !== "native") {
+        this.assertNativeAgentForChildSession(session.parentId, agent, "恢复子会话");
+        const runtime = await timedSessionStep(id, "restoreRuntime/createExternalRuntime", () =>
+          this.createExternalRuntime(session, agent),
+        );
+        this.setupRuntime(session.id, runtime);
+        this.db.updateStatus(session.id, "idle");
+        return runtime;
+      }
+
+      if (agent?.backendType === "native" && (!agent.providerId || !agent.modelId)) {
+        throw new Error(`Agent ${agent.id} has no model configured`);
+      }
+      const toolsPreset = this.resolveToolsPresetForSession(
+        session,
+        agent?.toolsPreset ?? "coding",
       );
+      const boundModel = agent?.modelId ? this.db.getModelById(agent.modelId) : undefined;
+      const model = boundModel
+        ? resolveModelWithProviderOverrides(this.db, boundModel.providerId, boundModel.modelId)
+        : getModel(DEFAULT_PROVIDER, DEFAULT_MODEL_ID as never);
+      if (!model) {
+        throw new Error(`Model not found for session ${id}`);
+      }
+
+      await this.ensureResourceCatalog();
+      const resource = new AgentResource({
+        sessionId: session.id,
+        agentId: session.agentId ?? 0,
+        agent,
+        cwd: session.cwd,
+        db: this.db,
+      });
+      await resource.load();
+
+      const storage = createRuntimeSessionStorage(this.db, session);
+      this.enableMessageCheckpoints(storage, session.id);
+      const harnessSession = new AgentSession(storage);
+      const env = new NodeExecutionEnv({ cwd: session.cwd });
+      const sessionTools = this.assembleSessionTools(
+        session.id,
+        session.agentId,
+        session.cwd,
+        toolsPreset,
+      );
+      const tools = sessionTools;
+
+      const systemPrompt =
+        session.systemPrompt && session.systemPrompt.length > 0
+          ? session.systemPrompt
+          : this.buildSystemPrompt("", resource.systemMd, session.cwd);
+
+      const harness = new AgentHarness({
+        env,
+        session: harnessSession,
+        model,
+        systemPrompt,
+        tools,
+        getApiKeyAndHeaders: async (m) => {
+          const envKey = getEnvApiKey(m.provider);
+          if (envKey) return { apiKey: envKey };
+          const provider = this.db.getProvider(m.provider);
+          if (provider?.apiKey) return { apiKey: provider.apiKey };
+          return undefined;
+        },
+      });
+      await harness.setThinkingLevel(session.thinkingLevel);
+
+      const runtime = new SessionRuntime({
+        session,
+        harness,
+        resource,
+        storage,
+        getSession: () => this._getSession(session.id),
+        getMessages: async () => {
+          const storageForReads = new SQLiteSessionStorage(this.db, session.id);
+          return storageForReads.getEntries();
+        },
+      });
+
+      await runtime.initExtensions(
+        session.agentId ?? 0,
+        agent?.name ?? "Session",
+        session.cwd,
+        this.db,
+        this,
+      );
+      const extensionTools = runtime.collectExtensionTools();
+      if (extensionTools.length > 0) {
+        const disabledTools = this.getDisabledAgentTools(session.agentId);
+        const mergedTools = new Map<string, AgentTool>();
+        for (const tool of tools) mergedTools.set(tool.name, tool);
+        for (const tool of extensionTools) {
+          if (!disabledTools.has(tool.name)) mergedTools.set(tool.name, tool);
+        }
+        await runtime.setTools([...mergedTools.values()]);
+      }
+
       this.setupRuntime(session.id, runtime);
       this.db.updateStatus(session.id, "idle");
       return runtime;
-    }
-
-    if (agent?.backendType === "native" && (!agent.providerId || !agent.modelId)) {
-      throw new Error(`Agent ${agent.id} has no model configured`);
-    }
-    const toolsPreset = this.resolveToolsPresetForSession(
-      session,
-      agent?.toolsPreset ?? "coding",
-    );
-    const boundModel = agent?.modelId ? this.db.getModelById(agent.modelId) : undefined;
-    const model = boundModel
-      ? resolveModelWithProviderOverrides(this.db, boundModel.providerId, boundModel.modelId)
-      : getModel(DEFAULT_PROVIDER, DEFAULT_MODEL_ID as never);
-    if (!model) {
-      throw new Error(`Model not found for session ${id}`);
-    }
-
-    await this.ensureResourceCatalog();
-    const resource = new AgentResource({
-      sessionId: session.id,
-      agentId: session.agentId ?? 0,
-      agent,
-      cwd: session.cwd,
-      db: this.db,
-    });
-    await resource.load();
-
-    const storage = createRuntimeSessionStorage(this.db, session);
-    this.enableMessageCheckpoints(storage, session.id);
-    const harnessSession = new AgentSession(storage);
-    const env = new NodeExecutionEnv({ cwd: session.cwd });
-    const sessionTools = this.assembleSessionTools(
-      session.id,
-      session.agentId,
-      session.cwd,
-      toolsPreset,
-    );
-    const tools = sessionTools;
-
-    const systemPrompt =
-      session.systemPrompt && session.systemPrompt.length > 0
-        ? session.systemPrompt
-        : this.buildSystemPrompt("", resource.systemMd, session.cwd);
-
-    const harness = new AgentHarness({
-      env,
-      session: harnessSession,
-      model,
-      systemPrompt,
-      tools,
-      getApiKeyAndHeaders: async (m) => {
-        const envKey = getEnvApiKey(m.provider);
-        if (envKey) return { apiKey: envKey };
-        const provider = this.db.getProvider(m.provider);
-        if (provider?.apiKey) return { apiKey: provider.apiKey };
-        return undefined;
-      },
-    });
-    await harness.setThinkingLevel(session.thinkingLevel);
-
-    const runtime = new SessionRuntime({
-      session,
-      harness,
-      resource,
-      storage,
-      getSession: () => this._getSession(session.id),
-      getMessages: async () => {
-        const storageForReads = new SQLiteSessionStorage(this.db, session.id);
-        return storageForReads.getEntries();
-      },
-    });
-
-    await runtime.initExtensions(
-      session.agentId ?? 0,
-      agent?.name ?? "Session",
-      session.cwd,
-      this.db,
-      this,
-    );
-    const extensionTools = runtime.collectExtensionTools();
-    if (extensionTools.length > 0) {
-      const disabledTools = this.getDisabledAgentTools(session.agentId);
-      const mergedTools = new Map<string, AgentTool>();
-      for (const tool of tools) mergedTools.set(tool.name, tool);
-      for (const tool of extensionTools) {
-        if (!disabledTools.has(tool.name)) mergedTools.set(tool.name, tool);
-      }
-      await runtime.setTools([...mergedTools.values()]);
-    }
-
-    this.setupRuntime(session.id, runtime);
-    this.db.updateStatus(session.id, "idle");
-    return runtime;
     } finally {
       doneRestore();
     }
@@ -902,10 +874,9 @@ export class SessionManager {
       void ready.catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         console.error(`session runtime start failed [${session.id}]:`, message);
-        sessionLog(session.id, "error", `Runtime start failed: ${message}`, [
-          "system",
-          "runtime",
-        ], { error: message });
+        sessionLog(session.id, "error", `Runtime start failed: ${message}`, ["system", "runtime"], {
+          error: message,
+        });
         if (this.db.get(session.id)?.status === "initializing") {
           this.db.updateStatus(session.id, "error");
         }
@@ -951,196 +922,199 @@ export class SessionManager {
   ): Promise<Session> {
     const doneFinalize = beginSessionTiming(session.id, "finalizeSpawn");
     try {
-    sessionLog(session.id, "info", "Session finalizeSpawn started", ["system", "setup"], {
-      agentId: agentInDb?.id,
-      backendType: agentInDb?.backendType,
-      skipRuntime: !!options.skipRuntime,
-    });
-    const activeSession = await timedSessionStep(session.id, "prepareLifecycle/worktree", () =>
-      prepareSessionLifecycleSpawn(this.db, session, options, agentInDb?.name, this.jobs),
-    );
-    await timedSessionStep(session.id, "ensureSessionDir", async () => {
-      await ensureSessionDir(this.requireProjectId(activeSession), activeSession.id);
-    });
-    sessionLog(session.id, "info", "Session directory ready", ["system", "setup"], {
-      cwd: activeSession.cwd,
-    });
-
-    if (options.skipRuntime) {
-      sessionLog(session.id, "info", "Skipping runtime attach (skipRuntime)", ["system", "setup"]);
-      this.db.updateStatus(activeSession.id, "idle");
-      this.publishSessionStatus(activeSession.id);
-      return rowToSession(this.db.get(activeSession.id)!, this.db);
-    }
-
-    if (
-      agentInDb?.backendType === "native" &&
-      (agentInDb.providerId == null || agentInDb.modelId == null) &&
-      !(options.providerId != null && options.model)
-    ) {
-      this.db.updateSessionFields(activeSession.id, { errorMsg: "Agent 未配置模型" });
-      this.db.updateStatus(activeSession.id, "blocked");
-      this.publishSessionStatus(activeSession.id);
-      return rowToSession(this.db.get(activeSession.id)!, this.db);
-    }
-
-    if (agentInDb && agentInDb.backendType !== "native") {
-      this.assertNativeAgentForChildSession(activeSession.parentId, agentInDb, "启动子会话");
-      sessionLog(
-        activeSession.id,
-        "info",
-        `Creating external runtime (${agentInDb.backendType})`,
-        ["system", "runtime"],
-        { backendType: agentInDb.backendType, agentName: agentInDb.name },
-      );
-      const runtime = await timedSessionStep(activeSession.id, "createExternalRuntime", () =>
-        this.createExternalRuntime(activeSession, agentInDb),
-      );
-      sessionLog(activeSession.id, "info", "External runtime ready", ["system", "runtime"], {
-        backendType: agentInDb.backendType,
+      sessionLog(session.id, "info", "Session finalizeSpawn started", ["system", "setup"], {
+        agentId: agentInDb?.id,
+        backendType: agentInDb?.backendType,
+        skipRuntime: !!options.skipRuntime,
       });
+      const activeSession = await timedSessionStep(session.id, "prepareLifecycle/worktree", () =>
+        prepareSessionLifecycleSpawn(this.db, session, options, agentInDb?.name, this.jobs),
+      );
+      await timedSessionStep(session.id, "ensureSessionDir", async () => {
+        await ensureSessionDir(this.requireProjectId(activeSession), activeSession.id);
+      });
+      sessionLog(session.id, "info", "Session directory ready", ["system", "setup"], {
+        cwd: activeSession.cwd,
+      });
+
+      if (options.skipRuntime) {
+        sessionLog(session.id, "info", "Skipping runtime attach (skipRuntime)", [
+          "system",
+          "setup",
+        ]);
+        this.db.updateStatus(activeSession.id, "idle");
+        this.publishSessionStatus(activeSession.id);
+        return rowToSession(this.db.get(activeSession.id)!, this.db);
+      }
+
+      if (
+        agentInDb?.backendType === "native" &&
+        (agentInDb.providerId == null || agentInDb.modelId == null) &&
+        !(options.providerId != null && options.model)
+      ) {
+        this.db.updateSessionFields(activeSession.id, { errorMsg: "Agent 未配置模型" });
+        this.db.updateStatus(activeSession.id, "blocked");
+        this.publishSessionStatus(activeSession.id);
+        return rowToSession(this.db.get(activeSession.id)!, this.db);
+      }
+
+      if (agentInDb && agentInDb.backendType !== "native") {
+        this.assertNativeAgentForChildSession(activeSession.parentId, agentInDb, "启动子会话");
+        sessionLog(
+          activeSession.id,
+          "info",
+          `Creating external runtime (${agentInDb.backendType})`,
+          ["system", "runtime"],
+          { backendType: agentInDb.backendType, agentName: agentInDb.name },
+        );
+        const runtime = await timedSessionStep(activeSession.id, "createExternalRuntime", () =>
+          this.createExternalRuntime(activeSession, agentInDb),
+        );
+        sessionLog(activeSession.id, "info", "External runtime ready", ["system", "runtime"], {
+          backendType: agentInDb.backendType,
+        });
+        this.setupRuntime(activeSession.id, runtime);
+        if (options.instructions) {
+          void runtime.prompt(options.instructions).catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            this.reportOperationalError(activeSession.id, message);
+            if (this.db.get(activeSession.id)?.status === "running") {
+              this.db.updateStatus(activeSession.id, "idle");
+            }
+          });
+        }
+        this.db.updateStatus(activeSession.id, options.instructions ? "running" : "idle");
+        this.publishSessionStatus(activeSession.id);
+        return rowToSession(this.db.get(activeSession.id)!, this.db);
+      }
+
+      const boundModel = agentInDb?.modelId ? this.db.getModelById(agentInDb.modelId) : undefined;
+      const modelId = options.model ?? boundModel?.modelId ?? DEFAULT_MODEL_ID;
+      const fallbackProvider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
+      let model =
+        options.providerId != null
+          ? resolveModelWithProviderOverrides(this.db, options.providerId, modelId)
+          : undefined;
+      if (!model && boundModel) {
+        model = resolveModelWithProviderOverrides(this.db, boundModel.providerId, modelId);
+      }
+      if (!model) {
+        model = getModel(fallbackProvider, modelId as never);
+      }
+
+      if (!model) {
+        throw new Error(`Model ${modelId} from provider ${fallbackProvider} not found`);
+      }
+
+      const storage = createRuntimeSessionStorage(this.db, activeSession);
+      this.enableMessageCheckpoints(storage, activeSession.id);
+      const harnessSession = new AgentSession(storage);
+      const env = new NodeExecutionEnv({ cwd: activeSession.cwd });
+
+      // Use agent's toolsPreset if available, otherwise use options or default.
+      // BTW always forces readonly (no write/edit).
+      const toolsPreset = this.resolveToolsPresetForSession(
+        activeSession,
+        options.toolsPreset ?? agentInDb?.toolsPreset ?? "coding",
+      );
+      await this.ensureResourceCatalog();
+      const resource = new AgentResource({
+        sessionId: activeSession.id,
+        agentId: activeSession.agentId ?? 0,
+        agent: agentInDb,
+        cwd: activeSession.cwd,
+        db: this.db,
+      });
+      await resource.load();
+
+      const sessionTools = this.assembleSessionTools(
+        activeSession.id,
+        activeSession.agentId,
+        activeSession.cwd,
+        toolsPreset,
+        options.tools,
+      );
+      const tools = sessionTools;
+
+      const baseSystemPrompt = options.systemPrompt ?? "";
+      const systemPrompt = this.buildSystemPrompt(
+        baseSystemPrompt,
+        resource.systemMd,
+        activeSession.cwd,
+      );
+      this.db.updateSessionFields(activeSession.id, { systemPrompt });
+
+      const harness = new AgentHarness({
+        env,
+        session: harnessSession,
+        model,
+        systemPrompt,
+        tools,
+        getApiKeyAndHeaders: async (m) => {
+          const envKey = getEnvApiKey(m.provider);
+          if (envKey) return { apiKey: envKey };
+          const provider = this.db.getProvider(m.provider);
+          if (provider?.apiKey) return { apiKey: provider.apiKey };
+          return undefined;
+        },
+      });
+      await harness.setThinkingLevel(activeSession.thinkingLevel);
+
+      const runtime = new SessionRuntime({
+        session: activeSession,
+        harness,
+        resource,
+        storage,
+        getSession: () => this._getSession(activeSession.id),
+        getMessages: async () => {
+          const storageForReads = new SQLiteSessionStorage(this.db, activeSession.id);
+          return storageForReads.getEntries();
+        },
+      });
+
+      await runtime.initExtensions(
+        activeSession.agentId ?? 0,
+        agentInDb?.name ?? "Session",
+        activeSession.cwd,
+        this.db,
+        this,
+      );
+      const extensionTools = runtime.collectExtensionTools();
+      if (extensionTools.length > 0) {
+        const disabledTools = this.getDisabledAgentTools(activeSession.agentId);
+        const mergedTools = new Map<string, AgentTool>();
+        for (const tool of tools) mergedTools.set(tool.name, tool);
+        for (const tool of extensionTools) {
+          if (!disabledTools.has(tool.name)) mergedTools.set(tool.name, tool);
+        }
+        await runtime.setTools([...mergedTools.values()]);
+      }
+
       this.setupRuntime(activeSession.id, runtime);
+      sessionLog(activeSession.id, "info", "Native runtime ready", ["system", "runtime"], {
+        modelId: model.id,
+        provider: model.provider,
+      });
+
       if (options.instructions) {
-        void runtime.prompt(options.instructions).catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
+        void runtime.prompt(options.instructions).catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : String(err);
           this.reportOperationalError(activeSession.id, message);
           if (this.db.get(activeSession.id)?.status === "running") {
             this.db.updateStatus(activeSession.id, "idle");
           }
         });
       }
+
       this.db.updateStatus(activeSession.id, options.instructions ? "running" : "idle");
       this.publishSessionStatus(activeSession.id);
+      sessionLog(
+        activeSession.id,
+        "info",
+        `Session ready (status=${options.instructions ? "running" : "idle"})`,
+        ["system", "setup"],
+      );
       return rowToSession(this.db.get(activeSession.id)!, this.db);
-    }
-
-    const boundModel = agentInDb?.modelId ? this.db.getModelById(agentInDb.modelId) : undefined;
-    const modelId = options.model ?? boundModel?.modelId ?? DEFAULT_MODEL_ID;
-    const fallbackProvider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
-    let model =
-      options.providerId != null
-        ? resolveModelWithProviderOverrides(this.db, options.providerId, modelId)
-        : undefined;
-    if (!model && boundModel) {
-      model = resolveModelWithProviderOverrides(this.db, boundModel.providerId, modelId);
-    }
-    if (!model) {
-      model = getModel(fallbackProvider, modelId as never);
-    }
-
-    if (!model) {
-      throw new Error(`Model ${modelId} from provider ${fallbackProvider} not found`);
-    }
-
-    const storage = createRuntimeSessionStorage(this.db, activeSession);
-    this.enableMessageCheckpoints(storage, activeSession.id);
-    const harnessSession = new AgentSession(storage);
-    const env = new NodeExecutionEnv({ cwd: activeSession.cwd });
-
-    // Use agent's toolsPreset if available, otherwise use options or default.
-    // BTW always forces readonly (no write/edit).
-    const toolsPreset = this.resolveToolsPresetForSession(
-      activeSession,
-      options.toolsPreset ?? agentInDb?.toolsPreset ?? "coding",
-    );
-    await this.ensureResourceCatalog();
-    const resource = new AgentResource({
-      sessionId: activeSession.id,
-      agentId: activeSession.agentId ?? 0,
-      agent: agentInDb,
-      cwd: activeSession.cwd,
-      db: this.db,
-    });
-    await resource.load();
-
-    const sessionTools = this.assembleSessionTools(
-      activeSession.id,
-      activeSession.agentId,
-      activeSession.cwd,
-      toolsPreset,
-      options.tools,
-    );
-    const tools = sessionTools;
-
-    const baseSystemPrompt = options.systemPrompt ?? "";
-    const systemPrompt = this.buildSystemPrompt(
-      baseSystemPrompt,
-      resource.systemMd,
-      activeSession.cwd,
-    );
-    this.db.updateSessionFields(activeSession.id, { systemPrompt });
-
-    const harness = new AgentHarness({
-      env,
-      session: harnessSession,
-      model,
-      systemPrompt,
-      tools,
-      getApiKeyAndHeaders: async (m) => {
-        const envKey = getEnvApiKey(m.provider);
-        if (envKey) return { apiKey: envKey };
-        const provider = this.db.getProvider(m.provider);
-        if (provider?.apiKey) return { apiKey: provider.apiKey };
-        return undefined;
-      },
-    });
-    await harness.setThinkingLevel(activeSession.thinkingLevel);
-
-    const runtime = new SessionRuntime({
-      session: activeSession,
-      harness,
-      resource,
-      storage,
-      getSession: () => this._getSession(activeSession.id),
-      getMessages: async () => {
-        const storageForReads = new SQLiteSessionStorage(this.db, activeSession.id);
-        return storageForReads.getEntries();
-      },
-    });
-
-    await runtime.initExtensions(
-      activeSession.agentId ?? 0,
-      agentInDb?.name ?? "Session",
-      activeSession.cwd,
-      this.db,
-      this,
-    );
-    const extensionTools = runtime.collectExtensionTools();
-    if (extensionTools.length > 0) {
-      const disabledTools = this.getDisabledAgentTools(activeSession.agentId);
-      const mergedTools = new Map<string, AgentTool>();
-      for (const tool of tools) mergedTools.set(tool.name, tool);
-      for (const tool of extensionTools) {
-        if (!disabledTools.has(tool.name)) mergedTools.set(tool.name, tool);
-      }
-      await runtime.setTools([...mergedTools.values()]);
-    }
-
-    this.setupRuntime(activeSession.id, runtime);
-    sessionLog(activeSession.id, "info", "Native runtime ready", ["system", "runtime"], {
-      modelId: model.id,
-      provider: model.provider,
-    });
-
-    if (options.instructions) {
-      void runtime.prompt(options.instructions).catch((err: unknown) => {
-        const message = err instanceof Error ? err.message : String(err);
-        this.reportOperationalError(activeSession.id, message);
-        if (this.db.get(activeSession.id)?.status === "running") {
-          this.db.updateStatus(activeSession.id, "idle");
-        }
-      });
-    }
-
-    this.db.updateStatus(activeSession.id, options.instructions ? "running" : "idle");
-    this.publishSessionStatus(activeSession.id);
-    sessionLog(
-      activeSession.id,
-      "info",
-      `Session ready (status=${options.instructions ? "running" : "idle"})`,
-      ["system", "setup"],
-    );
-    return rowToSession(this.db.get(activeSession.id)!, this.db);
     } finally {
       doneFinalize();
     }
@@ -1168,11 +1142,7 @@ export class SessionManager {
   }
 
   /** Push a toast-style notify to connected Web UI clients. Never flips session status. */
-  publishUiNotify(
-    sessionId: number,
-    message: string,
-    kind: UiNotifyEvent["kind"] = "error",
-  ): void {
+  publishUiNotify(sessionId: number, message: string, kind: UiNotifyEvent["kind"] = "error"): void {
     const text = message.trim();
     if (!text) return;
     const event: UiNotifyEvent = {
@@ -1541,7 +1511,12 @@ export class SessionManager {
     await runtime.steer(message, images);
   }
 
-  followUp(id: number, message: string, source?: string | null, images?: SessionPromptImage[]): void {
+  followUp(
+    id: number,
+    message: string,
+    source?: string | null,
+    images?: SessionPromptImage[],
+  ): void {
     this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
@@ -1793,9 +1768,7 @@ export class SessionManager {
   }
 
   /** 华生内部任务入口（扩展 / 生命周期共用）。 */
-  runWatson<T = unknown>(
-    options: Omit<WatsonRunOptions, "db">,
-  ): Promise<WatsonRunResult<T>> {
+  runWatson<T = unknown>(options: Omit<WatsonRunOptions, "db">): Promise<WatsonRunResult<T>> {
     return runWatsonTask<T>({ ...options, db: this.db });
   }
 
@@ -1899,6 +1872,10 @@ export class SessionManager {
       externalSessionId: imported.candidate.externalSessionId,
     });
     const entries = await materializeImportedImages(session.id, imported.entries);
+    const importedLastActiveAt = entries.reduce((latest, entry) => {
+      const parsed = Date.parse(entry.timestamp);
+      return Number.isFinite(parsed) ? Math.max(latest, parsed) : latest;
+    }, 0);
     const storage = new SQLiteSessionStorage(this.db, session.id);
     for (const entry of entries) {
       await storage.appendEntry(entry, {
@@ -1915,6 +1892,12 @@ export class SessionManager {
         error: message,
       });
       this.db.updateSessionFields(session.id, { errorMsg: message });
+    }
+
+    if (importedLastActiveAt > 0) {
+      this.db.db
+        .prepare("UPDATE sessions SET last_active_at = ? WHERE id = ?")
+        .run(importedLastActiveAt, session.id);
     }
 
     return rowToSession(this.db.get(session.id)!, this.db);
@@ -1980,9 +1963,7 @@ export class SessionManager {
       enabledOnly: false,
     });
     const bySlug = new Map(
-      bindings
-        .filter((b) => b.resource)
-        .map((b) => [b.resource!.slug, b] as const),
+      bindings.filter((b) => b.resource).map((b) => [b.resource!.slug, b] as const),
     );
     const rows: Array<{
       slug: string;
@@ -2040,9 +2021,7 @@ export class SessionManager {
     if (agent.backendType !== "native") {
       throw new Error("External agents manage their own system instructions");
     }
-    return this.enrichAgentWithSystemMd(
-      this.db.updateAgent(id, { system_prompt: content }),
-    );
+    return this.enrichAgentWithSystemMd(this.db.updateAgent(id, { system_prompt: content }));
   }
 
   getAgentSystemMd(id: number): string {
@@ -2169,7 +2148,8 @@ export class SessionManager {
   }
 
   setCurrentSessionTaskId(id: number, taskId: number | null): void {
-    const task = taskId == null ? undefined : this.db.listSessionTasks(id).find((item) => item.id === taskId);
+    const task =
+      taskId == null ? undefined : this.db.listSessionTasks(id).find((item) => item.id === taskId);
     this.db.updateMeta(id, { currentTask: task?.path ?? null });
   }
 
@@ -2275,12 +2255,9 @@ export class SessionManager {
     }
     if (!gitCleanup) return;
     const tryRemove = () =>
-      removeSessionWorktree(
-        gitCleanup.repoRoot,
-        gitCleanup.worktreePath,
-        gitCleanup.branch,
-        { forceBranch: true },
-      );
+      removeSessionWorktree(gitCleanup.repoRoot, gitCleanup.worktreePath, gitCleanup.branch, {
+        forceBranch: true,
+      });
     try {
       await tryRemove();
       sessionLog(
@@ -2514,12 +2491,7 @@ export class SessionManager {
     if (session.status === "running" || session.status === "blocked") {
       throw new Error(`Session ${id} is busy (status: ${session.status})`);
     }
-    const commit = await commitSessionChanges(
-      id,
-      session.cwd,
-      this.db,
-      options,
-    );
+    const commit = await commitSessionChanges(id, session.cwd, this.db, options);
     if (commit) await this.sendCustomMessage(id, formatGitCommitCustomMessage(commit));
     return commit;
   }
@@ -2666,14 +2638,12 @@ export class SessionManager {
     }
 
     this.db.updateStatus(id, "running");
-    void agent
-      .continue?.()
-      .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`retryAfterLlmError continue failed [${id}]:`, message);
-        this.db.updateStatus(id, "error");
-        void this.recordLlmError(id, message).catch(() => {});
-      });
+    void agent.continue?.().catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`retryAfterLlmError continue failed [${id}]:`, message);
+      this.db.updateStatus(id, "error");
+      void this.recordLlmError(id, message).catch(() => {});
+    });
 
     return rowToSession(this.db.get(id)!, this.db)!;
   }
@@ -2725,8 +2695,7 @@ export class SessionManager {
     const dbPatch: Parameters<SupervisorDb["updateModel"]>[2] = {};
     if (patch.name !== undefined) dbPatch.name = patch.name;
     if (patch.contextWindow !== undefined) dbPatch.context_window = patch.contextWindow;
-    if (patch.supportsVision !== undefined)
-      dbPatch.supports_vision = patch.supportsVision ? 1 : 0;
+    if (patch.supportsVision !== undefined) dbPatch.supports_vision = patch.supportsVision ? 1 : 0;
     return this.db.updateModel(providerId, modelId, dbPatch);
   }
 

@@ -24,6 +24,12 @@ import type {
 import * as api from "@/api";
 import type { UIResourceItem } from "@/types/ui";
 import { layerFromApi } from "@/utils/resources-ui";
+import {
+  saveViewPreferences,
+  setSessionViewFlag,
+  sortByProjectPreference,
+  viewPreferences,
+} from "@/utils/view-preferences";
 
 // ============ Types ============
 
@@ -79,9 +85,7 @@ export const useSessionStore = defineStore("session", () => {
   const projects = ref<Project[]>([]);
   const currentSessionId = ref<string | null>(null);
   const messages = ref<Record<string, SessionTreeEntry[]>>({});
-  const messageCursors = ref<
-    Record<string, { oldestRowId: number | null; hasMore: boolean }>
-  >({});
+  const messageCursors = ref<Record<string, { oldestRowId: number | null; hasMore: boolean }>>({});
 
   // Getters
   const getSessionById = computed(() => (id: string) => {
@@ -104,7 +108,7 @@ export const useSessionStore = defineStore("session", () => {
   async function fetchProjects() {
     root.clearError();
     try {
-      projects.value = await api.listProjects();
+      projects.value = sortByProjectPreference(await api.listProjects());
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch projects");
       throw err;
@@ -240,9 +244,15 @@ export const useSessionStore = defineStore("session", () => {
   }
 
   async function updateSessionMeta(id: string, meta: Record<string, unknown>) {
+    if (typeof meta.pinned === "boolean") setSessionViewFlag("pinnedSessionIds", id, meta.pinned);
+    if (typeof meta.muted === "boolean") setSessionViewFlag("mutedSessionIds", id, meta.muted);
+    const serverMeta = Object.fromEntries(
+      Object.entries(meta).filter(([key]) => !["pinned", "muted", "unread"].includes(key)),
+    );
+    if (Object.keys(serverMeta).length === 0) return getSessionById.value(id);
     root.clearError();
     try {
-      const updated = await api.updateSessionMeta(id, meta);
+      const updated = await api.updateSessionMeta(id, serverMeta);
       const session = getSessionById.value(id);
       if (session) Object.assign(session, updated);
       return updated;
@@ -253,16 +263,9 @@ export const useSessionStore = defineStore("session", () => {
   }
 
   async function markSessionRead(id: string) {
-    root.clearError();
-    try {
-      const updated = await api.markSessionRead(id);
-      const session = getSessionById.value(id);
-      if (session) Object.assign(session, updated);
-      return updated;
-    } catch (err) {
-      root.setError(err instanceof Error ? err.message : "Failed to mark session read");
-      throw err;
-    }
+    delete viewPreferences.unreadBySession[id];
+    saveViewPreferences();
+    return getSessionById.value(id);
   }
 
   async function fetchSessionMessages(id: string) {

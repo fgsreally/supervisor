@@ -92,7 +92,7 @@ function rowToSession(row: SessionRow): SessionRow {
     row.created_via ??
     (row.spawn_type === "subagent" || row.spawn_type === "spawn"
       ? "spawn_agent"
-      : (row.spawn_type as SessionRow["created_by"]) ?? "user");
+      : ((row.spawn_type as SessionRow["created_by"]) ?? "user"));
   return {
     ...row,
     status: normalizeSessionStatus(row.status),
@@ -109,7 +109,9 @@ function rowToSession(row: SessionRow): SessionRow {
     error_msg: row.error_msg ?? null,
     stage: row.stage ?? null,
     shadow_enabled: row.shadow_enabled ?? 0,
-    meta: JSON.parse(typeof row.meta === "string" ? row.meta : JSON.stringify(row.meta ?? {})) as any,
+    meta: JSON.parse(
+      typeof row.meta === "string" ? row.meta : JSON.stringify(row.meta ?? {}),
+    ) as any,
   };
 }
 
@@ -291,9 +293,6 @@ export class SupervisorDb {
 				system_prompt TEXT,
 				avatar        TEXT,
 				is_builtin    INTEGER NOT NULL DEFAULT 0,
-				pinned        INTEGER NOT NULL DEFAULT 0,
-				muted         INTEGER NOT NULL DEFAULT 0,
-				unread        INTEGER NOT NULL DEFAULT 0,
 				external_session_id TEXT,
 				error_msg     TEXT,
 				stage         TEXT,
@@ -508,11 +507,13 @@ export class SupervisorDb {
         );
         INSERT INTO projects_new (id, name, description, cwd, home_dir, created_at, updated_at)
         SELECT id, name,
-          ${projectColumns.has("description")
-            ? "description"
-            : projectColumns.has("meta")
-              ? "CASE WHEN json_valid(meta) THEN json_extract(meta, '$.description') ELSE NULL END"
-              : "NULL"},
+          ${
+            projectColumns.has("description")
+              ? "description"
+              : projectColumns.has("meta")
+                ? "CASE WHEN json_valid(meta) THEN json_extract(meta, '$.description') ELSE NULL END"
+                : "NULL"
+          },
           cwd, ${pick(projectColumns, "home_dir", pick(projectColumns, "work_dir", "''"))},
           created_at, updated_at
         FROM projects;
@@ -545,9 +546,6 @@ export class SupervisorDb {
           system_prompt TEXT,
           avatar TEXT,
           is_builtin INTEGER NOT NULL DEFAULT 0,
-          pinned INTEGER NOT NULL DEFAULT 0,
-          muted INTEGER NOT NULL DEFAULT 0,
-          unread INTEGER NOT NULL DEFAULT 0,
           external_session_id TEXT,
           error_msg TEXT,
           stage TEXT,
@@ -558,7 +556,7 @@ export class SupervisorDb {
         );
         INSERT INTO sessions_new
           (id, project_id, parent_id, status, thinking_level, cwd, leaf_id, agent_id, spawn_type,
-           created_by, title, system_prompt, avatar, is_builtin, pinned, muted, unread,
+           created_by, title, system_prompt, avatar, is_builtin,
            external_session_id, error_msg, stage, shadow_enabled, created_at, last_active_at, meta)
         SELECT id, ${pick(sessionColumns, "project_id", "NULL")}, parent_id,
           CASE WHEN status = 'starting' THEN 'initializing'
@@ -571,9 +569,6 @@ export class SupervisorDb {
           ${pick(sessionColumns, "system_prompt", "NULL")},
           ${pick(sessionColumns, "avatar", "NULL")},
           COALESCE(${pick(sessionColumns, "is_builtin", "0")}, 0),
-          COALESCE(${pick(sessionColumns, "pinned", "0")}, 0),
-          COALESCE(${pick(sessionColumns, "muted", "0")}, 0),
-          COALESCE(${pick(sessionColumns, "unread", "0")}, 0),
           ${pick(sessionColumns, "external_session_id", "NULL")},
           ${pick(sessionColumns, "error_msg", "NULL")},
           ${pick(sessionColumns, "stage", "NULL")},
@@ -688,9 +683,7 @@ export class SupervisorDb {
     };
     const addInt = (name: string, def: number) => {
       if (!names.has(name)) {
-        this.db.exec(
-          `ALTER TABLE sessions ADD COLUMN ${name} INTEGER NOT NULL DEFAULT ${def}`,
-        );
+        this.db.exec(`ALTER TABLE sessions ADD COLUMN ${name} INTEGER NOT NULL DEFAULT ${def}`);
         names.add(name);
       }
     };
@@ -764,7 +757,11 @@ export class SupervisorDb {
     `);
 
     // Move git_* columns (if present) and legacy meta.git into meta.git.worktreePath shape.
-    if (names.has("git_worktree_enabled") || names.has("git_last_commit") || names.has("git_merge_error")) {
+    if (
+      names.has("git_worktree_enabled") ||
+      names.has("git_last_commit") ||
+      names.has("git_merge_error")
+    ) {
       const rows = this.db
         .prepare(
           `SELECT id, cwd, project_id, meta,
@@ -878,28 +875,40 @@ export class SupervisorDb {
 
   private ensureSessionTaskTables(): void {
     const tables = new Set(
-      (this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
-        name: string;
-      }>).map((row) => row.name),
+      (
+        this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
+          name: string;
+        }>
+      ).map((row) => row.name),
     );
     if (!tables.has("session_tasks") && !tables.has("session_todos")) return;
 
     const columns = new Set(
-      (this.db.pragma("table_info(sessions)") as Array<{ name: string }>).map((column) => column.name),
+      (this.db.pragma("table_info(sessions)") as Array<{ name: string }>).map(
+        (column) => column.name,
+      ),
     );
     const taskRows = tables.has("session_tasks")
-      ? (this.db.prepare("SELECT * FROM session_tasks ORDER BY created_at ASC, id ASC").all() as SessionTaskRow[])
+      ? (this.db
+          .prepare("SELECT * FROM session_tasks ORDER BY created_at ASC, id ASC")
+          .all() as SessionTaskRow[])
       : [];
     const todoRows = tables.has("session_todos")
-      ? (this.db.prepare("SELECT * FROM session_todos ORDER BY sort_order ASC, id ASC").all() as SessionTodoRow[])
+      ? (this.db
+          .prepare("SELECT * FROM session_todos ORDER BY sort_order ASC, id ASC")
+          .all() as SessionTodoRow[])
       : [];
     const tasksBySession = new Map<number, SessionTaskRow[]>();
     const todosBySession = new Map<number, SessionTodoRow[]>();
-    for (const task of taskRows) tasksBySession.set(task.session_id, [...(tasksBySession.get(task.session_id) ?? []), task]);
-    for (const todo of todoRows) todosBySession.set(todo.session_id, [...(todosBySession.get(todo.session_id) ?? []), todo]);
+    for (const task of taskRows)
+      tasksBySession.set(task.session_id, [...(tasksBySession.get(task.session_id) ?? []), task]);
+    for (const todo of todoRows)
+      todosBySession.set(todo.session_id, [...(todosBySession.get(todo.session_id) ?? []), todo]);
 
     const sessionRows = this.db
-      .prepare(`SELECT id, meta${columns.has("current_task_id") ? ", current_task_id" : ""} FROM sessions`)
+      .prepare(
+        `SELECT id, meta${columns.has("current_task_id") ? ", current_task_id" : ""} FROM sessions`,
+      )
       .all() as Array<{ id: number; meta: string; current_task_id?: number | null }>;
     const update = this.db.prepare("UPDATE sessions SET meta = ? WHERE id = ?");
     const migrate = this.db.transaction(() => {
@@ -907,47 +916,81 @@ export class SupervisorDb {
         let meta: Record<string, unknown> = {};
         try {
           const parsed = JSON.parse(row.meta || "{}") as unknown;
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) meta = parsed as Record<string, unknown>;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+            meta = parsed as Record<string, unknown>;
         } catch {
           // Preserve no invalid JSON; replace only with the migratable task state.
         }
-        const taskMap = new Map<string, { path: string; kind: "goal" | "plan"; title: string | null; status: string | null }>();
+        const taskMap = new Map<
+          string,
+          { path: string; kind: "goal" | "plan"; title: string | null; status: string | null }
+        >();
         const addTask = (value: unknown) => {
-          const path = typeof value === "string" ? value : value && typeof value === "object" ? (value as { path?: unknown }).path : undefined;
+          const path =
+            typeof value === "string"
+              ? value
+              : value && typeof value === "object"
+                ? (value as { path?: unknown }).path
+                : undefined;
           if (typeof path !== "string" || !path.trim()) return;
-          const item = value && typeof value === "object" ? value as { kind?: unknown; title?: unknown; status?: unknown } : {};
+          const item =
+            value && typeof value === "object"
+              ? (value as { kind?: unknown; title?: unknown; status?: unknown })
+              : {};
           taskMap.set(path, {
             path,
-            kind: item.kind === "plan" || path.startsWith("plan/") || path.includes("/plan-") ? "plan" : "goal",
+            kind:
+              item.kind === "plan" || path.startsWith("plan/") || path.includes("/plan-")
+                ? "plan"
+                : "goal",
             title: typeof item.title === "string" ? item.title : null,
             status: typeof item.status === "string" ? item.status : null,
           });
         };
         if (Array.isArray(meta.tasks)) for (const task of meta.tasks) addTask(task);
         for (const task of tasksBySession.get(row.id) ?? []) {
-          taskMap.set(task.path, { path: task.path, kind: task.kind, title: task.title, status: task.status });
+          taskMap.set(task.path, {
+            path: task.path,
+            kind: task.kind,
+            title: task.title,
+            status: task.status,
+          });
         }
 
-        const todoItems: Array<{ title: string; status: "pending" | "in_progress" | "completed" | "cancelled" }> = [];
+        const todoItems: Array<{
+          title: string;
+          status: "pending" | "in_progress" | "completed" | "cancelled";
+        }> = [];
         const addTodo = (value: unknown) => {
           if (!value || typeof value !== "object") return;
           const item = value as { title?: unknown; status?: unknown };
           if (typeof item.title !== "string" || !item.title.trim()) return;
-          const status = item.status === "in_progress" || item.status === "completed" || item.status === "cancelled"
-            ? item.status
-            : item.status === "done" ? "completed" : "pending";
-          if (!todoItems.some((todo) => todo.title === item.title.trim() && todo.status === status)) {
+          const status =
+            item.status === "in_progress" ||
+            item.status === "completed" ||
+            item.status === "cancelled"
+              ? item.status
+              : item.status === "done"
+                ? "completed"
+                : "pending";
+          if (
+            !todoItems.some((todo) => todo.title === item.title.trim() && todo.status === status)
+          ) {
             todoItems.push({ title: item.title.trim(), status });
           }
         };
         if (Array.isArray(meta.todos)) for (const todo of meta.todos) addTodo(todo);
         for (const todo of todosBySession.get(row.id) ?? []) addTodo(todo);
 
-        const currentTaskRow = row.current_task_id == null
-          ? undefined
-          : (tasksBySession.get(row.id) ?? []).find((task) => task.id === row.current_task_id);
-        const currentTask = currentTaskRow?.path ??
-          (typeof meta.currentTask === "string" && taskMap.has(meta.currentTask) ? meta.currentTask : null);
+        const currentTaskRow =
+          row.current_task_id == null
+            ? undefined
+            : (tasksBySession.get(row.id) ?? []).find((task) => task.id === row.current_task_id);
+        const currentTask =
+          currentTaskRow?.path ??
+          (typeof meta.currentTask === "string" && taskMap.has(meta.currentTask)
+            ? meta.currentTask
+            : null);
         meta.tasks = [...taskMap.values()];
         meta.currentTask = currentTask;
         meta.todos = todoItems;
@@ -1001,10 +1044,7 @@ export class SupervisorDb {
     });
   }
 
-  updateProject(
-    id: number,
-    patch: { name?: string; description?: string | null },
-  ): Project {
+  updateProject(id: number, patch: { name?: string; description?: string | null }): Project {
     const project = this.getProject(id);
     if (!project) throw new Error(`Project ${id} not found`);
     const name =
@@ -1105,13 +1145,13 @@ export class SupervisorDb {
         `INSERT INTO sessions (
           project_id, parent_id, status, thinking_level, cwd, leaf_id, agent_id,
           spawn_type, created_by,
-          title, system_prompt, avatar, is_builtin, pinned, muted, unread,
+          title, system_prompt, avatar, is_builtin,
           external_session_id, error_msg, stage, shadow_enabled,
           created_at, last_active_at, meta
         ) VALUES (
           @project_id, @parent_id, @status, @thinking_level, @cwd, @leaf_id, @agent_id,
           @spawn_type, @created_by,
-          @title, @system_prompt, @avatar, @is_builtin, @pinned, @muted, @unread,
+          @title, @system_prompt, @avatar, @is_builtin,
           @external_session_id, @error_msg, @stage, @shadow_enabled,
           @created_at, @last_active_at, @meta
         )`,
@@ -1190,9 +1230,7 @@ export class SupervisorDb {
   touchSessionActivityTree(id: number, at = Date.now()): void {
     let current = this.get(id);
     while (current) {
-      this.db
-        .prepare("UPDATE sessions SET last_active_at = ? WHERE id = ?")
-        .run(at, current.id);
+      this.db.prepare("UPDATE sessions SET last_active_at = ? WHERE id = ?").run(at, current.id);
       current = current.parent_id != null ? this.get(current.parent_id) : undefined;
     }
   }
@@ -1284,9 +1322,6 @@ export class SupervisorDb {
     if (patch.systemPrompt !== undefined) put("system_prompt", patch.systemPrompt);
     if (patch.avatar !== undefined) put("avatar", patch.avatar);
     if (patch.isBuiltin !== undefined) put("is_builtin", patch.isBuiltin ? 1 : 0);
-    if (patch.pinned !== undefined) put("pinned", patch.pinned ? 1 : 0);
-    if (patch.muted !== undefined) put("muted", patch.muted ? 1 : 0);
-    if (patch.unread !== undefined) put("unread", patch.unread);
     if (patch.externalSessionId !== undefined) put("external_session_id", patch.externalSessionId);
     if (patch.errorMsg !== undefined) put("error_msg", patch.errorMsg);
     if (patch.stage !== undefined) put("stage", patch.stage);
@@ -1299,23 +1334,26 @@ export class SupervisorDb {
 
   listSessionTasks(sessionId: number): SessionTaskRow[] {
     const meta = this.get(sessionId)?.meta;
-    const tasks = meta && Array.isArray((meta as Record<string, unknown>).tasks)
-      ? (meta as Record<string, unknown>).tasks
-      : [];
+    const tasks =
+      meta && Array.isArray((meta as Record<string, unknown>).tasks)
+        ? (meta as Record<string, unknown>).tasks
+        : [];
     return tasks.flatMap((item, index) => {
       if (!item || typeof item !== "object") return [];
       const task = item as { path?: unknown; kind?: unknown; title?: unknown; status?: unknown };
       if (typeof task.path !== "string") return [];
-      return [{
-        id: syntheticMetaId(task.path),
-        session_id: sessionId,
-        path: task.path,
-        kind: task.kind === "plan" ? "plan" : "goal",
-        title: typeof task.title === "string" ? task.title : null,
-        status: typeof task.status === "string" ? task.status : null,
-        created_at: index,
-        updated_at: index,
-      }];
+      return [
+        {
+          id: syntheticMetaId(task.path),
+          session_id: sessionId,
+          path: task.path,
+          kind: task.kind === "plan" ? "plan" : "goal",
+          title: typeof task.title === "string" ? task.title : null,
+          status: typeof task.status === "string" ? task.status : null,
+          created_at: index,
+          updated_at: index,
+        },
+      ];
     });
   }
 
@@ -1329,7 +1367,9 @@ export class SupervisorDb {
     const tasks = this.listSessionTasks(row.sessionId);
     const existing = tasks.find((task) => task.path === row.path);
     const next = [
-      ...tasks.filter((task) => task.path !== row.path).map(({ id, session_id, created_at, updated_at, ...task }) => task),
+      ...tasks
+        .filter((task) => task.path !== row.path)
+        .map(({ id, session_id, created_at, updated_at, ...task }) => task),
       {
         path: row.path,
         kind: row.kind,
@@ -1347,7 +1387,9 @@ export class SupervisorDb {
     const session = this.get(sessionId);
     const meta = session?.meta as Record<string, unknown>;
     this.updateMeta(sessionId, {
-      tasks: tasks.filter((task) => task.path !== path).map(({ id, session_id, created_at, updated_at, ...task }) => task),
+      tasks: tasks
+        .filter((task) => task.path !== path)
+        .map(({ id, session_id, created_at, updated_at, ...task }) => task),
       ...(meta.currentTask === path ? { currentTask: null } : {}),
     });
     return true;
@@ -1360,15 +1402,17 @@ export class SupervisorDb {
       if (!item || typeof item !== "object") return [];
       const todo = item as { title?: unknown; status?: unknown };
       if (typeof todo.title !== "string") return [];
-      return [{
-        id: index + 1,
-        session_id: sessionId,
-        title: todo.title,
-        status: normalizeTodoStatus(todo.status),
-        sort_order: index,
-        created_at: index,
-        updated_at: index,
-      }];
+      return [
+        {
+          id: index + 1,
+          session_id: sessionId,
+          title: todo.title,
+          status: normalizeTodoStatus(todo.status),
+          sort_order: index,
+          created_at: index,
+          updated_at: index,
+        },
+      ];
     });
   }
 
@@ -1524,9 +1568,7 @@ export class SupervisorDb {
          FROM agents LEFT JOIN models ON models.id = agents.model_id
          WHERE agents.id = ?`,
       )
-      .get(id) as
-      | AgentRow
-      | undefined;
+      .get(id) as AgentRow | undefined;
     return row ? rowToAgent(row) : undefined;
   }
 
@@ -1686,9 +1728,7 @@ export class SupervisorDb {
   /** Count whether any older row exists before the given id. */
   hasOlderMessages(sessionId: number, beforeId: number): boolean {
     const row = this.db
-      .prepare(
-        `SELECT 1 AS ok FROM messages WHERE session_id = ? AND id < ? LIMIT 1`,
-      )
+      .prepare(`SELECT 1 AS ok FROM messages WHERE session_id = ? AND id < ? LIMIT 1`)
       .get(sessionId, beforeId) as { ok: number } | undefined;
     return !!row;
   }
@@ -2134,13 +2174,7 @@ export class SupervisorDb {
         `INSERT INTO agent_resources (agent_id, resource_id, enabled, priority, created_at)
          VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(
-        agentId,
-        resourceId,
-        options?.enabled === false ? 0 : 1,
-        options?.priority ?? 0,
-        now,
-      );
+      .run(agentId, resourceId, options?.enabled === false ? 0 : 1, options?.priority ?? 0, now);
     return this.getAgentResourceBinding(agentId, resourceId)!;
   }
 
@@ -2188,15 +2222,11 @@ export class SupervisorDb {
         .all() as HomeTaskRow[];
     } else if (typeof options?.parentId === "number") {
       rows = this.db
-        .prepare(
-          "SELECT * FROM home_tasks WHERE parent_id = ? ORDER BY created_at ASC, id ASC",
-        )
+        .prepare("SELECT * FROM home_tasks WHERE parent_id = ? ORDER BY created_at ASC, id ASC")
         .all(options.parentId) as HomeTaskRow[];
     } else if (typeof options?.projectId === "number") {
       rows = this.db
-        .prepare(
-          "SELECT * FROM home_tasks WHERE project_id = ? ORDER BY updated_at DESC, id DESC",
-        )
+        .prepare("SELECT * FROM home_tasks WHERE project_id = ? ORDER BY updated_at DESC, id DESC")
         .all(options.projectId) as HomeTaskRow[];
     } else {
       rows = this.db

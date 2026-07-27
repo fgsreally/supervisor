@@ -7,10 +7,7 @@ import { isAbsolute, normalize, resolve, sep } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Context } from "hono";
 import { Hono } from "hono";
-import {
-  getSupervisorAgentsRoot,
-  isBuiltinAgent,
-} from "../agent/index.js";
+import { getSupervisorAgentsRoot, isBuiltinAgent } from "../agent/index.js";
 import type { ExtensionEvent } from "../extension/index.js";
 import type { SessionManager } from "../core/session-manager.js";
 import { getProjectDir, getSessionDir } from "../core/session-files.js";
@@ -40,13 +37,18 @@ import { encryptApiKey } from "../utils/encrypt.js";
 import { decryptApiKey } from "../utils/encrypt.js";
 import { testApiKey, type ApiKeyProvider } from "../utils/test-api-key.js";
 import { resolveApiKey } from "../tools/web/credentials.js";
-import { getCurrentBranch, gitCheckout, gitPull, gitPush, getProjectGitInfo, listWorktreeCommits, resolveSessionGitContext } from "../utils/git.js";
 import {
-  listDailyWorkRecords,
-  runDailyWorkAnalysis,
-  yesterdayDayKey,
-} from "../core/daily-work.js";
+  getCurrentBranch,
+  gitCheckout,
+  gitPull,
+  gitPush,
+  getProjectGitInfo,
+  listWorktreeCommits,
+  resolveSessionGitContext,
+} from "../utils/git.js";
+import { listDailyWorkRecords, runDailyWorkAnalysis, yesterdayDayKey } from "../core/daily-work.js";
 import { listWatsonLogFiles, readWatsonLogs } from "../core/watson.js";
+import { appendSystemLog, readSystemLogs } from "../utils/system-log.js";
 import {
   HOME_TASK_PRIORITIES,
   HOME_TASK_STATUSES,
@@ -58,10 +60,7 @@ import {
   type SessionStatus,
 } from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
-import {
-  listSessionWorkspaceFiles,
-  readSessionWorkspaceFile,
-} from "./session-workspace-files.js";
+import { listSessionWorkspaceFiles, readSessionWorkspaceFile } from "./session-workspace-files.js";
 import { readSessionLog } from "../utils/session-log.js";
 import { pickDirectory } from "../utils/pick-directory.js";
 import { listSessionTimers, sessionTimersToScheduleDto } from "../core/session-timers.js";
@@ -216,6 +215,7 @@ function toHomeTaskResponse(task: HomeTask) {
 
 export function createHttpServer(manager: SessionManager): Hono {
   const app = new Hono();
+  appendSystemLog(`HTTP server initialized pid=${process.pid}`);
 
   app.get("/healthz", (c) => c.json({ ok: true }));
 
@@ -292,9 +292,7 @@ export function createHttpServer(manager: SessionManager): Hono {
         title: body.title,
         description: typeof body.description === "string" ? body.description : "",
         projectId:
-          body.projectId === null || body.projectId === undefined
-            ? null
-            : Number(body.projectId),
+          body.projectId === null || body.projectId === undefined ? null : Number(body.projectId),
         priority,
         status,
       });
@@ -354,11 +352,7 @@ export function createHttpServer(manager: SessionManager): Hono {
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      const status = message.includes("not found")
-        ? 404
-        : message.includes("未配置")
-          ? 400
-          : 409;
+      const status = message.includes("not found") ? 404 : message.includes("未配置") ? 400 : 409;
       return jsonError(c, status, message);
     }
   });
@@ -418,7 +412,9 @@ export function createHttpServer(manager: SessionManager): Hono {
         return jsonError(c, 400, "featureModels must be an object");
       }
       const next: Record<string, { providerId: number; modelId: string }> = {};
-      for (const [feature, value] of Object.entries(body.featureModels as Record<string, unknown>)) {
+      for (const [feature, value] of Object.entries(
+        body.featureModels as Record<string, unknown>,
+      )) {
         // Only `assistant` is written by Settings; ignore legacy keys on write.
         if (feature !== "assistant") continue;
         if (!isUtilityFeature(feature)) {
@@ -655,10 +651,7 @@ export function createHttpServer(manager: SessionManager): Hono {
         body.backendType === "acp"
           ? body.backendType
           : "native";
-      if (
-        backendType === "acp" &&
-        typeof body.externalConfig?.command !== "string"
-      ) {
+      if (backendType === "acp" && typeof body.externalConfig?.command !== "string") {
         return jsonError(c, 400, "externalConfig.command is required for ACP agents");
       }
       if (backendType === "native" && !Number.isSafeInteger(body.modelId)) {
@@ -746,20 +739,23 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // GET /agents/:id/logs — Watson / internal agent run logs
-  app.get("/agents/:id/logs", (c) => {
-    const id = parseIntegerId(c.req.param("id"));
-    if (id === null) return jsonError(c, 400, "invalid agent id");
-    const agent = manager.getAgent(id);
-    if (!agent) return jsonError(c, 404, "not found");
+  // GET /system/watson/logs — Watson is an internal runner, not an Agent row.
+  app.get("/system/watson/logs", (c) => {
     const limitParam = c.req.query("limit");
     const limit = limitParam ? Number.parseInt(limitParam, 10) : 400;
     return c.json({
-      agentId: id,
-      files: listWatsonLogFiles(id),
-      text: readWatsonLogs(id, {
+      files: listWatsonLogFiles(),
+      text: readWatsonLogs({
         limit: Number.isFinite(limit) ? limit : 400,
       }),
+    });
+  });
+
+  app.get("/system/logs", (c) => {
+    const limit = Number.parseInt(c.req.query("limit") ?? "400", 10);
+    return c.json({
+      files: ["supervisor.log"],
+      text: readSystemLogs({ limit: Number.isFinite(limit) ? limit : 400 }),
     });
   });
 
@@ -866,8 +862,7 @@ export function createHttpServer(manager: SessionManager): Hono {
       modelId,
       name: typeof body.name === "string" ? body.name.trim() || modelId : modelId,
       contextWindow: typeof body.contextWindow === "number" ? body.contextWindow : undefined,
-      supportsVision:
-        typeof body.supportsVision === "boolean" ? body.supportsVision : undefined,
+      supportsVision: typeof body.supportsVision === "boolean" ? body.supportsVision : undefined,
     });
     return c.json(toModelResponse(model), 201);
   });
@@ -1058,7 +1053,11 @@ export function createHttpServer(manager: SessionManager): Hono {
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return jsonError(c, message.includes("未配置") || message.includes("不可用") ? 400 : 500, message);
+      return jsonError(
+        c,
+        message.includes("未配置") || message.includes("不可用") ? 400 : 500,
+        message,
+      );
     }
   });
 
@@ -1342,7 +1341,9 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (!session || session.projectId == null) return jsonError(c, 404, "session not found");
     const tasks = manager.listSessionTasks(id);
     const artifacts = await Promise.all(
-      tasks.map((task) => readTaskArtifact(getSessionDir(session.projectId!, session.id), task.path)),
+      tasks.map((task) =>
+        readTaskArtifact(getSessionDir(session.projectId!, session.id), task.path),
+      ),
     );
     return c.json(artifacts.filter((artifact) => artifact !== null));
   });
@@ -1430,9 +1431,7 @@ export function createHttpServer(manager: SessionManager): Hono {
       if (!Number.isFinite(limit) || limit < 1) return jsonError(c, 400, "invalid limit");
       const beforeRaw = c.req.query("beforeId");
       const beforeId =
-        beforeRaw == null || beforeRaw === ""
-          ? undefined
-          : Number.parseInt(beforeRaw, 10);
+        beforeRaw == null || beforeRaw === "" ? undefined : Number.parseInt(beforeRaw, 10);
       if (beforeRaw != null && beforeRaw !== "" && !Number.isFinite(beforeId)) {
         return jsonError(c, 400, "invalid beforeId");
       }
@@ -2700,7 +2699,11 @@ export function createHttpServer(manager: SessionManager): Hono {
       return jsonError(c, 400, "invalid agent id or resource id");
     }
     const body = await c.req.json().catch(() => null);
-    if (!body || typeof body !== "object" || typeof (body as { enabled?: unknown }).enabled !== "boolean") {
+    if (
+      !body ||
+      typeof body !== "object" ||
+      typeof (body as { enabled?: unknown }).enabled !== "boolean"
+    ) {
       return jsonError(c, 400, "enabled boolean required");
     }
     try {

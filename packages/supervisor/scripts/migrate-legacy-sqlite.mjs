@@ -138,9 +138,6 @@ function createSchema(db) {
       system_prompt TEXT,
       avatar        TEXT,
       is_builtin    INTEGER NOT NULL DEFAULT 0,
-      pinned        INTEGER NOT NULL DEFAULT 0,
-      muted         INTEGER NOT NULL DEFAULT 0,
-      unread        INTEGER NOT NULL DEFAULT 0,
       external_session_id TEXT,
       error_msg     TEXT,
       stage         TEXT,
@@ -436,7 +433,11 @@ function migrate() {
       id: row.id,
       name: row.name,
       description: (() => {
-        try { return JSON.parse(row.meta ?? "{}").description ?? null; } catch { return null; }
+        try {
+          return JSON.parse(row.meta ?? "{}").description ?? null;
+        } catch {
+          return null;
+        }
       })(),
       cwd: row.cwd,
       home_dir: row.home_dir ?? row.work_dir,
@@ -450,12 +451,12 @@ function migrate() {
   const insertSession = next.prepare(`
     INSERT INTO sessions (
       project_id, parent_id, status, thinking_level, cwd, leaf_id,
-      agent_id, spawn_type, created_by, title, system_prompt, avatar, is_builtin, pinned, muted,
-      unread, external_session_id, error_msg, stage, shadow_enabled, created_at, last_active_at, meta
+      agent_id, spawn_type, created_by, title, system_prompt, avatar, is_builtin,
+      external_session_id, error_msg, stage, shadow_enabled, created_at, last_active_at, meta
     ) VALUES (
       @project_id, @parent_id, @status, @thinking_level, @cwd, @leaf_id,
-      @agent_id, @spawn_type, @created_by, @title, @system_prompt, @avatar, @is_builtin, @pinned,
-      @muted, @unread, @external_session_id, @error_msg, @stage, @shadow_enabled,
+      @agent_id, @spawn_type, @created_by, @title, @system_prompt, @avatar, @is_builtin,
+      @external_session_id, @error_msg, @stage, @shadow_enabled,
       @created_at, @last_active_at, @meta
     )
   `);
@@ -472,15 +473,13 @@ function migrate() {
       cwd: row.cwd ?? "",
       leaf_id: row.leaf_id ?? null,
       agent_id: agentId,
-      spawn_type: row.branch_type === "spawn" ? "subagent" : (row.spawn_type ?? row.branch_type ?? null),
+      spawn_type:
+        row.branch_type === "spawn" ? "subagent" : (row.spawn_type ?? row.branch_type ?? null),
       created_by: row.created_by ?? row.created_via ?? "user",
       title: row.title ?? null,
       system_prompt: row.system_prompt ?? null,
       avatar: row.avatar ?? null,
       is_builtin: row.is_builtin ?? 0,
-      pinned: row.pinned ?? 0,
-      muted: row.muted ?? 0,
-      unread: row.unread ?? 0,
       external_session_id: row.external_session_id ?? row.session_id ?? null,
       error_msg: row.error_msg ?? null,
       stage: row.stage ?? null,
@@ -489,11 +488,14 @@ function migrate() {
       last_active_at: row.last_active_at ?? row.created_at,
       meta: (() => {
         try {
-          const meta = typeof row.meta === "string" ? JSON.parse(row.meta) : { ...(row.meta ?? {}) };
+          const meta =
+            typeof row.meta === "string" ? JSON.parse(row.meta) : { ...(row.meta ?? {}) };
           delete meta.git;
           delete meta.description;
           return JSON.stringify(meta);
-        } catch { return "{}"; }
+        } catch {
+          return "{}";
+        }
       })(),
     });
     sessionMap.set(String(row.id), Number(result.lastInsertRowid));
@@ -518,9 +520,7 @@ function migrate() {
   `);
   let messageCount = 0;
   let skippedMessages = 0;
-  for (const row of old
-    .prepare("SELECT * FROM messages ORDER BY created_at ASC, id ASC")
-    .all()) {
+  for (const row of old.prepare("SELECT * FROM messages ORDER BY created_at ASC, id ASC").all()) {
     const sessionId = sessionMap.get(String(row.session_id));
     if (sessionId == null) {
       skippedMessages += 1;

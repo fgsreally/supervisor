@@ -21,7 +21,7 @@
     >
       {{ avatarLabel }}
     </div>
-    <div class="max-w-[75%] flex flex-col items-start min-w-0">
+    <div class="max-w-[82%] flex flex-col items-start min-w-0 assistant-message-body">
       <span class="chat-msg-time chat-msg-time--agent">{{ timeLabel }}</span>
       <div
         class="relative px-3.5 py-2.5 w-full chat-bubble"
@@ -38,9 +38,50 @@
           :style="{ background: 'var(--app-bubble-assistant)' }"
         />
         <div class="relative z-10 leading-[1.42] flex flex-col gap-2.5">
-          <template v-for="{ piece, index: pieceIndex } in displayPieces" :key="pieceIndex">
+          <details v-if="collapsedExecutionPieces.length" class="external-details">
+            <summary>执行过程（{{ collapsedExecutionPieces.length }} 项）</summary>
+            <div class="external-details__body">
+              <template v-for="{ piece, index } in collapsedExecutionPieces" :key="index">
+                <ThinkingBlock
+                  v-if="piece.kind === 'thinking'"
+                  :content="piece.text"
+                  :streaming="false"
+                />
+                <MarkdownContent
+                  v-else-if="piece.kind === 'text'"
+                  variant="terminal"
+                  :content="piece.text"
+                />
+                <ToolStepRenderer
+                  v-else-if="piece.kind === 'bash' || piece.kind === 'toolStep'"
+                  :session-id="sessionId"
+                  :piece="piece"
+                  :all-pieces="group.pieces"
+                  :pending="isToolPiecePending(piece)"
+                  :is-error="piece.result?.isError"
+                  @open-tool="
+                    (name, args, result, entryId) => emit('open-tool', name, args, result, entryId)
+                  "
+                  @open-bash="
+                    (cmd, result, intent, entryId) =>
+                      emit('open-bash', cmd, result, intent, entryId)
+                  "
+                  @navigate="emit('navigate', $event)"
+                  @answered="emit('answered')"
+                  @open-external-detail="
+                    (args, result) => emit('open-external-detail', args, result)
+                  "
+                />
+              </template>
+            </div>
+          </details>
+
+          <template
+            v-for="({ piece, index: pieceIndex }, displayIndex) in displayPieces"
+            :key="pieceIndex"
+          >
             <hr
-              v-if="showTextDivider(pieceIndex)"
+              v-if="showTextDivider(displayIndex)"
               class="assistant-piece-divider"
               aria-hidden="true"
             />
@@ -63,8 +104,12 @@
               :all-pieces="group.pieces"
               :pending="isToolPiecePending(piece)"
               :is-error="piece.result?.isError"
-              @open-tool="(name, args, result, entryId) => emit('open-tool', name, args, result, entryId)"
-              @open-bash="(cmd, result, intent, entryId) => emit('open-bash', cmd, result, intent, entryId)"
+              @open-tool="
+                (name, args, result, entryId) => emit('open-tool', name, args, result, entryId)
+              "
+              @open-bash="
+                (cmd, result, intent, entryId) => emit('open-bash', cmd, result, intent, entryId)
+              "
               @navigate="emit('navigate', $event)"
               @answered="emit('answered')"
               @open-external-detail="(args, result) => emit('open-external-detail', args, result)"
@@ -96,6 +141,7 @@ import MarkdownContent from "../MarkdownContent.vue";
 import ThinkingBlock from "../ThinkingBlock.vue";
 import ToolStepRenderer from "./ToolStepRenderer.vue";
 import AgentAvatar from "../AgentAvatar.vue";
+import { viewPreferences } from "@/utils/view-preferences";
 
 const props = defineProps<{
   sessionId: string;
@@ -112,6 +158,7 @@ const props = defineProps<{
   avatarColor?: string;
   avatarIcon?: string | null;
   avatarAgentId?: string;
+  externalAgent?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -139,16 +186,41 @@ const emit = defineEmits<{
 let longPressTimer: ReturnType<typeof setTimeout> | undefined;
 let longPressStart = { x: 0, y: 0 };
 
+const isToolPiece = (
+  piece: RenderPiece,
+): piece is Extract<RenderPiece, { kind: "bash" | "toolStep" }> =>
+  piece.kind === "bash" || piece.kind === "toolStep";
+
+const lastToolIndex = computed(() =>
+  props.group.pieces.reduce((latest, piece, index) => (isToolPiece(piece) ? index : latest), -1),
+);
+
+const collapseExecution = computed(
+  () => viewPreferences.collapseExternalAgentDetails && lastToolIndex.value >= 0,
+);
+
+const collapsedExecutionPieces = computed(() =>
+  collapseExecution.value
+    ? props.group.pieces
+        .map((piece, index) => ({ piece, index }))
+        .filter(({ piece, index }) => index <= lastToolIndex.value || piece.kind !== "text")
+    : [],
+);
+
 const displayPieces = computed(() =>
   props.group.pieces
     .map((piece, index) => ({ piece, index }))
-    .filter(({ piece }) => props.showThinkingBlocks || piece.kind !== "thinking"),
+    .filter(
+      ({ piece, index }) =>
+        (props.showThinkingBlocks || piece.kind !== "thinking") &&
+        (!collapseExecution.value || (index > lastToolIndex.value && piece.kind === "text")),
+    ),
 );
 
-function showTextDivider(pieceIndex: number): boolean {
-  if (pieceIndex <= 0) return false;
-  const prev = displayPieces.value[pieceIndex - 1]?.piece;
-  const curr = displayPieces.value[pieceIndex]?.piece;
+function showTextDivider(displayIndex: number): boolean {
+  if (displayIndex <= 0) return false;
+  const prev = displayPieces.value[displayIndex - 1]?.piece;
+  const curr = displayPieces.value[displayIndex]?.piece;
   return prev?.kind === "text" && curr?.kind === "text";
 }
 
@@ -214,6 +286,35 @@ onBeforeUnmount(cancelLongPress);
 </script>
 
 <style scoped>
+.assistant-message-body {
+  font-family:
+    Inter, "PingFang SC", "Microsoft YaHei UI", "Noto Sans CJK SC", system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.005em;
+}
+
+.assistant-message-body :deep(.md-content) {
+  line-height: 1.65;
+}
+
+.external-details {
+  border-top: 1px solid var(--app-border-subtle);
+  color: var(--app-text-secondary);
+  font-size: 12px;
+  padding-top: 0.55rem;
+}
+
+.external-details summary {
+  cursor: pointer;
+  user-select: none;
+}
+
+.external-details__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
+}
 .chat-msg-time {
   font-size: 11px;
   line-height: 1;

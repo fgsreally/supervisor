@@ -10,22 +10,47 @@
     <div class="flex-1 overflow-y-auto custom-scrollbar p-6">
       <div class="settings-content space-y-5">
         <section class="settings-card">
-          <h2>助手模型</h2>
-          <p class="settings-card__hint">
-            华生（内部助手）与 pi-coding-agent 共用此模型，处理项目解析、清理与其它内部任务。未配置则相关功能跳过。
-          </p>
-          <label v-for="feature in utilityFeatures" :key="feature.id" class="settings-field">
-            <span>
-              {{ feature.label }}
-              <small v-if="feature.hint" class="settings-field__hint">{{ feature.hint }}</small>
-            </span>
-            <select v-model="featureModelKeys[feature.id]">
+          <h2 class="settings-card-title-row">
+            <span>华生</span>
+            <small>负责项目解析、摘要等系统内部任务</small>
+          </h2>
+          <label class="settings-field">
+            <span>助手模型</span>
+            <select v-model="featureModelKeys.assistant" :disabled="saving" @change="saveMain">
               <option value="">未配置</option>
               <option v-for="option in modelOptions" :key="option.key" :value="option.key">
                 {{ option.label }}
               </option>
             </select>
           </label>
+          <div class="service-list">
+            <div class="service-row">
+              <div class="service-copy">
+                <strong>运行日志</strong>
+                <span>项目解析、摘要等内部任务的执行记录</span>
+              </div>
+              <button class="configure-button" type="button" @click="loadLog('watson')">
+                <ScrollText class="h-4 w-4" />查看
+              </button>
+            </div>
+          </div>
+          <pre v-if="watsonLogText" class="settings-log">{{ watsonLogText }}</pre>
+        </section>
+
+        <section class="settings-card">
+          <h2>系统</h2>
+          <div class="service-list">
+            <div class="service-row">
+              <div class="service-copy">
+                <strong>运行与诊断</strong>
+                <span>Supervisor 服务状态和诊断记录</span>
+              </div>
+              <button class="configure-button" type="button" @click="loadLog('system')">
+                <ScrollText class="h-4 w-4" />查看
+              </button>
+            </div>
+          </div>
+          <pre v-if="systemLogText" class="settings-log">{{ systemLogText }}</pre>
         </section>
 
         <section class="settings-card">
@@ -212,10 +237,12 @@
 </template>
 
 <script setup lang="ts">
-import { Check, ChevronLeft, ExternalLink, Settings2, X } from "lucide-vue-next";
+import { Check, ChevronLeft, ExternalLink, ScrollText, Settings2, X } from "lucide-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
 import {
+  getSystemLogs,
   getSupervisorSettings,
+  getWatsonLogs,
   listProviders,
   listProviderModels,
   testSettingsApiKey,
@@ -231,13 +258,20 @@ type RemoteServiceId = Exclude<ServiceId, "browser">;
 defineProps<{ showBack?: boolean }>();
 const emit = defineEmits<{ back: [] }>();
 
-const utilityFeatures: Array<{ id: UtilityFeature; label: string; hint?: string }> = [
-  {
-    id: "assistant",
-    label: "助手模型",
-    hint: "华生（内部助手）与 pi-coding-agent 共用：项目解析、worktree 清理、提交说明/标题/摘要等内部任务",
-  },
-];
+const watsonLogText = ref("");
+const systemLogText = ref("");
+
+async function loadLog(kind: "watson" | "system") {
+  const target = kind === "watson" ? watsonLogText : systemLogText;
+  target.value = "加载中…";
+  try {
+    const result =
+      kind === "watson" ? await getWatsonLogs({ limit: 500 }) : await getSystemLogs({ limit: 500 });
+    target.value = result.text || "暂无日志";
+  } catch (error) {
+    target.value = error instanceof Error ? error.message : "日志加载失败";
+  }
+}
 
 const form = reactive({
   browserMode: "headless" as "headless" | "headed",
@@ -406,10 +440,8 @@ async function testActiveKey() {
 
 function buildFeatureModels(): NonNullable<SupervisorSettings["featureModels"]> {
   const next: NonNullable<SupervisorSettings["featureModels"]> = {};
-  for (const feature of utilityFeatures) {
-    const ref = parseFeatureKey(featureModelKeys[feature.id]);
-    if (ref) next[feature.id] = ref;
-  }
+  const ref = parseFeatureKey(featureModelKeys.assistant);
+  if (ref) next.assistant = ref;
   return next;
 }
 
@@ -509,6 +541,35 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.settings-card-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-card-title-row small {
+  color: var(--app-text-muted);
+  font-size: 12px;
+  font-weight: 400;
+  text-align: right;
+}
+
+.settings-log {
+  max-height: 280px;
+  overflow: auto;
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  background: #111827;
+  color: #d1fae5;
+  font:
+    12px/1.5 ui-monospace,
+    SFMono-Regular,
+    Consolas,
+    monospace;
+  white-space: pre-wrap;
+}
 .settings-page,
 .settings-header {
   background: var(--app-settings-bg);

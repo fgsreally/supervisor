@@ -6,7 +6,10 @@
         class="chat-session-menu-backdrop fixed inset-0 z-50 flex justify-end"
         @click.self="emit('close')"
       >
-        <aside class="chat-session-menu relative w-full max-w-[300px] h-full flex flex-col" @click.stop>
+        <aside
+          class="chat-session-menu relative w-full max-w-[300px] h-full flex flex-col"
+          @click.stop
+        >
           <header
             class="chat-session-menu__header h-14 flex items-center justify-between px-4 border-b shrink-0"
           >
@@ -60,9 +63,6 @@
                   @change="emit('update:title', ($event.target as HTMLInputElement).value)"
                 />
               </label>
-              <p v-if="externalAgent" class="mt-3">
-                <span class="session-external-badge">外部 Agent</span>
-              </p>
               <div class="chat-session-menu__font mt-4">
                 <span class="chat-session-menu__muted text-[12px]">字号</span>
                 <div class="chat-font-size" role="radiogroup" aria-label="聊天字号">
@@ -89,6 +89,32 @@
               <p v-else-if="sessionStatus === 'error'" class="mt-3 text-[13px] text-[#fa5151]">
                 合并失败，worktree 已保留
               </p>
+            </section>
+
+            <section class="px-5 py-4 border-b chat-session-menu__section">
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-[15px]">仅显示结论</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="外部执行仅显示结论"
+                  :aria-checked="viewPreferences.collapseExternalAgentDetails"
+                  class="relative w-11 h-6 rounded-full transition-colors shrink-0"
+                  :class="
+                    viewPreferences.collapseExternalAgentDetails ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'
+                  "
+                  @click="toggleExternalDetails"
+                >
+                  <span
+                    class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                    :class="
+                      viewPreferences.collapseExternalAgentDetails
+                        ? 'translate-x-5'
+                        : 'translate-x-0'
+                    "
+                  />
+                </button>
+              </div>
             </section>
 
             <section
@@ -302,6 +328,12 @@ import type { Agent } from "@/api";
 import { SESSION_AVATAR_COLORS, type SessionAvatarValue } from "@/utils/session-avatar";
 import { type ChatFontSize, useChatFontSize } from "../composables/use-chat-font-size";
 import AgentAvatar from "./AgentAvatar.vue";
+import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
+
+function toggleExternalDetails() {
+  viewPreferences.collapseExternalAgentDetails = !viewPreferences.collapseExternalAgentDetails;
+  saveViewPreferences();
+}
 
 const props = defineProps<{
   open: boolean;

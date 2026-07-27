@@ -89,8 +89,11 @@
         :avatar-color="assistantAvatarColor"
         :avatar-icon="assistantAvatarIcon"
         :avatar-agent-id="assistantAvatarAgentId"
+        :external-agent="externalAgent"
         @open-tool="(name, args, result, entryId) => emit('open-tool', name, args, result, entryId)"
-        @open-bash="(cmd, result, intent, entryId) => emit('open-bash', cmd, result, intent, entryId)"
+        @open-bash="
+          (cmd, result, intent, entryId) => emit('open-bash', cmd, result, intent, entryId)
+        "
         @navigate="emit('navigate', $event)"
         @answered="emit('answered')"
         @open-external-detail="(args, result) => emit('open-external-detail', args, result)"
@@ -121,7 +124,11 @@ import {
   isGroupedAssistantGroup,
   type DisplayGroup,
 } from "@/utils/flatten-messages";
-import { messageImageParts, messageTextContent, stripImagePlaceholders } from "@/utils/message-content";
+import {
+  messageImageParts,
+  messageTextContent,
+  stripImagePlaceholders,
+} from "@/utils/message-content";
 import UserMessageRow from "./UserMessageRow.vue";
 import ShadowMessageRow from "./ShadowMessageRow.vue";
 import AssistantMessageGroup from "./AssistantMessageGroup.vue";
@@ -149,6 +156,7 @@ const props = defineProps<{
   assistantAvatarColor?: string;
   assistantAvatarIcon?: string | null;
   assistantAvatarAgentId?: string;
+  externalAgent?: boolean;
 }>();
 
 const emit = defineEmits<{

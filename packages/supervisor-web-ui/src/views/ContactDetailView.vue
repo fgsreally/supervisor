@@ -125,21 +125,6 @@
           :agent-id="agentId"
         />
 
-        <div
-          v-else-if="rightTab === 'logs'"
-          class="flex-1 min-h-0 overflow-auto p-5 contact-detail-content"
-        >
-          <div class="mb-3 flex items-center justify-between gap-2">
-            <div class="text-[13px] contact-detail-subtitle">华生运行日志（不创建 session）</div>
-            <button type="button" class="wechat-secondary-btn" :disabled="logsLoading" @click="loadLogs">
-              {{ logsLoading ? "..." : "刷新" }}
-            </button>
-          </div>
-          <pre class="contact-detail-logs whitespace-pre-wrap break-words text-[12px] leading-relaxed">{{
-            logsText || "暂无日志"
-          }}</pre>
-        </div>
-
         <AgentResourceBrowser v-else class="flex-1 min-h-0" :agent-id="agentId" :kind="rightTab" />
       </div>
 
@@ -169,12 +154,11 @@ import ProviderAvatar from "../components/ProviderAvatar.vue";
 import AgentAvatar from "../components/AgentAvatar.vue";
 import AgentEditDialog from "../components/AgentEditDialog.vue";
 import ExternalAgentDetails from "../components/ExternalAgentDetails.vue";
-import { getAgentLogs } from "@/api";
 import { useAgentStore, useProviderStore } from "@/store";
 import type { UIResourceKind } from "@/types/ui";
 import { providerToUI } from "@/utils/provider-ui";
 
-type AgentTab = "config" | "system" | "logs" | UIResourceKind;
+type AgentTab = "config" | "system" | UIResourceKind;
 
 const props = defineProps<{
   agentId: string;
@@ -194,8 +178,6 @@ const agent = computed(() => agentStore.getAgentById(props.agentId) ?? null);
 
 const rightTab = ref<AgentTab>("config");
 const editOpen = ref(false);
-const logsText = ref("");
-const logsLoading = ref(false);
 
 const rightTabs = computed(() => {
   const tabs: Array<{ id: AgentTab; label: string }> = [
@@ -209,30 +191,10 @@ const rightTabs = computed(() => {
   return tabs;
 });
 
-async function loadLogs() {
-  logsLoading.value = true;
-  try {
-    const result = await getAgentLogs(props.agentId, { limit: 500 });
-    logsText.value = result.text;
-  } catch (error) {
-    logsText.value = error instanceof Error ? error.message : "加载日志失败";
-  } finally {
-    logsLoading.value = false;
-  }
-}
-
 watch(
   () => props.agentId,
   () => {
     rightTab.value = "config";
-    logsText.value = "";
-  },
-);
-
-watch(
-  () => [rightTab.value, props.agentId] as const,
-  ([tab]) => {
-    if (tab === "logs") void loadLogs();
   },
 );
 

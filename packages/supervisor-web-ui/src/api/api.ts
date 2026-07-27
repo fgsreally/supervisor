@@ -863,6 +863,22 @@ export async function getAgentLogs(
   return fetchJson(`/agents/${id}/logs${query}`);
 }
 
+export async function getWatsonLogs(options?: { limit?: number }): Promise<{
+  files: string[];
+  text: string;
+}> {
+  const query = options?.limit ? `?limit=${options.limit}` : "";
+  return fetchJson(`/system/watson/logs${query}`);
+}
+
+export async function getSystemLogs(options?: { limit?: number }): Promise<{
+  files: string[];
+  text: string;
+}> {
+  const query = options?.limit ? `?limit=${options.limit}` : "";
+  return fetchJson(`/system/logs${query}`);
+}
+
 // ============ Home API ============
 
 export type HomeTaskStatus = "backlog" | "todo" | "in_progress" | "blocked" | "done" | "error";
@@ -958,9 +974,7 @@ export function deleteHomeTask(id: number): Promise<{ ok: boolean }> {
   return deleteRequest<{ ok: boolean }>(`/home/tasks/${id}`);
 }
 
-export function decomposeHomeTask(
-  id: number,
-): Promise<{ task: HomeTask; children: HomeTask[] }> {
+export function decomposeHomeTask(id: number): Promise<{ task: HomeTask; children: HomeTask[] }> {
   return postJson(`/home/tasks/${id}/decompose`, {});
 }
 
@@ -1745,9 +1759,7 @@ export async function updateProviderModel(
   modelId: string,
   patch: UpdateModelRequest,
 ): Promise<Model> {
-  return mapModel(
-    await patchJson<RawModel>(`/providers/${providerId}/models/${modelId}`, patch),
-  );
+  return mapModel(await patchJson<RawModel>(`/providers/${providerId}/models/${modelId}`, patch));
 }
 
 /** Delete a model from a provider. */
@@ -1788,14 +1800,7 @@ export interface SessionWorkspaceFileEntry {
   isDirectory: boolean;
 }
 
-export type SessionFileKind =
-  | "text"
-  | "markdown"
-  | "json"
-  | "code"
-  | "image"
-  | "pdf"
-  | "binary";
+export type SessionFileKind = "text" | "markdown" | "json" | "code" | "image" | "pdf" | "binary";
 
 export interface SessionFileContent {
   path: string;
@@ -1816,10 +1821,7 @@ export async function getSessionFiles(
 }
 
 /** Read a file relative to the session workspace for preview. */
-export async function getSessionFileContent(
-  id: string,
-  path: string,
-): Promise<SessionFileContent> {
+export async function getSessionFileContent(id: string, path: string): Promise<SessionFileContent> {
   const params = new URLSearchParams({ path });
   return fetchJson<SessionFileContent>(`/sessions/${id}/files/content?${params}`);
 }
@@ -2105,10 +2107,7 @@ export interface PromptImageInput {
   name?: string;
 }
 
-export async function uploadSessionMedia(
-  sessionId: string,
-  file: File,
-): Promise<PromptImageInput> {
+export async function uploadSessionMedia(sessionId: string, file: File): Promise<PromptImageInput> {
   const body = new FormData();
   body.append("file", file, file.name || "image.png");
   const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/media`, {

@@ -8,10 +8,7 @@
       <Loader2 class="w-4 h-4 animate-spin" />
       <span>加载更早消息…</span>
     </div>
-    <div
-      class="chat-virtual-spacer"
-      :style="{ height: `${rowVirtualizer.getTotalSize()}px` }"
-    >
+    <div class="chat-virtual-spacer" :style="{ height: `${rowVirtualizer.getTotalSize()}px` }">
       <div
         v-for="virtualRow in rowVirtualizer.getVirtualItems()"
         :key="String(virtualRow.key)"
@@ -41,8 +38,13 @@
           :assistant-avatar-color="assistantAvatarColor"
           :assistant-avatar-icon="assistantAvatarIcon"
           :assistant-avatar-agent-id="assistantAvatarAgentId"
-          @open-tool="(name, args, result, entryId) => emit('open-tool', name, args, result, entryId)"
-          @open-bash="(cmd, result, intent, entryId) => emit('open-bash', cmd, result, intent, entryId)"
+          :external-agent="externalAgent"
+          @open-tool="
+            (name, args, result, entryId) => emit('open-tool', name, args, result, entryId)
+          "
+          @open-bash="
+            (cmd, result, intent, entryId) => emit('open-bash', cmd, result, intent, entryId)
+          "
           @navigate="emit('navigate', $event)"
           @open-compaction="emit('open-compaction', $event)"
           @answered="emit('answered')"
@@ -54,10 +56,7 @@
       </div>
     </div>
 
-    <div
-      v-if="showStreamingPlaceholder"
-      class="py-2 md:py-3 px-3 md:px-5 chat-row"
-    >
+    <div v-if="showStreamingPlaceholder" class="py-2 md:py-3 px-3 md:px-5 chat-row">
       <div class="flex justify-start items-start gap-2">
         <AgentAvatar
           v-if="assistantAvatarIcon"
@@ -141,6 +140,7 @@ const props = defineProps<{
   assistantAvatarColor?: string;
   assistantAvatarIcon?: string | null;
   assistantAvatarAgentId?: string;
+  externalAgent?: boolean;
   rewindableEntryIds: string[];
   hasOlder?: boolean;
   loadingOlder?: boolean;
@@ -281,9 +281,7 @@ function assistantDurationLabel(groupIndex: number): string | null {
   }
 
   const endedAt =
-    typeof group.endedAt === "number" && group.endedAt > 0
-      ? group.endedAt
-      : groupTimestamp(group);
+    typeof group.endedAt === "number" && group.endedAt > 0 ? group.endedAt : groupTimestamp(group);
   if (startedAt == null || endedAt == null || endedAt < startedAt) return null;
   return formatMessageDuration(endedAt - startedAt);
 }

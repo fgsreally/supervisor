@@ -332,7 +332,7 @@
                 :key="`${provider.id}:${model.modelId}`"
                 type="button"
                 :disabled="modelPickerSaving"
-                @click="selectAgentModel(provider.id, model.modelId)"
+                @click="selectAgentModel(model.id)"
               >
                 <span>{{ model.name || model.modelId }}</span
                 ><small>{{ model.modelId }}</small>
@@ -430,6 +430,7 @@ const props = defineProps<{
     shadowEnabled?: boolean;
     stage?: string | null;
     meta?: {
+      subagentIds?: number[];
       shadow?: { suggestedQuestions?: string[]; status?: string };
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
       workflow?: { stage: string; status: string };
@@ -480,7 +481,7 @@ const sessionAvatarValue = computed(() =>
     props.session.id,
     props.session.title ?? agentName.value ?? "Agent",
     props.session.avatar ?? undefined,
-    props.agentId ? agentStore.getAgentById(props.agentId)?.icon : null,
+    props.agentId ? agentStore.getAgentById(props.agentId)?.avatar : null,
   ),
 );
 const agentBackendType = computed(() =>
@@ -640,11 +641,11 @@ async function openModelPicker() {
   }
 }
 
-async function selectAgentModel(providerId: string, modelId: string) {
+async function selectAgentModel(modelId: string) {
   if (!props.agentId || modelPickerSaving.value) return;
   modelPickerSaving.value = true;
   try {
-    await agentStore.updateAgent(props.agentId, { providerId, modelId });
+    await agentStore.updateAgent(props.agentId, { modelId });
     modelPickerOpen.value = false;
     showUiMessage("模型设置成功", "success");
     await nextTick(() => inputPanelRef.value?.focus());
@@ -746,19 +747,20 @@ const childSessions = computed(() =>
   sessionStore.sessions.filter((session) => session.parentId === props.session.id),
 );
 const configurableAgents = computed(() =>
-  agentStore.agents.filter((agent) => !agent.meta?.builtin),
+  agentStore.agents.filter((agent) => !agent.isBuiltin),
 );
-const sessionMembers = ref<api.SessionMember[]>([]);
 const shadowEnabled = computed(() => !!props.session.shadowEnabled);
 const spawnedAgentIds = computed(() =>
-  sessionMembers.value
-    .filter((member) => member.role === "spawned")
-    .map((member) => String(member.agentId)),
+  Array.isArray(props.session.meta?.subagentIds)
+    ? props.session.meta.subagentIds
+        .filter((id): id is number => typeof id === "number" && Number.isInteger(id))
+        .map(String)
+    : [],
 );
 
 const btwSessions = computed(() =>
   childSessions.value
-    .filter((session) => session.branchType === "btw")
+    .filter((session) => session.spawnType === "btw")
     .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt)),
 );
 
@@ -838,15 +840,13 @@ async function interruptCurrentTurn() {
 }
 
 async function reloadMessagesFromServer(sessionId: string, localSnapshot = chatEntries.value) {
-  const [, nextQueued, nextTasks, nextTodos, checkpoints, members] = await Promise.all([
+  const [, nextQueued, nextTasks, nextTodos, checkpoints] = await Promise.all([
     sessionStore.fetchSessionMessages(sessionId),
     api.getQueuedSessionInputs(sessionId).catch(() => []),
     api.getSessionTasks(sessionId).catch(() => []),
     api.getSessionTodos(sessionId).catch(() => []),
     api.listCheckpoints(sessionId).catch(() => []),
-    api.getSessionMembers(sessionId).catch(() => []),
   ]);
-  sessionMembers.value = members;
   historyHasMore.value = sessionStore.messageCursors[sessionId]?.hasMore ?? false;
   const entries = sessionStore.messages[sessionId] ?? [];
   chatEntries.value = mergeStreamingToolsIntoPersistedEntries(
@@ -1003,12 +1003,7 @@ async function onSessionTitleChange(value: string) {
 
 async function onShadowEnabledChange(value: boolean) {
   try {
-    const members = await api.updateSessionMembers(props.session.id, {
-      shadowAgentId: null,
-      spawnedAgentIds: spawnedAgentIds.value,
-    });
     await sessionStore.updateSessionMeta(props.session.id, { shadowEnabled: value });
-    sessionMembers.value = members;
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : "影子代理设置更新失败", "error");
   }
@@ -1016,10 +1011,8 @@ async function onShadowEnabledChange(value: boolean) {
 
 async function onSpawnedAgentsChange(spawnedAgentIds: string[]) {
   try {
-    sessionMembers.value = await api.updateSessionMembers(props.session.id, {
-      shadowAgentId: null,
-      spawnedAgentIds,
-    });
+    const { agentIds } = await api.setSessionSubagents(props.session.id, spawnedAgentIds);
+    await sessionStore.updateSessionMeta(props.session.id, { subagentIds: agentIds });
     showUiMessage("Session 代理配置已更新", "success");
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : "代理配置更新失败", "error");

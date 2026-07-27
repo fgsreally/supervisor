@@ -42,8 +42,11 @@ const backendLabel = computed(() => {
 const command = computed(() => {
   const legacy = props.agent.meta.external as { command?: string; args?: string[] } | undefined;
   const command =
-    typeof props.agent.meta.command === "string" ? props.agent.meta.command : legacy?.command;
-  const args = Array.isArray(props.agent.meta.args) ? props.agent.meta.args : legacy?.args;
+    props.agent.externalConfig?.command ??
+    (typeof props.agent.meta.command === "string" ? props.agent.meta.command : legacy?.command);
+  const args =
+    props.agent.externalConfig?.args ??
+    (Array.isArray(props.agent.meta.args) ? props.agent.meta.args : legacy?.args);
   return [command, ...(args ?? [])].filter(Boolean).join(" ") || "-";
 });
 

@@ -8,7 +8,6 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import {
-  assertAgentUserSpawnable,
   getSupervisorAgentsRoot,
   isBuiltinAgent,
 } from "../agent/index.js";
@@ -65,6 +64,7 @@ import {
 } from "./session-workspace-files.js";
 import { readSessionLog } from "../utils/session-log.js";
 import { pickDirectory } from "../utils/pick-directory.js";
+import { listSessionTimers, sessionTimersToScheduleDto } from "../core/session-timers.js";
 
 /** Strip apiKey before sending provider to clients. */
 function toProviderResponse(p: Provider): Omit<Provider, "apiKey"> & { apiKey: null } {
@@ -73,13 +73,12 @@ function toProviderResponse(p: Provider): Omit<Provider, "apiKey"> & { apiKey: n
 
 function toModelResponse(m: Model) {
   return {
+    id: m.id,
     providerId: m.providerId,
     modelId: m.modelId,
     name: m.name,
     contextWindow: m.contextWindow,
-    maxTokens: m.maxTokens,
-    supportsMultimodal: m.supportsMultimodal,
-    tags: m.tags,
+    supportsVision: m.supportsVision,
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
   };
@@ -162,11 +161,6 @@ function getAgentMutationError(
   return null;
 }
 
-function hasReservedAgentMeta(value: unknown): boolean {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  return "builtin" in value || "userSpawnable" in value;
-}
-
 function hasAgentManagedTaskMeta(value: Record<string, unknown>): boolean {
   return (
     Object.hasOwn(value, "tasks") ||
@@ -215,7 +209,6 @@ function toHomeTaskResponse(task: HomeTask) {
     parentId: task.parentId,
     sessionId: task.sessionId,
     error: task.error,
-    meta: task.meta,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
   };
@@ -304,7 +297,6 @@ export function createHttpServer(manager: SessionManager): Hono {
             : Number(body.projectId),
         priority,
         status,
-        meta: body.meta && typeof body.meta === "object" ? body.meta : undefined,
       });
       return c.json(toHomeTaskResponse(task), 201);
     } catch (error: unknown) {
@@ -336,7 +328,6 @@ export function createHttpServer(manager: SessionManager): Hono {
         patch.priority = body.priority;
       }
       if (body.error === null || typeof body.error === "string") patch.error = body.error;
-      if (body.meta && typeof body.meta === "object") patch.meta = body.meta;
       const task = manager.updateHomeTask(id, patch as never);
       return c.json(toHomeTaskResponse(task));
     } catch (error: unknown) {
@@ -664,30 +655,29 @@ export function createHttpServer(manager: SessionManager): Hono {
         body.backendType === "acp"
           ? body.backendType
           : "native";
-      const legacyExternal = body.meta?.external as Record<string, unknown> | undefined;
       if (
         backendType === "acp" &&
-        typeof body.meta?.command !== "string" &&
-        typeof legacyExternal?.command !== "string"
+        typeof body.externalConfig?.command !== "string"
       ) {
-        return jsonError(c, 400, "meta.command is required for ACP agents");
+        return jsonError(c, 400, "externalConfig.command is required for ACP agents");
       }
-      if (hasReservedAgentMeta(body.meta)) {
-        return jsonError(c, 400, "builtin and userSpawnable are reserved Agent metadata");
+      if (backendType === "native" && !Number.isSafeInteger(body.modelId)) {
+        return jsonError(c, 400, "modelId must reference a model row");
       }
       const agent = manager.insertAgent(
         {
           name: body.name,
           description: body.description,
-          icon: body.icon,
-          provider_id: backendType === "native" ? body.providerId : null,
+          avatar: body.avatar,
           backend_type: backendType,
           model_id: body.modelId,
           tools_preset: body.toolsPreset,
           home_dir: body.homeDir,
+          external_config: body.externalConfig ? JSON.stringify(body.externalConfig) : null,
+          disabled_tools: body.disabledTools,
           meta: body.meta,
         },
-        { systemMd: body.systemMd },
+        { systemMd: body.systemPrompt },
       );
       return c.json(agent, 201);
     } catch (e: unknown) {
@@ -706,18 +696,17 @@ export function createHttpServer(manager: SessionManager): Hono {
         allowExternalBuiltinConfig: true,
       });
       if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
-      if (hasReservedAgentMeta(body.meta)) {
-        return jsonError(c, 400, "builtin and userSpawnable are reserved Agent metadata");
-      }
       const current = manager.getAgent(id);
       const agent = manager.updateAgent(id, {
         name: body.name,
         description: body.description,
-        icon: body.icon,
-        provider_id: body.providerId,
+        avatar: body.avatar,
         model_id: body.modelId,
         tools_preset: body.toolsPreset,
         home_dir: body.homeDir,
+        external_config:
+          body.externalConfig === undefined ? undefined : JSON.stringify(body.externalConfig),
+        disabled_tools: body.disabledTools,
         meta:
           body.meta && current
             ? { ...current.meta, ...(body.meta as Record<string, unknown>) }
@@ -824,9 +813,6 @@ export function createHttpServer(manager: SessionManager): Hono {
       if (id === null) return jsonError(c, 400, "invalid agent id");
       const mutationError = getAgentMutationError(manager, id);
       if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
-      if (hasReservedAgentMeta(body)) {
-        return jsonError(c, 400, "builtin and userSpawnable are reserved Agent metadata");
-      }
       const meta = manager.updateAgentMeta(id, body);
       return c.json({ meta });
     } catch (e: unknown) {
@@ -876,18 +862,12 @@ export function createHttpServer(manager: SessionManager): Hono {
       return jsonError(c, 409, "model already exists");
     }
 
-    const tags =
-      Array.isArray(body.tags) && body.tags.every((item: unknown) => typeof item === "string")
-        ? body.tags
-        : undefined;
     const model = manager.insertModel(providerId, {
       modelId,
       name: typeof body.name === "string" ? body.name.trim() || modelId : modelId,
       contextWindow: typeof body.contextWindow === "number" ? body.contextWindow : undefined,
-      maxTokens: typeof body.maxTokens === "number" ? body.maxTokens : undefined,
-      supportsMultimodal:
-        typeof body.supportsMultimodal === "boolean" ? body.supportsMultimodal : undefined,
-      tags,
+      supportsVision:
+        typeof body.supportsVision === "boolean" ? body.supportsVision : undefined,
     });
     return c.json(toModelResponse(model), 201);
   });
@@ -905,12 +885,7 @@ export function createHttpServer(manager: SessionManager): Hono {
     const patch: Parameters<typeof manager.updateModel>[2] = {};
     if (typeof body.name === "string") patch.name = body.name.trim() || modelId;
     if (typeof body.contextWindow === "number") patch.contextWindow = body.contextWindow;
-    if (typeof body.maxTokens === "number") patch.maxTokens = body.maxTokens;
-    if (typeof body.supportsMultimodal === "boolean")
-      patch.supportsMultimodal = body.supportsMultimodal;
-    if (Array.isArray(body.tags) && body.tags.every((item: unknown) => typeof item === "string")) {
-      patch.tags = body.tags;
-    }
+    if (typeof body.supportsVision === "boolean") patch.supportsVision = body.supportsVision;
 
     try {
       const model = manager.updateModel(providerId, modelId, patch);
@@ -1377,7 +1352,9 @@ export function createHttpServer(manager: SessionManager): Hono {
     if (id === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, "session not found");
-    return c.json(manager.listSessionTodos(id));
+    return c.json(
+      manager.listSessionTodos(id).map((todo) => ({ title: todo.title, status: todo.status })),
+    );
   });
 
   // GET /sessions/:id/children
@@ -1517,12 +1494,6 @@ export function createHttpServer(manager: SessionManager): Hono {
       if (agentId !== null) {
         const agent = manager.getAgent(agentId);
         if (!agent) return jsonError(c, 404, `Agent ${agentId} not found`);
-        try {
-          assertAgentUserSpawnable(agent, agentId);
-        } catch (e: unknown) {
-          const message = e instanceof Error ? e.message : String(e);
-          return jsonError(c, 403, message);
-        }
       }
       const projectId =
         body.projectId === undefined || body.projectId === null
@@ -1775,41 +1746,15 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  // Unified execution records and schedules for the Session Job popover.
+  // Unified execution records + timer definitions (meta.timers) for the Session Job popover.
   app.get("/sessions/:id/jobs", (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, `Session ${id} not found`);
-    const schedules = manager.jobs.listSchedules(id);
-    const legacySchedules =
-      schedules.length === 0 && Array.isArray(session.meta?.timers)
-        ? session.meta.timers.flatMap((value, index) => {
-            if (!value || typeof value !== "object") return [];
-            const timer = value as Record<string, unknown>;
-            if (typeof timer.prompt !== "string" || typeof timer.nextFireAt !== "number") return [];
-            const createdAt =
-              typeof timer.createdAt === "number" ? timer.createdAt : timer.nextFireAt;
-            return [
-              {
-                id: typeof timer.id === "string" ? timer.id : `legacy-timer-${index}`,
-                sessionId: id,
-                kind: "timer",
-                name: "timer.fire",
-                label: timer.prompt.split("\n")[0]!.slice(0, 120),
-                prompt: timer.prompt,
-                nextRunAt: timer.nextFireAt,
-                ...(typeof timer.intervalMs === "number" ? { intervalMs: timer.intervalMs } : {}),
-                metadata: { legacy: true },
-                createdAt,
-                updatedAt: createdAt,
-              },
-            ];
-          })
-        : [];
     return c.json({
       jobs: manager.jobs.list(id, { limit: 50 }),
-      schedules: schedules.length ? schedules : legacySchedules,
+      schedules: sessionTimersToScheduleDto(id, listSessionTimers(manager.db, id)),
     });
   });
 
@@ -2070,25 +2015,15 @@ export function createHttpServer(manager: SessionManager): Hono {
     return c.json(await listWorktreeCommits(session.cwd, mergeBase));
   });
 
-  app.get("/sessions/:id/members", (c) => {
-    const sessionId = parseIntegerId(c.req.param("id"));
-    if (sessionId === null) return jsonError(c, 400, "invalid session id");
-    return c.json(manager.listMembers(sessionId));
-  });
-
-  app.put("/sessions/:id/members", async (c) => {
+  app.put("/sessions/:id/subagents", async (c) => {
     const sessionId = parseIntegerId(c.req.param("id"));
     if (sessionId === null) return jsonError(c, 400, "invalid session id");
     const body = await c.req.json().catch(() => null);
-    const shadowAgentId = body?.shadowAgentId == null ? null : Number(body.shadowAgentId);
-    const spawnedAgentIds = Array.isArray(body?.spawnedAgentIds)
-      ? body.spawnedAgentIds.map(Number).filter(Number.isInteger)
-      : [];
-    if (shadowAgentId !== null && !Number.isInteger(shadowAgentId)) {
-      return jsonError(c, 400, "invalid shadowAgentId");
+    if (!Array.isArray(body?.agentIds) || !body.agentIds.every(Number.isInteger)) {
+      return jsonError(c, 400, "agentIds must be an array of integers");
     }
     try {
-      return c.json(manager.replaceSessionAgentMembers(sessionId, shadowAgentId, spawnedAgentIds));
+      return c.json({ agentIds: manager.setSessionSubagentIds(sessionId, body.agentIds) });
     } catch (error) {
       return jsonError(c, 404, error instanceof Error ? error.message : String(error));
     }

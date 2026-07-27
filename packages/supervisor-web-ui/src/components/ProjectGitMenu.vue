@@ -20,9 +20,9 @@
             <GitBranch class="h-3.5 w-3.5 shrink-0" />
             <span class="truncate">{{ currentBranch || "—" }}</span>
           </div>
-          <div v-if="branches.length" class="project-git-menu__branches">
+          <div v-if="branches?.length" class="project-git-menu__branches">
             <button
-              v-for="branch in branches"
+              v-for="branch in branches ?? []"
               :key="branch"
               type="button"
               class="project-git-menu__branch"

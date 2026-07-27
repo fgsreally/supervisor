@@ -28,14 +28,31 @@ import type {
   ToolInfo,
   ToolResultHandler,
 } from "../src/extension/index.js";
-import { applyWorkflowPatch, parseWorkflowState } from "../src/core/session-workflow.js";
 import type {
   CreateJobInput,
-  CreateJobScheduleInput,
   JobRecord,
-  JobSchedule,
   UpdateJobInput,
 } from "../src/core/jobs.js";
+import type { SessionWorkflowState, WorkflowStatePatch } from "../src/extension/types.js";
+
+function parseWorkflowState(value: unknown): SessionWorkflowState | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const stage = typeof (value as { stage?: unknown }).stage === "string"
+    ? (value as { stage: string }).stage.trim()
+    : "";
+  return stage ? { stage, status: "working" } : null;
+}
+
+function applyWorkflowPatch(
+  current: SessionWorkflowState | null,
+  patch: WorkflowStatePatch,
+): SessionWorkflowState {
+  const stage =
+    typeof patch.stage === "string"
+      ? patch.stage.trim()
+      : (current?.stage ?? "");
+  return { stage, status: "working" };
+}
 
 export interface RuntimeOptions {
   sessionId: number;
@@ -168,7 +185,6 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
   let host: TestExtensionHost | undefined;
   let workflow = parseWorkflowState(options.sessionMeta?.workflow);
   const jobs = new Map<string, JobRecord>();
-  const schedules = new Map<string, JobSchedule>();
   const cancelHandlers = new Map<string, () => void | Promise<void>>();
   const inputHandlers = new Map<string, (input: string) => void | Promise<void>>();
   let nextJobId = 0;
@@ -218,6 +234,22 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
         clear: async () => {
           workflow = null;
         },
+      },
+      tasks: {
+        list: async () => [],
+        upsert: async (input) => ({
+          path: input.path,
+          kind: input.kind,
+          title: input.title ?? null,
+          status: input.status ?? null,
+        }),
+        remove: async () => false,
+        getCurrentPath: async () => null,
+        setCurrentPath: async () => {},
+      },
+      todos: {
+        list: async () => [],
+        replace: async (todos) => todos,
       },
       tools: {
         setPolicy: (policy: ToolPolicy) => services.tools.setPolicy(policy),
@@ -359,36 +391,6 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
       },
       setInputHandler: (id: string, handler: (input: string) => void | Promise<void>) => {
         inputHandlers.set(id, handler);
-      },
-      schedules: {
-        create: async (input: CreateJobScheduleInput) => {
-          const now = Date.now();
-          const schedule: JobSchedule = {
-            id: `schedule-${++nextJobId}`,
-            sessionId: options.sessionId,
-            kind: input.kind,
-            name: input.name,
-            label: input.label ?? input.name,
-            prompt: input.prompt,
-            nextRunAt: input.nextRunAt,
-            ...(input.intervalMs ? { intervalMs: input.intervalMs } : {}),
-            metadata: input.metadata ?? {},
-            createdAt: now,
-            updatedAt: now,
-          };
-          schedules.set(schedule.id, schedule);
-          return schedule;
-        },
-        get: async (id: string) => schedules.get(id),
-        list: async () => [...schedules.values()].sort((a, b) => a.nextRunAt - b.nextRunAt),
-        update: async (id: string, patch: { nextRunAt: number }) => {
-          const schedule = schedules.get(id);
-          if (!schedule) throw new Error(`Job schedule ${id} not found`);
-          const updated = { ...schedule, ...patch, updatedAt: Date.now() };
-          schedules.set(id, updated);
-          return updated;
-        },
-        delete: async (id: string) => schedules.delete(id),
       },
     },
     db: new ContextDb(options.db.sqlite),

@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
@@ -89,7 +89,7 @@ export function sessionWorktreePath(repoRoot: string, sessionId: string): string
 
 export type SessionGitCommit = { hash: string; message: string };
 
-/** Core runtime view of a session worktree (from sessions.meta.git). */
+/** Core runtime view of a session worktree, derived from the session cwd. */
 export type SessionGitContext = {
   repoRoot: string;
   worktreePath: string;
@@ -116,58 +116,22 @@ export function parseGitLastCommit(raw: string | null | undefined): SessionGitCo
   return null;
 }
 
-function parseGitMetaFromSessionMeta(meta: Record<string, unknown> | undefined | null): {
-  worktreePath: string | null;
-  branch?: string;
-  lastCommit?: SessionGitCommit;
-  mergeError?: string;
-} {
-  const raw = meta?.git;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-    return { worktreePath: null };
-  }
-  const git = raw as Record<string, unknown>;
-  const last =
-    git.lastCommit && typeof git.lastCommit === "object"
-      ? (git.lastCommit as { hash?: unknown; message?: unknown })
-      : null;
-  return {
-    worktreePath: typeof git.worktreePath === "string" ? git.worktreePath : null,
-    branch: typeof git.branch === "string" ? git.branch : undefined,
-    lastCommit:
-      last && typeof last.hash === "string" && typeof last.message === "string"
-        ? { hash: last.hash, message: last.message }
-        : undefined,
-    mergeError: typeof git.mergeError === "string" ? git.mergeError : undefined,
-  };
-}
-
-/** Resolve worktree paths from sessions.meta.git + project cwd. */
+/** Resolve worktree state from the Session cwd and Project cwd. */
 export function resolveSessionGitContext(input: {
   sessionId: number;
   cwd: string;
   projectCwd?: string | null;
-  meta?: Record<string, unknown> | null;
-  /** @deprecated Prefer meta.git.worktreePath */
-  gitWorktreeEnabled?: boolean;
 }): SessionGitContext | null {
   const repoRoot = input.projectCwd;
   if (!repoRoot) return null;
 
-  const git = parseGitMetaFromSessionMeta(input.meta);
-  const defaultWorktreePath = sessionWorktreePath(repoRoot, String(input.sessionId));
-  const worktreePath = git.worktreePath ?? defaultWorktreePath;
-  const onWorktree = normalizeRepoPath(input.cwd) === normalizeRepoPath(worktreePath);
-  const worktreeEnabled = Boolean(git.worktreePath) || input.gitWorktreeEnabled === true;
-  if (!onWorktree && !worktreeEnabled) return null;
+  if (normalizeRepoPath(input.cwd) === normalizeRepoPath(repoRoot)) return null;
 
   return {
     repoRoot,
-    worktreePath: onWorktree ? input.cwd : worktreePath,
-    branch: git.branch ?? sessionBranchName(String(input.sessionId)),
+    worktreePath: input.cwd,
+    branch: sessionBranchName(String(input.sessionId)),
     worktreeEnabled: true,
-    ...(git.lastCommit ? { lastCommit: git.lastCommit } : {}),
-    ...(git.mergeError ? { mergeError: git.mergeError } : {}),
   };
 }
 

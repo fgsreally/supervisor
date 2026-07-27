@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "./mock-agent-harness.js";
-import { ensurePackagedAgents } from "../src/agent/index.js";
+import { ensurePackagedAgents, findPackagedAgentId } from "../src/agent/index.js";
 import { SupervisorDb } from "../src/db.js";
 import { createHttpServer } from "../src/http-server.js";
 import { SessionManager } from "../src/session-manager.js";
@@ -102,7 +102,10 @@ describe("supervisor: HTTP server", () => {
     });
     db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6" });
     ensurePackagedAgents(db);
-    const { id: parentId } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
+    const codingId = findPackagedAgentId(db, "coding")!;
+    const { id: parentId } = (await (
+      await req("POST", "/sessions", { cwd: "/tmp", agentId: codingId })
+    ).json()) as {
       id: string;
     };
     const res = await req("POST", `/sessions/${parentId}/btw`, {});
@@ -112,6 +115,7 @@ describe("supervisor: HTTP server", () => {
         parentId,
         branchType: "btw",
         showInSessionList: false,
+        agentId: codingId,
       }),
     );
   });
@@ -137,19 +141,22 @@ describe("supervisor: HTTP server", () => {
       executionMode: "background",
       capabilities: ["cancel"],
     });
-    manager.jobs.createSchedule(sessionId, {
-      kind: "timer",
-      name: "timer",
+    const { upsertSessionTimer } = await import("../src/core/session-timers.js");
+    upsertSessionTimer(manager.db, sessionId, {
+      id: "timer1",
       prompt: "continue",
-      nextRunAt: Date.now() + 60_000,
+      nextFireAt: Date.now() + 60_000,
+      createdAt: Date.now(),
     });
 
     const snapshot = (await (await req("GET", `/sessions/${id}/jobs`)).json()) as {
       jobs: Array<{ id: string; kind: string }>;
-      schedules: Array<{ kind: string }>;
+      schedules: Array<{ kind: string; prompt: string }>;
     };
     expect(snapshot.jobs).toEqual([expect.objectContaining({ id: job.id, kind: "shell" })]);
-    expect(snapshot.schedules).toEqual([expect.objectContaining({ kind: "timer" })]);
+    expect(snapshot.schedules).toEqual([
+      expect.objectContaining({ kind: "timer", prompt: "continue" }),
+    ]);
 
     const cancelled = await req("DELETE", `/sessions/${id}/jobs/${job.id}`);
     expect(cancelled.status).toBe(200);

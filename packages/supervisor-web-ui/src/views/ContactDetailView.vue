@@ -27,7 +27,7 @@
           <AgentAvatar
             :agent-id="agent.id"
             :agent-name="agent.name"
-            :icon="agent.icon"
+            :icon="agent.avatar"
             class="w-20 h-20 text-3xl"
           />
           <h2 class="mt-4 text-xl font-medium px-6 text-center contact-detail-title">
@@ -77,7 +77,7 @@
         <AgentAvatar
           :agent-id="agent.id"
           :agent-name="agent.name"
-          :icon="agent.icon"
+          :icon="agent.avatar"
           class="w-11 h-11 text-lg"
         />
         <div class="flex-1 min-w-0 py-0.5">
@@ -197,11 +197,6 @@ const editOpen = ref(false);
 const logsText = ref("");
 const logsLoading = ref(false);
 
-const isWatson = computed(() => {
-  const meta = agent.value?.meta as { packagedKind?: string } | undefined;
-  return meta?.packagedKind === "watson" || agent.value?.name === "华生";
-});
-
 const rightTabs = computed(() => {
   const tabs: Array<{ id: AgentTab; label: string }> = [
     { id: "config", label: "Config" },
@@ -211,7 +206,6 @@ const rightTabs = computed(() => {
     { id: "prompts", label: "Prompts" },
     { id: "mcp", label: "MCP" },
   ];
-  if (isWatson.value) tabs.push({ id: "logs", label: "Logs" });
   return tabs;
 });
 

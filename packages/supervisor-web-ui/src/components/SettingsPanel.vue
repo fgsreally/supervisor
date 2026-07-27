@@ -344,23 +344,7 @@ function parseFeatureKey(key: string): FeatureModelRef | null {
 
 function applyFeatureModels(settings: SupervisorSettings) {
   const models = settings.featureModels ?? {};
-  let ref = models.assistant;
-  if (!ref) {
-    for (const key of [
-      "project-description",
-      "commit-message",
-      "session-title",
-      "summary",
-      "daily-work",
-      "task-decompose",
-    ] as const) {
-      const legacy = models[key];
-      if (legacy && typeof legacy === "object") {
-        ref = legacy as FeatureModelRef;
-        break;
-      }
-    }
-  }
+  const ref = models.assistant;
   featureModelKeys.assistant = ref ? featureKey(ref) : "";
 }
 

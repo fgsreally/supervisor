@@ -455,26 +455,6 @@ export class Context {
         if (!job || job.sessionId !== session.id) throw new Error(`Job ${id} not found`);
         sessionManager.jobs.setInputHandler(id, handler);
       },
-      schedules: {
-        create: async (input) => sessionManager.jobs.createSchedule(session.id, input),
-        get: async (id) => {
-          const schedule = sessionManager.jobs.getSchedule(id);
-          return schedule?.sessionId === session.id ? schedule : undefined;
-        },
-        list: async () => sessionManager.jobs.listSchedules(session.id),
-        update: async (id, patch) => {
-          const schedule = sessionManager.jobs.getSchedule(id);
-          if (!schedule || schedule.sessionId !== session.id) {
-            throw new Error(`Job schedule ${id} not found`);
-          }
-          return sessionManager.jobs.updateSchedule(id, patch);
-        },
-        delete: async (id) => {
-          const schedule = sessionManager.jobs.getSchedule(id);
-          if (!schedule || schedule.sessionId !== session.id) return false;
-          return sessionManager.jobs.deleteSchedule(id);
-        },
-      },
     };
     this.db = new ContextDb(db.db);
     this.project = {

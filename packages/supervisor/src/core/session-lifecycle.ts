@@ -51,17 +51,12 @@ export type SessionLifecycleDb = Pick<
   | "getProvider"
   | "getModel"
   | "getProject"
-  | "updateProjectMeta"
   | "listProjectScripts"
-  | "updateSessionGitState"
-  | "getSessionTask"
 >;
 
 /** Convert a SessionRow to the Session type expected by callers. */
-function rowToSession(row: SessionRow, db?: Pick<SupervisorDb, "getSessionTask">): Session {
-  const currentTaskPath =
-    row.current_task_id != null ? (db?.getSessionTask(row.current_task_id)?.path ?? null) : null;
-  return mapRowToSession(row, { currentTaskPath });
+function rowToSession(row: SessionRow, _db?: unknown): Session {
+  return mapRowToSession(row);
 }
 
 function findLastAssistantText(messages: AgentMessage[]): string {
@@ -118,7 +113,6 @@ export async function commitSessionChanges(
     SupervisorDb,
     | "get"
     | "getProject"
-    | "updateSessionGitState"
     | "listProviders"
     | "listModelsByProvider"
     | "getProvider"
@@ -131,12 +125,10 @@ export async function commitSessionChanges(
   if (!row) throw new Error(`Session ${sessionId} not found`);
   const projectCwd =
     row.project_id != null ? db.getProject(row.project_id)?.cwd : undefined;
-  const meta = parseSessionMeta(row.meta);
   const git = resolveSessionGitContext({
     sessionId,
     cwd,
     projectCwd,
-    meta,
   });
   if (!git?.worktreeEnabled) {
     throw new Error(
@@ -163,7 +155,6 @@ export async function commitSessionChanges(
   const commit = await commitAll(cwd, message);
   if (!commit) return null;
 
-  db.updateSessionGitState(sessionId, { lastCommit: commit });
   return commit;
 }
 
@@ -213,7 +204,7 @@ export async function prepareSessionLifecycleSpawn(
     undefined;
   const isBuiltin = options.isBuiltin === true || session.isBuiltin;
 
-  const needsOwnWorktree = options.branchType === "fork" || options.branchType === "clone";
+  const needsOwnWorktree = options.spawnType === "fork" || options.spawnType === "clone";
   // Child sessions (except fork/clone) and builtin sessions do not get a worktree.
   if ((options?.parentId && !needsOwnWorktree) || isBuiltin) {
     if (initialName) {
@@ -238,12 +229,6 @@ export async function prepareSessionLifecycleSpawn(
       createSessionWorktree(repoRoot, String(session.id)),
     );
     db.updateCwd(session.id, gitMeta.worktreePath);
-    db.updateSessionGitState(session.id, {
-      worktreeEnabled: true,
-      worktreePath: gitMeta.worktreePath,
-      branch: gitMeta.branch,
-      mergeError: null,
-    });
     db.updateSessionFields(session.id, { title: initialName ?? "New chat" });
     sessionLog(
       session.id,
@@ -272,7 +257,7 @@ export async function prepareSessionLifecycleSpawn(
   }
 
   let ready = rowToSession(db.get(session.id)!, db);
-  if (ready.gitWorktreeEnabled && session.projectId != null && jobs) {
+  if (ready.cwd !== session.cwd && session.projectId != null && jobs) {
     const project = db.getProject(session.projectId);
     if (project) {
       try {
@@ -350,7 +335,6 @@ export async function finalizeSessionLifecycleGit(
     sessionId: session.id,
     cwd: session.cwd,
     projectCwd,
-    meta: parseSessionMeta(row.meta),
   });
   if (!git) return;
 
@@ -417,5 +401,5 @@ export async function finalizeSessionLifecycleGit(
     ["system", "git", "worktree"],
     { worktreePath: git.worktreePath, branch: git.branch },
   );
-  db.updateSessionGitState(session.id, { worktreeEnabled: false, mergeError: null });
+  db.updateCwd(session.id, git.repoRoot);
 }

@@ -44,7 +44,7 @@
           />
         </label>
 
-        <div class="grid grid-cols-2 gap-3">
+        <div>
           <label class="block text-[13px]">
             <span class="provider-model-editor__muted mb-1 block">上下文上限 (tokens)</span>
             <input
@@ -58,45 +58,23 @@
               >≈ {{ formatTokenCount(draft.contextWindow) }}</span
             >
           </label>
-          <label class="block text-[13px]">
-            <span class="provider-model-editor__muted mb-1 block">最大输出 (tokens)</span>
-            <input
-              v-model.number="draft.maxTokens"
-              type="number"
-              min="1"
-              step="256"
-              class="provider-model-editor__input w-full px-3 py-2 border rounded-md font-mono focus:outline-none"
-            />
-            <span class="provider-model-editor__muted text-[11px] mt-1 block"
-              >≈ {{ formatTokenCount(draft.maxTokens) }}</span
-            >
-          </label>
         </div>
 
         <label
           class="provider-model-editor__option flex items-center gap-3 px-3 py-3 rounded-md border cursor-pointer"
         >
           <input
-            v-model="draft.supportsMultimodal"
+            v-model="draft.supportsVision"
             type="checkbox"
             class="rounded border-gray-300"
           />
-          <ModelMultimodalIcon :supports-multimodal="draft.supportsMultimodal" />
+          <ModelMultimodalIcon :supports-multimodal="draft.supportsVision" />
           <div>
             <div class="provider-model-editor__title text-[13px]">支持图像输入</div>
             <div class="provider-model-editor__muted text-[11px]">对应 pi Model.input 含 image</div>
           </div>
         </label>
 
-        <label class="block text-[13px]">
-          <span class="provider-model-editor__muted mb-1 block">标签（逗号分隔）</span>
-          <input
-            v-model="tagsInput"
-            type="text"
-            placeholder="例如 summary,review,commit-message"
-            class="provider-model-editor__input w-full px-3 py-2 border rounded-md font-mono focus:outline-none"
-          />
-        </label>
       </div>
 
       <div class="provider-model-editor__footer px-5 py-4 border-t flex justify-end gap-2">
@@ -142,7 +120,6 @@ const emit = defineEmits<{
 }>();
 
 const draft = ref<UIProviderModel>(createEmptyProviderModel());
-const tagsInput = ref("");
 
 watch(
   () => [props.open, props.mode, props.model] as const,
@@ -150,10 +127,8 @@ watch(
     if (!open) return;
     if (mode === "edit" && model) {
       draft.value = { ...model };
-      tagsInput.value = model.tags.join(",");
     } else {
       draft.value = createEmptyProviderModel();
-      tagsInput.value = "";
     }
   },
   { immediate: true },
@@ -162,7 +137,7 @@ watch(
 const canSave = computed(() => {
   const id = draft.value.id.trim();
   if (!id) return false;
-  if (draft.value.contextWindow <= 0 || draft.value.maxTokens <= 0) return false;
+  if (draft.value.contextWindow <= 0) return false;
   if (props.mode === "create" && props.existingIds?.includes(id)) return false;
   return true;
 });
@@ -170,17 +145,11 @@ const canSave = computed(() => {
 function save() {
   if (!canSave.value) return;
   const id = draft.value.id.trim();
-  const tags = tagsInput.value
-    .split(",")
-    .map((item) => item.trim())
-    .filter((item) => item.length > 0);
   emit("save", {
     id,
     name: draft.value.name.trim() || id,
     contextWindow: draft.value.contextWindow,
-    maxTokens: draft.value.maxTokens,
-    supportsMultimodal: draft.value.supportsMultimodal,
-    tags,
+    supportsVision: draft.value.supportsVision,
   });
 }
 </script>

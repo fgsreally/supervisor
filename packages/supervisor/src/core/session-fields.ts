@@ -2,12 +2,10 @@ import type {
   Session,
   SessionAvatar,
   SessionCreationMethod,
-  SessionGitMeta,
   SessionRow,
 } from "../types.js";
 import { normalizeSessionStatus } from "../types.js";
 import { normalizeSessionBranchType } from "./session-history.js";
-import { sessionBranchName } from "../utils/git.js";
 
 export function parseSessionMeta(meta: string | Record<string, unknown>): Record<string, unknown> {
   if (!meta) return {};
@@ -30,32 +28,6 @@ export function serializeSessionAvatar(avatar: SessionAvatar | null | undefined)
   return JSON.stringify(avatar);
 }
 
-export function parseSessionGitMeta(meta: Record<string, unknown>): SessionGitMeta {
-  const raw = meta.git;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const git = raw as Record<string, unknown>;
-  const last =
-    git.lastCommit && typeof git.lastCommit === "object"
-      ? (git.lastCommit as { hash?: unknown; message?: unknown })
-      : null;
-  return {
-    branch: typeof git.branch === "string" ? git.branch : undefined,
-    worktreePath:
-      typeof git.worktreePath === "string"
-        ? git.worktreePath
-        : git.worktreePath === null
-          ? null
-          : undefined,
-    lastCommit:
-      last && typeof last.hash === "string" && typeof last.message === "string"
-        ? { hash: last.hash, message: last.message }
-        : last === null
-          ? null
-          : undefined,
-    mergeError: typeof git.mergeError === "string" ? git.mergeError : null,
-  };
-}
-
 export function resolveCreationMethod(row: SessionRow): SessionCreationMethod {
   const value = row.created_by ?? row.created_via;
   if (
@@ -67,13 +39,13 @@ export function resolveCreationMethod(row: SessionRow): SessionCreationMethod {
   ) {
     return value;
   }
-  if (row.branch_type === "subagent" || row.branch_type === "spawn") return "spawn_agent";
+  if (row.spawn_type === "subagent" || row.spawn_type === "spawn") return "spawn_agent";
   if (
-    row.branch_type === "btw" ||
-    row.branch_type === "fork" ||
-    row.branch_type === "clone"
+    row.spawn_type === "btw" ||
+    row.spawn_type === "fork" ||
+    row.spawn_type === "clone"
   ) {
-    return row.branch_type;
+    return row.spawn_type;
   }
   return "user";
 }
@@ -90,7 +62,6 @@ export interface SessionFieldsPatch {
   errorMsg?: string | null;
   stage?: string | null;
   shadowEnabled?: boolean;
-  currentTaskId?: number | null;
 }
 
 /**
@@ -163,23 +134,17 @@ export function mapRowToSession(
   options?: { currentTaskPath?: string | null },
 ): Session {
   const meta = parseSessionMeta(row.meta);
-  const git = parseSessionGitMeta(meta);
-  const worktreeEnabled = Boolean(git.worktreePath);
   return {
     id: row.id,
     projectId: row.project_id,
     parentId: row.parent_id,
-    sessionId: row.session_id,
-    pid: row.pid,
     status: normalizeSessionStatus(row.status),
     thinkingLevel: row.thinking_level,
     cwd: row.cwd,
     leafId: row.leaf_id,
     agentId: row.agent_id,
-    branchType: normalizeSessionBranchType(row.branch_type),
+    spawnType: normalizeSessionBranchType(row.spawn_type),
     creationMethod: resolveCreationMethod(row),
-    showInSessionList: row.show_in_session_list !== 0,
-    contextLeafId: row.context_leaf_id ?? null,
     title: row.title ?? (typeof meta.name === "string" ? meta.name : null),
     systemPrompt: row.system_prompt ?? null,
     avatar: parseSessionAvatar(row.avatar) ??
@@ -194,16 +159,12 @@ export function mapRowToSession(
     errorMsg: row.error_msg ?? null,
     stage: row.stage ?? null,
     shadowEnabled: row.shadow_enabled === 1,
-    currentTaskId: row.current_task_id ?? null,
     createdAt: new Date(row.created_at),
     lastActiveAt: new Date(row.last_active_at),
     meta,
-    currentTask: options?.currentTaskPath ?? null,
-    gitSessionBranch: worktreeEnabled
-      ? (git.branch ?? sessionBranchName(String(row.id)))
-      : null,
-    gitWorktreeEnabled: worktreeEnabled,
-    gitMergeError: git.mergeError ?? null,
-    gitLastCommit: git.lastCommit ?? null,
+    currentTask:
+      typeof meta.currentTask === "string"
+        ? meta.currentTask
+        : (options?.currentTaskPath ?? null),
   };
 }

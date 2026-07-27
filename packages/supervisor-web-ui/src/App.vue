@@ -501,9 +501,7 @@ const activeProviderModelUi = computed(() => {
     id: model.modelId,
     name: model.name ?? model.modelId,
     contextWindow: model.contextWindow,
-    maxTokens: model.maxTokens,
-    supportsMultimodal: model.supportsMultimodal,
-    tags: model.tags,
+    supportsVision: model.supportsVision,
   };
 });
 
@@ -525,8 +523,6 @@ const chatSessionProps = computed(() => {
     pinned: !!s.pinned,
     muted: !!s.muted,
     currentTask: s.currentTask,
-    gitSessionBranch: s.gitSessionBranch,
-    gitWorktreeEnabled: s.gitWorktreeEnabled,
   };
 });
 
@@ -680,9 +676,7 @@ async function saveModelFromDialog(model: NonNullable<typeof activeProviderModel
     await providerStore.updateModel(activeProviderId.value, model.id, {
       name: model.name,
       contextWindow: model.contextWindow,
-      maxTokens: model.maxTokens,
-      supportsMultimodal: model.supportsMultimodal,
-      tags: model.tags,
+      supportsVision: model.supportsVision,
     });
     modelEditorOpen.value = false;
     await providerStore.fetchModels(activeProviderId.value);

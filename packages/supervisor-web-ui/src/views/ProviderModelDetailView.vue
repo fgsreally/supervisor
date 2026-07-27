@@ -40,25 +40,17 @@
                 {{ formatTokenCount(model.contextWindow) }}
               </dd>
             </div>
-            <div>
-              <dt class="model-detail-muted">最大输出</dt>
-              <dd class="model-detail-title font-mono">{{ formatTokenCount(model.maxTokens) }}</dd>
-            </div>
           </dl>
         </section>
 
         <section class="model-detail-section">
           <h2 class="model-detail-title text-[14px] font-medium mb-5">能力</h2>
           <div class="flex items-center gap-3 text-[13px]">
-            <ModelMultimodalIcon :supports-multimodal="model.supportsMultimodal" />
+            <ModelMultimodalIcon :supports-multimodal="model.supportsVision" />
             <span class="model-detail-title">
-              {{ model.supportsMultimodal ? "支持图像输入" : "仅支持文本输入" }}
+              {{ model.supportsVision ? "支持图像输入" : "仅支持文本输入" }}
             </span>
           </div>
-          <div v-if="model.tags.length" class="flex flex-wrap gap-2 mt-4">
-            <span v-for="tag in model.tags" :key="tag" class="model-detail-tag">{{ tag }}</span>
-          </div>
-          <p v-else class="model-detail-muted text-[13px] mt-4">暂无标签</p>
         </section>
       </div>
     </div>

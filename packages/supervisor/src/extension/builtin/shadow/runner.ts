@@ -1,25 +1,20 @@
 import type { AgentHarnessEvent } from "@earendil-works/pi-agent-core";
-import { completeSimple, getEnvApiKey } from "@earendil-works/pi-ai";
-import {
-  findPackagedAgentId,
-  getAgentHomeDir,
-  readAgentHomeSystemPrompt,
-} from "../../../agent/index.js";
+import { findPackagedAgentId } from "../../../agent/index.js";
 import type { SessionManager } from "../../../core/session-manager.js";
 import {
   DEFAULT_PARENT_MESSAGE_LEVEL,
   SESSION_INPUT_INTERRUPT_LEVEL,
 } from "../../../core/session-input-queue.js";
+import { runWatsonTask } from "../../../core/watson.js";
 import type { SupervisorDb } from "../../../db/db.js";
 import type { Session, SessionCheckpoint } from "../../../types.js";
-import { resolveModelWithProviderOverrides } from "../../../utils/model-utils.js";
-import { resolveAssistantModelAuth } from "../../../utils/utility-llm.js";
 import { applyShadowMemoryUpdate, readShadowMemory } from "./memory.js";
 import {
   formatShadowRunPrompt,
-  getShadowProtocolPrompt,
-  parseShadowProtocolResponse,
+  getShadowSystemPrompt,
+  normalizeShadowSubmitResult,
 } from "./protocol.js";
+import type { ShadowProtocolResult } from "./types.js";
 
 function shouldRunShadow(session: Session): boolean {
   if (session.parentId !== null) return false;
@@ -50,12 +45,8 @@ function formatHarnessMessages(messages: unknown[]): string {
   return lines.join("\n\n");
 }
 
-function extractAssistantText(content: Array<{ type: string; text?: string }>): string {
-  return content
-    .filter((part): part is { type: "text"; text: string } => part.type === "text" && !!part.text)
-    .map((part) => part.text)
-    .join("")
-    .trim();
+function resolveShadowAgentId(db: SupervisorDb): number | null {
+  return findPackagedAgentId(db, "shadow") ?? findPackagedAgentId(db, "watson") ?? null;
 }
 
 export async function runShadow(
@@ -73,70 +64,38 @@ export async function runShadow(
   const latestTurn = formatHarnessMessages(event.messages ?? []);
   if (!latestTurn) return;
 
-  const configuredShadow = db.listMembers(session.id).find((member) => member.role === "shadow");
-  let shadowAgentId = configuredShadow?.agentId ?? findPackagedAgentId(db, "shadow");
-  if (shadowAgentId === undefined) return;
-  let shadowAgent = db.getAgent(shadowAgentId);
-  // Shadow must stay native — never run Codex/Claude/etc. as the silent observer.
-  if (shadowAgent && shadowAgent.backendType !== "native") {
-    console.warn(
-      `shadow agent ${shadowAgentId} is external (${shadowAgent.backendType}); falling back to packaged Shadow`,
-    );
-    shadowAgentId = findPackagedAgentId(db, "shadow");
-    if (shadowAgentId === undefined) return;
-    shadowAgent = db.getAgent(shadowAgentId);
-  }
-  if (!shadowAgent) return;
-
-  let model =
-    shadowAgent.modelId && shadowAgent.providerId != null
-      ? resolveModelWithProviderOverrides(db, shadowAgent.providerId, shadowAgent.modelId)
-      : null;
-  let apiKey: string | undefined;
-  if (model && shadowAgent.providerId != null) {
-    const provider = db.getProvider(shadowAgent.providerId);
-    apiKey = getEnvApiKey(model.provider) ?? provider?.apiKey ?? undefined;
-  } else {
-    const assistantAuth = await resolveAssistantModelAuth(db);
-    if (!assistantAuth) return;
-    model = assistantAuth.model;
-    apiKey = assistantAuth.apiKey;
-  }
-  const basePrompt = readAgentHomeSystemPrompt(getAgentHomeDir(shadowAgent.id));
-  const systemPrompt = [basePrompt, getShadowProtocolPrompt()].filter(Boolean).join("\n\n");
+  const shadowAgentId = resolveShadowAgentId(db);
   const shadowMemory = readShadowMemory(session.projectId, session.id);
 
-  let responseText: string;
+  let result: ShadowProtocolResult;
   try {
-    const response = await completeSimple(
-      model,
-      {
-        systemPrompt,
-        messages: [
-          {
-            role: "user",
-            content: formatShadowRunPrompt(shadowMemory, latestTurn),
-            timestamp: Date.now(),
-          },
-        ],
-      },
-      { apiKey, timeoutMs: 120_000 },
-    );
-    responseText = extractAssistantText(response.content);
+    const run = await runWatsonTask<unknown>({
+      db,
+      cwd: session.cwd,
+      kind: "shadow",
+      toolsPreset: "none",
+      structured: true,
+      systemPrompt: getShadowSystemPrompt(),
+      prompt: formatShadowRunPrompt(shadowMemory, latestTurn),
+    });
+    const normalized = normalizeShadowSubmitResult(run.result);
+    if (!normalized) {
+      console.error(`shadow submit_result invalid [session=${session.id}]`);
+      return;
+    }
+    result = normalized;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`shadow completion failed [session=${session.id}]:`, message);
     return;
   }
 
-  const result = parseShadowProtocolResponse(responseText);
-  if (!result) return;
   applyShadowMemoryUpdate(session.projectId, session.id, result.shadowMemory);
 
   const suggestedQuestions = result.suggestedQuestions ?? [];
   db.updateMeta(session.id, {
     shadow: {
-      agentId: shadowAgent.id,
+      agentId: shadowAgentId,
       suggestedQuestions,
       message: result.message,
       interrupt: result.interrupt === true,
@@ -168,7 +127,7 @@ export async function runShadow(
     await manager.submitSessionInput(session.id, {
       message,
       level: result.interrupt ? SESSION_INPUT_INTERRUPT_LEVEL : DEFAULT_PARENT_MESSAGE_LEVEL,
-      source: `shadow:${shadowAgent.id}`,
+      source: shadowAgentId != null ? `shadow:${shadowAgentId}` : "shadow",
     });
   }
 }

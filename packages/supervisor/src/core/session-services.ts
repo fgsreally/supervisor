@@ -6,8 +6,6 @@ import type { JobManager } from "./jobs.js";
 import type { ProjectScript, ProjectScriptKind } from "./project-scripts.js";
 import {
   extractPortPlaceholders,
-  PROJECT_RUNTIME_META,
-  type ProjectRuntimeStatus,
   type SessionServicesMeta,
 } from "./project-runtime.js";
 
@@ -116,22 +114,6 @@ function killProcessTree(pid: number): void {
   }
 }
 
-function readProjectRuntimeStatus(
-  meta: Record<string, unknown> | undefined | null,
-): ProjectRuntimeStatus | null {
-  const statusRaw = meta?.[PROJECT_RUNTIME_META.status];
-  if (
-    statusRaw === "ready" ||
-    statusRaw === "pending" ||
-    statusRaw === "error" ||
-    statusRaw === "skipped" ||
-    statusRaw === "none"
-  ) {
-    return statusRaw;
-  }
-  return null;
-}
-
 function childKey(sessionId: number, scriptId: number): string {
   return `${sessionId}:${scriptId}`;
 }
@@ -162,15 +144,10 @@ export function buildSessionServicesPrompt(services: SessionServicesMeta): strin
 export async function startSessionProjectServices(options: {
   sessionId: number;
   cwd: string;
-  project: Pick<Project, "id" | "meta">;
+  project: Pick<Project, "id">;
   scripts: ProjectScript[];
   jobs: JobManager;
 }): Promise<SessionServicesMeta | null> {
-  const status = readProjectRuntimeStatus(options.project.meta);
-  if (status === "pending" || status === "error" || status === "skipped") {
-    return null;
-  }
-
   const installScripts = options.scripts.filter((s) => s.kind === "install");
   const startScripts = options.scripts.filter((s) => s.kind === "start");
   if (installScripts.length === 0 && startScripts.length === 0) {

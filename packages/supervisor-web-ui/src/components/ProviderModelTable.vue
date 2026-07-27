@@ -24,9 +24,7 @@
             <th class="text-center font-medium px-3 py-2.5 w-16">Provider</th>
             <th class="text-left font-medium px-4 py-2.5">Model ID</th>
             <th class="text-left font-medium px-4 py-2.5">名称</th>
-            <th class="text-left font-medium px-4 py-2.5">标签</th>
             <th class="text-right font-medium px-4 py-2.5">上下文</th>
-            <th class="text-right font-medium px-4 py-2.5">最大输出</th>
             <th class="text-center font-medium px-3 py-2.5 w-16">图像</th>
             <th v-if="editable" class="text-right font-medium px-4 py-2.5 w-28">操作</th>
           </tr>
@@ -47,20 +45,11 @@
             </td>
             <td class="px-4 py-2.5 font-mono provider-model-table__title">{{ model.id }}</td>
             <td class="px-4 py-2.5 provider-model-table__title">{{ model.name }}</td>
-            <td class="px-4 py-2.5">
-              <span v-if="model.tags.length === 0" class="provider-model-table__subtitle"> — </span>
-              <span v-else class="provider-model-table__subtitle font-mono">
-                {{ model.tags.join(", ") }}
-              </span>
-            </td>
             <td class="px-4 py-2.5 text-right font-mono provider-model-table__subtitle">
               {{ formatTokenCount(model.contextWindow) }}
             </td>
-            <td class="px-4 py-2.5 text-right font-mono provider-model-table__subtitle">
-              {{ formatTokenCount(model.maxTokens) }}
-            </td>
             <td class="px-3 py-2.5 text-center">
-              <ModelMultimodalIcon :supports-multimodal="model.supportsMultimodal" />
+              <ModelMultimodalIcon :supports-multimodal="model.supportsVision" />
             </td>
             <td v-if="editable" class="px-4 py-2.5 text-right whitespace-nowrap">
               <button

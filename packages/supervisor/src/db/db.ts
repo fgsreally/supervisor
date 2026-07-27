@@ -20,9 +20,6 @@ import type {
   HomeTaskPriority,
   HomeTaskRow,
   HomeTaskStatus,
-  Member,
-  MemberAgent,
-  MemberRow,
   MessageRow,
   MessageSearchHit,
   Model,
@@ -60,13 +57,20 @@ function parseHomeTaskPriority(value: string): HomeTaskPriority {
     : "normal";
 }
 
-function rowToHomeTask(row: HomeTaskRow): HomeTask {
-  let meta: Record<string, unknown> = {};
-  try {
-    meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
-  } catch {
-    meta = {};
+function syntheticMetaId(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
   }
+  return Math.abs(hash) || 1;
+}
+
+function normalizeTodoStatus(value: unknown): SessionTodoRow["status"] {
+  if (value === "in_progress" || value === "completed" || value === "cancelled") return value;
+  return "pending";
+}
+
+function rowToHomeTask(row: HomeTaskRow): HomeTask {
   return {
     id: row.id,
     title: row.title,
@@ -77,7 +81,6 @@ function rowToHomeTask(row: HomeTaskRow): HomeTask {
     parentId: row.parent_id,
     sessionId: row.session_id,
     error: row.error,
-    meta,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -87,16 +90,14 @@ function rowToSession(row: SessionRow): SessionRow {
   const createdBy =
     row.created_by ??
     row.created_via ??
-    (row.branch_type === "subagent" || row.branch_type === "spawn"
+    (row.spawn_type === "subagent" || row.spawn_type === "spawn"
       ? "spawn_agent"
-      : (row.branch_type as SessionRow["created_by"]) ?? "user");
+      : (row.spawn_type as SessionRow["created_by"]) ?? "user");
   return {
     ...row,
     status: normalizeSessionStatus(row.status),
-    branch_type: row.branch_type === "spawn" ? "subagent" : row.branch_type,
+    spawn_type: row.spawn_type === "spawn" ? "subagent" : row.spawn_type,
     created_by: createdBy,
-    show_in_session_list: row.show_in_session_list ?? 1,
-    context_leaf_id: row.context_leaf_id ?? null,
     title: row.title ?? null,
     system_prompt: row.system_prompt ?? null,
     avatar: row.avatar ?? null,
@@ -108,7 +109,6 @@ function rowToSession(row: SessionRow): SessionRow {
     error_msg: row.error_msg ?? null,
     stage: row.stage ?? null,
     shadow_enabled: row.shadow_enabled ?? 0,
-    current_task_id: row.current_task_id ?? null,
     meta: JSON.parse(typeof row.meta === "string" ? row.meta : JSON.stringify(row.meta ?? {})) as any,
   };
 }
@@ -117,13 +117,9 @@ function rowToProject(row: ProjectRow): Project {
   return {
     id: row.id,
     name: row.name,
+    description: row.description,
     cwd: row.cwd,
-    workDir: row.work_dir,
-    defaultBranch: row.default_branch,
-    installCommand: row.install_command ?? null,
-    startCommand: row.start_command ?? null,
-    destroyCommand: row.destroy_command ?? null,
-    meta: JSON.parse(row.meta),
+    homeDir: row.home_dir,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -134,13 +130,27 @@ function rowToAgent(row: AgentRow): Agent {
     id: row.id,
     name: row.name,
     description: row.description,
-    icon: row.icon,
-    providerId: row.provider_id,
+    avatar: row.avatar,
+    providerId: row.resolved_provider_id ?? null,
     backendType: row.backend_type ?? "native",
     modelId: row.model_id,
+    systemPrompt: row.system_prompt,
     toolsPreset: (row.tools_preset as "coding" | "readonly" | "none") || null,
     homeDir: row.home_dir ?? null,
-    isInternal: Boolean(row.is_internal),
+    isBuiltin: Boolean(row.is_builtin),
+    externalConfig: row.external_config
+      ? (JSON.parse(row.external_config) as Agent["externalConfig"])
+      : null,
+    disabledTools: (() => {
+      try {
+        const value = JSON.parse(row.disabled_tools ?? "[]") as unknown;
+        return Array.isArray(value)
+          ? value.filter((tool): tool is string => typeof tool === "string")
+          : [];
+      } catch {
+        return [];
+      }
+    })(),
     meta: JSON.parse(row.meta),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -185,46 +195,6 @@ function rowToResource(row: ResourceRow): Resource {
   };
 }
 
-function parseMemberTags(tags: string | null | undefined): string[] {
-  return (tags ?? "")
-    .split(",")
-    .map((tag) => tag.trim())
-    .filter(Boolean);
-}
-
-function serializeMemberTags(tags: string[] | string | undefined): string {
-  if (typeof tags === "string") return parseMemberTags(tags).join(",");
-  return (tags ?? [])
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-    .join(",");
-}
-
-function rowToMember(row: MemberRow): Member {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    agentId: row.agent_id,
-    role: row.role,
-    tags: parseMemberTags(row.tags),
-    createdAt: new Date(row.created_at),
-    updatedAt: new Date(row.updated_at),
-  };
-}
-
-function parseModelTags(raw: string | null | undefined): string[] {
-  if (!raw) return [];
-  try {
-    const value = JSON.parse(raw) as unknown;
-    if (!Array.isArray(value)) return [];
-    return value.filter(
-      (item): item is string => typeof item === "string" && item.trim().length > 0,
-    );
-  } catch {
-    return [];
-  }
-}
-
 function rowToModel(row: ModelRow): Model {
   return {
     id: row.id,
@@ -232,9 +202,7 @@ function rowToModel(row: ModelRow): Model {
     modelId: row.model_id,
     name: row.name,
     contextWindow: row.context_window,
-    maxTokens: row.max_tokens,
-    supportsMultimodal: Boolean(row.supports_multimodal),
-    tags: parseModelTags(row.tags),
+    supportsVision: Boolean(row.supports_vision),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -274,9 +242,7 @@ export class SupervisorDb {
 				model_id      TEXT NOT NULL,
 				name          TEXT,
 				context_window INTEGER NOT NULL DEFAULT 128000,
-				max_tokens    INTEGER NOT NULL DEFAULT 16384,
-				supports_multimodal INTEGER NOT NULL DEFAULT 0,
-				tags          TEXT NOT NULL DEFAULT '[]',
+				supports_vision INTEGER NOT NULL DEFAULT 0,
 				created_at    INTEGER NOT NULL,
 				updated_at    INTEGER NOT NULL,
 				UNIQUE (provider_id, model_id)
@@ -286,15 +252,15 @@ export class SupervisorDb {
 				id            INTEGER PRIMARY KEY AUTOINCREMENT,
 				name          TEXT NOT NULL,
 				description   TEXT,
-				icon          TEXT,
-				provider_id   INTEGER REFERENCES providers(id) ON DELETE SET NULL,
+				avatar        TEXT,
 				backend_type  TEXT NOT NULL DEFAULT 'native',
 				system_prompt TEXT,
 				tools_preset  TEXT,
-				extension_id  TEXT UNIQUE,
-				model_id      TEXT,
+				model_id      INTEGER REFERENCES models(id) ON DELETE SET NULL,
 				home_dir      TEXT,
-				is_internal   INTEGER NOT NULL DEFAULT 0,
+				is_builtin    INTEGER NOT NULL DEFAULT 0,
+        external_config TEXT,
+        disabled_tools TEXT NOT NULL DEFAULT '[]',
 				meta          TEXT NOT NULL DEFAULT '{}',
 				created_at    INTEGER NOT NULL,
 				updated_at    INTEGER NOT NULL
@@ -303,13 +269,9 @@ export class SupervisorDb {
 			CREATE TABLE IF NOT EXISTS projects (
 				id            INTEGER PRIMARY KEY AUTOINCREMENT,
 				name          TEXT NOT NULL,
+				description   TEXT,
 				cwd           TEXT NOT NULL UNIQUE,
-				work_dir      TEXT NOT NULL,
-				default_branch TEXT NOT NULL DEFAULT 'main',
-				install_command TEXT,
-				start_command TEXT,
-				destroy_command TEXT,
-				meta          TEXT NOT NULL DEFAULT '{}',
+				home_dir      TEXT NOT NULL,
 				created_at    INTEGER NOT NULL,
 				updated_at    INTEGER NOT NULL
 			);
@@ -318,17 +280,13 @@ export class SupervisorDb {
 				id            INTEGER PRIMARY KEY AUTOINCREMENT,
 				project_id    INTEGER REFERENCES projects(id) ON DELETE CASCADE,
 				parent_id     INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
-				session_id    TEXT,
-				pid           INTEGER,
 				status        TEXT NOT NULL DEFAULT 'initializing',
 				thinking_level TEXT NOT NULL DEFAULT 'none',
 				cwd           TEXT NOT NULL DEFAULT '',
 				leaf_id       TEXT,
 				agent_id      INTEGER REFERENCES agents(id) ON DELETE SET NULL,
-				branch_type   TEXT,
+				spawn_type    TEXT,
 				created_by    TEXT NOT NULL DEFAULT 'user',
-				show_in_session_list INTEGER NOT NULL DEFAULT 1,
-				context_leaf_id TEXT,
 				title         TEXT,
 				system_prompt TEXT,
 				avatar        TEXT,
@@ -340,7 +298,6 @@ export class SupervisorDb {
 				error_msg     TEXT,
 				stage         TEXT,
 				shadow_enabled INTEGER NOT NULL DEFAULT 0,
-				current_task_id INTEGER,
 				created_at    INTEGER NOT NULL,
 				last_active_at INTEGER NOT NULL,
 				meta          TEXT NOT NULL DEFAULT '{}'
@@ -349,24 +306,10 @@ export class SupervisorDb {
 			CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 			CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
 
-      CREATE TABLE IF NOT EXISTS members (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        agent_id      INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-        role          TEXT NOT NULL DEFAULT 'member',
-        tags          TEXT NOT NULL DEFAULT '',
-        created_at    INTEGER NOT NULL,
-        updated_at    INTEGER NOT NULL,
-        UNIQUE(session_id, agent_id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_members_session ON members(session_id);
-      CREATE INDEX IF NOT EXISTS idx_members_agent ON members(agent_id);
 		`);
 
-    this.ensureProjectColumns();
     this.ensureProjectScripts();
-    this.ensureSessionChildColumns();
-    this.ensureSessionSchemaColumns();
+    this.migrateMembersToSubagentIds();
     this.ensureSessionTaskTables();
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id)");
 
@@ -380,30 +323,25 @@ export class SupervisorDb {
         payload       TEXT NOT NULL,
         meta          TEXT NOT NULL DEFAULT '{}',
         is_old        INTEGER NOT NULL DEFAULT 0,
-        source        TEXT,
-        origin        TEXT,
-        message_role  TEXT,
+        origin_msg    TEXT,
+        role          TEXT,
         search_text   TEXT,
         created_at    INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, message_role);
+      CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, role);
       CREATE INDEX IF NOT EXISTS idx_messages_search_text ON messages(search_text) WHERE search_text IS NOT NULL;
       CREATE TABLE IF NOT EXISTS session_input_queue (
         id            TEXT PRIMARY KEY,
         session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
         message       TEXT NOT NULL,
         level         INTEGER NOT NULL,
-        source        TEXT,
-        origin        TEXT,
+        origin_msg    TEXT,
         images        TEXT,
         enqueued_at   INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_session_input_queue_session
         ON session_input_queue(session_id, level DESC, enqueued_at ASC);
-      CREATE INDEX IF NOT EXISTS idx_members_session ON members(session_id);
-      CREATE INDEX IF NOT EXISTS idx_members_agent ON members(agent_id);
-
       CREATE TABLE IF NOT EXISTS home_tasks (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         title         TEXT NOT NULL,
@@ -414,7 +352,6 @@ export class SupervisorDb {
         parent_id     INTEGER REFERENCES home_tasks(id) ON DELETE CASCADE,
         session_id    INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
         error         TEXT,
-        meta          TEXT NOT NULL DEFAULT '{}',
         created_at    INTEGER NOT NULL,
         updated_at    INTEGER NOT NULL
       );
@@ -452,28 +389,269 @@ export class SupervisorDb {
       CREATE INDEX IF NOT EXISTS idx_agent_resources_agent ON agent_resources(agent_id);
       CREATE INDEX IF NOT EXISTS idx_agent_resources_resource ON agent_resources(resource_id);
     `);
-    this.ensureMessageColumns();
+    this.rebuildTargetSchema();
     this.ensureMessageFts();
+    this.ensureHomeTaskColumns();
 
     // Initialize default providers from environment variables
     this.initializeDefaultProviders();
   }
 
-  private ensureProjectColumns(): void {
-    const columns = this.db.pragma("table_info(projects)") as Array<{ name: string }>;
-    const names = new Set(columns.map((column) => column.name));
-    if (!names.has("default_branch")) {
-      this.db.exec("ALTER TABLE projects ADD COLUMN default_branch TEXT NOT NULL DEFAULT 'main'");
+  /** Drop legacy home_tasks.meta (unused). */
+  private ensureHomeTaskColumns(): void {
+    const exists = this.db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'home_tasks'")
+      .get();
+    if (!exists) return;
+    const names = new Set(
+      (this.db.pragma("table_info(home_tasks)") as Array<{ name: string }>).map((c) => c.name),
+    );
+    if (names.has("meta")) {
+      this.db.exec("ALTER TABLE home_tasks DROP COLUMN meta");
     }
-    if (!names.has("install_command")) {
-      this.db.exec("ALTER TABLE projects ADD COLUMN install_command TEXT");
-    }
-    if (!names.has("start_command")) {
-      this.db.exec("ALTER TABLE projects ADD COLUMN start_command TEXT");
-    }
-    if (!names.has("destroy_command")) {
-      this.db.exec("ALTER TABLE projects ADD COLUMN destroy_command TEXT");
-    }
+  }
+
+  /** Rebuild evolving core tables so existing databases have the exact target columns. */
+  private rebuildTargetSchema(): void {
+    const columns = (table: string) =>
+      new Set(
+        (this.db.pragma(`table_info(${table})`) as Array<{ name: string }>).map(
+          (column) => column.name,
+        ),
+      );
+    const pick = (names: Set<string>, name: string, fallback: string) =>
+      names.has(name) ? name : fallback;
+
+    const modelColumns = columns("models");
+    const agentColumns = columns("agents");
+    const projectColumns = columns("projects");
+    const scriptColumns = columns("project_scripts");
+    const sessionColumns = columns("sessions");
+    const messageColumns = columns("messages");
+    const queueColumns = columns("session_input_queue");
+
+    this.db.exec(`
+      DROP TRIGGER IF EXISTS messages_fts_ai;
+      DROP TRIGGER IF EXISTS messages_fts_ad;
+      DROP TRIGGER IF EXISTS messages_fts_au;
+      DROP TABLE IF EXISTS messages_fts;
+      PRAGMA foreign_keys = OFF;
+    `);
+    const rebuild = this.db.transaction(() => {
+      this.db.exec(`
+        CREATE TABLE models_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+          model_id TEXT NOT NULL,
+          name TEXT,
+          context_window INTEGER NOT NULL DEFAULT 128000,
+          supports_vision INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          UNIQUE(provider_id, model_id)
+        );
+        INSERT INTO models_new
+          (id, provider_id, model_id, name, context_window, supports_vision, created_at, updated_at)
+        SELECT id, provider_id, model_id, name, context_window,
+          ${pick(modelColumns, "supports_vision", pick(modelColumns, "supports_multimodal", "0"))},
+          created_at, updated_at
+        FROM models;
+
+        CREATE TABLE agents_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          description TEXT,
+          avatar TEXT,
+          backend_type TEXT NOT NULL DEFAULT 'native',
+          model_id INTEGER REFERENCES models_new(id) ON DELETE SET NULL,
+          system_prompt TEXT,
+          tools_preset TEXT NOT NULL DEFAULT 'coding',
+          home_dir TEXT,
+          is_builtin INTEGER NOT NULL DEFAULT 0,
+          external_config TEXT,
+          disabled_tools TEXT NOT NULL DEFAULT '[]',
+          meta TEXT NOT NULL DEFAULT '{}',
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        INSERT INTO agents_new
+          (id, name, description, avatar, backend_type, model_id, system_prompt, tools_preset,
+           home_dir, is_builtin, external_config, disabled_tools, meta, created_at, updated_at)
+        SELECT a.id, a.name, a.description,
+          ${pick(agentColumns, "avatar", pick(agentColumns, "icon", "NULL"))},
+          ${pick(agentColumns, "backend_type", "'native'")},
+          CASE
+            WHEN typeof(a.model_id) = 'integer' THEN a.model_id
+            ELSE (SELECT m.id FROM models m
+                  WHERE m.model_id = a.model_id
+                    ${agentColumns.has("provider_id") ? "AND m.provider_id = a.provider_id" : ""}
+                  LIMIT 1)
+          END,
+          ${pick(agentColumns, "system_prompt", "NULL")},
+          COALESCE(${pick(agentColumns, "tools_preset", "NULL")}, 'coding'),
+          ${pick(agentColumns, "home_dir", "NULL")},
+          COALESCE(${pick(agentColumns, "is_builtin", pick(agentColumns, "is_internal", "0"))}, 0),
+          ${pick(agentColumns, "external_config", "NULL")},
+          COALESCE(${pick(agentColumns, "disabled_tools", "NULL")}, '[]'),
+          COALESCE(${pick(agentColumns, "meta", "NULL")}, '{}'),
+          a.created_at, a.updated_at
+        FROM agents a;
+
+        CREATE TABLE projects_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          description TEXT,
+          cwd TEXT NOT NULL UNIQUE,
+          home_dir TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        INSERT INTO projects_new (id, name, description, cwd, home_dir, created_at, updated_at)
+        SELECT id, name,
+          ${projectColumns.has("description")
+            ? "description"
+            : projectColumns.has("meta")
+              ? "CASE WHEN json_valid(meta) THEN json_extract(meta, '$.description') ELSE NULL END"
+              : "NULL"},
+          cwd, ${pick(projectColumns, "home_dir", pick(projectColumns, "work_dir", "''"))},
+          created_at, updated_at
+        FROM projects;
+
+        CREATE TABLE project_scripts_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER NOT NULL REFERENCES projects_new(id) ON DELETE CASCADE,
+          kind TEXT NOT NULL,
+          name TEXT NOT NULL,
+          command TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        INSERT INTO project_scripts_new
+          (id, project_id, kind, name, command, created_at, updated_at)
+        SELECT id, project_id, kind, name, command, created_at, updated_at FROM project_scripts;
+
+        CREATE TABLE sessions_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          project_id INTEGER REFERENCES projects_new(id) ON DELETE CASCADE,
+          parent_id INTEGER REFERENCES sessions_new(id) ON DELETE SET NULL,
+          status TEXT NOT NULL DEFAULT 'initializing',
+          thinking_level TEXT NOT NULL DEFAULT 'none',
+          cwd TEXT NOT NULL DEFAULT '',
+          leaf_id TEXT,
+          agent_id INTEGER REFERENCES agents_new(id) ON DELETE SET NULL,
+          spawn_type TEXT,
+          created_by TEXT NOT NULL DEFAULT 'user',
+          title TEXT,
+          system_prompt TEXT,
+          avatar TEXT,
+          is_builtin INTEGER NOT NULL DEFAULT 0,
+          pinned INTEGER NOT NULL DEFAULT 0,
+          muted INTEGER NOT NULL DEFAULT 0,
+          unread INTEGER NOT NULL DEFAULT 0,
+          external_session_id TEXT,
+          error_msg TEXT,
+          stage TEXT,
+          shadow_enabled INTEGER NOT NULL DEFAULT 0,
+          created_at INTEGER NOT NULL,
+          last_active_at INTEGER NOT NULL,
+          meta TEXT NOT NULL DEFAULT '{}'
+        );
+        INSERT INTO sessions_new
+          (id, project_id, parent_id, status, thinking_level, cwd, leaf_id, agent_id, spawn_type,
+           created_by, title, system_prompt, avatar, is_builtin, pinned, muted, unread,
+           external_session_id, error_msg, stage, shadow_enabled, created_at, last_active_at, meta)
+        SELECT id, ${pick(sessionColumns, "project_id", "NULL")}, parent_id,
+          CASE WHEN status = 'starting' THEN 'initializing'
+               WHEN status IN ('waiting_user', 'needs_model') THEN 'blocked' ELSE status END,
+          ${pick(sessionColumns, "thinking_level", "'none'")}, cwd, leaf_id, agent_id,
+          CASE WHEN ${pick(sessionColumns, "spawn_type", pick(sessionColumns, "branch_type", "NULL"))} = 'spawn'
+               THEN 'subagent' ELSE ${pick(sessionColumns, "spawn_type", pick(sessionColumns, "branch_type", "NULL"))} END,
+          ${pick(sessionColumns, "created_by", pick(sessionColumns, "created_via", "'user'"))},
+          ${pick(sessionColumns, "title", "NULL")},
+          ${pick(sessionColumns, "system_prompt", "NULL")},
+          ${pick(sessionColumns, "avatar", "NULL")},
+          COALESCE(${pick(sessionColumns, "is_builtin", "0")}, 0),
+          COALESCE(${pick(sessionColumns, "pinned", "0")}, 0),
+          COALESCE(${pick(sessionColumns, "muted", "0")}, 0),
+          COALESCE(${pick(sessionColumns, "unread", "0")}, 0),
+          ${pick(sessionColumns, "external_session_id", "NULL")},
+          ${pick(sessionColumns, "error_msg", "NULL")},
+          ${pick(sessionColumns, "stage", "NULL")},
+          COALESCE(${pick(sessionColumns, "shadow_enabled", "0")}, 0),
+          created_at, last_active_at,
+          CASE WHEN json_valid(meta)
+            THEN json_remove(meta, '$.git', '$.description') ELSE '{}' END
+        FROM sessions;
+
+        CREATE TABLE messages_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          entry_id TEXT NOT NULL UNIQUE,
+          session_id INTEGER NOT NULL REFERENCES sessions_new(id) ON DELETE CASCADE,
+          parent_entry_id TEXT,
+          type TEXT NOT NULL,
+          payload TEXT NOT NULL,
+          meta TEXT NOT NULL DEFAULT '{}',
+          is_old INTEGER NOT NULL DEFAULT 0,
+          origin_msg TEXT,
+          role TEXT,
+          search_text TEXT,
+          created_at INTEGER NOT NULL
+        );
+        INSERT INTO messages_new
+          (id, entry_id, session_id, parent_entry_id, type, payload, meta, is_old,
+           origin_msg, role, search_text, created_at)
+        SELECT id, entry_id, session_id, parent_entry_id, type, payload, meta, is_old,
+          ${pick(messageColumns, "origin_msg", pick(messageColumns, "origin", "NULL"))},
+          ${pick(messageColumns, "role", pick(messageColumns, "message_role", "NULL"))},
+          search_text, created_at FROM messages;
+
+        CREATE TABLE session_input_queue_new (
+          id TEXT PRIMARY KEY,
+          session_id INTEGER NOT NULL REFERENCES sessions_new(id) ON DELETE CASCADE,
+          message TEXT NOT NULL,
+          level INTEGER NOT NULL,
+          origin_msg TEXT,
+          images TEXT,
+          enqueued_at INTEGER NOT NULL
+        );
+        INSERT INTO session_input_queue_new
+          (id, session_id, message, level, origin_msg, images, enqueued_at)
+        SELECT id, session_id, message, level,
+          ${pick(queueColumns, "origin_msg", pick(queueColumns, "origin", "NULL"))},
+          images, enqueued_at FROM session_input_queue;
+
+        DROP TABLE messages;
+        DROP TABLE session_input_queue;
+        DROP TABLE project_scripts;
+        DROP TABLE sessions;
+        DROP TABLE agents;
+        DROP TABLE models;
+        DROP TABLE projects;
+        ALTER TABLE models_new RENAME TO models;
+        ALTER TABLE agents_new RENAME TO agents;
+        ALTER TABLE projects_new RENAME TO projects;
+        ALTER TABLE project_scripts_new RENAME TO project_scripts;
+        ALTER TABLE sessions_new RENAME TO sessions;
+        ALTER TABLE messages_new RENAME TO messages;
+        ALTER TABLE session_input_queue_new RENAME TO session_input_queue;
+      `);
+    });
+    rebuild();
+    this.db.exec(`
+      PRAGMA foreign_keys = ON;
+      CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
+      CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
+      CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+      CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, role);
+      CREATE INDEX IF NOT EXISTS idx_messages_search_text
+        ON messages(search_text) WHERE search_text IS NOT NULL;
+      CREATE INDEX IF NOT EXISTS idx_session_input_queue_session
+        ON session_input_queue(session_id, level DESC, enqueued_at ASC);
+      CREATE INDEX IF NOT EXISTS idx_project_scripts_project
+        ON project_scripts(project_id, kind, id);
+    `);
   }
 
   private ensureProjectScripts(): void {
@@ -487,43 +665,6 @@ export class SupervisorDb {
 
   replaceProjectScripts(projectId: number, scripts: ProjectScriptInput[]) {
     return replaceProjectScripts(this.db, projectId, scripts);
-  }
-
-  private ensureSessionChildColumns(): void {
-    const columns = this.db.pragma("table_info(sessions)") as Array<{ name: string }>;
-    const names = new Set(columns.map((column) => column.name));
-    if (!names.has("project_id")) {
-      this.db.exec("ALTER TABLE sessions ADD COLUMN project_id INTEGER REFERENCES projects(id)");
-    }
-    if (!names.has("show_in_session_list")) {
-      this.db.exec(
-        "ALTER TABLE sessions ADD COLUMN show_in_session_list INTEGER NOT NULL DEFAULT 1",
-      );
-      this.db.exec(`
-        UPDATE sessions
-        SET show_in_session_list = CASE
-          WHEN parent_id IS NULL OR branch_type IN ('fork', 'clone') THEN 1
-          ELSE 0
-        END
-      `);
-    }
-    if (!names.has("context_leaf_id")) {
-      this.db.exec("ALTER TABLE sessions ADD COLUMN context_leaf_id TEXT");
-    }
-    if (!names.has("created_by") && !names.has("created_via")) {
-      this.db.exec("ALTER TABLE sessions ADD COLUMN created_by TEXT NOT NULL DEFAULT 'user'");
-      this.db.exec(`UPDATE sessions SET created_by = CASE
-        WHEN branch_type = 'subagent' OR branch_type = 'spawn' THEN 'spawn_agent'
-        WHEN branch_type IN ('btw', 'fork', 'clone') THEN branch_type
-        ELSE 'user' END`);
-      this.db.exec(`UPDATE sessions SET show_in_session_list = 1
-        WHERE parent_id IS NOT NULL AND (branch_type = 'subagent' OR branch_type = 'spawn')`);
-    }
-    this.db.exec(`
-      UPDATE sessions
-      SET branch_type = 'subagent'
-      WHERE branch_type = 'spawn';
-    `);
   }
 
   private ensureSessionSchemaColumns(): void {
@@ -565,11 +706,6 @@ export class SupervisorDb {
     addText("error_msg");
     addText("stage");
     addInt("shadow_enabled", 0);
-    if (!names.has("current_task_id")) {
-      this.db.exec("ALTER TABLE sessions ADD COLUMN current_task_id INTEGER");
-      names.add("current_task_id");
-    }
-
     // One-time backfill from legacy meta keys / git_* columns into dedicated columns + meta.git.
     this.db.exec(`
       UPDATE sessions SET title = json_extract(meta, '$.name')
@@ -696,151 +832,130 @@ export class SupervisorDb {
     }
   }
 
+  /** Move the legacy spawned-agent whitelist into sessions.meta, then remove its table. */
+  private migrateMembersToSubagentIds(): void {
+    const exists = this.db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'members'")
+      .get();
+    if (!exists) return;
+
+    const migrate = this.db.transaction(() => {
+      const rows = this.db
+        .prepare(
+          `SELECT s.id, s.meta, m.agent_id
+           FROM sessions s
+           LEFT JOIN members m ON m.session_id = s.id AND m.role = 'spawned'
+           ORDER BY s.id, m.created_at`,
+        )
+        .all() as Array<{ id: number; meta: string; agent_id: number | null }>;
+      const sessions = new Map<number, { meta: string; agentIds: number[] }>();
+      for (const row of rows) {
+        const session = sessions.get(row.id) ?? { meta: row.meta, agentIds: [] };
+        if (row.agent_id !== null) session.agentIds.push(row.agent_id);
+        sessions.set(row.id, session);
+      }
+      const update = this.db.prepare("UPDATE sessions SET meta = ? WHERE id = ?");
+      for (const [id, session] of sessions) {
+        let meta: Record<string, unknown> = {};
+        try {
+          const parsed = JSON.parse(session.meta || "{}") as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            meta = parsed as Record<string, unknown>;
+          }
+        } catch {
+          // Preserve usable spawned-agent membership even if legacy metadata is malformed.
+        }
+        const existing = Array.isArray(meta.subagentIds)
+          ? meta.subagentIds.filter((value): value is number => Number.isInteger(value))
+          : [];
+        meta.subagentIds = [...new Set([...existing, ...session.agentIds])];
+        update.run(JSON.stringify(meta), id);
+      }
+      this.db.exec("DROP TABLE members");
+    });
+    migrate();
+  }
+
   private ensureSessionTaskTables(): void {
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS session_tasks (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        path          TEXT NOT NULL,
-        kind          TEXT NOT NULL,
-        title         TEXT,
-        status        TEXT,
-        created_at    INTEGER NOT NULL,
-        updated_at    INTEGER NOT NULL,
-        UNIQUE(session_id, path)
-      );
-      CREATE INDEX IF NOT EXISTS idx_session_tasks_session ON session_tasks(session_id);
+    const tables = new Set(
+      (this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
+        name: string;
+      }>).map((row) => row.name),
+    );
+    if (!tables.has("session_tasks") && !tables.has("session_todos")) return;
 
-      CREATE TABLE IF NOT EXISTS session_todos (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        title         TEXT NOT NULL,
-        status        TEXT NOT NULL DEFAULT 'pending',
-        sort_order    INTEGER NOT NULL DEFAULT 0,
-        created_at    INTEGER NOT NULL,
-        updated_at    INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_session_todos_session ON session_todos(session_id);
-    `);
+    const columns = new Set(
+      (this.db.pragma("table_info(sessions)") as Array<{ name: string }>).map((column) => column.name),
+    );
+    const taskRows = tables.has("session_tasks")
+      ? (this.db.prepare("SELECT * FROM session_tasks ORDER BY created_at ASC, id ASC").all() as SessionTaskRow[])
+      : [];
+    const todoRows = tables.has("session_todos")
+      ? (this.db.prepare("SELECT * FROM session_todos ORDER BY sort_order ASC, id ASC").all() as SessionTodoRow[])
+      : [];
+    const tasksBySession = new Map<number, SessionTaskRow[]>();
+    const todosBySession = new Map<number, SessionTodoRow[]>();
+    for (const task of taskRows) tasksBySession.set(task.session_id, [...(tasksBySession.get(task.session_id) ?? []), task]);
+    for (const todo of todoRows) todosBySession.set(todo.session_id, [...(todosBySession.get(todo.session_id) ?? []), todo]);
 
-    // One-time migrate meta.tasks / meta.todos into tables.
-    const sessions = this.db
-      .prepare(
-        `SELECT id, meta FROM sessions
-         WHERE json_extract(meta, '$.tasks') IS NOT NULL
-            OR json_extract(meta, '$.todos') IS NOT NULL
-            OR json_extract(meta, '$.currentTask') IS NOT NULL`,
-      )
-      .all() as Array<{ id: number; meta: string }>;
-    for (const row of sessions) {
-      let meta: Record<string, unknown> = {};
-      try {
-        meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
-      } catch {
-        continue;
-      }
-      const now = Date.now();
-      const paths = Array.isArray(meta.tasks)
-        ? meta.tasks.filter((p): p is string => typeof p === "string")
-        : [];
-      const insertTask = this.db.prepare(
-        `INSERT OR IGNORE INTO session_tasks (session_id, path, kind, title, status, created_at, updated_at)
-         VALUES (?, ?, ?, NULL, NULL, ?, ?)`,
-      );
-      for (const path of paths) {
-        const kind = path.includes("/plan-") ? "plan" : "goal";
-        insertTask.run(row.id, path, kind, now, now);
-      }
-      if (typeof meta.currentTask === "string" && meta.currentTask) {
-        const task = this.db
-          .prepare("SELECT id FROM session_tasks WHERE session_id = ? AND path = ?")
-          .get(row.id, meta.currentTask) as { id: number } | undefined;
-        if (task) {
-          this.db
-            .prepare("UPDATE sessions SET current_task_id = ? WHERE id = ?")
-            .run(task.id, row.id);
+    const sessionRows = this.db
+      .prepare(`SELECT id, meta${columns.has("current_task_id") ? ", current_task_id" : ""} FROM sessions`)
+      .all() as Array<{ id: number; meta: string; current_task_id?: number | null }>;
+    const update = this.db.prepare("UPDATE sessions SET meta = ? WHERE id = ?");
+    const migrate = this.db.transaction(() => {
+      for (const row of sessionRows) {
+        let meta: Record<string, unknown> = {};
+        try {
+          const parsed = JSON.parse(row.meta || "{}") as unknown;
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) meta = parsed as Record<string, unknown>;
+        } catch {
+          // Preserve no invalid JSON; replace only with the migratable task state.
         }
-      }
-      if (Array.isArray(meta.todos)) {
-        const existing = this.db
-          .prepare("SELECT COUNT(*) AS n FROM session_todos WHERE session_id = ?")
-          .get(row.id) as { n: number };
-        if (existing.n === 0) {
-          const insertTodo = this.db.prepare(
-            `INSERT INTO session_todos (session_id, title, status, sort_order, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-          );
-          meta.todos.forEach((item, index) => {
-            if (!item || typeof item !== "object") return;
-            const todo = item as { title?: unknown; status?: unknown };
-            if (typeof todo.title !== "string" || !todo.title.trim()) return;
-            if (
-              todo.status !== "pending" &&
-              todo.status !== "in_progress" &&
-              todo.status !== "done"
-            ) {
-              return;
-            }
-            insertTodo.run(row.id, todo.title.trim(), todo.status, index, now, now);
+        const taskMap = new Map<string, { path: string; kind: "goal" | "plan"; title: string | null; status: string | null }>();
+        const addTask = (value: unknown) => {
+          const path = typeof value === "string" ? value : value && typeof value === "object" ? (value as { path?: unknown }).path : undefined;
+          if (typeof path !== "string" || !path.trim()) return;
+          const item = value && typeof value === "object" ? value as { kind?: unknown; title?: unknown; status?: unknown } : {};
+          taskMap.set(path, {
+            path,
+            kind: item.kind === "plan" || path.startsWith("plan/") || path.includes("/plan-") ? "plan" : "goal",
+            title: typeof item.title === "string" ? item.title : null,
+            status: typeof item.status === "string" ? item.status : null,
           });
+        };
+        if (Array.isArray(meta.tasks)) for (const task of meta.tasks) addTask(task);
+        for (const task of tasksBySession.get(row.id) ?? []) {
+          taskMap.set(task.path, { path: task.path, kind: task.kind, title: task.title, status: task.status });
         }
-      }
-    }
-  }
 
-  /** Patch sessions.meta.git (worktree / lastCommit / mergeError). */
-  updateSessionGitState(
-    id: number,
-    patch: {
-      worktreeEnabled?: boolean;
-      worktreePath?: string | null;
-      branch?: string | null;
-      lastCommit?: { hash: string; message: string } | null;
-      mergeError?: string | null;
-    },
-  ): void {
-    const row = this.get(id);
-    if (!row) return;
-    const meta =
-      typeof row.meta === "string"
-        ? (JSON.parse(row.meta) as Record<string, unknown>)
-        : ({ ...(row.meta as Record<string, unknown>) } as Record<string, unknown>);
-    const prev =
-      meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)
-        ? ({ ...(meta.git as Record<string, unknown>) } as Record<string, unknown>)
-        : {};
-    if (patch.worktreeEnabled === false) {
-      prev.worktreePath = null;
-    } else if (patch.worktreeEnabled === true && patch.worktreePath === undefined) {
-      // Keep existing path, or fall back to current session cwd as worktree root.
-      if (typeof prev.worktreePath !== "string") {
-        prev.worktreePath = row.cwd || null;
-      }
-    }
-    if (patch.worktreePath !== undefined) prev.worktreePath = patch.worktreePath;
-    if (patch.branch !== undefined) {
-      if (patch.branch) prev.branch = patch.branch;
-      else delete prev.branch;
-    }
-    if (patch.lastCommit !== undefined) {
-      if (patch.lastCommit) prev.lastCommit = patch.lastCommit;
-      else delete prev.lastCommit;
-    }
-    if (patch.mergeError !== undefined) {
-      if (patch.mergeError) prev.mergeError = patch.mergeError;
-      else delete prev.mergeError;
-    }
-    meta.git = prev;
-    this.db
-      .prepare("UPDATE sessions SET meta = ?, last_active_at = ? WHERE id = ?")
-      .run(JSON.stringify(meta), Date.now(), id);
-  }
+        const todoItems: Array<{ title: string; status: "pending" | "in_progress" | "completed" | "cancelled" }> = [];
+        const addTodo = (value: unknown) => {
+          if (!value || typeof value !== "object") return;
+          const item = value as { title?: unknown; status?: unknown };
+          if (typeof item.title !== "string" || !item.title.trim()) return;
+          const status = item.status === "in_progress" || item.status === "completed" || item.status === "cancelled"
+            ? item.status
+            : item.status === "done" ? "completed" : "pending";
+          if (!todoItems.some((todo) => todo.title === item.title.trim() && todo.status === status)) {
+            todoItems.push({ title: item.title.trim(), status });
+          }
+        };
+        if (Array.isArray(meta.todos)) for (const todo of meta.todos) addTodo(todo);
+        for (const todo of todosBySession.get(row.id) ?? []) addTodo(todo);
 
-  private ensureMessageColumns(): void {
-    const columns = this.db.pragma("table_info(messages)") as Array<{ name: string }>;
-    if (!columns.some((column) => column.name === "origin")) {
-      this.db.exec("ALTER TABLE messages ADD COLUMN origin TEXT");
-    }
+        const currentTaskRow = row.current_task_id == null
+          ? undefined
+          : (tasksBySession.get(row.id) ?? []).find((task) => task.id === row.current_task_id);
+        const currentTask = currentTaskRow?.path ??
+          (typeof meta.currentTask === "string" && taskMap.has(meta.currentTask) ? meta.currentTask : null);
+        meta.tasks = [...taskMap.values()];
+        meta.currentTask = currentTask;
+        meta.todos = todoItems;
+        update.run(JSON.stringify(meta), row.id);
+      }
+      this.db.exec("DROP TABLE IF EXISTS session_tasks; DROP TABLE IF EXISTS session_todos;");
+    });
+    migrate();
   }
 
   private projectNameFromCwd(cwd: string): string {
@@ -851,7 +966,7 @@ export class SupervisorDb {
 
   findOrCreateProjectByCwd(
     cwd: string,
-    options?: { name?: string; meta?: Record<string, unknown> },
+    options?: { name?: string; description?: string | null },
   ): Project {
     const existing = this.db.prepare("SELECT * FROM projects WHERE cwd = ?").get(cwd) as
       | ProjectRow
@@ -861,47 +976,43 @@ export class SupervisorDb {
     const now = Date.now();
     const result = this.db
       .prepare(
-        `INSERT INTO projects (name, cwd, work_dir, default_branch, meta, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (name, description, cwd, home_dir, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
       )
       .run(
         options?.name ?? this.projectNameFromCwd(cwd),
+        options?.description ?? null,
         cwd,
         "",
-        "main",
-        JSON.stringify(options?.meta ?? {}),
         now,
         now,
       );
     const id = Number(result.lastInsertRowid);
-    const workDir = getProjectDir(id);
-    mkdirSync(workDir, { recursive: true });
-    this.db.prepare("UPDATE projects SET work_dir = ? WHERE id = ?").run(workDir, id);
+    const homeDir = getProjectDir(id);
+    mkdirSync(homeDir, { recursive: true });
+    this.db.prepare("UPDATE projects SET home_dir = ? WHERE id = ?").run(homeDir, id);
     return this.getProject(id)!;
   }
 
-  insertProject(row: { name?: string; cwd: string; meta?: Record<string, unknown> }): Project {
-    return this.findOrCreateProjectByCwd(row.cwd, { name: row.name, meta: row.meta });
-  }
-
-  updateProjectDefaultBranch(id: number, branch: string): void {
-    this.db
-      .prepare("UPDATE projects SET default_branch = ?, updated_at = ? WHERE id = ?")
-      .run(branch, Date.now(), id);
+  insertProject(row: { name?: string; description?: string | null; cwd: string }): Project {
+    return this.findOrCreateProjectByCwd(row.cwd, {
+      name: row.name,
+      description: row.description,
+    });
   }
 
   updateProject(
     id: number,
-    patch: { name?: string; meta?: Record<string, unknown> },
+    patch: { name?: string; description?: string | null },
   ): Project {
     const project = this.getProject(id);
     if (!project) throw new Error(`Project ${id} not found`);
     const name =
       typeof patch.name === "string" && patch.name.trim() ? patch.name.trim() : project.name;
-    const meta = patch.meta ? { ...project.meta, ...patch.meta } : project.meta;
+    const description = patch.description === undefined ? project.description : patch.description;
     this.db
-      .prepare("UPDATE projects SET name = ?, meta = ?, updated_at = ? WHERE id = ?")
-      .run(name, JSON.stringify(meta), Date.now(), id);
+      .prepare("UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?")
+      .run(name, description, Date.now(), id);
     return this.getProject(id)!;
   }
 
@@ -919,46 +1030,6 @@ export class SupervisorDb {
     return rows.map(rowToProject);
   }
 
-  updateProjectMeta(id: number, patch: Record<string, unknown>): Record<string, unknown> {
-    const project = this.getProject(id);
-    if (!project) throw new Error(`Project ${id} not found`);
-    const meta = { ...project.meta, ...patch };
-    this.db
-      .prepare("UPDATE projects SET meta = ?, updated_at = ? WHERE id = ?")
-      .run(JSON.stringify(meta), Date.now(), id);
-    return meta;
-  }
-
-  updateProjectCommands(
-    id: number,
-    commands: {
-      installCommand?: string | null;
-      startCommand?: string | null;
-      destroyCommand?: string | null;
-    },
-  ): Project {
-    const project = this.getProject(id);
-    if (!project) throw new Error(`Project ${id} not found`);
-    this.db
-      .prepare(
-        `UPDATE projects
-         SET install_command = ?, start_command = ?, destroy_command = ?, updated_at = ?
-         WHERE id = ?`,
-      )
-      .run(
-        commands.installCommand !== undefined
-          ? commands.installCommand
-          : project.installCommand,
-        commands.startCommand !== undefined ? commands.startCommand : project.startCommand,
-        commands.destroyCommand !== undefined
-          ? commands.destroyCommand
-          : project.destroyCommand,
-        Date.now(),
-        id,
-      );
-    return this.getProject(id)!;
-  }
-
   deleteProject(id: number): void {
     this.db.prepare("DELETE FROM projects WHERE id = ?").run(id);
   }
@@ -973,20 +1044,16 @@ export class SupervisorDb {
       | "last_active_at"
       | "leaf_id"
       | "agent_id"
-      | "branch_type"
+      | "spawn_type"
       | "created_by"
-      | "show_in_session_list"
-      | "context_leaf_id"
       | "thinking_level"
     > & {
       created_at?: number;
       last_active_at?: number;
       leaf_id?: string | null;
       agent_id?: number | null;
-      branch_type?: SessionBranchType | null;
+      spawn_type?: SessionBranchType | null;
       created_by?: SessionRow["created_by"];
-      show_in_session_list?: number;
-      context_leaf_id?: string | null;
       thinking_level?: "none" | "low" | "medium" | "high";
       title?: string | null;
       system_prompt?: string | null;
@@ -999,15 +1066,12 @@ export class SupervisorDb {
       error_msg?: string | null;
       stage?: string | null;
       shadow_enabled?: number;
-      current_task_id?: number | null;
     },
   ): SessionRow {
     const now = Date.now();
     const full: SessionRow = {
       project_id: row.project_id ?? null,
       parent_id: row.parent_id ?? null,
-      session_id: row.session_id ?? null,
-      pid: row.pid ?? null,
       status: normalizeSessionStatus(row.status ?? "initializing"),
       cwd: row.cwd ?? "",
       meta: typeof row.meta === "string" ? row.meta : JSON.stringify(row.meta ?? {}),
@@ -1015,10 +1079,8 @@ export class SupervisorDb {
       last_active_at: now,
       leaf_id: row.leaf_id ?? null,
       agent_id: row.agent_id ?? null,
-      branch_type: row.branch_type ?? null,
+      spawn_type: row.spawn_type ?? null,
       created_by: row.created_by ?? "user",
-      show_in_session_list: row.show_in_session_list ?? 1,
-      context_leaf_id: row.context_leaf_id ?? null,
       title: row.title ?? null,
       system_prompt: row.system_prompt ?? null,
       avatar: row.avatar ?? null,
@@ -1030,7 +1092,6 @@ export class SupervisorDb {
       error_msg: row.error_msg ?? null,
       stage: row.stage ?? null,
       shadow_enabled: row.shadow_enabled ?? 0,
-      current_task_id: row.current_task_id ?? null,
       ...row,
       thinking_level:
         row.thinking_level === "low" ||
@@ -1042,16 +1103,16 @@ export class SupervisorDb {
     const result = this.db
       .prepare(
         `INSERT INTO sessions (
-          project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id, agent_id,
-          branch_type, created_by, show_in_session_list, context_leaf_id,
+          project_id, parent_id, status, thinking_level, cwd, leaf_id, agent_id,
+          spawn_type, created_by,
           title, system_prompt, avatar, is_builtin, pinned, muted, unread,
-          external_session_id, error_msg, stage, shadow_enabled, current_task_id,
+          external_session_id, error_msg, stage, shadow_enabled,
           created_at, last_active_at, meta
         ) VALUES (
-          @project_id, @parent_id, @session_id, @pid, @status, @thinking_level, @cwd, @leaf_id, @agent_id,
-          @branch_type, @created_by, @show_in_session_list, @context_leaf_id,
+          @project_id, @parent_id, @status, @thinking_level, @cwd, @leaf_id, @agent_id,
+          @spawn_type, @created_by,
           @title, @system_prompt, @avatar, @is_builtin, @pinned, @muted, @unread,
-          @external_session_id, @error_msg, @stage, @shadow_enabled, @current_task_id,
+          @external_session_id, @error_msg, @stage, @shadow_enabled,
           @created_at, @last_active_at, @meta
         )`,
       )
@@ -1088,8 +1149,9 @@ export class SupervisorDb {
       params.push(filter.projectId);
     }
     if (filter?.showInSessionList !== undefined) {
-      sql += " AND show_in_session_list = ?";
-      params.push(filter.showInSessionList ? 1 : 0);
+      sql += filter.showInSessionList
+        ? " AND (spawn_type IS NULL OR spawn_type IN ('fork', 'clone'))"
+        : " AND spawn_type IN ('subagent', 'btw')";
     }
     sql += " ORDER BY last_active_at DESC, created_at DESC";
     const rows = this.db.prepare(sql).all(...params) as SessionRow[];
@@ -1142,7 +1204,7 @@ export class SupervisorDb {
     const normalized = this.db
       .prepare(
         `UPDATE sessions
-         SET status = 'idle', pid = NULL
+         SET status = 'idle'
          WHERE status IN ('initializing', 'starting', 'running', 'waiting_user')
             OR (status = 'blocked' AND (error_msg IS NULL OR trim(error_msg) = ''))
             OR (status = 'needs_model' AND (error_msg IS NULL OR trim(error_msg) = ''))`,
@@ -1152,38 +1214,13 @@ export class SupervisorDb {
       UPDATE sessions SET status = 'blocked'
       WHERE status IN ('needs_model', 'waiting_user')
     `);
-    const hidden = this.db
-      .prepare(
-        `UPDATE sessions
-         SET show_in_session_list = 0
-         WHERE created_by = 'spawn_agent' AND status IN ('finish', 'finished')`,
-      )
-      .run().changes;
-    return normalized + hidden;
-  }
-
-  updateSessionListVisibility(id: number, visible: boolean): void {
-    this.db
-      .prepare("UPDATE sessions SET show_in_session_list = ?, last_active_at = ? WHERE id = ?")
-      .run(visible ? 1 : 0, Date.now(), id);
+    return normalized;
   }
 
   updateThinkingLevel(id: number, thinkingLevel: "none" | "low" | "medium" | "high"): void {
     this.db
       .prepare("UPDATE sessions SET thinking_level = ?, last_active_at = ? WHERE id = ?")
       .run(thinkingLevel, Date.now(), id);
-  }
-
-  updatePid(id: number, pid: number): void {
-    this.db
-      .prepare("UPDATE sessions SET pid = ?, last_active_at = ? WHERE id = ?")
-      .run(pid, Date.now(), id);
-  }
-
-  updateSessionId(id: number, sessionId: string): void {
-    this.db
-      .prepare("UPDATE sessions SET session_id = ?, last_active_at = ? WHERE id = ?")
-      .run(sessionId, Date.now(), id);
   }
 
   updateCwd(id: number, cwd: string): void {
@@ -1204,6 +1241,23 @@ export class SupervisorDb {
     return merged;
   }
 
+  getSessionSubagentIds(sessionId: number): number[] {
+    const session = this.get(sessionId);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
+    const meta = session.meta as unknown;
+    const value =
+      meta && typeof meta === "object" && !Array.isArray(meta)
+        ? (meta as Record<string, unknown>).subagentIds
+        : undefined;
+    return Array.isArray(value)
+      ? [...new Set(value.filter((id): id is number => Number.isInteger(id)))]
+      : [];
+  }
+
+  setSessionSubagentIds(sessionId: number, ids: number[]): void {
+    this.updateMeta(sessionId, { subagentIds: [...new Set(ids.filter(Number.isInteger))] });
+  }
+
   updateSessionFields(
     id: number,
     patch: {
@@ -1218,7 +1272,6 @@ export class SupervisorDb {
       errorMsg?: string | null;
       stage?: string | null;
       shadowEnabled?: boolean;
-      currentTaskId?: number | null;
     },
   ): void {
     const sets: string[] = [];
@@ -1238,7 +1291,6 @@ export class SupervisorDb {
     if (patch.errorMsg !== undefined) put("error_msg", patch.errorMsg);
     if (patch.stage !== undefined) put("stage", patch.stage);
     if (patch.shadowEnabled !== undefined) put("shadow_enabled", patch.shadowEnabled ? 1 : 0);
-    if (patch.currentTaskId !== undefined) put("current_task_id", patch.currentTaskId);
     if (sets.length === 0) return;
     sets.push("last_active_at = ?");
     params.push(Date.now(), id);
@@ -1246,15 +1298,25 @@ export class SupervisorDb {
   }
 
   listSessionTasks(sessionId: number): SessionTaskRow[] {
-    return this.db
-      .prepare("SELECT * FROM session_tasks WHERE session_id = ? ORDER BY created_at ASC, id ASC")
-      .all(sessionId) as SessionTaskRow[];
-  }
-
-  getSessionTask(id: number): SessionTaskRow | undefined {
-    return this.db.prepare("SELECT * FROM session_tasks WHERE id = ?").get(id) as
-      | SessionTaskRow
-      | undefined;
+    const meta = this.get(sessionId)?.meta;
+    const tasks = meta && Array.isArray((meta as Record<string, unknown>).tasks)
+      ? (meta as Record<string, unknown>).tasks
+      : [];
+    return tasks.flatMap((item, index) => {
+      if (!item || typeof item !== "object") return [];
+      const task = item as { path?: unknown; kind?: unknown; title?: unknown; status?: unknown };
+      if (typeof task.path !== "string") return [];
+      return [{
+        id: syntheticMetaId(task.path),
+        session_id: sessionId,
+        path: task.path,
+        kind: task.kind === "plan" ? "plan" : "goal",
+        title: typeof task.title === "string" ? task.title : null,
+        status: typeof task.status === "string" ? task.status : null,
+        created_at: index,
+        updated_at: index,
+      }];
+    });
   }
 
   upsertSessionTask(row: {
@@ -1264,63 +1326,59 @@ export class SupervisorDb {
     title?: string | null;
     status?: string | null;
   }): SessionTaskRow {
-    const now = Date.now();
-    this.db
-      .prepare(
-        `INSERT INTO session_tasks (session_id, path, kind, title, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(session_id, path) DO UPDATE SET
-           kind = excluded.kind,
-           title = COALESCE(excluded.title, session_tasks.title),
-           status = COALESCE(excluded.status, session_tasks.status),
-           updated_at = excluded.updated_at`,
-      )
-      .run(
-        row.sessionId,
-        row.path,
-        row.kind,
-        row.title ?? null,
-        row.status ?? null,
-        now,
-        now,
-      );
-    return this.db
-      .prepare("SELECT * FROM session_tasks WHERE session_id = ? AND path = ?")
-      .get(row.sessionId, row.path) as SessionTaskRow;
+    const tasks = this.listSessionTasks(row.sessionId);
+    const existing = tasks.find((task) => task.path === row.path);
+    const next = [
+      ...tasks.filter((task) => task.path !== row.path).map(({ id, session_id, created_at, updated_at, ...task }) => task),
+      {
+        path: row.path,
+        kind: row.kind,
+        title: row.title ?? existing?.title ?? null,
+        status: row.status ?? existing?.status ?? null,
+      },
+    ];
+    this.updateMeta(row.sessionId, { tasks: next });
+    return this.listSessionTasks(row.sessionId).find((task) => task.path === row.path)!;
   }
 
   deleteSessionTask(sessionId: number, path: string): boolean {
-    return (
-      this.db
-        .prepare("DELETE FROM session_tasks WHERE session_id = ? AND path = ?")
-        .run(sessionId, path).changes > 0
-    );
+    const tasks = this.listSessionTasks(sessionId);
+    if (!tasks.some((task) => task.path === path)) return false;
+    const session = this.get(sessionId);
+    const meta = session?.meta as Record<string, unknown>;
+    this.updateMeta(sessionId, {
+      tasks: tasks.filter((task) => task.path !== path).map(({ id, session_id, created_at, updated_at, ...task }) => task),
+      ...(meta.currentTask === path ? { currentTask: null } : {}),
+    });
+    return true;
   }
 
   listSessionTodos(sessionId: number): SessionTodoRow[] {
-    return this.db
-      .prepare(
-        "SELECT * FROM session_todos WHERE session_id = ? ORDER BY sort_order ASC, id ASC",
-      )
-      .all(sessionId) as SessionTodoRow[];
+    const meta = this.get(sessionId)?.meta as Record<string, unknown> | undefined;
+    const todos = Array.isArray(meta?.todos) ? meta.todos : [];
+    return todos.flatMap((item, index) => {
+      if (!item || typeof item !== "object") return [];
+      const todo = item as { title?: unknown; status?: unknown };
+      if (typeof todo.title !== "string") return [];
+      return [{
+        id: index + 1,
+        session_id: sessionId,
+        title: todo.title,
+        status: normalizeTodoStatus(todo.status),
+        sort_order: index,
+        created_at: index,
+        updated_at: index,
+      }];
+    });
   }
 
   replaceSessionTodos(
     sessionId: number,
-    todos: Array<{ title: string; status: "pending" | "in_progress" | "done" }>,
+    todos: Array<{ title: string; status: SessionTodoRow["status"] }>,
   ): SessionTodoRow[] {
-    const now = Date.now();
-    const tx = this.db.transaction(() => {
-      this.db.prepare("DELETE FROM session_todos WHERE session_id = ?").run(sessionId);
-      const insert = this.db.prepare(
-        `INSERT INTO session_todos (session_id, title, status, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      );
-      todos.forEach((todo, index) => {
-        insert.run(sessionId, todo.title, todo.status, index, now, now);
-      });
+    this.updateMeta(sessionId, {
+      todos: todos.map((todo) => ({ title: todo.title, status: normalizeTodoStatus(todo.status) })),
     });
-    tx();
     return this.listSessionTodos(sessionId);
   }
 
@@ -1329,24 +1387,22 @@ export class SupervisorDb {
     sessionId: number;
     message: string;
     level: number;
-    source: string | null;
-    origin?: string;
+    originMsg?: string;
     images?: unknown[];
     enqueuedAt: number;
   }): void {
     this.db
       .prepare(
         `INSERT INTO session_input_queue
-         (id, session_id, message, level, source, origin, images, enqueued_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, session_id, message, level, origin_msg, images, enqueued_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.id,
         input.sessionId,
         input.message,
         input.level,
-        input.source,
-        input.origin ?? null,
+        input.originMsg ?? null,
         input.images ? JSON.stringify(input.images) : null,
         input.enqueuedAt,
       );
@@ -1361,14 +1417,13 @@ export class SupervisorDb {
     sessionId: number;
     message: string;
     level: number;
-    source: string | null;
-    origin?: string;
+    originMsg?: string;
     images?: unknown[];
     enqueuedAt: number;
   }> {
     const rows = this.db
       .prepare(
-        `SELECT id, session_id, message, level, source, origin, images, enqueued_at
+        `SELECT id, session_id, message, level, origin_msg, images, enqueued_at
          FROM session_input_queue
          ORDER BY level DESC, enqueued_at ASC`,
       )
@@ -1377,8 +1432,7 @@ export class SupervisorDb {
       session_id: number;
       message: string;
       level: number;
-      source: string | null;
-      origin: string | null;
+      origin_msg: string | null;
       images: string | null;
       enqueued_at: number;
     }>;
@@ -1387,8 +1441,7 @@ export class SupervisorDb {
       sessionId: row.session_id,
       message: row.message,
       level: row.level,
-      source: row.source,
-      ...(row.origin ? { origin: row.origin } : {}),
+      ...(row.origin_msg ? { originMsg: row.origin_msg } : {}),
       ...(row.images ? { images: JSON.parse(row.images) as unknown[] } : {}),
       enqueuedAt: row.enqueued_at,
     }));
@@ -1455,13 +1508,23 @@ export class SupervisorDb {
 
   listAgents(): Agent[] {
     const rows = this.db
-      .prepare("SELECT * FROM agents ORDER BY created_at DESC")
+      .prepare(
+        `SELECT agents.*, models.provider_id AS resolved_provider_id
+         FROM agents LEFT JOIN models ON models.id = agents.model_id
+         ORDER BY agents.created_at DESC`,
+      )
       .all() as AgentRow[];
     return rows.map(rowToAgent);
   }
 
   getAgent(id: number): Agent | undefined {
-    const row = this.db.prepare("SELECT * FROM agents WHERE id = ?").get(id) as
+    const row = this.db
+      .prepare(
+        `SELECT agents.*, models.provider_id AS resolved_provider_id
+         FROM agents LEFT JOIN models ON models.id = agents.model_id
+         WHERE agents.id = ?`,
+      )
+      .get(id) as
       | AgentRow
       | undefined;
     return row ? rowToAgent(row) : undefined;
@@ -1470,13 +1533,15 @@ export class SupervisorDb {
   insertAgent(row: {
     name: string;
     description?: string | null;
-    icon?: string | null;
-    provider_id?: number | null;
+    avatar?: string | null;
     backend_type?: AgentBackendType;
-    model_id?: string | null;
+    model_id?: number | null;
+    system_prompt?: string | null;
     tools_preset?: string | null;
     home_dir?: string | null;
-    is_internal?: boolean;
+    is_builtin?: boolean;
+    external_config?: AgentRow["external_config"];
+    disabled_tools?: string | string[];
     meta?: string | Record<string, unknown>;
   }): Agent {
     const now = Date.now();
@@ -1487,19 +1552,23 @@ export class SupervisorDb {
       updated_at: now,
       name: row.name,
       description: row.description ?? null,
-      icon: row.icon ?? null,
-      provider_id: row.provider_id ?? null,
+      avatar: row.avatar ?? null,
       backend_type: row.backend_type ?? "native",
       model_id: row.model_id ?? null,
-      tools_preset: row.tools_preset ?? null,
+      system_prompt: row.system_prompt ?? null,
+      tools_preset: row.tools_preset ?? "coding",
       home_dir: homeDir ?? null,
-      is_internal: row.is_internal ? 1 : 0,
+      is_builtin: row.is_builtin ? 1 : 0,
+      external_config: row.external_config ?? null,
+      disabled_tools: Array.isArray(row.disabled_tools)
+        ? JSON.stringify(row.disabled_tools)
+        : (row.disabled_tools ?? "[]"),
       meta: metaJson,
     };
     const result = this.db
       .prepare(
-        `INSERT INTO agents (name, description, icon, provider_id, backend_type, model_id, system_prompt, tools_preset, home_dir, is_internal, meta, created_at, updated_at)
-				 VALUES (@name, @description, @icon, @provider_id, @backend_type, @model_id, NULL, @tools_preset, @home_dir, @is_internal, @meta, @created_at, @updated_at)`,
+        `INSERT INTO agents (name, description, avatar, backend_type, model_id, system_prompt, tools_preset, home_dir, is_builtin, external_config, disabled_tools, meta, created_at, updated_at)
+				 VALUES (@name, @description, @avatar, @backend_type, @model_id, @system_prompt, @tools_preset, @home_dir, @is_builtin, @external_config, @disabled_tools, @meta, @created_at, @updated_at)`,
       )
       .run(full);
     const id = Number(result.lastInsertRowid);
@@ -1511,8 +1580,8 @@ export class SupervisorDb {
       ...full,
       id,
       home_dir: homeDir ?? null,
-      system_prompt: null,
-    } as AgentRow & { system_prompt: null });
+      resolved_provider_id: null,
+    } as AgentRow);
   }
 
   updateAgent(
@@ -1522,13 +1591,15 @@ export class SupervisorDb {
         AgentRow,
         | "name"
         | "description"
-        | "icon"
-        | "provider_id"
+        | "avatar"
         | "backend_type"
         | "model_id"
+        | "system_prompt"
         | "tools_preset"
         | "home_dir"
-        | "is_internal"
+        | "is_builtin"
+        | "external_config"
+        | "disabled_tools"
       >
     > & {
       meta?: Record<string, unknown>;
@@ -1569,97 +1640,6 @@ export class SupervisorDb {
     this.db
       .prepare("UPDATE agents SET meta = ?, updated_at = ? WHERE id = ?")
       .run(JSON.stringify(meta), Date.now(), id);
-  }
-
-  upsertMember(row: {
-    session_id: number;
-    agent_id: number;
-    role?: string;
-    tags?: string[] | string;
-  }): Member {
-    const now = Date.now();
-    const payload = {
-      session_id: row.session_id,
-      agent_id: row.agent_id,
-      role: row.role ?? "member",
-      tags: serializeMemberTags(row.tags),
-      created_at: now,
-      updated_at: now,
-    };
-    this.db
-      .prepare(
-        `INSERT INTO members (session_id, agent_id, role, tags, created_at, updated_at)
-         VALUES (@session_id, @agent_id, @role, @tags, @created_at, @updated_at)
-         ON CONFLICT(session_id, agent_id) DO UPDATE SET
-           role = excluded.role,
-           tags = excluded.tags,
-           updated_at = excluded.updated_at`,
-      )
-      .run(payload);
-    const member = this.db
-      .prepare("SELECT * FROM members WHERE session_id = ? AND agent_id = ?")
-      .get(row.session_id, row.agent_id) as MemberRow;
-    return rowToMember(member);
-  }
-
-  listMembers(sessionId: number): Member[] {
-    const rows = this.db
-      .prepare("SELECT * FROM members WHERE session_id = ? ORDER BY created_at ASC")
-      .all(sessionId) as MemberRow[];
-    return rows.map(rowToMember);
-  }
-
-  replaceSessionAgentMembers(
-    sessionId: number,
-    shadowAgentId: number | null,
-    spawnedAgentIds: number[],
-  ): Member[] {
-    const transaction = this.db.transaction(() => {
-      this.db
-        .prepare("DELETE FROM members WHERE session_id = ? AND role IN ('shadow', 'spawned')")
-        .run(sessionId);
-      if (shadowAgentId !== null) {
-        this.upsertMember({
-          session_id: sessionId,
-          agent_id: shadowAgentId,
-          role: "shadow",
-          tags: ["shadow"],
-        });
-      }
-      for (const agentId of [...new Set(spawnedAgentIds)]) {
-        this.upsertMember({
-          session_id: sessionId,
-          agent_id: agentId,
-          role: "spawned",
-          tags: ["default"],
-        });
-      }
-    });
-    transaction();
-    return this.listMembers(sessionId);
-  }
-
-  listMemberAgentIdsByRole(sessionId: number, role: string): number[] {
-    const rows = this.db
-      .prepare(
-        "SELECT agent_id FROM members WHERE session_id = ? AND role = ? ORDER BY created_at ASC",
-      )
-      .all(sessionId, role) as Array<{ agent_id: number }>;
-    return rows.map((row) => row.agent_id);
-  }
-
-  listMemberAgentsByTag(sessionId: number, tag: string): MemberAgent[] {
-    const normalized = tag.trim();
-    if (!normalized) return [];
-    const members = this.listMembers(sessionId).filter((member) =>
-      member.tags.includes(normalized),
-    );
-    const agents: MemberAgent[] = [];
-    for (const member of members) {
-      const agent = this.getAgent(member.agentId);
-      if (agent) agents.push({ ...agent, member });
-    }
-    return agents;
   }
 
   getMessageRows(sessionId: number): MessageRow[] {
@@ -1727,7 +1707,7 @@ export class SupervisorDb {
       .join(" ");
 
     let sql = `
-			SELECT m.entry_id, m.session_id, m.message_role, m.search_text, m.is_old, m.created_at
+			SELECT m.entry_id, m.session_id, m.role, m.search_text, m.is_old, m.created_at
 			FROM messages_fts f
 			INNER JOIN messages m ON m.entry_id = f.message_id
 			WHERE messages_fts MATCH ?
@@ -1738,7 +1718,7 @@ export class SupervisorDb {
       params.push(filter.sessionId);
     }
     if (filter?.role) {
-      sql += " AND m.message_role = ?";
+      sql += " AND m.role = ?";
       params.push(filter.role);
     }
     sql += " ORDER BY m.created_at DESC LIMIT ?";
@@ -1747,7 +1727,7 @@ export class SupervisorDb {
     const rows = this.db.prepare(sql).all(...params) as Array<{
       entry_id: string;
       session_id: number;
-      message_role: string | null;
+      role: string | null;
       search_text: string | null;
       is_old: number;
       created_at: number;
@@ -1756,7 +1736,7 @@ export class SupervisorDb {
     return rows.map((row) => ({
       messageId: row.entry_id,
       sessionId: row.session_id,
-      messageRole: row.message_role,
+      role: row.role,
       searchText: row.search_text,
       isOld: row.is_old === 1,
       createdAt: row.created_at,
@@ -1768,7 +1748,7 @@ export class SupervisorDb {
     this.db.exec(`
 			CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 				search_text,
-				message_role,
+				role,
 				session_id UNINDEXED,
 				message_id UNINDEXED,
 				tokenize='unicode61 remove_diacritics 2'
@@ -1778,8 +1758,8 @@ export class SupervisorDb {
 			CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages
 			WHEN NEW.search_text IS NOT NULL AND NEW.search_text != ''
 			BEGIN
-				INSERT INTO messages_fts(search_text, message_role, session_id, message_id)
-				VALUES (NEW.search_text, NEW.message_role, NEW.session_id, NEW.entry_id);
+				INSERT INTO messages_fts(search_text, role, session_id, message_id)
+				VALUES (NEW.search_text, NEW.role, NEW.session_id, NEW.entry_id);
 			END;
 		`);
     this.db.exec(`
@@ -1788,12 +1768,15 @@ export class SupervisorDb {
 			END;
 		`);
     this.db.exec(`
-			CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE OF search_text, message_role ON messages BEGIN
+			CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE OF search_text, role ON messages BEGIN
 				DELETE FROM messages_fts WHERE message_id = OLD.entry_id;
-				INSERT INTO messages_fts(search_text, message_role, session_id, message_id)
-				SELECT NEW.search_text, NEW.message_role, NEW.session_id, NEW.entry_id
+				INSERT INTO messages_fts(search_text, role, session_id, message_id)
+				SELECT NEW.search_text, NEW.role, NEW.session_id, NEW.entry_id
 				WHERE NEW.search_text IS NOT NULL AND NEW.search_text != '';
 			END;
+			INSERT INTO messages_fts(search_text, role, session_id, message_id)
+			SELECT search_text, role, session_id, entry_id FROM messages
+			WHERE search_text IS NOT NULL AND search_text != '';
 		`);
   }
 
@@ -1884,9 +1867,7 @@ export class SupervisorDb {
     model_id: string;
     name?: string | null;
     context_window?: number;
-    max_tokens?: number;
-    supports_multimodal?: number;
-    tags?: string;
+    supports_vision?: number;
   }): Model {
     const now = Date.now();
     const full = {
@@ -1894,16 +1875,14 @@ export class SupervisorDb {
       model_id: row.model_id,
       name: row.name ?? row.model_id,
       context_window: row.context_window ?? 128000,
-      max_tokens: row.max_tokens ?? 16384,
-      supports_multimodal: row.supports_multimodal ?? 0,
-      tags: row.tags ?? "[]",
+      supports_vision: row.supports_vision ?? 0,
       created_at: now,
       updated_at: now,
     };
     const result = this.db
       .prepare(
-        `INSERT INTO models (provider_id, model_id, name, context_window, max_tokens, supports_multimodal, tags, created_at, updated_at)
-			 VALUES (@provider_id, @model_id, @name, @context_window, @max_tokens, @supports_multimodal, @tags, @created_at, @updated_at)`,
+        `INSERT INTO models (provider_id, model_id, name, context_window, supports_vision, created_at, updated_at)
+			 VALUES (@provider_id, @model_id, @name, @context_window, @supports_vision, @created_at, @updated_at)`,
       )
       .run(full);
     return rowToModel({ ...full, id: Number(result.lastInsertRowid) } as ModelRow);
@@ -1916,15 +1895,20 @@ export class SupervisorDb {
     return row ? rowToModel(row) : undefined;
   }
 
+  getModelById(id: number): Model | undefined {
+    const row = this.db.prepare("SELECT * FROM models WHERE id = ?").get(id) as
+      | ModelRow
+      | undefined;
+    return row ? rowToModel(row) : undefined;
+  }
+
   updateModel(
     providerId: number,
     modelId: string,
     patch: Partial<{
       name: string | null;
       context_window: number;
-      max_tokens: number;
-      supports_multimodal: number;
-      tags: string;
+      supports_vision: number;
     }>,
   ): Model {
     const sets: string[] = ["updated_at = ?"];
@@ -1952,9 +1936,11 @@ export class SupervisorDb {
   }
 
   deleteModel(providerId: number, modelId: string): void {
+    const model = this.getModel(providerId, modelId);
+    if (!model) return;
     const agents = this.db
-      .prepare("SELECT name FROM agents WHERE provider_id = ? AND model_id = ?")
-      .all(providerId, modelId) as Array<{ name: string }>;
+      .prepare("SELECT name FROM agents WHERE model_id = ?")
+      .all(model.id) as Array<{ name: string }>;
     if (agents.length > 0) {
       const names = agents.map((agent) => agent.name).join(", ");
       throw new Error(`Model "${modelId}" is in use by agent(s): ${names}`);
@@ -2241,8 +2227,8 @@ export class SupervisorDb {
     const result = this.db
       .prepare(
         `INSERT INTO home_tasks (
-          title, description, project_id, status, priority, parent_id, session_id, error, meta, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+          title, description, project_id, status, priority, parent_id, session_id, error, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
       )
       .run(
         title,
@@ -2252,7 +2238,6 @@ export class SupervisorDb {
         options.priority ?? "normal",
         options.parentId ?? null,
         options.sessionId ?? null,
-        JSON.stringify(options.meta ?? {}),
         now,
         now,
       );
@@ -2271,7 +2256,6 @@ export class SupervisorDb {
       parent_id: patch.parentId !== undefined ? patch.parentId : current.parentId,
       session_id: patch.sessionId !== undefined ? patch.sessionId : current.sessionId,
       error: patch.error !== undefined ? patch.error : current.error,
-      meta: JSON.stringify(patch.meta ?? current.meta),
       updated_at: Date.now(),
     };
     if (!next.title) throw new Error("title is required");
@@ -2279,7 +2263,7 @@ export class SupervisorDb {
       .prepare(
         `UPDATE home_tasks SET
           title = ?, description = ?, project_id = ?, status = ?, priority = ?,
-          parent_id = ?, session_id = ?, error = ?, meta = ?, updated_at = ?
+          parent_id = ?, session_id = ?, error = ?, updated_at = ?
          WHERE id = ?`,
       )
       .run(
@@ -2291,7 +2275,6 @@ export class SupervisorDb {
         next.parent_id,
         next.session_id,
         next.error,
-        next.meta,
         next.updated_at,
         id,
       );

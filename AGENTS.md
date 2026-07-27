@@ -78,10 +78,11 @@ pnpm docs:build
 ## Session / Project 的 `meta` 字段
 
 - **`sessions.meta` 与 `projects.meta` 以扩展数据为主**（用户插件、Shadow 输出、`meta.services` 运行实例等）。
-- 核心 UI / 身份字段用 **列**：`title`、`system_prompt`、`avatar`、`is_builtin`、`pinned`、`muted`、`unread`、`external_session_id`、`error_msg`、`stage`、`shadow_enabled`、`current_task_id`、`created_by`。
-- 任务 / 待办用表：`session_tasks`、`session_todos`（与 `job_schedules` 同级，勿再塞回 meta）。
+- 核心 UI / 身份字段用 **列**：`title`、`system_prompt`、`avatar`、`is_builtin`、`pinned`、`muted`、`unread`、`external_session_id`、`error_msg`、`stage`、`shadow_enabled`、`created_by`。
+- 服务于 Session 的扩展状态存于 `sessions.meta`：`tasks` / `currentTask` / `todos`、`subagentIds`（可委派子 Agent）、Shadow 输出、`timers`（定时设定）等；Job **执行记录**仍用 `jobs` 平台表。
 - Git / worktree 状态放在 **`sessions.meta.git`**：`{ worktreePath, branch, lastCommit, mergeError }`；有 `worktreePath` 即启用 worktree。
 - 扩展自定义键请带前缀（如 `myExt.*`）。
+- Agents 出厂标识用列 `spawn_type`（非 meta）；内置标志用 `is_builtin`。
 
 ### Git worktree 与 Achieve
 
@@ -99,7 +100,8 @@ pnpm docs:build
 ## 华生（助手模型）
 
 - 设置页只配置一个**助手模型**（`featureModels.assistant`），不再按功能拆分模型。
-- **华生**是内部 runner（`packagedKind: watson`）：`AgentHarness` + 简单工具（`createDefaultTools`）+ 助手模型；**不**再走 `pi-coding-agent` 的 `createAgentSession`（避免两套 agent 系统）。
+- **华生**是内部 runner（`spawn_type: watson`）：`AgentHarness` + 简单工具（`createDefaultTools`）+ 助手模型；**不**再走 `pi-coding-agent` 的 `createAgentSession`（避免两套 agent 系统）。
 - 不创建用户 session；任务提示词临时注入；结构化结果只用终止型 `submit_result` tool（pi 官方方式，无文本托底）。
 - 入口：`SessionManager.runWatson` / 扩展 `ctx.watson.run(...)`；日志在 agent home `logs/`，Agent 详情 Logs 可见。
 - 项目脚本在 `project_scripts` 表；session 创建时起 bash Job 并注入启动提示。
+- Session 可委派子 Agent 白名单：`sessions.meta.subagentIds`（不再使用 `members` 表）。

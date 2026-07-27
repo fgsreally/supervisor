@@ -302,7 +302,7 @@ const canSave = computed(() => {
   return (
     modelIds.every(Boolean) &&
     new Set(modelIds).size === modelIds.length &&
-    draft.value.models.every((model) => model.contextWindow > 0 && model.maxTokens > 0)
+    draft.value.models.every((model) => model.contextWindow > 0)
   );
 });
 
@@ -329,7 +329,7 @@ function applyProviderPreset(preset: (typeof PROVIDER_PRESETS)[number]) {
     draft.value.icon = preset.icon;
     draft.value.apiType = preset.apiType;
     draft.value.baseUrl = null;
-    draft.value.models = preset.models.map((model) => ({ ...model, tags: [...model.tags] }));
+    draft.value.models = preset.models.map((model) => ({ ...model }));
     apiKeyInput.value = "";
     return;
   }
@@ -338,7 +338,7 @@ function applyProviderPreset(preset: (typeof PROVIDER_PRESETS)[number]) {
   draft.value.icon = preset.icon;
   draft.value.apiType = preset.apiType;
   draft.value.baseUrl = preset.baseUrl;
-  draft.value.models = preset.models.map((model) => ({ ...model, tags: [...model.tags] }));
+  draft.value.models = preset.models.map((model) => ({ ...model }));
   apiKeyInput.value = "";
 }
 
@@ -358,9 +358,7 @@ async function syncModels(providerId: string, models: UIProviderModel[]) {
       modelId,
       name: m.name.trim() || modelId,
       contextWindow: m.contextWindow,
-      maxTokens: m.maxTokens,
-      supportsMultimodal: m.supportsMultimodal,
-      tags: m.tags,
+      supportsVision: m.supportsVision,
     };
     if (existingIds.has(modelId)) {
       await providerStore.updateModel(providerId, modelId, payload);

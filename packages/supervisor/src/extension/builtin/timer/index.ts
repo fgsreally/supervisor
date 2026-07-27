@@ -1,39 +1,22 @@
 import { Type } from "typebox";
-import type { JobSchedule } from "../../../core/jobs.js";
 import type { ExtensionDefinition } from "../../types.js";
+import {
+  newSessionTimerId,
+  parseSessionTimers,
+  type SessionTimer,
+} from "../../../core/session-timers.js";
 
 const MAX_TIMERS = 50;
 const MAX_DELAY_MS = 2_147_000_000;
 
-interface LegacySessionTimer {
-  prompt: string;
-  nextFireAt: number;
-  intervalMs?: number;
-}
-
-function parseLegacyTimers(value: unknown): LegacySessionTimer[] {
-  if (!Array.isArray(value)) return [];
-  return value.filter((item): item is LegacySessionTimer => {
-    if (!item || typeof item !== "object") return false;
-    const timer = item as Partial<LegacySessionTimer>;
-    return (
-      typeof timer.prompt === "string" &&
-      timer.prompt.length > 0 &&
-      typeof timer.nextFireAt === "number" &&
-      Number.isFinite(timer.nextFireAt) &&
-      (timer.intervalMs === undefined ||
-        (typeof timer.intervalMs === "number" && timer.intervalMs > 0))
-    );
-  });
-}
-
-function timerResult(timer: JobSchedule) {
+function timerResult(timer: SessionTimer) {
   return {
     id: timer.id,
     prompt: timer.prompt,
     createdAt: timer.createdAt,
-    nextFireAt: timer.nextRunAt,
+    nextFireAt: timer.nextFireAt,
     ...(timer.intervalMs ? { intervalMs: timer.intervalMs } : {}),
+    ...(timer.label ? { label: timer.label } : {}),
   };
 }
 
@@ -42,10 +25,37 @@ const timerExtension: ExtensionDefinition = {
   async setup(ctx) {
     const scheduled = new Map<string, ReturnType<typeof setTimeout>>();
 
-    const arm = (timer: JobSchedule) => {
+    const readTimers = async (): Promise<SessionTimer[]> => {
+      const meta = await ctx.session.meta.get();
+      return parseSessionTimers(meta);
+    };
+
+    const writeTimers = async (timers: SessionTimer[]): Promise<SessionTimer[]> => {
+      const normalized = [...timers].sort((a, b) => a.nextFireAt - b.nextFireAt);
+      await ctx.session.meta.patch({ timers: normalized });
+      return normalized;
+    };
+
+    const getTimer = async (id: string): Promise<SessionTimer | undefined> =>
+      (await readTimers()).find((timer) => timer.id === id);
+
+    const upsertTimer = async (timer: SessionTimer): Promise<SessionTimer> => {
+      const others = (await readTimers()).filter((item) => item.id !== timer.id);
+      await writeTimers([...others, timer]);
+      return timer;
+    };
+
+    const deleteTimer = async (id: string): Promise<boolean> => {
+      const current = await readTimers();
+      if (!current.some((timer) => timer.id === id)) return false;
+      await writeTimers(current.filter((timer) => timer.id !== id));
+      return true;
+    };
+
+    const arm = (timer: SessionTimer) => {
       const previous = scheduled.get(timer.id);
       if (previous) clearTimeout(previous);
-      const delay = Math.min(Math.max(0, timer.nextRunAt - Date.now()), MAX_DELAY_MS);
+      const delay = Math.min(Math.max(0, timer.nextFireAt - Date.now()), MAX_DELAY_MS);
       const handle = setTimeout(() => {
         void fire(timer.id).catch((error) => {
           ctx.log("error", `Timer ${timer.id} failed`, {
@@ -59,29 +69,30 @@ const timerExtension: ExtensionDefinition = {
 
     const fire = async (id: string) => {
       scheduled.delete(id);
-      const timer = await ctx.jobs.schedules.get(id);
+      const timer = await getTimer(id);
       if (!timer) return;
-      if (timer.nextRunAt > Date.now()) {
+      if (timer.nextFireAt > Date.now()) {
         arm(timer);
         return;
       }
 
       if (timer.intervalMs) {
-        let nextRunAt = timer.nextRunAt;
-        while (nextRunAt <= Date.now()) nextRunAt += timer.intervalMs;
-        arm(await ctx.jobs.schedules.update(timer.id, { nextRunAt }));
+        let nextFireAt = timer.nextFireAt;
+        while (nextFireAt <= Date.now()) nextFireAt += timer.intervalMs;
+        const updated = await upsertTimer({ ...timer, nextFireAt });
+        arm(updated);
       } else {
-        await ctx.jobs.schedules.delete(timer.id);
+        await deleteTimer(timer.id);
       }
 
       const firedAt = new Date().toISOString();
       const job = await ctx.jobs.create({
         kind: "timer",
         name: "timer.fire",
-        label: timer.label,
+        label: timer.label ?? timer.prompt.split("\n")[0]!.slice(0, 120),
         status: "running",
         executionMode: "background",
-        metadata: { scheduleId: timer.id, firedAt },
+        metadata: { timerId: timer.id, firedAt },
       });
       try {
         await ctx.session.sendUserMessage(
@@ -102,26 +113,7 @@ const timerExtension: ExtensionDefinition = {
       }
     };
 
-    let existingSchedules = await ctx.jobs.schedules.list();
-    const meta = await ctx.session.meta.get();
-    const legacyTimers = parseLegacyTimers(meta.timers);
-    if (existingSchedules.length === 0 && legacyTimers.length > 0) {
-      existingSchedules = await Promise.all(
-        legacyTimers.map((timer) =>
-          ctx.jobs.schedules.create({
-            kind: "timer",
-            name: "timer.fire",
-            label: timer.prompt.split("\n")[0]!.slice(0, 120),
-            prompt: timer.prompt,
-            nextRunAt: timer.nextFireAt,
-            ...(timer.intervalMs ? { intervalMs: timer.intervalMs } : {}),
-            metadata: { migratedFrom: "session.meta.timers" },
-          }),
-        ),
-      );
-      await ctx.session.meta.patch({ timers: undefined });
-    }
-    for (const timer of existingSchedules) arm(timer);
+    for (const timer of await readTimers()) arm(timer);
 
     ctx.agent.registerTool({
       name: "TimerCreate",
@@ -152,19 +144,19 @@ const timerExtension: ExtensionDefinition = {
         if (!Number.isFinite(nextFireAt) || nextFireAt <= now) {
           throw new Error("Timer must be scheduled in the future");
         }
-        const timers = await ctx.jobs.schedules.list();
+        const timers = await readTimers();
         if (timers.length >= MAX_TIMERS) {
           throw new Error(`A Session can have at most ${MAX_TIMERS} timers`);
         }
-        const timer = await ctx.jobs.schedules.create({
-          kind: "timer",
-          name: "timer.fire",
-          label: params.intent,
+        const timer: SessionTimer = {
+          id: newSessionTimerId(),
           prompt: params.prompt,
-          nextRunAt: nextFireAt,
+          nextFireAt,
+          createdAt: now,
+          label: params.intent,
           ...(params.repeatSeconds ? { intervalMs: params.repeatSeconds * 1000 } : {}),
-          metadata: { intent: params.intent },
-        });
+        };
+        await upsertTimer(timer);
         arm(timer);
         const result = timerResult(timer);
         return { content: [{ type: "text", text: JSON.stringify(result) }], details: result };
@@ -181,7 +173,7 @@ const timerExtension: ExtensionDefinition = {
         }),
       }),
       async execute() {
-        const timers = (await ctx.jobs.schedules.list()).map(timerResult);
+        const timers = (await readTimers()).map(timerResult);
         return { content: [{ type: "text", text: JSON.stringify(timers) }], details: { timers } };
       },
     });
@@ -197,7 +189,7 @@ const timerExtension: ExtensionDefinition = {
         id: Type.String({ minLength: 1 }),
       }),
       async execute(params: { id: string; intent: string }) {
-        if (!(await ctx.jobs.schedules.delete(params.id))) {
+        if (!(await deleteTimer(params.id))) {
           throw new Error(`No timer with id ${params.id}`);
         }
         const handle = scheduled.get(params.id);

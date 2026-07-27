@@ -34,7 +34,6 @@ describe("supervisor: SessionManager", () => {
   it("create() inserts a record without starting a harness", () => {
     const inst = manager.create({ cwd: "/proj", meta: { phase: "brainstorm" } });
     expect(inst.status).toBe("idle");
-    expect(inst.pid).toBeNull();
     expect(inst.meta).toEqual({ phase: "brainstorm" });
     expect(MockAgentHarness.instances).toHaveLength(0);
   });
@@ -47,20 +46,16 @@ describe("supervisor: SessionManager", () => {
     });
     db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6" });
     ensurePackagedAgents(db);
-    const parent = manager.create({ cwd: "/proj" });
-    const subagent = manager.create({ parentId: parent.id, cwd: parent.cwd });
+    const codingId = findPackagedAgentId(db, "coding")!;
+    const parent = manager.create({ cwd: "/proj", agentId: codingId });
+    const subagent = manager.create({ parentId: parent.id, cwd: parent.cwd, agentId: codingId });
     const btw = manager.createBtw(parent.id);
-    const btwAgent = db.getAgent(btw.agentId!)!;
 
-    expect(parent.branchType).toBeNull();
-    expect(parent.showInSessionList).toBe(true);
-    expect(subagent.branchType).toBe("subagent");
-    expect(subagent.showInSessionList).toBe(true);
-    expect(btw.branchType).toBe("btw");
-    expect(btw.showInSessionList).toBe(false);
-    expect(btw.contextLeafId).toBeNull();
-    expect(btw.agentId).toBe(findPackagedAgentId(db, "btw"));
-    expect(btwAgent.toolsPreset).toBe("readonly");
+    expect(parent.spawnType).toBeNull();
+    expect(subagent.spawnType).toBe("subagent");
+    expect(btw.spawnType).toBe("btw");
+    // BTW reuses the parent session's agent; readonly is enforced at runtime.
+    expect(btw.agentId).toBe(codingId);
     expect(btw.systemPrompt ?? "").toBe("");
   });
 
@@ -68,7 +63,6 @@ describe("supervisor: SessionManager", () => {
     const inst = await manager.spawn(SPAWN_OPTS);
     expect(MockAgentHarness.instances).toHaveLength(1);
     expect(inst.status).toBe("idle");
-    expect(inst.sessionId).toBe(String(inst.id));
     expect(manager.isAlive(inst.id)).toBe(true);
   });
 
@@ -93,9 +87,8 @@ describe("supervisor: SessionManager", () => {
     const parent = await manager.spawn({ cwd: repoDir });
     const child = await manager.spawn({ parentId: parent.id, cwd: parent.cwd });
 
-    expect(parent.gitWorktreeEnabled).toBe(true);
+    expect(parent.cwd).not.toBe(repoDir);
     expect(child.parentId).toBe(parent.id);
-    expect(child.gitWorktreeEnabled).toBe(false);
     expect(child.cwd).toBe(parent.cwd);
   });
 
@@ -133,10 +126,10 @@ describe("supervisor: SessionManager", () => {
       api_type: "openai-compatible",
       is_enabled: 0,
     });
+    const modelId = db.insertModel({ provider_id: providerId, model_id: "test-model" }).id;
     const agent = db.insertAgent({
       name: "disabled provider agent",
-      provider_id: providerId,
-      model_id: "test-model",
+      model_id: modelId,
     });
     const inst = manager.create({ cwd: "/proj", agentId: agent.id });
 
@@ -193,25 +186,24 @@ describe("supervisor: SessionManager", () => {
     expect(state.messageCount).toBe(0);
   });
 
-  it("lists member agents by tag", async () => {
+  it("stores spawned agent ids in session metadata", async () => {
     const providerId = db.insertProvider({
       slug: "test-provider",
       name: "Test Provider",
       api_type: "anthropic-messages",
     });
-    const reviewer = db.insertAgent({
-      name: "shadow reviewer",
+    const modelId = db.insertModel({
       provider_id: providerId,
       model_id: "claude-sonnet-4-6",
+    }).id;
+    const reviewer = db.insertAgent({
+      name: "spawned reviewer",
+      model_id: modelId,
     });
     const inst = await manager.spawn(SPAWN_OPTS);
 
-    manager.upsertMember(inst.id, reviewer.id, { role: "observer", tags: ["shadow", "review"] });
-
-    const agents = manager.listMemberAgentsByTag(inst.id, "shadow");
-    expect(agents).toHaveLength(1);
-    expect(agents[0]?.id).toBe(reviewer.id);
-    expect(agents[0]?.member.tags).toEqual(["shadow", "review"]);
+    expect(manager.setSessionSubagentIds(inst.id, [reviewer.id, reviewer.id])).toEqual([reviewer.id]);
+    expect(db.getSessionSubagentIds(inst.id)).toEqual([reviewer.id]);
   });
 
   it("prompt() throws for non-existent instance", async () => {
@@ -338,12 +330,12 @@ describe("supervisor: SessionManager", () => {
     const parent = manager.create();
     const child = manager.create({ parentId: parent.id });
     const completed = await manager.complete(child.id);
-    expect(completed).toMatchObject({ status: "finish", showInSessionList: false });
+    expect(completed).toMatchObject({ status: "finish", spawnType: "subagent" });
     const submit = vi.spyOn(manager, "submitSessionInput").mockResolvedValue("drained");
 
     await manager.submitSubagentInput(parent.id, child.id, "continue reviewing");
 
-    expect(manager.get(child.id)).toMatchObject({ status: "idle", showInSessionList: true });
+    expect(manager.get(child.id)).toMatchObject({ status: "idle", spawnType: "subagent" });
     expect(submit).toHaveBeenCalledWith(child.id, {
       message: "continue reviewing",
       level: 50,
@@ -393,9 +385,7 @@ describe("supervisor: SessionManager", () => {
     );
 
     expect(disposition).toBe("queued");
-    expect(manager.listSessionInputs(child.id)).toMatchObject([
-      { message: "follow-up while busy", source: `subagent:parent:${parent.id}` },
-    ]);
+    expect(manager.listSessionInputs(child.id)).toMatchObject([{ message: "follow-up while busy" }]);
   });
 
   it("restores queued Session input after Supervisor restarts", async () => {
@@ -414,7 +404,7 @@ describe("supervisor: SessionManager", () => {
     manager = new SessionManager(db);
 
     expect(manager.listSessionInputs(session.id)).toMatchObject([
-      { message: "resume this after restart", source: "test:persistence", level: 50 },
+      { message: "resume this after restart", level: 50 },
     ]);
   });
 
@@ -436,10 +426,10 @@ describe("supervisor: SessionManager", () => {
     expect(manager.get(running.id)?.status).toBe("idle");
     expect(manager.get(waiting.id)?.status).toBe("idle");
     expect(manager.get(finished.id)?.status).toBe("finish");
-    expect(manager.get(finished.id)?.showInSessionList).toBe(false);
+    expect(manager.get(finished.id)?.spawnType).toBe("subagent");
   });
 
-  it("fork() sets branch_type and marks copied messages is_old", async () => {
+  it("fork() sets spawn_type and marks copied messages is_old", async () => {
     const parent = await manager.spawn(SPAWN_OPTS);
     const { SQLiteSessionStorage } = await import("../src/session-storage.js");
     const storage = new SQLiteSessionStorage(db, parent.id);
@@ -456,13 +446,12 @@ describe("supervisor: SessionManager", () => {
     );
 
     const forked = await manager.fork(parent.id, entryId);
-    expect(forked.branchType).toBe("fork");
+    expect(forked.spawnType).toBe("fork");
     expect(forked.parentId).toBe(parent.id);
 
     const messages = await manager.getSessionMessages(forked.id);
     expect(messages).toHaveLength(1);
     expect(messages[0]?.isOld).toBe(true);
-    expect(messages[0]?.source).toBe("sidecar-a");
     expect(messages[0]?.meta).toEqual({});
   });
 

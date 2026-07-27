@@ -4,12 +4,10 @@ import type { UIProvider, UIProviderModel } from "@/types/ui";
 
 export function modelToUI(model: Model): UIProviderModel {
   return {
-    id: model.modelId,
+    id: model.id,
     name: model.name ?? model.modelId,
     contextWindow: model.contextWindow,
-    maxTokens: model.maxTokens,
-    supportsMultimodal: model.supportsMultimodal,
-    tags: model.tags,
+    supportsVision: model.supportsVision,
   };
 }
 

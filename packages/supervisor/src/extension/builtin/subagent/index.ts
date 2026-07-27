@@ -9,7 +9,7 @@ const spawnAgentSchema = Type.Object({
   ),
   agentName: Type.Optional(
     Type.String({
-      description: "Name of the spawned member Agent to use when creating a child Session.",
+      description: "Name of the configured spawned Agent to use when creating a child Session.",
     }),
   ),
   urgency: Type.Optional(
@@ -78,7 +78,7 @@ function pickAgent(
   if (agentName) {
     const matches = agents.filter((agent) => agent.name === agentName);
     if (matches.length > 1) {
-      throw new Error(`Multiple spawned members are named '${agentName}'; rename them uniquely`);
+      throw new Error(`Multiple configured spawned Agents are named '${agentName}'; rename them uniquely`);
     }
     return matches[0];
   }
@@ -94,7 +94,7 @@ export default {
       name: "spawn_agent",
       description:
         "Create or continue a delegated subagent Session. Pass sessionId to continue an existing " +
-        "child Session; otherwise select a spawned member by agentName. For continuation, urgency " +
+        "child Session; otherwise select a configured spawned Agent by agentName. For continuation, urgency " +
         "normal queues the message and urgent interrupts the child's current turn." +
         (configuredNames ? ` Available agentName values: ${configuredNames}.` : ""),
       parameters: spawnAgentSchema,
@@ -147,7 +147,7 @@ export default {
           const available = allowedAgents.map((agent) => agent.name).join(", ") || "none";
           throw new Error(
             params.agentName?.trim()
-              ? `Agent '${params.agentName.trim()}' is not a spawned member of session ${ctx.session.id}; available: ${available}`
+              ? `Agent '${params.agentName.trim()}' is not a configured spawned Agent of session ${ctx.session.id}; available: ${available}`
               : `spawn_agent requires agentName; available: ${available}`,
           );
         }

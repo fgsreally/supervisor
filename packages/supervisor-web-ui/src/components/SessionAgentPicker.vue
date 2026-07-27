@@ -50,7 +50,7 @@
               <AgentAvatar
                 :agent-id="agent.id"
                 :agent-name="agent.name"
-                :icon="agent.icon"
+                :icon="agent.avatar"
                 class="agent-picker__avatar-comp !rounded-full w-11 h-11 text-base"
               />
               <div class="min-w-0 flex-1">

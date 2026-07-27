@@ -163,7 +163,7 @@ watch(
     Object.assign(draft, {
       name: value.name,
       description: value.description ?? "",
-      icon: value.icon ?? "",
+      icon: value.avatar ?? "",
       providerId: value.providerId ?? "",
       modelId: value.modelId ?? "",
       toolsPreset: value.toolsPreset ?? "coding",
@@ -209,8 +209,7 @@ async function save() {
     await agentStore.updateAgent(value.id, {
       name: draft.name.trim(),
       description: draft.description.trim(),
-      icon: draft.icon.trim() || null,
-      providerId: value.backendType === "native" ? draft.providerId || null : null,
+      avatar: draft.icon.trim() || null,
       modelId: value.backendType === "native" ? draft.modelId || null : undefined,
       toolsPreset: value.backendType === "native" ? draft.toolsPreset : undefined,
       meta:

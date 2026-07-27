@@ -117,7 +117,7 @@ describe("supervisor: Web UI API compatibility", () => {
       const agent = db.insertAgent({
         name: "Builtin",
         provider_id: providerId,
-        meta: { builtin: true, userSpawnable: true },
+        is_builtin: true,
       });
 
       expect((await req("PATCH", `/agents/${agent.id}`, { name: "Changed" })).status).toBe(403);

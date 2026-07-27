@@ -58,7 +58,7 @@ function appendSlashMessage(
   });
   db.db
     .prepare(
-      `INSERT INTO messages (entry_id, session_id, parent_entry_id, type, payload, meta, is_old, message_role, search_text, created_at)
+      `INSERT INTO messages (entry_id, session_id, parent_entry_id, type, payload, meta, is_old, role, search_text, created_at)
        VALUES (?, ?, NULL, 'message', ?, '{}', 0, 'custom', ?, ?)`,
     )
     .run(entryId, sessionId, payload, content, Date.now());
@@ -93,8 +93,8 @@ async function executeGoalCommand(
       status: "active",
       body: `# Goal\n\n${tail}`,
     });
-    const row = db.upsertSessionTask({ sessionId, path, kind: "goal", title, status: "active" });
-    db.updateSessionFields(sessionId, { currentTaskId: row.id });
+    db.upsertSessionTask({ sessionId, path, kind: "goal", title, status: "active" });
+    db.updateMeta(sessionId, { currentTask: path });
     return { ok: true, message: `Goal created: ${path}` };
   }
 
@@ -126,7 +126,7 @@ async function executeGoalCommand(
     status,
     body,
   });
-  const updated = db.upsertSessionTask({
+  db.upsertSessionTask({
     sessionId,
     path: task.path,
     kind: "goal",
@@ -135,8 +135,8 @@ async function executeGoalCommand(
   });
   if (FINISHED_GOAL_STATUSES.has(status)) {
     const current = db.get(sessionId);
-    if (current?.current_task_id === updated.id) {
-      db.updateSessionFields(sessionId, { currentTaskId: null });
+    if ((current?.meta as Record<string, unknown>).currentTask === task.path) {
+      db.updateMeta(sessionId, { currentTask: null });
     }
   }
   return { ok: true, message: `Goal ${status}: ${task.path}` };
@@ -160,14 +160,14 @@ async function executePlanCommand(
     status: "planning",
     body: "# Implementation plan\n\nWrite the plan here.",
   });
-  const row = db.upsertSessionTask({
+  db.upsertSessionTask({
     sessionId,
     path,
     kind: "plan",
     title: "Implementation plan",
     status: "planning",
   });
-  db.updateSessionFields(sessionId, { currentTaskId: row.id });
+  db.updateMeta(sessionId, { currentTask: path });
   return {
     ok: true,
     message: `Plan mode active. Write the plan to ${path}, then call ExitPlanMode.`,

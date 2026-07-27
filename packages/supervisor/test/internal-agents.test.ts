@@ -3,10 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  assertAgentUserSpawnable,
   ensurePackagedAgents,
   findPackagedAgentId,
-  isAgentUserSpawnable,
   isBuiltinAgent,
   loadPackagedAgentPrompt,
 } from "../src/agent/index.js";
@@ -52,7 +50,7 @@ describe("packaged agents", () => {
           backendType: "kimi",
           providerId: null,
           icon: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
-          meta: expect.objectContaining({ command: "kimi", args: ["acp"] }),
+          externalConfig: { command: "kimi", args: ["acp"] },
         }),
       ]),
     );
@@ -63,13 +61,12 @@ describe("packaged agents", () => {
     expect(loadPackagedAgentPrompt("intro")).toContain("Intro");
     expect(loadPackagedAgentPrompt("btw")).toContain("只读侧问代理");
     expect(loadPackagedAgentPrompt("coding")).toContain("环境变量");
-    expect(loadPackagedAgentPrompt("coding")).toContain("bash");
     expect(loadPackagedAgentPrompt("coding")).not.toContain("Available tools");
     expect(loadPackagedAgentPrompt("coding")).not.toContain("多 session");
     expect(loadPackagedAgentPrompt("coding")).toContain("coding agent");
   });
 
-  it("marks shadow and BTW internal while intro/coding remain user-spawnable", () => {
+  it("marks all packaged agents built-in with a spawn type", () => {
     configureModel();
     ensurePackagedAgents(db);
     const shadowId = findPackagedAgentId(db, "shadow");
@@ -85,39 +82,24 @@ describe("packaged agents", () => {
     const intro = db.getAgent(introId!);
     const btw = db.getAgent(btwId!);
     const coding = db.getAgent(codingId!);
-    expect(shadow?.isInternal).toBe(true);
-    expect(intro?.isInternal).toBe(false);
-    expect(coding?.isInternal).toBe(false);
-    expect(shadow?.meta).toEqual({
-      builtin: true,
-      packagedKind: "shadow",
-      userSpawnable: false,
-    });
-    expect(intro?.meta).toEqual({
-      builtin: true,
-      packagedKind: "intro",
-      userSpawnable: true,
-    });
-    expect(coding?.meta).toEqual({
-      builtin: true,
-      packagedKind: "coding",
-      userSpawnable: true,
-    });
+    expect(shadow?.isBuiltin).toBe(true);
+    expect(intro?.isBuiltin).toBe(true);
+    expect(coding?.isBuiltin).toBe(true);
+    expect(shadow?.spawnType).toBe("shadow");
+    expect(intro?.spawnType).toBe("intro");
+    expect(coding?.spawnType).toBe("coding");
+    expect(shadow?.meta).toEqual({});
+    expect(intro?.meta).toEqual({});
+    expect(coding?.meta).toEqual({});
     expect(shadow?.toolsPreset).toBe("none");
     expect(shadow?.homeDir).toBeNull();
     expect(intro?.toolsPreset).toBe("coding");
     expect(coding?.toolsPreset).toBe("coding");
     expect(btw?.toolsPreset).toBe("readonly");
-    expect(btw?.isInternal).toBe(true);
+    expect(btw?.isBuiltin).toBe(true);
     expect(isBuiltinAgent(shadow)).toBe(true);
     expect(isBuiltinAgent(intro)).toBe(true);
     expect(isBuiltinAgent(coding)).toBe(true);
-    expect(isAgentUserSpawnable(shadow)).toBe(false);
-    expect(isAgentUserSpawnable(intro)).toBe(true);
-    expect(isAgentUserSpawnable(coding)).toBe(true);
-    expect(() => assertAgentUserSpawnable(shadow, shadowId)).toThrow(/internal/i);
-    expect(() => assertAgentUserSpawnable(intro, introId)).not.toThrow();
-    expect(() => assertAgentUserSpawnable(coding, codingId)).not.toThrow();
   });
 
   it("does not rewrite an existing packaged agent row", () => {

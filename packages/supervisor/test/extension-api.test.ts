@@ -11,9 +11,11 @@ import { createExtensionTestContext, type RuntimeOptions } from "./extension-con
 
 function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.fn> }) {
   const eventBus = createEventBus();
+  const sessionMeta: Record<string, unknown> = {};
   return {
     sessionId: 1,
     parentSessionId: null,
+    sessionMeta,
     cwd: process.cwd(),
     sessionDir: process.cwd(),
     projectDir: process.cwd(),
@@ -27,7 +29,7 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
       searchMessages: async () => [],
       getCustomEntries: async () => [],
       getLatestCustomEntry: async () => undefined,
-      getSessionMeta: async () => ({}),
+      getSessionMeta: async () => ({ ...sessionMeta }),
       getMessageMeta: async () => ({}),
       getChildSessions: async () => [],
       getParentSession: async () => undefined,
@@ -68,8 +70,11 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
       finishSession: async () => {},
       pausing: async (_reason: string, work: Promise<unknown> | (() => Promise<unknown>)) =>
         typeof work === "function" ? work() : work,
-      setSessionMeta: async () => {},
-      patchSessionMeta: async (patch: Record<string, unknown>) => patch,
+      setSessionMeta: async (meta: Record<string, unknown>) => {
+        for (const key of Object.keys(sessionMeta)) delete sessionMeta[key];
+        Object.assign(sessionMeta, meta);
+      },
+      patchSessionMeta: async (patch: Record<string, unknown>) => Object.assign(sessionMeta, patch),
       setMessageMeta: async () => {},
       patchMessageMeta: async (_id: string, patch: Record<string, unknown>) => patch,
       setLabel: async () => {},
@@ -133,7 +138,7 @@ describe("extension api", () => {
     await runtime.clear();
   });
 
-  it("persists schedules and records fired timers as Jobs", async () => {
+  it("persists timers in session meta and records fired timers as Jobs", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-07-20T04:00:00.000Z"));
     try {

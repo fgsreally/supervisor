@@ -89,9 +89,7 @@ function createSchema(db) {
       model_id      TEXT NOT NULL,
       name          TEXT,
       context_window INTEGER NOT NULL DEFAULT 128000,
-      max_tokens    INTEGER NOT NULL DEFAULT 16384,
-      supports_multimodal INTEGER NOT NULL DEFAULT 0,
-      tags          TEXT NOT NULL DEFAULT '[]',
+      supports_vision INTEGER NOT NULL DEFAULT 0,
       created_at    INTEGER NOT NULL,
       updated_at    INTEGER NOT NULL,
       UNIQUE (provider_id, model_id)
@@ -101,15 +99,15 @@ function createSchema(db) {
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       name          TEXT NOT NULL,
       description   TEXT,
-      icon          TEXT,
-      provider_id   INTEGER REFERENCES providers(id) ON DELETE SET NULL,
+      avatar        TEXT,
       backend_type  TEXT NOT NULL DEFAULT 'native',
       system_prompt TEXT,
-      tools_preset  TEXT,
-      extension_id  TEXT UNIQUE,
-      model_id      TEXT,
+      tools_preset  TEXT NOT NULL DEFAULT 'coding',
+      model_id      INTEGER REFERENCES models(id) ON DELETE SET NULL,
       home_dir      TEXT,
-      is_internal   INTEGER NOT NULL DEFAULT 0,
+      is_builtin    INTEGER NOT NULL DEFAULT 0,
+      external_config TEXT,
+      disabled_tools TEXT NOT NULL DEFAULT '[]',
       meta          TEXT NOT NULL DEFAULT '{}',
       created_at    INTEGER NOT NULL,
       updated_at    INTEGER NOT NULL
@@ -118,10 +116,9 @@ function createSchema(db) {
     CREATE TABLE projects (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       name          TEXT NOT NULL,
+      description   TEXT,
       cwd           TEXT NOT NULL UNIQUE,
-      work_dir      TEXT NOT NULL,
-      default_branch TEXT NOT NULL DEFAULT 'main',
-      meta          TEXT NOT NULL DEFAULT '{}',
+      home_dir      TEXT NOT NULL,
       created_at    INTEGER NOT NULL,
       updated_at    INTEGER NOT NULL
     );
@@ -130,17 +127,24 @@ function createSchema(db) {
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       project_id    INTEGER REFERENCES projects(id) ON DELETE CASCADE,
       parent_id     INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
-      session_id    TEXT,
-      pid           INTEGER,
-      status        TEXT NOT NULL DEFAULT 'starting',
+      status        TEXT NOT NULL DEFAULT 'initializing',
       thinking_level TEXT NOT NULL DEFAULT 'none',
       cwd           TEXT NOT NULL DEFAULT '',
       leaf_id       TEXT,
       agent_id      INTEGER REFERENCES agents(id) ON DELETE SET NULL,
-      branch_type   TEXT,
-      created_via  TEXT NOT NULL DEFAULT 'user',
-      show_in_session_list INTEGER NOT NULL DEFAULT 1,
-      context_leaf_id TEXT,
+      spawn_type    TEXT,
+      created_by    TEXT NOT NULL DEFAULT 'user',
+      title         TEXT,
+      system_prompt TEXT,
+      avatar        TEXT,
+      is_builtin    INTEGER NOT NULL DEFAULT 0,
+      pinned        INTEGER NOT NULL DEFAULT 0,
+      muted         INTEGER NOT NULL DEFAULT 0,
+      unread        INTEGER NOT NULL DEFAULT 0,
+      external_session_id TEXT,
+      error_msg     TEXT,
+      stage         TEXT,
+      shadow_enabled INTEGER NOT NULL DEFAULT 0,
       created_at    INTEGER NOT NULL,
       last_active_at INTEGER NOT NULL,
       meta          TEXT NOT NULL DEFAULT '{}'
@@ -149,19 +153,6 @@ function createSchema(db) {
     CREATE INDEX idx_sessions_status ON sessions(status);
     CREATE INDEX idx_sessions_agent ON sessions(agent_id);
     CREATE INDEX idx_sessions_project ON sessions(project_id);
-
-    CREATE TABLE members (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-      agent_id      INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-      role          TEXT NOT NULL DEFAULT 'member',
-      tags          TEXT NOT NULL DEFAULT '',
-      created_at    INTEGER NOT NULL,
-      updated_at    INTEGER NOT NULL,
-      UNIQUE(session_id, agent_id)
-    );
-    CREATE INDEX idx_members_session ON members(session_id);
-    CREATE INDEX idx_members_agent ON members(agent_id);
 
     CREATE TABLE messages (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -172,14 +163,13 @@ function createSchema(db) {
       payload       TEXT NOT NULL,
       meta          TEXT NOT NULL DEFAULT '{}',
       is_old        INTEGER NOT NULL DEFAULT 0,
-      source        TEXT,
-      origin        TEXT,
-      message_role  TEXT,
+      origin_msg    TEXT,
+      role          TEXT,
       search_text   TEXT,
       created_at    INTEGER NOT NULL
     );
     CREATE INDEX idx_messages_session ON messages(session_id);
-    CREATE INDEX idx_messages_session_role ON messages(session_id, message_role);
+    CREATE INDEX idx_messages_session_role ON messages(session_id, role);
     CREATE INDEX idx_messages_search_text ON messages(search_text) WHERE search_text IS NOT NULL;
 
     CREATE TABLE session_input_queue (
@@ -187,13 +177,23 @@ function createSchema(db) {
       session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
       message       TEXT NOT NULL,
       level         INTEGER NOT NULL,
-      source        TEXT,
-      origin        TEXT,
+      origin_msg    TEXT,
       images        TEXT,
       enqueued_at   INTEGER NOT NULL
     );
     CREATE INDEX idx_session_input_queue_session
       ON session_input_queue(session_id, level DESC, enqueued_at ASC);
+
+    CREATE TABLE project_scripts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      name TEXT NOT NULL,
+      command TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX idx_project_scripts_project ON project_scripts(project_id, kind, id);
 
     CREATE TABLE home_tasks (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -205,7 +205,6 @@ function createSchema(db) {
       parent_id     INTEGER REFERENCES home_tasks(id) ON DELETE CASCADE,
       session_id    INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
       error         TEXT,
-      meta          TEXT NOT NULL DEFAULT '{}',
       created_at    INTEGER NOT NULL,
       updated_at    INTEGER NOT NULL
     );
@@ -263,25 +262,9 @@ function createSchema(db) {
     CREATE INDEX idx_jobs_session_created ON jobs(session_id, created_at DESC);
     CREATE INDEX idx_jobs_status ON jobs(status);
 
-    CREATE TABLE job_schedules (
-      id TEXT PRIMARY KEY,
-      session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-      kind TEXT NOT NULL,
-      name TEXT NOT NULL,
-      label TEXT NOT NULL,
-      prompt TEXT NOT NULL,
-      next_run_at INTEGER NOT NULL,
-      interval_ms INTEGER,
-      metadata TEXT NOT NULL DEFAULT '{}',
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE INDEX idx_job_schedules_session_next
-      ON job_schedules(session_id, next_run_at);
-
     CREATE VIRTUAL TABLE messages_fts USING fts5(
       search_text,
-      message_role,
+      role,
       session_id UNINDEXED,
       message_id UNINDEXED,
       tokenize='unicode61 remove_diacritics 2'
@@ -290,18 +273,18 @@ function createSchema(db) {
     CREATE TRIGGER messages_fts_ai AFTER INSERT ON messages
       WHEN NEW.search_text IS NOT NULL AND NEW.search_text != ''
       BEGIN
-        INSERT INTO messages_fts(search_text, message_role, session_id, message_id)
-        VALUES (NEW.search_text, NEW.message_role, NEW.session_id, NEW.entry_id);
+        INSERT INTO messages_fts(search_text, role, session_id, message_id)
+        VALUES (NEW.search_text, NEW.role, NEW.session_id, NEW.entry_id);
       END;
 
     CREATE TRIGGER messages_fts_ad AFTER DELETE ON messages BEGIN
       DELETE FROM messages_fts WHERE message_id = OLD.entry_id;
     END;
 
-    CREATE TRIGGER messages_fts_au AFTER UPDATE OF search_text, message_role ON messages BEGIN
+    CREATE TRIGGER messages_fts_au AFTER UPDATE OF search_text, role ON messages BEGIN
       DELETE FROM messages_fts WHERE message_id = OLD.entry_id;
-      INSERT INTO messages_fts(search_text, message_role, session_id, message_id)
-      SELECT NEW.search_text, NEW.message_role, NEW.session_id, NEW.entry_id
+      INSERT INTO messages_fts(search_text, role, session_id, message_id)
+      SELECT NEW.search_text, NEW.role, NEW.session_id, NEW.entry_id
       WHERE NEW.search_text IS NOT NULL AND NEW.search_text != '';
     END;
   `);
@@ -331,6 +314,7 @@ function migrate() {
 
   const providerMap = new Map(); // old TEXT id -> new INTEGER id
   const agentMap = new Map();
+  const modelMap = new Map();
   const sessionMap = new Map();
 
   const insertProvider = next.prepare(`
@@ -354,8 +338,8 @@ function migrate() {
   console.log(`providers: ${providerMap.size}`);
 
   const insertModel = next.prepare(`
-    INSERT INTO models (provider_id, model_id, name, context_window, max_tokens, supports_multimodal, tags, created_at, updated_at)
-    VALUES (@provider_id, @model_id, @name, @context_window, @max_tokens, @supports_multimodal, @tags, @created_at, @updated_at)
+    INSERT INTO models (provider_id, model_id, name, context_window, supports_vision, created_at, updated_at)
+    VALUES (@provider_id, @model_id, @name, @context_window, @supports_vision, @created_at, @updated_at)
   `);
   let modelCount = 0;
   for (const row of old.prepare("SELECT * FROM models").all()) {
@@ -364,24 +348,23 @@ function migrate() {
       console.warn(`skip model ${row.model_id}: missing provider ${row.provider_id}`);
       continue;
     }
-    insertModel.run({
+    const result = insertModel.run({
       provider_id: providerId,
       model_id: row.model_id,
       name: row.name ?? null,
       context_window: row.context_window ?? 128000,
-      max_tokens: row.max_tokens ?? 16384,
-      supports_multimodal: row.supports_multimodal ?? 0,
-      tags: row.tags ?? "[]",
+      supports_vision: row.supports_vision ?? row.supports_multimodal ?? 0,
       created_at: row.created_at,
       updated_at: row.updated_at || row.created_at,
     });
+    modelMap.set(`${String(row.provider_id)}:${row.model_id}`, Number(result.lastInsertRowid));
     modelCount += 1;
   }
   console.log(`models: ${modelCount}`);
 
   const insertAgent = next.prepare(`
-    INSERT INTO agents (name, description, icon, provider_id, backend_type, system_prompt, tools_preset, extension_id, model_id, home_dir, is_internal, meta, created_at, updated_at)
-    VALUES (@name, @description, @icon, @provider_id, @backend_type, @system_prompt, @tools_preset, @extension_id, @model_id, @home_dir, @is_internal, @meta, @created_at, @updated_at)
+    INSERT INTO agents (name, description, avatar, backend_type, system_prompt, tools_preset, model_id, home_dir, is_builtin, external_config, disabled_tools, meta, created_at, updated_at)
+    VALUES (@name, @description, @avatar, @backend_type, @system_prompt, @tools_preset, @model_id, @home_dir, @is_builtin, @external_config, @disabled_tools, @meta, @created_at, @updated_at)
   `);
   for (const row of old.prepare("SELECT * FROM agents ORDER BY created_at ASC").all()) {
     let meta = {};
@@ -390,21 +373,52 @@ function migrate() {
     } catch {
       meta = {};
     }
-    const isInternal = meta.builtin === true || row.id === "pi-assistant" ? 1 : 0;
-    const providerId =
-      row.provider_id == null ? null : (providerMap.get(String(row.provider_id)) ?? null);
+    const isBuiltin = meta.builtin === true || row.id === "pi-assistant" ? 1 : 0;
+    const externalConfig =
+      meta.command || meta.args || meta.env || meta.permissionPolicy || meta.external
+        ? JSON.stringify({
+            ...(typeof meta.command === "string" ? { command: meta.command } : {}),
+            ...(Array.isArray(meta.args) ? { args: meta.args } : {}),
+            ...(meta.env && typeof meta.env === "object" ? { env: meta.env } : {}),
+            ...(typeof meta.permissionPolicy === "string"
+              ? { permissionPolicy: meta.permissionPolicy }
+              : {}),
+            ...(meta.external && typeof meta.external === "object" ? meta.external : {}),
+          })
+        : null;
+    const disabledTools = Array.isArray(meta.disabledTools)
+      ? JSON.stringify(meta.disabledTools)
+      : "[]";
+    for (const key of [
+      "builtin",
+      "userSpawnable",
+      "packagedKind",
+      "externalKind",
+      "command",
+      "args",
+      "env",
+      "permissionPolicy",
+      "external",
+      "category",
+      "disabledTools",
+    ]) {
+      delete meta[key];
+    }
     const result = insertAgent.run({
       name: row.name,
       description: row.description ?? null,
-      icon: row.icon ?? null,
-      provider_id: providerId,
+      avatar: row.avatar ?? row.icon ?? null,
       backend_type: row.backend_type ?? "native",
       system_prompt: row.system_prompt ?? null,
-      tools_preset: row.tools_preset ?? null,
-      extension_id: row.extension_id ?? null,
-      model_id: row.model_id ?? null,
+      tools_preset: row.tools_preset ?? "coding",
+      model_id:
+        row.provider_id == null || row.model_id == null
+          ? null
+          : (modelMap.get(`${String(row.provider_id)}:${row.model_id}`) ?? null),
       home_dir: row.home_dir ?? null,
-      is_internal: isInternal,
+      is_builtin: isBuiltin,
+      external_config: externalConfig,
+      disabled_tools: disabledTools,
       meta: JSON.stringify(meta),
       created_at: row.created_at,
       updated_at: row.updated_at,
@@ -414,17 +428,18 @@ function migrate() {
   console.log(`agents: ${agentMap.size}`);
 
   const insertProject = next.prepare(`
-    INSERT INTO projects (id, name, cwd, work_dir, default_branch, meta, created_at, updated_at)
-    VALUES (@id, @name, @cwd, @work_dir, @default_branch, @meta, @created_at, @updated_at)
+    INSERT INTO projects (id, name, description, cwd, home_dir, created_at, updated_at)
+    VALUES (@id, @name, @description, @cwd, @home_dir, @created_at, @updated_at)
   `);
   for (const row of old.prepare("SELECT * FROM projects").all()) {
     insertProject.run({
       id: row.id,
       name: row.name,
+      description: (() => {
+        try { return JSON.parse(row.meta ?? "{}").description ?? null; } catch { return null; }
+      })(),
       cwd: row.cwd,
-      work_dir: row.work_dir,
-      default_branch: row.default_branch ?? "main",
-      meta: row.meta ?? "{}",
+      home_dir: row.home_dir ?? row.work_dir,
       created_at: row.created_at,
       updated_at: row.updated_at,
     });
@@ -434,12 +449,13 @@ function migrate() {
 
   const insertSession = next.prepare(`
     INSERT INTO sessions (
-      project_id, parent_id, session_id, pid, status, thinking_level, cwd, leaf_id,
-      agent_id, branch_type, created_via, show_in_session_list, context_leaf_id,
-      created_at, last_active_at, meta
+      project_id, parent_id, status, thinking_level, cwd, leaf_id,
+      agent_id, spawn_type, created_by, title, system_prompt, avatar, is_builtin, pinned, muted,
+      unread, external_session_id, error_msg, stage, shadow_enabled, created_at, last_active_at, meta
     ) VALUES (
-      @project_id, @parent_id, @session_id, @pid, @status, @thinking_level, @cwd, @leaf_id,
-      @agent_id, @branch_type, @created_via, @show_in_session_list, @context_leaf_id,
+      @project_id, @parent_id, @status, @thinking_level, @cwd, @leaf_id,
+      @agent_id, @spawn_type, @created_by, @title, @system_prompt, @avatar, @is_builtin, @pinned,
+      @muted, @unread, @external_session_id, @error_msg, @stage, @shadow_enabled,
       @created_at, @last_active_at, @meta
     )
   `);
@@ -451,20 +467,34 @@ function migrate() {
     const result = insertSession.run({
       project_id: row.project_id ?? null,
       parent_id: null,
-      session_id: row.session_id ?? String(row.id),
-      pid: null,
       status: row.status === "running" ? "idle" : (row.status ?? "idle"),
       thinking_level: row.thinking_level ?? "none",
       cwd: row.cwd ?? "",
       leaf_id: row.leaf_id ?? null,
       agent_id: agentId,
-      branch_type: row.branch_type === "spawn" ? "subagent" : (row.branch_type ?? null),
-      created_via: row.created_via ?? "user",
-      show_in_session_list: row.show_in_session_list ?? 1,
-      context_leaf_id: row.context_leaf_id ?? null,
+      spawn_type: row.branch_type === "spawn" ? "subagent" : (row.spawn_type ?? row.branch_type ?? null),
+      created_by: row.created_by ?? row.created_via ?? "user",
+      title: row.title ?? null,
+      system_prompt: row.system_prompt ?? null,
+      avatar: row.avatar ?? null,
+      is_builtin: row.is_builtin ?? 0,
+      pinned: row.pinned ?? 0,
+      muted: row.muted ?? 0,
+      unread: row.unread ?? 0,
+      external_session_id: row.external_session_id ?? row.session_id ?? null,
+      error_msg: row.error_msg ?? null,
+      stage: row.stage ?? null,
+      shadow_enabled: row.shadow_enabled ?? 0,
       created_at: row.created_at,
       last_active_at: row.last_active_at ?? row.created_at,
-      meta: typeof row.meta === "string" ? row.meta : JSON.stringify(row.meta ?? {}),
+      meta: (() => {
+        try {
+          const meta = typeof row.meta === "string" ? JSON.parse(row.meta) : { ...(row.meta ?? {}) };
+          delete meta.git;
+          delete meta.description;
+          return JSON.stringify(meta);
+        } catch { return "{}"; }
+      })(),
     });
     sessionMap.set(String(row.id), Number(result.lastInsertRowid));
   }
@@ -479,11 +509,11 @@ function migrate() {
 
   const insertMessage = next.prepare(`
     INSERT INTO messages (
-      entry_id, session_id, parent_entry_id, type, payload, meta, is_old, source, origin,
-      message_role, search_text, created_at
+      entry_id, session_id, parent_entry_id, type, payload, meta, is_old, origin_msg,
+      role, search_text, created_at
     ) VALUES (
-      @entry_id, @session_id, @parent_entry_id, @type, @payload, @meta, @is_old, @source, @origin,
-      @message_role, @search_text, @created_at
+      @entry_id, @session_id, @parent_entry_id, @type, @payload, @meta, @is_old, @origin_msg,
+      @role, @search_text, @created_at
     )
   `);
   let messageCount = 0;
@@ -505,9 +535,8 @@ function migrate() {
       payload: row.payload,
       meta: row.meta ?? "{}",
       is_old: row.is_old ?? 0,
-      source: row.source ?? null,
-      origin: row.origin ?? null,
-      message_role: row.message_role ?? null,
+      origin_msg: row.origin_msg ?? row.origin ?? null,
+      role: row.role ?? row.message_role ?? null,
       search_text: row.search_text ?? null,
       created_at: row.created_at,
     });

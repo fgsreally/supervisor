@@ -107,7 +107,7 @@ const agentStore = useAgentStore();
 const agentIcon = computed(() => {
   const id = props.session.agentId;
   if (!id) return null;
-  return agentStore.getAgentById(id)?.icon ?? null;
+  return agentStore.getAgentById(id)?.avatar ?? null;
 });
 
 const LONG_PRESS_MS = 500;
@@ -169,7 +169,7 @@ const treeLineLeftPx = computed(() => TREE_ROOT_PX + (depth.value - 1) * TREE_ST
 const treeLineStyle = computed(() => ({ left: `${treeLineLeftPx.value}px` }));
 const treeDotStyle = computed(() => ({
   left: `${treeLineLeftPx.value - 1.5}px`,
-  backgroundColor: branchDotColor(props.session.branchType),
+  backgroundColor: branchDotColor(props.session.spawnType),
 }));
 const treeBranchStyle = computed(() => ({
   left: `${treeLineLeftPx.value}px`,

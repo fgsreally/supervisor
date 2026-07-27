@@ -124,7 +124,7 @@
                   :title="`移除 ${agent.name}`"
                   @click="toggleSpawned(agent.id)"
                 >
-                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.icon" />
+                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
                   <small>{{ agent.name }}</small>
                   <span class="session-agent-card__remove"><X /></span>
                 </button>
@@ -146,7 +146,7 @@
                   type="button"
                   @click="addSpawned(agent.id)"
                 >
-                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.icon" />
+                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
                   <span>{{ agent.name }}</span>
                   <Plus />
                 </button>
@@ -318,7 +318,7 @@ const props = defineProps<{
   gitBranch?: string | null;
   canComplete?: boolean;
   canCheckpoint?: boolean;
-  childSessions: Array<Pick<Session, "id" | "status" | "branchType" | "title" | "meta">>;
+  childSessions: Array<Pick<Session, "id" | "status" | "spawnType" | "title" | "meta">>;
   configurableAgents: Agent[];
   shadowEnabled: boolean;
   spawnedAgentIds: string[];

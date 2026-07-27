@@ -199,7 +199,7 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
         }),
       );
       const runtime = new CodexSessionRuntime({ ...options, child });
-      const isBtw = options.session.branchType === "btw";
+      const isBtw = options.session.spawnType === "btw";
       const sandbox = isBtw ? "read-only" : "workspace-write";
       // Match typical local CLI: never park normal sessions on Web approval cards.
       const approvalPolicy = isBtw ? "on-request" : "never";
@@ -692,7 +692,7 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     const doneTurn = beginSessionTiming(this.id, "codex/runExternalTurn");
     this.turnStartedAt = Date.now();
     this.firstDeltaAt = 0;
-    if (this.session.branchType !== "btw") {
+    if (this.session.spawnType !== "btw") {
       await this.request("thread/settings/update", {
         threadId: this.threadId,
         approvalPolicy: "never",

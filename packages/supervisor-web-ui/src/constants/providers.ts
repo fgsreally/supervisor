@@ -177,8 +177,6 @@ export function createEmptyProviderModel(id = ""): UIProviderModel {
     id,
     name: id,
     contextWindow: 128_000,
-    maxTokens: 16_384,
-    supportsMultimodal: false,
-    tags: [],
+    supportsVision: false,
   };
 }

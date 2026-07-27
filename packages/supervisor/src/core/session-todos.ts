@@ -1,4 +1,4 @@
-export type SessionTodoStatus = "pending" | "in_progress" | "done";
+export type SessionTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
 export interface SessionTodo {
   title: string;
@@ -11,7 +11,13 @@ export function parseSessionTodos(value: unknown): SessionTodo[] {
     if (!item || typeof item !== "object") return [];
     const title = "title" in item && typeof item.title === "string" ? item.title.trim() : "";
     const status = "status" in item ? item.status : undefined;
-    if (!title || (status !== "pending" && status !== "in_progress" && status !== "done")) {
+    if (
+      !title ||
+      (status !== "pending" &&
+        status !== "in_progress" &&
+        status !== "completed" &&
+        status !== "cancelled")
+    ) {
       return [];
     }
     return [{ title, status }];

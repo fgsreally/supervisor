@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import type { TSchema } from "typebox";
-import { getAgentHomeDir, readAgentHomeSystemPrompt } from "./index.js";
+import { getAgentHomeDir } from "./index.js";
 import { ContextAgent, ContextDb, ContextSession, ToolPolicy } from "../extension/runtime/index.js";
 import type { SupervisorDb } from "../db/db.js";
 import { listExtensionInfosInDirectories, type ExtensionEntryInfo } from "../extension/index.js";
@@ -382,7 +382,7 @@ export function loadAgentSessionResources(
     promptPaths,
   });
 
-  const systemMd = readAgentHomeSystemPrompt(agentHomeDir);
+  const systemMd = agent?.systemPrompt ?? "";
 
   return { skills, promptTemplates, systemMd };
 }
@@ -404,11 +404,7 @@ export async function resolveAgentTools(
   }
 
   const merged = new Map<string, AgentToolInfo>();
-  const disabledTools = new Set(
-    Array.isArray(agent.meta?.disabledTools)
-      ? agent.meta.disabledTools.filter((name): name is string => typeof name === "string")
-      : [],
-  );
+  const disabledTools = new Set(agent.disabledTools);
 
   for (const tool of createDefaultTools(cwd, agent.toolsPreset ?? "coding")) {
     merged.set(tool.name, {

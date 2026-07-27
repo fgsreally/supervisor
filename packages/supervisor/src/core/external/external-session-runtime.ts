@@ -182,7 +182,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
       await this.emit({ type: "message_start", message: { role: "assistant", content: "" } });
       try {
         const sideQuestionPrompt =
-          this.session.branchType === "btw" && this.session.systemPrompt
+          this.session.spawnType === "btw" && this.session.systemPrompt
             ? this.session.systemPrompt
             : "";
         const externalMessage = sideQuestionPrompt
@@ -286,7 +286,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     const streamingReply = this.assistantText.trim();
     return {
       id: this.id,
-      sessionId: session.session_id,
+      sessionId: session.external_session_id,
       cwd: session.cwd,
       status: session.status,
       model: { provider: this.agent.backendType, modelId: this.agent.name },

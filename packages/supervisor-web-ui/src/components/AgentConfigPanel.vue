@@ -114,16 +114,12 @@ async function toggleTool(name: string, enabled: boolean) {
   const current = agent.value;
   if (!current || savingTool.value) return;
   savingTool.value = name;
-  const disabled = new Set(
-    Array.isArray(current.meta.disabledTools)
-      ? current.meta.disabledTools.filter((item): item is string => typeof item === "string")
-      : [],
-  );
+  const disabled = new Set(current.disabledTools);
   if (enabled) disabled.add(name);
   else disabled.delete(name);
   try {
     await agentStore.updateAgent(props.agentId, {
-      meta: { disabledTools: [...disabled] },
+      disabledTools: [...disabled],
     });
     await agentStore.fetchAgentResources(props.agentId, getDefaultWorkspaceCwd());
     showUiMessage(enabled ? `已禁用 ${name}` : `已启用 ${name}`, "success");

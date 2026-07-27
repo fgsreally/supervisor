@@ -55,7 +55,7 @@
             :avatar="result.session.avatar"
             :agent-icon="
               result.session.agentId
-                ? agentStore.getAgentById(result.session.agentId)?.icon
+                ? agentStore.getAgentById(result.session.agentId)?.avatar
                 : null
             "
             :size="42"
@@ -304,16 +304,13 @@ const projectSettingsProject = computed(() =>
     : undefined,
 );
 const projectDescription = computed(() => {
-  const value = projectSettingsProject.value?.meta?.description;
-  return typeof value === "string" ? value : null;
+  return projectSettingsProject.value?.description ?? null;
 });
 const projectDescriptionStatus = computed(() => {
-  const value = projectSettingsProject.value?.meta?.descriptionStatus;
-  return typeof value === "string" ? value : null;
+  return projectDescription.value ? "ready" : null;
 });
 const projectDescriptionError = computed(() => {
-  const value = projectSettingsProject.value?.meta?.descriptionError;
-  return typeof value === "string" ? value : null;
+  return null;
 });
 const projectScripts = ref<ProjectScript[]>([]);
 
@@ -329,18 +326,9 @@ async function refreshProjectScripts(projectId: string | null) {
   }
 }
 
-watch(
-  () => [projectSettingsId.value, projectDescriptionStatus.value, projectDescribing.value] as const,
-  ([projectId, status, describing], _prev, onCleanup) => {
-    if (projectId) void refreshProjectScripts(projectId);
-    if (!projectId || describing || status !== "pending") return;
-    const timer = window.setInterval(() => {
-      void sessionStore.fetchProjects().catch(() => undefined);
-      void refreshProjectScripts(projectId);
-    }, 2500);
-    onCleanup(() => window.clearInterval(timer));
-  },
-);
+watch(projectSettingsId, (projectId) => {
+  if (projectId) void refreshProjectScripts(projectId);
+});
 
 const panelStyle = computed(() => {
   if (props.width == null) return undefined;

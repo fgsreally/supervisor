@@ -124,15 +124,14 @@ export class SQLiteSessionStorage implements SessionStorage {
   }
 
   async appendEntry(entry: SessionTreeEntry, options: AppendEntryOptions = {}): Promise<void> {
-    const { messageRole, searchText } = extractMessageSearchFields(entry);
-    const source = Object.hasOwn(options, "source")
-      ? (options.source ?? null)
-      : this.consumeQueuedSource(entry);
-    const origin = this.consumeQueuedOrigin(entry);
+    const { role, searchText } = extractMessageSearchFields(entry);
+    // Source labels are runtime diagnostics only and are intentionally not persisted.
+    if (!Object.hasOwn(options, "source")) this.consumeQueuedSource(entry);
+    const originMsg = this.consumeQueuedOrigin(entry);
     this.db.db
       .prepare(
-        `INSERT INTO messages (entry_id, session_id, parent_entry_id, type, payload, meta, is_old, source, origin, message_role, search_text, created_at)
-         VALUES (@entry_id, @session_id, @parent_entry_id, @type, @payload, @meta, @is_old, @source, @origin, @message_role, @search_text, @created_at)`,
+        `INSERT INTO messages (entry_id, session_id, parent_entry_id, type, payload, meta, is_old, origin_msg, role, search_text, created_at)
+         VALUES (@entry_id, @session_id, @parent_entry_id, @type, @payload, @meta, @is_old, @origin_msg, @role, @search_text, @created_at)`,
       )
       .run({
         entry_id: entry.id,
@@ -142,9 +141,8 @@ export class SQLiteSessionStorage implements SessionStorage {
         payload: JSON.stringify(entry),
         meta: JSON.stringify(options.meta ?? {}),
         is_old: options.isOld ? 1 : 0,
-        source,
-        origin,
-        message_role: messageRole,
+        origin_msg: originMsg,
+        role,
         search_text: searchText,
         created_at: resolveEntryCreatedAt(entry),
       });
@@ -217,8 +215,7 @@ export class SQLiteSessionStorage implements SessionStorage {
       entry: SessionTreeEntry;
       meta: Record<string, unknown>;
       isOld: boolean;
-      source: string | null;
-      origin: string | null;
+      originMsg: string | null;
       createdAt: number;
     }>
   > {
@@ -284,8 +281,7 @@ export function createRuntimeSessionStorage(
     db,
     session.id,
     session.parentId,
-    session.branchType,
-    session.contextLeafId,
+    session.spawnType,
     new Set(),
   );
 }
@@ -294,11 +290,10 @@ function createStorage(
   db: SupervisorDb,
   sessionId: number,
   parentId: number | null,
-  branchType: string | null,
-  contextLeafId: string | null,
+  spawnType: string | null,
   ancestors: Set<number>,
 ): SQLiteSessionStorage {
-  if (branchType === "btw" && parentId != null && !ancestors.has(sessionId)) {
+  if (spawnType === "btw" && parentId != null && !ancestors.has(sessionId)) {
     const nextAncestors = new Set(ancestors).add(sessionId);
     const parent = db.get(parentId);
     const parentStorage = parent
@@ -306,12 +301,11 @@ function createStorage(
           db,
           parent.id,
           parent.parent_id,
-          parent.branch_type,
-          parent.context_leaf_id ?? null,
+          parent.spawn_type,
           nextAncestors,
         )
       : new SQLiteSessionStorage(db, parentId);
-    return new BtwSessionStorage(db, sessionId, parentId, contextLeafId, parentStorage);
+    return new BtwSessionStorage(db, sessionId, parentId, null, parentStorage);
   }
   return new SQLiteSessionStorage(db, sessionId);
 }
@@ -320,16 +314,14 @@ export function rowToStoredMessage(row: MessageRow): {
   entry: SessionTreeEntry;
   meta: Record<string, unknown>;
   isOld: boolean;
-  source: string | null;
-  origin: string | null;
+  originMsg: string | null;
   createdAt: number;
 } {
   return {
     entry: JSON.parse(row.payload) as SessionTreeEntry,
     meta: JSON.parse(row.meta),
     isOld: row.is_old === 1,
-    source: row.source,
-    origin: row.origin,
+    originMsg: row.origin_msg,
     createdAt: row.created_at,
   };
 }
@@ -338,15 +330,13 @@ export function toSessionMessageResponse(stored: {
   entry: SessionTreeEntry;
   meta: Record<string, unknown>;
   isOld: boolean;
-  source: string | null;
-  origin: string | null;
+  originMsg: string | null;
   createdAt: number;
 }): SessionMessageResponse {
   return {
     ...stored.entry,
     isOld: stored.isOld,
-    source: stored.source,
-    origin: stored.origin,
+    originMsg: stored.originMsg,
     meta: stored.meta,
     // Payload timestamps win so previously-imported sessions still show real times.
     createdAt: resolveEntryCreatedAt(stored.entry, stored.createdAt),

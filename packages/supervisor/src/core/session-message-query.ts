@@ -9,7 +9,7 @@ const MAX_TURN_EXPAND = 60;
 
 function isTurnBoundary(row: MessageRow): boolean {
   if (row.type === "system" || row.type === "compaction") return true;
-  if (row.type === "message" && row.message_role === "user") return true;
+  if (row.type === "message" && row.role === "user") return true;
   return false;
 }
 

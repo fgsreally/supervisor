@@ -16,7 +16,12 @@ import { createDefaultTools } from "../utils/default-tools.js";
 import { resolveAssistantModelAuth, type UtilityModelAuth } from "../utils/utility-llm.js";
 import { loadPackagedAgentPrompt } from "../agent/builtin/prompts.js";
 
-export type WatsonTaskKind = "project-parse" | "worktree-cleanup" | "internal" | (string & {});
+export type WatsonTaskKind =
+  | "project-parse"
+  | "worktree-cleanup"
+  | "shadow"
+  | "internal"
+  | (string & {});
 
 export interface WatsonRunOptions {
   db: SupervisorDb;

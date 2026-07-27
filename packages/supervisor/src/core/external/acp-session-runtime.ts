@@ -456,7 +456,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     const messages = await this.storage.getEntries();
     return {
       id: this.id,
-      sessionId: session.session_id,
+      sessionId: session.external_session_id,
       cwd: session.cwd,
       status: session.status,
       model: { provider: "acp", modelId: this.agent.name },

@@ -54,8 +54,8 @@
               <span class="global-search-session-name">
                 {{ sessionName(hit.sessionId) }}
               </span>
-              <span class="global-search-role-badge" :class="roleBadgeClass(hit.messageRole)">
-                {{ roleLabel(hit.messageRole) }}
+              <span class="global-search-role-badge" :class="roleBadgeClass(hit.role)">
+                {{ roleLabel(hit.role) }}
               </span>
               <span v-if="hit.isOld" class="global-search-old-badge">已归档</span>
             </div>

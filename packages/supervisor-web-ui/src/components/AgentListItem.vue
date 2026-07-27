@@ -7,7 +7,7 @@
     <AgentAvatar
       :agent-id="agent.id"
       :agent-name="agent.name"
-      :icon="agent.icon"
+      :icon="agent.avatar"
       class="w-10 h-10 text-base"
     />
 

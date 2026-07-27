@@ -12,10 +12,9 @@ export interface UISession {
   id: string;
   workspaceId: string;
   parentId?: string | null;
-  branchType?: SessionBranchType;
+  spawnType?: SessionBranchType;
   creationMethod: SessionCreationMethod;
   showInSessionList: boolean;
-  contextLeafId?: string | null;
   agentId?: string | null;
   status: SessionStatus;
   lastActiveAt: string;
@@ -29,6 +28,8 @@ export interface UISession {
   /** Extension data only; core fields (title/avatar/pinned/...) live on the session itself. */
   meta: {
     description?: string;
+    /** Native Agent IDs authorized for the subagent extension in this session. */
+    subagentIds?: number[];
     [key: string]: unknown;
   };
   lastMessagePreview: string;
@@ -41,9 +42,7 @@ export interface UIProviderModel {
   id: string;
   name: string;
   contextWindow: number;
-  maxTokens: number;
-  supportsMultimodal: boolean;
-  tags: string[];
+  supportsVision: boolean;
 }
 
 export interface UIProvider {

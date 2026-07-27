@@ -1,22 +1,9 @@
 import type { SupervisorDb } from "../db/db.js";
 import type { Project } from "../types.js";
 import { commitAll } from "../utils/git.js";
-import {
-  normalizeProjectDescription,
-  PROJECT_DESCRIPTION_META,
-} from "./project-description.js";
+import { normalizeProjectDescription } from "./project-description.js";
 import type { ProjectScriptInput, ProjectScriptKind } from "./project-scripts.js";
 import { runWatsonTask } from "./watson.js";
-
-/** Project.meta keys for parse status (commands live in project_scripts). */
-export const PROJECT_RUNTIME_META = {
-  status: "runtimeStatus",
-  error: "runtimeError",
-  commitSha: "runtimeCommitSha",
-  updatedAt: "runtimeUpdatedAt",
-} as const;
-
-export type ProjectRuntimeStatus = "pending" | "ready" | "error" | "skipped" | "none";
 
 export interface ProjectRuntimeSpec {
   description: string;
@@ -137,19 +124,6 @@ export function parseProjectRuntimeSpec(rawInput: unknown): ProjectRuntimeSpec {
   return { description, scripts };
 }
 
-export function projectRuntimeMetaPatch(spec: ProjectRuntimeSpec): Record<string, unknown> {
-  const hasScripts = spec.scripts.length > 0;
-  return {
-    [PROJECT_DESCRIPTION_META.description]: spec.description,
-    [PROJECT_DESCRIPTION_META.status]: "ready",
-    [PROJECT_DESCRIPTION_META.error]: null,
-    [PROJECT_DESCRIPTION_META.updatedAt]: new Date().toISOString(),
-    [PROJECT_RUNTIME_META.status]: hasScripts ? "ready" : "none",
-    [PROJECT_RUNTIME_META.error]: null,
-    [PROJECT_RUNTIME_META.updatedAt]: new Date().toISOString(),
-  };
-}
-
 /** Run Watson project parse (structured via terminating submit_result tool). */
 export async function runProjectRuntimeParse(options: {
   db: SupervisorDb;
@@ -178,27 +152,14 @@ export async function applyProjectRuntimeParse(
   const project = db.getProject(projectId);
   if (!project) throw new Error(`Project ${projectId} not found`);
 
-  const commit = await commitAll(
+  await commitAll(
     project.cwd,
     "chore: make local service ports injectable for supervisor",
   );
 
   db.replaceProjectScripts(projectId, spec.scripts);
 
-  // Keep legacy columns in sync for older readers.
-  const install = spec.scripts.find((s) => s.kind === "install")?.command ?? null;
-  const start = spec.scripts.find((s) => s.kind === "start")?.command ?? null;
-  const destroy = spec.scripts.find((s) => s.kind === "destroy")?.command ?? null;
-  db.updateProjectCommands(projectId, {
-    installCommand: install,
-    startCommand: start,
-    destroyCommand: destroy,
-  });
-
-  db.updateProjectMeta(projectId, {
-    ...projectRuntimeMetaPatch(spec),
-    [PROJECT_RUNTIME_META.commitSha]: commit?.hash ?? null,
-  });
+  db.updateProject(projectId, { description: spec.description });
 }
 
-export { PROJECT_DESCRIPTION_META, normalizeProjectDescription };
+export { normalizeProjectDescription };

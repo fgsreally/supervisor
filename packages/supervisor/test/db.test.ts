@@ -14,8 +14,6 @@ function insertSession(
   return db.insert({
     project_id: null,
     parent_id: null,
-    session_id: null,
-    pid: null,
     status: "idle",
     cwd: "/",
     meta: "{}",
@@ -80,9 +78,9 @@ describe("supervisor: SupervisorDb", () => {
     expect(db.list({ parentId: root.id })).toHaveLength(1);
   });
 
-  it("filters sessions by main-list visibility", () => {
-    insertSession(db, { show_in_session_list: 1 });
-    insertSession(db, { show_in_session_list: 0 });
+  it("derives main-list visibility from spawn_type", () => {
+    insertSession(db, { spawn_type: null });
+    insertSession(db, { spawn_type: "subagent" });
     expect(db.list({ showInSessionList: true })).toHaveLength(1);
     expect(db.list({ showInSessionList: false })).toHaveLength(1);
   });
@@ -111,6 +109,68 @@ describe("supervisor: SupervisorDb", () => {
     expect(db.get(inst.id)!.meta).toEqual({ a: 1, b: 2 });
   });
 
+  it("migrates legacy task tables into session meta", () => {
+    const session = insertSession(db, {
+      meta: JSON.stringify({
+        tasks: ["goal/legacy.md"],
+        todos: [{ title: "from meta", status: "done" }],
+      }),
+    });
+    db.db.exec(`
+      ALTER TABLE sessions ADD COLUMN current_task_id INTEGER;
+      CREATE TABLE session_tasks (
+        id INTEGER PRIMARY KEY,
+        session_id INTEGER NOT NULL,
+        path TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        title TEXT,
+        status TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE TABLE session_todos (
+        id INTEGER PRIMARY KEY,
+        session_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        sort_order INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+    `);
+    db.db
+      .prepare(
+        "INSERT INTO session_tasks VALUES (1, ?, 'plan/current.md', 'plan', 'Current plan', 'planning', 1, 1)",
+      )
+      .run(session.id);
+    db.db
+      .prepare(
+        "INSERT INTO session_todos VALUES (1, ?, 'from table', 'completed', 0, 1, 1)",
+      )
+      .run(session.id);
+    db.db.prepare("UPDATE sessions SET current_task_id = 1 WHERE id = ?").run(session.id);
+    db.close();
+
+    db = new SupervisorDb(join(tmpDir, "test.db"));
+
+    expect(db.get(session.id)?.meta).toMatchObject({
+      currentTask: "plan/current.md",
+      tasks: [
+        { path: "goal/legacy.md", kind: "goal" },
+        { path: "plan/current.md", kind: "plan", title: "Current plan", status: "planning" },
+      ],
+      todos: [
+        { title: "from meta", status: "completed" },
+        { title: "from table", status: "completed" },
+      ],
+    });
+    expect(db.listSessionTasks(session.id)).toHaveLength(2);
+    expect(db.listSessionTodos(session.id)).toHaveLength(2);
+    expect(
+      db.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'session_tasks'").get(),
+    ).toBeUndefined();
+  });
+
   it("setMeta replaces meta entirely", () => {
     const inst = insertSession(db, {
       status: "idle",
@@ -136,9 +196,10 @@ describe("supervisor: SupervisorDb", () => {
       name: "Anthropic",
       api_type: "anthropic-messages",
     });
+    const model = db.insertModel({ provider_id: providerId, model_id: "test-model" });
     const agent = db.insertAgent({
       name: "test",
-      provider_id: providerId,
+      model_id: model.id,
     });
     expect(agent.meta).toEqual({});
     const merged = db.updateAgentMeta(agent.id, { key: "value" });
@@ -149,7 +210,6 @@ describe("supervisor: SupervisorDb", () => {
     const agent = db.insertAgent({
       name: "External",
       backend_type: "acp",
-      provider_id: null,
       meta: { external: { command: "example", args: ["acp"] } },
     });
     expect(agent.backendType).toBe("acp");
@@ -157,7 +217,7 @@ describe("supervisor: SupervisorDb", () => {
     expect(agent.homeDir).toBeNull();
   });
 
-  it("stores model context window and multimodal flags", () => {
+  it("stores model context window and vision capability", () => {
     const providerId = db.insertProvider({
       slug: "openai",
       name: "OpenAI",
@@ -167,10 +227,10 @@ describe("supervisor: SupervisorDb", () => {
       provider_id: providerId,
       model_id: "gpt-4",
       context_window: 200000,
-      supports_multimodal: 1,
+      supports_vision: 1,
     });
     expect(model.contextWindow).toBe(200000);
-    expect(model.supportsMultimodal).toBe(true);
+    expect(model.supportsVision).toBe(true);
   });
 
   it("refuses to delete a model that is bound to an agent", () => {
@@ -179,16 +239,48 @@ describe("supervisor: SupervisorDb", () => {
       name: "Anthropic",
       api_type: "anthropic-messages",
     });
-    db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6" });
+    const model = db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6" });
     db.insertAgent({
       name: "Coding Agent",
-      provider_id: providerId,
-      model_id: "claude-sonnet-4-6",
+      model_id: model.id,
     });
 
     expect(() => db.deleteModel(providerId, "claude-sonnet-4-6")).toThrow(
       'Model "claude-sonnet-4-6" is in use by agent(s): Coding Agent',
     );
     expect(db.listModelsByProvider(providerId)).toHaveLength(1);
+  });
+
+  it("uses the target columns for converged tables", () => {
+    const names = (table: string) =>
+      (db.db.pragma(`table_info(${table})`) as Array<{ name: string }>).map((column) => column.name);
+    expect(names("models")).toEqual([
+      "id", "provider_id", "model_id", "name", "context_window", "supports_vision",
+      "created_at", "updated_at",
+    ]);
+    expect(names("agents")).toEqual([
+      "id", "name", "description", "avatar", "backend_type", "model_id", "system_prompt",
+      "tools_preset", "home_dir", "is_builtin", "external_config", "disabled_tools", "meta",
+      "created_at", "updated_at",
+    ]);
+    expect(names("projects")).toEqual([
+      "id", "name", "description", "cwd", "home_dir", "created_at", "updated_at",
+    ]);
+    expect(names("project_scripts")).toEqual([
+      "id", "project_id", "kind", "name", "command", "created_at", "updated_at",
+    ]);
+    expect(names("sessions")).toEqual([
+      "id", "project_id", "parent_id", "status", "thinking_level", "cwd", "leaf_id",
+      "agent_id", "spawn_type", "created_by", "title", "system_prompt", "avatar", "is_builtin",
+      "pinned", "muted", "unread", "external_session_id", "error_msg", "stage",
+      "shadow_enabled", "created_at", "last_active_at", "meta",
+    ]);
+    expect(names("messages")).toEqual([
+      "id", "entry_id", "session_id", "parent_entry_id", "type", "payload", "meta", "is_old",
+      "origin_msg", "role", "search_text", "created_at",
+    ]);
+    expect(names("session_input_queue")).toEqual([
+      "id", "session_id", "message", "level", "origin_msg", "images", "enqueued_at",
+    ]);
   });
 });

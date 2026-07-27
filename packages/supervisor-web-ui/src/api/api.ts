@@ -17,6 +17,7 @@ export type SessionStatus =
   | "blocked"
   | "idle"
   | "finish"
+  | "finished"
   | "error"
   | "stopped";
 export type ToolsPreset = "coding" | "readonly" | "none";
@@ -74,14 +75,9 @@ export interface Workspace {
 export interface Project {
   id: string;
   name: string;
+  description: string | null;
   cwd: string;
-  workDir: string;
-  defaultBranch: string;
-  installCommand?: string | null;
-  startCommand?: string | null;
-  destroyCommand?: string | null;
-  meta: Record<string, unknown>;
-  origin?: string | null;
+  homeDir: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -98,16 +94,14 @@ export interface Session {
   id: string;
   projectId: string | null;
   parentId: string | null;
-  sessionId: string | null;
-  pid: number | null;
   status: SessionStatus;
   cwd: string;
   leafId: string | null;
   agentId: string | null;
-  branchType: SessionBranchType | null;
+  spawnType: SessionBranchType | null;
   creationMethod: SessionCreationMethod;
+  /** Derived from spawnType; not persisted. */
   showInSessionList: boolean;
-  contextLeafId: string | null;
   createdAt: string; // ISO date
   lastActiveAt: string; // ISO date
   /** Session title (was meta.name). */
@@ -129,10 +123,6 @@ export interface Session {
   currentTaskId?: number | null;
   meta: Record<string, unknown>;
   currentTask: string | null;
-  gitSessionBranch?: string | null;
-  gitWorktreeEnabled?: boolean;
-  gitMergeError?: string | null;
-  gitLastCommit?: { hash: string; message: string } | null;
   /** UI-specific: last message preview */
   lastMessagePreview?: string;
 }
@@ -155,12 +145,21 @@ export interface Agent {
   id: string;
   name: string;
   description: string | null;
-  icon: string | null;
+  avatar: string | null;
   providerId: string | null;
   backendType: "native" | "codex" | "claude" | "kimi" | "acp";
   modelId: string | null;
+  systemPrompt: string | null;
   toolsPreset: ToolsPreset | null;
   homeDir: string | null;
+  isBuiltin: boolean;
+  externalConfig: {
+    command: string;
+    args?: string[];
+    env?: Record<string, string>;
+    permissionPolicy?: "allow_once" | "reject_once";
+  } | null;
+  disabledTools: string[];
   meta: Record<string, unknown>;
   available: boolean;
   executablePath: string | null;
@@ -176,15 +175,23 @@ export type ProviderApiType = "anthropic-messages" | "openai-compatible";
 
 /** Model definition */
 export interface Model {
+  id: string;
   providerId: string;
   modelId: string;
   name: string | null;
   contextWindow: number;
-  maxTokens: number;
-  supportsMultimodal: boolean;
-  tags: string[];
+  supportsVision: boolean;
   createdAt: string;
   updatedAt: string;
+}
+
+type RawModel = Omit<Model, "id" | "providerId"> & {
+  id: number | string;
+  providerId: number | string;
+};
+
+function mapModel(model: RawModel): Model {
+  return { ...model, id: String(model.id), providerId: String(model.providerId) };
 }
 
 /** Provider definition (apiKey is always null in responses) */
@@ -294,8 +301,7 @@ export interface SessionTreeEntry {
   isOld: boolean;
   /** User/orchestrator extensions only */
   meta: Record<string, unknown>;
-  origin?: string | null;
-  source?: string | null;
+  originMsg?: string | null;
   createdAt: number;
   // For type='system'
   content?: string;
@@ -321,7 +327,7 @@ export interface SessionTreeEntry {
 export interface MessageSearchHit {
   messageId: string;
   sessionId: string;
-  messageRole: string | null;
+  role: string | null;
   searchText: string | null;
   isOld: boolean;
   createdAt: number;
@@ -438,7 +444,7 @@ export interface CreateSessionRequest {
   cwd?: string;
   meta?: Record<string, unknown>;
   agentId?: string | null;
-  branchType?: SessionBranchType | null;
+  spawnType?: SessionBranchType | null;
   /** System prompt injected on each turn */
   systemPrompt?: string;
   /** Optional first user message */
@@ -464,39 +470,41 @@ export interface ExternalSessionCandidate {
 
 export interface CreateProjectRequest {
   name?: string;
+  description?: string | null;
   cwd: string;
-  meta?: Record<string, unknown>;
 }
 
 export interface UpdateProjectRequest {
   name?: string;
-  meta?: Record<string, unknown>;
+  description?: string | null;
 }
 
 export interface CreateAgentRequest {
   id?: string;
   name: string;
   description?: string;
-  icon?: string | null;
+  avatar?: string | null;
   backendType?: "native" | "codex" | "claude" | "kimi" | "acp";
-  providerId?: string;
   modelId?: string;
   toolsPreset?: ToolsPreset;
   homeDir?: string;
+  externalConfig?: Agent["externalConfig"];
+  disabledTools?: string[];
   meta?: Record<string, unknown>;
-  /** Initial content for SYSTEM.md */
-  systemMd?: string;
+  systemPrompt?: string;
 }
 
 export interface UpdateAgentRequest {
   name?: string;
   description?: string;
-  icon?: string | null;
+  avatar?: string | null;
   backendType?: "native" | "codex" | "claude" | "kimi" | "acp";
-  providerId?: string | null;
   modelId?: string | null;
+  systemPrompt?: string | null;
   toolsPreset?: ToolsPreset;
   homeDir?: string;
+  externalConfig?: Agent["externalConfig"];
+  disabledTools?: string[];
   meta?: Record<string, unknown>;
 }
 
@@ -504,17 +512,13 @@ export interface CreateModelRequest {
   modelId: string;
   name?: string;
   contextWindow?: number;
-  maxTokens?: number;
-  supportsMultimodal?: boolean;
-  tags?: string[];
+  supportsVision?: boolean;
 }
 
 export interface UpdateModelRequest {
   name?: string;
   contextWindow?: number;
-  maxTokens?: number;
-  supportsMultimodal?: boolean;
-  tags?: string[];
+  supportsVision?: boolean;
 }
 
 export interface UpdateProviderRequest {
@@ -601,10 +605,9 @@ function mapProvider(raw: RawProvider): Provider {
 interface RawProject {
   id: number;
   name: string;
+  description: string | null;
   cwd: string;
-  workDir: string;
-  defaultBranch: string;
-  meta: Record<string, unknown>;
+  homeDir: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -617,16 +620,12 @@ interface RawSession {
   id: number;
   projectId: number | null;
   parentId: number | null;
-  sessionId: string | null;
-  pid: number | null;
   status: SessionStatus;
   cwd: string;
   leafId: string | null;
   agentId: number | null;
-  branchType: SessionBranchType | null;
+  spawnType: SessionBranchType | null;
   creationMethod?: SessionCreationMethod;
-  showInSessionList?: boolean;
-  contextLeafId?: string | null;
   createdAt: string;
   lastActiveAt: string;
   title?: string | null;
@@ -655,11 +654,9 @@ function mapSession(raw: RawSession): Session {
     agentId: raw.agentId === null ? null : String(raw.agentId),
     creationMethod:
       raw.creationMethod ??
-      (raw.branchType === "subagent" ? "spawn_agent" : (raw.branchType ?? "user")),
+      (raw.spawnType === "subagent" ? "spawn_agent" : (raw.spawnType ?? "user")),
     showInSessionList:
-      raw.showInSessionList ??
-      (raw.parentId === null || raw.branchType === "fork" || raw.branchType === "clone"),
-    contextLeafId: raw.contextLeafId ?? null,
+      raw.spawnType === null || raw.spawnType === "fork" || raw.spawnType === "clone",
     currentTask: raw.currentTask ?? null,
   };
 }
@@ -881,7 +878,6 @@ export interface HomeTask {
   parentId: number | null;
   sessionId: number | null;
   error: string | null;
-  meta: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -1000,18 +996,6 @@ export async function getSessionChildren(id: string): Promise<Session[]> {
   return sessions.map(mapSession);
 }
 
-export interface SessionMember {
-  id: number;
-  sessionId: number;
-  agentId: number;
-  role: string;
-  tags: string[];
-}
-
-export function getSessionMembers(id: string): Promise<SessionMember[]> {
-  return fetchJson<SessionMember[]>(`/sessions/${id}/members`);
-}
-
 export interface WorktreeCommit {
   hash: string;
   shortHash: string;
@@ -1024,11 +1008,13 @@ export function getSessionCommits(id: string): Promise<WorktreeCommit[]> {
   return fetchJson<WorktreeCommit[]>(`/sessions/${id}/commits`);
 }
 
-export function updateSessionMembers(
+export function setSessionSubagents(
   id: string,
-  value: { shadowAgentId: string | null; spawnedAgentIds: string[] },
-): Promise<SessionMember[]> {
-  return putJson<SessionMember[]>(`/sessions/${id}/members`, value);
+  agentIds: string[],
+): Promise<{ agentIds: number[] }> {
+  return putJson<{ agentIds: number[] }>(`/sessions/${id}/subagents`, {
+    agentIds: agentIds.map(Number).filter(Number.isInteger),
+  });
 }
 
 /** Create/Spawn a new session. */
@@ -1637,9 +1623,10 @@ export function subscribeSessionEvents(
 
 // ============ Agent API ============
 
-type RawAgent = Omit<Agent, "id" | "providerId"> & {
+type RawAgent = Omit<Agent, "id" | "providerId" | "modelId"> & {
   id: number | string;
   providerId: number | string | null;
+  modelId: number | string | null;
 };
 
 function mapAgent(agent: RawAgent): Agent {
@@ -1647,6 +1634,7 @@ function mapAgent(agent: RawAgent): Agent {
     ...agent,
     id: String(agent.id),
     providerId: agent.providerId == null ? null : String(agent.providerId),
+    modelId: agent.modelId == null ? null : String(agent.modelId),
   };
 }
 
@@ -1666,19 +1654,19 @@ export async function getAgent(id: string): Promise<Agent> {
 
 /** Create a new agent. */
 export async function createAgent(options: CreateAgentRequest): Promise<Agent> {
-  const providerId = options.providerId ? Number.parseInt(options.providerId, 10) : null;
-  return mapAgent(await postJson<RawAgent>("/agents", { ...options, providerId }));
+  const modelId = options.modelId ? Number.parseInt(options.modelId, 10) : null;
+  return mapAgent(await postJson<RawAgent>("/agents", { ...options, modelId }));
 }
 
 /** Update an agent. */
 export async function updateAgent(id: string, patch: UpdateAgentRequest): Promise<Agent> {
-  const providerId =
-    patch.providerId === undefined
+  const modelId =
+    patch.modelId === undefined
       ? undefined
-      : patch.providerId === null
+      : patch.modelId === null
         ? null
-        : Number.parseInt(String(patch.providerId), 10);
-  return mapAgent(await patchJson<RawAgent>(`/agents/${id}`, { ...patch, providerId }));
+        : Number.parseInt(String(patch.modelId), 10);
+  return mapAgent(await patchJson<RawAgent>(`/agents/${id}`, { ...patch, modelId }));
 }
 
 /** Delete an agent. */
@@ -1743,12 +1731,12 @@ export async function deleteProvider(id: string): Promise<{ ok: boolean }> {
 
 /** List models for a provider. */
 export async function listProviderModels(id: string): Promise<Model[]> {
-  return fetchJson<Model[]>(`/providers/${id}/models`);
+  return (await fetchJson<RawModel[]>(`/providers/${id}/models`)).map(mapModel);
 }
 
 /** Create a new model for a provider. */
 export async function createProviderModel(id: string, model: CreateModelRequest): Promise<Model> {
-  return postJson<Model>(`/providers/${id}/models`, model);
+  return mapModel(await postJson<RawModel>(`/providers/${id}/models`, model));
 }
 
 /** Update a model for a provider. */
@@ -1757,7 +1745,9 @@ export async function updateProviderModel(
   modelId: string,
   patch: UpdateModelRequest,
 ): Promise<Model> {
-  return patchJson<Model>(`/providers/${providerId}/models/${modelId}`, patch);
+  return mapModel(
+    await patchJson<RawModel>(`/providers/${providerId}/models/${modelId}`, patch),
+  );
 }
 
 /** Delete a model from a provider. */

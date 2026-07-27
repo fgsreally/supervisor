@@ -35,7 +35,8 @@ export function readSupervisorLocalConfig(): {
   const path = localConfigPath();
   if (!path) return null;
   try {
-    const config = JSON.parse(readFileSync(path, "utf-8")) as SupervisorLocalConfig;
+    const raw = readFileSync(path, "utf-8").replace(/^\uFEFF/, "");
+    const config = JSON.parse(raw) as SupervisorLocalConfig;
     return { config, configDir: dirname(path) };
   } catch {
     return null;

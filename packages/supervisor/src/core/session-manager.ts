@@ -20,8 +20,6 @@ import {
 import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import {
   getAgentHomeDir,
-  readAgentHomeSystemPrompt,
-  writeAgentHomeSystemPrompt,
 } from "../agent/index.js";
 import { getDefaultCwd } from "../config/default-cwd.js";
 import { initializeResourceCatalog } from "../resources/catalog-sync.js";
@@ -52,8 +50,10 @@ import {
   resolveAgentTools,
   skillsToResourceInfo,
 } from "../agent/resource-resolver.js";
-import { assertAgentUserSpawnable, isAgentUserSpawnable } from "../agent/index.js";
-import { findPackagedAgentId } from "../agent/index.js";
+import {
+  findPackagedAgentId,
+  loadPackagedAgentPrompt,
+} from "../agent/index.js";
 import { attachHomeTaskSessionSync } from "./home-task-sync.js";
 import {
   generateTaskDecomposition,
@@ -62,8 +62,6 @@ import {
 } from "../utils/utility-llm.js";
 import {
   applyProjectRuntimeParse,
-  PROJECT_DESCRIPTION_META,
-  PROJECT_RUNTIME_META,
   runProjectRuntimeParse,
 } from "./project-runtime.js";
 import {
@@ -181,8 +179,6 @@ import type {
   CreateCheckpointOptions,
   CreateModelOptions,
   CreateSessionOptions,
-  Member,
-  MemberAgent,
   MessageSearchHit,
   Provider,
   Session,
@@ -280,11 +276,9 @@ function toSessionTodo(row: SessionTodoRow): SessionTodoItem {
   };
 }
 
-/** Convert a SessionRow to the Session type, resolving currentTask via session_tasks. */
-function rowToSession(row: SessionRow, db?: Pick<SupervisorDb, "getSessionTask">): Session {
-  const currentTaskPath =
-    row.current_task_id != null ? (db?.getSessionTask(row.current_task_id)?.path ?? null) : null;
-  return mapRowToSession(row, { currentTaskPath });
+/** Convert a SessionRow to the Session type, reading currentTask from meta. */
+function rowToSession(row: SessionRow, _db?: unknown): Session {
+  return mapRowToSession(row);
 }
 
 /** Seed session avatar.icon from the linked agent when the client did not set one. */
@@ -433,11 +427,34 @@ export class SessionManager {
 
   private getDisabledAgentTools(agentId: number | null): Set<string> {
     const agent = agentId == null ? undefined : this.db.getAgent(agentId);
-    return new Set(
-      Array.isArray(agent?.meta?.disabledTools)
-        ? agent.meta.disabledTools.filter((name): name is string => typeof name === "string")
-        : [],
+    return new Set(agent?.disabledTools ?? []);
+  }
+
+  /** BTW is always read-only, regardless of the parent agent's toolsPreset. */
+  private resolveToolsPresetForSession(
+    session: Pick<Session, "spawnType">,
+    fallback: "coding" | "readonly" | "none" = "coding",
+  ): "coding" | "readonly" | "none" {
+    return session.spawnType === "btw" ? "readonly" : fallback;
+  }
+
+  /** True when this BTW session has not yet recorded its own user message. */
+  private async isFirstBtwUserPrompt(sessionId: number): Promise<boolean> {
+    const storage = new SQLiteSessionStorage(this.db, sessionId);
+    const entries = await storage.getEntries();
+    return !entries.some(
+      (entry) =>
+        entry.type === "message" &&
+        !!entry.message &&
+        typeof entry.message === "object" &&
+        "role" in entry.message &&
+        (entry.message as { role?: string }).role === "user",
     );
+  }
+
+  private formatBtwFirstUserPrompt(question: string): string {
+    const guide = loadPackagedAgentPrompt("btw").trim();
+    return `${guide}\n\n---\n\n用户侧问：\n${question.trim()}`;
   }
 
   async resolveAgentResources(agentId: number, cwd: string) {
@@ -489,7 +506,7 @@ export class SessionManager {
   private getProjectDirForSession(session: Session): string {
     const project = this.db.getProject(this.requireProjectId(session));
     if (!project) throw new Error(`Project ${session.projectId} not found`);
-    return project.workDir;
+    return project.homeDir;
   }
 
   private buildSystemPrompt(sessionOverride: string, systemMd: string, cwd: string): string {
@@ -502,8 +519,6 @@ export class SessionManager {
     this.runtimes.set(sessionId, runtime);
     const existing = this.db.get(sessionId);
     this.turnTrackers.set(sessionId, new TurnFileTracker(existing?.cwd ?? getDefaultCwd(), 0));
-    this.db.updateSessionId(sessionId, String(sessionId));
-    this.db.updatePid(sessionId, process.pid);
 
     runtime.subscribe((event: AgentHarnessEvent) => {
       if (event.type === "agent_start") {
@@ -716,11 +731,14 @@ export class SessionManager {
     if (agent?.backendType === "native" && (!agent.providerId || !agent.modelId)) {
       throw new Error(`Agent ${agent.id} has no model configured`);
     }
-    const toolsPreset = agent?.toolsPreset ?? "coding";
-    const model =
-      agent?.backendType === "native" && agent.providerId && agent.modelId
-        ? resolveModelWithProviderOverrides(this.db, agent.providerId, agent.modelId)
-        : getModel(DEFAULT_PROVIDER, DEFAULT_MODEL_ID as never);
+    const toolsPreset = this.resolveToolsPresetForSession(
+      session,
+      agent?.toolsPreset ?? "coding",
+    );
+    const boundModel = agent?.modelId ? this.db.getModelById(agent.modelId) : undefined;
+    const model = boundModel
+      ? resolveModelWithProviderOverrides(this.db, boundModel.providerId, boundModel.modelId)
+      : getModel(DEFAULT_PROVIDER, DEFAULT_MODEL_ID as never);
     if (!model) {
       throw new Error(`Model not found for session ${id}`);
     }
@@ -814,34 +832,24 @@ export class SessionManager {
 
   /** Create a DB record only, no embedded agent. */
   create(options: CreateSessionOptions = {}): Session {
-    const branchType = options.parentId == null ? null : (options.branchType ?? "subagent");
+    const spawnType = options.parentId == null ? null : (options.spawnType ?? "subagent");
     const creationMethod =
       options.creationMethod ??
-      (branchType === "subagent" ? "spawn_agent" : branchType === null ? "user" : branchType);
-    const showInSessionList =
-      options.showInSessionList ??
-      (options.parentId == null ||
-        creationMethod === "spawn_agent" ||
-        branchType === "fork" ||
-        branchType === "clone");
+      (spawnType === "subagent" ? "spawn_agent" : spawnType === null ? "user" : spawnType);
     const agent = options.agentId ? this.db.getAgent(options.agentId) : undefined;
     this.assertNativeAgentForChildSession(options.parentId, agent, "创建子会话");
     const avatar = withDefaultSessionAvatar(options.avatar ?? null, agent);
     const row = this.db.insert({
       parent_id: options.parentId ?? null,
       project_id: this.resolveProjectId(options),
-      session_id: null,
-      pid: null,
       // DB-only create: idle until spawn/restore attaches a runtime.
       // `initializing` is reserved for in-flight spawn finalize.
       status: "idle",
       thinking_level: "none",
       cwd: options.cwd ?? getDefaultCwd(),
       agent_id: options.agentId ?? null,
-      branch_type: branchType,
+      spawn_type: spawnType,
       created_by: creationMethod,
-      show_in_session_list: showInSessionList ? 1 : 0,
-      context_leaf_id: branchType === "btw" ? (options.contextLeafId ?? null) : null,
       meta: JSON.stringify(options.meta ?? {}),
       title: options.title ?? null,
       system_prompt: options.systemPrompt ?? null,
@@ -869,7 +877,6 @@ export class SessionManager {
       throw new Error(`Agent ${options.agentId} not found`);
     }
     if (agentInDb) {
-      assertAgentUserSpawnable(agentInDb, options.agentId);
       this.assertNativeAgentForChildSession(options.parentId, agentInDb, "创建子会话");
       const availability = externalAgentAvailability(agentInDb);
       if (!availability.available) {
@@ -881,7 +888,7 @@ export class SessionManager {
 
     const session = this.create({
       ...options,
-      branchType: options.parentId ? "subagent" : null,
+      spawnType: options.parentId ? "subagent" : null,
     });
     // Mark in-flight spawn so UI/prompt can wait; create() itself stays idle.
     this.db.updateStatus(session.id, "initializing");
@@ -1007,14 +1014,15 @@ export class SessionManager {
       return rowToSession(this.db.get(activeSession.id)!, this.db);
     }
 
-    const modelId = options.model ?? agentInDb?.modelId ?? DEFAULT_MODEL_ID;
+    const boundModel = agentInDb?.modelId ? this.db.getModelById(agentInDb.modelId) : undefined;
+    const modelId = options.model ?? boundModel?.modelId ?? DEFAULT_MODEL_ID;
     const fallbackProvider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
     let model =
       options.providerId != null
         ? resolveModelWithProviderOverrides(this.db, options.providerId, modelId)
         : undefined;
-    if (!model && agentInDb?.providerId != null) {
-      model = resolveModelWithProviderOverrides(this.db, agentInDb.providerId, modelId);
+    if (!model && boundModel) {
+      model = resolveModelWithProviderOverrides(this.db, boundModel.providerId, modelId);
     }
     if (!model) {
       model = getModel(fallbackProvider, modelId as never);
@@ -1029,8 +1037,12 @@ export class SessionManager {
     const harnessSession = new AgentSession(storage);
     const env = new NodeExecutionEnv({ cwd: activeSession.cwd });
 
-    // Use agent's toolsPreset if available, otherwise use options or default
-    const toolsPreset = options.toolsPreset ?? agentInDb?.toolsPreset ?? "coding";
+    // Use agent's toolsPreset if available, otherwise use options or default.
+    // BTW always forces readonly (no write/edit).
+    const toolsPreset = this.resolveToolsPresetForSession(
+      activeSession,
+      options.toolsPreset ?? agentInDb?.toolsPreset ?? "coding",
+    );
     await this.ensureResourceCatalog();
     const resource = new AgentResource({
       sessionId: activeSession.id,
@@ -1201,8 +1213,16 @@ export class SessionManager {
       const runtime = await timedSessionStep(id, "getOrRestoreRuntime", () =>
         this.getOrRestoreRuntime(id),
       );
+
+      let promptMessage = message;
+      let promptOrigin = origin;
+      if (session.spawn_type === "btw" && (await this.isFirstBtwUserPrompt(id))) {
+        promptMessage = this.formatBtwFirstUserPrompt(message);
+        promptOrigin = origin ?? message;
+      }
+
       await timedSessionStep(id, "runtime.prompt", () =>
-        runtime.prompt(message, images, source, origin),
+        runtime.prompt(promptMessage, images, source, promptOrigin),
       );
     } finally {
       donePrompt();
@@ -1274,7 +1294,6 @@ export class SessionManager {
     }
     if (child.status === "finish" || child.status === "finished") {
       this.db.updateStatus(childSessionId, "idle");
-      this.db.updateSessionListVisibility(childSessionId, true);
     }
 
     const submit = () =>
@@ -1548,7 +1567,7 @@ export class SessionManager {
         `SELECT m.entry_id, m.parent_entry_id
          FROM sessions s
          JOIN messages m ON m.entry_id = s.leaf_id AND m.session_id = s.id
-         WHERE s.id = ? AND m.message_role = 'user'`,
+         WHERE s.id = ? AND m.role = 'user'`,
       )
       .get(id) as { entry_id: string; parent_entry_id: string | null } | undefined;
     if (!leaf) return { retracted: false };
@@ -1662,7 +1681,6 @@ export class SessionManager {
     if (current.status !== "error") {
       this.db.updateStatus(id, "finish");
       if (current.created_by === "spawn_agent" && current.parent_id != null) {
-        this.db.updateSessionListVisibility(id, false);
       }
     }
   }
@@ -1672,7 +1690,6 @@ export class SessionManager {
     if (!session) throw new Error(`Session ${id} not found`);
     if (session.status === "finish" || session.status === "finished") {
       if (session.creationMethod === "spawn_agent" && session.parentId != null) {
-        this.db.updateSessionListVisibility(id, false);
         session = rowToSession(this.db.get(id)!, this.db);
       }
       return session;
@@ -1717,7 +1734,6 @@ export class SessionManager {
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.db.updateSessionGitState(id, { mergeError: message });
       // Operational failure (git/merge) — toast to UI, do NOT mark session as LLM error.
       this.reportOperationalError(id, message);
       throw new Error(message);
@@ -1733,7 +1749,6 @@ export class SessionManager {
       this.sessionToolConfigs.delete(id);
     }
     this.db.updateStatus(id, "finish");
-    if (isSpawnedSubagent) this.db.updateSessionListVisibility(id, false);
     return rowToSession(this.db.get(id)!, this.db);
   }
 
@@ -1757,34 +1772,23 @@ export class SessionManager {
     return this.db.getProject(id);
   }
 
-  createProject(options: { name?: string; cwd: string; meta?: Record<string, unknown> }) {
+  createProject(options: { name?: string; description?: string | null; cwd: string }) {
     ensureGitRepositorySync(options.cwd);
     const project = this.db.insertProject({
       ...options,
-      meta: {
-        ...(options.meta ?? {}),
-        [PROJECT_DESCRIPTION_META.status]: "pending",
-        [PROJECT_RUNTIME_META.status]: "pending",
-      },
     });
     const created = this.db.getProject(project.id)!;
     void this.generateProjectDescription(created.id).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      try {
-        this.db.updateProjectMeta(created.id, {
-          [PROJECT_DESCRIPTION_META.status]: "error",
-          [PROJECT_DESCRIPTION_META.error]: message,
-          [PROJECT_RUNTIME_META.status]: "error",
-          [PROJECT_RUNTIME_META.error]: message,
-        });
-      } catch {
-        // project may have been deleted
-      }
+      sessionLog(0, "error", `Project parse failed [${created.id}]: ${message}`, [
+        "system",
+        "project",
+      ]);
     });
     return created;
   }
 
-  updateProject(id: number, patch: { name?: string; meta?: Record<string, unknown> }) {
+  updateProject(id: number, patch: { name?: string; description?: string | null }) {
     return this.db.updateProject(id, patch);
   }
 
@@ -1809,21 +1813,8 @@ export class SessionManager {
     const ref = resolveAssistantModelRef();
     if (!ref) {
       const message = "未配置「助手模型」";
-      this.db.updateProjectMeta(projectId, {
-        [PROJECT_DESCRIPTION_META.status]: "skipped",
-        [PROJECT_DESCRIPTION_META.error]: message,
-        [PROJECT_RUNTIME_META.status]: "skipped",
-        [PROJECT_RUNTIME_META.error]: message,
-      });
       return { description: null, status: "skipped", error: message };
     }
-
-    this.db.updateProjectMeta(projectId, {
-      [PROJECT_DESCRIPTION_META.status]: "pending",
-      [PROJECT_DESCRIPTION_META.error]: null,
-      [PROJECT_RUNTIME_META.status]: "pending",
-      [PROJECT_RUNTIME_META.error]: null,
-    });
 
     try {
       const spec = await runProjectRuntimeParse({ db: this.db, project });
@@ -1831,12 +1822,10 @@ export class SessionManager {
       return { description: spec.description, status: "ready" };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.db.updateProjectMeta(projectId, {
-        [PROJECT_DESCRIPTION_META.status]: "error",
-        [PROJECT_DESCRIPTION_META.error]: message,
-        [PROJECT_RUNTIME_META.status]: "error",
-        [PROJECT_RUNTIME_META.error]: message,
-      });
+      sessionLog(0, "error", `Project parse failed [${projectId}]: ${message}`, [
+        "system",
+        "project",
+      ]);
       throw error;
     }
   }
@@ -1884,7 +1873,6 @@ export class SessionManager {
     const imported = await loadExternalSession(options.backend, options.externalSessionId);
     const agent = this.db.listAgents().find((item) => item.backendType === options.backend);
     if (!agent) throw new Error(`${options.backend} Agent is not configured`);
-    assertAgentUserSpawnable(agent, agent.id);
 
     const normalizedCwd = resolve(imported.candidate.cwd);
     const comparableCwd = (value: string) =>
@@ -1952,10 +1940,10 @@ export class SessionManager {
   private enrichAgentWithSystemMd(agent: Agent): AgentWithSystemMd {
     const availability = externalAgentAvailability(agent);
     if (agent.backendType !== "native") {
-      return { ...agent, homeDir: null, systemMd: "", ...availability };
+      return { ...agent, homeDir: null, systemMd: agent.systemPrompt ?? "", ...availability };
     }
     const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
-    return { ...agent, homeDir, systemMd: readAgentHomeSystemPrompt(homeDir), ...availability };
+    return { ...agent, homeDir, systemMd: agent.systemPrompt ?? "", ...availability };
   }
 
   detectExternalAgents(): AgentWithSystemMd[] {
@@ -1966,11 +1954,10 @@ export class SessionManager {
     row: Parameters<SupervisorDb["insertAgent"]>[0],
     options?: { systemMd?: string },
   ): AgentWithSystemMd {
-    const agent = this.db.insertAgent(row);
-    if (agent.backendType === "native" && options?.systemMd !== undefined) {
-      const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
-      writeAgentHomeSystemPrompt(homeDir, options.systemMd);
-    }
+    const agent = this.db.insertAgent({
+      ...row,
+      system_prompt: options?.systemMd ?? row.system_prompt,
+    });
     ensureBuiltinExtensionResources(this.db);
     ensureAgentBuiltinExtensionBindings(this.db, agent.id);
     return this.enrichAgentWithSystemMd(agent);
@@ -2053,65 +2040,34 @@ export class SessionManager {
     if (agent.backendType !== "native") {
       throw new Error("External agents manage their own system instructions");
     }
-    const homeDir = agent.homeDir ?? getAgentHomeDir(id);
-    writeAgentHomeSystemPrompt(homeDir, content);
-    return this.enrichAgentWithSystemMd(agent);
+    return this.enrichAgentWithSystemMd(
+      this.db.updateAgent(id, { system_prompt: content }),
+    );
   }
 
   getAgentSystemMd(id: number): string {
     const agent = this.db.getAgent(id);
     if (!agent) throw new Error(`Agent ${id} not found`);
     if (agent.backendType !== "native") return "";
-    const homeDir = agent.homeDir ?? getAgentHomeDir(id);
-    return readAgentHomeSystemPrompt(homeDir);
+    return agent.systemPrompt ?? "";
   }
 
   deleteAgent(id: number) {
     this.db.deleteAgent(id);
   }
 
-  upsertMember(
-    sessionId: number,
-    agentId: number,
-    options?: { role?: string; tags?: string[] | string },
-  ): Member {
-    return this.db.upsertMember({
-      session_id: sessionId,
-      agent_id: agentId,
-      role: options?.role,
-      tags: options?.tags,
-    });
-  }
-
-  listMembers(sessionId: number): Member[] {
-    return this.db.listMembers(sessionId);
-  }
-
-  replaceSessionAgentMembers(
-    sessionId: number,
-    shadowAgentId: number | null,
-    spawnedAgentIds: number[],
-  ): Member[] {
+  setSessionSubagentIds(sessionId: number, agentIds: number[]): number[] {
     if (!this.db.get(sessionId)) throw new Error(`Session ${sessionId} not found`);
-    if (shadowAgentId != null) {
-      const shadowAgent = this.db.getAgent(shadowAgentId);
-      if (!shadowAgent) throw new Error(`Shadow agent ${shadowAgentId} not found`);
-      if (shadowAgent.backendType !== "native") {
-        throw new Error("影子代理只能使用原生 Agent，不能使用外部 Agent（Codex/Claude 等）");
-      }
-    }
-    for (const agentId of spawnedAgentIds) {
+    const uniqueIds = [...new Set(agentIds)];
+    for (const agentId of uniqueIds) {
       const spawned = this.db.getAgent(agentId);
       if (!spawned) throw new Error(`Spawned agent ${agentId} not found`);
       if (spawned.backendType !== "native") {
         throw new Error("子 Agent 成员只能使用原生 Agent，不能使用外部 Agent（Codex/Claude 等）");
       }
     }
-    return this.db.replaceSessionAgentMembers(sessionId, shadowAgentId, spawnedAgentIds);
-  }
-
-  listMemberAgentsByTag(sessionId: number, tag: string): MemberAgent[] {
-    return this.db.listMemberAgentsByTag(sessionId, tag);
+    this.db.setSessionSubagentIds(sessionId, uniqueIds);
+    return uniqueIds;
   }
 
   updateMeta(id: number, patch: Record<string, unknown>): Record<string, unknown> {
@@ -2213,7 +2169,8 @@ export class SessionManager {
   }
 
   setCurrentSessionTaskId(id: number, taskId: number | null): void {
-    this.db.updateSessionFields(id, { currentTaskId: taskId });
+    const task = taskId == null ? undefined : this.db.listSessionTasks(id).find((item) => item.id === taskId);
+    this.db.updateMeta(id, { currentTask: task?.path ?? null });
   }
 
   // ============ Session Todos ============
@@ -2243,7 +2200,7 @@ export class SessionManager {
 
   delete(id: number): void {
     for (const child of this.children(id)) {
-      if (child.branchType === "subagent" || child.branchType === "btw") {
+      if (child.spawnType === "subagent" || child.spawnType === "btw") {
         this.delete(child.id);
       }
     }
@@ -2373,19 +2330,22 @@ export class SessionManager {
   createBtw(id: number): Session {
     const parent = this._getSession(id);
     if (!parent) throw new Error(`Session ${id} not found`);
-    const btwAgentId = findPackagedAgentId(this.db, "btw");
-    const btwAgent = btwAgentId === undefined ? undefined : this.db.getAgent(btwAgentId);
-    if (!btwAgent) throw new Error("BTW agent is not configured");
-    if (btwAgent.backendType !== "native") {
+    // Same agent as the parent session (external parents remap to native Coding).
+    const agentId = this.resolveAgentIdForChildSession(parent.agentId);
+    if (agentId == null) {
+      throw new Error("父会话未绑定 Agent，无法创建顺便问");
+    }
+    const agent = this.db.getAgent(agentId);
+    if (!agent) throw new Error(`Agent ${agentId} not found`);
+    if (agent.backendType !== "native") {
       throw new Error("顺便问（BTW）只能使用原生 Agent，不能使用外部 Agent");
     }
     return this.create({
       projectId: parent.projectId,
       parentId: parent.id,
       cwd: parent.cwd,
-      agentId: btwAgent.id,
-      branchType: "btw",
-      contextLeafId: null,
+      agentId,
+      spawnType: "btw",
       title: "顺便问",
     });
   }
@@ -2405,7 +2365,7 @@ export class SessionManager {
       parentId: id,
       cwd: project?.cwd ?? session.cwd,
       agentId: this.resolveAgentIdForChildSession(parentAgentId),
-      branchType: "fork",
+      spawnType: "fork",
       title: options?.label ?? null,
     };
     let newSession = this.create(createOptions);
@@ -2436,7 +2396,7 @@ export class SessionManager {
       parentId: id,
       cwd: session.cwd,
       agentId: this.resolveAgentIdForChildSession(parentAgentId),
-      branchType: "clone",
+      spawnType: "clone",
     });
 
     const messages = await this.getSessionMessages(id);
@@ -2581,7 +2541,6 @@ export class SessionManager {
       checkpoint.gitHead,
       message,
     );
-    this.db.updateSessionGitState(id, { lastCommit: commit });
     await this.sendCustomMessage(id, formatGitCommitCustomMessage(commit));
     return commit;
   }
@@ -2758,9 +2717,7 @@ export class SessionManager {
       model_id: options.modelId,
       name: options.name ?? options.modelId,
       context_window: options.contextWindow,
-      max_tokens: options.maxTokens,
-      supports_multimodal: options.supportsMultimodal ? 1 : 0,
-      tags: JSON.stringify(options.tags ?? []),
+      supports_vision: options.supportsVision ? 1 : 0,
     });
   }
 
@@ -2768,10 +2725,8 @@ export class SessionManager {
     const dbPatch: Parameters<SupervisorDb["updateModel"]>[2] = {};
     if (patch.name !== undefined) dbPatch.name = patch.name;
     if (patch.contextWindow !== undefined) dbPatch.context_window = patch.contextWindow;
-    if (patch.maxTokens !== undefined) dbPatch.max_tokens = patch.maxTokens;
-    if (patch.supportsMultimodal !== undefined)
-      dbPatch.supports_multimodal = patch.supportsMultimodal ? 1 : 0;
-    if (patch.tags !== undefined) dbPatch.tags = JSON.stringify(patch.tags);
+    if (patch.supportsVision !== undefined)
+      dbPatch.supports_vision = patch.supportsVision ? 1 : 0;
     return this.db.updateModel(providerId, modelId, dbPatch);
   }
 
@@ -2953,12 +2908,12 @@ export class SessionManager {
   }
 
   private resolveDefaultSpawnAgentId(): number {
-    const agents = this.db.listAgents().filter((agent) => isAgentUserSpawnable(agent));
+    const agents = this.db.listAgents();
     const preferred =
       agents.find((agent) => agent.name === "Pi 助手") ??
       agents.find((agent) => agent.backendType === "native") ??
       agents[0];
-    if (!preferred) throw new Error("No spawnable agent configured");
+    if (!preferred) throw new Error("No agent configured");
     return preferred.id;
   }
 
@@ -3004,7 +2959,6 @@ export class SessionManager {
         parentId: id,
         status: "todo",
         priority: task.priority,
-        meta: { source: "decompose" },
       });
       try {
         const session = await this.spawn({

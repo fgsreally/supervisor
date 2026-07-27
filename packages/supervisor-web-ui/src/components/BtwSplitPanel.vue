@@ -86,7 +86,9 @@ watch(
   () => startDraft(),
 );
 
-function entryText(entry: SessionTreeEntry): string {
+function entryText(entry: SessionTreeEntry & { origin?: string | null }): string {
+  // Prefer origin so BTW's injected side-question guide is not shown in the panel.
+  if (entry.message?.role === "user" && entry.origin?.trim()) return entry.origin.trim();
   const content = entry.message?.content;
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";

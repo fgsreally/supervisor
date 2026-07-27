@@ -51,31 +51,19 @@ export interface SessionAvatar {
   icon?: string | null;
 }
 
-/** Git/worktree state stored in sessions.meta.git (not dedicated columns). */
-export interface SessionGitMeta {
-  branch?: string;
-  worktreePath?: string | null;
-  lastCommit?: { hash: string; message: string } | null;
-  mergeError?: string | null;
-}
-
 export interface SessionRow {
   id: number;
   project_id: number | null;
   parent_id: number | null;
-  session_id: string | null;
-  pid: number | null;
   status: SessionStatus;
   thinking_level: "none" | "low" | "medium" | "high";
   cwd: string;
   leaf_id: string | null;
   agent_id: number | null;
-  branch_type: string | null;
+  spawn_type: string | null;
   created_by?: SessionCreationMethod;
   /** @deprecated Use created_by. Present only during migration from older DBs. */
   created_via?: SessionCreationMethod;
-  show_in_session_list?: number;
-  context_leaf_id?: string | null;
   title?: string | null;
   system_prompt?: string | null;
   avatar?: string | null;
@@ -87,7 +75,6 @@ export interface SessionRow {
   error_msg?: string | null;
   stage?: string | null;
   shadow_enabled?: number;
-  current_task_id?: number | null;
   created_at: number;
   last_active_at: number;
   meta: string;
@@ -97,19 +84,14 @@ export interface Session {
   id: number;
   projectId: number | null;
   parentId: number | null;
-  sessionId: string | null;
-  pid: number | null;
   status: SessionStatus;
   thinkingLevel: "none" | "low" | "medium" | "high";
   cwd: string;
   leafId: string | null;
   agentId: number | null;
   /** How this child session was created. Root sessions use null. */
-  branchType: SessionBranchType | null;
+  spawnType: SessionBranchType | null;
   creationMethod: SessionCreationMethod;
-  showInSessionList: boolean;
-  /** BTW context snapshot in the parent session. */
-  contextLeafId: string | null;
   title: string | null;
   systemPrompt: string | null;
   avatar: SessionAvatar | null;
@@ -121,18 +103,12 @@ export interface Session {
   errorMsg: string | null;
   stage: string | null;
   shadowEnabled: boolean;
-  currentTaskId: number | null;
   createdAt: Date;
   lastActiveAt: Date;
-  /** Extension data + meta.git (worktree/commit). Core UI fields live in columns. */
+  /** Extension data only. Core UI fields live in columns. */
   meta: Record<string, unknown>;
-  /** Path of the current session_tasks row, when set. */
+  /** Path of the current task in meta, when set. */
   currentTask: string | null;
-  /** Derived from meta.git.worktreePath / branch. */
-  gitSessionBranch: string | null;
-  gitWorktreeEnabled: boolean;
-  gitMergeError: string | null;
-  gitLastCommit: { hash: string; message: string } | null;
 }
 
 export interface CreateSessionOptions {
@@ -141,11 +117,8 @@ export interface CreateSessionOptions {
   cwd?: string;
   meta?: Record<string, unknown>;
   agentId?: number | null;
-  branchType?: SessionBranchType | null;
+  spawnType?: SessionBranchType | null;
   creationMethod?: SessionCreationMethod;
-  contextLeafId?: string | null;
-  /** Override default list visibility (root sessions are visible by default). */
-  showInSessionList?: boolean;
   title?: string | null;
   systemPrompt?: string | null;
   avatar?: SessionAvatar | null;
@@ -181,7 +154,7 @@ export interface SessionTask {
   updatedAt: Date;
 }
 
-export type SessionTodoStatus = "pending" | "in_progress" | "done";
+export type SessionTodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
 export interface SessionTodoRow {
   id: number;
@@ -207,12 +180,8 @@ export interface ProjectRow {
   id: number;
   name: string;
   cwd: string;
-  work_dir: string;
-  default_branch: string;
-  install_command: string | null;
-  start_command: string | null;
-  destroy_command: string | null;
-  meta: string;
+  description: string | null;
+  home_dir: string;
   created_at: number;
   updated_at: number;
 }
@@ -220,21 +189,17 @@ export interface ProjectRow {
 export interface Project {
   id: number;
   name: string;
+  description: string | null;
   cwd: string;
-  workDir: string;
-  defaultBranch: string;
-  installCommand: string | null;
-  startCommand: string | null;
-  destroyCommand: string | null;
-  meta: Record<string, unknown>;
+  homeDir: string;
   createdAt: Date;
   updatedAt: Date;
 }
 
 export interface CreateProjectOptions {
   name?: string;
+  description?: string | null;
   cwd: string;
-  meta?: Record<string, unknown>;
 }
 
 export interface SpawnSessionOptions extends CreateSessionOptions {
@@ -262,18 +227,28 @@ export interface SpawnSessionOptions extends CreateSessionOptions {
 // ============ Agent Types ============
 export const AGENT_BACKEND_TYPES = ["native", "codex", "claude", "kimi", "acp"] as const;
 export type AgentBackendType = (typeof AGENT_BACKEND_TYPES)[number];
+export interface AgentExternalConfig {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  permissionPolicy?: "allow_once" | "reject_once";
+}
 
 export interface AgentRow {
   id: number;
   name: string;
   description: string | null;
-  icon: string | null;
-  provider_id: number | null;
+  avatar: string | null;
   backend_type: AgentBackendType;
-  model_id: string | null;
+  model_id: number | null;
+  /** Joined from models.provider_id; not persisted on agents. */
+  resolved_provider_id?: number | null;
+  system_prompt: string | null;
   tools_preset: string | null;
   home_dir: string | null;
-  is_internal: number;
+  is_builtin: number;
+  external_config: string | null;
+  disabled_tools: string;
   meta: string;
   created_at: number;
   updated_at: number;
@@ -283,21 +258,24 @@ export interface Agent {
   id: number;
   name: string;
   description: string | null;
-  icon: string | null;
+  avatar: string | null;
   providerId: number | null;
   backendType: AgentBackendType;
-  modelId: string | null;
+  modelId: number | null;
+  systemPrompt: string | null;
   toolsPreset: ToolsPreset | null;
   homeDir: string | null;
-  /** Shipped/runtime agents (e.g. shadow) that cannot back user-facing sessions. */
-  isInternal: boolean;
+  isBuiltin: boolean;
+  externalConfig: AgentExternalConfig | null;
+  disabledTools: string[];
+  /** Extension-owned data only; core agent fields live in columns. */
   meta: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }
 
-/** Agent row plus SYSTEM.md content (not stored in DB). */
 export interface AgentWithSystemMd extends Agent {
+  /** @deprecated Alias kept temporarily for API compatibility; sourced from system_prompt. */
   systemMd: string;
   available: boolean;
   executablePath: string | null;
@@ -306,37 +284,11 @@ export interface AgentWithSystemMd extends Agent {
   compatibility: "compatible" | "unknown" | "unavailable";
 }
 
-export interface MemberRow {
-  id: number;
-  session_id: number;
-  agent_id: number;
-  role: string;
-  tags: string;
-  created_at: number;
-  updated_at: number;
-}
-
-export interface Member {
-  id: number;
-  sessionId: number;
-  agentId: number;
-  role: string;
-  tags: string[];
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export type MemberAgent = Agent & {
-  member: Member;
-};
-
 export interface CreateAgentOptions {
   name: string;
   description?: string;
-  providerId: number;
-  modelId?: string;
-  /** Initial content for `<agent-home>/SYSTEM.md`. */
-  systemMd?: string;
+  modelId?: number;
+  systemPrompt?: string;
   toolsPreset?: ToolsPreset;
   homeDir?: string;
   meta?: Record<string, unknown>;
@@ -353,9 +305,8 @@ export interface MessageRow {
   payload: string;
   meta: string;
   is_old: number;
-  source: string | null;
-  origin: string | null;
-  message_role: string | null;
+  origin_msg: string | null;
+  role: string | null;
   search_text: string | null;
   created_at: number;
 }
@@ -363,7 +314,7 @@ export interface MessageRow {
 export interface MessageSearchHit {
   messageId: string;
   sessionId: number;
-  messageRole: string | null;
+  role: string | null;
   searchText: string | null;
   isOld: boolean;
   createdAt: number;
@@ -374,10 +325,8 @@ export interface MessageSearchHit {
 export type SessionMessageResponse = SessionTreeEntry & {
   /** Copied from parent session via fork/clone. */
   isOld: boolean;
-  /** Originating shadow collaborator agent id, null for normal user/main-agent messages. */
-  source: string | null;
   /** Original user input before slash/template expansion. */
-  origin: string | null;
+  originMsg: string | null;
   /** User/orchestrator extensions only. */
   meta: Record<string, unknown>;
   createdAt: number;
@@ -426,9 +375,7 @@ export interface ModelRow {
   model_id: string;
   name: string | null;
   context_window: number;
-  max_tokens: number;
-  supports_multimodal: number;
-  tags: string;
+  supports_vision: number;
   created_at: number;
   updated_at: number;
 }
@@ -439,9 +386,7 @@ export interface Model {
   modelId: string;
   name: string | null;
   contextWindow: number;
-  maxTokens: number;
-  supportsMultimodal: boolean;
-  tags: string[];
+  supportsVision: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -450,17 +395,13 @@ export interface CreateModelOptions {
   modelId: string;
   name?: string | null;
   contextWindow?: number;
-  maxTokens?: number;
-  supportsMultimodal?: boolean;
-  tags?: string[];
+  supportsVision?: boolean;
 }
 
 export interface UpdateModelOptions {
   name?: string | null;
   contextWindow?: number;
-  maxTokens?: number;
-  supportsMultimodal?: boolean;
-  tags?: string[];
+  supportsVision?: boolean;
 }
 
 // ============ Checkpoint Types ============
@@ -513,7 +454,6 @@ export interface HomeTaskRow {
   parent_id: number | null;
   session_id: number | null;
   error: string | null;
-  meta: string;
   created_at: number;
   updated_at: number;
 }
@@ -528,7 +468,6 @@ export interface HomeTask {
   parentId: number | null;
   sessionId: number | null;
   error: string | null;
-  meta: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -541,7 +480,6 @@ export interface CreateHomeTaskOptions {
   priority?: HomeTaskPriority;
   parentId?: number | null;
   sessionId?: number | null;
-  meta?: Record<string, unknown>;
 }
 
 export interface UpdateHomeTaskOptions {
@@ -553,5 +491,4 @@ export interface UpdateHomeTaskOptions {
   parentId?: number | null;
   sessionId?: number | null;
   error?: string | null;
-  meta?: Record<string, unknown>;
 }

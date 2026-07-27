@@ -256,7 +256,7 @@ export class ClaudeSessionRuntime extends ExternalSessionRuntime {
     context: Parameters<CanUseTool>[2],
   ): Promise<PermissionResult> {
     if (
-      this.session.branchType === "btw" &&
+      this.session.spawnType === "btw" &&
       /^(Write|Edit|MultiEdit|NotebookEdit|Bash|Task|KillShell|EnterWorktree|ExitWorktree)$/i.test(
         toolName,
       )

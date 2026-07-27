@@ -33,7 +33,7 @@ export interface PromptAutocompleteEntry {
 export interface CommandAutocompleteEntry {
   name: string;
   description: string;
-  source?: "custom" | "mcp";
+  source?: "custom" | "mcp" | "skill" | "prompt";
 }
 
 export interface ChatAutocompleteItem {

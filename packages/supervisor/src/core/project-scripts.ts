@@ -8,8 +8,6 @@ export interface ProjectScript {
   kind: ProjectScriptKind;
   name: string;
   command: string;
-  sortOrder: number;
-  meta: Record<string, unknown>;
   createdAt: number;
   updatedAt: number;
 }
@@ -18,8 +16,6 @@ export interface ProjectScriptInput {
   kind: ProjectScriptKind;
   name: string;
   command: string;
-  sortOrder?: number;
-  meta?: Record<string, unknown>;
 }
 
 interface ProjectScriptRow {
@@ -28,8 +24,6 @@ interface ProjectScriptRow {
   kind: string;
   name: string;
   command: string;
-  sort_order: number;
-  meta: string;
   created_at: number;
   updated_at: number;
 }
@@ -41,8 +35,6 @@ function rowToScript(row: ProjectScriptRow): ProjectScript {
     kind: row.kind as ProjectScriptKind,
     name: row.name,
     command: row.command,
-    sortOrder: row.sort_order,
-    meta: JSON.parse(row.meta || "{}") as Record<string, unknown>,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -56,13 +48,11 @@ export function ensureProjectScriptsTable(db: SupervisorDb["db"]): void {
       kind TEXT NOT NULL,
       name TEXT NOT NULL,
       command TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      meta TEXT NOT NULL DEFAULT '{}',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_project_scripts_project
-      ON project_scripts(project_id, kind, sort_order);
+      ON project_scripts(project_id, kind, id);
   `);
 }
 
@@ -76,7 +66,7 @@ export function listProjectScripts(
       .prepare(
         `SELECT * FROM project_scripts
          WHERE project_id = ? AND kind = ?
-         ORDER BY sort_order ASC, id ASC`,
+         ORDER BY id ASC`,
       )
       .all(projectId, kind) as ProjectScriptRow[];
     return rows.map(rowToScript);
@@ -85,7 +75,7 @@ export function listProjectScripts(
     .prepare(
       `SELECT * FROM project_scripts
        WHERE project_id = ?
-       ORDER BY kind ASC, sort_order ASC, id ASC`,
+       ORDER BY kind ASC, id ASC`,
     )
     .all(projectId) as ProjectScriptRow[];
   return rows.map(rowToScript);
@@ -100,10 +90,9 @@ export function replaceProjectScripts(
   db.prepare("DELETE FROM project_scripts WHERE project_id = ?").run(projectId);
   const insert = db.prepare(
     `INSERT INTO project_scripts
-      (project_id, kind, name, command, sort_order, meta, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      (project_id, kind, name, command, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
   );
-  let order = 0;
   for (const script of scripts) {
     const command = script.command.trim();
     if (!command) continue;
@@ -115,12 +104,9 @@ export function replaceProjectScripts(
       kind,
       name,
       command,
-      script.sortOrder ?? order,
-      JSON.stringify(script.meta ?? {}),
       now,
       now,
     );
-    order += 1;
   }
   return listProjectScripts(db, projectId);
 }
@@ -128,9 +114,23 @@ export function replaceProjectScripts(
 /** Migrate legacy projects.(install|start|destroy)_command columns into project_scripts once. */
 export function migrateLegacyProjectCommands(db: SupervisorDb["db"]): void {
   ensureProjectScriptsTable(db);
+  const projectColumns = new Set(
+    (db.pragma("table_info(projects)") as Array<{ name: string }>).map((column) => column.name),
+  );
+  if (
+    !projectColumns.has("install_command") &&
+    !projectColumns.has("start_command") &&
+    !projectColumns.has("destroy_command")
+  ) {
+    return;
+  }
   const projects = db
     .prepare(
-      `SELECT id, install_command, start_command, destroy_command FROM projects`,
+      `SELECT id,
+        ${projectColumns.has("install_command") ? "install_command" : "NULL AS install_command"},
+        ${projectColumns.has("start_command") ? "start_command" : "NULL AS start_command"},
+        ${projectColumns.has("destroy_command") ? "destroy_command" : "NULL AS destroy_command"}
+       FROM projects`,
     )
     .all() as Array<{
     id: number;

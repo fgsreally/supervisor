@@ -33,15 +33,6 @@
                 class="model-form-input"
               />
             </label>
-            <label class="model-form-field">
-              <span>标签</span>
-              <input
-                v-model="tagsInput"
-                type="text"
-                placeholder="用逗号分隔，例如 summary, review"
-                class="model-form-input font-mono"
-              />
-            </label>
           </div>
         </section>
 
@@ -59,24 +50,14 @@
               />
             </label>
             <label class="model-form-field">
-              <span>最大输出</span>
-              <input
-                v-model.number="draft.maxTokens"
-                type="number"
-                min="1"
-                step="256"
-                class="model-form-input font-mono"
-              />
-            </label>
-            <label class="model-form-field">
               <span>图像输入</span>
               <span class="model-form-switch-row">
                 <input
-                  v-model="draft.supportsMultimodal"
+                  v-model="draft.supportsVision"
                   type="checkbox"
                   class="accent-[#07c160]"
                 />
-                <span class="model-form-title">支持多模态输入</span>
+                <span class="model-form-title">支持图像输入</span>
               </span>
             </label>
           </div>
@@ -114,21 +95,19 @@ const props = defineProps<{
 const emit = defineEmits<{ cancel: []; saved: [modelId: string] }>();
 const providerStore = useProviderStore();
 const draft = ref<UIProviderModel>(createEmptyProviderModel());
-const tagsInput = ref("");
 const saving = ref(false);
 
 watch(
   () => [props.mode, props.model, props.providerId] as const,
   ([mode, model]) => {
     draft.value = mode === "edit" && model ? { ...model } : createEmptyProviderModel();
-    tagsInput.value = mode === "edit" && model ? model.tags.join(", ") : "";
   },
   { immediate: true },
 );
 
 const canSave = computed(() => {
   const id = draft.value.id.trim();
-  if (!id || draft.value.contextWindow <= 0 || draft.value.maxTokens <= 0) return false;
+  if (!id || draft.value.contextWindow <= 0) return false;
   if (props.mode === "create") {
     return !(providerStore.models[props.providerId] ?? []).some((model) => model.modelId === id);
   }
@@ -143,12 +122,7 @@ async function save() {
     const payload = {
       name: draft.value.name.trim() || modelId,
       contextWindow: draft.value.contextWindow,
-      maxTokens: draft.value.maxTokens,
-      supportsMultimodal: draft.value.supportsMultimodal,
-      tags: tagsInput.value
-        .split(",")
-        .map((tag) => tag.trim())
-        .filter(Boolean),
+      supportsVision: draft.value.supportsVision,
     };
     if (props.mode === "create") {
       await providerStore.createModel(props.providerId, { modelId, ...payload });

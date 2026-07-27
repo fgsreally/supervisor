@@ -95,7 +95,7 @@ function readSessionResultSummary(
     .prepare(
       `SELECT payload
        FROM messages
-       WHERE session_id = ? AND message_role = 'assistant'
+       WHERE session_id = ? AND role = 'assistant'
        ORDER BY created_at DESC
        LIMIT 1`,
     )
@@ -158,7 +158,7 @@ export function buildExtensionDeps(deps: {
       const entryId = randomUUID();
       db.db
         .prepare(
-          `INSERT INTO messages (entry_id, session_id, parent_entry_id, type, payload, meta, is_old, message_role, search_text, created_at)
+          `INSERT INTO messages (entry_id, session_id, parent_entry_id, type, payload, meta, is_old, role, search_text, created_at)
 					 VALUES (?, ?, ?, 'custom', ?, '{}', 0, 'custom', ?, ?)`,
         )
         .run(entryId, sessionId, null, JSON.stringify(data), customType, Date.now());
@@ -192,7 +192,7 @@ export function buildExtensionDeps(deps: {
       });
       db.db
         .prepare(
-          `INSERT INTO messages (entry_id, session_id, parent_entry_id, type, payload, meta, is_old, message_role, search_text, created_at)
+          `INSERT INTO messages (entry_id, session_id, parent_entry_id, type, payload, meta, is_old, role, search_text, created_at)
 					 VALUES (?, ?, NULL, 'message', ?, '{}', 0, 'custom', ?, ?)`,
         )
         .run(entryId, sessionId, payload, message.content, Date.now());
@@ -292,7 +292,7 @@ export function buildExtensionDeps(deps: {
         .prepare(
           `SELECT m.payload as usage
            FROM messages m
-           WHERE m.session_id = ? AND m.message_role = 'assistant'
+           WHERE m.session_id = ? AND m.role = 'assistant'
            ORDER BY m.created_at DESC LIMIT 1`,
         )
         .get(sessionId) as { usage?: string } | undefined;
@@ -309,23 +309,17 @@ export function buildExtensionDeps(deps: {
     getProjectDir: async () => ensureProjectDir(projectId),
 
     getMemberAgentsByTag: async (tag: string): Promise<MemberAgentInfo[]> => {
-      return manager.listMemberAgentsByTag(sessionId, tag).map((agent) => ({
-        id: agent.id,
-        name: agent.name,
-        description: agent.description,
-        providerId: agent.providerId,
-        modelId: agent.modelId,
-        toolsPreset: agent.toolsPreset,
-        role: agent.member.role,
-        tags: agent.member.tags,
-      }));
+      // Session membership no longer stores tags. Keep the extension API stable.
+      void tag;
+      return [];
     },
 
     getMemberAgentsByRole: async (role: string): Promise<MemberAgentInfo[]> => {
-      const members = db.listMembers(sessionId).filter((member) => member.role === role);
-      return members
-        .map((member): MemberAgentInfo | undefined => {
-          const agent = manager.getAgent(member.agentId);
+      if (role !== "spawned") return [];
+      return db
+        .getSessionSubagentIds(sessionId)
+        .map((agentId): MemberAgentInfo | undefined => {
+          const agent = manager.getAgent(agentId);
           if (!agent) return undefined;
           return {
             id: agent.id,
@@ -334,8 +328,8 @@ export function buildExtensionDeps(deps: {
             providerId: agent.providerId,
             modelId: agent.modelId,
             toolsPreset: agent.toolsPreset,
-            role: member.role,
-            tags: member.tags,
+            role: "spawned",
+            tags: [],
           };
         })
         .filter((agent): agent is MemberAgentInfo => agent !== undefined);
@@ -431,19 +425,18 @@ export function buildExtensionDeps(deps: {
     deleteTask: async (path: string) => db.deleteSessionTask(sessionId, path),
 
     getCurrentTaskPath: async () => {
-      const row = db.get(sessionId);
-      if (!row?.current_task_id) return null;
-      return db.getSessionTask(row.current_task_id)?.path ?? null;
+      const meta = db.get(sessionId)?.meta as Record<string, unknown> | undefined;
+      return typeof meta?.currentTask === "string" ? meta.currentTask : null;
     },
 
     setCurrentTaskPath: async (path: string | null) => {
       if (path === null) {
-        db.updateSessionFields(sessionId, { currentTaskId: null });
+        db.updateMeta(sessionId, { currentTask: null });
         return;
       }
       const match = db.listSessionTasks(sessionId).find((task) => task.path === path);
       if (!match) throw new Error(`Task not found: ${path}`);
-      db.updateSessionFields(sessionId, { currentTaskId: match.id });
+      db.updateMeta(sessionId, { currentTask: match.path });
     },
 
     listTodos: async () => db.listSessionTodos(sessionId).map(toTodoInfo),
@@ -785,7 +778,7 @@ export function createExtensionDatabase(options: DbAdapterOptions): ExtensionDat
           m.entry_id as entryId,
           m.entry_id as id,
           m.type,
-          m.message_role as role,
+          m.role,
           m.payload as content,
           m.parent_entry_id as parentId,
           m.meta,
@@ -796,7 +789,7 @@ export function createExtensionDatabase(options: DbAdapterOptions): ExtensionDat
       const params: unknown[] = [sessionId];
 
       if (role) {
-        sql += " AND m.message_role = ?";
+        sql += " AND m.role = ?";
         params.push(role);
       }
 
@@ -851,7 +844,7 @@ export function createExtensionDatabase(options: DbAdapterOptions): ExtensionDat
         createdAt: number;
       }>(
         `SELECT
-          m.entry_id as entryId, m.entry_id as id, m.type, m.message_role as role,
+          m.entry_id as entryId, m.entry_id as id, m.type, m.role,
           m.payload as content, m.parent_entry_id as parentId, m.meta, m.created_at as createdAt
         FROM messages m
         WHERE m.session_id = ? AND m.entry_id = ?`,
@@ -886,7 +879,7 @@ export function createExtensionDatabase(options: DbAdapterOptions): ExtensionDat
         createdAt: number;
       }>(
         `SELECT
-          m.entry_id as entryId, m.entry_id as id, m.type, m.message_role as role,
+          m.entry_id as entryId, m.entry_id as id, m.type, m.role,
           m.payload as content, m.parent_entry_id as parentId, m.meta, m.created_at as createdAt
         FROM messages m
         WHERE m.session_id = ?
@@ -951,7 +944,7 @@ export function createExtensionDatabase(options: DbAdapterOptions): ExtensionDat
         }
         const message: MessageRow | undefined = await queryOne<MessageRow>(
           `SELECT
-            m.entry_id as entryId, m.entry_id as id, m.type, m.message_role as role,
+            m.entry_id as entryId, m.entry_id as id, m.type, m.role,
             m.payload as content, m.parent_entry_id as parentId, m.meta, m.created_at as createdAt
           FROM messages m
           WHERE m.session_id = ? AND m.entry_id = ?`,
@@ -987,7 +980,7 @@ export function createExtensionDatabase(options: DbAdapterOptions): ExtensionDat
         SELECT
           m.entry_id as messageId,
           m.entry_id as entryId,
-          m.message_role as role,
+          m.role,
           m.payload as content,
           m.search_text as highlight,
           1.0 as score
@@ -997,7 +990,7 @@ export function createExtensionDatabase(options: DbAdapterOptions): ExtensionDat
       const params: unknown[] = [sessionId, `%${searchQuery}%`];
 
       if (role) {
-        sql += " AND m.message_role = ?";
+        sql += " AND m.role = ?";
         params.push(role);
       }
 
@@ -1149,13 +1142,13 @@ export function createExtensionDatabase(options: DbAdapterOptions): ExtensionDat
     // 统计信息
     getMessageStats: async () => {
       const rows = await query<{
-        message_role: string;
+        role: string;
         count: number;
       }>(
-        `SELECT message_role, COUNT(*) as count
+        `SELECT role, COUNT(*) as count
          FROM messages
          WHERE session_id = ?
-         GROUP BY message_role`,
+         GROUP BY role`,
         [sessionId],
       );
 
@@ -1163,10 +1156,10 @@ export function createExtensionDatabase(options: DbAdapterOptions): ExtensionDat
       for (const row of rows) {
         const count = row.count;
         stats.total += count;
-        if (row.message_role === "user") stats.user += count;
-        else if (row.message_role === "assistant") stats.assistant += count;
-        else if (row.message_role === "tool") stats.tool += count;
-        else if (row.message_role === "custom") stats.custom += count;
+        if (row.role === "user") stats.user += count;
+        else if (row.role === "assistant") stats.assistant += count;
+        else if (row.role === "tool") stats.tool += count;
+        else if (row.role === "custom") stats.custom += count;
       }
 
       return stats;
@@ -1179,7 +1172,7 @@ export function createExtensionDatabase(options: DbAdapterOptions): ExtensionDat
       }>(
         `SELECT m.payload as usage
          FROM messages m
-         WHERE m.session_id = ? AND m.message_role = 'assistant'
+         WHERE m.session_id = ? AND m.role = 'assistant'
          ORDER BY m.created_at DESC LIMIT 1`,
         [sessionId],
       );

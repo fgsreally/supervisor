@@ -214,7 +214,7 @@ export const useSessionStore = defineStore("session", () => {
           if (
             session.parentId &&
             removedIds.has(session.parentId) &&
-            (session.branchType === "subagent" || session.branchType === "btw") &&
+            (session.spawnType === "subagent" || session.spawnType === "btw") &&
             !removedIds.has(session.id)
           ) {
             removedIds.add(session.id);
@@ -498,23 +498,21 @@ export const useAgentStore = defineStore("agent", () => {
   });
 
   const getAgentsByCategory = computed(() => {
-    const categories: Record<string, string> = {
-      frontend: "前端",
-      backend: "后端",
-      qa: "测试",
-      general: "通用",
-    };
-    const order = ["frontend", "backend", "qa", "general"];
-    return order
-      .map((cat) => ({
-        label: categories[cat] ?? cat,
-        agents: agents.value.filter((a) => {
-          const category = a.meta?.category as string | undefined;
-          if (cat === "general") return !category || category === "general";
-          return category === cat;
-        }),
-      }))
-      .filter((g) => g.agents.length > 0);
+    const groups: Array<{ label: string; agents: typeof agents.value }> = [
+      {
+        label: "内置",
+        agents: agents.value.filter((a) => a.isBuiltin && a.backendType === "native"),
+      },
+      {
+        label: "外部",
+        agents: agents.value.filter((a) => a.backendType !== "native"),
+      },
+      {
+        label: "自定义",
+        agents: agents.value.filter((a) => !a.isBuiltin && a.backendType === "native"),
+      },
+    ];
+    return groups.filter((g) => g.agents.length > 0);
   });
 
   // Actions

@@ -7,9 +7,7 @@
 import type { Static, TSchema } from "typebox";
 import type {
   CreateJobInput,
-  CreateJobScheduleInput,
   JobRecord,
-  JobSchedule,
   UpdateJobInput,
 } from "../core/jobs.js";
 import type { SessionTaskKind, SessionTodoStatus } from "../types.js";
@@ -28,7 +26,7 @@ export interface WorkflowStatePatch {
   [key: string]: unknown;
 }
 
-/** Extension-facing view of a session_tasks row (Goal/Plan artifacts). */
+/** Extension-facing view of a task stored in sessions.meta. */
 export interface SessionTaskInfo {
   id: number;
   path: string;
@@ -39,7 +37,7 @@ export interface SessionTaskInfo {
   updatedAt: number;
 }
 
-/** Extension-facing view of a session_todos row. */
+/** Extension-facing view of a todo stored in sessions.meta. */
 export interface SessionTodoInfo {
   id: number;
   title: string;
@@ -167,7 +165,7 @@ export interface ExtensionSession {
     set(patch: WorkflowStatePatch): Promise<SessionWorkflowState>;
     clear(): Promise<void>;
   };
-  /** Goal/Plan task artifacts backed by the session_tasks table. */
+  /** Goal/Plan task artifacts backed by sessions.meta. */
   readonly tasks: {
     list(): Promise<SessionTaskInfo[]>;
     upsert(input: {
@@ -180,7 +178,7 @@ export interface ExtensionSession {
     getCurrentPath(): Promise<string | null>;
     setCurrentPath(path: string | null): Promise<void>;
   };
-  /** Session todo list backed by the session_todos table. */
+  /** Session todo list backed by sessions.meta. */
   readonly todos: {
     list(): Promise<SessionTodoInfo[]>;
     replace(
@@ -264,7 +262,9 @@ export interface ExtensionAgent {
   unregisterSlash(name: string): void;
   listTools(): ToolInfo[];
   getTool(name: string): ToolInfo | undefined;
+  /** Legacy lookup; session subagents no longer carry tags, so this returns an empty list. */
   findByTag(tag: string): Promise<MemberAgentInfo[]>;
+  /** `spawned` resolves the native-agent IDs in `sessions.meta.subagentIds`. */
   findByRole(role: string): Promise<MemberAgentInfo[]>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: "none" | "low" | "medium" | "high"): void;
@@ -415,7 +415,7 @@ export interface ExtensionToolFacade {
   ): Promise<ExtensionToolCallResult<TResult>>;
 }
 
-/** Session-scoped access to Supervisor's system-level execution registry. */
+/** Session-scoped access to Supervisor's system-level execution registry (running work units). */
 export interface ExtensionJobFacade {
   create(input: CreateJobInput): Promise<JobRecord>;
   get(id: string): Promise<JobRecord | undefined>;
@@ -425,13 +425,6 @@ export interface ExtensionJobFacade {
   input(id: string, input: string): Promise<void>;
   setCancelHandler(id: string, handler: () => void | Promise<void>): void;
   setInputHandler(id: string, handler: (input: string) => void | Promise<void>): void;
-  schedules: {
-    create(input: CreateJobScheduleInput): Promise<JobSchedule>;
-    get(id: string): Promise<JobSchedule | undefined>;
-    list(): Promise<JobSchedule[]>;
-    update(id: string, patch: { nextRunAt: number }): Promise<JobSchedule>;
-    delete(id: string): Promise<boolean>;
-  };
 }
 
 // ============================================================================

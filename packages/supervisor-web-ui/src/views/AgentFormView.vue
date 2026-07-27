@@ -278,12 +278,8 @@ async function save() {
       id: draft.value.id.trim() || undefined,
       name: draft.value.name.trim(),
       description: draft.value.description.trim() || undefined,
-      icon: draft.value.icon.trim() || null,
+      avatar: draft.value.icon.trim() || null,
       backendType: draft.value.backendType,
-      providerId:
-        draft.value.backendType === "native" && draft.value.providerId
-          ? draft.value.providerId
-          : undefined,
       modelId:
         draft.value.backendType === "native" && draft.value.modelId
           ? draft.value.modelId

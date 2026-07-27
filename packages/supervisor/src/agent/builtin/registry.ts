@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { ensureAgentHome, getAgentHomeDir, writeAgentHomeSystemPrompt } from "../agent-paths.js";
+import { ensureAgentHome, getAgentHomeDir } from "../agent-paths.js";
 import type { SupervisorDb } from "../../db/db.js";
 import type { Agent } from "../../types.js";
 import { getDefaultCwd } from "../../config/default-cwd.js";
@@ -13,7 +13,7 @@ import {
   ensureBuiltinExtensionResources,
 } from "../../extension/builtin/ensure.js";
 
-export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro", "coding", "watson"] as const;
+export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro", "coding"] as const;
 export type PackagedAgentKind = (typeof PACKAGED_AGENT_KINDS)[number];
 
 const PACKAGED_AGENT_LABELS: Record<
@@ -22,97 +22,48 @@ const PACKAGED_AGENT_LABELS: Record<
     name: string;
     description: string;
     toolsPreset: "readonly" | "coding" | "none";
-    userSpawnable: boolean;
   }
 > = {
   shadow: {
     name: "Shadow",
     description: "Silent shadow observer for session memory and lightweight guidance",
     toolsPreset: "none",
-    userSpawnable: false,
   },
   btw: {
     name: "BTW",
-    description: "Read-only side-question agent that follows the current parent context",
+    description:
+      "BTW 侧问提示词种子（会话复用父 Session 的 Agent，运行时强制 readonly，不再单独作为会话 Agent）",
     toolsPreset: "readonly",
-    userSpawnable: false,
   },
   intro: {
     name: "Intro",
     description: "Supervisor guide and extension authoring assistant",
     toolsPreset: "coding",
-    userSpawnable: true,
   },
   coding: {
     name: "Coding",
     description: "General-purpose coding agent for project work across sessions/worktrees",
     toolsPreset: "coding",
-    userSpawnable: true,
-  },
-  watson: {
-    name: "华生",
-    description:
-      "内部助手：与设置中的助手模型 + pi-coding-agent 协作，处理项目解析、worktree 清理等内部任务（不创建用户 session）",
-    toolsPreset: "coding",
-    userSpawnable: false,
   },
 };
 
-export interface AgentMetaRecord {
-  builtin?: boolean;
-  packagedKind?: PackagedAgentKind;
-  externalKind?: "codex" | "claude" | "kimi";
-  userSpawnable?: boolean;
-  external?: {
-    command: string;
-    args?: string[];
-    env?: Record<string, string>;
-    permissionPolicy?: "allow_once" | "reject_once";
-  };
-}
-
-export function parseAgentMeta(agent: Pick<Agent, "meta"> | undefined): AgentMetaRecord {
-  if (!agent?.meta) return {};
-  return typeof agent.meta === "string" ? JSON.parse(agent.meta) : (agent.meta as AgentMetaRecord);
-}
-
-export function isAgentUserSpawnable(
-  agent: Pick<Agent, "isInternal" | "meta"> | undefined,
-): boolean {
-  if (!agent) return false;
-  const meta = parseAgentMeta(agent);
-  return meta.userSpawnable ?? !agent.isInternal;
-}
-
-export function isBuiltinAgent(agent: Pick<Agent, "meta"> | undefined): boolean {
-  return parseAgentMeta(agent).builtin === true;
-}
-
-export function assertAgentUserSpawnable(
-  agent: Pick<Agent, "isInternal" | "meta"> | undefined,
-  agentId?: number,
-): void {
-  if (!isAgentUserSpawnable(agent)) {
-    const label = agentId !== undefined ? `Agent ${agentId}` : "This agent";
-    throw new Error(`${label} is internal and cannot be used to create user sessions`);
-  }
+export function isBuiltinAgent(agent: Pick<Agent, "isBuiltin"> | undefined): boolean {
+  return agent?.isBuiltin === true;
 }
 
 export function findPackagedAgentId(db: SupervisorDb, kind: PackagedAgentKind): number | undefined {
   const label = PACKAGED_AGENT_LABELS[kind];
   for (const agent of db.listAgents()) {
-    const meta = parseAgentMeta(agent);
-    if (meta.packagedKind === kind) return agent.id;
-    if (meta.builtin && agent.name === label.name) return agent.id;
+    if (agent.isBuiltin && agent.name === label.name) return agent.id;
   }
   return undefined;
 }
 
-function pickProvider(db: SupervisorDb): { providerId: number; modelId: string } | null {
+function pickProvider(db: SupervisorDb): { modelId: number } | null {
   const providers = db.listProviders().filter((p) => p.isEnabled);
   for (const p of providers) {
     const models = db.listModels().filter((m) => m.providerId === p.id);
-    if (models.length > 0) return { providerId: p.id, modelId: models[0].modelId };
+    if (models.length > 0) return { modelId: models[0].id };
   }
   return null;
 }
@@ -120,8 +71,6 @@ function pickProvider(db: SupervisorDb): { providerId: number; modelId: string }
 function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number | undefined {
   const existing = findPackagedAgentId(db, kind);
   const label = PACKAGED_AGENT_LABELS[kind];
-  const isInternal = !label.userSpawnable;
-
   if (existing !== undefined) return existing;
 
   const providerPick = pickProvider(db);
@@ -130,19 +79,14 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
   const agent = db.insertAgent({
     name: label.name,
     description: label.description,
-    provider_id: providerPick.providerId,
     model_id: providerPick.modelId,
+    system_prompt: loadPackagedAgentPrompt(kind),
     tools_preset: label.toolsPreset,
-    is_internal: isInternal,
-    meta: {
-      builtin: true,
-      packagedKind: kind,
-      userSpawnable: label.userSpawnable,
-    },
+    is_builtin: true,
+    meta: {},
   });
   const homeDir = getAgentHomeDir(agent.id);
   ensureAgentHome(agent.id, homeDir);
-  writeAgentHomeSystemPrompt(homeDir, loadPackagedAgentPrompt(kind));
   ensureBuiltinExtensionResources(db);
   ensureAgentBuiltinExtensionBindings(db, agent.id);
   return agent.id;
@@ -156,35 +100,24 @@ function ensureExternalAgent(
     description: string;
     command: string;
     args?: string[];
-    icon: string;
+    avatar: string;
   },
 ): void {
   const existing = db
     .listAgents()
-    .find((agent) => parseAgentMeta(agent).externalKind === spec.kind);
+    .find((agent) => agent.backendType === spec.kind);
   if (existing) {
-    const meta = { ...existing.meta };
-    const legacy = meta.external as { command?: unknown; args?: unknown } | undefined;
-    if (legacy && typeof meta.command !== "string") meta.command = legacy.command;
-    if (legacy && !Array.isArray(meta.args)) meta.args = legacy.args;
-    delete meta.external;
-    db.updateAgent(existing.id, { meta });
     return;
   }
   db.insertAgent({
     name: spec.name,
     description: spec.description,
-    icon: spec.icon,
-    provider_id: null,
+    avatar: spec.avatar,
     backend_type: spec.kind,
     tools_preset: "coding",
-    meta: {
-      builtin: true,
-      externalKind: spec.kind,
-      userSpawnable: true,
-      command: spec.command,
-      args: spec.args,
-    },
+    is_builtin: true,
+    external_config: JSON.stringify({ command: spec.command, ...(spec.args ? { args: spec.args } : {}) }),
+    meta: {},
   });
 }
 
@@ -195,14 +128,14 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
     name: "Codex",
     description: "OpenAI Codex CLI connected through app-server",
     command: "codex",
-    icon: "/icons/openai.svg",
+    avatar: "/icons/openai.svg",
   });
   ensureExternalAgent(db, {
     kind: "claude",
     name: "Claude Code",
     description: "Claude Code CLI connected through stream-json",
     command: "claude",
-    icon: "/icons/anthropic.svg",
+    avatar: "/icons/anthropic.svg",
   });
   ensureExternalAgent(db, {
     kind: "kimi",
@@ -210,7 +143,7 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
     description: "Kimi Code CLI connected through Agent Client Protocol",
     command: "kimi",
     args: ["acp"],
-    icon: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
+    avatar: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
   });
   for (const kind of PACKAGED_AGENT_KINDS) {
     const id = ensurePackagedAgent(db, kind);
@@ -228,7 +161,7 @@ function findBuiltinAssistantId(db: SupervisorDb): number | undefined {
   return db
     .listAgents()
     .find(
-      (agent) => agent.name === BUILTIN_ASSISTANT_NAME && parseAgentMeta(agent).builtin === true,
+      (agent) => agent.name === BUILTIN_ASSISTANT_NAME && agent.isBuiltin,
     )?.id;
 }
 
@@ -273,10 +206,11 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
     agent = db.insertAgent({
       name: BUILTIN_ASSISTANT_NAME,
       description: "Supervisor 内置助手，用于配置和管理资源",
-      provider_id: provider.providerId,
       model_id: provider.modelId,
+      system_prompt: BUILTIN_ASSISTANT_PROMPT,
       tools_preset: "coding",
-      meta: { builtin: true, userSpawnable: true },
+      is_builtin: true,
+      meta: {},
     });
     created = true;
   }
@@ -284,7 +218,6 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
   if (created) {
     const homeDir = getAgentHomeDir(agent.id);
     ensureAgentHome(agent.id, homeDir);
-    writeAgentHomeSystemPrompt(homeDir, BUILTIN_ASSISTANT_PROMPT);
     installBuiltinAssistantSkill(db, agent.id);
     ensureBuiltinExtensionResources(db);
     ensureAgentBuiltinExtensionBindings(db, agent.id);
@@ -298,9 +231,6 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
       title: BUILTIN_ASSISTANT_NAME,
       pinned: true,
       isBuiltin: true,
-      meta: {
-        description: "Supervisor 内置助手会话",
-      },
     }).id;
   }
 

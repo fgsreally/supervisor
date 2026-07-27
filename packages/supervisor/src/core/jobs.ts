@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
 import type { SupervisorDb } from "../db/db.js";
+import {
+  listSessionTimers,
+  newSessionTimerId,
+  writeSessionTimers,
+  type SessionTimer,
+} from "./session-timers.js";
 
 export type JobStatus =
   | "queued"
@@ -32,20 +38,6 @@ export interface JobRecord {
   finishedAt?: number;
 }
 
-export interface JobSchedule {
-  id: string;
-  sessionId: number;
-  kind: string;
-  name: string;
-  label: string;
-  prompt: string;
-  nextRunAt: number;
-  intervalMs?: number;
-  metadata: Record<string, unknown>;
-  createdAt: number;
-  updatedAt: number;
-}
-
 export interface CreateJobInput {
   kind: string;
   name: string;
@@ -65,16 +57,6 @@ export interface UpdateJobInput {
   progress?: Record<string, unknown> | null;
   result?: unknown;
   error?: unknown;
-  metadata?: Record<string, unknown>;
-}
-
-export interface CreateJobScheduleInput {
-  kind: string;
-  name: string;
-  label?: string;
-  prompt: string;
-  nextRunAt: number;
-  intervalMs?: number;
   metadata?: Record<string, unknown>;
 }
 
@@ -98,20 +80,6 @@ interface JobRow {
   finished_at: number | null;
 }
 
-interface JobScheduleRow {
-  id: string;
-  session_id: number;
-  kind: string;
-  name: string;
-  label: string;
-  prompt: string;
-  next_run_at: number;
-  interval_ms: number | null;
-  metadata: string;
-  created_at: number;
-  updated_at: number;
-}
-
 function parseJson(value: string | null): unknown {
   if (value === null) return undefined;
   try {
@@ -133,7 +101,7 @@ function toJob(row: JobRow): JobRecord {
     ...(row.parent_job_id ? { parentJobId: row.parent_job_id } : {}),
     capabilities: (parseJson(row.capabilities) as JobCapability[] | undefined) ?? [],
     output: row.output,
-    ...((parseJson(row.progress) as Record<string, unknown> | undefined)
+    ...(row.progress !== null
       ? { progress: parseJson(row.progress) as Record<string, unknown> }
       : {}),
     ...(row.result !== null ? { result: parseJson(row.result) } : {}),
@@ -145,35 +113,25 @@ function toJob(row: JobRow): JobRecord {
   };
 }
 
-function toSchedule(row: JobScheduleRow): JobSchedule {
-  return {
-    id: row.id,
-    sessionId: row.session_id,
-    kind: row.kind,
-    name: row.name,
-    label: row.label,
-    prompt: row.prompt,
-    nextRunAt: row.next_run_at,
-    ...(row.interval_ms === null ? {} : { intervalMs: row.interval_ms }),
-    metadata: (parseJson(row.metadata) as Record<string, unknown> | undefined) ?? {},
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
 function jobId(): string {
   return randomUUID().replaceAll("-", "").slice(0, 12);
 }
 
 const TERMINAL_STATUSES = new Set<JobStatus>(["succeeded", "failed", "cancelled", "interrupted"]);
 
-/** Persistent execution registry shared by extensions, HTTP APIs, and the Web UI. */
+/**
+ * Persistent execution registry shared by extensions, HTTP APIs, and the Web UI.
+ * Jobs are running/finished work units (bash, timer.fire, …).
+ * Timer *definitions* live in sessions.meta.timers, not here.
+ */
 export class JobManager {
   readonly #db: SupervisorDb["db"];
+  readonly #supervisorDb: SupervisorDb;
   readonly #cancelHandlers = new Map<string, () => void | Promise<void>>();
   readonly #inputHandlers = new Map<string, (input: string) => void | Promise<void>>();
 
   constructor(db: SupervisorDb) {
+    this.#supervisorDb = db;
     this.#db = db.db;
     this.#migrate();
     this.#db
@@ -207,23 +165,46 @@ export class JobManager {
       CREATE INDEX IF NOT EXISTS idx_jobs_session_created
         ON jobs(session_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
-
-      CREATE TABLE IF NOT EXISTS job_schedules (
-        id TEXT PRIMARY KEY,
-        session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        kind TEXT NOT NULL,
-        name TEXT NOT NULL,
-        label TEXT NOT NULL,
-        prompt TEXT NOT NULL,
-        next_run_at INTEGER NOT NULL,
-        interval_ms INTEGER,
-        metadata TEXT NOT NULL DEFAULT '{}',
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_job_schedules_session_next
-        ON job_schedules(session_id, next_run_at);
     `);
+    this.#migrateSchedulesIntoSessionMeta();
+  }
+
+  /** One-time: job_schedules (timer defs) → sessions.meta.timers, then drop the table. */
+  #migrateSchedulesIntoSessionMeta(): void {
+    const exists = this.#db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'job_schedules'")
+      .get();
+    if (!exists) return;
+
+    const rows = this.#db
+      .prepare("SELECT * FROM job_schedules ORDER BY session_id, next_run_at ASC")
+      .all() as Array<{
+      id: string;
+      session_id: number;
+      label: string;
+      prompt: string;
+      next_run_at: number;
+      interval_ms: number | null;
+      created_at: number;
+    }>;
+
+    const bySession = new Map<number, SessionTimer[]>();
+    for (const row of rows) {
+      const list = bySession.get(row.session_id) ?? listSessionTimers(this.#supervisorDb, row.session_id);
+      list.push({
+        id: row.id || newSessionTimerId(),
+        prompt: row.prompt,
+        nextFireAt: row.next_run_at,
+        createdAt: row.created_at,
+        ...(row.interval_ms != null && row.interval_ms > 0 ? { intervalMs: row.interval_ms } : {}),
+        ...(row.label ? { label: row.label } : {}),
+      });
+      bySession.set(row.session_id, list);
+    }
+    for (const [sessionId, timers] of bySession) {
+      writeSessionTimers(this.#supervisorDb, sessionId, timers);
+    }
+    this.#db.exec("DROP TABLE IF EXISTS job_schedules");
   }
 
   create(sessionId: number, input: CreateJobInput): JobRecord {
@@ -340,58 +321,5 @@ export class JobManager {
     if (TERMINAL_STATUSES.has(current.status)) return current;
     await this.#cancelHandlers.get(id)?.();
     return this.update(id, { status: "cancelled" });
-  }
-
-  createSchedule(sessionId: number, input: CreateJobScheduleInput): JobSchedule {
-    const id = jobId();
-    const now = Date.now();
-    this.#db
-      .prepare(
-        `INSERT INTO job_schedules (
-          id, session_id, kind, name, label, prompt, next_run_at, interval_ms,
-          metadata, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        id,
-        sessionId,
-        input.kind,
-        input.name,
-        input.label?.trim() || input.name,
-        input.prompt,
-        input.nextRunAt,
-        input.intervalMs ?? null,
-        JSON.stringify(input.metadata ?? {}),
-        now,
-        now,
-      );
-    return this.getSchedule(id)!;
-  }
-
-  getSchedule(id: string): JobSchedule | undefined {
-    const row = this.#db.prepare("SELECT * FROM job_schedules WHERE id = ?").get(id) as
-      | JobScheduleRow
-      | undefined;
-    return row ? toSchedule(row) : undefined;
-  }
-
-  listSchedules(sessionId: number): JobSchedule[] {
-    return (
-      this.#db
-        .prepare("SELECT * FROM job_schedules WHERE session_id = ? ORDER BY next_run_at ASC")
-        .all(sessionId) as JobScheduleRow[]
-    ).map(toSchedule);
-  }
-
-  updateSchedule(id: string, patch: { nextRunAt: number }): JobSchedule {
-    const result = this.#db
-      .prepare("UPDATE job_schedules SET next_run_at = ?, updated_at = ? WHERE id = ?")
-      .run(patch.nextRunAt, Date.now(), id);
-    if (result.changes === 0) throw new Error(`Job schedule ${id} not found`);
-    return this.getSchedule(id)!;
-  }
-
-  deleteSchedule(id: string): boolean {
-    return this.#db.prepare("DELETE FROM job_schedules WHERE id = ?").run(id).changes > 0;
   }
 }

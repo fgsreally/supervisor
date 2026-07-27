@@ -1,7 +1,7 @@
 import type { SessionTreeEntry } from "@earendil-works/pi-agent-core";
 
 export interface MessageSearchFields {
-  messageRole: string | null;
+  role: string | null;
   searchText: string | null;
 }
 
@@ -13,35 +13,35 @@ export function extractMessageSearchFields(entry: SessionTreeEntry): MessageSear
       const content = "content" in entry.message ? entry.message.content : "";
       const searchText = extractAgentMessageText(content);
       return {
-        messageRole: role,
+        role,
         searchText: searchText.length > 0 ? searchText : null,
       };
     }
     case "compaction":
-      return { messageRole: null, searchText: entry.summary.trim() || null };
+      return { role: null, searchText: entry.summary.trim() || null };
     case "custom": {
       if (
         entry.customType !== "custom_message" &&
         entry.customType !== "session_notice" &&
         entry.customType !== "llm_error"
       ) {
-        return { messageRole: null, searchText: null };
+        return { role: null, searchText: null };
       }
       const data = entry.data as { text?: unknown } | undefined;
       const text = typeof data?.text === "string" ? data.text.trim() : "";
       return {
-        messageRole: entry.customType === "llm_error" ? "llm_error" : "custom_message",
+        role: entry.customType === "llm_error" ? "llm_error" : "custom_message",
         searchText: text.length > 0 ? text : null,
       };
     }
     case "custom_message":
-      if (!entry.display) return { messageRole: null, searchText: null };
+      if (!entry.display) return { role: null, searchText: null };
       return {
-        messageRole: "custom",
+        role: "custom",
         searchText: extractAgentMessageText(entry.content) || null,
       };
     default:
-      return { messageRole: null, searchText: null };
+      return { role: null, searchText: null };
   }
 }
 

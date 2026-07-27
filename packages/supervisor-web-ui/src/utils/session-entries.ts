@@ -69,10 +69,6 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
   const base = {
     ...(entry.isOld ? { isOld: true } : {}),
     ...(assets.length > 0 ? { assets } : {}),
-    ...(entry.source?.startsWith("slash:")
-      ? { slashSource: entry.source.slice(6) as "skill" | "prompt" | "custom" | "mcp" }
-      : {}),
-    ...(entry.source?.startsWith("shadow:") ? { shadowSource: entry.source } : {}),
   };
   if (entry.type === "system") {
     return {
@@ -175,8 +171,8 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
     type: "message",
     createdAt: entry.createdAt,
     message:
-      entry.origin && entry.message?.role === "user"
-        ? { ...entry.message, content: entry.origin }
+      entry.originMsg && entry.message?.role === "user"
+        ? { ...entry.message, content: entry.originMsg }
         : (entry.message ?? { role: "assistant", content: "" }),
   };
 }

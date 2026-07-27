@@ -33,14 +33,15 @@
 
 Supervisor 启动时会把遗留的 `initializing`/`starting`、`running`，以及无 `error_msg` 的 `blocked`/`waiting_user` 归一为 `idle`，并恢复 SQLite 中尚未投递的输入队列。带原因的 `blocked`（如未配模型）、`finish`、`finished` 和 `error` 保持不变。
 
-成员关系持久化在 SQLite `members` 表，HTTP：
+可委派子 Agent 白名单在 `sessions.meta.subagentIds`（`number[]`），HTTP：
 
-| Method | Path                     | 说明       |
-| ------ | ------------------------ | ---------- |
-| GET    | `/sessions/:id/members`  | 列出成员   |
-| PUT    | `/sessions/:id/members`  | 更新成员   |
-| GET    | `/sessions/:id/children` | 直接子会话 |
-| GET    | `/sessions/:id/tree`     | 会话树     |
+| Method | Path                       | 说明                         |
+| ------ | -------------------------- | ---------------------------- |
+| PUT    | `/sessions/:id/subagents`  | 设置 `meta.subagentIds`      |
+| GET    | `/sessions/:id/children`   | 直接子会话                   |
+| GET    | `/sessions/:id/tree`       | 会话树                       |
+
+（原 `members` 表已移除。）
 
 ## 创建路径
 

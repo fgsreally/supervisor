@@ -50,26 +50,17 @@ describe("JobManager", () => {
     expect(jobs.list(sessionId)).toHaveLength(1);
   });
 
-  it("stores schedules separately from their runs", () => {
-    const schedule = jobs.createSchedule(sessionId, {
-      kind: "timer",
-      name: "timer.fire",
-      label: "check deploy",
-      prompt: "inspect the deployment",
-      nextRunAt: Date.now() + 60_000,
-      intervalMs: 300_000,
-    });
+  it("keeps timer fire runs as Jobs without a schedules table", () => {
     const run = jobs.create(sessionId, {
       kind: "timer",
       name: "timer.fire",
-      label: schedule.label,
+      label: "check deploy",
       status: "succeeded",
-      metadata: { scheduleId: schedule.id },
+      metadata: { timerId: "abc123" },
     });
 
-    expect(jobs.listSchedules(sessionId)).toMatchObject([{ id: schedule.id }]);
     expect(jobs.list(sessionId)).toMatchObject([
-      { id: run.id, metadata: { scheduleId: schedule.id } },
+      { id: run.id, metadata: { timerId: "abc123" } },
     ]);
   });
 

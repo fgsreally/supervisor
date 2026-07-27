@@ -8,6 +8,7 @@ export interface ExternalAgentConfig {
   command: string;
   args: string[];
   env: Record<string, string>;
+  permissionPolicy?: "allow_once" | "reject_once";
 }
 
 const DEFAULT_COMMANDS: Partial<Record<Agent["backendType"], string>> = {
@@ -17,16 +18,24 @@ const DEFAULT_COMMANDS: Partial<Record<Agent["backendType"], string>> = {
 };
 
 export function getExternalAgentConfig(agent: Agent): ExternalAgentConfig {
+  const persisted = agent.externalConfig;
   const legacy = agent.meta.external as Record<string, unknown> | undefined;
   const command =
-    typeof agent.meta.command === "string" && agent.meta.command.trim()
-      ? agent.meta.command.trim()
+    typeof persisted?.command === "string" && persisted.command.trim()
+      ? persisted.command.trim()
+      : typeof agent.meta.command === "string" && agent.meta.command.trim()
+        ? agent.meta.command.trim()
       : typeof legacy?.command === "string" && legacy.command.trim()
         ? legacy.command.trim()
         : (DEFAULT_COMMANDS[agent.backendType] ?? "");
-  const rawArgs = Array.isArray(agent.meta.args) ? agent.meta.args : legacy?.args;
+  const rawArgs = Array.isArray(persisted?.args)
+    ? persisted.args
+    : Array.isArray(agent.meta.args)
+      ? agent.meta.args
+      : legacy?.args;
   const rawEnv =
-    agent.meta.env && typeof agent.meta.env === "object" ? agent.meta.env : legacy?.env;
+    persisted?.env ??
+    (agent.meta.env && typeof agent.meta.env === "object" ? agent.meta.env : legacy?.env);
   return {
     command,
     args: Array.isArray(rawArgs)
@@ -40,6 +49,7 @@ export function getExternalAgentConfig(agent: Agent): ExternalAgentConfig {
             ),
           )
         : {},
+    ...(persisted?.permissionPolicy ? { permissionPolicy: persisted.permissionPolicy } : {}),
   };
 }
 

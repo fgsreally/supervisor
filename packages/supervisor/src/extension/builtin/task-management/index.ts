@@ -3,7 +3,7 @@ import { readTaskArtifact, taskArtifactPath, writeTaskArtifact } from "../../../
 import { parseSessionTodos, renderSessionTodos } from "../../../core/session-todos.js";
 import type { ExtensionDefinition } from "../../types.js";
 
-type Todo = { title: string; status: "pending" | "in_progress" | "done" };
+type Todo = { title: string; status: "pending" | "in_progress" | "completed" | "cancelled" };
 
 const FINISHED_GOAL_STATUSES = new Set(["completed", "cancelled"]);
 
@@ -55,7 +55,8 @@ const taskManagementExtension: ExtensionDefinition = {
               status: Type.Union([
                 Type.Literal("pending"),
                 Type.Literal("in_progress"),
-                Type.Literal("done"),
+                Type.Literal("completed"),
+                Type.Literal("cancelled"),
               ]),
             }),
           ),

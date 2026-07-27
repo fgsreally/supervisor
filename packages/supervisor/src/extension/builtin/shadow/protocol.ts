@@ -1,109 +1,107 @@
 import type { ShadowProtocolResult } from "./types.js";
 
-const XML_PROTOCOL_PROMPT = `The protocol is lazy: the default and expected response is an empty string. Use a field only when it provides clear, material value beyond the latest turn. Otherwise omit it. If every field would be omitted, return an empty string instead of an empty XML wrapper.
+/**
+ * Shadow 华生任务硬编码系统提示（不读 Agent SYSTEM.md，不走 XML）。
+ * 结构化结果一律通过终止型工具 submit_result 提交。
+ */
+export const SHADOW_SYSTEM_PROMPT = `你是主会话的影子观察者（Shadow）。你不出现在会话树中，也不直接面对用户。
 
-When at least one field is necessary, respond with exactly one XML element:
+你在主代理完成一轮工作后安静观察「最新一轮对话」。默认应几乎无感：绝大多数回合只需提交空结果。
 
-<shadow>
-  <shadow-memory action="append">Long-term memory to retain</shadow-memory>
-  <message>A message for the parent agent</message>
-  <interrupt>true</interrupt>
-  <status>A single short sentence describing the parent agent's current work and progress</status>
-  <suggested-questions>
-    <question>A likely useful next question from the user</question>
-    <question>Another distinct next question</question>
-  </suggested-questions>
-  <title>A concise session title</title>
-  <commit-message>A concise conventional commit message</commit-message>
-</shadow>
+职责（仅在确有必要时才填写对应字段）：
+- 维护简洁、可靠的长期影子记忆（shadowMemory）
+- 仅在确有必要时向主代理发送一条提醒（message）
+- 仅在存在清晰且有价值的下一步时，给出用户可发送的建议问题（suggestedQuestions，最多 4 条）
+- 仅在当前标题明显错误/无意义，且本轮已形成稳定主题时给出新标题（title）
+- 仅在累积改动形成可测试的连贯里程碑时给出中间提交说明（commitMessage）；这只创建 Session 分支检查点，不代表 Session 应完成或合并
+- status：一句短句描述主代理当前在做什么及进展（进展有实质变化时可刷新）
 
-Every child element is optional. shadow-memory action must be append or replace and is emitted only when durable information is genuinely worth retaining. message is queued for the parent agent by default. interrupt may be true only for an exceptional issue that requires stopping the parent's current execution immediately; otherwise omit it. status is one short sentence describing what the parent agent is doing and its current progress. suggested-questions contains up to four short, distinct questions the user is reasonably likely to ask next; emit it only when the latest answer creates useful follow-up paths. title is exceptional: emit it only when the current title is clearly wrong or meaningless and a stable topic has emerged; never emit title merely to rephrase or polish it. commit-message is exceptional: emit it only when the accumulated code changes form a coherent, tested milestone that should be committed before more work continues. It creates an intermediate Session-branch commit and never means the Session should be completed or merged. Routine conversation and acknowledgements should normally produce an empty response, but status may be refreshed when progress materially changes. Output XML only.`;
+不要总结普通对话，不要记录临时细节，不要重复主代理已经知道的内容，不要为了润色而改标题。
+一次常规问答、确认、进度汇报或顺利完成的工作，通常应提交空对象。
 
-function decodeXml(value: string): string {
-  return value
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&");
-}
+完成后必须作为最后一步调用工具 submit_result（参数 result 为 JSON 对象）；不要只写在回复正文里，不要输出 XML。
+无事可报时仍须调用：submit_result({ "result": {} })。`;
 
-function extractXmlCandidate(text: string): string {
-  const trimmed = text.trim();
-  if (!trimmed) return "";
-  const fenced = trimmed.match(/```(?:xml)?\s*([\s\S]*?)```/i);
-  return (fenced?.[1] ?? trimmed).trim();
-}
-
-function extractElement(xml: string, name: string): { attributes: string; content: string } | null {
-  const match = xml.match(new RegExp(`<${name}(\\s[^>]*)?>([\\s\\S]*?)<\\/${name}>`, "i"));
-  if (!match) return null;
-  return {
-    attributes: match[1] ?? "",
-    content: decodeXml(match[2] ?? "").trim(),
-  };
-}
-
-function extractText(xml: string, name: string): string | undefined {
-  const element = extractElement(xml, name);
-  return element?.content || undefined;
-}
-
-function extractSuggestedQuestions(xml: string): string[] | undefined {
-  const container = extractElement(xml, "suggested-questions");
-  if (!container) return undefined;
-  const questions = [
-    ...container.content.matchAll(/<question(?:\s[^>]*)?>([\s\S]*?)<\/question>/gi),
-  ]
-    .map((match) =>
-      decodeXml(match[1] ?? "")
-        .replace(/\s+/g, " ")
-        .trim(),
-    )
-    .filter((question, index, all) => question.length > 0 && all.indexOf(question) === index)
-    .slice(0, 4);
-  return questions.length > 0 ? questions : undefined;
-}
-
-export function getShadowProtocolPrompt(): string {
-  return XML_PROTOCOL_PROMPT;
-}
-
-export function parseShadowProtocolResponse(text: string): ShadowProtocolResult | null {
-  const candidate = extractXmlCandidate(text);
-  if (!candidate) return {};
-  if (
-    !/^<shadow(?:\s[^>]*)?\s*\/>$/i.test(candidate) &&
-    !/^<shadow(?:\s[^>]*)?>[\s\S]*<\/shadow>$/i.test(candidate)
-  ) {
-    return null;
-  }
-
-  const memory = extractElement(candidate, "shadow-memory");
-  const actionMatch = memory?.attributes.match(/\baction\s*=\s*["'](append|replace)["']/i);
-  const action = actionMatch?.[1]?.toLowerCase();
-  const shadowMemory =
-    memory?.content && (action === "append" || action === "replace")
-      ? { action, content: memory.content }
-      : undefined;
-
-  return {
-    shadowMemory,
-    message: extractText(candidate, "message"),
-    interrupt: extractText(candidate, "interrupt")?.toLowerCase() === "true",
-    suggestedQuestions: extractSuggestedQuestions(candidate),
-    status: extractText(candidate, "status"),
-    title: extractText(candidate, "title"),
-    commitMessage: extractText(candidate, "commit-message"),
-  };
+export function getShadowSystemPrompt(): string {
+  return SHADOW_SYSTEM_PROMPT;
 }
 
 export function formatShadowRunPrompt(shadowMemory: string, latestTurn: string): string {
   return [
+    "请观察以下上下文，然后调用 submit_result 提交结果。",
+    "",
+    "结果对象字段（全部可选；无事可报用 {}）：",
+    "{",
+    '  "shadowMemory": { "action": "append" | "replace", "content": "..." },',
+    '  "message": "发给主代理的提醒",',
+    '  "interrupt": true,',
+    '  "status": "一句短句：主代理当前工作与进展",',
+    '  "suggestedQuestions": ["用户可能接着问的短问题", "..."],',
+    '  "title": "例外：替换明显错误的会话标题",',
+    '  "commitMessage": "例外：中间检查点的 conventional commit 说明"',
+    "}",
+    "",
+    "约束：",
+    "- interrupt 仅在必须立刻打断主代理当前执行的异常问题时为 true；否则省略。",
+    "- suggestedQuestions 最多 4 条、互不重复的短问题。",
+    "- shadowMemory.action 仅限 append | replace。",
+    "",
     "## Shadow memory",
     shadowMemory.trim() || "(empty)",
     "",
     "## Latest turn",
     latestTurn.trim() || "(empty)",
   ].join("\n");
+}
+
+function asNonEmptyString(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function asStringArray(value: unknown, limit: number): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const items = value
+    .map((item) => asNonEmptyString(item)?.replace(/\s+/g, " "))
+    .filter((item): item is string => Boolean(item))
+    .filter((item, index, all) => all.indexOf(item) === index)
+    .slice(0, limit);
+  return items.length > 0 ? items : undefined;
+}
+
+/** Normalize Watson submit_result payload into Shadow fields. */
+export function normalizeShadowSubmitResult(rawInput: unknown): ShadowProtocolResult | null {
+  let raw = rawInput;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return {};
+    try {
+      raw = JSON.parse(trimmed) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (raw == null) return {};
+  if (typeof raw !== "object" || Array.isArray(raw)) return null;
+
+  const record = raw as Record<string, unknown>;
+  const memoryRaw = record.shadowMemory;
+  let shadowMemory: ShadowProtocolResult["shadowMemory"];
+  if (memoryRaw && typeof memoryRaw === "object" && !Array.isArray(memoryRaw)) {
+    const memory = memoryRaw as Record<string, unknown>;
+    const action = memory.action === "append" || memory.action === "replace" ? memory.action : null;
+    const content = asNonEmptyString(memory.content);
+    if (action && content) shadowMemory = { action, content };
+  }
+
+  return {
+    shadowMemory,
+    message: asNonEmptyString(record.message),
+    interrupt: record.interrupt === true,
+    suggestedQuestions: asStringArray(record.suggestedQuestions, 4),
+    status: asNonEmptyString(record.status),
+    title: asNonEmptyString(record.title),
+    commitMessage: asNonEmptyString(record.commitMessage),
+  };
 }

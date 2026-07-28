@@ -4,6 +4,12 @@
     :style="{ background: 'var(--app-chat-bg)', '--chat-msg-font-size': fontSizePx }"
     v-if="session"
   >
+    <ToolApprovalDialog
+      v-if="pendingApproval"
+      :session-id="session.id"
+      :approval="pendingApproval"
+      @resolved="pendingApproval = null"
+    />
     <ChatViewHeader
       :title="sessionTitle"
       :title-readonly="!!session.isBuiltin"
@@ -413,6 +419,7 @@ import SessionChangesPopover, {
   type SessionChangedFileView,
 } from "../components/chat/SessionChangesPopover.vue";
 import SessionCommitPopover from "../components/chat/SessionCommitPopover.vue";
+import ToolApprovalDialog from "../components/ToolApprovalDialog.vue";
 import type { ChatSendPayload } from "@/types/chat-compose";
 import { getShowThinking, setShowThinking } from "../composables/use-chat-session-prefs";
 import { useChatFontSize } from "../composables/use-chat-font-size";
@@ -500,6 +507,7 @@ const modelMissing = computed(() => {
 });
 const inputText = ref("");
 const suggestedQuestions = ref<string[]>([]);
+const pendingApproval = ref<api.ApprovalPendingEvent | null>(null);
 const rewindableEntryIds = ref<string[]>([]);
 const inputPanelRef = ref<InstanceType<typeof ChatInputPanel> | null>(null);
 const externalCommandHostRef = ref<InstanceType<typeof ExternalAgentCommandHost> | null>(null);
@@ -969,6 +977,19 @@ function handleUiNotifyEvent(event: { type?: string } | undefined) {
   return true;
 }
 
+function handleApprovalEvent(event: api.SessionStreamEvent | undefined) {
+  if (!event || event.type !== "approval.pending") return false;
+  pendingApproval.value = event;
+  return true;
+}
+
+watch(
+  () => props.session.id,
+  () => {
+    pendingApproval.value = null;
+  },
+);
+
 function subscribeShadowSuggestions(sessionId: string) {
   shadowSuggestionCleanup?.();
   shadowSuggestionCleanup = api.subscribeSessionEvents(
@@ -976,6 +997,7 @@ function subscribeShadowSuggestions(sessionId: string) {
     (payload) => {
       if (payload.type !== "agent" || !payload.event) return;
       if (handleUiNotifyEvent(payload.event)) return;
+      if (handleApprovalEvent(payload.event)) return;
       if (payload.event.type === "session_status") {
         void sessionStore.fetchSession(sessionId);
         return;
@@ -1505,6 +1527,7 @@ function attachToRunningSession(streamingReply?: string) {
     (payload) => {
       if (payload.type !== "agent" || !payload.event) return;
       if (handleUiNotifyEvent(payload.event)) return;
+      if (handleApprovalEvent(payload.event)) return;
       if (payload.event.type === "session_status") {
         void sessionStore.fetchSession(props.session.id);
         if (payload.event.status === "idle" || payload.event.status === "error") {
@@ -1586,6 +1609,7 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
     userText,
     (event) => {
       if (handleUiNotifyEvent(event)) return;
+      if (handleApprovalEvent(event)) return;
       if (event.type === "shadow_suggestions") return;
       if (
         activeTurn.value &&

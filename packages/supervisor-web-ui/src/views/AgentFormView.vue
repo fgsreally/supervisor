@@ -21,14 +21,7 @@
       >
         取消
       </button>
-      <button
-        type="button"
-        class="shrink-0 px-3 py-1.5 rounded-md bg-[#07c160] text-white text-[13px] hover:bg-[#06ad56] disabled:opacity-50"
-        :disabled="!canSave || saving"
-        @click="save"
-      >
-        {{ saving ? "创建中…" : "创建" }}
-      </button>
+      <UiActionButton :disabled="!canSave" :loading="saving" @click="save">创建</UiActionButton>
     </div>
 
     <div class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
@@ -146,6 +139,20 @@
             <option value="none">none</option>
           </select>
         </label>
+
+        <template v-if="draft.backendType === 'native'">
+          <AgentPermissionEditor v-model="draft.permissionRules" />
+          <section class="text-[13px]">
+            <div class="agent-form-label mb-2">默认子 Agent</div>
+            <div v-if="nativeAgents.length" class="grid gap-2">
+              <label v-for="agent in nativeAgents" :key="agent.id" class="flex items-center gap-2">
+                <input v-model="draft.subagentIds" type="checkbox" :value="Number(agent.id)" />
+                <span>{{ agent.name }}</span>
+              </label>
+            </div>
+            <div v-else class="agent-form-hint">暂无可选择的内部 Agent</div>
+          </section>
+        </template>
       </section>
 
       <p class="mx-auto mt-4 max-w-xl text-[12px] agent-form-hint leading-relaxed">
@@ -159,11 +166,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { ChevronLeft, Upload } from "lucide-vue-next";
-import { uploadIcon, type ToolsPreset } from "@/api";
+import {
+  DEFAULT_AGENT_PERMISSION_RULES,
+  uploadIcon,
+  type AgentPermissionRules,
+  type ToolsPreset,
+} from "@/api";
 import { useAgentStore, useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import AgentAvatar from "../components/AgentAvatar.vue";
 import ModelTreeSelect, { type ModelTreeGroup } from "../components/ModelTreeSelect.vue";
+import AgentPermissionEditor from "../components/AgentPermissionEditor.vue";
+import UiActionButton from "../components/UiActionButton.vue";
 import { showUiMessage } from "@/composables/use-ui-message";
 
 defineProps<{ showBack?: boolean }>();
@@ -187,7 +201,13 @@ const draft = ref({
   toolsPreset: "coding" as ToolsPreset,
   command: "",
   args: "",
+  permissionRules: structuredClone(DEFAULT_AGENT_PERMISSION_RULES) as AgentPermissionRules,
+  subagentIds: [] as number[],
 });
+
+const nativeAgents = computed(() =>
+  agentStore.agents.filter((agent) => agent.backendType === "native"),
+);
 
 const providerOptions = computed(() =>
   providerStore.providers
@@ -274,17 +294,21 @@ async function save() {
           ? draft.value.modelId
           : undefined,
       toolsPreset: draft.value.toolsPreset,
+      permissionRules:
+        draft.value.backendType === "native" ? draft.value.permissionRules : undefined,
       meta:
-        draft.value.backendType !== "native" && draft.value.command.trim()
-          ? {
-              command: draft.value.command.trim(),
-              args: draft.value.args
-                .split(/\r?\n/)
-                .map((arg) => arg.trim())
-                .filter(Boolean),
-              permissionPolicy: "reject_once",
-            }
-          : undefined,
+        draft.value.backendType === "native"
+          ? { subagentIds: draft.value.subagentIds }
+          : draft.value.command.trim()
+            ? {
+                command: draft.value.command.trim(),
+                args: draft.value.args
+                  .split(/\r?\n/)
+                  .map((arg) => arg.trim())
+                  .filter(Boolean),
+                permissionPolicy: "reject_once",
+              }
+            : undefined,
     });
     showUiMessage("智能代理创建成功", "success");
     emit("saved", agent.id);

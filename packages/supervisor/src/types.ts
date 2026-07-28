@@ -1,5 +1,6 @@
 import type { AgentTool, SessionMetadata, SessionTreeEntry } from "@earendil-works/pi-agent-core";
 import type { SessionBranchType } from "./core/session-history.js";
+import type { AgentPermissionRules } from "./core/agent-permissions.js";
 
 /** Runtime shape of SQLiteSessionStorage.getMetadata() in supervisor. */
 export interface SupervisorHarnessMetadata extends SessionMetadata {
@@ -249,6 +250,7 @@ export interface AgentRow {
   is_builtin: number;
   external_config: string | null;
   disabled_tools: string;
+  permission_rules: string;
   meta: string;
   created_at: number;
   updated_at: number;
@@ -268,6 +270,7 @@ export interface Agent {
   isBuiltin: boolean;
   externalConfig: AgentExternalConfig | null;
   disabledTools: string[];
+  permissionRules: AgentPermissionRules;
   /** Extension-owned data only; core agent fields live in columns. */
   meta: Record<string, unknown>;
   createdAt: Date;

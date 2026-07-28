@@ -19,6 +19,7 @@ import {
 } from "../core/session-media.js";
 import { readTaskArtifact } from "../core/task-artifacts.js";
 import { extractSessionFieldsFromMetaPatch } from "../core/session-fields.js";
+import { normalizeAgentPermissionRules } from "../core/agent-permissions.js";
 import {
   parseBindResourceBody,
   parseInstallResourceBody,
@@ -676,6 +677,8 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
           home_dir: body.homeDir,
           external_config: body.externalConfig ? JSON.stringify(body.externalConfig) : null,
           disabled_tools: body.disabledTools,
+          permission_rules:
+            backendType === "native" ? normalizeAgentPermissionRules(body.permissionRules) : {},
           meta: body.meta,
         },
         { systemMd: body.systemPrompt },
@@ -708,6 +711,10 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
         external_config:
           body.externalConfig === undefined ? undefined : JSON.stringify(body.externalConfig),
         disabled_tools: body.disabledTools,
+        permission_rules:
+          current?.backendType === "native" && body.permissionRules !== undefined
+            ? JSON.stringify(normalizeAgentPermissionRules(body.permissionRules))
+            : undefined,
         meta:
           body.meta && current
             ? { ...current.meta, ...(body.meta as Record<string, unknown>) }
@@ -2501,6 +2508,12 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
     }
     if (!result || typeof result !== "object" || typeof result.action !== "string") {
       return jsonError(c, 400, "result.action is required");
+    }
+    if (!["approve", "approve_session", "reject", "revise"].includes(result.action)) {
+      return jsonError(c, 400, "invalid approval action");
+    }
+    if (result.action === "revise" && typeof result.feedback !== "string") {
+      return jsonError(c, 400, "feedback is required for revise");
     }
     try {
       const id = parseIntegerId(c.req.param("id"));

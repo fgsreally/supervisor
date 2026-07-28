@@ -25,6 +25,7 @@ import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
 import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
 import { BUILTIN_EXTENSION_SLUGS } from "../extension/builtin/catalog.js";
 import { listEnabledBuiltinExtensionSlugs } from "../extension/builtin/ensure.js";
+import type { AgentPermissionRules } from "./agent-permissions.js";
 
 interface HarnessSessionTree {
   buildContext(): Promise<{ messages: AgentMessage[] }>;
@@ -197,6 +198,10 @@ export class SessionRuntime implements ManagedSessionRuntime {
    */
   collectExtensionTools(): AgentTool[] {
     return this._extension?.collectTools() ?? [];
+  }
+
+  configureAgentPermissions(rules: AgentPermissionRules, cwd: string): void {
+    this._extension?.configureAgentPermissions(rules, cwd);
   }
 
   async deactivateExtension(extensionId: string): Promise<boolean> {

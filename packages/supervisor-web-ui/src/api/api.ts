@@ -141,6 +141,33 @@ export interface TodoItem {
 }
 
 /** Agent definition */
+export type AgentPermissionEffect = "ask" | "deny";
+export type AgentPermissionRules = Record<string, Record<string, AgentPermissionEffect>>;
+
+export const DEFAULT_AGENT_PERMISSION_RULES: AgentPermissionRules = {
+  read: {
+    "external/**": "ask",
+    "**/.env": "deny",
+    "**/.env.*": "deny",
+    "**/.ssh/**": "deny",
+  },
+  write: { "external/**": "ask" },
+  edit: { "external/**": "ask" },
+  bash: {
+    "rm -rf *": "ask",
+    "rm -r *": "ask",
+    "sudo *": "ask",
+    "git push --force*": "ask",
+    "git reset --hard*": "ask",
+    "chmod -R *": "ask",
+    "chown -R *": "ask",
+    "Remove-Item * -Recurse*": "ask",
+    "Remove-Item -Recurse *": "ask",
+    "shutdown*": "ask",
+    "reboot*": "ask",
+  },
+};
+
 export interface Agent {
   id: string;
   name: string;
@@ -160,6 +187,7 @@ export interface Agent {
     permissionPolicy?: "allow_once" | "reject_once";
   } | null;
   disabledTools: string[];
+  permissionRules: AgentPermissionRules;
   meta: Record<string, unknown>;
   available: boolean;
   executablePath: string | null;
@@ -422,11 +450,22 @@ export interface SessionStatusEvent {
   timestamp: number;
 }
 
+export interface ApprovalPendingEvent {
+  type: "approval.pending";
+  sessionId: string | number;
+  approvalId: string;
+  kind: string;
+  title: string;
+  body: string;
+  actions: Array<"approve" | "approve_session" | "reject" | "revise">;
+}
+
 export type SessionStreamEvent =
   | AgentEvent
   | ShadowSuggestionsEvent
   | UiNotifyEvent
-  | SessionStatusEvent;
+  | SessionStatusEvent
+  | ApprovalPendingEvent;
 
 export interface SseEvent {
   type: SseEventType;
@@ -490,6 +529,7 @@ export interface CreateAgentRequest {
   homeDir?: string;
   externalConfig?: Agent["externalConfig"];
   disabledTools?: string[];
+  permissionRules?: AgentPermissionRules;
   meta?: Record<string, unknown>;
   systemPrompt?: string;
 }
@@ -505,6 +545,7 @@ export interface UpdateAgentRequest {
   homeDir?: string;
   externalConfig?: Agent["externalConfig"];
   disabledTools?: string[];
+  permissionRules?: AgentPermissionRules;
   meta?: Record<string, unknown>;
 }
 
@@ -1365,6 +1406,19 @@ export async function submitAskAnswer(
   answers: Array<{ id: string; value: string; label: string }>,
 ): Promise<{ ok: boolean }> {
   return postJson<{ ok: boolean }>(`/sessions/${sessionId}/ask-answer`, { toolCallId, answers });
+}
+
+export async function resolveSessionApproval(
+  sessionId: string,
+  approvalId: string,
+  result:
+    | { action: "approve" | "approve_session" | "reject" }
+    | { action: "revise"; feedback: string },
+): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(`/sessions/${sessionId}/approval-resolve`, {
+    approvalId,
+    result,
+  });
 }
 
 export interface ExternalInteractionResponse {

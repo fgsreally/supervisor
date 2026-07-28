@@ -5,11 +5,7 @@
  */
 
 import type { Static, TSchema } from "typebox";
-import type {
-  CreateJobInput,
-  JobRecord,
-  UpdateJobInput,
-} from "../core/jobs.js";
+import type { CreateJobInput, JobRecord, UpdateJobInput } from "../core/jobs.js";
 import type { SessionTaskKind, SessionTodoStatus } from "../types.js";
 
 /**
@@ -89,7 +85,7 @@ export interface TurnFlowLock {
   release(): void;
 }
 
-export type ApprovalAction = "approve" | "reject" | "revise";
+export type ApprovalAction = "approve" | "approve_session" | "reject" | "revise";
 
 export interface ApprovalOption {
   label: string;
@@ -106,6 +102,7 @@ export interface ApprovalRequest {
 
 export type ApprovalResult =
   | { action: "approve"; selectedOption?: string }
+  | { action: "approve_session"; selectedOption?: string }
   | { action: "reject" }
   | { action: "revise"; feedback: string };
 
@@ -181,9 +178,7 @@ export interface ExtensionSession {
   /** Session todo list backed by sessions.meta. */
   readonly todos: {
     list(): Promise<SessionTodoInfo[]>;
-    replace(
-      todos: Array<{ title: string; status: SessionTodoStatus }>,
-    ): Promise<SessionTodoInfo[]>;
+    replace(todos: Array<{ title: string; status: SessionTodoStatus }>): Promise<SessionTodoInfo[]>;
   };
   readonly tools: {
     beforeUse(handler: ToolGuardHandler, options?: { priority?: number }): () => void;

@@ -75,6 +75,21 @@
                 <option value="none">none</option>
               </UiField>
             </label>
+            <AgentPermissionEditor v-model="draft.permissionRules" />
+            <section class="text-[13px]">
+              <div class="agent-edit-label mb-2">默认子 Agent</div>
+              <div v-if="nativeAgents.length" class="grid gap-2">
+                <label
+                  v-for="child in nativeAgents"
+                  :key="child.id"
+                  class="flex items-center gap-2"
+                >
+                  <input v-model="draft.subagentIds" type="checkbox" :value="Number(child.id)" />
+                  <span>{{ child.name }}</span>
+                </label>
+              </div>
+              <div v-else class="agent-edit-label">暂无可选择的内部 Agent</div>
+            </section>
           </template>
 
           <template v-else>
@@ -97,7 +112,9 @@
 
         <footer class="px-5 py-3 border-t flex justify-end gap-2 shrink-0">
           <UiButton @click="close"> 取消 </UiButton>
-          <UiButton variant="primary" :disabled="!canSave || saving" @click="save"> 保存 </UiButton>
+          <UiActionButton :disabled="!canSave" :loading="saving" @click="save">
+            保存
+          </UiActionButton>
         </footer>
       </section>
     </div>
@@ -107,11 +124,13 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
 import { Upload, X } from "lucide-vue-next";
-import { uploadIcon, type ToolsPreset } from "@/api";
+import { uploadIcon, type AgentPermissionRules, type ToolsPreset } from "@/api";
 import { useAgentStore, useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import AgentAvatar from "./AgentAvatar.vue";
 import ModelTreeSelect, { type ModelTreeGroup } from "./ModelTreeSelect.vue";
+import AgentPermissionEditor from "./AgentPermissionEditor.vue";
+import UiActionButton from "./UiActionButton.vue";
 import { UiButton, UiField } from "./ui";
 
 const props = defineProps<{ open: boolean; agentId: string }>();
@@ -130,9 +149,16 @@ const draft = reactive({
   toolsPreset: "coding" as ToolsPreset,
   command: "",
   args: "",
+  permissionRules: {} as AgentPermissionRules,
+  subagentIds: [] as number[],
 });
 
 const agent = computed(() => agentStore.getAgentById(props.agentId));
+const nativeAgents = computed(() =>
+  agentStore.agents.filter(
+    (candidate) => candidate.backendType === "native" && candidate.id !== props.agentId,
+  ),
+);
 const providers = computed(() =>
   providerStore.providers.map((provider) =>
     providerToUI(provider, providerStore.models[provider.id] ?? []),
@@ -168,6 +194,10 @@ watch(
       toolsPreset: value.toolsPreset ?? "coding",
       command: command ?? "",
       args: (args ?? []).join("\n"),
+      permissionRules: structuredClone(value.permissionRules ?? {}),
+      subagentIds: Array.isArray(value.meta.subagentIds)
+        ? value.meta.subagentIds.filter((id): id is number => Number.isSafeInteger(id))
+        : [],
     });
   },
   { immediate: true },
@@ -207,9 +237,10 @@ async function save() {
       avatar: draft.icon.trim() || null,
       modelId: value.backendType === "native" ? draft.modelId || null : undefined,
       toolsPreset: value.backendType === "native" ? draft.toolsPreset : undefined,
+      permissionRules: value.backendType === "native" ? draft.permissionRules : undefined,
       meta:
         value.backendType === "native"
-          ? undefined
+          ? { subagentIds: draft.subagentIds }
           : {
               command: draft.command.trim(),
               args: draft.args

@@ -38,6 +38,26 @@ describe("supervisor: SessionManager", () => {
     expect(MockAgentHarness.instances).toHaveLength(0);
   });
 
+  it("copies a native Agent's default subagents into new sessions", () => {
+    const agent = db.insertAgent({ name: "delegator", meta: { subagentIds: [2, 3] } });
+
+    expect(manager.create({ cwd: "/proj", agentId: agent.id }).meta.subagentIds).toEqual([2, 3]);
+    expect(
+      manager.create({ cwd: "/proj", agentId: agent.id, meta: { subagentIds: [4] } }).meta
+        .subagentIds,
+    ).toEqual([4]);
+  });
+
+  it("does not copy default subagents from external Agents", () => {
+    const agent = db.insertAgent({
+      name: "external",
+      backend_type: "codex",
+      meta: { subagentIds: [2, 3] },
+    });
+
+    expect(manager.create({ cwd: "/proj", agentId: agent.id }).meta.subagentIds).toBeUndefined();
+  });
+
   it("classifies child sessions and controls main-list visibility", () => {
     const providerId = db.insertProvider({
       slug: "test-provider",
@@ -202,7 +222,9 @@ describe("supervisor: SessionManager", () => {
     });
     const inst = await manager.spawn(SPAWN_OPTS);
 
-    expect(manager.setSessionSubagentIds(inst.id, [reviewer.id, reviewer.id])).toEqual([reviewer.id]);
+    expect(manager.setSessionSubagentIds(inst.id, [reviewer.id, reviewer.id])).toEqual([
+      reviewer.id,
+    ]);
     expect(db.getSessionSubagentIds(inst.id)).toEqual([reviewer.id]);
   });
 
@@ -385,7 +407,9 @@ describe("supervisor: SessionManager", () => {
     );
 
     expect(disposition).toBe("queued");
-    expect(manager.listSessionInputs(child.id)).toMatchObject([{ message: "follow-up while busy" }]);
+    expect(manager.listSessionInputs(child.id)).toMatchObject([
+      { message: "follow-up while busy" },
+    ]);
   });
 
   it("restores queued Session input after Supervisor restarts", async () => {

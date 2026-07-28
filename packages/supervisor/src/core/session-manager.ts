@@ -780,6 +780,9 @@ export class SessionManager {
         this.db,
         this,
       );
+      if (agent?.backendType === "native") {
+        runtime.configureAgentPermissions(agent.permissionRules, session.cwd);
+      }
       const extensionTools = runtime.collectExtensionTools();
       if (extensionTools.length > 0) {
         const disabledTools = this.getDisabledAgentTools(session.agentId);
@@ -812,6 +815,14 @@ export class SessionManager {
       options.creationMethod ??
       (spawnType === "subagent" ? "spawn_agent" : spawnType === null ? "user" : spawnType);
     const agent = options.agentId ? this.db.getAgent(options.agentId) : undefined;
+    const agentSubagentIds =
+      agent?.backendType === "native" && Array.isArray(agent.meta.subagentIds)
+        ? agent.meta.subagentIds.filter((id): id is number => Number.isSafeInteger(id) && id > 0)
+        : [];
+    const meta = {
+      ...(agentSubagentIds.length > 0 ? { subagentIds: agentSubagentIds } : {}),
+      ...options.meta,
+    };
     this.assertNativeAgentForChildSession(options.parentId, agent, "创建子会话");
     const avatar = withDefaultSessionAvatar(options.avatar ?? null, agent);
     const row = this.db.insert({
@@ -825,7 +836,7 @@ export class SessionManager {
       agent_id: options.agentId ?? null,
       spawn_type: spawnType,
       created_by: creationMethod,
-      meta: JSON.stringify(options.meta ?? {}),
+      meta: JSON.stringify(meta),
       title: options.title ?? null,
       system_prompt: options.systemPrompt ?? null,
       avatar: serializeSessionAvatar(avatar),
@@ -1082,6 +1093,9 @@ export class SessionManager {
         this.db,
         this,
       );
+      if (agentInDb?.backendType === "native") {
+        runtime.configureAgentPermissions(agentInDb.permissionRules, activeSession.cwd);
+      }
       const extensionTools = runtime.collectExtensionTools();
       if (extensionTools.length > 0) {
         const disabledTools = this.getDisabledAgentTools(activeSession.agentId);

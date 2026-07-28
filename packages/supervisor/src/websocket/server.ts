@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Server } from "node:http";
-import { WebSocket, WebSocketServer, type RawData } from "ws";
+import { WebSocket, type RawData } from "ws";
 import { decryptApiKey } from "../utils/encrypt.js";
 import { readSupervisorSettings } from "../utils/supervisor-settings.js";
 
@@ -29,8 +28,16 @@ interface DoubaoEvent {
   result?: { text?: string; utterances?: Array<{ definite?: boolean }> };
 }
 
-function sendJson(socket: WebSocket, message: Record<string, unknown>): void {
-  if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(message));
+interface ClientSocket {
+  send(data: string | Uint8Array): unknown;
+}
+
+interface WebSocketRouteBuilder {
+  ws(path: string, hooks: Record<string, unknown>): unknown;
+}
+
+function sendJson(socket: ClientSocket, message: Record<string, unknown>): void {
+  socket.send(JSON.stringify(message));
 }
 
 function eventId(): string {
@@ -88,7 +95,7 @@ class SpeechConnection {
   private sequence = 0;
   private doubaoText = "";
 
-  constructor(private readonly client: WebSocket) {}
+  constructor(private readonly client: ClientSocket) {}
 
   async start(language: unknown): Promise<void> {
     if (this.upstream) throw new Error("speech session is already active");
@@ -275,32 +282,23 @@ class SpeechConnection {
   }
 }
 
-export function attachWebSocketServer(server: Server): WebSocketServer {
-  const websocketServer = new WebSocketServer({
-    noServer: true,
-    maxPayload: MAX_AUDIO_FRAME_BYTES,
-  });
-  server.on("upgrade", (request, socket, head) => {
-    const url = new URL(request.url ?? "/", "http://localhost");
-    if (url.pathname !== "/ws") {
-      socket.destroy();
-      return;
-    }
-    websocketServer.handleUpgrade(request, socket, head, (websocket) => {
-      websocketServer.emit("connection", websocket, request);
-    });
-  });
-
-  websocketServer.on("connection", (socket) => {
-    const speech = new SpeechConnection(socket);
-    sendJson(socket, { channel: "system", type: "system.ready" });
-    socket.on("message", (data, isBinary) => {
+export function registerWebSocketRoutes(app: WebSocketRouteBuilder): void {
+  const connections = new WeakMap<object, SpeechConnection>();
+  app.ws("/ws", {
+    maxPayloadLength: MAX_AUDIO_FRAME_BYTES,
+    open(socket: ClientSocket & { raw: object }) {
+      connections.set(socket.raw, new SpeechConnection(socket));
+      sendJson(socket, { channel: "system", type: "system.ready" });
+    },
+    message(socket: ClientSocket & { raw: object }, data: unknown) {
+      const speech = connections.get(socket.raw);
+      if (!speech) return;
       try {
-        if (isBinary) {
-          speech.append(data);
+        if (Buffer.isBuffer(data) || data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+          speech.append(Buffer.from(data as ArrayBuffer));
           return;
         }
-        const message = JSON.parse(data.toString()) as ClientMessage;
+        const message = (typeof data === "string" ? JSON.parse(data) : data) as ClientMessage;
         if (message.channel === "system" && message.type === "ping") {
           sendJson(socket, { id: message.id, channel: "system", type: "pong" });
         } else if (message.channel === "speech" && message.type === "speech.start") {
@@ -322,8 +320,10 @@ export function attachWebSocketServer(server: Server): WebSocketServer {
           payload: { message: error instanceof Error ? error.message : String(error) },
         });
       }
-    });
-    socket.on("close", () => speech.close());
+    },
+    close(socket: ClientSocket & { raw: object }) {
+      connections.get(socket.raw)?.close();
+      connections.delete(socket.raw);
+    },
   });
-  return websocketServer;
 }

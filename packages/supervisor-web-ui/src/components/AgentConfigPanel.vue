@@ -1,90 +1,96 @@
 <template>
-  <div v-if="agent" class="agent-config w-full">
-    <section class="agent-config-section border rounded-md overflow-hidden">
-      <div class="agent-config-section__title px-4 py-3 border-b text-[14px] font-medium">
-        基本配置
-      </div>
-      <dl class="divide-y agent-config-divider">
-        <div class="agent-config-row">
-          <dt>名称</dt>
-          <dd>{{ agent.name }}</dd>
+  <div v-if="agent" class="agent-config mx-auto w-full max-w-[920px]">
+    <div v-if="loading" class="agent-config-loading">
+      <Loader2 class="h-4 w-4 animate-spin" />
+      正在加载 Agent 配置...
+    </div>
+    <template v-else>
+      <section class="agent-config-section border rounded-md overflow-hidden">
+        <div class="agent-config-section__title px-4 py-3 border-b text-[14px] font-medium">
+          基本配置
         </div>
-        <div class="agent-config-row">
-          <dt>描述</dt>
-          <dd>{{ agent.description || "-" }}</dd>
-        </div>
-        <div class="agent-config-row">
-          <dt>模型服务</dt>
-          <dd>{{ providerLabel }}</dd>
-        </div>
-        <div class="agent-config-row">
-          <dt>模型</dt>
-          <dd class="font-mono text-[12px]">{{ agent.modelId || "-" }}</dd>
-        </div>
-        <div class="agent-config-row">
-          <dt>工具集</dt>
-          <dd>{{ agent.toolsPreset || "none" }}</dd>
-        </div>
-        <div class="agent-config-row">
-          <dt>Home 目录</dt>
-          <dd class="font-mono text-[12px] break-all">{{ homeDir || "-" }}</dd>
-        </div>
-      </dl>
-    </section>
+        <dl class="divide-y agent-config-divider">
+          <div class="agent-config-row">
+            <dt>名称</dt>
+            <dd>{{ agent.name }}</dd>
+          </div>
+          <div class="agent-config-row">
+            <dt>描述</dt>
+            <dd>{{ agent.description || "-" }}</dd>
+          </div>
+          <div class="agent-config-row">
+            <dt>模型服务</dt>
+            <dd>{{ providerLabel }}</dd>
+          </div>
+          <div class="agent-config-row">
+            <dt>模型</dt>
+            <dd>{{ modelLabel }}</dd>
+          </div>
+          <div class="agent-config-row">
+            <dt>工具集</dt>
+            <dd>{{ agent.toolsPreset || "none" }}</dd>
+          </div>
+          <div class="agent-config-row">
+            <dt>Home 目录</dt>
+            <dd class="font-mono text-[12px] break-all">{{ homeDir || "-" }}</dd>
+          </div>
+        </dl>
+      </section>
 
-    <section
-      v-if="resolvedTools.length"
-      class="agent-config-section border rounded-md overflow-hidden mt-4"
-    >
-      <div class="agent-tools-header">
-        <div>
-          <div class="text-[14px] font-medium">可用工具</div>
-          <p>控制该 Agent 在后续新会话中可以调用的能力</p>
+      <section
+        v-if="resolvedTools.length"
+        class="agent-config-section border rounded-md overflow-hidden mt-4"
+      >
+        <div class="agent-tools-header">
+          <div>
+            <div class="text-[14px] font-medium">可用工具</div>
+            <p>控制该 Agent 在后续新会话中可以调用的能力</p>
+          </div>
+          <span>{{ enabledToolCount }}/{{ resolvedTools.length }} 已启用</span>
         </div>
-        <span>{{ enabledToolCount }}/{{ resolvedTools.length }} 已启用</span>
-      </div>
-      <div class="divide-y agent-config-divider">
-        <div
-          v-for="tool in resolvedTools"
-          :key="tool.name"
-          class="agent-tool-row"
-          :class="{ 'agent-tool-row--disabled': !tool.enabled }"
-        >
-          <div class="agent-tool-icon">
-            <Puzzle v-if="tool.source === 'extension'" class="h-4 w-4" />
-            <ShieldCheck v-else-if="tool.source === 'system'" class="h-4 w-4" />
-            <Wrench v-else class="h-4 w-4" />
-          </div>
-          <div class="agent-tool-main">
-            <div class="agent-tool-heading">
-              <span class="font-mono text-[12px]">{{ tool.name }}</span>
-              <span class="agent-config-tool-source">{{ sourceLabel(tool) }}</span>
-            </div>
-            <p>{{ tool.description || "该工具暂未提供用途说明" }}</p>
-            <div class="agent-tool-meta">
-              <span>{{ tool.enabled ? "可在新会话中调用" : "已从新会话工具集中移除" }}</span>
-            </div>
-          </div>
-          <button
-            class="agent-tool-toggle"
-            type="button"
-            role="switch"
-            :aria-checked="tool.enabled"
-            :disabled="savingTool === tool.name"
-            :title="tool.enabled ? '禁用工具' : '启用工具'"
-            @click="toggleTool(tool.name, tool.enabled)"
+        <div class="divide-y agent-config-divider">
+          <div
+            v-for="tool in resolvedTools"
+            :key="tool.name"
+            class="agent-tool-row"
+            :class="{ 'agent-tool-row--disabled': !tool.enabled }"
           >
-            <span />
-          </button>
+            <div class="agent-tool-icon">
+              <Puzzle v-if="tool.source === 'extension'" class="h-4 w-4" />
+              <ShieldCheck v-else-if="tool.source === 'system'" class="h-4 w-4" />
+              <Wrench v-else class="h-4 w-4" />
+            </div>
+            <div class="agent-tool-main">
+              <div class="agent-tool-heading">
+                <span class="font-mono text-[12px]">{{ tool.name }}</span>
+                <span class="agent-config-tool-source">{{ sourceLabel(tool) }}</span>
+              </div>
+              <p>{{ tool.description || "该工具暂未提供用途说明" }}</p>
+              <div class="agent-tool-meta">
+                <span>{{ tool.enabled ? "可在新会话中调用" : "已从新会话工具集中移除" }}</span>
+              </div>
+            </div>
+            <button
+              class="agent-tool-toggle"
+              type="button"
+              role="switch"
+              :aria-checked="tool.enabled"
+              :disabled="savingTool === tool.name"
+              :title="tool.enabled ? '禁用工具' : '启用工具'"
+              @click="toggleTool(tool.name, tool.enabled)"
+            >
+              <span />
+            </button>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { Puzzle, ShieldCheck, Wrench } from "lucide-vue-next";
+import { Loader2, Puzzle, ShieldCheck, Wrench } from "lucide-vue-next";
 import { useAgentStore, useProviderStore } from "@/store";
 import { getDefaultWorkspaceCwd } from "@/config/workspace";
 import { showUiMessage } from "@/composables/use-ui-message";
@@ -98,12 +104,20 @@ const providerLabel = computed(() => {
   const id = agent.value?.providerId;
   return id ? (providerStore.getProviderById(id)?.name ?? id) : "-";
 });
+const modelLabel = computed(() => {
+  const providerId = agent.value?.providerId;
+  const modelId = agent.value?.modelId;
+  if (!providerId || !modelId) return "-";
+  const model = providerStore.models[providerId]?.find((item) => item.id === modelId);
+  return model?.name || model?.modelId || "-";
+});
 const homeDir = computed(
   () => agent.value?.homeDir || agentStore.agentResources[props.agentId]?.homeDir || "",
 );
 const resolvedTools = computed(() => agentStore.agentResources[props.agentId]?.tools ?? []);
 const enabledToolCount = computed(() => resolvedTools.value.filter((tool) => tool.enabled).length);
 const savingTool = ref<string | null>(null);
+const loading = ref(false);
 
 function sourceLabel(tool: AgentResources["tools"][number]): string {
   if (tool.source === "extension") return tool.extensionName || "扩展";
@@ -132,7 +146,14 @@ async function toggleTool(name: string, enabled: boolean) {
 
 watch(
   () => props.agentId,
-  (id) => void agentStore.fetchAgentResources(id, getDefaultWorkspaceCwd()),
+  async (id) => {
+    loading.value = true;
+    try {
+      await agentStore.fetchAgentResources(id, getDefaultWorkspaceCwd());
+    } finally {
+      loading.value = false;
+    }
+  },
   { immediate: true },
 );
 </script>
@@ -142,6 +163,16 @@ watch(
   background: var(--app-settings-card);
   border-color: var(--app-border-subtle);
   color: var(--app-text-primary);
+}
+
+.agent-config-loading {
+  display: flex;
+  min-height: 12rem;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: var(--app-text-secondary);
+  font-size: 13px;
 }
 
 .agent-config-section__title,

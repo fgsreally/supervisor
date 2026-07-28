@@ -1,6 +1,5 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
-import Database from "better-sqlite3";
 import { ensureAgentHome, getAgentHomeDir } from "../agent/index.js";
 import { resolveDbPath } from "../config/resolve-db-path.js";
 import { encryptApiKey, decryptApiKey } from "../utils/encrypt.js";
@@ -44,6 +43,7 @@ import {
   type ProjectScriptInput,
   type ProjectScriptKind,
 } from "../core/project-scripts.js";
+import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.js";
 
 function parseHomeTaskStatus(value: string): HomeTaskStatus {
   return (HOME_TASK_STATUSES as readonly string[]).includes(value)
@@ -211,13 +211,13 @@ function rowToModel(row: ModelRow): Model {
 }
 
 export class SupervisorDb {
-  public readonly db: Database.Database;
+  public readonly db: SqliteDatabase;
   private readonly statusListeners = new Set<(id: number, status: SessionStatus) => void>();
 
   constructor(dbPath?: string) {
     const resolved = resolveDbPath(dbPath);
     mkdirSync(join(resolved, ".."), { recursive: true });
-    this.db = new Database(resolved);
+    this.db = openSqliteDatabase(resolved);
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.migrate();
@@ -1310,6 +1310,7 @@ export class SupervisorDb {
       errorMsg?: string | null;
       stage?: string | null;
       shadowEnabled?: boolean;
+      projectId?: number | null;
     },
   ): void {
     const sets: string[] = [];
@@ -1326,6 +1327,7 @@ export class SupervisorDb {
     if (patch.errorMsg !== undefined) put("error_msg", patch.errorMsg);
     if (patch.stage !== undefined) put("stage", patch.stage);
     if (patch.shadowEnabled !== undefined) put("shadow_enabled", patch.shadowEnabled ? 1 : 0);
+    if (patch.projectId !== undefined) put("project_id", patch.projectId);
     if (sets.length === 0) return;
     sets.push("last_active_at = ?");
     params.push(Date.now(), id);

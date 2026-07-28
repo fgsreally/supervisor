@@ -1,11 +1,10 @@
-import { serve } from "@hono/node-server";
 import { getDefaultCwd, setDefaultCwd, resolveWorkspacePath } from "./config/default-cwd.js";
 import { resolveDbPath } from "./config/resolve-db-path.js";
 import { SupervisorDb } from "./db/db.js";
 import { createHttpServer } from "./http/http-server.js";
 import { SessionManager } from "./core/session-manager.js";
 import { startDailyWorkScheduler } from "./core/daily-work.js";
-import { attachWebSocketServer } from "./websocket/server.js";
+import { registerWebSocketRoutes } from "./websocket/server.js";
 
 export interface SupervisorOptions {
   port?: number;
@@ -24,16 +23,15 @@ export function startSupervisor(options: SupervisorOptions = {}): {
   manager.createProject({ cwd: getDefaultCwd() });
   const app = createHttpServer(manager);
   const port = options.port ?? 3030;
-  const server = serve({ fetch: app.fetch, port });
-  const websocketServer = attachWebSocketServer(server);
+  registerWebSocketRoutes(app);
+  app.listen({ hostname: "0.0.0.0", port });
   manager.resumePersistedSessionInputs();
   const stopDailyWork = startDailyWorkScheduler(db);
   return {
     manager,
     stop: async () => {
       stopDailyWork();
-      server.close();
-      websocketServer.close();
+      await app.stop();
       await manager.dispose();
     },
   };
@@ -50,6 +48,7 @@ export type {
   ExtensionContext,
   ExtensionEvent,
   ExtensionJobFacade,
+  MessageEntry,
   SpawnSessionRequest,
   SpawnSessionResult,
   SupervisorProjectFacade,
@@ -57,7 +56,7 @@ export type {
   ToolDefinition,
 } from "./extension/index.js";
 export { createHttpServer } from "./http/http-server.js";
-export { attachWebSocketServer } from "./websocket/server.js";
+export { registerWebSocketRoutes } from "./websocket/server.js";
 export { extractMessageSearchFields } from "./db/message-search.js";
 export { copyMessagesWithInheritance } from "./core/session-history.js";
 export type { SessionOutputListener } from "./core/session-manager.js";

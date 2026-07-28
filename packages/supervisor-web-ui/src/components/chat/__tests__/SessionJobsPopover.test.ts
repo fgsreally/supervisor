@@ -56,8 +56,8 @@ describe("SessionJobsPopover", () => {
     const wrapper = mount(SessionJobsPopover, { props: { sessionId: "1" } });
     await flushPromises();
 
-    expect(wrapper.get(".jobs-summary").text()).toBe("2");
-    await wrapper.get(".jobs-summary").trigger("click");
+    expect(wrapper.get(".chat-header-action--count").text()).toBe("2");
+    await wrapper.get(".chat-header-action--count").trigger("click");
     expect(wrapper.text()).toContain("检查部署");
     expect(wrapper.text()).toContain("每 5 分钟");
     expect(wrapper.text()).toContain("pnpm test");
@@ -89,7 +89,7 @@ describe("SessionJobsPopover", () => {
     });
     const wrapper = mount(SessionJobsPopover, { props: { sessionId: "1" } });
     await flushPromises();
-    await wrapper.get(".jobs-summary").trigger("click");
+    await wrapper.get(".chat-header-action--count").trigger("click");
     await wrapper.get(".job-item").trigger("click");
 
     expect(wrapper.emitted("detail")?.[0]?.[0]).toMatchObject({ presentation: "panel" });

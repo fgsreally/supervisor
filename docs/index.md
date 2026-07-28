@@ -21,7 +21,7 @@ features:
     details: Vue 3 控制台：对话中断、Job、Slash、Agent/Provider/资源管理
     link: /web-ui/overview
   - title: 子代理与 Shadow
-    details: spawn_agent + members；Shadow 旁路观察主会话
+    details: spawn_agent + Session 委派白名单；Shadow 旁路观察主会话
     link: /supervisor/subagents
   - title: 扩展与外部 Agent
     details: 全局 catalog + bind；Codex / Claude / ACP；仓库扩展 strict-sdd 等

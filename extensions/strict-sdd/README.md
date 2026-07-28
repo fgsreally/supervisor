@@ -4,7 +4,9 @@
 
 `Brainstorm → Design → Spec → Mockup → Planning → Test/Vertical → Implement/Verify → Archive`
 
-状态只持久化为 `session.meta.workflow = { stage, status }`。详细 change、循环和子 Session 进度写入该 Session 专属目录的 `workflow/execution.json`。
+阶段持久化到 `sessions.stage`，扩展状态持久化到
+`sessions.meta.strictSdd.status`。详细 change、循环和子 Session 进度写入该 Session 专属目录的
+`workflow/execution.json`。
 
 子 Session 永远不会启动本工作流，也不能递归创建工作流子 Agent。Test、Implement、Verify、Archive 都使用独立的单用途子 Session。
 

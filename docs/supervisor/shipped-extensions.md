@@ -6,9 +6,9 @@
 
 ```bash
 pnpm run build
-node packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
-node packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
-node packages/supervisor/dist/cli.mjs extensions list
+bun packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
+bun packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
+bun packages/supervisor/dist/cli.mjs extensions list
 ```
 
 也可用 HTTP：`POST /extensions/install` 等，见 [HTTP API](/supervisor/http-api)。
@@ -17,7 +17,9 @@ node packages/supervisor/dist/cli.mjs extensions list
 
 路径：`extensions/strict-sdd`
 
-严格阶段式开发流水线（Brainstorm → … → Archive）。状态写入 `session.meta.workflow`；详细执行数据可落在 Session 目录 `workflow/`。说明见扩展内 `README.md`，概念见 [工作流](/supervisor/workflow)。
+严格阶段式开发流水线（Brainstorm → … → Archive）。当前阶段写入 `sessions.stage`；
+扩展私有状态使用 namespaced Session meta，详细执行产物写入 Session 专属目录 `workflow/`。
+说明见扩展内 `README.md`，概念见 [工作流](/supervisor/workflow)。
 
 ## hindsight
 

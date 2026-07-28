@@ -1,43 +1,28 @@
-# 工作流
+# 工作流阶段
 
-Supervisor 用会话 meta 保存轻量工作流状态，扩展可在此之上实现阶段流水线。
+Supervisor 核心只保存一个轻量阶段标签：`sessions.stage`。实现位于
+`src/core/session-workflow.ts`，扩展可在其上实现自己的阶段机。
 
-## 核心状态
+## 核心 API
 
-实现：`src/core/session-workflow.ts`。
+| Method | Path                     | 说明                                           |
+| ------ | ------------------------ | ---------------------------------------------- |
+| GET    | `/sessions/:id/workflow` | 返回 `{ workflow: { stage, status: "working" } | null }` |
+| PATCH  | `/sessions/:id/workflow` | 设置 `stage`                                   |
+| DELETE | `/sessions/:id/workflow` | 清除 `stage`                                   |
 
-```ts
-meta.workflow = { stage: string; status: WorkflowStatus }
-```
+`workflow` 是兼容命名，`status` 恒为 `working`，不会持久化。扩展若需要
+`waiting_confirmation`、`waiting_choice`、`completed` 等状态，必须写自己的 namespaced
+`sessions.meta`，不能再写旧的 `meta.workflow`。
 
-`status` 取值：
+扩展 API 对应 `ctx.session.workflow.get/set/clear`，阶段变化触发
+`workflow.stage_changed`。`workflow.status_changed` 只保留在兼容类型中，新扩展不应依赖它。
 
-| Status                 | 含义           |
-| ---------------------- | -------------- |
-| `working`              | 阶段进行中     |
-| `waiting_confirmation` | 等待用户确认   |
-| `waiting_choice`       | 等待用户选择   |
-| `completed`            | 阶段或流程完成 |
+## Strict SDD
 
-## HTTP API
-
-| Method | Path                     | 说明              |
-| ------ | ------------------------ | ----------------- |
-| GET    | `/sessions/:id/workflow` | 读取              |
-| PATCH  | `/sessions/:id/workflow` | 更新 stage/status |
-| DELETE | `/sessions/:id/workflow` | 清除              |
-
-Web UI 通过 `WorkflowStageTag` 展示当前 stage/status；完整工作流确认与选择面板尚未提供。
-
-## Strict SDD 扩展
-
-阶段名与推进逻辑不在核心硬编码。安装并绑定 `extensions/strict-sdd` 后，主 Session 可按阶段推进，例如：
+`extensions/strict-sdd` 为主 Session 提供阶段式流程：
 
 `Brainstorm → Design → Spec → Mockup → Planning → Test/Vertical → Implement/Verify → Archive`
 
-细节与产物目录见仓库内 `extensions/strict-sdd/README.md` 与 [仓库扩展](/supervisor/shipped-extensions)。
-
-## 设计要点
-
-- 子 Session 默认不启动工作流，避免递归阶段机。
-- 详细执行记录可写在 Session 专属目录（如 `workflow/execution.json`），核心只保证 `meta.workflow` 可查询与 PATCH。
+当前阶段使用 `sessions.stage`；扩展状态使用 `sessions.meta.strictSdd.status`；change、循环和
+子 Session 进度写入 Session 专属目录的 `workflow/execution.json`。子 Session 不会递归启动流程。

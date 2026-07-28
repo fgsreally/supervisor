@@ -20,6 +20,7 @@
         <span class="text-[13px] font-medium truncate provider-list-item__name">{{
           provider.name
         }}</span>
+        <span v-if="provider.slug" class="provider-list-item__builtin-badge">内置</span>
         <span v-if="!provider.isEnabled" class="provider-list-item__disabled-badge">已禁用</span>
       </div>
       <div class="text-[11px] truncate mt-0.5 provider-list-item__meta">
@@ -63,6 +64,13 @@ defineEmits<{ select: [id: string]; contextmenu: [event: MouseEvent] }>();
   opacity: 0.62;
 }
 
+.provider-list-item--disabled .provider-list-item__name {
+  opacity: 0.62;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.provider-list-item__builtin-badge,
 .provider-list-item__disabled-badge {
   flex: none;
   padding: 1px 5px;
@@ -70,6 +78,12 @@ defineEmits<{ select: [id: string]; contextmenu: [event: MouseEvent] }>();
   background: var(--app-hover);
   color: var(--app-text-secondary);
   font-size: 10px;
+}
+
+.provider-list-item__builtin-badge {
+  border: 1px solid color-mix(in srgb, var(--app-accent) 32%, var(--app-border));
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent) 7%, transparent);
 }
 
 .provider-list-item--active .provider-list-item__name,

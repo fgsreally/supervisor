@@ -134,9 +134,7 @@ export function loadHindsightConfig(env: NodeJS.ProcessEnv = process.env): Hinds
   };
 }
 
-export function isHindsightApiConfigured(
-  config: HindsightConfig,
-): config is HindsightConfig & { hindsightApiUrl: string } {
+export function isHindsightApiConfigured(config: HindsightConfig): boolean {
   return typeof config.hindsightApiUrl === "string" && config.hindsightApiUrl.length > 0;
 }
 

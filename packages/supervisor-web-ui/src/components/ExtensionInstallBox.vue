@@ -54,6 +54,7 @@ import {
   type ExtensionInstallResult,
   type ExtensionResourceInfo,
 } from "@/api";
+import { showUiMessage } from "@/composables/use-ui-message";
 
 const emit = defineEmits<{
   installed: [id: string];
@@ -85,6 +86,7 @@ async function install() {
     const result: ExtensionInstallResult = await installExtension(s);
     source.value = "";
     await refresh();
+    showUiMessage(`已安装扩展 ${result.id}`, "success");
     emit("installed", result.id);
   } catch (err) {
     installError.value = err instanceof Error ? err.message : String(err);
@@ -98,6 +100,7 @@ async function uninstall(id: string) {
   try {
     await uninstallExtension(id);
     await refresh();
+    showUiMessage(`已卸载扩展 ${id}`, "success");
     emit("uninstalled", id);
   } catch (err) {
     installError.value = err instanceof Error ? err.message : String(err);

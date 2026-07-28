@@ -82,6 +82,7 @@ describe("strict-sdd extension", () => {
     const tools = new Map<string, { execute: (params: unknown) => Promise<unknown> }>();
     const handlers = new Map<string, (event: any) => Promise<void>>();
     let workflow = { stage: "mockup", status: "working" };
+    let meta: Record<string, unknown> = {};
     const context = {
       session: {
         id: 1,
@@ -91,6 +92,10 @@ describe("strict-sdd extension", () => {
           get: async () => workflow,
           set: async (patch: Partial<typeof workflow>) => (workflow = { ...workflow, ...patch }),
         },
+        meta: {
+          get: async () => meta,
+          patch: async (patch: Record<string, unknown>) => (meta = { ...meta, ...patch }),
+        },
         tools: { setActive: vi.fn(async () => {}) },
       },
       agent: {
@@ -98,7 +103,7 @@ describe("strict-sdd extension", () => {
         registerTool: (tool: { name: string; execute: (params: unknown) => Promise<unknown> }) =>
           tools.set(tool.name, tool),
         listTools: () => [...tools].map(([name]) => ({ name })),
-        findByTag: async () => [],
+        findByRole: async () => [],
       },
       project: { cwd: sessionDir },
       inject: { reattach: vi.fn(), clear: vi.fn() },
@@ -114,6 +119,6 @@ describe("strict-sdd extension", () => {
     await expect(complete.execute({})).rejects.toThrow("mockup.html");
     await artifacts.write("specs/auth/mockup.html", "<html></html>");
     await expect(complete.execute({})).resolves.toBeDefined();
-    expect(workflow.status).toBe("waiting_confirmation");
+    expect(meta).toEqual({ strictSdd: { status: "waiting_confirmation" } });
   });
 });

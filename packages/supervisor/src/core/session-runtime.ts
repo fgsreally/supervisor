@@ -18,10 +18,7 @@ import { activatePackagedTools } from "../tools/loader.js";
 import { isPackagedToolId } from "../tools/catalog.js";
 import type { SupervisorDb } from "../db/db.js";
 import type { SessionManager } from "./session-manager.js";
-import {
-  resolveSessionPromptImages,
-  type SessionPromptImage,
-} from "./session-media.js";
+import { resolveSessionPromptImages, type SessionPromptImage } from "./session-media.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
 import { Context } from "../extension/runtime/index.js";
 import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
@@ -141,7 +138,10 @@ export class SessionRuntime implements ManagedSessionRuntime {
     manager: SessionManager,
   ): Promise<void> {
     const session = this.getSession();
-    if (session?.projectId == null) throw new Error(`Session ${this.id} has no project`);
+    // The built-in Pi assistant is deliberately global and has no project-scoped
+    // artifact directory. Its regular Agent tools and resources still work, while
+    // project/session extensions are skipped because their Context requires a project.
+    if (session?.projectId == null) return;
     await ensureProjectDir(session.projectId);
     const sessionDir = await ensureSessionDir(session.projectId, this.id);
     const context = new Context({ sessionManager: manager, db, sessionRuntime: this });
@@ -272,7 +272,10 @@ export class SessionRuntime implements ManagedSessionRuntime {
       const imageContent = images?.length
         ? await resolveSessionPromptImages(this.id, images)
         : undefined;
-      await this.harness.prompt(expanded, imageContent?.length ? { images: imageContent } : undefined);
+      await this.harness.prompt(
+        expanded,
+        imageContent?.length ? { images: imageContent } : undefined,
+      );
     } finally {
       cancelQueuedSource?.();
       cancelQueuedOrigin?.();

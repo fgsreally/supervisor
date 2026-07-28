@@ -59,22 +59,13 @@
 
           <template v-if="agent.backendType === 'native'">
             <label class="block text-[13px]">
-              <span class="agent-edit-label mb-1 block">模型服务</span>
-              <UiField v-model="draft.providerId" as="select" @change="onProviderChange">
-                <option value="">稍后配置</option>
-                <option v-for="provider in providers" :key="provider.id" :value="provider.id">
-                  {{ provider.name }}
-                </option>
-              </UiField>
-            </label>
-            <label class="block text-[13px]">
               <span class="agent-edit-label mb-1 block">模型</span>
-              <UiField v-model="draft.modelId" as="select" class="font-mono">
-                <option value="">稍后配置</option>
-                <option v-for="model in models" :key="model.id" :value="model.id">
-                  {{ model.name }}
-                </option>
-              </UiField>
+              <ModelTreeSelect
+                v-model="draft.modelId"
+                :groups="modelGroups"
+                placeholder="稍后配置"
+                @change="onModelChange"
+              />
             </label>
             <label class="block text-[13px]">
               <span class="agent-edit-label mb-1 block">工具集</span>
@@ -120,6 +111,7 @@ import { uploadIcon, type ToolsPreset } from "@/api";
 import { useAgentStore, useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import AgentAvatar from "./AgentAvatar.vue";
+import ModelTreeSelect, { type ModelTreeGroup } from "./ModelTreeSelect.vue";
 import { UiButton, UiField } from "./ui";
 
 const props = defineProps<{ open: boolean; agentId: string }>();
@@ -146,8 +138,15 @@ const providers = computed(() =>
     providerToUI(provider, providerStore.models[provider.id] ?? []),
   ),
 );
-const models = computed(
-  () => providers.value.find((provider) => provider.id === draft.providerId)?.models ?? [],
+const modelGroups = computed<ModelTreeGroup[]>(() =>
+  providers.value
+    .filter((provider) => provider.isEnabled)
+    .map((provider) => ({
+      id: provider.id,
+      name: provider.name,
+      icon: provider.icon,
+      models: provider.models.map((model) => ({ value: model.id, name: model.name })),
+    })),
 );
 const canSave = computed(() =>
   Boolean(draft.name.trim() && (agent.value?.backendType === "native" || draft.command.trim())),
@@ -174,14 +173,10 @@ watch(
   { immediate: true },
 );
 
-function onProviderChange() {
-  if (!draft.providerId) {
-    draft.modelId = "";
-    return;
-  }
-  if (!models.value.some((model) => model.id === draft.modelId)) {
-    draft.modelId = models.value[0]?.id ?? "";
-  }
+function onModelChange(modelId: string) {
+  draft.providerId =
+    modelGroups.value.find((group) => group.models.some((model) => model.value === modelId))?.id ??
+    "";
 }
 
 function close() {

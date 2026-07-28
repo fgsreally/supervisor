@@ -2,9 +2,18 @@
 
 入口：`packages/supervisor/src/cli.ts`，构建产物 `packages/supervisor/dist/cli.mjs`，包 bin 名为 `pi-supervisor`。
 
+运行时要求 Bun 1.2 或更高版本。包仍按标准 npm 包发布；用户先安装 Bun，再使用任意 npm 兼容包管理器全局安装即可：
+
+```bash
+npm install -g pi-supervisor
+pi-supervisor --help
+```
+
+`pi-supervisor` 的 bin shebang 会直接调用 Bun，用户不需要用 Bun 安装这个 npm 包。
+
 ```bash
 pnpm run build
-node packages/supervisor/dist/cli.mjs --help
+bun packages/supervisor/dist/cli.mjs --help
 # 或安装后
 pi-supervisor --help
 ```
@@ -14,7 +23,7 @@ pi-supervisor --help
 ## 启动 HTTP 服务器
 
 ```bash
-node packages/supervisor/dist/cli.mjs serve --port 3030
+bun packages/supervisor/dist/cli.mjs serve --port 3030
 # 常用快捷方式（playground + 本地 db）
 pnpm run serve
 
@@ -25,28 +34,28 @@ pnpm run dev:supervisor
 ## Provider
 
 ```bash
-node packages/supervisor/dist/cli.mjs providers add
-node packages/supervisor/dist/cli.mjs providers list
-node packages/supervisor/dist/cli.mjs providers set-key
-node packages/supervisor/dist/cli.mjs providers remove
+bun packages/supervisor/dist/cli.mjs providers add
+bun packages/supervisor/dist/cli.mjs providers list
+bun packages/supervisor/dist/cli.mjs providers set-key
+bun packages/supervisor/dist/cli.mjs providers remove
 ```
 
 ## Model
 
 ```bash
-node packages/supervisor/dist/cli.mjs models list <provider-id>
-node packages/supervisor/dist/cli.mjs models add
-node packages/supervisor/dist/cli.mjs models remove
+bun packages/supervisor/dist/cli.mjs models list <provider-id>
+bun packages/supervisor/dist/cli.mjs models add
+bun packages/supervisor/dist/cli.mjs models remove
 ```
 
 ## Config
 
 ```bash
-node packages/supervisor/dist/cli.mjs config
-node packages/supervisor/dist/cli.mjs config show
-node packages/supervisor/dist/cli.mjs config web-search [provider]
-node packages/supervisor/dist/cli.mjs config web-fetch [provider]
-node packages/supervisor/dist/cli.mjs config browser [headless|headed]
+bun packages/supervisor/dist/cli.mjs config
+bun packages/supervisor/dist/cli.mjs config show
+bun packages/supervisor/dist/cli.mjs config web-search [provider]
+bun packages/supervisor/dist/cli.mjs config web-fetch [provider]
+bun packages/supervisor/dist/cli.mjs config browser [headless|headed]
 ```
 
 ## Extension（全局 catalog + bind）
@@ -55,28 +64,28 @@ node packages/supervisor/dist/cli.mjs config browser [headless|headed]
 
 ```bash
 # 从本地路径 / npm / git 安装到全局 catalog
-node packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
-node packages/supervisor/dist/cli.mjs extensions install npm:<spec>
-node packages/supervisor/dist/cli.mjs extensions install git:<url>
+bun packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
+bun packages/supervisor/dist/cli.mjs extensions install npm:<spec>
+bun packages/supervisor/dist/cli.mjs extensions install git:<url>
 
-node packages/supervisor/dist/cli.mjs extensions list
-node packages/supervisor/dist/cli.mjs extensions update <id>
-node packages/supervisor/dist/cli.mjs extensions uninstall <id>
+bun packages/supervisor/dist/cli.mjs extensions list
+bun packages/supervisor/dist/cli.mjs extensions update <id>
+bun packages/supervisor/dist/cli.mjs extensions uninstall <id>
 
 # 绑定 / 解绑到 Agent
-node packages/supervisor/dist/cli.mjs extensions bind <agent-id> <id>
-node packages/supervisor/dist/cli.mjs extensions unbind <agent-id> <id>
+bun packages/supervisor/dist/cli.mjs extensions bind <agent-id> <id>
+bun packages/supervisor/dist/cli.mjs extensions unbind <agent-id> <id>
 ```
 
 详情见 [扩展框架](/supervisor/extensions)。
 
 ## 通用选项
 
-| 选项                | 说明                     |
-| ------------------- | ------------------------ |
-| `-p, --port <port>` | HTTP 端口，默认 3030     |
-| `--cwd <path>`      | 默认工作目录（`serve`）  |
-| `-h, --help`        | 帮助                     |
+| 选项                | 说明                    |
+| ------------------- | ----------------------- |
+| `-p, --port <port>` | HTTP 端口，默认 3030    |
+| `--cwd <path>`      | 默认工作目录（`serve`） |
+| `-h, --help`        | 帮助                    |
 
 数据库路径不通过 CLI 参数传入，按以下顺序读取：
 

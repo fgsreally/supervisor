@@ -6,7 +6,7 @@ type ExtensionContext = Parameters<Parameters<typeof defineExtension>[0]["setup"
 type ToolContent = Array<{ type: "text"; text: string } | { type: "image"; url: string }>;
 
 export function registerHindsightTool(ctx: ExtensionContext, tool: AgentTool): void {
-  ctx.agent.tools.register({
+  ctx.agent.registerTool({
     name: tool.name,
     description: tool.description,
     parameters: tool.parameters,

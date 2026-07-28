@@ -33,16 +33,42 @@ export function useAppTheme() {
 
   const theme = computed(() => (isDark.value ? "dark" : "light"));
 
-  function setDark(value: boolean) {
+  function commitDark(value: boolean) {
     isDark.value = value;
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, value ? "dark" : "light");
-    }
+    localStorage.setItem(STORAGE_KEY, value ? "dark" : "light");
     applyTheme();
   }
 
-  function toggleDark() {
-    setDark(!isDark.value);
+  function setDark(value: boolean, origin?: { x: number; y: number }) {
+    if (typeof document === "undefined" || value === isDark.value) return;
+    const viewTransitions = document as Document & {
+      startViewTransition?: (update: () => void) => { ready: Promise<void> };
+    };
+    if (!viewTransitions.startViewTransition) {
+      commitDark(value);
+      return;
+    }
+    const transition = viewTransitions.startViewTransition(() => commitDark(value));
+    void transition.ready.then(() => {
+      const x = origin?.x ?? window.innerWidth / 2;
+      const y = origin?.y ?? window.innerHeight / 2;
+      const radius = Math.hypot(
+        Math.max(x, window.innerWidth - x),
+        Math.max(y, window.innerHeight - y),
+      );
+      document.documentElement.animate(
+        { clipPath: [`circle(0 at ${x}px ${y}px)`, `circle(${radius}px at ${x}px ${y}px)`] },
+        {
+          duration: 420,
+          easing: "linear",
+          pseudoElement: "::view-transition-new(root)",
+        },
+      );
+    });
+  }
+
+  function toggleDark(event?: MouseEvent) {
+    setDark(!isDark.value, event ? { x: event.clientX, y: event.clientY } : undefined);
   }
 
   return { isDark, theme, setDark, toggleDark };

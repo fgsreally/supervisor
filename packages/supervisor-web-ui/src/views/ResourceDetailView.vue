@@ -113,11 +113,7 @@ import { computed, ref, watch } from "vue";
 import { ChevronLeft, Loader2, Save, Trash2 } from "lucide-vue-next";
 import ResourceContentView from "../components/ResourceContentView.vue";
 import SkillFileTree from "../components/SkillFileTree.vue";
-import {
-  uninstallCatalogResource,
-  upsertResourceContent,
-  type CatalogResourceKind,
-} from "@/api";
+import { uninstallCatalogResource, upsertResourceContent, type CatalogResourceKind } from "@/api";
 import { useResourceStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { requestUiConfirm } from "@/composables/use-ui-confirm";
@@ -236,7 +232,7 @@ const kindLabel = computed(() => {
     case "extensions":
       return "Extension";
     case "prompts":
-      return "Prompt 模板";
+      return "Prompt Template";
     case "mcp":
       return "MCP 配置";
     default:

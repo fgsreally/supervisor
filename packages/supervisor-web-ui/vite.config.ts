@@ -82,8 +82,7 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/home": {
-        target: "http://localhost:3030",
-        changeOrigin: true,
+        ...spaAwareProxy(),
       },
       "/healthz": {
         target: "http://localhost:3030",
@@ -105,6 +104,9 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/resources": {
+        ...spaAwareProxy(),
+      },
+      "/extensions": {
         ...spaAwareProxy(),
       },
       "/skills": {

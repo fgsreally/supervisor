@@ -1,25 +1,22 @@
 # Job
 
-Job 是 Supervisor 提供给系统、界面和扩展的统一执行视图，不是要求模型直接调用的新工具。
+Job 是系统、UI 与扩展共享的执行记录，不是模型直接调用的新工具。
 
-## 模型
+## 持久模型
 
-- `JobRecord` 表示一次执行，记录类型、状态、输出、能力和起止时间。
-- `JobSchedule` 表示尚未触发或周期触发的计划；每次触发会产生独立 Job。
-- Job 归属于 Session，并持久化到 Supervisor 数据库。
-- Supervisor 重启时，未完成的记录会标记为 `interrupted`。记录可以恢复查看，但底层进程不会自动恢复。
+`jobs` 的每行表示一次执行，记录 kind、status、execution mode、能力、输出、进度、结果、错误、
+metadata 与起止时间。完整列见[数据库结构](/supervisor/schema-reference)。Supervisor 重启时，
+遗留的 queued/running/waiting Job 会标为 `interrupted`；记录可继续查看，底层进程不会恢复。
 
-扩展通过 `ctx.jobs` 创建和更新 Job，并按实际能力注册取消或输入处理器。HTTP 和 Web UI 只与 Job 交互，不需要知道底层是 shell、timer、MCP 或其他实现。
+定时定义不在 Job 表。`sessions.meta.timers` 保存一次性或周期 timer；每次触发才创建独立的
+`timer.fire` Job。旧 `job_schedules` 会一次性迁移到 Session meta 后删除。
 
-目前 `timer` 使用 Job Schedule，并在触发时创建 Job；`persistent-bash` 将后台 shell 注册为 Job。旧的 Persistent Bash HTTP 路径暂时保留为兼容别名。
+扩展使用 `ctx.jobs.create/get/list/update/cancel/input`，并按能力注册取消或输入 handler。
+`persistent-bash` 把后台 shell 注册为 Job；旧 `/bash-sessions*` HTTP 路径仅作兼容别名。
 
 ## Web UI
 
-会话页头部只有一个 Job Popover，统一展示计划和执行记录：
+Session Job Popover 合并展示 timer 定义和执行记录。`capabilities` 决定可用操作，当前包括
+`cancel`、`input`、`read_output`、`retry`。短输出可内联查看，长输出与终端内容使用详情视图。
 
-- 简短输出在 Popover 内展开。
-- 一般详情使用弹窗。
-- 长输出和终端内容使用分屏详情。
-- 支持能力由 `capabilities` 声明，例如 `cancel`、`input` 和 `read_output`。
-
-相关：[扩展框架](/supervisor/extensions)、[HTTP API](/supervisor/http-api)。
+相关：[扩展 API](/supervisor/extensions)、[HTTP API](/supervisor/http-api)。

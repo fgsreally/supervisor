@@ -1,188 +1,241 @@
 <template>
   <div class="flex flex-1 min-h-0 overflow-hidden">
-    <!-- Skills and Extensions with files: skill list + file tree -->
-    <template v-if="kind === 'skills' || kind === 'extensions'">
-      <div
-        class="resource-browser-sidebar w-48 shrink-0 border-r overflow-y-auto custom-scrollbar flex flex-col min-h-0"
-      >
-        <div class="flex-1 min-h-0 overflow-y-auto">
+    <div
+      v-if="loading"
+      class="resource-browser-empty flex flex-1 items-center justify-center gap-2 text-[13px]"
+    >
+      <Loader2 class="h-4 w-4 animate-spin" />
+      正在加载资源...
+    </div>
+    <template v-else>
+      <!-- Skills and Extensions with files: skill list + file tree -->
+      <template v-if="kind === 'skills' || kind === 'extensions'">
+        <div
+          class="resource-browser-sidebar shrink-0 border-r overflow-y-auto custom-scrollbar flex flex-col min-h-0 relative"
+          :style="{ width: `${sidebarWidth}px` }"
+        >
+          <div class="flex-1 min-h-0 overflow-y-auto">
+            <div
+              v-for="item in skillOrExtItems"
+              :key="item.id"
+              class="resource-browser-item px-3 py-2.5 cursor-pointer transition-colors"
+              :class="
+                selectedSkillId === item.id
+                  ? 'resource-browser-item--active'
+                  : 'resource-browser-item--idle'
+              "
+              @click="selectSkill(item.id)"
+            >
+              <div class="flex items-start gap-1 min-w-0">
+                <SkillListItem v-if="item.kind === 'skills'" :skill="item" />
+                <ResourceFileListItem v-else :item="item" />
+                <ResourceLayerBadge :layer="item.layer" />
+              </div>
+            </div>
+            <div
+              v-if="skillOrExtItems.length === 0"
+              class="resource-browser-empty px-3 py-8 text-[12px] text-center"
+            >
+              暂无
+            </div>
+          </div>
+          <GlobalResourceBindBar
+            v-if="unlinkedGlobal.length"
+            :items="unlinkedGlobal"
+            :kind="props.kind"
+            :binding-item-id="bindingItemId"
+            @bind="bindGlobalItem"
+            @preview="previewGlobalItem"
+            @installed="refreshAfterInstall"
+            @uninstalled="refreshAfterUninstall"
+          />
+          <ResizeHandle
+            class="resource-browser-resize-handle"
+            orientation="vertical"
+            label="调整资源侧边栏宽度"
+            @start="startSidebarResize"
+          />
+        </div>
+
+        <div
+          v-if="selectedSkill"
+          class="resource-browser-tree shrink-0 border-r flex flex-col min-h-0 relative"
+          :style="{ width: `${treeWidth}px` }"
+        >
           <div
-            v-for="item in skillOrExtItems"
-            :key="item.id"
-            class="resource-browser-item px-3 py-2.5 cursor-pointer transition-colors"
-            :class="
-              selectedSkillId === item.id
-                ? 'resource-browser-item--active'
-                : 'resource-browser-item--idle'
-            "
-            @click="selectSkill(item.id)"
+            class="resource-browser-tree-header px-3 py-2 text-[11px] border-b shrink-0 truncate font-mono"
           >
-            <div class="flex items-start gap-1 min-w-0">
-              <SkillListItem v-if="item.kind === 'skills'" :skill="item" />
-              <ResourceFileListItem v-else :item="item" />
-              <ResourceLayerBadge :layer="item.layer" />
+            {{ selectedSkill.name }}
+          </div>
+          <SkillFileTree
+            class="flex-1 min-h-0 px-1 py-1"
+            :files="selectedSkill.files"
+            :selected-file-id="selectedFileId"
+            @select="selectedFileId = $event"
+          />
+          <ResizeHandle
+            class="resource-browser-resize-handle"
+            orientation="vertical"
+            label="调整文件树宽度"
+            @start="startTreeResize"
+          />
+        </div>
+
+        <div class="resource-browser-main flex-1 overflow-hidden p-5 min-w-0 flex flex-col">
+          <div
+            v-if="selectedSkill && selectedFile"
+            class="resource-browser-editor flex-1 min-h-[200px] border rounded-sm flex flex-col overflow-hidden"
+          >
+            <div
+              class="resource-browser-editor-header px-4 py-2.5 border-b flex items-center gap-2 min-w-0 shrink-0"
+            >
+              <span class="text-[12px] font-medium truncate">{{ selectedSkill.name }}</span>
+              <span class="resource-browser-separator">/</span>
+              <span class="text-[12px] font-mono truncate">{{ selectedFile.fileName }}</span>
+              <ResourceLayerBadge :layer="selectedSkill.layer" />
+              <button
+                v-if="previewItem"
+                type="button"
+                class="resource-browser-add ml-auto shrink-0 rounded px-3 py-1.5 text-[12px]"
+                :disabled="!!bindingItemId"
+                @click="bindGlobalItem(previewItem)"
+              >
+                {{ bindingItemId === previewItem.id ? "添加中..." : "添加到 Agent" }}
+              </button>
+            </div>
+            <div
+              v-if="selectedSkill.rootPath"
+              class="resource-browser-editor-path px-4 py-1.5 border-b text-[11px] font-mono truncate shrink-0"
+              :title="`${selectedSkill.rootPath}/${selectedFile.fileName}`"
+            >
+              {{ selectedSkill.rootPath }}/{{ selectedFile.fileName }}
+            </div>
+            <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <ResourceContentView
+                :key="`${selectedSkill.id}:${selectedFile.id}`"
+                :content="selectedFile.content"
+                :kind="'skills'"
+                :language="getSkillFileLanguage(selectedFile.fileName)"
+              />
             </div>
           </div>
           <div
-            v-if="skillOrExtItems.length === 0"
-            class="resource-browser-empty px-3 py-8 text-[12px] text-center"
+            v-else
+            class="resource-browser-empty h-full flex items-center justify-center text-[13px]"
           >
-            暂无
+            选择 {{ kind === "skills" ? "Skill" : "Extension" }} 与文件
           </div>
         </div>
-        <GlobalResourceBindBar
-          v-if="unlinkedGlobal.length"
-          :items="unlinkedGlobal"
-          :kind="props.kind"
-          :binding-item-id="bindingItemId"
-          @bind="bindGlobalItem"
-          @installed="refreshAfterInstall"
-          @uninstalled="refreshAfterUninstall"
-        />
-      </div>
+      </template>
 
-      <div
-        v-if="selectedSkill"
-        class="resource-browser-tree w-52 shrink-0 border-r flex flex-col min-h-0"
-      >
+      <!-- Prompts / MCP: flat file list -->
+      <template v-else>
         <div
-          class="resource-browser-tree-header px-3 py-2 text-[11px] border-b shrink-0 truncate font-mono"
+          class="resource-browser-sidebar shrink-0 border-r overflow-y-auto custom-scrollbar flex flex-col min-h-0 relative"
+          :style="{ width: `${sidebarWidth}px` }"
         >
-          {{ selectedSkill.name }}
+          <div class="flex-1 min-h-0 overflow-y-auto">
+            <div
+              v-for="item in fileItems"
+              :key="item.id"
+              class="resource-browser-item px-3 py-2.5 cursor-pointer transition-colors flex items-start gap-1"
+              :class="
+                selectedFileItemId === item.id
+                  ? 'resource-browser-item--active'
+                  : 'resource-browser-item--idle'
+              "
+              @click="selectedFileItemId = item.id"
+            >
+              <ResourceFileListItem :item="item" />
+              <ResourceLayerBadge :layer="item.layer" />
+            </div>
+            <div
+              v-if="fileItems.length === 0"
+              class="resource-browser-empty px-3 py-8 text-[12px] text-center"
+            >
+              暂无
+            </div>
+          </div>
+          <GlobalResourceBindBar
+            v-if="unlinkedGlobal.length || props.kind === 'prompts' || props.kind === 'mcp'"
+            :items="unlinkedGlobal"
+            :kind="props.kind"
+            :binding-item-id="bindingItemId"
+            @bind="bindGlobalItem"
+            @preview="previewGlobalItem"
+            @installed="refreshAfterInstall"
+            @uninstalled="refreshAfterUninstall"
+          />
+          <ResizeHandle
+            class="resource-browser-resize-handle"
+            orientation="vertical"
+            label="调整资源侧边栏宽度"
+            @start="startSidebarResize"
+          />
         </div>
-        <SkillFileTree
-          class="flex-1 min-h-0 px-1 py-1"
-          :files="selectedSkill.files"
-          :selected-file-id="selectedFileId"
-          @select="selectedFileId = $event"
-        />
-      </div>
 
-      <div class="resource-browser-main flex-1 overflow-hidden p-5 min-w-0 flex flex-col">
-        <div
-          v-if="selectedSkill && selectedFile"
-          class="resource-browser-editor flex-1 min-h-[200px] border rounded-sm flex flex-col overflow-hidden"
-        >
+        <div class="resource-browser-main flex-1 overflow-hidden p-5 min-w-0 flex flex-col">
           <div
-            class="resource-browser-editor-header px-4 py-2.5 border-b flex items-center gap-2 min-w-0 shrink-0"
+            v-if="activeFlatItem"
+            class="resource-browser-editor flex-1 min-h-[200px] border rounded-sm flex flex-col overflow-hidden"
           >
-            <span class="text-[12px] font-medium truncate">{{ selectedSkill.name }}</span>
-            <span class="resource-browser-separator">/</span>
-            <span class="text-[12px] font-mono truncate">{{ selectedFile.fileName }}</span>
-            <ResourceLayerBadge :layer="selectedSkill.layer" />
+            <div
+              class="resource-browser-editor-header px-4 py-2.5 border-b flex items-center gap-2 min-w-0 shrink-0"
+            >
+              <span class="text-[12px] truncate">{{
+                getFileBaseName(activeFlatItem.fileName)
+              }}</span>
+              <ResourceLayerBadge :layer="activeFlatItem.layer" />
+              <button
+                v-if="previewItem"
+                type="button"
+                class="resource-browser-add ml-auto shrink-0 rounded px-3 py-1.5 text-[12px]"
+                :disabled="!!bindingItemId"
+                @click="bindGlobalItem(previewItem)"
+              >
+                {{ bindingItemId === previewItem.id ? "添加中..." : "添加到 Agent" }}
+              </button>
+            </div>
+            <div
+              v-if="activeFlatItem.layer === 'global'"
+              class="resource-browser-editor-path px-4 py-1.5 border-b text-[11px] font-mono truncate shrink-0"
+              :title="activeFlatItem.path"
+            >
+              {{ activeFlatItem.path }}
+            </div>
+            <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
+              <ResourceContentView
+                :key="activeFlatItem.id"
+                :content="activeFlatItem.content"
+                :kind="activeFlatItem.kind"
+              />
+            </div>
           </div>
           <div
-            v-if="selectedSkill.rootPath"
-            class="resource-browser-editor-path px-4 py-1.5 border-b text-[11px] font-mono truncate shrink-0"
-            :title="`${selectedSkill.rootPath}/${selectedFile.fileName}`"
+            v-else
+            class="resource-browser-empty h-full flex items-center justify-center text-[13px]"
           >
-            {{ selectedSkill.rootPath }}/{{ selectedFile.fileName }}
-          </div>
-          <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
-            <ResourceContentView
-              :key="`${selectedSkill.id}:${selectedFile.id}`"
-              :content="selectedFile.content"
-              :kind="'skills'"
-              :language="getSkillFileLanguage(selectedFile.fileName)"
-            />
+            选择文件
           </div>
         </div>
-        <div
-          v-else
-          class="resource-browser-empty h-full flex items-center justify-center text-[13px]"
-        >
-          选择 {{ kind === "skills" ? "Skill" : "Extension" }} 与文件
-        </div>
-      </div>
-    </template>
-
-    <!-- Prompts / MCP: flat file list -->
-    <template v-else>
-      <div
-        class="resource-browser-sidebar w-56 shrink-0 border-r overflow-y-auto custom-scrollbar flex flex-col min-h-0"
-      >
-        <div class="flex-1 min-h-0 overflow-y-auto">
-          <div
-            v-for="item in fileItems"
-            :key="item.id"
-            class="resource-browser-item px-3 py-2.5 cursor-pointer transition-colors flex items-start gap-1"
-            :class="
-              selectedFileItemId === item.id
-                ? 'resource-browser-item--active'
-                : 'resource-browser-item--idle'
-            "
-            @click="selectedFileItemId = item.id"
-          >
-            <ResourceFileListItem :item="item" />
-            <ResourceLayerBadge :layer="item.layer" />
-          </div>
-          <div
-            v-if="fileItems.length === 0"
-            class="resource-browser-empty px-3 py-8 text-[12px] text-center"
-          >
-            暂无
-          </div>
-        </div>
-        <GlobalResourceBindBar
-          v-if="unlinkedGlobal.length || props.kind === 'prompts' || props.kind === 'mcp'"
-          :items="unlinkedGlobal"
-          :kind="props.kind"
-          :binding-item-id="bindingItemId"
-          @bind="bindGlobalItem"
-          @installed="refreshAfterInstall"
-          @uninstalled="refreshAfterUninstall"
-        />
-      </div>
-
-      <div class="resource-browser-main flex-1 overflow-hidden p-5 min-w-0 flex flex-col">
-        <div
-          v-if="selectedFileItem"
-          class="resource-browser-editor flex-1 min-h-[200px] border rounded-sm flex flex-col overflow-hidden"
-        >
-          <div
-            class="resource-browser-editor-header px-4 py-2.5 border-b flex items-center gap-2 min-w-0 shrink-0"
-          >
-            <span class="text-[12px] truncate">{{
-              getFileBaseName(selectedFileItem.fileName)
-            }}</span>
-            <ResourceLayerBadge :layer="selectedFileItem.layer" />
-          </div>
-          <div
-            v-if="selectedFileItem.layer === 'global'"
-            class="resource-browser-editor-path px-4 py-1.5 border-b text-[11px] font-mono truncate shrink-0"
-            :title="selectedFileItem.path"
-          >
-            {{ selectedFileItem.path }}
-          </div>
-          <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
-            <ResourceContentView
-              :key="selectedFileItem.id"
-              :content="selectedFileItem.content"
-              :kind="selectedFileItem.kind"
-            />
-          </div>
-        </div>
-        <div
-          v-else
-          class="resource-browser-empty h-full flex items-center justify-center text-[13px]"
-        >
-          选择文件
-        </div>
-      </div>
+      </template>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { Loader2 } from "lucide-vue-next";
 import GlobalResourceBindBar from "./GlobalResourceBindBar.vue";
 import ResourceContentView from "./ResourceContentView.vue";
 import ResourceFileListItem from "./ResourceFileListItem.vue";
 import ResourceLayerBadge from "./ResourceLayerBadge.vue";
+import ResizeHandle from "./ResizeHandle.vue";
 import SkillFileTree from "./SkillFileTree.vue";
 import SkillListItem from "./SkillListItem.vue";
 import { useAgentStore, useResourceStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useResizableWidth } from "@/composables/use-resizable-width";
 import {
   agentResourcesToUiItems,
   getLinkedResourcesForAgent,
@@ -207,10 +260,24 @@ const agentStore = useAgentStore();
 const resourceStore = useResourceStore();
 const agentItems = ref<UIResourceItem[]>([]);
 const bindingItemId = ref<string | null>(null);
+const loading = ref(false);
+const { width: sidebarWidth, startResize: startSidebarResize } = useResizableWidth({
+  defaultWidth: 224,
+  minWidth: 176,
+  maxWidth: 520,
+  storageKey: "agent-resource-sidebar-width",
+});
+const { width: treeWidth, startResize: startTreeResize } = useResizableWidth({
+  defaultWidth: 208,
+  minWidth: 160,
+  maxWidth: 480,
+  storageKey: "agent-resource-tree-width",
+});
 
 const selectedSkillId = ref<string | null>(null);
 const selectedFileId = ref<string | null>(null);
 const selectedFileItemId = ref<string | null>(null);
+const previewItem = ref<UIResourceItem | null>(null);
 
 watch(
   () => props.agentId,
@@ -230,9 +297,14 @@ const unlinkedGlobal = computed(() => {
 });
 
 async function reloadAgentItems(id: string) {
-  await agentStore.fetchAgentResources(id, getDefaultWorkspaceCwd());
-  const res = agentStore.agentResources[id];
-  agentItems.value = res ? agentResourcesToUiItems(id, res) : [];
+  loading.value = true;
+  try {
+    await agentStore.fetchAgentResources(id, getDefaultWorkspaceCwd());
+    const res = agentStore.agentResources[id];
+    agentItems.value = res ? agentResourcesToUiItems(id, res) : [];
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function refreshAfterInstall(_id: string) {
@@ -266,6 +338,7 @@ async function bindGlobalItem(item: UIResourceItem) {
       { ...item, layer: "agent", agentIds: [props.agentId] } as UIResourceItem,
     ];
     resetSelection();
+    previewItem.value = null;
     showUiMessage(`已引入 ${item.name}`, "success");
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : "引入失败", "error");
@@ -293,6 +366,13 @@ const skillOrExtItems = computed(() => {
 const fileItems = computed(() => items.value.filter(isFileItem));
 
 const selectedSkill = computed(() => {
+  const preview = previewItem.value;
+  if (preview && selectedSkillId.value === preview.id) {
+    if (isSkillItem(preview)) return preview;
+    if (isFileItem(preview) && preview.files?.length) {
+      return { ...preview, files: preview.files as any } as unknown as UISkillItem;
+    }
+  }
   if (props.kind === "extensions") {
     const id = selectedSkillId.value;
     if (!id) return undefined;
@@ -327,6 +407,24 @@ const selectedFileItem = computed(() => {
   return fileItems.value.find((r) => r.id === id);
 });
 
+const activeFlatItem = computed(() => {
+  const preview = previewItem.value;
+  return preview && isFileItem(preview) ? preview : selectedFileItem.value;
+});
+
+function previewGlobalItem(item: UIResourceItem) {
+  previewItem.value = item;
+  if (isSkillItem(item) || (isFileItem(item) && item.files?.length)) {
+    selectedSkillId.value = item.id;
+    selectedFileId.value = item.files?.[0]?.id ?? null;
+    selectedFileItemId.value = null;
+  } else {
+    selectedSkillId.value = null;
+    selectedFileId.value = null;
+    selectedFileItemId.value = null;
+  }
+}
+
 function selectSkill(id: string) {
   selectedSkillId.value = id;
   if (props.kind === "extensions") {
@@ -343,6 +441,7 @@ function selectSkill(id: string) {
 }
 
 function resetSelection() {
+  previewItem.value = null;
   if (props.kind === "skills" || props.kind === "extensions") {
     const firstSkillOrExt = items.value.find((item) => {
       if (props.kind === "skills") return isSkillItem(item);
@@ -378,6 +477,12 @@ watch(
 .resource-browser-sidebar {
   background: var(--app-resource-sidebar-bg);
   border-color: var(--app-border);
+}
+
+@media (max-width: 767px) {
+  .resource-browser-resize-handle {
+    display: none;
+  }
 }
 
 .resource-browser-tree {
@@ -440,5 +545,19 @@ watch(
 
 .resource-browser-empty {
   color: var(--app-text-muted);
+}
+
+.resource-browser-add {
+  color: #fff;
+  background: var(--app-accent);
+}
+
+.resource-browser-add:hover:not(:disabled) {
+  background: var(--app-accent-hover);
+}
+
+.resource-browser-add:disabled {
+  cursor: wait;
+  opacity: 0.6;
 }
 </style>

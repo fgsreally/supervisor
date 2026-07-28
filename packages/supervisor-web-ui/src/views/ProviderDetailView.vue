@@ -27,16 +27,6 @@
           {{ provider.models.length }} 个模型
         </div>
       </div>
-      <label class="provider-detail-enable">
-        <input
-          type="checkbox"
-          class="sr-only"
-          :checked="provider.isEnabled"
-          @change="emit('toggle-enabled', ($event.target as HTMLInputElement).checked)"
-        />
-        <span class="provider-detail-toggle" aria-hidden="true"><span /></span>
-        <span>{{ provider.isEnabled ? "已启用" : "已禁用" }}</span>
-      </label>
       <button
         type="button"
         class="provider-detail-btn shrink-0 px-3 py-1.5 rounded-md border text-[13px]"
@@ -49,8 +39,23 @@
     <div class="flex-1 overflow-y-auto custom-scrollbar">
       <div class="provider-detail-content max-w-5xl">
         <section class="provider-detail-section">
-          <div class="text-[14px] font-medium provider-detail-title mb-5">配置</div>
+          <div class="provider-detail-config-heading">
+            <div class="text-[14px] font-medium provider-detail-title">配置</div>
+          </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[13px]">
+            <div>
+              <div class="provider-detail-subtitle mb-2">状态</div>
+              <label class="provider-detail-enable">
+                <input
+                  type="checkbox"
+                  class="sr-only"
+                  :checked="provider.isEnabled"
+                  @change="emit('toggle-enabled', ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="provider-detail-toggle" aria-hidden="true"><span /></span>
+                <span>{{ provider.isEnabled ? "已启用" : "已禁用" }}</span>
+              </label>
+            </div>
             <div>
               <div class="provider-detail-subtitle mb-1">API Type</div>
               <div class="provider-detail-title font-mono">{{ apiTypeLabel }}</div>
@@ -190,9 +195,14 @@ const emit = defineEmits<{
 
 const agentStore = useAgentStore();
 
-const linkedAgents = computed(() =>
-  agentStore.agents.filter((a) => a.providerId === props.provider.id),
-);
+const linkedAgents = computed(() => {
+  const visibleAgentIds = new Set(
+    agentStore.getAgentsByCategory.flatMap((group) => group.agents.map((agent) => agent.id)),
+  );
+  return agentStore.agents.filter(
+    (agent) => visibleAgentIds.has(agent.id) && agent.providerId === props.provider.id,
+  );
+});
 
 const apiTypeLabel = computed(
   () =>
@@ -266,6 +276,9 @@ function removeModel(modelId: string) {
   color: var(--app-text-secondary);
   font-size: 12px;
   cursor: pointer;
+}
+.provider-detail-config-heading {
+  margin-bottom: 20px;
 }
 
 .provider-detail-toggle {

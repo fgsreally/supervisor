@@ -43,6 +43,7 @@
           :agent="agent"
           :active="activeId === agent.id"
           @select="$emit('select', $event)"
+          @contextmenu="openContextMenu"
         />
       </template>
 
@@ -54,6 +55,29 @@
         无匹配智能代理
       </div>
     </div>
+
+    <Teleport to="body">
+      <div
+        v-if="contextMenu"
+        class="fixed inset-0 z-[150]"
+        @mousedown="contextMenu = null"
+        @contextmenu.prevent="contextMenu = null"
+      >
+        <div
+          class="agent-context-menu fixed min-w-[120px] rounded-md border py-1 shadow-lg"
+          :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+          @mousedown.stop
+        >
+          <button
+            type="button"
+            class="agent-context-menu__delete w-full px-4 py-2 text-left text-[13px]"
+            @click="deleteContextAgent"
+          >
+            删除
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -63,6 +87,8 @@ import { Search, UserPlus } from "lucide-vue-next";
 import type { Agent } from "@/api";
 import { useAgentStore } from "@/store";
 import AgentListItem from "./AgentListItem.vue";
+import { requestUiConfirm } from "@/composables/use-ui-confirm";
+import { showUiMessage } from "@/composables/use-ui-message";
 
 const props = defineProps<{
   activeId: string;
@@ -74,10 +100,40 @@ const panelStyle = computed(() => {
   return { width: `${props.width}px` };
 });
 
-defineEmits<{ select: [id: string]; add: [] }>();
+const emit = defineEmits<{ select: [id: string]; add: [] }>();
 
 const agentStore = useAgentStore();
 const query = ref("");
+const contextMenu = ref<{ agent: Agent; x: number; y: number } | null>(null);
+
+function openContextMenu(event: MouseEvent, agent: Agent) {
+  if (agent.isBuiltin || agent.backendType !== "native") return;
+  contextMenu.value = {
+    agent,
+    x: Math.min(event.clientX, window.innerWidth - 140),
+    y: Math.min(event.clientY, window.innerHeight - 52),
+  };
+}
+
+async function deleteContextAgent() {
+  const target = contextMenu.value?.agent;
+  contextMenu.value = null;
+  if (!target) return;
+  const confirmed = await requestUiConfirm({
+    title: "删除智能代理",
+    message: `确定删除“${target.name}”吗？`,
+    confirmText: "删除",
+    danger: true,
+  });
+  if (!confirmed) return;
+  try {
+    await agentStore.deleteAgent(target.id);
+    if (props.activeId === target.id) emit("select", agentStore.agents[0]?.id ?? "");
+    showUiMessage("智能代理已删除", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "删除智能代理失败", "error");
+  }
+}
 
 const filteredGroups = computed(() => {
   const q = query.value.trim().toLowerCase();
@@ -123,5 +179,18 @@ const filteredGroups = computed(() => {
 .list-section-label {
   background: color-mix(in srgb, var(--app-list-section-bg) 95%, transparent);
   color: var(--app-text-secondary);
+}
+
+.agent-context-menu {
+  border-color: var(--app-popup-border);
+  background: var(--app-popup-bg);
+}
+
+.agent-context-menu__delete {
+  color: #fa5151;
+}
+
+.agent-context-menu__delete:hover {
+  background: var(--app-popup-hover);
 }
 </style>

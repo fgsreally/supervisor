@@ -19,7 +19,7 @@ export function toUISession(session: Session): UISession {
     session.avatar ?? (session.meta?.avatar as Partial<SessionAvatarValue> | undefined);
   return {
     id: session.id,
-    workspaceId: session.projectId ?? "unknown",
+    workspaceId: session.projectId ?? "none",
     parentId: session.parentId,
     spawnType: session.spawnType ?? undefined,
     creationMethod: session.creationMethod,
@@ -60,7 +60,10 @@ export function groupSessionsByWorkspace(
     byId.set(key, list);
   }
   return [...byId.entries()].map(([id, list]) => ({
-    workspace: { id, name: projectById.get(id)?.name ?? "Unknown project" },
+    workspace: {
+      id,
+      name: id === "none" ? "No project" : (projectById.get(id)?.name ?? "Unknown project"),
+    },
     sessions: list,
   }));
 }

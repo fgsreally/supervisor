@@ -18,21 +18,23 @@ export default defineExtension({
     const mode = resolveMemoryMode(config);
 
     if (mode === "disabled") {
-      ctx.runtime.log(
+      ctx.log(
         "info",
         "hindsight: disabled (set HINDSIGHT_API_URL or HINDSIGHT_LOCAL_FALLBACK=true)",
       );
       return;
     }
 
-    const bankScope = computeBankScope(config, ctx.cwd);
+    const bankScope = computeBankScope(config, ctx.session.cwd);
     let state: HindsightSessionState | undefined;
 
     const createState = (): HindsightSessionState => {
-      const client = isHindsightApiConfigured(config) ? createHindsightClient(config) : undefined;
+      const client = isHindsightApiConfigured(config)
+        ? createHindsightClient({ ...config, hindsightApiUrl: config.hindsightApiUrl! })
+        : undefined;
       return new HindsightSessionState({
-        sessionId: String(ctx.sessionId),
-        projectDir: ctx.projectDir,
+        sessionId: String(ctx.session.id),
+        projectDir: ctx.project.dir,
         mode,
         client,
         bankId: bankScope.bankId,
@@ -48,7 +50,7 @@ export default defineExtension({
         injectRecall: (block) => {
           ctx.inject.reattach("hindsight", block, { priority: 20, dedupeAfterTurns: 0 });
         },
-        log: (level, message, meta) => ctx.runtime.log(level, message, meta),
+        log: (level, message, meta) => ctx.log(level, message, meta),
       });
     };
 
@@ -62,31 +64,35 @@ export default defineExtension({
       registerHindsightTool(ctx, tool);
     }
 
-    const offStart = ctx.runtime.on("session.start", async () => {
+    const offStart = ctx.on("session.start", async () => {
       state = createState();
       await state.maybeRecallOnSessionStart();
     });
 
-    const offUser = ctx.runtime.on("message.user", async (event) => {
+    const offUser = ctx.on<
+      Extract<import("pi-supervisor").ExtensionEvent, { type: "message.user" }>
+    >("message.user", async (event) => {
       if (!state) state = createState();
       await state.maybeRecallForUserMessage(event.text);
     });
 
-    const offAgentEnd = ctx.runtime.on("agent.end", async (event) => {
+    const offAgentEnd = ctx.on<
+      Extract<import("pi-supervisor").ExtensionEvent, { type: "agent.end" }>
+    >("agent.end", async (event) => {
       if (!state) return;
       const messages = harnessMessagesToHindsight(event.messages ?? []);
       await state.maybeRetainOnAgentEnd(messages);
       await state.flushRetainQueue();
     });
 
-    const offEnd = ctx.runtime.on("session.end", async () => {
+    const offEnd = ctx.on("session.end", async () => {
       if (!state) return;
       await state.flushRetainQueue();
       state.dispose();
       state = undefined;
     });
 
-    ctx.runtime.log(
+    ctx.log(
       "info",
       `hindsight: registered retain/recall/reflect (${mode} mode, bank=${bankScope.bankId})`,
     );

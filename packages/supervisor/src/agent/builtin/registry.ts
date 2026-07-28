@@ -1,9 +1,8 @@
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensureAgentHome, getAgentHomeDir } from "../agent-paths.js";
 import type { SupervisorDb } from "../../db/db.js";
 import type { Agent } from "../../types.js";
-import { getDefaultCwd } from "../../config/default-cwd.js";
 import type { SessionManager } from "../../core/session-manager.js";
 import { getGlobalSkillsDirectory } from "../skill-resource.js";
 import { loadPromptTemplate } from "../system-prompts.js";
@@ -15,6 +14,70 @@ import {
 
 export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro", "coding"] as const;
 export type PackagedAgentKind = (typeof PACKAGED_AGENT_KINDS)[number];
+const ACTIVE_PACKAGED_AGENT_KINDS: readonly PackagedAgentKind[] = ["shadow", "btw", "coding"];
+
+const LEGACY_INTRO_PROMPT = `你是 Supervisor 的 Intro 引导助手，面向使用者直接对话。
+
+你的职责：
+
+- 帮助新用户了解 Supervisor 能做什么、如何开始
+- 讲解 skills、agents、sessions、扩展、HTTP API 等概念
+- 按需查看工作区与 Supervisor 资源（会话、消息、agent 配置），给出清晰说明
+- 按用户要求编写、迁移和调试 Supervisor 扩展
+- 用简洁、友好的方式教学，避免堆砌术语
+
+原则：
+
+- 引导问题先解释清楚；用户要求实现扩展时，可以直接修改代码并运行验证
+- 查看资源时引用具体路径、session id 或资源 URL
+- 信息不足时说明还需要什么，不要编造
+
+当被问到「怎么用」「有什么功能」「某个 session 里发生了什么」时，先读事实再回答。扩展开发任务应检查现有扩展 API 和项目约定后再实现。`;
+
+const LEGACY_ASSISTANT_PROMPT = `你是 Pi Supervisor 内置助手，负责帮助用户配置、使用和维护 Supervisor。
+
+你可以帮助用户：
+
+- 理解 Supervisor 的 Session、Agent、Context、扩展和资源绑定模型
+- 编写、迁移和调试 Supervisor 扩展
+- 安装全局 skill、prompt、extension 和 MCP 配置，并通过数据库绑定到 Agent
+- 配置模型 Provider、创建 Agent、管理 Session
+- 排查 Supervisor 后端与 Web UI 问题
+
+回答应简洁、可执行，优先给出具体源码路径和操作步骤。需要修改代码时先检查现有实现，不确定时明确说明缺少的信息。`;
+
+const LEGACY_ASSISTANT_SKILL = `# Supervisor 使用指南
+
+## 目录结构
+
+- 全局资源：\`~/.pi/supervisor/global/{skills,extensions,prompts}\`
+- Agent 目录：\`~/.pi/supervisor/agents/{agentId}/\`
+- 数据库：\`~/.pi/supervisor.db\`
+
+Agent 通过数据库 binding 使用全局资源，不在 Agent Home 中创建资源软链接。
+
+## 扩展迁移（coding-agent -> supervisor）
+
+1. 准备包含 \`package.json\` 和入口文件的扩展目录
+2. Supervisor 扩展 API 见 \`packages/supervisor/src/extension/\`
+3. 使用 \`pi-supervisor extensions install <path>\` 安装到全局 catalog
+4. 使用 \`pi-supervisor extensions bind <agent-id> <extension-id>\` 绑定到 Agent
+
+## Skill 安装
+
+1. 将 skill 目录放入 \`~/.pi/supervisor/global/skills/\`
+2. 在 UI 资源面板或 API \`POST /agents/:id/resources\` 绑定到 Agent
+3. 输入框 \`/\` 可补全已关联的 skill 和 prompt
+
+## 常用 API
+
+- \`POST /sessions/:id/prompt\` - 发送消息
+- \`POST /sessions/:id/ask-answer\` - 回答 ask 工具问题
+- \`GET /resources/global\` - 列出全局资源
+
+## Web UI 组件
+
+见 \`packages/supervisor-web-ui/README.md\` 组件映射表。`;
 
 const PACKAGED_AGENT_LABELS: Record<
   PackagedAgentKind,
@@ -71,7 +134,20 @@ function pickProvider(db: SupervisorDb): { modelId: number } | null {
 function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number | undefined {
   const existing = findPackagedAgentId(db, kind);
   const label = PACKAGED_AGENT_LABELS[kind];
-  if (existing !== undefined) return existing;
+  if (existing !== undefined) {
+    const agent = db.getAgent(existing);
+    const legacyIntroPrompt = agent?.systemPrompt?.trim() === LEGACY_INTRO_PROMPT;
+    if (
+      kind === "intro" &&
+      (legacyIntroPrompt || agent?.systemPrompt !== loadPackagedAgentPrompt(kind))
+    ) {
+      db.updateAgent(existing, { system_prompt: loadPackagedAgentPrompt(kind) });
+    }
+    ensureAgentHome(existing, getAgentHomeDir(existing));
+    ensureBuiltinExtensionResources(db);
+    ensureAgentBuiltinExtensionBindings(db, existing);
+    return existing;
+  }
 
   const providerPick = pickProvider(db);
   if (!providerPick) return undefined;
@@ -146,7 +222,7 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
     args: ["acp"],
     avatar: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
   });
-  for (const kind of PACKAGED_AGENT_KINDS) {
+  for (const kind of ACTIVE_PACKAGED_AGENT_KINDS) {
     const id = ensurePackagedAgent(db, kind);
     if (id === undefined) {
       console.warn(`[pi-supervisor] No provider configured - skipping packaged agent: ${kind}`);
@@ -191,14 +267,36 @@ function findBuiltinAssistantSessionId(db: SupervisorDb, agentId: number): numbe
 /** Remove legacy duplicate assistant sessions before SessionManager caches persisted rows. */
 export function dedupeBuiltinAssistantSessions(db: SupervisorDb): void {
   const agentId = findBuiltinAssistantId(db);
-  if (agentId !== undefined) findBuiltinAssistantSessionId(db, agentId);
+  if (agentId === undefined) return;
+
+  const legacyIntro = db
+    .listAgents()
+    .find((agent) => agent.isBuiltin && agent.name === PACKAGED_AGENT_LABELS.intro.name);
+  if (legacyIntro) {
+    db.db.transaction(() => {
+      db.db
+        .prepare(
+          `INSERT OR IGNORE INTO agent_resources
+             (agent_id, resource_id, enabled, priority, created_at)
+           SELECT ?, resource_id, enabled, priority, created_at
+           FROM agent_resources WHERE agent_id = ?`,
+        )
+        .run(agentId, legacyIntro.id);
+      db.db
+        .prepare("UPDATE sessions SET agent_id = ? WHERE agent_id = ?")
+        .run(agentId, legacyIntro.id);
+      db.deleteAgent(legacyIntro.id);
+    })();
+  }
+
+  findBuiltinAssistantSessionId(db, agentId);
 }
 
 function installBuiltinAssistantSkill(db: SupervisorDb, agentId: number): void {
   const skillDir = join(getGlobalSkillsDirectory(), "supervisor-guide");
   mkdirSync(skillDir, { recursive: true });
   const skillPath = join(skillDir, "SKILL.md");
-  if (!existsSync(skillPath)) {
+  if (!existsSync(skillPath) || readFileSync(skillPath, "utf8").trim() === LEGACY_ASSISTANT_SKILL) {
     writeFileSync(skillPath, BUILTIN_ASSISTANT_SKILL, "utf8");
   }
   const resource = db.upsertResource({
@@ -220,7 +318,6 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
 
   const existingId = findBuiltinAssistantId(db);
   let agent = existingId === undefined ? undefined : db.getAgent(existingId);
-  let created = false;
   if (!agent) {
     agent = db.insertAgent({
       name: BUILTIN_ASSISTANT_NAME,
@@ -231,33 +328,39 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
       is_builtin: true,
       meta: {},
     });
-    created = true;
+  } else if (
+    agent.systemPrompt?.trim() === LEGACY_ASSISTANT_PROMPT ||
+    agent.systemPrompt !== BUILTIN_ASSISTANT_PROMPT
+  ) {
+    agent = db.updateAgent(agent.id, { system_prompt: BUILTIN_ASSISTANT_PROMPT });
   }
 
-  if (created) {
-    const homeDir = getAgentHomeDir(agent.id);
-    ensureAgentHome(agent.id, homeDir);
-    installBuiltinAssistantSkill(db, agent.id);
-    ensureBuiltinExtensionResources(db);
-    ensureAgentBuiltinExtensionBindings(db, agent.id);
-  }
+  const homeDir = getAgentHomeDir(agent.id);
+  ensureAgentHome(agent.id, homeDir);
+  ensureBuiltinExtensionResources(db);
+  ensureAgentBuiltinExtensionBindings(db, agent.id);
+  installBuiltinAssistantSkill(db, agent.id);
 
   let sessionId = findBuiltinAssistantSessionId(db, agent.id);
+  const assistantCwd = getAgentHomeDir(agent.id);
   if (sessionId === undefined) {
     sessionId = manager.create({
       agentId: agent.id,
-      cwd: getDefaultCwd(),
+      cwd: assistantCwd,
       title: BUILTIN_ASSISTANT_NAME,
       pinned: true,
       isBuiltin: true,
+      projectId: null,
     }).id;
   }
 
   const session = db.get(sessionId);
   if (!session) return;
+  db.updateCwd(sessionId, assistantCwd);
   db.updateSessionFields(sessionId, {
     title: BUILTIN_ASSISTANT_NAME,
     pinned: true,
     isBuiltin: true,
+    projectId: null,
   });
 }

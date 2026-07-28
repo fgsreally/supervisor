@@ -26,7 +26,7 @@
         type="button"
         class="p-2.5 rounded-lg transition-colors mb-2 nav-btn"
         :title="isDark ? '切换浅色模式' : '切换深色模式'"
-        @click="toggleDark()"
+        @click="toggleDark($event)"
       >
         <Sun v-if="isDark" class="w-[22px] h-[22px]" />
         <Moon v-else class="w-[22px] h-[22px]" />
@@ -45,7 +45,16 @@
 </template>
 
 <script setup lang="ts">
-import { Cloud, FolderOpen, Home, MessageSquare, Moon, Settings, Sun, Users } from "lucide-vue-next";
+import {
+  Cloud,
+  FolderOpen,
+  Home,
+  MessageSquare,
+  Moon,
+  Settings,
+  Sun,
+  Users,
+} from "lucide-vue-next";
 import { useAppTheme } from "../composables/use-app-theme";
 
 const { isDark, toggleDark } = useAppTheme();

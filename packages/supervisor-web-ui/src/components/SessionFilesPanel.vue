@@ -71,7 +71,7 @@
           >
             暂无文件
           </div>
-          <BaseTree v-else v-model="treeNodes" :indent="14">
+          <BaseTree v-else v-model="treeNodes" :indent="14" :default-open="false">
             <template #default="{ node, stat }">
               <div
                 class="file-tree-row flex items-center gap-1 min-w-0 py-0.5 pr-2 rounded-sm transition-colors"

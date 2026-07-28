@@ -1,56 +1,53 @@
-import { once } from "node:events";
-import { createServer } from "node:http";
-import { afterEach, describe, expect, it } from "vitest";
-import { WebSocket } from "ws";
-import { attachWebSocketServer } from "../src/websocket/server.js";
+import { describe, expect, it, vi } from "vitest";
+import { registerWebSocketRoutes } from "../src/websocket/server.js";
 
-describe("supervisor: WebSocket server", () => {
-  const cleanup: Array<() => Promise<void>> = [];
+type Hooks = {
+  open(socket: TestSocket): void;
+  message(socket: TestSocket, data: unknown): void;
+  close(socket: TestSocket): void;
+  maxPayloadLength: number;
+};
 
-  afterEach(async () => {
-    await Promise.all(cleanup.splice(0).map((close) => close()));
+type TestSocket = {
+  raw: object;
+  send: ReturnType<typeof vi.fn>;
+};
+
+function register() {
+  let path = "";
+  let hooks: Hooks | undefined;
+  registerWebSocketRoutes({
+    ws(routePath, routeHooks) {
+      path = routePath;
+      hooks = routeHooks as Hooks;
+    },
   });
+  if (!hooks) throw new Error("WebSocket hooks were not registered");
+  return { path, hooks };
+}
 
-  async function createTestServer() {
-    const server = createServer((_request, response) => response.end("ok"));
-    const websocketServer = attachWebSocketServer(server);
-    server.listen(0, "127.0.0.1");
-    await once(server, "listening");
-    const address = server.address();
-    if (!address || typeof address === "string") throw new Error("test server has no port");
-    cleanup.push(
-      () =>
-        new Promise<void>((resolve) => {
-          websocketServer.close(() => server.close(() => resolve()));
-        }),
-    );
-    return address.port;
-  }
+describe("supervisor: Elysia WebSocket route", () => {
+  it("registers /ws and handles correlated ping/pong messages", () => {
+    const { path, hooks } = register();
+    const socket: TestSocket = { raw: {}, send: vi.fn() };
+    expect(path).toBe("/ws");
 
-  it("accepts /ws and handles correlated ping/pong messages", async () => {
-    const port = await createTestServer();
-    const socket = new WebSocket(`ws://127.0.0.1:${port}/ws`);
-    const [readyData] = (await once(socket, "message")) as [Buffer];
-    expect(JSON.parse(readyData.toString())).toEqual({
+    hooks.open(socket);
+    expect(JSON.parse(socket.send.mock.calls[0]![0] as string)).toEqual({
       channel: "system",
       type: "system.ready",
     });
 
-    socket.send(JSON.stringify({ id: "ping-1", channel: "system", type: "ping" }));
-    const [pongData] = (await once(socket, "message")) as [Buffer];
-    expect(JSON.parse(pongData.toString())).toEqual({
+    hooks.message(socket, JSON.stringify({ id: "ping-1", channel: "system", type: "ping" }));
+    expect(JSON.parse(socket.send.mock.calls[1]![0] as string)).toEqual({
       id: "ping-1",
       channel: "system",
       type: "pong",
     });
-    socket.close();
-    await once(socket, "close");
+    hooks.close(socket);
   });
 
-  it("rejects upgrades outside /ws", async () => {
-    const port = await createTestServer();
-    const socket = new WebSocket(`ws://127.0.0.1:${port}/other`);
-    const [error] = (await once(socket, "error")) as [Error];
-    expect(error.message).toContain("socket hang up");
+  it("sets the audio frame limit on the Elysia route", () => {
+    expect(register().hooks.maxPayloadLength).toBe(256 * 1024);
   });
 });

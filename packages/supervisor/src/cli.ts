@@ -1,7 +1,6 @@
-#!/usr/bin/env node
-import { parseArgs } from "node:util";
-import { serve } from "@hono/node-server";
+#!/usr/bin/env bun
 import prompts from "prompts";
+import { createSupervisorCli } from "./cli-definition.js";
 import { BUILT_IN_PROVIDERS } from "./config/built-in-providers.js";
 import {
   dedupeBuiltinAssistantSessions,
@@ -12,12 +11,12 @@ import { SupervisorDb } from "./db/db.js";
 import { getDefaultCwd, resolveWorkspacePath, setDefaultCwd } from "./config/default-cwd.js";
 import { resolveDbPath } from "./config/resolve-db-path.js";
 import { createHttpServer } from "./http/http-server.js";
-import { attachWebSocketServer } from "./websocket/server.js";
 import { SessionManager } from "./core/session-manager.js";
 import { startDailyWorkScheduler } from "./core/daily-work.js";
 import type { Provider } from "./types.js";
 import { encryptApiKey } from "./utils/encrypt.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "./utils/supervisor-settings.js";
+import { registerWebSocketRoutes } from "./websocket/server.js";
 
 const KNOWN_CLI_OPTIONS = new Set(["port", "p", "cwd", "h", "help"]);
 
@@ -39,33 +38,9 @@ function _parseExtensionFlags(argv: string[]): Record<string, string | boolean |
   return flags;
 }
 
-const { values } = parseArgs({
-  args: process.argv.slice(2),
-  options: {
-    port: { type: "string", short: "p", default: "3030" },
-    cwd: { type: "string" },
-    help: { type: "boolean", short: "h" },
-  },
-  allowPositionals: true,
-});
-
-function parseCommand() {
-  const args = process.argv.slice(2);
-  let command = "serve";
-  let cmdArgs: string[] = [];
-  let i = 0;
-
-  while (i < args.length) {
-    if (!args[i].startsWith("-")) {
-      command = args[i];
-      cmdArgs = args.slice(i + 1);
-      break;
-    }
-    i++;
-  }
-
-  return { command, cmdArgs };
-}
+const cli = createSupervisorCli();
+const parsed = cli.parse(process.argv, { run: false });
+const values = parsed.options;
 
 async function selectProviderLocal(db: SupervisorDb): Promise<Provider> {
   const providers = db.listProviders().filter((p) => p.isEnabled);
@@ -95,56 +70,10 @@ function getPrimaryModelId(db: SupervisorDb, providerId: number): string | null 
 }
 
 function showHelp() {
-  console.log(
-    `
-pi-supervisor — HTTP API server for pi agent sessions
-
-Usage:
-  pi-supervisor [command] [options]
-
-Commands:
-  serve                     Start the HTTP API server (default)
-
-Provider Commands:
-  providers list            List all providers
-  providers add             Add a provider (interactive)
-  providers remove          Remove a provider (interactive)
-  providers set-key         Update API key for a provider (interactive)
-
-Model Commands:
-  models list <provider-id> List models for a provider
-  models add                Add a model ID to a provider (interactive)
-  models remove             Remove a model from a provider (interactive)
-
-Configuration Commands:
-  config                    Select a configuration section interactively
-  config show               Show current configuration
-  config web-search [provider]
-  config web-fetch [provider]
-  config browser [headless|headed]
-
-Extension Commands:
-  extensions install <source>           Install from npm:<spec>, git:<url>, or local-path into global catalog
-  extensions update <id>                  Re-fetch extension from package.json repository field
-  extensions uninstall <id>             Remove extension from global catalog
-  extensions list                       List extensions in the global catalog
-  extensions bind <agent-id> <id>       Bind a catalog extension to an agent in the database
-  extensions unbind <agent-id> <id>     Remove an agent extension binding
-
-Options:
-  -p, --port <port>         HTTP server port (default: 3030)
-  --cwd <path>              Default workspace directory (default: ./playground when present, else process.cwd())
-  --<extension-flag>        Extension-registered CLI flags (see extension docs)
-  -h, --help                Show this help
-
-Database path is read from .supervisor/config.json (dbPath), then
-~/.pi/supervisor/settings.json (dbPath), else ~/.pi/supervisor.db.
-`.trim(),
-  );
+  cli.outputHelp();
 }
 
 if (values.help) {
-  showHelp();
   process.exit(0);
 }
 
@@ -155,7 +84,8 @@ async function run() {
   const db = new SupervisorDb(resolveDbPath());
   dedupeBuiltinAssistantSessions(db);
   const manager = new SessionManager(db);
-  const { command, cmdArgs } = parseCommand();
+  const command = cli.matchedCommandName ?? "serve";
+  const cmdArgs = [...parsed.args];
 
   switch (command) {
     case "serve": {
@@ -166,8 +96,8 @@ async function run() {
       ensureBuiltinAssistant(db, manager);
       ensurePackagedAgents(db);
       const app = createHttpServer(manager);
-      const server = serve({ fetch: app.fetch, port });
-      attachWebSocketServer(server);
+      registerWebSocketRoutes(app);
+      app.listen({ hostname: "0.0.0.0", port });
       manager.resumePersistedSessionInputs();
       startDailyWorkScheduler(db);
       console.log(`Server listening on http://localhost:${port}`);

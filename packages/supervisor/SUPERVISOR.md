@@ -24,7 +24,7 @@ packages/supervisor/
 │   ├── core/                        # Session 核心（管理器、运行时、队列、压缩）
 │   ├── db/                          # SQLite 数据层
 │   ├── extension/                   # 扩展框架 + 内置扩展
-│   ├── http/                        # HTTP API（Hono）
+│   ├── http/                        # HTTP API（Elysia）
 │   ├── resources/                   # 资源目录、绑定与加载
 │   ├── testing/                     # 可公开复用的 AI 效果测试 API
 │   ├── tools/                       # 内置打包工具（edit、lsp、web 等）
@@ -68,7 +68,7 @@ packages/supervisor/
 | `shadow/prompt.md`    | Shadow 协作者（`is_internal`）：每轮主对话结束后分析记忆与安全，按需向父 session 投递消息；**不可**用于创建用户 session |
 | `btw/prompt.md`       | BTW 只读侧问代理（`is_internal`）；**不可**用于创建用户 session                                                         |
 | `intro/prompt.md`     | Intro 引导和扩展开发助手，使用 coding 工具；**可以**创建用户 session                                                    |
-| `coding/prompt.md`    | 通用 Coding agent：项目开发与验证；端口经 session 环境变量注入；**可以**创建用户 session          |
+| `coding/prompt.md`    | 通用 Coding agent：项目开发与验证；端口经 session 环境变量注入；**可以**创建用户 session                                |
 | `assistant/prompt.md` | 默认 Pi Assistant 的 system prompt                                                                                      |
 
 内置 / 打包 Agent 的 meta 使用 `builtin`、`userSpawnable`（以及 `packagedKind` 等）。HTTP：禁止 PATCH/DELETE 内置 Agent 及其资源绑定；**允许** `PUT /agents/:id/system-md` 自定义 SYSTEM.md。打包 kinds：`shadow` / `btw`（不可用户建会话）、`intro` / `coding`（可用户建会话），另有「Pi 助手」。BTW 使用 packaged `btw` agent 的 SYSTEM.md（由 `btw/prompt.md` 种子写入），经 `POST /sessions/:id/btw` 创建，不经 members `tag=btw`。
@@ -235,7 +235,7 @@ packages/supervisor/
 
 ### `src/http/` — HTTP API
 
-基于 [Hono](https://hono.dev/) 的 REST + SSE 接口，供 Web UI 与外部集成调用。
+基于 Elysia + Bun 的 REST、SSE 与 WebSocket 接口，供 Web UI 与外部集成调用；OpenAPI 由路由 schema 自动生成。
 
 | 文件                 | 用途                                                        |
 | -------------------- | ----------------------------------------------------------- |

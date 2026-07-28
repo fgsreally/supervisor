@@ -30,9 +30,11 @@ export function ensureBuiltinExtensionResources(db: SupervisorDb): void {
  * Does not reset enabled when the row already exists.
  */
 export function ensureAgentBuiltinExtensionBindings(db: SupervisorDb, agentId: number): void {
-  if (!db.getAgent(agentId)) return;
+  const agent = db.getAgent(agentId);
+  if (!agent) return;
   ensureBuiltinExtensionResources(db);
   for (const spec of BUILTIN_EXTENSIONS) {
+    if (spec.agentNames && !spec.agentNames.includes(agent.name)) continue;
     const resource = db.getResourceByKindSlug("extension", spec.slug);
     if (!resource || !isBuiltinExtensionResource(resource.meta)) continue;
     db.ensureAgentResourceBinding(agentId, resource.id, { enabled: true });
@@ -46,8 +48,10 @@ export function listEnabledBuiltinExtensionSlugs(
   options?: { isMainSession?: boolean },
 ): Set<string> {
   ensureAgentBuiltinExtensionBindings(db, agentId);
+  const agent = db.getAgent(agentId);
   const enabled = new Set<string>();
   for (const spec of BUILTIN_EXTENSIONS) {
+    if (spec.agentNames && (!agent || !spec.agentNames.includes(agent.name))) continue;
     if (spec.requiresMainSession && options?.isMainSession === false) continue;
     const resource = db.getResourceByKindSlug("extension", spec.slug);
     if (!resource) continue;

@@ -1,20 +1,16 @@
 import { stat } from "node:fs/promises";
-import {
-  Type,
-  defineExtension,
-  type ExtensionEvent,
-  type SessionWorkflowState,
-} from "pi-supervisor";
+import { Type, defineExtension, type ExtensionEvent } from "pi-supervisor";
 import { WorkflowArtifacts } from "./artifacts.js";
 import { WorkflowOrchestrator } from "./orchestrator.js";
 import { STAGES } from "./stages.js";
 import type { StageDefinition, StageId } from "./types.js";
+import { getWorkflow, setWorkflow, type StrictSddWorkflowState } from "./workflow-state.js";
 
 function isStage(value: string): value is StageId {
   return Object.hasOwn(STAGES, value);
 }
 
-function stageSummary(stage: StageDefinition, workflow: SessionWorkflowState) {
+function stageSummary(stage: StageDefinition, workflow: StrictSddWorkflowState) {
   return {
     stage: stage.id,
     status: workflow.status,
@@ -71,7 +67,7 @@ export default defineExtension({
     let repairingTransition = false;
     let previousStage: StageId | null = null;
 
-    const applyStage = async (workflow: SessionWorkflowState) => {
+    const applyStage = async (workflow: StrictSddWorkflowState) => {
       if (!isStage(workflow.stage)) {
         throw new Error(`Unknown strict-sdd stage: ${workflow.stage}`);
       }
@@ -96,7 +92,7 @@ export default defineExtension({
         "Read the current Strict SDD stage, status, required artifacts, and next routes.",
       parameters: Type.Object({}),
       async execute() {
-        const workflow = await ctx.session.workflow.get();
+        const workflow = await getWorkflow(ctx);
         if (!workflow || !isStage(workflow.stage)) {
           return { content: [{ type: "text", text: "No active Strict SDD workflow." }] };
         }
@@ -130,7 +126,7 @@ export default defineExtension({
         "Validate and submit the current Strict SDD stage for the fixed user confirmation or route choice.",
       parameters: Type.Object({}),
       async execute() {
-        const workflow = await ctx.session.workflow.get();
+        const workflow = await getWorkflow(ctx);
         if (!workflow || !isStage(workflow.stage)) throw new Error("No active workflow stage");
         const stage = STAGES[workflow.stage];
         if (["test", "vertical", "implement", "archive"].includes(stage.id)) {
@@ -138,7 +134,7 @@ export default defineExtension({
         }
         await validateStage(stage, artifacts);
         const nextStatus = stage.choice ? "waiting_choice" : "waiting_confirmation";
-        const next = await ctx.session.workflow.set({ status: nextStatus });
+        const next = await setWorkflow(ctx, { status: nextStatus });
         const details = stageSummary(stage, next);
         return {
           content: [
@@ -162,7 +158,7 @@ export default defineExtension({
           if (previousStage) {
             repairingTransition = true;
             try {
-              await ctx.session.workflow.set({
+              await setWorkflow(ctx, {
                 stage: previousStage,
                 status: "waiting_confirmation",
               });
@@ -175,7 +171,7 @@ export default defineExtension({
         if (event.from && isStage(event.from) && !STAGES[event.from].next.includes(event.to)) {
           repairingTransition = true;
           try {
-            await ctx.session.workflow.set({
+            await setWorkflow(ctx, {
               stage: event.from,
               status: STAGES[event.from].choice ? "waiting_choice" : "waiting_confirmation",
             });
@@ -184,23 +180,14 @@ export default defineExtension({
           }
           return;
         }
-        await applyStage(event.workflow);
+        await applyStage((await getWorkflow(ctx)) ?? { stage: event.to, status: "working" });
         await orchestrator.run(event.to);
       },
     );
 
-    const offStatus = ctx.on<Extract<ExtensionEvent, { type: "workflow.status_changed" }>>(
-      "workflow.status_changed",
-      async (event) => {
-        if (event.to === "working" && isStage(event.stage)) {
-          await orchestrator.run(event.stage);
-        }
-      },
-    );
-
-    let workflow = await ctx.session.workflow.get();
+    let workflow = await getWorkflow(ctx);
     if (!workflow) {
-      workflow = await ctx.session.workflow.set({ stage: "brainstorm", status: "working" });
+      workflow = await setWorkflow(ctx, { stage: "brainstorm", status: "working" });
     } else {
       await applyStage(workflow);
       if (workflow.status === "working" && isStage(workflow.stage)) {
@@ -211,7 +198,6 @@ export default defineExtension({
     ctx.log("info", "strict-sdd workflow active", { ...workflow });
     return () => {
       offStage();
-      offStatus();
       ctx.inject.clear("strict-sdd-stage");
     };
   },

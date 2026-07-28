@@ -1,36 +1,46 @@
 <template>
   <div v-if="agent" class="flex flex-col min-h-0 flex-1">
-    <div class="flex items-center justify-between gap-3 mb-2 shrink-0">
-      <span class="system-prompt-label text-[12px]">SYSTEM.md</span>
-      <InlineEditActions
-        :editing="editing"
-        @edit="startEdit"
-        @cancel="cancelEdit"
-        @done="finishEdit"
-      />
+    <div
+      v-if="loading"
+      class="flex flex-1 items-center justify-center gap-2 text-[13px] system-prompt-muted"
+    >
+      <Loader2 class="h-4 w-4 animate-spin" />
+      正在加载 System Prompt...
     </div>
-
-    <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
-      <CodeMirrorView
-        v-if="editing"
-        :content="systemMd"
-        language="markdown"
-        editable
-        fill
-        @update:content="onSystemMdChange"
-      />
-      <div
-        v-else
-        class="system-prompt-view flex-1 min-h-0 overflow-y-auto custom-scrollbar text-[15px] leading-relaxed"
-      >
-        <MarkdownContent :content="systemMd || '（空）'" prose />
+    <template v-else>
+      <div class="flex items-center justify-between gap-3 mb-2 shrink-0">
+        <span class="system-prompt-label text-[12px]">SYSTEM.md</span>
+        <InlineEditActions
+          :editing="editing"
+          @edit="startEdit"
+          @cancel="cancelEdit"
+          @done="finishEdit"
+        />
       </div>
-    </div>
+
+      <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <CodeMirrorView
+          v-if="editing"
+          :content="systemMd"
+          language="markdown"
+          editable
+          fill
+          @update:content="onSystemMdChange"
+        />
+        <div
+          v-else
+          class="system-prompt-view flex-1 min-h-0 overflow-y-auto custom-scrollbar text-[15px] leading-relaxed"
+        >
+          <MarkdownContent :content="systemMd || '（空）'" prose />
+        </div>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { Loader2 } from "lucide-vue-next";
 import CodeMirrorView from "./CodeMirrorView.vue";
 import InlineEditActions from "./InlineEditActions.vue";
 import MarkdownContent from "./MarkdownContent.vue";
@@ -45,6 +55,7 @@ const agentStore = useAgentStore();
 const systemMd = ref("");
 const editing = ref(false);
 const snapshot = ref<string | null>(null);
+const loading = ref(false);
 
 const agent = computed(() => agentStore.getAgentById(props.agentId));
 
@@ -53,10 +64,15 @@ watch(
   async (id) => {
     editing.value = false;
     snapshot.value = null;
-    await agentStore.fetchAgentResources(id, getDefaultWorkspaceCwd());
-    systemMd.value =
-      agentStore.agentResources[id]?.systemMd ??
-      (await agentStore.fetchAgentSystemMd(id).catch(() => ""));
+    loading.value = true;
+    try {
+      await agentStore.fetchAgentResources(id, getDefaultWorkspaceCwd());
+      systemMd.value =
+        agentStore.agentResources[id]?.systemMd ??
+        (await agentStore.fetchAgentSystemMd(id).catch(() => ""));
+    } finally {
+      loading.value = false;
+    }
   },
   { immediate: true },
 );
@@ -85,6 +101,10 @@ function onSystemMdChange(content: string) {
 
 <style scoped>
 .system-prompt-label {
+  color: var(--app-text-secondary);
+}
+
+.system-prompt-muted {
   color: var(--app-text-secondary);
 }
 

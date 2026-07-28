@@ -3,6 +3,7 @@
     class="agent-list-item cursor-pointer flex items-center gap-3 px-4 py-3 transition-colors relative"
     :class="{ 'agent-list-item--active': active }"
     @click="$emit('select', agent.id)"
+    @contextmenu.prevent="$emit('contextmenu', $event, agent)"
   >
     <AgentAvatar
       :agent-id="agent.id"
@@ -21,7 +22,7 @@
         </span>
       </div>
       <div class="text-[11px] truncate mt-0.5 agent-list-item__desc">
-        {{ agent.description ?? "" }}
+        {{ modelSummary }}
       </div>
     </div>
   </div>
@@ -29,7 +30,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { useAgentStore } from "@/store";
+import { useProviderStore } from "@/store";
 import type { Agent } from "@/api";
 import AgentAvatar from "./AgentAvatar.vue";
 
@@ -38,7 +39,20 @@ const props = defineProps<{
   active?: boolean;
 }>();
 
-defineEmits<{ select: [id: string] }>();
+const providerStore = useProviderStore();
+const modelSummary = computed(() => {
+  if (!props.agent.providerId || !props.agent.modelId) return props.agent.description ?? "";
+  const provider = providerStore.getProviderById(props.agent.providerId);
+  const model = providerStore.models[props.agent.providerId]?.find(
+    (item) => item.id === props.agent.modelId,
+  );
+  return `${provider?.name ?? "未找到供应商"} / ${model?.name || model?.modelId || "未找到模型"}`;
+});
+
+defineEmits<{
+  select: [id: string];
+  contextmenu: [event: MouseEvent, agent: Agent];
+}>();
 
 const presetLabel = computed(() => {
   switch (props.agent.toolsPreset) {

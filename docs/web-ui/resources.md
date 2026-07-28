@@ -21,16 +21,16 @@ SKILL.md 格式的技能包。agent 对话时自动加载对应 skill。
 
 ## 组件
 
-| 组件                        | 作用               |
-| --------------------------- | ------------------ |
-| `ResourcesPanel.vue`        | 全局资源列表与分类 |
+| 组件                        | 作用                  |
+| --------------------------- | --------------------- |
+| `ResourcesPanel.vue`        | 全局资源列表与分类    |
 | `SkillInstallDialog.vue`    | Skill 搜索 / 链接导入 |
-| `ResourceContentView.vue`   | 资源内容查看与编辑 |
-| `ResourceFileListItem.vue`  | 资源文件列表项     |
-| `ResourceLayerBadge.vue`    | 资源层级标签       |
-| `GlobalResourceLinkBar.vue` | 全局资源导航       |
-| `SkillFileTree.vue`         | Skill 文件树       |
-| `SkillFileListItem.vue`     | Skill 文件列表项   |
+| `ResourceContentView.vue`   | 资源内容查看与编辑    |
+| `ResourceFileListItem.vue`  | 资源文件列表项        |
+| `ResourceLayerBadge.vue`    | 资源层级标签          |
+| `GlobalResourceLinkBar.vue` | 全局资源导航          |
+| `SkillFileTree.vue`         | Skill 文件树          |
+| `SkillFileListItem.vue`     | Skill 文件列表项      |
 
 ## Store
 

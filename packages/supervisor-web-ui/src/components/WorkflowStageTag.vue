@@ -30,7 +30,7 @@ const label = computed(() => workflowStageLabel(props.stage));
   line-height: 1;
 }
 
-:global([data-theme="dark"]) .workflow-stage-tag {
+:global(html[data-theme="dark"] .workflow-stage-tag) {
   color: #ddd6fe;
   background: rgb(91 33 182 / 35%);
   border-color: rgb(196 181 253 / 35%);

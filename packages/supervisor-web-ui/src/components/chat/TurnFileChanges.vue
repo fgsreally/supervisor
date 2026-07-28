@@ -7,26 +7,46 @@
         :class="{ 'turn-files-chevron--open': expanded }"
       />
     </button>
-    <div v-if="expanded" class="turn-files-list">
-      <div v-if="files.added?.length" class="turn-files-group">
-        <span class="turn-files-label turn-files-label--added">新增</span>
-        <div v-for="f in files.added" :key="f" class="turn-files-item turn-files-item--added">
-          <Plus class="w-3 h-3 shrink-0" />
-          <code class="turn-files-name">{{ f }}</code>
+    <div class="turn-files-collapse" :class="{ 'is-open': expanded }">
+      <div class="turn-files-list">
+        <div v-if="files.added?.length" class="turn-files-group">
+          <span class="turn-files-label turn-files-label--added">新增</span>
+          <button
+            v-for="f in files.added"
+            :key="f"
+            type="button"
+            class="turn-files-item turn-files-item--added"
+            @click="openFile(f)"
+          >
+            <FileTypeIcon :path="f" />
+            <code class="turn-files-name">{{ f }}</code>
+          </button>
         </div>
-      </div>
-      <div v-if="files.modified?.length" class="turn-files-group">
-        <span class="turn-files-label turn-files-label--modified">修改</span>
-        <div v-for="f in files.modified" :key="f" class="turn-files-item turn-files-item--modified">
-          <FileEdit class="w-3 h-3 shrink-0" />
-          <code class="turn-files-name">{{ f }}</code>
+        <div v-if="files.modified?.length" class="turn-files-group">
+          <span class="turn-files-label turn-files-label--modified">修改</span>
+          <button
+            v-for="f in files.modified"
+            :key="f"
+            type="button"
+            class="turn-files-item turn-files-item--modified"
+            @click="openFile(f)"
+          >
+            <FileTypeIcon :path="f" />
+            <code class="turn-files-name">{{ f }}</code>
+          </button>
         </div>
-      </div>
-      <div v-if="files.deleted?.length" class="turn-files-group">
-        <span class="turn-files-label turn-files-label--deleted">删除</span>
-        <div v-for="f in files.deleted" :key="f" class="turn-files-item turn-files-item--deleted">
-          <Trash2 class="w-3 h-3 shrink-0" />
-          <code class="turn-files-name">{{ f }}</code>
+        <div v-if="files.deleted?.length" class="turn-files-group">
+          <span class="turn-files-label turn-files-label--deleted">删除</span>
+          <button
+            v-for="f in files.deleted"
+            :key="f"
+            type="button"
+            class="turn-files-item turn-files-item--deleted"
+            @click="openFile(f)"
+          >
+            <FileTypeIcon :path="f" />
+            <code class="turn-files-name">{{ f }}</code>
+          </button>
         </div>
       </div>
     </div>
@@ -35,7 +55,8 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { ChevronDown, FileEdit, Plus, Trash2 } from "lucide-vue-next";
+import { ChevronDown } from "lucide-vue-next";
+import FileTypeIcon from "../FileTypeIcon.vue";
 
 export interface TurnFileChangesData {
   added?: string[];
@@ -55,6 +76,10 @@ const totalCount = computed(() => {
 });
 
 const badgeText = computed(() => `文件变更 ${totalCount.value} 个`);
+
+function openFile(path: string) {
+  window.dispatchEvent(new CustomEvent("supervisor:open-file", { detail: { path } }));
+}
 </script>
 
 <style scoped>
@@ -100,6 +125,25 @@ const badgeText = computed(() => `文件变更 ${totalCount.value} 个`);
   padding-left: 4px;
 }
 
+.turn-files-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
+}
+
+.turn-files-collapse.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.turn-files-collapse > .turn-files-list {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .turn-files-group {
   display: flex;
   flex-direction: column;
@@ -133,6 +177,12 @@ const badgeText = computed(() => `文件变更 ${totalCount.value} 个`);
   padding: 1px 4px;
   border-radius: 3px;
   font-size: 11px;
+  width: 100%;
+  text-align: left;
+}
+
+.turn-files-item:hover {
+  background: var(--app-hover);
 }
 
 .turn-files-item--added {

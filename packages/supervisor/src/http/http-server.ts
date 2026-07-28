@@ -5,8 +5,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, normalize, resolve, sep } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { Context } from "hono";
-import { Hono } from "hono";
+import { t } from "elysia";
 import { getSupervisorAgentsRoot, isBuiltinAgent } from "../agent/index.js";
 import type { ExtensionEvent } from "../extension/index.js";
 import type { SessionManager } from "../core/session-manager.js";
@@ -33,6 +32,11 @@ import {
   writeSupervisorSettings,
 } from "../utils/supervisor-settings.js";
 import { ensureSupervisorPublicDir } from "../utils/supervisor-home.js";
+import {
+  SupervisorElysiaBuilder,
+  type SupervisorElysiaApp,
+  type SupervisorHttpContext,
+} from "./elysia-app.js";
 import { encryptApiKey } from "../utils/encrypt.js";
 import { decryptApiKey } from "../utils/encrypt.js";
 import { testApiKey, type ApiKeyProvider } from "../utils/test-api-key.js";
@@ -83,7 +87,11 @@ function toModelResponse(m: Model) {
   };
 }
 
-function jsonError(c: Context, status: 400 | 403 | 404 | 409 | 500 | 501, message: string) {
+function jsonError(
+  c: SupervisorHttpContext,
+  status: 400 | 403 | 404 | 409 | 500 | 501 | 502,
+  message: string,
+) {
   return c.json({ error: message }, status);
 }
 
@@ -118,7 +126,7 @@ async function readOwnedAsset(root: string, relativePath: string): Promise<Uint8
   return readFile(candidate).catch(() => null);
 }
 
-function collectRequestHeaders(c: Context): Record<string, string> {
+function collectRequestHeaders(c: SupervisorHttpContext): Record<string, string> {
   const headers: Record<string, string> = {};
   c.req.raw.headers.forEach((value, key) => {
     headers[key] = value;
@@ -213,8 +221,8 @@ function toHomeTaskResponse(task: HomeTask) {
   };
 }
 
-export function createHttpServer(manager: SessionManager): Hono {
-  const app = new Hono();
+export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
+  const app = new SupervisorElysiaBuilder();
   appendSystemLog(`HTTP server initialized pid=${process.pid}`);
 
   app.get("/healthz", (c) => c.json({ ok: true }));
@@ -2692,33 +2700,29 @@ export function createHttpServer(manager: SessionManager): Hono {
   });
 
   // PATCH /agents/:id/extensions/:resourceId — enable/disable (allowed for built-in agents)
-  app.patch("/agents/:id/extensions/:resourceId", async (c) => {
-    const agentId = parseIntegerId(c.req.param("id"));
-    const resourceId = parseIntegerId(c.req.param("resourceId"));
-    if (agentId === null || resourceId === null) {
-      return jsonError(c, 400, "invalid agent id or resource id");
-    }
-    const body = await c.req.json().catch(() => null);
-    if (
-      !body ||
-      typeof body !== "object" ||
-      typeof (body as { enabled?: unknown }).enabled !== "boolean"
-    ) {
-      return jsonError(c, 400, "enabled boolean required");
-    }
-    try {
-      if (!manager.getAgent(agentId)) return jsonError(c, 404, "agent not found");
-      const binding = manager.setAgentExtensionEnabled(
-        agentId,
-        resourceId,
-        (body as { enabled: boolean }).enabled,
-      );
-      return c.json({ ok: true, binding });
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      return jsonError(c, 400, message);
-    }
-  });
+  app.patch(
+    "/agents/:id/extensions/:resourceId",
+    async (c) => {
+      const agentId = parseIntegerId(c.req.param("id"));
+      const resourceId = parseIntegerId(c.req.param("resourceId"));
+      if (agentId === null || resourceId === null) {
+        return jsonError(c, 400, "invalid agent id or resource id");
+      }
+      const body = await c.req.json<{ enabled: boolean }>();
+      try {
+        if (!manager.getAgent(agentId)) return jsonError(c, 404, "agent not found");
+        const binding = manager.setAgentExtensionEnabled(agentId, resourceId, body.enabled);
+        return c.json({ ok: true, binding });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        return jsonError(c, 400, message);
+      }
+    },
+    {
+      body: t.Object({ enabled: t.Boolean() }),
+      detail: { summary: "Enable or disable an Agent extension binding" },
+    },
+  );
 
   // POST /agents/:id/resources — bind a catalog resource to an agent
   app.post("/agents/:id/resources", async (c) => {
@@ -2770,20 +2774,31 @@ export function createHttpServer(manager: SessionManager): Hono {
   });
 
   // POST /extensions/install — install extension from source
-  app.post("/extensions/install", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
-    const source = body.source;
-    if (!source || typeof source !== "string") {
-      return jsonError(c, 400, "source is required (npm:<spec>, git:<url>, or local path)");
-    }
-    try {
-      const result = await manager.resources.installResource({ kind: "extension", source });
-      return c.json(result, 201);
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      return jsonError(c, 400, message);
-    }
-  });
+  app.post(
+    "/extensions/install",
+    async (c) => {
+      const body = await c.req.json<{ source: string }>();
+      try {
+        const result = await manager.resources.installResource({
+          kind: "extension",
+          source: body.source,
+        });
+        return c.json(result, 201);
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        return jsonError(c, 400, message);
+      }
+    },
+    {
+      body: t.Object({
+        source: t.String({
+          minLength: 1,
+          description: "npm:<spec>, git:<url>, or a local extension directory",
+        }),
+      }),
+      detail: { summary: "Install an extension into the global resource catalog" },
+    },
+  );
 
   // POST /extensions/:id/update — re-fetch from package.json repository
   app.post("/extensions/:id/update", async (c) => {
@@ -2926,5 +2941,5 @@ export function createHttpServer(manager: SessionManager): Hono {
     }
   });
 
-  return app;
+  return app.build();
 }

@@ -452,7 +452,10 @@ export class SessionManager {
     return resolveAgentTools(this.db, agentId, cwd, this.extensionRegistry);
   }
 
-  private resolveProjectId(options: CreateSessionOptions): number {
+  private resolveProjectId(options: CreateSessionOptions): number | null {
+    if (Object.prototype.hasOwnProperty.call(options, "projectId") && options.projectId === null) {
+      return null;
+    }
     if (options.projectId != null) {
       const project = this.db.getProject(options.projectId);
       if (!project) throw new Error(`Project ${options.projectId} not found`);

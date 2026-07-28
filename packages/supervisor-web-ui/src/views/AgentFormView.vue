@@ -32,7 +32,7 @@
     </div>
 
     <div class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
-      <section class="agent-form-card rounded-lg p-4 space-y-4 max-w-xl">
+      <section class="agent-form-card mx-auto max-w-xl rounded-lg p-4 space-y-4">
         <div class="flex items-center gap-3">
           <AgentAvatar
             :agent-id="draft.id || draft.backendType"
@@ -108,26 +108,13 @@
         </label>
 
         <label v-if="draft.backendType === 'native'" class="block text-[13px]">
-          <span class="agent-form-label mb-1 block">模型服务</span>
-          <select
-            v-model="draft.providerId"
-            class="agent-form-input w-full px-3 py-2 rounded-md"
-            @change="onProviderChange"
-          >
-            <option value="">稍后配置</option>
-            <option v-for="p in providerOptions" :key="p.id" :value="p.id">{{ p.name }}</option>
-          </select>
-        </label>
-
-        <label v-if="draft.backendType === 'native'" class="block text-[13px]">
           <span class="agent-form-label mb-1 block">模型</span>
-          <select
+          <ModelTreeSelect
             v-model="draft.modelId"
-            class="agent-form-input w-full px-3 py-2 rounded-md font-mono text-[12px]"
-          >
-            <option value="">稍后配置</option>
-            <option v-for="m in modelOptions" :key="m.id" :value="m.id">{{ m.id }}</option>
-          </select>
+            :groups="modelGroups"
+            placeholder="稍后配置"
+            @change="onModelChange"
+          />
         </label>
 
         <template v-if="draft.backendType !== 'native'">
@@ -161,8 +148,8 @@
         </label>
       </section>
 
-      <p class="mt-4 text-[12px] max-w-xl agent-form-hint leading-relaxed">
-        创建后可在 Skills / Extensions / Prompts 页从全局库关联资源。全局资源目录：
+      <p class="mx-auto mt-4 max-w-xl text-[12px] agent-form-hint leading-relaxed">
+        创建后可在 Skills / Extensions / Prompt Template 页从全局库关联资源。全局资源目录：
         <code class="font-mono">~/.pi/supervisor/global/</code>
       </p>
     </div>
@@ -176,6 +163,7 @@ import { uploadIcon, type ToolsPreset } from "@/api";
 import { useAgentStore, useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import AgentAvatar from "../components/AgentAvatar.vue";
+import ModelTreeSelect, { type ModelTreeGroup } from "../components/ModelTreeSelect.vue";
 import { showUiMessage } from "@/composables/use-ui-message";
 
 defineProps<{ showBack?: boolean }>();
@@ -202,13 +190,19 @@ const draft = ref({
 });
 
 const providerOptions = computed(() =>
-  providerStore.providers.map((p) => providerToUI(p, providerStore.models[p.id] ?? [])),
+  providerStore.providers
+    .filter((provider) => provider.isEnabled)
+    .map((p) => providerToUI(p, providerStore.models[p.id] ?? [])),
 );
 
-const modelOptions = computed(() => {
-  const p = providerOptions.value.find((x) => x.id === draft.value.providerId);
-  return p?.models ?? [];
-});
+const modelGroups = computed<ModelTreeGroup[]>(() =>
+  providerOptions.value.map((provider) => ({
+    id: provider.id,
+    name: provider.name,
+    icon: provider.icon,
+    models: provider.models.map((model) => ({ value: model.id, name: model.name })),
+  })),
+);
 
 watch(
   providerOptions,
@@ -246,15 +240,10 @@ const commandPlaceholder = computed(() => {
   return "外部 Agent 命令";
 });
 
-function onProviderChange() {
-  const p = providerOptions.value.find((x) => x.id === draft.value.providerId);
-  if (!p) {
-    draft.value.modelId = "";
-    return;
-  }
-  if (!p.models.some((m) => m.id === draft.value.modelId)) {
-    draft.value.modelId = p.models[0]?.id || "";
-  }
+function onModelChange(modelId: string) {
+  draft.value.providerId =
+    modelGroups.value.find((group) => group.models.some((model) => model.value === modelId))?.id ??
+    "";
 }
 
 async function onIconSelected(event: Event) {

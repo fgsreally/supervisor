@@ -5,6 +5,13 @@
   "bin": {
     "pi-supervisor": "./dist/cli.mjs"
   },
+  "files": [
+    "dist",
+    "agents",
+    "prompts",
+    ".env.example",
+    "SUPERVISOR.md"
+  ],
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
@@ -22,7 +29,7 @@
   "scripts": {
     "clean": "shx rm -rf dist",
     "dev": "tsdown --watch",
-    "serve:playground": "node dist/cli.mjs serve --port 3030 --cwd ../../playground",
+    "serve:playground": "bun dist/cli.mjs serve --port 3030 --cwd ../../playground",
     "build": "tsdown",
     "test": "vitest --run --config vitest.config.ts",
     "test:unit": "vitest --run --config vitest.config.ts",
@@ -37,13 +44,13 @@
     "@earendil-works/pi-agent-core": "^0.74.0",
     "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@elysia/openapi": "^1.4.15",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@hono/node-server": "^1.14.4",
     "@injaneity/pi-computer-use": "^0.4.3",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@puppeteer/browsers": "^2.8.0",
-    "better-sqlite3": "^11.10.0",
-    "hono": "^4.8.4",
+    "cac": "^7.0.0",
+    "elysia": "^1.4.29",
     "ignore": "^6.0.2",
     "jiti": "^2.7.0",
     "prompts": "^2.4.2",
@@ -64,7 +71,11 @@
     "unrun": "^0.3.1",
     "vitest": "^3.2.4"
   },
+  "optionalDependencies": {
+    "better-sqlite3": "^11.10.0"
+  },
   "engines": {
+    "bun": ">=1.2.0",
     "node": ">=20.6.0"
   }
 }

@@ -1,76 +1,74 @@
-# Session 与子 Session
+# Session 与派生 Session
 
-Session 是 supervisor 的核心运行单元，对应一个 agent harness、一棵消息树和一条 SQLite `sessions` 记录。
+Session 是运行和持久化单位：一条 `sessions` 记录、一棵消息树，以及运行时 harness。完整列与
+meta 结构见[数据库结构](/supervisor/schema-reference)。
 
-## 子 Session 的严格定义
+## 身份与运行配置
 
-只要一个 Session 来源于另一个 Session，它就是后者的子 Session，并必须设置 `parentId`。`branchType` 记录创建方式：
+- `agent_id` 决定 Agent、模型和 tools preset；Session 不单独保存模型配置。
+- `system_prompt` 保存本 Session 实际使用的完整 system 快照，不包含 skills 目录内容与
+  `servicesPrompt`。
+- 核心展示/状态使用列：`title`、`avatar`、`pinned`、`muted`、`unread`、`error_msg`、
+  `stage`、`shadow_enabled` 等；不要重复写入 meta。
+- 缺模型、等待审批等需要用户介入的情况使用 `status=blocked`，原因写 `error_msg`。
 
-| `branchType` | 创建方式                   | 是否出现在主会话列表   | 消息与上下文                             |
-| ------------ | -------------------------- | ---------------------- | ---------------------------------------- |
-| `subagent`   | `spawn_agent` 等子代理调用 | 活动时显示，完成后隐藏 | 独立消息树                               |
-| `fork`       | 从指定消息处分叉           | 是                     | 创建时复制指定路径                       |
-| `clone`      | 克隆会话                   | 是                     | 创建时复制完整当前路径                   |
-| `btw`        | “顺便问一下”               | 否                     | 不复制消息，读取父会话创建时的上下文快照 |
+## 派生类型
 
-根 Session 的 `parentId` 和 `branchType` 都是 `null`。
+有 `parent_id` 的 Session 是派生 Session；创建方式记录在 `spawn_type`。
 
-`showInSessionList` 是列表可见性的唯一依据。它与 `parentId` 分开，是因为 `fork` 和 `clone` 虽然是子 Session，却需要出现在 Web UI 主会话列表中。所有直接子 Session 都可在父会话的“聊天信息”面板查看。
+| `spawn_type` | 创建方式                            | 上下文与消息                                                   |
+| ------------ | ----------------------------------- | -------------------------------------------------------------- |
+| `subagent`   | `spawn_agent` / `ctx.session.spawn` | 独立消息树与运行结果                                           |
+| `btw`        | `POST /sessions/:id/btw`            | 动态读取父 Session 当前分支，自己的写入保持隔离；强制 readonly |
+| `fork`       | 指定 entry 分叉                     | 创建时复制到分叉点的消息，并创建自己的 worktree                |
+| `clone`      | 克隆                                | 创建时复制当前消息路径，并创建自己的 worktree                  |
 
-等待中的 Session 输入持久化在 SQLite。Supervisor 重启时会把中断的运行状态归一为 `idle`，然后继续处理尚未投递的队列输入。
+根 Session 的 `parent_id` 与 `spawn_type` 均为 null。列表可见性由产品规则根据派生类型推导，
+不存在 `show_in_session_list` 列。BTW 不再保存 `context_leaf_id`，因此读取的是父 Session 当前
+路径，而不是创建时冻结的路径。
 
-旧数据库中的 `branchType = "spawn"` 会在迁移时转换成 `"subagent"`。
+BTW 复用父 Session 的 Agent；如果父 Agent 是外部后端，会解析到可用的原生 Agent。BTW
+只能使用原生 Agent，不依赖旧 members/tag 机制或单独的 packaged BTW Agent。
 
-## BTW 上下文快照
+## 子 Agent 委派
 
-创建 BTW 时，后端把父会话当前的 `leafId` 保存为子会话的 `contextLeafId`，但不会向 BTW 的 `messages` 记录复制任何父消息。
+主 Session 可委派 Agent 的白名单保存在 `sessions.meta.subagentIds`。HTTP 使用
+`PUT /sessions/:id/subagents`，扩展使用 `ctx.agent.findByRole("spawned")` 解析。旧 `members`
+表和 tag 查找已移除。
 
-运行 BTW 时，存储层向 agent 组合两部分内容：
+## 输入、错误与通知
 
-1. 父会话从根到 `contextLeafId` 的只读路径；
-2. BTW 自己写入的消息。
+- 排队输入写 `session_input_queue`；重启后恢复未投递项。
+- LLM 失败会写 timeline `llm_error`，可由 `/retry` 重试；需要用户介入时状态为 `blocked`。
+- 工具、Git complete 等非 LLM 错误通常通过工具结果或 UI 通知展示。
+- `ctx.session.sendCustomMessage` 写仅供 timeline 展示的 custom message，不进入模型上下文。
+- 消息已读状态在 `messages.meta.read`，Session 未读计数在 `sessions.unread` 列。
 
-因此，父会话在 BTW 创建后新增的消息不会进入该 BTW；BTW 的新消息也只存在于自己的 `messages` 记录中。BTW 可以继续创建 BTW，读取层会递归组合每一层被冻结的上下文。
+## Git worktree 与 Complete
 
-BTW 使用 packaged `btw` agent 的 `SYSTEM.md`（由 `agents/btw/prompt.md` 种子写入），经 `POST /sessions/:id/btw` / `SessionManager.createBtw` 创建，不经 members `tag=btw`。
+Git 状态保存在 `sessions.meta.git = { worktreePath, branch, lastCommit, mergeError }`；存在
+`worktreePath` 即启用 worktree。创建 worktree 时以当时 `project.cwd` checkout 的分支为基线。
 
-## 错误与通知
-
-- **LLM 失败**：`status=error`，timeline 写入 `customType: llm_error`（不进模型上下文），前端错误卡可 `POST /sessions/:id/retry`。
-- **非 LLM 错误**（工具失败、complete/git 等）：工具结果回给模型或 SSE `ui_notify` toast；**不会**把 session 标为 `error`。
-
-## 未读
-
-- 消息条目可带 `meta.read`；会话 `meta.unread` 为未读计数。
-- 无人观看时写入的 assistant 消息会累加未读；打开会话时 `POST /sessions/:id/read` 清零。
-
-## 时间线通知
-
-- `SessionManager.sendCustomMessage` / `ctx.session.sendCustomMessage` 写入 `custom_message`，仅 UI 展示，不进模型上下文。
-
-## Worktree
-
-- 根会话可在 git 仓库创建独立 worktree（见 `session-lifecycle`）；无内置 preview 反代产品。
+Complete/Achieve 不缓存 merge 目标，而是始终合并到执行当下 `project.cwd` 的当前 checkout
+分支。成功后清理 Session worktree；合并失败信息写 `meta.git.mergeError`。
 
 ## 删除语义
 
-删除父 Session 时：
-
-- 依赖父上下文或父任务的 `subagent`、`btw` 随父 Session 删除；
-- 已复制出独立消息的 `fork`、`clone` 保留，数据库外键会将其 `parentId` 置空。
+删除父 Session 时，依赖父上下文的 `subagent` 与 `btw` 递归删除；已经复制消息的 `fork` 与
+`clone` 保留，外键将其 `parent_id` 置空。Session 关联的 messages、queued inputs 与 jobs
+级联删除。
 
 ## 主要接口
 
-| 方法或接口                   | 说明                                  |
-| ---------------------------- | ------------------------------------- |
-| `SessionManager.create()`    | 只创建 Session 记录                   |
-| `SessionManager.spawn()`     | 创建并启动根 Session 或子代理 Session |
-| `POST /sessions/:id/btw`     | 创建 BTW 子 Session                   |
-| `POST /sessions/:id/fork`    | 从指定消息分叉                        |
-| `POST /sessions/:id/clone`   | 克隆当前会话                          |
-| `GET /sessions/:id/children` | 获取所有直接子 Session                |
-| `DELETE /sessions/:id`       | 按上述删除语义删除 Session            |
+| 接口                          | 作用                             |
+| ----------------------------- | -------------------------------- |
+| `POST /sessions`              | 创建并启动根 Session             |
+| `POST /sessions/:id/btw`      | 创建 BTW                         |
+| `POST /sessions/:id/fork`     | 从 entry 分叉                    |
+| `POST /sessions/:id/clone`    | 克隆                             |
+| `GET /sessions/:id/children`  | 直接子 Session                   |
+| `POST /sessions/:id/complete` | Complete/Achieve 并合并 worktree |
+| `DELETE /sessions/:id`        | 按上述语义删除                   |
 
-持久化字段定义位于 `packages/supervisor/src/types.ts`，创建和生命周期编排位于 `packages/supervisor/src/core/session-manager.ts`，BTW 上下文叠加位于 `packages/supervisor/src/core/session-storage.ts`。
-
-相关：[子代理](/supervisor/subagents)、[工作流](/supervisor/workflow)。
+实现主要位于 `core/session-manager.ts`、`core/session-lifecycle.ts`、
+`core/session-storage.ts` 与 `core/session-fields.ts`。

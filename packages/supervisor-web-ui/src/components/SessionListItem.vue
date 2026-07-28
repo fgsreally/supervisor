@@ -10,6 +10,8 @@
     @touchend="onTouchEnd"
     @touchmove="onTouchCancel"
     @touchcancel="onTouchCancel"
+    @mouseenter="emit('hover-change', true)"
+    @mouseleave="emit('hover-change', false)"
   >
     <div
       v-for="ancestorDepth in ancestorOpenDepths"
@@ -101,6 +103,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [id: string];
   "context-menu": [payload: { x: number; y: number }];
+  "hover-change": [hovered: boolean];
 }>();
 
 const agentStore = useAgentStore();

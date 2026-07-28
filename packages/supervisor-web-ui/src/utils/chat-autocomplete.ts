@@ -277,9 +277,7 @@ export function getAutocompleteSuggestions(
   if (context.trigger === "atat") {
     const { quoted, query } = atQuery(context.prefix, "atat");
     if (!browse.atatProject) {
-      const projects = (options.projects ?? []).filter(
-        (p) => !isCurrentProjectForAtat(p, options.currentWorkspaceCwd, options.currentProjectId),
-      );
+      const projects = options.projects ?? [];
       const filtered = fuzzyFilter(projects, query, (p) => `${p.name} ${p.cwd}`);
       return filtered.slice(0, PROJECT_LIMIT).map((p) => ({
         trigger: "atat" as const,
@@ -300,13 +298,7 @@ export function getAutocompleteSuggestions(
         label: "返回项目列表",
         description: browse.atatProject.name,
       },
-      ...buildFlatFileItems(
-        "atat",
-        options.atatFiles ?? [],
-        query,
-        quoted,
-        browse.atatProject.cwd,
-      ),
+      ...buildFlatFileItems("atat", options.atatFiles ?? [], query, quoted, browse.atatProject.cwd),
     ];
   }
 
@@ -338,7 +330,7 @@ export function getAutocompleteSuggestions(
       value: prompt.name,
       label: `/${prompt.name}`,
       source: "prompt" as const,
-      description: prompt.description || "Prompt 模板",
+      description: prompt.description || "Prompt Template",
     })),
     ...(options.commands ?? []).map((command) => ({
       trigger: "slash" as const,

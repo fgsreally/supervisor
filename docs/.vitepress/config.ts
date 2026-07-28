@@ -29,6 +29,8 @@ export default defineConfig({
           text: "Supervisor 后端",
           items: [
             { text: "概览", link: "/supervisor/overview" },
+            { text: "数据库结构", link: "/supervisor/schema-reference" },
+            { text: "Pi 管理助手", link: "/supervisor/intro-assistant" },
             { text: "会话管理", link: "/supervisor/session" },
             { text: "Job", link: "/supervisor/jobs" },
             { text: "工作流", link: "/supervisor/workflow" },

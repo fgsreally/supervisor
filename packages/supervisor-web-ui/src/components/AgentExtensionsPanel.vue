@@ -1,92 +1,108 @@
 <template>
   <div class="agent-ext flex flex-1 min-h-0 overflow-hidden">
-    <div class="agent-ext-sidebar w-72 shrink-0 border-r flex flex-col min-h-0">
-      <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 py-3 space-y-5">
-        <section>
-          <div class="agent-ext-section-title">内置扩展</div>
-          <p class="agent-ext-hint">仅可启用/停用，不可删除</p>
-          <div class="mt-2 space-y-1">
-            <div
-              v-for="item in builtinItems"
-              :key="item.resourceId"
-              class="agent-ext-row"
-            >
-              <div class="min-w-0 flex-1">
-                <div class="flex items-center gap-1.5 min-w-0">
-                  <span class="agent-ext-name truncate">{{ item.name }}</span>
-                  <span class="agent-ext-badge">内置</span>
+    <div
+      v-if="loading"
+      class="agent-ext-main flex flex-1 items-center justify-center gap-2 text-[13px]"
+    >
+      <Loader2 class="h-4 w-4 animate-spin" />
+      正在加载扩展...
+    </div>
+    <template v-else>
+      <div
+        class="agent-ext-sidebar shrink-0 border-r flex flex-col min-h-0 relative"
+        :style="{ width: `${sidebarWidth}px` }"
+      >
+        <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 py-3 space-y-5">
+          <section>
+            <div class="agent-ext-section-title">内置扩展</div>
+            <p class="agent-ext-hint">仅可启用/停用，不可删除</p>
+            <div class="mt-2 space-y-1">
+              <div v-for="item in builtinItems" :key="item.resourceId" class="agent-ext-row">
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1.5 min-w-0">
+                    <span class="agent-ext-name truncate">{{ item.name }}</span>
+                    <span class="agent-ext-badge">内置</span>
+                  </div>
+                  <p v-if="item.description" class="agent-ext-desc truncate">
+                    {{ item.description }}
+                  </p>
+                  <p v-if="coreSlugs.has(item.slug) && !item.enabled" class="agent-ext-warn">
+                    停用后对应能力不可用
+                  </p>
                 </div>
-                <p v-if="item.description" class="agent-ext-desc truncate">{{ item.description }}</p>
-                <p
-                  v-if="coreSlugs.has(item.slug) && !item.enabled"
-                  class="agent-ext-warn"
+                <button
+                  type="button"
+                  class="agent-ext-switch"
+                  :class="item.enabled ? 'agent-ext-switch--on' : 'agent-ext-switch--off'"
+                  :disabled="togglingId === item.resourceId"
+                  :aria-pressed="item.enabled"
+                  @click="toggle(item)"
                 >
-                  停用后对应能力不可用
-                </p>
+                  <span class="agent-ext-switch-knob" />
+                </button>
               </div>
-              <button
-                type="button"
-                class="agent-ext-switch"
-                :class="item.enabled ? 'agent-ext-switch--on' : 'agent-ext-switch--off'"
-                :disabled="togglingId === item.resourceId"
-                :aria-pressed="item.enabled"
-                @click="toggle(item)"
-              >
-                <span class="agent-ext-switch-knob" />
-              </button>
+              <div v-if="builtinItems.length === 0" class="agent-ext-empty">暂无</div>
             </div>
-            <div v-if="builtinItems.length === 0" class="agent-ext-empty">暂无</div>
-          </div>
-        </section>
+          </section>
 
-        <section>
-          <div class="agent-ext-section-title">已添加扩展</div>
-          <p class="agent-ext-hint">从本 Agent 移除，不会卸载全局扩展</p>
-          <div class="mt-2 space-y-1">
-            <div
-              v-for="item in userItems"
-              :key="item.resourceId"
-              class="agent-ext-row"
-            >
-              <div class="min-w-0 flex-1">
-                <div class="agent-ext-name truncate">{{ item.name }}</div>
-                <p v-if="item.description" class="agent-ext-desc truncate">{{ item.description }}</p>
+          <section>
+            <div class="agent-ext-section-title">已添加扩展</div>
+            <p class="agent-ext-hint">从本 Agent 移除，不会卸载全局扩展</p>
+            <div class="mt-2 space-y-1">
+              <div v-for="item in userItems" :key="item.resourceId" class="agent-ext-row">
+                <div class="min-w-0 flex-1">
+                  <div class="agent-ext-name truncate">{{ item.name }}</div>
+                  <p v-if="item.description" class="agent-ext-desc truncate">
+                    {{ item.description }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="agent-ext-remove"
+                  :disabled="removingId === item.resourceId"
+                  @click="remove(item)"
+                >
+                  移除
+                </button>
               </div>
-              <button
-                type="button"
-                class="agent-ext-remove"
-                :disabled="removingId === item.resourceId"
-                @click="remove(item)"
-              >
-                移除
-              </button>
+              <div v-if="userItems.length === 0" class="agent-ext-empty">尚未添加用户扩展</div>
             </div>
-            <div v-if="userItems.length === 0" class="agent-ext-empty">尚未添加用户扩展</div>
-          </div>
-        </section>
+          </section>
+        </div>
+
+        <GlobalResourceBindBar
+          :items="unlinkedGlobal"
+          kind="extensions"
+          :binding-item-id="bindingItemId"
+          @bind="bindGlobalItem"
+          @installed="reload"
+          @uninstalled="reload"
+        />
+        <ResizeHandle
+          class="agent-ext-resize-handle"
+          orientation="vertical"
+          label="调整扩展侧边栏宽度"
+          @start="startSidebarResize"
+        />
       </div>
 
-      <GlobalResourceBindBar
-        :items="unlinkedGlobal"
-        kind="extensions"
-        :binding-item-id="bindingItemId"
-        @bind="bindGlobalItem"
-        @installed="reload"
-        @uninstalled="reload"
-      />
-    </div>
-
-    <div class="agent-ext-main flex-1 flex items-center justify-center text-[13px] px-6 text-center">
-      内置扩展只能开关；用户扩展可从下方全局库添加或从列表移除。
-    </div>
+      <div
+        class="agent-ext-main flex-1 flex items-center justify-center text-[13px] px-6 text-center"
+      >
+        内置扩展只能开关；用户扩展可从下方全局库添加或从列表移除。
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { Loader2 } from "lucide-vue-next";
 import GlobalResourceBindBar from "./GlobalResourceBindBar.vue";
+import ResizeHandle from "./ResizeHandle.vue";
 import { useAgentStore, useResourceStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useResizableWidth } from "@/composables/use-resizable-width";
 import { getResourcesByKind } from "@/utils/resources-ui";
 import { resourceEntryPath } from "@/utils/resource-utils";
 import type { AgentExtensionInfo } from "@/api/api";
@@ -101,6 +117,13 @@ const extensions = ref<AgentExtensionInfo[]>([]);
 const togglingId = ref<number | null>(null);
 const removingId = ref<number | null>(null);
 const bindingItemId = ref<string | null>(null);
+const loading = ref(false);
+const { width: sidebarWidth, startResize: startSidebarResize } = useResizableWidth({
+  defaultWidth: 288,
+  minWidth: 220,
+  maxWidth: 560,
+  storageKey: "agent-extensions-sidebar-width",
+});
 
 const coreSlugs = new Set(["skill", "mcp", "subagent"]);
 
@@ -118,8 +141,13 @@ const unlinkedGlobal = computed(() => {
 });
 
 async function reload() {
-  await resourceStore.fetchGlobalResources();
-  extensions.value = await agentStore.fetchAgentExtensions(props.agentId);
+  loading.value = true;
+  try {
+    await resourceStore.fetchGlobalResources();
+    extensions.value = await agentStore.fetchAgentExtensions(props.agentId);
+  } finally {
+    loading.value = false;
+  }
 }
 
 watch(
@@ -177,6 +205,12 @@ async function bindGlobalItem(item: UIResourceItem) {
 .agent-ext-sidebar {
   background: var(--app-resource-sidebar-bg);
   border-color: var(--app-border);
+}
+
+@media (max-width: 767px) {
+  .agent-ext-resize-handle {
+    display: none;
+  }
 }
 
 .agent-ext-main {

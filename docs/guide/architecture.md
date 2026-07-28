@@ -4,9 +4,9 @@ Pi Supervisor 由两个包组成：
 
 ```
 ┌────────────────────────────┐        ┌──────────────────────────┐
-│  supervisor-web-ui (Vue)   │        │  supervisor (Node.js)     │
+│  supervisor-web-ui (Vue)   │        │  supervisor (Bun)         │
 │  ─────────────────────────  │  HTTP  │  ──────────────────────  │
-│  Pinia store               │ ←────→ │  Hono HTTP API           │
+│  Pinia store               │ ←────→ │  Elysia HTTP API         │
 │  api/api.ts                │  SSE   │  SessionManager          │
 │  Chat / Settings / Resources│        │  SessionExtensionHost    │
 └────────────────────────────┘        │  Job / MCP / Subagent    │
@@ -17,7 +17,7 @@ Pi Supervisor 由两个包组成：
 
 ## 后端：`pi-supervisor`
 
-入口：`src/cli.ts`（`serve` 等）与 `src/http/http-server.ts`（Hono）。路由见 [HTTP API](/supervisor/http-api)。
+入口：`src/cli.ts`（CAC 命令）与 `src/http/http-server.ts`（Elysia）。路由见 [HTTP API](/supervisor/http-api)，机器可读契约由 `/openapi/json` 提供。
 
 ### 核心模块
 
@@ -26,12 +26,12 @@ Pi Supervisor 由两个包组成：
 | SessionManager     | `src/core/session-manager.ts`    | 会话、子会话、输入队列、重启协调           |
 | JobManager         | `src/core/jobs.ts`               | 执行记录、定时计划、取消与输入             |
 | SessionRuntime     | `src/core/session-runtime.ts`    | prompt / steer / follow-up / abort         |
-| SessionWorkflow    | `src/core/session-workflow.ts`   | `meta.workflow = { stage, status }`        |
+| SessionWorkflow    | `src/core/session-workflow.ts`   | `sessions.stage` 阶段标签                  |
 | Compaction         | `src/core/compaction/rolling.ts` | 滚动上下文压缩                             |
 | External runtimes  | `src/core/external/`             | Codex / Claude / ACP 外部 Agent 会话       |
-| SupervisorDb       | `src/db/db.ts`                   | schema、迁移、members、Job、输入队列、FTS5 |
+| SupervisorDb       | `src/db/db.ts`                   | schema、迁移、Session meta、输入队列、FTS5 |
 | Extension host     | `src/extension/runtime/`         | 激活扩展、事件、工具注入                   |
-| Builtin extensions | `src/extension/builtin/`         | mcp、subagent、shadow、timer、循环守卫等   |
+| Builtin extensions | `src/extension/builtin/`         | mcp、subagent、timer、task、循环守卫等     |
 | Packaged tools     | `src/tools/`                     | ask、edit、lsp、web、browser 等可选工具    |
 
 ### 数据存储

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  dedupeBuiltinAssistantSessions,
   ensurePackagedAgents,
   findPackagedAgentId,
   isBuiltinAgent,
@@ -34,6 +35,34 @@ function configureModel(): void {
 }
 
 describe("packaged agents", () => {
+  it("migrates the legacy Intro resources into the single Pi assistant", () => {
+    configureModel();
+    const modelId = db.listModels()[0]!.id;
+    const assistant = db.insertAgent({
+      name: "Pi 助手",
+      model_id: modelId,
+      is_builtin: true,
+      meta: {},
+    });
+    const intro = db.insertAgent({
+      name: "Intro",
+      model_id: modelId,
+      is_builtin: true,
+      meta: {},
+    });
+    const resource = db.upsertResource({
+      kind: "skill",
+      slug: "legacy-intro-skill",
+      source_path: join(tmpDir, "legacy-intro-skill"),
+    });
+    db.bindAgentResource(intro.id, resource.id);
+
+    dedupeBuiltinAssistantSessions(db);
+
+    expect(db.getAgent(intro.id)).toBeUndefined();
+    expect(db.getAgentResourceBinding(assistant.id, resource.id)?.enabled).toBe(true);
+  });
+
   it("registers Codex, Claude Code, and Kimi Code without requiring a provider", () => {
     ensurePackagedAgents(db);
     const external = db.listAgents().filter((agent) => agent.backendType !== "native");

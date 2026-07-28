@@ -6,9 +6,17 @@ export type BuiltinExtensionSpec = {
   description: string;
   /** Only load for main (non-subagent / non-btw) sessions. */
   requiresMainSession?: boolean;
+  /** Restrict binding/loading to shipped assistant names. */
+  agentNames?: readonly string[];
 };
 
 export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
+  {
+    slug: "supervisor-admin",
+    name: "Supervisor admin",
+    description: "HTTP, SQLite, and extension scaffolding tools for the built-in Pi assistant",
+    agentNames: ["Pi 助手"],
+  },
   {
     slug: "eval",
     name: "Eval",

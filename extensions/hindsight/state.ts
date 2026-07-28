@@ -165,6 +165,8 @@ export class HindsightSessionState {
   readonly #injectRecall: (block: string) => void;
   readonly #log: HindsightSessionStateOptions["log"];
 
+  log: HindsightSessionStateOptions["log"];
+
   constructor(options: HindsightSessionStateOptions) {
     this.sessionId = options.sessionId;
     this.projectDir = options.projectDir;
@@ -181,6 +183,7 @@ export class HindsightSessionState {
     this.#getMessages = options.getMessages;
     this.#injectRecall = options.injectRecall;
     this.#log = options.log;
+    this.log = options.log;
     this.retainQueue = new HindsightRetainQueue(this);
   }
 

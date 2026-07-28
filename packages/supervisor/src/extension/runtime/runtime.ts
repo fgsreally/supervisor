@@ -14,6 +14,7 @@ import {
   messageAssetsExtension,
   persistentBashExtension,
   subagentExtension,
+  supervisorAdminExtension,
   taskManagementExtension,
   timerExtension,
   toolLoopGuardExtension,
@@ -81,6 +82,9 @@ export class SessionExtensionRuntime {
 
   async loadBuiltinExtensions(enabledSlugs?: ReadonlySet<string>): Promise<void> {
     const allow = (slug: string) => enabledSlugs == null || enabledSlugs.has(slug);
+    if (allow("supervisor-admin")) {
+      await this.loadExtension(supervisorAdminExtension, "builtin:supervisor-admin");
+    }
     if (allow("eval")) await this.loadExtension(evalExtension, "builtin:eval");
     if (allow("task-management")) {
       await this.loadExtension(taskManagementExtension, "builtin:task-management");

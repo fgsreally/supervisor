@@ -42,7 +42,7 @@ ChatView.vue
 
 `promptSession` 等建立 SSE（`GET /sessions/:id/events`），事件推入消息树后增量渲染。会话输出中的 `ui_notify` 以 toast（`showUiMessage`）展示，不改变 session status。
 
-打开会话时调用 `POST /sessions/:id/read` 清除未读；列表项用 `meta.unread` 显示角标。
+打开会话时调用 `POST /sessions/:id/read` 清除未读；列表项用 Session 的 `unread` 列字段显示角标。
 
 ## 会话菜单
 

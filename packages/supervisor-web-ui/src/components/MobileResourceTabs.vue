@@ -13,7 +13,15 @@
       </button>
     </div>
 
-    <div v-if="tab === 'config'" class="px-4 py-4">
+    <div
+      v-if="loading && tab !== 'config' && tab !== 'system' && tab !== 'extensions'"
+      class="flex min-h-[12rem] items-center justify-center gap-2 text-[13px] text-gray-400"
+    >
+      <Loader2 class="h-4 w-4 animate-spin" />
+      正在加载资源...
+    </div>
+
+    <div v-else-if="tab === 'config'" class="px-4 py-4">
       <AgentConfigPanel :agent-id="agentId" />
     </div>
 
@@ -83,6 +91,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from "vue";
+import { Loader2 } from "lucide-vue-next";
 import AgentConfigPanel from "./AgentConfigPanel.vue";
 import AgentSystemPromptPanel from "./AgentSystemPromptPanel.vue";
 import AgentExtensionsPanel from "./AgentExtensionsPanel.vue";
@@ -107,13 +116,19 @@ type MobileTab = "config" | "system" | UIResourceKind;
 const agentStore = useAgentStore();
 const resourceStore = useResourceStore();
 const agentItems = ref<UIResourceItem[]>([]);
+const loading = ref(false);
 
 watch(
   () => props.agentId,
   async (id) => {
-    await agentStore.fetchAgentResources(id, getDefaultWorkspaceCwd());
-    const res = agentStore.agentResources[id];
-    agentItems.value = res ? agentResourcesToUiItems(id, res) : [];
+    loading.value = true;
+    try {
+      await agentStore.fetchAgentResources(id, getDefaultWorkspaceCwd());
+      const res = agentStore.agentResources[id];
+      agentItems.value = res ? agentResourcesToUiItems(id, res) : [];
+    } finally {
+      loading.value = false;
+    }
   },
   { immediate: true },
 );

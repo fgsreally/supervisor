@@ -21,8 +21,8 @@
       </button>
     </header>
 
-    <div class="flex-1 overflow-y-auto custom-scrollbar">
-      <div class="model-detail-content max-w-5xl">
+    <div class="model-detail-scroll custom-scrollbar flex flex-1 justify-center overflow-y-auto">
+      <div class="model-detail-content w-full max-w-5xl">
         <section class="model-detail-section">
           <h2 class="model-detail-title text-[14px] font-medium mb-5">模型配置</h2>
           <dl class="model-detail-grid">
@@ -84,6 +84,7 @@ function remove() {
 }
 
 .model-detail-content {
+  margin-inline: auto;
   padding: 8px 24px 48px;
 }
 

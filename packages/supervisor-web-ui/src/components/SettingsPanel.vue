@@ -11,17 +11,18 @@
       <div class="settings-content space-y-5">
         <section class="settings-card">
           <h2 class="settings-card-title-row">
-            <span>华生</span>
+            <span class="settings-watson-title"><WatsonIcon />华生</span>
             <small>负责项目解析、摘要等系统内部任务</small>
           </h2>
           <label class="settings-field">
             <span>助手模型</span>
-            <select v-model="featureModelKeys.assistant" :disabled="saving" @change="saveMain">
-              <option value="">未配置</option>
-              <option v-for="option in modelOptions" :key="option.key" :value="option.key">
-                {{ option.label }}
-              </option>
-            </select>
+            <ModelTreeSelect
+              v-model="featureModelKeys.assistant"
+              :groups="modelGroups"
+              :disabled="saving"
+              placeholder="未配置"
+              @change="saveMain"
+            />
           </label>
           <div class="service-list">
             <div class="service-row">
@@ -34,7 +35,6 @@
               </button>
             </div>
           </div>
-          <pre v-if="watsonLogText" class="settings-log">{{ watsonLogText }}</pre>
         </section>
 
         <section class="settings-card">
@@ -50,7 +50,6 @@
               </button>
             </div>
           </div>
-          <pre v-if="systemLogText" class="settings-log">{{ systemLogText }}</pre>
         </section>
 
         <section class="settings-card">
@@ -128,16 +127,36 @@
           </div>
         </section>
 
-        <div class="flex items-center gap-3">
-          <button class="save-button" type="button" :disabled="saving" @click="saveMain">
-            {{ saving ? "保存中..." : "保存" }}
-          </button>
+        <div class="flex items-center justify-end gap-3">
           <span v-if="message" class="text-sm" :class="failed ? 'text-red-500' : 'text-green-600'">
             {{ message }}
           </span>
+          <button class="save-button" type="button" :disabled="saving" @click="saveMain">
+            {{ saving ? "保存中..." : "保存" }}
+          </button>
         </div>
       </div>
     </div>
+
+    <Teleport to="body">
+      <div v-if="activeLog" class="service-overlay" @click.self="activeLog = null">
+        <section class="service-dialog settings-log-dialog" role="dialog" aria-modal="true">
+          <header>
+            <div>
+              <h2 class="settings-log-title">
+                <WatsonIcon v-if="activeLog === 'watson'" />
+                {{ activeLog === "watson" ? "华生运行日志" : "系统运行与诊断" }}
+              </h2>
+              <p>{{ activeLogFiles.join(" · ") || "实时读取最近的日志记录" }}</p>
+            </div>
+            <button type="button" class="icon-button" title="关闭" @click="activeLog = null">
+              <X class="h-5 w-5" />
+            </button>
+          </header>
+          <pre class="settings-log">{{ activeLogText }}</pre>
+        </section>
+      </div>
+    </Teleport>
 
     <Teleport to="body">
       <div v-if="activeService" class="service-overlay" @click.self="closeService">
@@ -239,6 +258,9 @@
 <script setup lang="ts">
 import { Check, ChevronLeft, ExternalLink, ScrollText, Settings2, X } from "lucide-vue-next";
 import { computed, onMounted, reactive, ref } from "vue";
+import ModelTreeSelect, { type ModelTreeGroup } from "./ModelTreeSelect.vue";
+import WatsonIcon from "./WatsonIcon.vue";
+import { resolveProviderIcon } from "@/constants/providers";
 import {
   getSystemLogs,
   getSupervisorSettings,
@@ -260,13 +282,25 @@ const emit = defineEmits<{ back: [] }>();
 
 const watsonLogText = ref("");
 const systemLogText = ref("");
+const watsonLogFiles = ref<string[]>([]);
+const systemLogFiles = ref<string[]>([]);
+const activeLog = ref<"watson" | "system" | null>(null);
+const activeLogText = computed(() =>
+  activeLog.value === "watson" ? watsonLogText.value : systemLogText.value,
+);
+const activeLogFiles = computed(() =>
+  activeLog.value === "watson" ? watsonLogFiles.value : systemLogFiles.value,
+);
 
 async function loadLog(kind: "watson" | "system") {
   const target = kind === "watson" ? watsonLogText : systemLogText;
+  const files = kind === "watson" ? watsonLogFiles : systemLogFiles;
+  activeLog.value = kind;
   target.value = "加载中…";
   try {
     const result =
       kind === "watson" ? await getWatsonLogs({ limit: 500 }) : await getSystemLogs({ limit: 500 });
+    files.value = result.files;
     target.value = result.text || "暂无日志";
   } catch (error) {
     target.value = error instanceof Error ? error.message : "日志加载失败";
@@ -284,7 +318,7 @@ const form = reactive({
 const featureModelKeys = reactive<Record<UtilityFeature, string>>({
   assistant: "",
 });
-const modelOptions = ref<Array<{ key: string; label: string; ref: FeatureModelRef }>>([]);
+const modelGroups = ref<ModelTreeGroup[]>([]);
 const envNames = reactive<Record<"tavily" | "brave" | "serper" | "firecrawl", string>>({
   tavily: "TAVILY_API_KEY",
   brave: "BRAVE_API_KEY",
@@ -514,19 +548,20 @@ async function saveMain() {
 
 async function loadModelOptions() {
   const providers = (await listProviders()).filter((provider) => provider.isEnabled);
-  const options: Array<{ key: string; label: string; ref: FeatureModelRef }> = [];
+  const groups: ModelTreeGroup[] = [];
   for (const provider of providers) {
     const models = await listProviderModels(provider.id);
-    for (const model of models) {
-      const ref = { providerId: Number(provider.id), modelId: model.modelId };
-      options.push({
-        key: featureKey(ref),
-        label: `${provider.name} / ${model.name || model.modelId}`,
-        ref,
-      });
-    }
+    groups.push({
+      id: provider.id,
+      name: provider.name,
+      icon: resolveProviderIcon(provider.id, provider.name, provider.icon),
+      models: models.map((model) => ({
+        value: featureKey({ providerId: Number(provider.id), modelId: model.modelId }),
+        name: model.name || model.modelId,
+      })),
+    });
   }
-  modelOptions.value = options;
+  modelGroups.value = groups;
 }
 
 onMounted(async () => {
@@ -544,19 +579,36 @@ onMounted(async () => {
 .settings-card-title-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 16px;
+  justify-content: flex-start;
+  gap: 28px;
 }
 
 .settings-card-title-row small {
   color: var(--app-text-muted);
   font-size: 12px;
   font-weight: 400;
-  text-align: right;
+  text-align: left;
+}
+.settings-watson-title,
+.settings-log-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.settings-watson-title svg {
+  width: 21px;
+  height: 21px;
+  color: var(--app-accent);
+}
+.settings-log-title svg {
+  width: 19px;
+  height: 19px;
+  color: var(--app-accent);
 }
 
 .settings-log {
-  max-height: 280px;
+  min-height: 0;
+  flex: 1;
   overflow: auto;
   margin-top: 12px;
   padding: 12px;
@@ -570,6 +622,10 @@ onMounted(async () => {
     monospace;
   white-space: pre-wrap;
 }
+.settings-log-dialog {
+  width: min(920px, calc(100vw - 32px));
+  height: min(720px, calc(100vh - 32px));
+}
 .settings-page,
 .settings-header {
   background: var(--app-settings-bg);
@@ -580,6 +636,7 @@ onMounted(async () => {
 }
 .settings-content {
   width: min(920px, 100%);
+  margin-inline: auto;
 }
 .settings-card {
   overflow: hidden;

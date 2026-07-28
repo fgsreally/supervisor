@@ -8,6 +8,7 @@
     "orchestrator.ts",
     "stages.ts",
     "types.ts",
+    "workflow-state.ts",
     "prompts",
     "README.md"
   ],

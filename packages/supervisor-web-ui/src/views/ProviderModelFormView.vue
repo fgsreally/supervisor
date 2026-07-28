@@ -9,8 +9,8 @@
       </div>
     </header>
 
-    <div class="flex-1 overflow-y-auto custom-scrollbar">
-      <form class="model-form-content max-w-5xl" @submit.prevent="save">
+    <div class="model-form-scroll custom-scrollbar flex flex-1 justify-center overflow-y-auto">
+      <form class="model-form-content w-full max-w-5xl" @submit.prevent="save">
         <section class="model-form-section">
           <h2 class="model-form-title text-[14px] font-medium mb-5">基本信息</h2>
           <div class="space-y-4">
@@ -52,11 +52,7 @@
             <label class="model-form-field">
               <span>图像输入</span>
               <span class="model-form-switch-row">
-                <input
-                  v-model="draft.supportsVision"
-                  type="checkbox"
-                  class="accent-[#07c160]"
-                />
+                <input v-model="draft.supportsVision" type="checkbox" class="accent-[#07c160]" />
                 <span class="model-form-title">支持图像输入</span>
               </span>
             </label>
@@ -153,6 +149,7 @@ async function save() {
 }
 
 .model-form-content {
+  margin-inline: auto;
   padding: 8px 24px 48px;
 }
 

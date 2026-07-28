@@ -53,8 +53,8 @@ describe("at / atat context", () => {
         prompts: [],
       },
     );
-    expect(atatItems).toHaveLength(1);
+    expect(atatItems).toHaveLength(2);
     expect(atatItems[0]?.kind).toBe("project");
-    expect(atatItems[0]?.label).toBe("backend");
+    expect(atatItems.map((item) => item.label)).toEqual(["frontend", "backend"]);
   });
 });

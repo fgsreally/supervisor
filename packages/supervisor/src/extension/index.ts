@@ -9,6 +9,7 @@ export {
   persistentBashExtension,
   shadowExtension,
   subagentExtension,
+  supervisorAdminExtension,
   taskManagementExtension,
   timerExtension,
   toolLoopGuardExtension,

@@ -8,6 +8,7 @@ import type {
   StageId,
   WorkflowPlan,
 } from "./types.js";
+import { getWorkflow, setWorkflow } from "./workflow-state.js";
 
 const MAX_RESULT_CHARS = 12_000;
 
@@ -36,8 +37,8 @@ function parseJsonResult<T extends object>(text: string): T | null {
   }
 }
 
-async function pickAgent(ctx: ExtensionContext, tag: string): Promise<number> {
-  return (await ctx.agent.findByTag(tag))[0]?.id ?? ctx.agent.id;
+async function pickAgent(ctx: ExtensionContext): Promise<number> {
+  return (await ctx.agent.findByRole("spawned"))[0]?.id ?? ctx.agent.id;
 }
 
 async function spawnWorker(
@@ -47,7 +48,7 @@ async function spawnWorker(
 ): Promise<number> {
   const result = await ctx.session.spawn({
     parentId: ctx.session.id,
-    agentId: await pickAgent(ctx, role),
+    agentId: await pickAgent(ctx),
     cwd: ctx.project.cwd,
     instructions,
     systemPrompt: `You are a focused ${role} worker. Complete only the assigned task. Do not start or advance any workflow, do not spawn subagents, and keep the final response concise.`,
@@ -259,7 +260,7 @@ export class WorkflowOrchestrator {
     if (!["test", "vertical", "implement", "archive"].includes(stage)) return;
     this.running = true;
     try {
-      const workflow = await this.ctx.session.workflow.get();
+      const workflow = await getWorkflow(this.ctx);
       if (!workflow || workflow.stage !== stage || workflow.status !== "working") return;
       const plan = await this.artifacts.readPlan();
       const state = await this.artifacts.readExecution(plan);
@@ -271,7 +272,7 @@ export class WorkflowOrchestrator {
       this.ctx.log("error", "strict-sdd automation blocked", {
         error: error instanceof Error ? error.message : String(error),
       });
-      await this.ctx.session.workflow.set({ status: "waiting_confirmation" });
+      await setWorkflow(this.ctx, { status: "waiting_confirmation" });
     } finally {
       this.running = false;
     }
@@ -283,44 +284,44 @@ export class WorkflowOrchestrator {
     for (const change of plan.changes) {
       await writeTests(this.ctx, this.artifacts, change, progressFor(state, change), state);
     }
-    await this.ctx.session.workflow.set({ status: "waiting_confirmation" });
+    await setWorkflow(this.ctx, { status: "waiting_confirmation" });
   }
 
   private async runVertical(plan: WorkflowPlan, state: ExecutionState): Promise<void> {
     state.route = "vertical";
     const change = nextUnarchived(plan, state);
     if (!change) {
-      await this.ctx.session.workflow.set({ status: "completed" });
+      await setWorkflow(this.ctx, { status: "completed" });
       return;
     }
     await writeTests(this.ctx, this.artifacts, change, progressFor(state, change), state);
-    await this.ctx.session.workflow.set({ status: "waiting_confirmation" });
+    await setWorkflow(this.ctx, { status: "waiting_confirmation" });
   }
 
   private async runImplement(plan: WorkflowPlan, state: ExecutionState): Promise<void> {
     const change = nextUnarchived(plan, state);
     if (!change) {
-      await this.ctx.session.workflow.set({ stage: "archive", status: "completed" });
+      await setWorkflow(this.ctx, { stage: "archive", status: "completed" });
       return;
     }
     const progress = progressFor(state, change);
     await implementChange(this.ctx, this.artifacts, change, progress, state);
-    await this.ctx.session.workflow.set({ status: "waiting_confirmation" });
+    await setWorkflow(this.ctx, { status: "waiting_confirmation" });
   }
 
   private async runArchive(plan: WorkflowPlan, state: ExecutionState): Promise<void> {
     const change = nextUnarchived(plan, state);
     if (!change) {
-      await this.ctx.session.workflow.set({ status: "completed" });
+      await setWorkflow(this.ctx, { status: "completed" });
       return;
     }
     await archiveChange(this.ctx, this.artifacts, change, progressFor(state, change), state);
     const remaining = nextUnarchived(plan, state);
     if (!remaining) {
-      await this.ctx.session.workflow.set({ status: "completed" });
+      await setWorkflow(this.ctx, { status: "completed" });
       return;
     }
-    await this.ctx.session.workflow.set({
+    await setWorkflow(this.ctx, {
       stage: state.route === "vertical" ? "vertical" : "implement",
       status: "working",
     });

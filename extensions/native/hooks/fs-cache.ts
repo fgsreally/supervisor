@@ -17,7 +17,7 @@ function extractPath(args: unknown): string | undefined {
 }
 
 export function registerFsCacheInvalidation(ctx: ExtensionContext): void {
-  ctx.runtime.on("tool.after_call", (event) => {
+  ctx.on("tool.after_call", (event) => {
     if (event.type !== "tool.after_call" || event.result.isError) return;
     if (!MUTATING_TOOLS.has(event.name)) return;
 

@@ -16,10 +16,11 @@ supervisor 将 MCP（Model Context Protocol）实现为内置扩展。会话激�
 
 ## 配置文件
 
-MCP 配置以 `mcp` 资源安装并绑定到 Agent，例如配置文件：
+MCP 配置以 `mcp` 资源安装并绑定到 Agent。运行时从 `resources.source_path` 读取所有已启用绑定，
+按 binding priority 与 slug 合并 server；配置文件不要求位于 Agent Home。例如：
 
 ```
-~/.pi/supervisor/agents/<agent-id>/mcp.json
+/path/to/resources/team-mcp.json
 ```
 
 格式（`McpConfig`）：

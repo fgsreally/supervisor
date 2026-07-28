@@ -33,7 +33,8 @@
 - `createBtwSession(id)` / `updateSessionMeta(id, patch)`
 - `markSessionRead(id)` — 清未读（`POST /sessions/:id/read`）
 
-实时 SSE 与流式消息合并主要由 `ChatView` 和 `src/api` 负责，store 保存服务端会话快照（含 `meta.unread`）。
+实时 SSE 与流式消息合并主要由 `ChatView` 和 `src/api` 负责，store 保存服务端会话快照（含
+`sessions.unread` 对应的 `unread` 字段）。
 
 ### useAgentStore
 

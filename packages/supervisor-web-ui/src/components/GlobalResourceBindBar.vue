@@ -1,36 +1,35 @@
 <template>
   <div class="global-resource-bind-bar shrink-0 px-2 py-2">
-    <div class="text-[10px] font-medium mb-1.5 global-resource-bind-bar__label">从全局库绑定</div>
-    <div class="flex flex-col gap-0.5 max-h-28 overflow-y-auto custom-scrollbar">
+    <div class="global-resource-bind-bar__label mb-1.5 text-[10px] font-medium">从全局库添加</div>
+    <div class="custom-scrollbar flex max-h-28 flex-col gap-0.5 overflow-y-auto">
       <button
         v-for="item in items"
         :key="item.id"
         type="button"
         :disabled="!!bindingItemId"
-        class="global-resource-bind-bar__btn text-left px-2 py-1.5 rounded text-[12px] truncate"
+        class="global-resource-bind-bar__btn truncate rounded px-2 py-1.5 text-left text-[12px]"
         :title="item.description"
-        @click="emit('bind', item)"
+        @click="emit('preview', item)"
       >
         <Loader2 v-if="bindingItemId === item.id" class="global-resource-bind-bar__spinner" />
         <span v-else>+</span> {{ item.name }}
       </button>
-      <div v-if="items.length === 0" class="text-[11px] text-muted px-2 py-1.5">无可用项</div>
+      <div v-if="items.length === 0" class="text-muted px-2 py-1.5 text-[11px]">无可用项</div>
     </div>
     <ExtensionInstallBox
       v-if="kind === 'extensions'"
-      @installed="handleInstalled"
-      @uninstalled="handleUninstalled"
+      @installed="emit('installed', $event)"
+      @uninstalled="emit('uninstalled', $event)"
     />
   </div>
 </template>
 
 <script setup lang="ts">
-import ExtensionInstallBox from "./ExtensionInstallBox.vue";
 import { Loader2 } from "lucide-vue-next";
-import type { UIResourceItem } from "@/types/ui";
-import type { UIResourceKind } from "@/types/ui";
+import ExtensionInstallBox from "./ExtensionInstallBox.vue";
+import type { UIResourceItem, UIResourceKind } from "@/types/ui";
 
-const props = defineProps<{
+defineProps<{
   items: UIResourceItem[];
   kind: UIResourceKind;
   bindingItemId?: string | null;
@@ -38,20 +37,10 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   bind: [item: UIResourceItem];
+  preview: [item: UIResourceItem];
   installed: [id: string];
   uninstalled: [id: string];
 }>();
-
-function handleInstalled(id: string) {
-  emit("installed", id);
-}
-
-function handleUninstalled(id: string) {
-  emit("uninstalled", id);
-}
-
-// Reference props to silence unused warnings when no other usage exists.
-void props;
 </script>
 
 <style scoped>
@@ -59,16 +48,22 @@ void props;
   background: color-mix(in srgb, var(--app-accent) 6%, var(--app-resource-sidebar-bg));
 }
 
-.global-resource-bind-bar__label {
+.global-resource-bind-bar__label,
+.text-muted {
   color: var(--app-text-muted);
 }
 
 .global-resource-bind-bar__btn {
-  color: var(--app-text-secondary);
-  cursor: pointer;
   display: flex;
+  cursor: pointer;
   align-items: center;
   gap: 0.35rem;
+  color: var(--app-text-secondary);
+}
+
+.global-resource-bind-bar__btn:hover {
+  color: var(--app-text-primary);
+  background: var(--app-hover);
 }
 
 .global-resource-bind-bar__btn:disabled {
@@ -87,14 +82,5 @@ void props;
   to {
     transform: rotate(360deg);
   }
-}
-
-.global-resource-bind-bar__btn:hover {
-  background: var(--app-hover);
-  color: var(--app-text-primary);
-}
-
-.text-muted {
-  color: var(--app-text-muted);
 }
 </style>

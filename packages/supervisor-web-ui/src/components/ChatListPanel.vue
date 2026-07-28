@@ -1,6 +1,6 @@
 <template>
   <div
-    class="h-full w-full flex flex-col shrink-0 min-w-0"
+    class="relative h-full w-full flex flex-col shrink-0 min-w-0"
     :style="{ ...panelStyle, background: 'var(--app-list-bg)' }"
   >
     <div
@@ -16,7 +16,7 @@
         aria-label="从外部引入"
         @click="openExternalImport"
       >
-        <FolderInput class="h-[18px] w-[18px]" />
+        <Import class="h-[18px] w-[18px]" />
       </button>
     </div>
 
@@ -35,7 +35,11 @@
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto custom-scrollbar">
+    <div
+      ref="sessionScrollPanel"
+      class="flex-1 overflow-y-auto custom-scrollbar"
+      @scroll.passive="refreshProjectHighlight"
+    >
       <template v-if="query.trim()">
         <div v-if="searching" class="chat-search-state">搜索中...</div>
         <button
@@ -79,6 +83,7 @@
             :depth="0"
             @select="$emit('select', $event)"
             @context-menu="openContextMenu(root.id, $event)"
+            @hover-change="highlightPinnedProject(root, $event)"
           />
         </div>
       </template>
@@ -87,8 +92,12 @@
         <template v-for="group in workspaceGroups" :key="group.workspace.id">
           <div
             class="list-section-header sticky top-0 z-10"
+            :ref="(element) => setProjectHeaderRef(group.workspace.id, element)"
             draggable="true"
-            :class="{ 'list-section-header--dragging': draggedProjectId === group.workspace.id }"
+            :class="{
+              'list-section-header--dragging': draggedProjectId === group.workspace.id,
+              'list-section-header--linked': highlightedProjectId === group.workspace.id,
+            }"
             @dragstart="onProjectDragStart(group.workspace.id, $event)"
             @dragover.prevent
             @drop="onProjectDrop(group.workspace.id)"
@@ -105,7 +114,13 @@
                 :class="{ 'section-chevron--open': !isWorkspaceCollapsed(group.workspace.id) }"
               />
             </button>
-            <span class="list-section-title flex-1 truncate">{{ group.workspace.name }}</span>
+            <button
+              type="button"
+              class="list-section-title flex-1 truncate text-left"
+              @click="toggleWorkspaceCollapse(group.workspace.id)"
+            >
+              {{ group.workspace.name }}
+            </button>
             <button
               type="button"
               class="section-action-btn"
@@ -171,6 +186,16 @@
         暂无项目
       </div>
     </div>
+
+    <Transition name="project-beacon">
+      <div v-if="projectBelowViewport" class="project-scroll-beacon" aria-hidden="true">
+        <div class="project-scroll-beacon__glow" />
+        <div class="project-scroll-beacon__label">
+          <ChevronDown />
+          <span>{{ highlightedProjectName }}</span>
+        </div>
+      </div>
+    </Transition>
 
     <SessionAgentPicker
       :open="agentPickerWorkspaceId != null"
@@ -241,8 +266,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
-import { ChevronRight, FolderInput, GitBranch, Plus, Search, Settings } from "lucide-vue-next";
+import { computed, nextTick, ref, watch } from "vue";
+import {
+  ChevronDown,
+  ChevronRight,
+  GitBranch,
+  Import,
+  Plus,
+  Search,
+  Settings,
+} from "lucide-vue-next";
 import { setProjectOrder, setSessionViewFlag, viewPreferences } from "@/utils/view-preferences";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
@@ -290,6 +323,40 @@ const agentStore = useAgentStore();
 
 const query = ref("");
 const draggedProjectId = ref<string | null>(null);
+const highlightedProjectId = ref<string | null>(null);
+const projectBelowViewport = ref(false);
+const sessionScrollPanel = ref<HTMLElement | null>(null);
+const projectHeaderRefs = new Map<string, HTMLElement>();
+const highlightedProjectName = computed(
+  () =>
+    sessionStore.projects.find((project) => project.id === highlightedProjectId.value)?.name ??
+    "对应项目在下方",
+);
+
+function setProjectHeaderRef(projectId: string, element: unknown) {
+  if (element instanceof HTMLElement) projectHeaderRefs.set(projectId, element);
+  else projectHeaderRefs.delete(projectId);
+}
+
+function refreshProjectHighlight() {
+  const projectId = highlightedProjectId.value;
+  const panel = sessionScrollPanel.value;
+  const header = projectId ? projectHeaderRefs.get(projectId) : undefined;
+  if (!projectId || !panel || !header) {
+    projectBelowViewport.value = false;
+    return;
+  }
+  const panelRect = panel.getBoundingClientRect();
+  const headerRect = header.getBoundingClientRect();
+  projectBelowViewport.value = headerRect.top >= panelRect.bottom - 2;
+}
+
+function highlightPinnedProject(session: UISession, hovered: boolean) {
+  highlightedProjectId.value =
+    hovered && !session.isBuiltin && session.workspaceId !== "none" ? session.workspaceId : null;
+  if (!hovered) projectBelowViewport.value = false;
+  else void nextTick(refreshProjectHighlight);
+}
 
 function onProjectDragStart(projectId: string, event: DragEvent) {
   draggedProjectId.value = projectId;
@@ -315,6 +382,7 @@ const searching = ref(false);
 const messageMatches = ref<Map<string, string>>(new Map());
 let searchGeneration = 0;
 const collapsedWorkspaceIds = ref<Set<string>>(new Set());
+const knownWorkspaceIds = new Set<string>();
 const agentPickerWorkspaceId = ref<string | null>(null);
 const projectCreateOpen = ref(false);
 const projectCreating = ref(false);
@@ -363,6 +431,20 @@ async function refreshProjectScripts(projectId: string | null) {
 watch(projectSettingsId, (projectId) => {
   if (projectId) void refreshProjectScripts(projectId);
 });
+
+watch(
+  () => sessionStore.projects.map((project) => project.id),
+  (projectIds) => {
+    const next = new Set(collapsedWorkspaceIds.value);
+    for (const projectId of projectIds) {
+      if (knownWorkspaceIds.has(projectId)) continue;
+      knownWorkspaceIds.add(projectId);
+      next.add(projectId);
+    }
+    collapsedWorkspaceIds.value = next;
+  },
+  { immediate: true },
+);
 
 const panelStyle = computed(() => {
   if (props.width == null) return undefined;
@@ -804,19 +886,29 @@ async function onAgentPicked(agentId: string) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  width: 32px;
+  height: 32px;
+  margin-right: -7px;
+  border-radius: 6px;
   border: none;
   background: transparent;
   color: var(--app-text-secondary);
   cursor: pointer;
   line-height: 0;
-  transition: color 0.15s ease;
+  transition:
+    color 0.18s ease,
+    background-color 0.18s ease;
+}
+
+.chat-list-import-icon svg {
+  transform: translateY(2px);
 }
 
 .chat-list-import-icon:hover,
 .chat-list-import-icon:focus-visible,
 .chat-list-import-icon--active {
   color: var(--app-accent);
+  background: var(--app-hover);
   outline: none;
 }
 
@@ -867,6 +959,124 @@ async function onAgentPicked(agentId: string) {
   gap: 4px;
   padding: 6px 12px 6px 8px;
   background: color-mix(in srgb, var(--app-list-section-bg) 95%, transparent);
+  transition:
+    box-shadow 180ms ease,
+    background-color 180ms ease;
+}
+
+.list-section-header--linked {
+  background: color-mix(in srgb, var(--app-accent) 7%, var(--app-list-section-bg));
+  box-shadow:
+    inset 3px 0 0 var(--app-accent),
+    0 -8px 22px color-mix(in srgb, var(--app-accent) 14%, transparent),
+    0 8px 22px color-mix(in srgb, var(--app-accent) 11%, transparent);
+}
+
+.list-section-header--linked .list-section-title {
+  color: var(--app-accent);
+  text-shadow: 0 0 9px color-mix(in srgb, var(--app-accent) 38%, transparent);
+}
+
+.project-scroll-beacon {
+  position: absolute;
+  z-index: 25;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 72px;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.project-scroll-beacon__glow {
+  position: absolute;
+  right: 8%;
+  bottom: -42px;
+  left: 8%;
+  height: 78px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--app-accent) 38%, transparent);
+  filter: blur(18px);
+  animation: project-beacon-breathe 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.project-scroll-beacon__label {
+  position: absolute;
+  right: 12px;
+  bottom: 9px;
+  left: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  color: var(--app-accent);
+  font-size: 10px;
+  font-weight: 600;
+  text-shadow: 0 1px 8px color-mix(in srgb, var(--app-list-bg) 75%, transparent);
+  animation: project-beacon-float 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.project-scroll-beacon__label svg {
+  width: 13px;
+  height: 13px;
+}
+
+.project-beacon-enter-active,
+.project-beacon-leave-active {
+  transition:
+    opacity 0.28s ease,
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.project-beacon-enter-from,
+.project-beacon-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}
+
+@keyframes project-beacon-breathe {
+  0%,
+  100% {
+    opacity: 0.48;
+    transform: scaleX(0.88);
+  }
+  50% {
+    opacity: 0.82;
+    transform: scaleX(1.04);
+  }
+}
+
+@keyframes project-beacon-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+:global(html[data-theme="light"] .list-section-header--linked) {
+  background: color-mix(in srgb, var(--app-accent) 4%, var(--app-list-section-bg));
+  box-shadow:
+    inset 2px 0 0 color-mix(in srgb, var(--app-accent) 70%, transparent),
+    0 7px 18px color-mix(in srgb, var(--app-accent) 7%, transparent);
+}
+
+:global(html[data-theme="light"] .list-section-header--linked .list-section-title) {
+  text-shadow: 0 0 7px color-mix(in srgb, var(--app-accent) 18%, transparent);
+}
+
+:global(html[data-theme="light"] .project-scroll-beacon__glow) {
+  background: color-mix(in srgb, var(--app-accent) 20%, transparent);
+  filter: blur(22px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .project-scroll-beacon__glow,
+  .project-scroll-beacon__label {
+    animation: none;
+  }
 }
 
 .list-section-title {

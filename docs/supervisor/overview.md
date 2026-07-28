@@ -17,9 +17,9 @@ src/
   agent/              agent 资源、skills、builtin agents
   config/             内置 provider 等配置
   core/               session-manager、runtime、workflow、compaction、external
-  db/                 SQLite schema、迁移、members、Job、输入队列、FTS
+  db/                 SQLite schema、迁移、Session meta、输入队列、FTS
   extension/          扩展框架及内置扩展（mcp / subagent / shadow / …）
-  http/               Hono HTTP API
+  http/               Elysia HTTP API + OpenAPI
   resources/          资源 Handler、catalog 与 Agent 绑定
   tools/              打包工具（ask / edit / lsp / web / browser / …）
   testing/            AI 效果测试公共 API

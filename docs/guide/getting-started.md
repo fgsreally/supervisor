@@ -34,7 +34,7 @@ pnpm run serve
 也可用 CLI 显式指定工作目录：
 
 ```bash
-node packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground
+bun packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground
 ```
 
 健康检查：`GET http://localhost:3030/healthz` 应返回 `{ "ok": true }`。
@@ -72,7 +72,7 @@ curl -X POST http://localhost:3030/providers \
 也可使用交互式 CLI：
 
 ```bash
-node packages/supervisor/dist/cli.mjs providers add
+bun packages/supervisor/dist/cli.mjs providers add
 ```
 
 ## 6. 配置 Agent
@@ -111,8 +111,8 @@ curl -X POST http://localhost:3030/sessions/<session-id>/prompt \
 仓库内提供 `extensions/native`、`extensions/hindsight`、`extensions/strict-sdd`。安装到全局 catalog 后绑定到 Agent：
 
 ```bash
-node packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
-node packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
+bun packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
+bun packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
 ```
 
 详见 [仓库扩展](/supervisor/shipped-extensions)。
@@ -122,7 +122,7 @@ node packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
 ### 端口冲突
 
 ```bash
-node packages/supervisor/dist/cli.mjs serve --port 3031 --cwd playground
+bun packages/supervisor/dist/cli.mjs serve --port 3031 --cwd playground
 ```
 
 ### Web UI 无法连接后端

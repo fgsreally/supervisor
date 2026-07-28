@@ -22,36 +22,24 @@
 
         <div class="p-5 flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
           <template v-if="mode === 'search'">
-            <div class="relative shrink-0 flex gap-1">
-              <div class="relative flex-1">
-                <Search
-                  class="w-4 h-4 absolute left-2.5 top-2.5 skill-install-muted"
-                />
+            <div class="relative shrink-0">
+              <div class="relative">
+                <Search class="w-4 h-4 absolute left-2.5 top-2.5 skill-install-muted" />
                 <input
                   v-model="query"
                   type="text"
-                  class="skill-install-input w-full rounded-md pl-8 pr-2 py-2 text-[13px]"
+                  class="skill-install-input w-full rounded-md pl-8 pr-8 py-2 text-[13px]"
                   placeholder="搜索 skills.sh，例如 typescript / react"
-                  :disabled="searching || installingId !== null"
-                  @keyup.enter="runSearch"
+                  :disabled="installingId !== null"
+                />
+                <Loader2
+                  v-if="searching"
+                  class="w-4 h-4 absolute right-2.5 top-2.5 animate-spin skill-install-muted"
                 />
               </div>
-              <button
-                type="button"
-                class="skill-install-icon-btn shrink-0"
-                title="搜索"
-                :disabled="searching || installingId !== null || !query.trim()"
-                @click="runSearch"
-              >
-                <Loader2 v-if="searching" class="w-4 h-4 animate-spin" />
-                <Search v-else class="w-4 h-4" />
-              </button>
             </div>
 
-            <div
-              v-if="searchError"
-              class="text-[12px] skill-install-error shrink-0"
-            >
+            <div v-if="searchError" class="text-[12px] skill-install-error shrink-0">
               {{ searchError }}
             </div>
 
@@ -85,10 +73,7 @@
                   :disabled="installingId !== null"
                   @click="installFromHit(hit)"
                 >
-                  <Loader2
-                    v-if="installingId === hit.id"
-                    class="w-4 h-4 animate-spin"
-                  />
+                  <Loader2 v-if="installingId === hit.id" class="w-4 h-4 animate-spin" />
                   <Download v-else class="w-4 h-4" />
                 </button>
               </li>
@@ -147,11 +132,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
 import { Download, Loader2, Search, X } from "lucide-vue-next";
-import {
-  installSkill,
-  searchSkills,
-  type SkillsShSearchHit,
-} from "@/api";
+import { installSkill, searchSkills, type SkillsShSearchHit } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 
 const props = defineProps<{
@@ -173,6 +154,8 @@ const searchError = ref<string | null>(null);
 const linkError = ref<string | null>(null);
 const results = ref<SkillsShSearchHit[]>([]);
 const installingId = ref<string | null>(null);
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+let searchGeneration = 0;
 
 watch(
   () => props.open,
@@ -192,6 +175,21 @@ watch(
   },
 );
 
+watch(query, (value) => {
+  if (!props.open || props.mode !== "search") return;
+  if (searchTimer) clearTimeout(searchTimer);
+  const q = value.trim();
+  if (!q) {
+    searchGeneration += 1;
+    searching.value = false;
+    searched.value = false;
+    searchError.value = null;
+    results.value = [];
+    return;
+  }
+  searchTimer = setTimeout(() => void runSearch(), 320);
+});
+
 function close() {
   if (installingId.value) return;
   emit("close");
@@ -205,17 +203,20 @@ function formatInstalls(n: number): string {
 async function runSearch() {
   const q = query.value.trim();
   if (!q) return;
+  const generation = ++searchGeneration;
   searching.value = true;
   searchError.value = null;
   searched.value = true;
   try {
     const result = await searchSkills(q, { limit: 20 });
+    if (generation !== searchGeneration) return;
     results.value = result.skills;
   } catch (err) {
+    if (generation !== searchGeneration) return;
     results.value = [];
     searchError.value = err instanceof Error ? err.message : String(err);
   } finally {
-    searching.value = false;
+    if (generation === searchGeneration) searching.value = false;
   }
 }
 

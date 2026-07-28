@@ -345,10 +345,10 @@ import { idFromRoute, modelIdFromRoute, tabFromRoute } from "./router";
 import { viewPreferences } from "./utils/view-preferences";
 
 const { width: chatListWidth, startResize: startListResize } = useResizableWidth({
-  defaultWidth: 288,
-  minWidth: 220,
-  maxWidth: 480,
-  storageKey: "pi-supervisor-chat-list-width",
+  defaultWidth: 148,
+  minWidth: 136,
+  maxWidth: 360,
+  storageKey: "pi-supervisor-chat-list-width-v2",
 });
 
 const route = useRoute();

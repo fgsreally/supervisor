@@ -4,22 +4,23 @@
 
 ## 模型
 
-| 字段                                | 含义                              |
-| ----------------------------------- | --------------------------------- |
-| `sessions.parent_id`                | 父子关系                          |
-| `sessions.branch_type = "subagent"` | 由委派产生（旧值 `spawn` 会迁移） |
-| `sessions.agent_id`                 | 实际执行的 Agent                  |
-| 独立 `messages`                     | 子代理自己的消息树                |
+| 字段                               | 含义                              |
+| ---------------------------------- | --------------------------------- |
+| `sessions.parent_id`               | 父子关系                          |
+| `sessions.spawn_type = "subagent"` | 由委派产生（旧值 `spawn` 会迁移） |
+| `sessions.agent_id`                | 实际执行的 Agent                  |
+| 独立 `messages`                    | 子代理自己的消息树                |
 
 父代理通过工具结果、事件与显式 resume 接收摘要，不共享完整上下文。
 
-列表可见性由 `showInSessionList` 控制；活动中的 `subagent` 可以在会话列表和父会话「聊天信息」中查看，完成后隐藏，重新继续时再次显示。详见 [会话管理](/supervisor/session)。
+列表可见性根据 `spawn_type` 与运行状态推导；数据库不再保存 `showInSessionList`。
+直属子 Session 始终可通过父会话 children/tree 接口查看。详见[会话管理](/supervisor/session)。
 
 ## 内置扩展
 
 `src/extension/builtin/subagent/` 注册 `spawn_agent` 工具，典型参数：
 
-- `agentName`：创建时选择成员 Agent
+- `agentName`：创建时选择 `meta.subagentIds` 白名单内的 Agent
 - `sessionId`：继续已有的直属子 Session，不创建新 Session
 - `urgency`：继续时使用；`normal` 排队，`urgent` 中断子 Session 当前 turn 后立即执行
 - `prompt` / `instructions`：任务说明
@@ -35,11 +36,11 @@ Supervisor 启动时会把遗留的 `initializing`/`starting`、`running`，以�
 
 可委派子 Agent 白名单在 `sessions.meta.subagentIds`（`number[]`），HTTP：
 
-| Method | Path                       | 说明                         |
-| ------ | -------------------------- | ---------------------------- |
-| PUT    | `/sessions/:id/subagents`  | 设置 `meta.subagentIds`      |
-| GET    | `/sessions/:id/children`   | 直接子会话                   |
-| GET    | `/sessions/:id/tree`       | 会话树                       |
+| Method | Path                      | 说明                    |
+| ------ | ------------------------- | ----------------------- |
+| PUT    | `/sessions/:id/subagents` | 设置 `meta.subagentIds` |
+| GET    | `/sessions/:id/children`  | 直接子会话              |
+| GET    | `/sessions/:id/tree`      | 会话树                  |
 
 （原 `members` 表已移除。）
 

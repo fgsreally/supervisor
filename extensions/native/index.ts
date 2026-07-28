@@ -14,7 +14,7 @@ export default defineExtension({
   name: "supervisor-native",
   async setup(ctx) {
     if (!isPiNativesAvailable()) {
-      ctx.runtime.log("warn", "native extension skipped: pi-natives platform addon unavailable");
+      ctx.log("warn", "native extension skipped: pi-natives platform addon unavailable");
       return;
     }
 
@@ -35,7 +35,7 @@ export default defineExtension({
 
     registerFsCacheInvalidation(ctx);
 
-    ctx.runtime.log(
+    ctx.log(
       "info",
       "native: registered Rust-backed bash, grep, find, ls, read, ast_grep, web_fetch",
     );

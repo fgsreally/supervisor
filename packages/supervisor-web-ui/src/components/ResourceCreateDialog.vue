@@ -10,7 +10,7 @@
       >
         <header class="h-14 px-5 border-b flex items-center shrink-0">
           <h2 class="text-[16px] font-medium flex-1">
-            {{ kind === "mcp" ? "新建 MCP 配置" : "新建 Prompt 模板" }}
+            {{ kind === "mcp" ? "新建 MCP 配置" : "新建 Prompt Template" }}
           </h2>
           <button type="button" class="resource-create-close" title="关闭" @click="close">
             <X class="w-5 h-5" />
@@ -19,12 +19,12 @@
 
         <div class="p-5 overflow-y-auto custom-scrollbar space-y-4 flex-1 min-h-0 flex flex-col">
           <label class="block text-[13px]">
-            <span class="resource-create-label mb-1 block">标识 (slug)</span>
+            <span class="resource-create-label mb-1 block">名称</span>
             <input
-              v-model="slug"
+              v-model="name"
               type="text"
               class="resource-create-input w-full px-3 py-2 rounded-md border text-[13px] font-mono"
-              placeholder="my-resource"
+              placeholder="请输入名称"
               :disabled="saving"
             />
           </label>
@@ -43,13 +43,17 @@
         </div>
 
         <footer class="px-5 py-3 border-t flex justify-end gap-2 shrink-0">
-          <button type="button" class="resource-create-btn resource-create-btn--ghost" @click="close">
+          <button
+            type="button"
+            class="resource-create-btn resource-create-btn--ghost"
+            @click="close"
+          >
             取消
           </button>
           <button
             type="button"
             class="resource-create-btn resource-create-btn--primary"
-            :disabled="saving || !slug.trim()"
+            :disabled="saving || !name.trim()"
             @click="save"
           >
             {{ saving ? "保存中..." : "创建" }}
@@ -77,7 +81,7 @@ const emit = defineEmits<{
   created: [slug: string];
 }>();
 
-const DEFAULT_PROMPT = `# Prompt 模板
+const DEFAULT_PROMPT = `# Prompt Template
 
 在此编写可复用的提示词内容。
 `;
@@ -93,7 +97,7 @@ const DEFAULT_MCP = `{
 }
 `;
 
-const slug = ref("");
+const name = ref("");
 const content = ref("");
 const saving = ref(false);
 const error = ref<string | null>(null);
@@ -102,7 +106,7 @@ watch(
   () => [props.open, props.kind] as const,
   ([open, kind]) => {
     if (!open) return;
-    slug.value = "";
+    name.value = "";
     content.value = kind === "mcp" ? DEFAULT_MCP : DEFAULT_PROMPT;
     error.value = null;
     saving.value = false;
@@ -114,17 +118,24 @@ function close() {
 }
 
 async function save() {
-  const nextSlug = slug.value.trim();
-  if (!nextSlug) return;
+  const nextName = name.value.trim();
+  if (!nextName) return;
+  const normalized = nextName
+    .normalize("NFKD")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  const nextSlug = normalized || `${props.kind}-${Date.now().toString(36)}`;
   saving.value = true;
   error.value = null;
   try {
     await upsertResourceContent({
       kind: props.kind,
       slug: nextSlug,
+      name: nextName,
       content: content.value,
     });
-    showUiMessage(`${props.kind === "mcp" ? "MCP" : "Prompt"} 已创建`, "success");
+    showUiMessage(`${props.kind === "mcp" ? "MCP" : "Prompt Template"} 已创建`, "success");
     emit("created", nextSlug);
     close();
   } catch (err) {

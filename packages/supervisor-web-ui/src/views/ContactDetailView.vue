@@ -108,13 +108,15 @@
 
       <div v-if="!isExternal" class="flex-1 flex min-h-0 overflow-hidden">
         <template v-if="rightTab === 'config'">
-          <div class="flex-1 overflow-auto p-5 min-h-0 contact-detail-content">
+          <div class="flex flex-1 justify-center overflow-auto p-5 min-h-0 contact-detail-content">
             <AgentConfigPanel :agent-id="agentId" />
           </div>
         </template>
 
         <template v-else-if="rightTab === 'system'">
-          <div class="flex-1 overflow-hidden p-5 min-h-0 flex flex-col contact-detail-content">
+          <div
+            class="flex-1 overflow-hidden px-8 py-7 xl:px-12 xl:py-10 min-h-0 flex flex-col contact-detail-content"
+          >
             <AgentSystemPromptPanel :agent-id="agentId" />
           </div>
         </template>
@@ -185,7 +187,7 @@ const rightTabs = computed(() => {
     { id: "system", label: "System Prompt" },
     { id: "skills", label: "Skills" },
     { id: "extensions", label: "Extensions" },
-    { id: "prompts", label: "Prompts" },
+    { id: "prompts", label: "Prompt Template" },
     { id: "mcp", label: "MCP" },
   ];
   return tabs;

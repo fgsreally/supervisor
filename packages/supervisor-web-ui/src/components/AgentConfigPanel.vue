@@ -237,6 +237,11 @@ watch(
 .agent-tool-row--disabled {
   opacity: 0.58;
 }
+.agent-tool-row--disabled .agent-tool-heading > span:first-child {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--app-text-muted) 80%, transparent);
+}
 .agent-tool-icon {
   display: grid;
   width: 32px;

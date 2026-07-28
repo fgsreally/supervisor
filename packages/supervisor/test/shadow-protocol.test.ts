@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   formatShadowRunPrompt,
@@ -69,5 +72,19 @@ describe("shadow Watson submit_result protocol", () => {
     expect(prompt).toContain("memo");
     expect(prompt).toContain("[user] hi");
     expect(prompt).not.toContain("<shadow-memory");
+  });
+
+  it("injects AGENTS.md from the session working directory", () => {
+    const cwd = mkdtempSync(join(tmpdir(), "supervisor-shadow-context-"));
+    try {
+      writeFileSync(join(cwd, "AGENTS.md"), "SHADOW_CONTEXT_MARKER", "utf8");
+
+      const system = getShadowSystemPrompt(cwd);
+
+      expect(system).toContain("SHADOW_CONTEXT_MARKER");
+      expect(system).toContain(join(cwd, "AGENTS.md"));
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
   });
 });

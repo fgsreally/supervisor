@@ -17,7 +17,12 @@
             <div class="agent-ext-section-title">内置扩展</div>
             <p class="agent-ext-hint">仅可启用/停用，不可删除</p>
             <div class="mt-2 space-y-1">
-              <div v-for="item in builtinItems" :key="item.resourceId" class="agent-ext-row">
+              <div
+                v-for="item in builtinItems"
+                :key="item.resourceId"
+                class="agent-ext-row"
+                :class="{ 'agent-ext-row--disabled': !item.enabled }"
+              >
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-1.5 min-w-0">
                     <span class="agent-ext-name truncate">{{ item.name }}</span>
@@ -237,6 +242,16 @@ async function bindGlobalItem(item: UIResourceItem) {
   padding: 8px 10px;
   border-radius: 6px;
   background: var(--app-resource-tree-bg, transparent);
+}
+
+.agent-ext-row--disabled {
+  opacity: 0.58;
+}
+
+.agent-ext-row--disabled .agent-ext-name {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: color-mix(in srgb, var(--app-text-muted) 80%, transparent);
 }
 
 .agent-ext-name {

@@ -75,7 +75,7 @@ export async function runShadow(
       kind: "shadow",
       toolsPreset: "none",
       structured: true,
-      systemPrompt: getShadowSystemPrompt(),
+      systemPrompt: getShadowSystemPrompt(session.cwd),
       prompt: formatShadowRunPrompt(shadowMemory, latestTurn),
     });
     const normalized = normalizeShadowSubmitResult(run.result);

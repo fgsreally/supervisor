@@ -1,3 +1,4 @@
+import { appendContextFilesToSystemPrompt } from "../../../agent/context-files.js";
 import type { ShadowProtocolResult } from "./types.js";
 
 /**
@@ -22,8 +23,8 @@ export const SHADOW_SYSTEM_PROMPT = `你是主会话的影子观察者（Shadow�
 完成后必须作为最后一步调用工具 submit_result（参数 result 为 JSON 对象）；不要只写在回复正文里，不要输出 XML。
 无事可报时仍须调用：submit_result({ "result": {} })。`;
 
-export function getShadowSystemPrompt(): string {
-  return SHADOW_SYSTEM_PROMPT;
+export function getShadowSystemPrompt(cwd?: string): string {
+  return cwd ? appendContextFilesToSystemPrompt(SHADOW_SYSTEM_PROMPT, cwd) : SHADOW_SYSTEM_PROMPT;
 }
 
 export function formatShadowRunPrompt(shadowMemory: string, latestTurn: string): string {

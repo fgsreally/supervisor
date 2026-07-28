@@ -38,43 +38,57 @@
           :style="{ background: 'var(--app-bubble-assistant)' }"
         />
         <div class="relative z-10 leading-[1.42] flex flex-col gap-2.5">
-          <details v-if="collapsedExecutionPieces.length" class="external-details">
-            <summary>执行过程（{{ collapsedExecutionPieces.length }} 项）</summary>
-            <div class="external-details__body">
-              <template v-for="{ piece, index } in collapsedExecutionPieces" :key="index">
-                <ThinkingBlock
-                  v-if="piece.kind === 'thinking'"
-                  :content="piece.text"
-                  :streaming="false"
-                />
-                <MarkdownContent
-                  v-else-if="piece.kind === 'text'"
-                  variant="terminal"
-                  :content="piece.text"
-                />
-                <ToolStepRenderer
-                  v-else-if="piece.kind === 'bash' || piece.kind === 'toolStep'"
-                  :session-id="sessionId"
-                  :piece="piece"
-                  :all-pieces="group.pieces"
-                  :pending="isToolPiecePending(piece)"
-                  :is-error="piece.result?.isError"
-                  @open-tool="
-                    (name, args, result, entryId) => emit('open-tool', name, args, result, entryId)
-                  "
-                  @open-bash="
-                    (cmd, result, intent, entryId) =>
-                      emit('open-bash', cmd, result, intent, entryId)
-                  "
-                  @navigate="emit('navigate', $event)"
-                  @answered="emit('answered')"
-                  @open-external-detail="
-                    (args, result) => emit('open-external-detail', args, result)
-                  "
-                />
-              </template>
+          <div v-if="collapsedExecutionPieces.length" class="external-details">
+            <button
+              type="button"
+              class="external-details__summary"
+              :aria-expanded="executionOpen"
+              @click="executionOpen = !executionOpen"
+            >
+              <ChevronRight :class="{ 'external-details__chevron--open': executionOpen }" />
+              <span>执行过程（{{ collapsedExecutionPieces.length }} 项）</span>
+            </button>
+            <div
+              class="external-details__collapse"
+              :class="{ 'external-details__collapse--open': executionOpen }"
+            >
+              <div class="external-details__body">
+                <template v-for="{ piece, index } in collapsedExecutionPieces" :key="index">
+                  <ThinkingBlock
+                    v-if="piece.kind === 'thinking'"
+                    :content="piece.text"
+                    :streaming="false"
+                  />
+                  <MarkdownContent
+                    v-else-if="piece.kind === 'text'"
+                    variant="terminal"
+                    :content="piece.text"
+                  />
+                  <ToolStepRenderer
+                    v-else-if="piece.kind === 'bash' || piece.kind === 'toolStep'"
+                    :session-id="sessionId"
+                    :piece="piece"
+                    :all-pieces="group.pieces"
+                    :pending="isToolPiecePending(piece)"
+                    :is-error="piece.result?.isError"
+                    @open-tool="
+                      (name, args, result, entryId) =>
+                        emit('open-tool', name, args, result, entryId)
+                    "
+                    @open-bash="
+                      (cmd, result, intent, entryId) =>
+                        emit('open-bash', cmd, result, intent, entryId)
+                    "
+                    @navigate="emit('navigate', $event)"
+                    @answered="emit('answered')"
+                    @open-external-detail="
+                      (args, result) => emit('open-external-detail', args, result)
+                    "
+                  />
+                </template>
+              </div>
             </div>
-          </details>
+          </div>
 
           <template
             v-for="({ piece, index: pieceIndex }, displayIndex) in displayPieces"
@@ -134,14 +148,16 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from "vue";
-import { Loader2 } from "lucide-vue-next";
+import { computed, onBeforeUnmount, ref } from "vue";
+import { ChevronRight, Loader2 } from "lucide-vue-next";
 import type { DisplayGroup, RenderPiece } from "@/utils/flatten-messages";
 import MarkdownContent from "../MarkdownContent.vue";
 import ThinkingBlock from "../ThinkingBlock.vue";
 import ToolStepRenderer from "./ToolStepRenderer.vue";
 import AgentAvatar from "../AgentAvatar.vue";
 import { viewPreferences } from "@/utils/view-preferences";
+
+const executionOpen = ref(false);
 
 const props = defineProps<{
   sessionId: string;
@@ -301,19 +317,49 @@ onBeforeUnmount(cancelLongPress);
   border-top: 1px solid var(--app-border-subtle);
   color: var(--app-text-secondary);
   font-size: 12px;
-  padding-top: 0.55rem;
+  padding-top: 0.25rem;
 }
 
-.external-details summary {
+.external-details__summary {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0;
   cursor: pointer;
   user-select: none;
 }
 
+.external-details__summary svg {
+  width: 0.9rem;
+  height: 0.9rem;
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.external-details__chevron--open {
+  transform: rotate(90deg);
+}
+
+.external-details__collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 0.32s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease;
+}
+
+.external-details__collapse--open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
 .external-details__body {
   display: flex;
+  min-height: 0;
+  overflow: hidden;
   flex-direction: column;
   gap: 0.5rem;
-  margin-top: 0.65rem;
+  padding-top: 0.35rem;
 }
 .chat-msg-time {
   font-size: 11px;

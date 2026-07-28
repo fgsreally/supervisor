@@ -12,6 +12,13 @@
         @mousedown.stop
       >
         <button
+          type="button"
+          class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
+          @click="emit('pin')"
+        >
+          {{ pinned ? "取消置顶" : "置顶" }}
+        </button>
+        <button
           v-if="status !== 'finish'"
           type="button"
           class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
@@ -45,6 +52,7 @@ defineProps<{
   x: number;
   y: number;
   status?: string;
+  pinned?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -52,6 +60,7 @@ const emit = defineEmits<{
   delete: [];
   achieve: [];
   fork: [];
+  pin: [];
 }>();
 </script>
 

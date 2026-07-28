@@ -103,9 +103,7 @@ function ensureExternalAgent(
     avatar: string;
   },
 ): void {
-  const existing = db
-    .listAgents()
-    .find((agent) => agent.backendType === spec.kind);
+  const existing = db.listAgents().find((agent) => agent.backendType === spec.kind);
   if (existing) {
     return;
   }
@@ -116,7 +114,10 @@ function ensureExternalAgent(
     backend_type: spec.kind,
     tools_preset: "coding",
     is_builtin: true,
-    external_config: JSON.stringify({ command: spec.command, ...(spec.args ? { args: spec.args } : {}) }),
+    external_config: JSON.stringify({
+      command: spec.command,
+      ...(spec.args ? { args: spec.args } : {}),
+    }),
     meta: {},
   });
 }
@@ -158,21 +159,39 @@ const BUILTIN_ASSISTANT_PROMPT = loadBuiltinAgentPrompt("assistant");
 const BUILTIN_ASSISTANT_SKILL = loadPromptTemplate("builtin-assistant-skill");
 
 function findBuiltinAssistantId(db: SupervisorDb): number | undefined {
-  return db
-    .listAgents()
-    .find(
-      (agent) => agent.name === BUILTIN_ASSISTANT_NAME && agent.isBuiltin,
-    )?.id;
+  return db.listAgents().find((agent) => agent.name === BUILTIN_ASSISTANT_NAME && agent.isBuiltin)
+    ?.id;
 }
 
 function findBuiltinAssistantSessionId(db: SupervisorDb, agentId: number): number | undefined {
+  const assistantAgentIds = new Set(
+    db
+      .listAgents()
+      .filter((agent) => agent.name === BUILTIN_ASSISTANT_NAME)
+      .map((agent) => agent.id),
+  );
   const sessions = db
     .list()
-    .filter((session) => session.agent_id === agentId && session.is_builtin === 1)
-    .sort((left, right) => left.id - right.id);
+    .filter(
+      (session) =>
+        (session.is_builtin === 1 || session.meta?.builtin === true) &&
+        (session.agent_id === agentId ||
+          (session.agent_id !== null && assistantAgentIds.has(session.agent_id))),
+    )
+    .sort((left, right) => {
+      const leftUsesCurrentAgent = left.agent_id === agentId ? 1 : 0;
+      const rightUsesCurrentAgent = right.agent_id === agentId ? 1 : 0;
+      return rightUsesCurrentAgent - leftUsesCurrentAgent || left.id - right.id;
+    });
   const primary = sessions[0];
   for (const duplicate of sessions.slice(1)) db.delete(duplicate.id);
   return primary?.id;
+}
+
+/** Remove legacy duplicate assistant sessions before SessionManager caches persisted rows. */
+export function dedupeBuiltinAssistantSessions(db: SupervisorDb): void {
+  const agentId = findBuiltinAssistantId(db);
+  if (agentId !== undefined) findBuiltinAssistantSessionId(db, agentId);
 }
 
 function installBuiltinAssistantSkill(db: SupervisorDb, agentId: number): void {

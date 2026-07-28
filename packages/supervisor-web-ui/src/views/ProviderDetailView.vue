@@ -77,7 +77,7 @@
               <span>添加模型</span>
             </button>
           </div>
-          <ul v-if="provider.models.length" class="divide-y provider-detail-divider">
+          <ul v-if="provider.models.length" class="divide-y border-b provider-detail-divider">
             <li v-for="model in provider.models" :key="model.id">
               <div class="provider-detail-model-row w-full px-2 py-3 flex items-center gap-3">
                 <Cpu class="w-5 h-5 provider-detail-subtitle shrink-0" />
@@ -88,9 +88,6 @@
                 >
                   <div class="text-[14px] font-medium provider-detail-title truncate">
                     {{ model.name || model.id }}
-                  </div>
-                  <div class="text-[12px] provider-detail-subtitle font-mono truncate mt-0.5">
-                    {{ model.id }}
                   </div>
                 </button>
                 <div class="text-[12px] provider-detail-subtitle font-mono shrink-0">

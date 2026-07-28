@@ -504,7 +504,12 @@ export const useAgentStore = defineStore("agent", () => {
     const groups: Array<{ label: string; agents: typeof agents.value }> = [
       {
         label: "内置",
-        agents: agents.value.filter((a) => a.isBuiltin && a.backendType === "native"),
+        agents: agents.value.filter(
+          (a) =>
+            a.isBuiltin &&
+            a.backendType === "native" &&
+            (a.name === "Pi 助手" || a.name === "Coding"),
+        ),
       },
       {
         label: "外部",

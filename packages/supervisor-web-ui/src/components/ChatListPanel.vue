@@ -195,10 +195,14 @@
 
     <SessionListContextMenu
       :open="contextMenu != null"
+      :pinned="
+        contextSession ? viewPreferences.pinnedSessionIds.includes(contextSession.id) : false
+      "
       :x="contextMenu?.x ?? 0"
       :y="contextMenu?.y ?? 0"
       :status="contextSession?.status"
       @close="closeContextMenu"
+      @pin="togglePinnedSession"
       @delete="confirmDeleteSession"
       @achieve="achieveSession"
       @fork="forkFinishedSession"
@@ -239,7 +243,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { ChevronRight, FolderInput, GitBranch, Plus, Search, Settings } from "lucide-vue-next";
-import { setProjectOrder } from "@/utils/view-preferences";
+import { setProjectOrder, setSessionViewFlag, viewPreferences } from "@/utils/view-preferences";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
 import {
@@ -643,6 +647,15 @@ function openContextMenu(sessionId: string, pos: { x: number; y: number }) {
 
 function closeContextMenu() {
   contextMenu.value = null;
+}
+
+function togglePinnedSession() {
+  const target = contextMenu.value;
+  closeContextMenu();
+  if (!target) return;
+  const pinned = viewPreferences.pinnedSessionIds.includes(target.sessionId);
+  setSessionViewFlag("pinnedSessionIds", target.sessionId, !pinned);
+  showUiMessage(pinned ? "已取消置顶" : "已置顶", "success");
 }
 
 async function confirmDeleteSession() {

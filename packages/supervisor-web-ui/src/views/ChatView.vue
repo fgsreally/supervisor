@@ -43,7 +43,6 @@
             <ClipboardList />
           </ChatHeaderAction>
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
-          <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
         </div>
         <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
         <ChatHeaderAction
@@ -56,7 +55,6 @@
         </ChatHeaderAction>
         <div class="mobile-session-actions">
           <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
-          <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
           <ChatHeaderAction
             title="会话工具"
             :active="sessionActionsOpen"
@@ -130,6 +128,12 @@
           @edit="editQueuedInput"
           @submit="submitQueuedInputNow"
           @delete="deleteQueuedInput"
+        />
+
+        <SessionChangesPopover
+          v-if="sessionChangedFiles.length"
+          class="chat-composer-changes"
+          :files="sessionChangedFiles"
         />
 
         <ChatInputPanel
@@ -1736,6 +1740,10 @@ async function executeCustomSlash(name: string) {
   overflow: hidden;
 }
 
+.chat-composer-changes {
+  margin: 0 8px 6px;
+}
+
 .chat-panel-host :deep(.tool-detail-panel),
 .chat-panel-host :deep(.task-workspace),
 .chat-panel-host :deep(.btw-panel),
@@ -1779,6 +1787,10 @@ async function executeCustomSlash(name: string) {
 }
 
 @media (max-width: 767px) {
+  .chat-composer-changes {
+    margin: 0 5px 5px;
+  }
+
   .chat-panel-host :deep(.tool-detail-panel),
   .chat-panel-host :deep(.task-workspace),
   .chat-panel-host :deep(.btw-panel),

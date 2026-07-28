@@ -1,21 +1,18 @@
 <template>
   <div class="changes-wrap">
-    <ChatHeaderAction
-      :title="`${files.length} 个变更文件`"
-      :active="open"
-      :count="files.length"
-      @click="open = !open"
-    >
-      <Files />
-    </ChatHeaderAction>
-    <section v-if="open" class="changes-popover">
-      <header>
-        <strong>文件变更</strong><span>{{ files.length }} Files</span>
-      </header>
+    <button type="button" class="changes-summary" :aria-expanded="open" @click="open = !open">
+      <span class="changes-summary__label"><Files />文件变更</span>
+      <span class="changes-summary__actions">
+        <span>{{ files.length }} Files</span>
+        <strong>{{ open ? "收起" : "Review" }}</strong>
+      </span>
+    </button>
+    <section v-if="open" class="changes-list">
       <ul>
         <li v-for="file in files" :key="file.path" :title="file.path">
-          <FileCode2 /><span>{{ file.path }}</span
-          ><small :class="`status-${file.status}`">{{ statusLabel(file.status) }}</small>
+          <FileCode2 />
+          <span>{{ file.path }}</span>
+          <small :class="`status-${file.status}`">{{ statusLabel(file.status) }}</small>
         </li>
       </ul>
     </section>
@@ -25,15 +22,16 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { FileCode2, Files } from "lucide-vue-next";
-import ChatHeaderAction from "./ChatHeaderAction.vue";
 
 export interface SessionChangedFileView {
   path: string;
   status: "added" | "modified" | "deleted";
   lastTurn?: number;
 }
+
 defineProps<{ files: SessionChangedFileView[] }>();
 const open = ref(false);
+
 function statusLabel(status: SessionChangedFileView["status"]) {
   return status === "added" ? "A" : status === "deleted" ? "D" : "M";
 }
@@ -41,37 +39,58 @@ function statusLabel(status: SessionChangedFileView["status"]) {
 
 <style scoped>
 .changes-wrap {
-  position: relative;
-}
-.changes-popover {
-  position: absolute;
-  z-index: 30;
-  top: 36px;
-  right: 0;
-  width: min(420px, calc(100vw - 32px));
-  max-height: 360px;
   overflow: hidden;
-  border: 1px solid var(--app-popup-border);
+  border: 1px solid var(--app-border);
   border-radius: 10px;
   background: var(--app-popup-bg);
-  box-shadow: 0 10px 30px rgb(0 0 0 / 16%);
 }
-header {
+.changes-summary {
   display: flex;
+  width: 100%;
+  min-height: 42px;
   align-items: center;
   justify-content: space-between;
-  padding: 11px 13px;
+  gap: 12px;
+  padding: 8px 12px;
   color: var(--app-text-primary);
   font-size: 13px;
+  text-align: left;
 }
-header span {
+.changes-summary:hover {
+  background: var(--app-popup-hover);
+}
+.changes-summary__label,
+.changes-summary__actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+}
+.changes-summary__label svg {
+  width: 16px;
+  height: 16px;
+  flex: none;
   color: var(--app-text-muted);
-  font-weight: 400;
+}
+.changes-summary__actions {
+  flex: none;
+  color: var(--app-text-muted);
+}
+.changes-summary__actions strong {
+  border-radius: 6px;
+  padding: 4px 8px;
+  background: var(--app-hover);
+  color: var(--app-text-primary);
+  font-weight: 500;
+}
+.changes-list {
+  overflow: hidden;
+  border-top: 1px solid var(--app-border);
 }
 ul {
-  max-height: 310px;
+  max-height: 240px;
   overflow: auto;
-  padding: 0 6px 7px;
+  padding: 6px;
 }
 li {
   display: flex;
@@ -112,14 +131,5 @@ li small {
 }
 .status-deleted {
   color: #e05a67;
-}
-@media (max-width: 767px) {
-  .changes-popover {
-    position: fixed;
-    top: 64px;
-    right: 10px;
-    left: 10px;
-    width: auto;
-  }
 }
 </style>

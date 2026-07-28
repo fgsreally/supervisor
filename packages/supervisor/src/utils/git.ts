@@ -199,11 +199,27 @@ export async function getCurrentBranch(repoRoot: string): Promise<string> {
 
 export async function listLocalBranches(repoRoot: string): Promise<string[]> {
   try {
-    const { stdout } = await runGit(repoRoot, ["branch", "--format=%(refname:short)"]);
-    return stdout
+    const { stdout } = await runGit(repoRoot, [
+      "for-each-ref",
+      "--format=%(refname)",
+      "refs/heads",
+      "refs/remotes",
+    ]);
+    const refs = stdout
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
+    const local = refs
+      .filter((ref) => ref.startsWith("refs/heads/"))
+      .map((ref) => ref.slice("refs/heads/".length))
+      .filter((name) => !name.startsWith("pi/session-"));
+    const localSet = new Set(local);
+    const remote = refs
+      .filter((ref) => ref.startsWith("refs/remotes/") && !ref.endsWith("/HEAD"))
+      .map((ref) => ref.slice("refs/remotes/".length))
+      .filter((name) => !name.slice(name.indexOf("/") + 1).startsWith("pi/session-"))
+      .filter((name) => !localSet.has(name.slice(name.indexOf("/") + 1)));
+    return [...local, ...remote];
   } catch {
     return [];
   }
@@ -345,13 +361,7 @@ export async function mergeSessionBranch(
   targetBranch: string,
 ): Promise<void> {
   await runGit(repoRoot, ["checkout", targetBranch]);
-  await runGit(repoRoot, [
-    "merge",
-    "--no-ff",
-    branch,
-    "-m",
-    withSvCommitMarker(`Merge ${branch}`),
-  ]);
+  await runGit(repoRoot, ["merge", "--no-ff", branch, "-m", withSvCommitMarker(`Merge ${branch}`)]);
 }
 
 export interface SvCommitInfo {
@@ -506,14 +516,22 @@ export async function gitPush(cwd: string): Promise<GitRemoteResult> {
   }
 }
 
-/** Checkout a local branch at the project repo root. */
+/** Checkout a local branch, or create its local tracking branch from a remote. */
 export async function gitCheckout(cwd: string, branch: string): Promise<GitRemoteResult> {
   const repoRoot = await findGitRoot(cwd);
   if (!repoRoot) throw new Error("not a git repository");
   const name = branch.trim();
   if (!name) throw new Error("branch name is required");
   try {
-    const result = await runGit(repoRoot, ["checkout", name]);
+    let localBranch = false;
+    try {
+      await runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${name}`]);
+      localBranch = true;
+    } catch {
+      // A remote-only branch is checked out by creating its local tracking branch.
+    }
+    const args = localBranch ? ["checkout", name] : ["checkout", "--track", name];
+    const result = await runGit(repoRoot, args);
     return { ok: true, stdout: result.stdout, stderr: result.stderr };
   } catch (error) {
     throw formatGitError(error);

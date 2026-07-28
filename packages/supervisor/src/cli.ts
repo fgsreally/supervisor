@@ -3,7 +3,11 @@ import { parseArgs } from "node:util";
 import { serve } from "@hono/node-server";
 import prompts from "prompts";
 import { BUILT_IN_PROVIDERS } from "./config/built-in-providers.js";
-import { ensureBuiltinAssistant, ensurePackagedAgents } from "./agent/index.js";
+import {
+  dedupeBuiltinAssistantSessions,
+  ensureBuiltinAssistant,
+  ensurePackagedAgents,
+} from "./agent/index.js";
 import { SupervisorDb } from "./db/db.js";
 import { getDefaultCwd, resolveWorkspacePath, setDefaultCwd } from "./config/default-cwd.js";
 import { resolveDbPath } from "./config/resolve-db-path.js";
@@ -149,6 +153,7 @@ async function run() {
   if (cwdArg) setDefaultCwd(resolveWorkspacePath(cwdArg));
 
   const db = new SupervisorDb(resolveDbPath());
+  dedupeBuiltinAssistantSessions(db);
   const manager = new SessionManager(db);
   const { command, cmdArgs } = parseCommand();
 

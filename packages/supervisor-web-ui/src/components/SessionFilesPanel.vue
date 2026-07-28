@@ -75,11 +75,7 @@
             <template #default="{ node, stat }">
               <div
                 class="file-tree-row flex items-center gap-1 min-w-0 py-0.5 pr-2 rounded-sm transition-colors"
-                :class="
-                  node.filePath && node.filePath === selectedPath
-                    ? 'file-tree-row--selected'
-                    : 'file-tree-row--idle'
-                "
+                :class="isSelectedFile(node) ? 'file-tree-row--selected' : 'file-tree-row--idle'"
               >
                 <button
                   v-if="node.children?.length"
@@ -241,7 +237,7 @@ const imageUrl = ref<string | null>(null);
 
 const fileCount = computed(() => files.value.filter((f) => !f.isDirectory).length);
 const breadcrumbSegments = computed(() => selectedPath.value?.split("/").filter(Boolean) ?? []);
-const treePaneWidth = ref(Number(localStorage.getItem("pi-supervisor:file-tree-width")) || 280);
+const treePaneWidth = ref(Number(localStorage.getItem("pi-supervisor:file-tree-width")) || 220);
 let stopTreeResize: (() => void) | null = null;
 
 function startTreeResize(event: PointerEvent) {
@@ -249,7 +245,7 @@ function startTreeResize(event: PointerEvent) {
   const startX = event.clientX;
   const startWidth = treePaneWidth.value;
   const onMove = (moveEvent: PointerEvent) => {
-    treePaneWidth.value = Math.min(520, Math.max(180, startWidth + moveEvent.clientX - startX));
+    treePaneWidth.value = Math.min(420, Math.max(160, startWidth + moveEvent.clientX - startX));
   };
   const onUp = () => {
     localStorage.setItem("pi-supervisor:file-tree-width", String(treePaneWidth.value));
@@ -413,6 +409,12 @@ function onNodeClick(node: FileTreeNode) {
   void loadPreview(node.filePath);
 }
 
+function isSelectedFile(node: FileTreeNode): boolean {
+  if (!node.filePath || !selectedPath.value) return false;
+  const normalize = (path: string) => path.replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
+  return normalize(node.filePath) === normalize(selectedPath.value);
+}
+
 async function refresh() {
   loading.value = true;
   listError.value = null;
@@ -480,7 +482,7 @@ onBeforeUnmount(() => {
 @media (min-width: 768px) {
   .session-files-panel__tree {
     height: 100%;
-    width: min(var(--session-tree-width, 280px), 55%);
+    width: min(var(--session-tree-width, 220px), 48%);
   }
 
   .session-files-panel__resize-handle {
@@ -560,7 +562,12 @@ onBeforeUnmount(() => {
 }
 
 .file-tree-row--selected {
-  background: color-mix(in srgb, var(--app-accent) 16%, transparent);
+  box-shadow: inset 3px 0 0 var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent) 24%, var(--app-settings-bg));
   color: var(--app-text-primary);
+}
+
+.file-tree-row--selected .text-sky-500\/80 {
+  color: var(--app-accent);
 }
 </style>

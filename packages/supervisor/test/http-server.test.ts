@@ -37,6 +37,22 @@ async function req(method: string, path: string, body?: unknown) {
 }
 
 describe("supervisor: HTTP server", () => {
+  it("protects API routes when a web password is configured", async () => {
+    const protectedApp = createHttpServer(manager, { password: "secret" });
+    const status = await protectedApp.request("/auth/status");
+    expect(status.status).toBe(200);
+    expect(await status.json()).toEqual({ required: true, authenticated: false });
+
+    expect((await protectedApp.request("/sessions")).status).toBe(401);
+    expect(
+      (
+        await protectedApp.request("/sessions", {
+          headers: { "x-supervisor-password": "secret" },
+        })
+      ).status,
+    ).toBe(200);
+  });
+
   it("GET /sessions returns empty array initially", async () => {
     const res = await req("GET", "/sessions");
     expect(res.status).toBe(200);

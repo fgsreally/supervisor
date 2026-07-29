@@ -105,8 +105,7 @@ export function parseProjectRuntimeSpec(rawInput: unknown): ProjectRuntimeSpec {
       if (!kind || !command) continue;
       scripts.push({
         kind,
-        name:
-          typeof entry.name === "string" && entry.name.trim() ? entry.name.trim() : kind,
+        name: typeof entry.name === "string" && entry.name.trim() ? entry.name.trim() : kind,
         command,
       });
     }
@@ -152,10 +151,7 @@ export async function applyProjectRuntimeParse(
   const project = db.getProject(projectId);
   if (!project) throw new Error(`Project ${projectId} not found`);
 
-  await commitAll(
-    project.cwd,
-    "chore: make local service ports injectable for supervisor",
-  );
+  await commitAll(project.cwd, "chore: make local service ports injectable for supervisor");
 
   db.replaceProjectScripts(projectId, spec.scripts);
 

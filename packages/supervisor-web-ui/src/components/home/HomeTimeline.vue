@@ -2,7 +2,12 @@
   <div class="home-timeline">
     <header class="home-timeline__header">
       <h2>工作分析</h2>
-      <button type="button" class="home-timeline__refresh" :disabled="loading" @click="emit('refresh')">
+      <button
+        type="button"
+        class="home-timeline__refresh"
+        :disabled="loading"
+        @click="emit('refresh')"
+      >
         <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': loading }" />
         刷新
       </button>

@@ -63,18 +63,13 @@
         <label
           class="provider-model-editor__option flex items-center gap-3 px-3 py-3 rounded-md border cursor-pointer"
         >
-          <input
-            v-model="draft.supportsVision"
-            type="checkbox"
-            class="rounded border-gray-300"
-          />
+          <input v-model="draft.supportsVision" type="checkbox" class="rounded border-gray-300" />
           <ModelMultimodalIcon :supports-multimodal="draft.supportsVision" />
           <div>
             <div class="provider-model-editor__title text-[13px]">支持图像输入</div>
             <div class="provider-model-editor__muted text-[11px]">对应 pi Model.input 含 image</div>
           </div>
         </label>
-
       </div>
 
       <div class="provider-model-editor__footer px-5 py-4 border-t flex justify-end gap-2">

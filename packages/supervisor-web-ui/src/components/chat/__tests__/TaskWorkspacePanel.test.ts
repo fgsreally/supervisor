@@ -33,7 +33,7 @@ describe("TaskWorkspacePanel", () => {
     expect(wrapper.text()).toContain("Ship task view");
     expect(wrapper.findAll("input, textarea, [contenteditable=true]")).toHaveLength(0);
 
-    await wrapper.findAll(".task-workspace__tab")[1]!.trigger("click");
+    await wrapper.findAll(".task-workspace__tab")[2]!.trigger("click");
     expect(wrapper.emitted("select")).toEqual([[tasks[1].path]]);
 
     await wrapper.setProps({ selectedPath: "$todo" });

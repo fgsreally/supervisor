@@ -25,7 +25,8 @@ import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
 import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
 import { BUILTIN_EXTENSION_SLUGS } from "../extension/builtin/catalog.js";
 import { listEnabledBuiltinExtensionSlugs } from "../extension/builtin/ensure.js";
-import type { AgentPermissionRules } from "./agent-permissions.js";
+import { evaluateAgentPermission, type AgentPermissionRules } from "./agent-permissions.js";
+import type { ApprovalRequest, ApprovalResult } from "../extension/index.js";
 
 interface HarnessSessionTree {
   buildContext(): Promise<{ messages: AgentMessage[] }>;
@@ -92,6 +93,13 @@ export class SessionRuntime implements ManagedSessionRuntime {
   private storage?: SQLiteSessionStorage;
   /** 与当前运行中 Agent 会话唯一绑定的 Extension 实例。 */
   private _extension: SessionExtensionHost | null = null;
+  private permissionConfig: {
+    rules: AgentPermissionRules;
+    cwd: string;
+    requestApproval: (request: ApprovalRequest) => Promise<ApprovalResult>;
+    approvedCalls: Set<string>;
+    sessionAllowed: Set<string>;
+  } | null = null;
 
   constructor(options: SessionRuntimeOptions) {
     this.id = options.session.id;
@@ -200,8 +208,18 @@ export class SessionRuntime implements ManagedSessionRuntime {
     return this._extension?.collectTools() ?? [];
   }
 
-  configureAgentPermissions(rules: AgentPermissionRules, cwd: string): void {
-    this._extension?.configureAgentPermissions(rules, cwd);
+  configureAgentPermissions(
+    rules: AgentPermissionRules,
+    cwd: string,
+    requestApproval: (request: ApprovalRequest) => Promise<ApprovalResult>,
+  ): void {
+    this.permissionConfig = {
+      rules,
+      cwd,
+      requestApproval,
+      approvedCalls: new Set(),
+      sessionAllowed: new Set(),
+    };
   }
 
   async deactivateExtension(extensionId: string): Promise<boolean> {
@@ -363,8 +381,69 @@ export class SessionRuntime implements ManagedSessionRuntime {
   }
 
   async setTools(tools: AgentTool[], activeToolNames?: string[]): Promise<void> {
-    const effectiveTools = this._extension?.wrapTools(tools) ?? tools;
-    await this.harness.setTools(effectiveTools, activeToolNames);
+    const extensionTools = this._extension?.wrapTools(tools) ?? tools;
+    const effectiveTools = this.permissionConfig
+      ? extensionTools.map((tool) => this.wrapPermissionTool(tool))
+      : extensionTools;
+    const stagedActiveTools =
+      activeToolNames ?? this._extension?.services.tools.getActiveToolNames() ?? undefined;
+    await this.harness.setTools(effectiveTools, stagedActiveTools);
+  }
+
+  private wrapPermissionTool(tool: AgentTool): AgentTool {
+    const execute = tool.execute.bind(tool);
+    return {
+      ...tool,
+      execute: async (toolCallId, params, signal, onUpdate) => {
+        const config = this.permissionConfig;
+        if (!config || config.approvedCalls.has(toolCallId)) {
+          return execute(toolCallId, params, signal, onUpdate);
+        }
+        const decision = evaluateAgentPermission(config.rules, tool.name, params, config.cwd);
+        if (decision.effect === "deny") {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `Agent permission denied ${decision.tool}: ${decision.target || "(no parameter)"}`,
+              },
+            ],
+            details: {},
+            isError: true,
+          };
+        }
+        if (decision.effect === "ask") {
+          const key = JSON.stringify([decision.tool, decision.target]);
+          if (!config.sessionAllowed.has(key)) {
+            const result = await config.requestApproval({
+              kind: "tool_permission",
+              title: `允许调用 ${decision.tool}？`,
+              body: `${decision.target || "(无可匹配参数)"}${
+                decision.matchedTarget && decision.matchedTarget !== decision.target
+                  ? `\n命中命令段：${decision.matchedTarget}`
+                  : ""
+              }\n匹配规则：${decision.pattern}`,
+              actions: ["approve", "approve_session", "reject"],
+            });
+            if (result.action !== "approve" && result.action !== "approve_session") {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `User rejected ${decision.tool}: ${decision.target}`,
+                  },
+                ],
+                details: {},
+                isError: true,
+              };
+            }
+            if (result.action === "approve_session") config.sessionAllowed.add(key);
+          }
+        }
+        config.approvedCalls.add(toolCallId);
+        return execute(toolCallId, params, signal, onUpdate);
+      },
+    };
   }
 
   async getMessages(): Promise<SessionTreeEntry[]> {
@@ -398,6 +477,21 @@ export class SessionRuntime implements ManagedSessionRuntime {
    */
   getSlashCommands(): SlashCommandInfo[] {
     const commands = new Map<string, SlashCommandInfo>();
+    for (const command of this.resource.getSlashCommands()) {
+      commands.set(command.name, {
+        name: command.name,
+        description: command.description,
+        source: command.source,
+        arguments:
+          command.source === "prompt"
+            ? {
+                type: "text",
+                required: false,
+                placeholder: command.argumentHint ?? "Template arguments",
+              }
+            : { type: "text", required: false },
+      });
+    }
     for (const command of this._extension?.getAllCommands() ?? []) {
       commands.set(command.name, {
         name: command.name,
@@ -408,6 +502,10 @@ export class SessionRuntime implements ManagedSessionRuntime {
       });
     }
     return [...commands.values()];
+  }
+
+  reloadResources(): void {
+    this.resource.reload();
   }
 
   async executeSlashCommand(name: string, args: string): Promise<void> {

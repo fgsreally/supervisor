@@ -142,9 +142,8 @@ describe("session message pagination + lite", () => {
         ],
       },
     } as SessionMessageResponse);
-    const legacyParts = (
-      legacy.message as { content: Array<{ type: string; data?: string }> }
-    ).content;
+    const legacyParts = (legacy.message as { content: Array<{ type: string; data?: string }> })
+      .content;
     const legacyImage = legacyParts.find((p) => p.type === "image");
     expect(legacyImage?.data).toBeUndefined();
     expect(legacy.meta.liteTruncated).toBe(true);

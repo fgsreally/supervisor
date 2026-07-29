@@ -7,11 +7,7 @@
         @mousedown="emit('close')"
         @contextmenu.prevent="emit('close')"
       >
-        <div
-          class="message-context-menu"
-          :style="menuStyle"
-          @mousedown.stop
-        >
+        <div class="message-context-menu" :style="menuStyle" @mousedown.stop>
           <button
             v-if="canCopy"
             type="button"

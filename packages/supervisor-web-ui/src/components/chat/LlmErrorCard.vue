@@ -1,9 +1,6 @@
 <template>
   <div class="llm-error-row flex justify-start items-start gap-2">
-    <div
-      class="chat-avatar chat-avatar--agent shrink-0"
-      :style="{ backgroundColor: avatarColor }"
-    >
+    <div class="chat-avatar chat-avatar--agent shrink-0" :style="{ backgroundColor: avatarColor }">
       {{ avatarLabel }}
     </div>
     <div class="max-w-[75%] flex flex-col items-start min-w-0 w-full">

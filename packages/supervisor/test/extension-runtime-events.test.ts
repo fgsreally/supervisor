@@ -399,13 +399,20 @@ describe("extension runtime events", () => {
 
     await run("TodoList", { todos: [{ title: "inspect", status: "in_progress" }] }, "todo-1");
     await run("Goal", { action: "create", objective: "all tests pass" }, "goal-1");
+    await run("Goal", { action: "pause" }, "goal-pause-1");
     await run("EnterPlanMode", {}, "plan-1");
+    const updated = await run(
+      "UpdatePlan",
+      { markdown: "# Implementation plan\n\n1. Inspect\n2. Verify" },
+      "plan-update-1",
+    );
+    expect(updated.isError).not.toBe(true);
 
-    const tasks = state.tasks as string[];
+    const tasks = state.tasks as Array<{ path: string }>;
     expect(tasks).toHaveLength(2);
     expect(state.todos).toEqual([{ title: "inspect", status: "in_progress" }]);
-    expect(state.currentTask).toBe(tasks[1]);
-    expect(tasks.map((path) => readFileSync(join(sessionDir, path), "utf8"))).toEqual([
+    expect(state.currentTask).toBe(tasks[1]!.path);
+    expect(tasks.map((task) => readFileSync(join(sessionDir, task.path), "utf8"))).toEqual([
       expect.stringContaining("all tests pass"),
       expect.stringContaining("# Implementation plan"),
     ]);

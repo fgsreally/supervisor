@@ -78,7 +78,9 @@ function pickAgent(
   if (agentName) {
     const matches = agents.filter((agent) => agent.name === agentName);
     if (matches.length > 1) {
-      throw new Error(`Multiple configured spawned Agents are named '${agentName}'; rename them uniquely`);
+      throw new Error(
+        `Multiple configured spawned Agents are named '${agentName}'; rename them uniquely`,
+      );
     }
     return matches[0];
   }

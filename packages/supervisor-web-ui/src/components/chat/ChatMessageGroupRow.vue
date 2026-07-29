@@ -44,9 +44,10 @@
     </div>
 
     <div v-else :class="messageRowClass">
-      <ShadowMessageRow
-        v-if="group.type === 'message' && group.message?.role === 'user' && group.shadowSource"
+      <InjectedAgentMessageRow
+        v-if="group.type === 'message' && group.message?.role === 'user' && group.injectedSource"
         :text="userText"
+        :source="group.injectedSource"
         :queued="group.deliveryState === 'queued'"
       />
       <UserMessageRow
@@ -130,7 +131,7 @@ import {
   stripImagePlaceholders,
 } from "@/utils/message-content";
 import UserMessageRow from "./UserMessageRow.vue";
-import ShadowMessageRow from "./ShadowMessageRow.vue";
+import InjectedAgentMessageRow from "./InjectedAgentMessageRow.vue";
 import AssistantMessageGroup from "./AssistantMessageGroup.vue";
 import LlmErrorCard from "./LlmErrorCard.vue";
 import CompactionBanner from "../CompactionBanner.vue";

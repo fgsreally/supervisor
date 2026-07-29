@@ -6,7 +6,7 @@
       class="provider-form-header h-14 md:h-16 border-b flex items-center px-3 md:px-6 shrink-0 gap-3"
     >
       <button
-        v-if="showBack"
+        v-if="showBack && !requiredSetup"
         type="button"
         class="mr-1 p-1.5 rounded-md provider-form-back-btn"
         @click="emit('cancel')"
@@ -173,6 +173,7 @@
       class="provider-form-actions shrink-0 border-t px-4 md:px-6 py-3 flex justify-end gap-2"
     >
       <button
+        v-if="!requiredSetup"
         type="button"
         class="provider-form-cancel-btn px-4 py-2 rounded-md border text-[13px]"
         @click="emit('cancel')"
@@ -207,6 +208,7 @@ const props = defineProps<{
   providerId?: string | null;
   showBack?: boolean;
   modelsOnly?: boolean;
+  requiredSetup?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -298,6 +300,7 @@ const canSave = computed(() => {
     return !draft.value.models.some((m) => !m.id.trim());
   }
   if (!draft.value.name.trim()) return false;
+  if (props.requiredSetup && draft.value.models.length === 0) return false;
   const modelIds = draft.value.models.map((model) => model.id.trim());
   return (
     modelIds.every(Boolean) &&

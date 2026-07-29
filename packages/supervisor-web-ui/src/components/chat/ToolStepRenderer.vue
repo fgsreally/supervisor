@@ -35,7 +35,16 @@
     :result-content="piece.result?.content"
     :pending="pending"
     :is-error="isError"
-    @open="emit('open-tool', piece.toolName, piece.callArgs, piece.result?.content, piece.result?.id)"
+    @open="openTool"
+  />
+  <SubagentActivityCard
+    v-else-if="isExpandedSubagent && piece.kind === 'toolStep'"
+    :child-session-id="childSessionId"
+    :agent-name="subagentName"
+    :description="subagentDescription"
+    :pending="pending"
+    :is-error="isError"
+    @open="childSessionId && emit('navigate', childSessionId)"
   />
   <ToolActivityBar
     v-else-if="piece.kind === 'toolStep'"
@@ -45,7 +54,7 @@
     :pending="pending"
     :is-error="isError"
     :show-navigate="piece.toolName === 'spawn_agent' && !!childSessionId"
-    @open="emit('open-tool', piece.toolName, piece.callArgs, piece.result?.content, piece.result?.id)"
+    @open="openTool"
     @navigate="childSessionId && emit('navigate', childSessionId)"
   />
 </template>
@@ -60,6 +69,7 @@ import ExternalInteractionStep from "./ExternalInteractionStep.vue";
 import BashStep from "../BashStep.vue";
 import RecordingStep from "./RecordingStep.vue";
 import ToolActivityBar from "../ToolActivityBar.vue";
+import SubagentActivityCard from "./SubagentActivityCard.vue";
 
 const props = defineProps<{
   sessionId: string;
@@ -109,4 +119,31 @@ const childSessionId = computed(() => {
   if (props.piece.kind !== "toolStep") return undefined;
   return spawnChildSessionId(props.allPieces, props.piece.callId);
 });
+const isExpandedSubagent = computed(
+  () =>
+    props.piece.kind === "toolStep" &&
+    props.piece.toolName === "spawn_agent" &&
+    props.piece.latestSubagentInteraction === true,
+);
+const subagentName = computed(() =>
+  props.piece.kind === "toolStep" && typeof props.piece.callArgs?.agentName === "string"
+    ? props.piece.callArgs.agentName
+    : undefined,
+);
+const subagentDescription = computed(() =>
+  props.piece.kind === "toolStep" && typeof props.piece.callArgs?.description === "string"
+    ? props.piece.callArgs.description
+    : undefined,
+);
+
+function openTool() {
+  if (props.piece.kind !== "toolStep") return;
+  emit(
+    "open-tool",
+    props.piece.toolName,
+    props.piece.callArgs,
+    props.piece.result?.content,
+    props.piece.result?.id,
+  );
+}
 </script>

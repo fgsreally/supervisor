@@ -28,7 +28,11 @@ import { Compartment, EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import * as api from "@/api";
-import { chatInputTagExtension, chatInputTheme, slashCatalogFacet } from "../codemirror/chat-input-tags";
+import {
+  chatInputTagExtension,
+  chatInputTheme,
+  slashCatalogFacet,
+} from "../codemirror/chat-input-tags";
 import ChatAutocompletePopup from "./ChatAutocompletePopup.vue";
 import {
   applyAutocompleteCompletion,

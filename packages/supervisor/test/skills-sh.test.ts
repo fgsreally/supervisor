@@ -1,8 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import {
-  searchSkillsSh,
-  skillInstallSourceFromSearchHit,
-} from "../src/resources/skills-sh.js";
+import { searchSkillsSh, skillInstallSourceFromSearchHit } from "../src/resources/skills-sh.js";
 
 describe("skills-sh helpers", () => {
   it("builds owner/repo@skill install sources", () => {

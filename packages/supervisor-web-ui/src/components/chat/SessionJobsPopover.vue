@@ -1,5 +1,5 @@
 <template>
-  <div v-if="totalCount" class="jobs-popover-wrap">
+  <div v-if="totalCount" ref="root" class="jobs-popover-wrap">
     <ChatHeaderAction
       :title="summaryTitle"
       :active="open"
@@ -86,6 +86,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { Activity, ChevronRight, Clock3, RefreshCw } from "lucide-vue-next";
+import { useOutsideDismiss } from "@/composables/use-outside-dismiss";
 import {
   cancelSessionJob,
   getSessionJobs,
@@ -103,11 +104,19 @@ export interface JobDetailRequest {
   terminal?: "bash";
 }
 
-const props = defineProps<{ sessionId: string }>();
+const props = withDefaults(defineProps<{ sessionId: string; dismissOnOutside?: boolean }>(), {
+  dismissOnOutside: true,
+});
 const emit = defineEmits<{ detail: [request: JobDetailRequest] }>();
 const jobs = ref<SessionJob[]>([]);
 const schedules = ref<SessionJobSchedule[]>([]);
 const open = ref(false);
+const root = ref<HTMLElement | null>(null);
+useOutsideDismiss(
+  root,
+  () => (open.value = false),
+  () => open.value && props.dismissOnOutside,
+);
 const loading = ref(false);
 const expandedId = ref<string>();
 const inputs = reactive<Record<string, string>>({});

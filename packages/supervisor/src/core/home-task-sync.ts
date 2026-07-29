@@ -28,11 +28,7 @@ export function syncHomeTaskFromSessionStatus(
   if (!nextStatus) return;
 
   const error =
-    nextStatus === "error"
-      ? status === "stopped"
-        ? "session stopped"
-        : "session error"
-      : null;
+    nextStatus === "error" ? (status === "stopped" ? "session stopped" : "session error") : null;
 
   if (task.status !== nextStatus || task.error !== error) {
     db.updateHomeTask(task.id, { status: nextStatus, error });

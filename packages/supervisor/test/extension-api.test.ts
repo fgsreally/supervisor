@@ -349,7 +349,8 @@ describe("extension api", () => {
       }
     }) as RuntimeOptions["deps"]["broadcast"];
     const runtime = new SessionExtensionHost(createExtensionTestContext(options));
-    const { submitApprovalResolution } = await import("../src/extension/runtime/index.js");
+    const { listPendingApprovals, submitApprovalResolution } =
+      await import("../src/extension/runtime/index.js");
 
     const promise = runtime.services.uiApproval.requestApproval({
       kind: "plan_review",
@@ -359,8 +360,17 @@ describe("extension api", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(approvalId).toBeTruthy();
+    expect(listPendingApprovals(1)).toEqual([
+      expect.objectContaining({
+        type: "approval.pending",
+        approvalId,
+        kind: "plan_review",
+        title: "Plan",
+      }),
+    ]);
     submitApprovalResolution(1, approvalId, { action: "approve" });
     await expect(promise).resolves.toEqual({ action: "approve" });
+    expect(listPendingApprovals(1)).toEqual([]);
   });
 
   it("每个 Agent 的扩展工具注册表彼此隔离", async () => {

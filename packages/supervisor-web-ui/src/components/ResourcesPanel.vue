@@ -128,7 +128,7 @@ const skillMode = ref<"search" | "link">("search");
 const kinds = [
   { id: "skills" as const, label: "Skills" },
   { id: "extensions" as const, label: "Extensions" },
-  { id: "prompts" as const, label: "Prompt Template" },
+  { id: "prompts" as const, label: "Template" },
   { id: "mcp" as const, label: "MCP" },
 ];
 
@@ -145,7 +145,7 @@ const showAction = computed(
 const actionTitle = computed(() => {
   if (kind.value === "mcp") return "新建 MCP";
   if (kind.value === "extensions") return "安装扩展";
-  return "新建 Prompt Template";
+  return "新建 Template";
 });
 
 const createKind = computed<"prompt" | "mcp">(() => (kind.value === "mcp" ? "mcp" : "prompt"));

@@ -28,9 +28,9 @@
       <section class="agent-form-card mx-auto max-w-xl rounded-lg p-4 space-y-4">
         <div class="flex items-center gap-3">
           <AgentAvatar
-            :agent-id="draft.id || draft.backendType"
+            agent-id="native"
             :agent-name="draft.name || 'Agent'"
-            :icon="draft.icon"
+            :icon="avatarPreview"
             class="w-12 h-12 text-lg"
           />
           <label class="block flex-1 text-[13px]">
@@ -39,7 +39,7 @@
               <input
                 v-model="draft.icon"
                 type="text"
-                placeholder="图片 URL 或 Iconify ID"
+                placeholder="图片 URL"
                 class="agent-form-input flex-1 min-w-0 px-3 py-2 rounded-md"
               />
               <input
@@ -62,32 +62,12 @@
           </label>
         </div>
         <label class="block text-[13px]">
-          <span class="agent-form-label mb-1 block">运行后端</span>
-          <select v-model="draft.backendType" class="agent-form-input w-full px-3 py-2 rounded-md">
-            <option value="native">Supervisor</option>
-            <option value="codex">Codex</option>
-            <option value="claude">Claude Code</option>
-            <option value="kimi">Kimi Code</option>
-            <option value="acp">ACP 外部进程</option>
-          </select>
-        </label>
-        <label class="block text-[13px]">
           <span class="agent-form-label mb-1 block">名称</span>
           <input
             v-model="draft.name"
             type="text"
             placeholder="例如 文档助手"
             class="agent-form-input w-full px-3 py-2 rounded-md"
-          />
-        </label>
-
-        <label class="block text-[13px]">
-          <span class="agent-form-label mb-1 block">ID（可选）</span>
-          <input
-            v-model="draft.id"
-            type="text"
-            placeholder="留空则自动生成"
-            class="agent-form-input w-full px-3 py-2 rounded-md font-mono"
           />
         </label>
 
@@ -100,7 +80,7 @@
           />
         </label>
 
-        <label v-if="draft.backendType === 'native'" class="block text-[13px]">
+        <label class="block text-[13px]">
           <span class="agent-form-label mb-1 block">模型</span>
           <ModelTreeSelect
             v-model="draft.modelId"
@@ -110,54 +90,34 @@
           />
         </label>
 
-        <template v-if="draft.backendType !== 'native'">
-          <label class="block text-[13px]">
-            <span class="agent-form-label mb-1 block">命令</span>
-            <input
-              v-model="draft.command"
-              type="text"
-              :placeholder="commandPlaceholder"
-              class="agent-form-input w-full px-3 py-2 rounded-md font-mono"
-            />
-          </label>
-          <label class="block text-[13px]">
-            <span class="agent-form-label mb-1 block">命令行参数（每行一个）</span>
-            <textarea
-              v-model="draft.args"
-              rows="5"
-              placeholder="--model&#10;sonnet"
-              class="agent-form-input w-full px-3 py-2 rounded-md font-mono resize-y"
-            />
-          </label>
-        </template>
-
-        <label class="block text-[13px]">
-          <span class="agent-form-label mb-1 block">工具集</span>
-          <select v-model="draft.toolsPreset" class="agent-form-input w-full px-3 py-2 rounded-md">
-            <option value="coding">coding</option>
-            <option value="readonly">readonly</option>
-            <option value="none">none</option>
-          </select>
-        </label>
-
-        <template v-if="draft.backendType === 'native'">
-          <AgentPermissionEditor v-model="draft.permissionRules" />
-          <section class="text-[13px]">
-            <div class="agent-form-label mb-2">默认子 Agent</div>
-            <div v-if="nativeAgents.length" class="grid gap-2">
-              <label v-for="agent in nativeAgents" :key="agent.id" class="flex items-center gap-2">
-                <input v-model="draft.subagentIds" type="checkbox" :value="Number(agent.id)" />
-                <span>{{ agent.name }}</span>
-              </label>
-            </div>
-            <div v-else class="agent-form-hint">暂无可选择的内部 Agent</div>
-          </section>
-        </template>
+        <AgentPermissionEditor v-model="draft.permissionRules" />
+        <section class="text-[13px]">
+          <div class="agent-form-label mb-2">默认子 Agent</div>
+          <div v-if="nativeAgents.length" class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label
+              v-for="agent in nativeAgents"
+              :key="agent.id"
+              class="agent-form-subagent flex items-center gap-2.5 rounded-md border px-3 py-2.5"
+            >
+              <input v-model="draft.subagentIds" type="checkbox" :value="Number(agent.id)" />
+              <AgentAvatar
+                :agent-id="agent.id"
+                :agent-name="agent.name"
+                :icon="agent.avatar"
+                class="h-7 w-7"
+              />
+              <span class="min-w-0 truncate">{{ agent.name }}</span>
+            </label>
+          </div>
+          <div v-else class="agent-form-hint">暂无可选择的内部 Agent</div>
+        </section>
       </section>
 
       <p class="mx-auto mt-4 max-w-xl text-[12px] agent-form-hint leading-relaxed">
-        创建后可在 Skills / Extensions / Prompt Template 页从全局库关联资源。全局资源目录：
-        <code class="font-mono">~/.pi/supervisor/global/</code>
+        <span class="block">创建后可在 Skills / Extensions / Template 页从全局库关联资源。</span>
+        <span class="mt-1 block"
+          >全局资源目录：<code class="font-mono">~/.pi/supervisor/global/</code></span
+        >
       </p>
     </div>
   </div>
@@ -191,16 +151,12 @@ const uploading = ref(false);
 const iconInput = ref<HTMLInputElement | null>(null);
 
 const draft = ref({
-  id: "",
   name: "",
   description: "",
   icon: "",
-  backendType: "native" as "native" | "codex" | "claude" | "kimi" | "acp",
   providerId: "",
   modelId: "",
   toolsPreset: "coding" as ToolsPreset,
-  command: "",
-  args: "",
   permissionRules: structuredClone(DEFAULT_AGENT_PERMISSION_RULES) as AgentPermissionRules,
   subagentIds: [] as number[],
 });
@@ -208,6 +164,10 @@ const draft = ref({
 const nativeAgents = computed(() =>
   agentStore.agents.filter((agent) => agent.backendType === "native"),
 );
+const avatarPreview = computed(() => {
+  const value = draft.value.icon.trim();
+  return /^(https?:\/\/|\/)/i.test(value) ? value : null;
+});
 
 const providerOptions = computed(() =>
   providerStore.providers
@@ -247,17 +207,9 @@ watch(
 
 const canSave = computed(() => {
   if (!draft.value.name.trim()) return false;
-  if (draft.value.backendType !== "native") {
-    return draft.value.backendType !== "acp" || !!draft.value.command.trim();
-  }
+  const avatar = draft.value.icon.trim();
+  if (avatar && !/^(https?:\/\/|\/)/i.test(avatar)) return false;
   return true;
-});
-
-const commandPlaceholder = computed(() => {
-  if (draft.value.backendType === "codex") return "例如 codex";
-  if (draft.value.backendType === "claude") return "例如 claude";
-  if (draft.value.backendType === "kimi") return "例如 kimi";
-  return "外部 Agent 命令";
 });
 
 function onModelChange(modelId: string) {
@@ -284,31 +236,14 @@ async function save() {
   saving.value = true;
   try {
     const agent = await agentStore.createAgent({
-      id: draft.value.id.trim() || undefined,
       name: draft.value.name.trim(),
       description: draft.value.description.trim() || undefined,
       avatar: draft.value.icon.trim() || null,
-      backendType: draft.value.backendType,
-      modelId:
-        draft.value.backendType === "native" && draft.value.modelId
-          ? draft.value.modelId
-          : undefined,
+      backendType: "native",
+      modelId: draft.value.modelId || undefined,
       toolsPreset: draft.value.toolsPreset,
-      permissionRules:
-        draft.value.backendType === "native" ? draft.value.permissionRules : undefined,
-      meta:
-        draft.value.backendType === "native"
-          ? { subagentIds: draft.value.subagentIds }
-          : draft.value.command.trim()
-            ? {
-                command: draft.value.command.trim(),
-                args: draft.value.args
-                  .split(/\r?\n/)
-                  .map((arg) => arg.trim())
-                  .filter(Boolean),
-                permissionPolicy: "reject_once",
-              }
-            : undefined,
+      permissionRules: draft.value.permissionRules,
+      meta: { subagentIds: draft.value.subagentIds },
     });
     showUiMessage("智能代理创建成功", "success");
     emit("saved", agent.id);
@@ -370,6 +305,14 @@ async function save() {
 
 .agent-form-hint {
   color: var(--app-text-muted);
+}
+
+.agent-form-subagent {
+  border-color: var(--app-border);
+  color: var(--app-text-primary);
+}
+.agent-form-subagent:hover {
+  background: var(--app-hover);
 }
 
 .agent-form-upload {

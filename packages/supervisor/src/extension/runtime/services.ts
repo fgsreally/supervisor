@@ -494,6 +494,22 @@ type PendingApproval = {
 
 const pendingApprovals = new Map<string, Map<string, PendingApproval>>();
 
+export function listPendingApprovals(
+  sessionId: string | number,
+): Array<
+  ApprovalRequest & { type: "approval.pending"; sessionId: string | number; approvalId: string }
+> {
+  const sessionMap = pendingApprovals.get(String(sessionId));
+  if (!sessionMap) return [];
+  return [...sessionMap.entries()].map(([approvalId, pending]) => ({
+    type: "approval.pending",
+    sessionId,
+    approvalId,
+    ...pending.request,
+    actions: pending.request.actions ?? ["approve", "reject", "revise"],
+  }));
+}
+
 export function submitApprovalResolution(
   sessionId: string | number,
   approvalId: string,
@@ -501,6 +517,8 @@ export function submitApprovalResolution(
 ): boolean {
   const pending = pendingApprovals.get(String(sessionId))?.get(approvalId);
   if (!pending) return false;
+  const allowedActions = pending.request.actions ?? ["approve", "reject", "revise"];
+  if (!allowedActions.includes(result.action)) return false;
   pending.resolve(result);
   cleanupApproval(sessionId, approvalId);
   return true;

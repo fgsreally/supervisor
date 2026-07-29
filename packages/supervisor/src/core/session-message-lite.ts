@@ -5,7 +5,14 @@ export const LITE_TEXT_CHARS = 4_000;
 export const LITE_TOOL_RESULT_CHARS = 1_500;
 export const LITE_ARG_STRING_CHARS = 500;
 
-type ContentPart = { type: string; text?: string; thinking?: string; data?: unknown; arguments?: unknown; [key: string]: unknown };
+type ContentPart = {
+  type: string;
+  text?: string;
+  thinking?: string;
+  data?: unknown;
+  arguments?: unknown;
+  [key: string]: unknown;
+};
 
 function truncateText(text: string, max: number): { text: string; truncated: boolean } {
   if (text.length <= max) return { text, truncated: false };
@@ -28,7 +35,10 @@ function truncateArgValue(value: unknown): unknown {
   return value;
 }
 
-function liteContentParts(parts: ContentPart[], textMax: number): {
+function liteContentParts(
+  parts: ContentPart[],
+  textMax: number,
+): {
   parts: ContentPart[];
   truncated: boolean;
 } {

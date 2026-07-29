@@ -25,10 +25,7 @@ import type { SessionExtensionHost } from "../../extension/runtime/index.js";
 import type { ManagedSessionRuntime } from "../managed-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
 import type { SessionState, SlashCommandInfo } from "../session-runtime.js";
-import {
-  resolveSessionPromptImages,
-  type SessionPromptImage,
-} from "../session-media.js";
+import { resolveSessionPromptImages, type SessionPromptImage } from "../session-media.js";
 import { SQLiteSessionStorage } from "../session-storage.js";
 import { getExternalAgentConfig } from "./external-agent-config.js";
 import { sessionServicePortEnv } from "../session-services.js";
@@ -156,7 +153,9 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
       } else {
         const created = await connection.newSession({ cwd: options.session.cwd, mcpServers: [] });
         runtime.backendSessionId = created.sessionId;
-        options.db.updateSessionFields(options.session.id, { externalSessionId: created.sessionId });
+        options.db.updateSessionFields(options.session.id, {
+          externalSessionId: created.sessionId,
+        });
       }
       return runtime;
     } catch (error) {
@@ -317,7 +316,11 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     });
   }
 
-  async prompt(message: string, images?: SessionPromptImage[], source?: string | null): Promise<void> {
+  async prompt(
+    message: string,
+    images?: SessionPromptImage[],
+    source?: string | null,
+  ): Promise<void> {
     if (this.running) throw new Error(`Session ${this.id} is already running`);
     const work = this.runPrompt(message, images, source);
     this.running = work;

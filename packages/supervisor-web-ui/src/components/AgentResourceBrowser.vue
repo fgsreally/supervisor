@@ -87,28 +87,32 @@
             class="resource-browser-editor flex-1 min-h-[200px] border rounded-sm flex flex-col overflow-hidden"
           >
             <div
-              class="resource-browser-editor-header px-4 py-2.5 border-b flex items-center gap-2 min-w-0 shrink-0"
+              class="resource-browser-editor-header border-b flex items-center gap-3 min-w-0 shrink-0 px-4 py-2.5"
             >
-              <span class="text-[12px] font-medium truncate">{{ selectedSkill.name }}</span>
-              <span class="resource-browser-separator">/</span>
-              <span class="text-[12px] font-mono truncate">{{ selectedFile.fileName }}</span>
-              <ResourceLayerBadge :layer="selectedSkill.layer" />
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="text-[12px] font-medium truncate">{{ selectedSkill.name }}</span>
+                  <span class="resource-browser-separator">/</span>
+                  <span class="text-[12px] font-mono truncate">{{ selectedFile.fileName }}</span>
+                  <ResourceLayerBadge :layer="selectedSkill.layer" />
+                </div>
+                <div
+                  v-if="selectedSkill.rootPath"
+                  class="resource-browser-editor-path mt-1 text-[11px] font-mono truncate"
+                  :title="`${selectedSkill.rootPath}/${selectedFile.fileName}`"
+                >
+                  {{ selectedSkill.rootPath }}/{{ selectedFile.fileName }}
+                </div>
+              </div>
               <button
                 v-if="previewItem"
                 type="button"
-                class="resource-browser-add ml-auto shrink-0 rounded px-3 py-1.5 text-[12px]"
+                class="resource-browser-add shrink-0 rounded px-3 py-1.5 text-[12px]"
                 :disabled="!!bindingItemId"
                 @click="bindGlobalItem(previewItem)"
               >
                 {{ bindingItemId === previewItem.id ? "添加中..." : "添加到 Agent" }}
               </button>
-            </div>
-            <div
-              v-if="selectedSkill.rootPath"
-              class="resource-browser-editor-path px-4 py-1.5 border-b text-[11px] font-mono truncate shrink-0"
-              :title="`${selectedSkill.rootPath}/${selectedFile.fileName}`"
-            >
-              {{ selectedSkill.rootPath }}/{{ selectedFile.fileName }}
             </div>
             <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
               <ResourceContentView
@@ -180,28 +184,33 @@
             class="resource-browser-editor flex-1 min-h-[200px] border rounded-sm flex flex-col overflow-hidden"
           >
             <div
-              class="resource-browser-editor-header px-4 py-2.5 border-b flex items-center gap-2 min-w-0 shrink-0"
+              class="resource-browser-editor-header border-b flex items-center gap-3 min-w-0 shrink-0 px-4 py-2.5"
             >
-              <span class="text-[12px] truncate">{{
-                getFileBaseName(activeFlatItem.fileName)
-              }}</span>
-              <ResourceLayerBadge :layer="activeFlatItem.layer" />
+              <div class="min-w-0 flex-1">
+                <div class="flex items-center gap-2 min-w-0">
+                  <span class="text-[12px] truncate">{{
+                    getFileBaseName(activeFlatItem.fileName)
+                  }}</span>
+                  <ResourceLayerBadge :layer="activeFlatItem.layer" />
+                </div>
+                <div
+                  v-if="activeFlatItem.layer === 'global'"
+                  class="resource-browser-editor-path mt-1 text-[11px] font-mono truncate"
+                  :title="activeFlatItem.path"
+                >
+                  {{ activeFlatItem.path }}
+                </div>
+              </div>
+              <TemplateSyntaxHelpButton v-if="kind === 'prompts'" />
               <button
                 v-if="previewItem"
                 type="button"
-                class="resource-browser-add ml-auto shrink-0 rounded px-3 py-1.5 text-[12px]"
+                class="resource-browser-add shrink-0 rounded px-3 py-1.5 text-[12px]"
                 :disabled="!!bindingItemId"
                 @click="bindGlobalItem(previewItem)"
               >
                 {{ bindingItemId === previewItem.id ? "添加中..." : "添加到 Agent" }}
               </button>
-            </div>
-            <div
-              v-if="activeFlatItem.layer === 'global'"
-              class="resource-browser-editor-path px-4 py-1.5 border-b text-[11px] font-mono truncate shrink-0"
-              :title="activeFlatItem.path"
-            >
-              {{ activeFlatItem.path }}
             </div>
             <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
               <ResourceContentView
@@ -233,6 +242,7 @@ import ResourceLayerBadge from "./ResourceLayerBadge.vue";
 import ResizeHandle from "./ResizeHandle.vue";
 import SkillFileTree from "./SkillFileTree.vue";
 import SkillListItem from "./SkillListItem.vue";
+import TemplateSyntaxHelpButton from "./TemplateSyntaxHelpButton.vue";
 import { useAgentStore, useResourceStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { useResizableWidth } from "@/composables/use-resizable-width";
@@ -546,16 +556,13 @@ watch(
 .resource-browser-empty {
   color: var(--app-text-muted);
 }
-
 .resource-browser-add {
   color: #fff;
   background: var(--app-accent);
 }
-
 .resource-browser-add:hover:not(:disabled) {
   background: var(--app-accent-hover);
 }
-
 .resource-browser-add:disabled {
   cursor: wait;
   opacity: 0.6;

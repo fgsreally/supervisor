@@ -63,20 +63,24 @@
           <span class="text-[15px] resource-detail-subtitle font-mono truncate min-w-0 flex-1">{{
             contentTitle
           }}</span>
-          <span v-if="canEditContent && dirty" class="text-[11px] resource-detail-dirty shrink-0"
-            >未保存</span
-          >
+          <TemplateSyntaxHelpButton v-if="resource.kind === 'prompts'" />
           <template v-if="canEditContent">
-            <button
-              type="button"
-              class="list-header-btn shrink-0"
+            <UiActionButton
+              variant="secondary"
+              class="resource-detail-save shrink-0"
               title="保存"
+              aria-label="保存"
+              :loading="saving"
               :disabled="saving || !dirty"
               @click="saveContent"
             >
-              <Loader2 v-if="saving" class="w-4 h-4 animate-spin" />
-              <Save v-else class="w-4 h-4" />
-            </button>
+              <span
+                v-if="saveState"
+                class="resource-detail-save-dot"
+                :class="`resource-detail-save-dot--${saveState}`"
+              />
+              <Save v-if="!saving" class="w-4 h-4" />
+            </UiActionButton>
             <button
               type="button"
               class="list-header-btn list-header-btn--danger shrink-0"
@@ -113,6 +117,8 @@ import { computed, ref, watch } from "vue";
 import { ChevronLeft, Loader2, Save, Trash2 } from "lucide-vue-next";
 import ResourceContentView from "../components/ResourceContentView.vue";
 import SkillFileTree from "../components/SkillFileTree.vue";
+import TemplateSyntaxHelpButton from "../components/TemplateSyntaxHelpButton.vue";
+import UiActionButton from "../components/UiActionButton.vue";
 import { uninstallCatalogResource, upsertResourceContent, type CatalogResourceKind } from "@/api";
 import { useResourceStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
@@ -168,6 +174,7 @@ const resourcePath = computed(() => {
 const selectedFileId = ref<string | null>(null);
 const draftContent = ref<string | undefined>(undefined);
 const saving = ref(false);
+const saveState = ref<"changed" | "saved" | null>(null);
 const deleting = ref(false);
 const actionError = ref<string | null>(null);
 
@@ -176,6 +183,7 @@ watch(
   () => {
     const r = resource.value;
     actionError.value = null;
+    saveState.value = null;
     if (r && isSkillItem(r)) {
       selectedFileId.value = r.files[0]?.id ?? null;
       draftContent.value = r.files[0]?.content ?? "";
@@ -232,7 +240,7 @@ const kindLabel = computed(() => {
     case "extensions":
       return "Extension";
     case "prompts":
-      return "Prompt Template";
+      return "Template";
     case "mcp":
       return "MCP 配置";
     default:
@@ -243,6 +251,7 @@ const kindLabel = computed(() => {
 function onContentUpdate(value: string) {
   if (!canEditContent.value) return;
   draftContent.value = value;
+  saveState.value = dirty.value ? "changed" : null;
 }
 
 function catalogKind(): CatalogResourceKind | null {
@@ -269,9 +278,12 @@ async function saveContent() {
       content: draftContent.value ?? "",
     });
     await resourceStore.fetchGlobalResources();
+    saveState.value = "saved";
     showUiMessage("已保存", "success");
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : String(err);
+    saveState.value = "changed";
+    showUiMessage(actionError.value || "保存失败", "error");
   } finally {
     saving.value = false;
   }
@@ -379,7 +391,27 @@ async function removeResource() {
   color: var(--app-error, #d33);
 }
 
-.resource-detail-dirty {
-  color: var(--app-warning, #c97800);
+.resource-detail-save {
+  position: relative;
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
+.resource-detail-save-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+}
+
+.resource-detail-save-dot--changed {
+  background: #f59e0b;
+}
+
+.resource-detail-save-dot--saved {
+  background: #22c55e;
 }
 </style>

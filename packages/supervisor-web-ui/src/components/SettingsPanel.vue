@@ -640,14 +640,15 @@ onMounted(async () => {
 }
 .settings-card {
   overflow: hidden;
-  padding: 0 22px 16px;
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 8px;
+  padding: 0 20px 10px;
+  border: 0;
+  border-radius: 12px;
   background: var(--app-settings-card);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
 }
 .settings-card h2 {
-  margin: 0 -22px;
-  padding: 16px 22px 13px;
+  margin: 0 -20px;
+  padding: 14px 20px 11px;
   border-bottom: 1px solid var(--app-border-subtle);
   font-size: 15px;
   font-weight: 600;
@@ -664,10 +665,14 @@ onMounted(async () => {
   grid-template-columns: 180px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  min-height: 58px;
+  min-height: 50px;
   border-bottom: 1px solid var(--app-border-subtle);
   font-size: 14px;
   color: var(--app-text-primary);
+}
+.settings-field :deep(.model-tree-select) {
+  width: min(360px, 100%);
+  justify-self: end;
 }
 .settings-field > span {
   display: flex;
@@ -681,8 +686,8 @@ onMounted(async () => {
 select,
 input {
   width: 100%;
-  min-height: 38px;
-  padding: 8px 12px;
+  min-height: 34px;
+  padding: 6px 10px;
   border: 1px solid transparent;
   border-radius: 7px;
   outline: none;
@@ -702,7 +707,7 @@ input:focus {
   grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 14px;
-  min-height: 64px;
+  min-height: 56px;
   border-bottom: 1px solid var(--app-border-subtle);
 }
 .service-row:last-child {

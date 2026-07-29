@@ -13,10 +13,7 @@ import type { Agent, Session } from "../../types.js";
 import type { ManagedSessionRuntime } from "../managed-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
 import type { SessionState, SlashCommandInfo } from "../session-runtime.js";
-import {
-  resolveSessionPromptImages,
-  type SessionPromptImage,
-} from "../session-media.js";
+import { resolveSessionPromptImages, type SessionPromptImage } from "../session-media.js";
 import { SQLiteSessionStorage } from "../session-storage.js";
 import { appendLlmErrorMessage } from "../session-llm-error.js";
 import { beginSessionTiming, timedSessionStep } from "../../utils/session-timing.js";
@@ -121,7 +118,11 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     });
   }
 
-  async prompt(message: string, images?: SessionPromptImage[], source?: string | null): Promise<void> {
+  async prompt(
+    message: string,
+    images?: SessionPromptImage[],
+    source?: string | null,
+  ): Promise<void> {
     if (this.running) throw new Error(`Session ${this.id} is already running`);
     const work = this.runPrompt(message, images, source);
     this.running = work;

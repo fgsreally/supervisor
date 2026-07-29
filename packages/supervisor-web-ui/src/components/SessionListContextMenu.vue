@@ -12,6 +12,7 @@
         @mousedown.stop
       >
         <button
+          v-if="!protectedSession"
           type="button"
           class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
           @click="emit('pin')"
@@ -19,7 +20,7 @@
           {{ pinned ? "取消置顶" : "置顶" }}
         </button>
         <button
-          v-if="status !== 'finish'"
+          v-if="!protectedSession && status !== 'finish'"
           type="button"
           class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
           @click="emit('achieve')"
@@ -27,7 +28,7 @@
           完成并归档
         </button>
         <button
-          v-else
+          v-else-if="!protectedSession"
           type="button"
           class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
           @click="emit('fork')"
@@ -35,6 +36,7 @@
           Fork 后继续
         </button>
         <button
+          v-if="!protectedSession"
           type="button"
           class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
           @click="emit('delete')"
@@ -53,6 +55,7 @@ defineProps<{
   y: number;
   status?: string;
   pinned?: boolean;
+  protectedSession?: boolean;
 }>();
 
 const emit = defineEmits<{

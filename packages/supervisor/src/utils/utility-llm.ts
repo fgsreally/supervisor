@@ -198,7 +198,7 @@ export async function generateTaskDecomposition(
 ): Promise<TaskDecompositionSubtask[]> {
   const prompt = [
     "Decompose the user task into concrete executable subtasks for coding agents.",
-    "Return ONLY valid JSON with shape: {\"subtasks\":[{\"title\":\"...\",\"prompt\":\"...\"}]}",
+    'Return ONLY valid JSON with shape: {"subtasks":[{"title":"...","prompt":"..."}]}',
     "Rules:",
     "- 2 to 8 subtasks",
     "- each prompt must be a self-contained instruction the agent can start from",
@@ -212,7 +212,10 @@ export async function generateTaskDecomposition(
   ].join("\n");
 
   const text = await completeUtilityText(auth, prompt);
-  const jsonText = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  const jsonText = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
   let parsed: unknown;
   try {
     parsed = JSON.parse(jsonText);

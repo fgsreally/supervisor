@@ -1,19 +1,32 @@
 <template>
   <div class="global-resource-bind-bar shrink-0 px-2 py-2">
-    <div class="global-resource-bind-bar__label mb-1.5 text-[10px] font-medium">从全局库添加</div>
+    <div class="global-resource-bind-bar__label mb-1.5 text-[10px] font-medium">从全局添加</div>
     <div class="custom-scrollbar flex max-h-28 flex-col gap-0.5 overflow-y-auto">
-      <button
+      <div
         v-for="item in items"
         :key="item.id"
-        type="button"
-        :disabled="!!bindingItemId"
-        class="global-resource-bind-bar__btn truncate rounded px-2 py-1.5 text-left text-[12px]"
-        :title="item.description"
-        @click="emit('preview', item)"
+        class="global-resource-bind-bar__row flex items-center gap-1 rounded px-1 py-0.5"
       >
-        <Loader2 v-if="bindingItemId === item.id" class="global-resource-bind-bar__spinner" />
-        <span v-else>+</span> {{ item.name }}
-      </button>
+        <button
+          type="button"
+          class="global-resource-bind-bar__preview min-w-0 flex-1 truncate rounded px-1 py-1 text-left text-[12px]"
+          :title="item.description"
+          @click="emit('preview', item)"
+        >
+          {{ item.name }}
+        </button>
+        <button
+          type="button"
+          class="global-resource-bind-bar__add flex h-7 w-7 shrink-0 items-center justify-center rounded"
+          :disabled="!!bindingItemId"
+          :title="`添加 ${item.name}`"
+          :aria-label="`添加 ${item.name}`"
+          @click="emit('bind', item)"
+        >
+          <Loader2 v-if="bindingItemId === item.id" class="global-resource-bind-bar__spinner" />
+          <Plus v-else class="h-4 w-4" />
+        </button>
+      </div>
       <div v-if="items.length === 0" class="text-muted px-2 py-1.5 text-[11px]">无可用项</div>
     </div>
     <ExtensionInstallBox
@@ -25,7 +38,7 @@
 </template>
 
 <script setup lang="ts">
-import { Loader2 } from "lucide-vue-next";
+import { Loader2, Plus } from "lucide-vue-next";
 import ExtensionInstallBox from "./ExtensionInstallBox.vue";
 import type { UIResourceItem, UIResourceKind } from "@/types/ui";
 
@@ -53,20 +66,20 @@ const emit = defineEmits<{
   color: var(--app-text-muted);
 }
 
-.global-resource-bind-bar__btn {
-  display: flex;
+.global-resource-bind-bar__preview,
+.global-resource-bind-bar__add {
   cursor: pointer;
-  align-items: center;
-  gap: 0.35rem;
   color: var(--app-text-secondary);
 }
 
-.global-resource-bind-bar__btn:hover {
+.global-resource-bind-bar__row:hover,
+.global-resource-bind-bar__preview:hover,
+.global-resource-bind-bar__add:hover:not(:disabled) {
   color: var(--app-text-primary);
   background: var(--app-hover);
 }
 
-.global-resource-bind-bar__btn:disabled {
+.global-resource-bind-bar__add:disabled {
   cursor: wait;
   opacity: 0.65;
 }

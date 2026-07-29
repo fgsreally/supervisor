@@ -5,6 +5,7 @@ export function useResizableWidth(options: {
   minWidth: number;
   maxWidth: number;
   storageKey?: string;
+  direction?: "ltr" | "rtl";
 }) {
   const stored =
     options.storageKey && typeof localStorage !== "undefined"
@@ -27,7 +28,8 @@ export function useResizableWidth(options: {
   }
 
   function onPointerMove(e: PointerEvent) {
-    const next = startWidth + (e.clientX - startX);
+    const delta = e.clientX - startX;
+    const next = startWidth + (options.direction === "rtl" ? -delta : delta);
     width.value = Math.min(options.maxWidth, Math.max(options.minWidth, next));
   }
 

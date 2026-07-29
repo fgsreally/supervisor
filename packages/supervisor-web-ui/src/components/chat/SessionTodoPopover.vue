@@ -1,5 +1,5 @@
 <template>
-  <div class="todo-popover-wrap">
+  <div ref="root" class="todo-popover-wrap">
     <ChatHeaderAction
       :title="`Todo · ${todos.length}`"
       :active="open"
@@ -14,10 +14,13 @@
       </header>
       <ul>
         <li v-for="todo in todos" :key="`${todo.status}:${todo.title}`">
-          <CheckCircle2 v-if="todo.status === 'done'" class="todo-done" />
+          <CheckCircle2 v-if="todo.status === 'completed'" class="todo-done" />
           <Loader2 v-else-if="todo.status === 'in_progress'" class="todo-progress" />
           <Circle v-else />
-          <span :class="{ completed: todo.status === 'done' }">{{ todo.title }}</span>
+          <span
+            :class="{ completed: todo.status === 'completed' || todo.status === 'cancelled' }"
+            >{{ todo.title }}</span
+          >
         </li>
       </ul>
     </section>
@@ -29,10 +32,22 @@ import { computed, ref } from "vue";
 import { CheckCircle2, Circle, ClipboardList, Loader2 } from "lucide-vue-next";
 import type { TodoItem } from "@/api";
 import ChatHeaderAction from "./ChatHeaderAction.vue";
+import { useOutsideDismiss } from "@/composables/use-outside-dismiss";
 
-const props = defineProps<{ todos: TodoItem[] }>();
+const props = withDefaults(defineProps<{ todos: TodoItem[]; dismissOnOutside?: boolean }>(), {
+  dismissOnOutside: true,
+});
 const open = ref(false);
-const completedCount = computed(() => props.todos.filter((todo) => todo.status === "done").length);
+const root = ref<HTMLElement | null>(null);
+useOutsideDismiss(
+  root,
+  () => (open.value = false),
+  () => open.value && props.dismissOnOutside,
+);
+const completedCount = computed(
+  () =>
+    props.todos.filter((todo) => todo.status === "completed" || todo.status === "cancelled").length,
+);
 </script>
 
 <style scoped>

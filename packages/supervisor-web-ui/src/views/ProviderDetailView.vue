@@ -19,13 +19,25 @@
         :icon="provider.icon"
         class="w-10 h-10"
       />
-      <div class="flex-1 min-w-0">
-        <div class="text-[16px] font-medium truncate provider-detail-title">
-          {{ provider.name }}
+      <div class="flex flex-1 min-w-0 items-center gap-3">
+        <div class="min-w-0">
+          <div class="min-w-0 truncate text-[16px] font-medium provider-detail-title">
+            {{ provider.name }}
+          </div>
+          <div class="text-[12px] truncate font-mono mt-0.5 provider-detail-subtitle">
+            {{ provider.models.length }} 个模型
+          </div>
         </div>
-        <div class="text-[12px] truncate font-mono mt-0.5 provider-detail-subtitle">
-          {{ provider.models.length }} 个模型
-        </div>
+        <label class="provider-detail-enable shrink-0">
+          <input
+            type="checkbox"
+            class="sr-only"
+            :checked="provider.isEnabled"
+            @change="emit('toggle-enabled', ($event.target as HTMLInputElement).checked)"
+          />
+          <span class="provider-detail-toggle" aria-hidden="true"><span /></span>
+          <span>{{ provider.isEnabled ? "已启用" : "已禁用" }}</span>
+        </label>
       </div>
       <button
         type="button"
@@ -43,19 +55,6 @@
             <div class="text-[14px] font-medium provider-detail-title">配置</div>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[13px]">
-            <div>
-              <div class="provider-detail-subtitle mb-2">状态</div>
-              <label class="provider-detail-enable">
-                <input
-                  type="checkbox"
-                  class="sr-only"
-                  :checked="provider.isEnabled"
-                  @change="emit('toggle-enabled', ($event.target as HTMLInputElement).checked)"
-                />
-                <span class="provider-detail-toggle" aria-hidden="true"><span /></span>
-                <span>{{ provider.isEnabled ? "已启用" : "已禁用" }}</span>
-              </label>
-            </div>
             <div>
               <div class="provider-detail-subtitle mb-1">API Type</div>
               <div class="provider-detail-title font-mono">{{ apiTypeLabel }}</div>

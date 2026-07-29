@@ -17,6 +17,8 @@ export interface AgentResourceCommandInfo {
   name: string;
   /** 展示给用户的命令说明。 */
   description?: string;
+  /** Template argument hint from frontmatter. */
+  argumentHint?: string;
   /** 命令来自 Skill 还是 Prompt Template。 */
   source: AgentResourceCommandSource;
   /** 命令源文件及加载层级信息。 */
@@ -126,6 +128,16 @@ export class AgentResource {
     this.loaded = true;
   }
 
+  /** Reload bindings and editable resource contents for an already running Session. */
+  reload(): void {
+    this.loaded = false;
+    this.loadedSkills = [];
+    this.userActivatedSkills.clear();
+    this.loadedPromptTemplates = [];
+    this.loadedSystemMd = "";
+    this.load();
+  }
+
   /** 返回用于拼入系统提示词的全部 Skill 文本。 */
   getSkillsPrompt(): string {
     return formatSkillsForPrompt(this.loadedSkills);
@@ -231,6 +243,7 @@ export class AgentResource {
       (template) => ({
         name: template.name,
         description: template.description,
+        argumentHint: template.argumentHint,
         source: "prompt",
         sourceInfo: template.sourceInfo,
       }),

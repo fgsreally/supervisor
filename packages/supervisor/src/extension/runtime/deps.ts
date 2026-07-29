@@ -27,7 +27,12 @@ import type {
   ToolInfo,
   WorkflowStatePatch,
 } from "../index.js";
-import type { SessionTaskKind, SessionTaskRow, SessionTodoRow, SessionTodoStatus } from "../../types.js";
+import type {
+  SessionTaskKind,
+  SessionTaskRow,
+  SessionTodoRow,
+  SessionTodoStatus,
+} from "../../types.js";
 
 function toTaskInfo(row: SessionTaskRow): SessionTaskInfo {
   return {
@@ -643,8 +648,8 @@ export function buildExtensionDeps(deps: {
     },
 
     // ── Broadcast ────────────────────────────────────────────────
-    broadcast: (_event: { type: string; [key: string]: unknown }) => {
-      // TODO: wire to SSE event stream for connected Web UI clients
+    broadcast: (event: { type: string; [key: string]: unknown }) => {
+      manager.publishSessionEvent(sessionId, event as never);
     },
 
     // ── Event bus ────────────────────────────────────────────────

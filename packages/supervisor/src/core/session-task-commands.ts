@@ -30,7 +30,6 @@ export function isTaskSlashCommand(name: string): boolean {
 
 export function mergeSlashCommands(commands: SlashCommandInfo[]): SlashCommandInfo[] {
   const merged = new Map<string, SlashCommandInfo>();
-  for (const command of TASK_SLASH_COMMANDS) merged.set(command.name, command);
   for (const command of commands) {
     const name = command.name.replace(/^\//, "").toLowerCase();
     merged.set(name, { ...command, name });
@@ -117,9 +116,7 @@ async function executeGoalCommand(
 
   const body =
     artifact.content.replace(/^---[\s\S]*?---\s*/m, "") +
-    (tail && (action === "pause" || action === "blocked")
-      ? `\n\n## Status reason\n\n${tail}`
-      : "");
+    (tail && (action === "pause" || action === "blocked") ? `\n\n## Status reason\n\n${tail}` : "");
   await writeTaskArtifact(sessionDir, task.path, {
     type: "goal",
     title: artifact.title,
@@ -135,7 +132,7 @@ async function executeGoalCommand(
   });
   if (FINISHED_GOAL_STATUSES.has(status)) {
     const current = db.get(sessionId);
-    if ((current?.meta as Record<string, unknown>).currentTask === task.path) {
+    if ((current?.meta as Record<string, unknown> | undefined)?.currentTask === task.path) {
       db.updateMeta(sessionId, { currentTask: null });
     }
   }

@@ -15,7 +15,8 @@ export type ChatEntryBase = {
   assets?: MessageAsset[];
   deliveryState?: "queued" | "failed";
   slashSource?: "skill" | "prompt" | "custom" | "mcp";
-  shadowSource?: string;
+  /** Agent/orchestrator input which remains role=user for the model. */
+  injectedSource?: string;
 };
 
 export interface ChatToolPart {

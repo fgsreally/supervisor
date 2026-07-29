@@ -137,7 +137,7 @@ export interface TaskArtifact {
 
 export interface TodoItem {
   title: string;
-  status: "pending" | "in_progress" | "done";
+  status: "pending" | "in_progress" | "completed" | "cancelled";
 }
 
 /** Agent definition */
@@ -250,6 +250,7 @@ export interface SkillInfo {
 export interface PromptTemplateInfo {
   name: string;
   description: string;
+  argumentHint?: string;
   filePath: string;
   content: string;
 }
@@ -730,7 +731,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, options);
+  const res = await fetch(`${API_BASE}${path}`, withAuth(options));
   if (!res.ok) {
     const err = await res.text().catch(() => "Unknown error");
     throw new Error(`HTTP ${res.status}: ${err}`);
@@ -740,6 +741,35 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(`接口 ${path} 返回了非 JSON 响应，请确认后端服务和开发代理已启动`);
   }
   return res.json() as Promise<T>;
+}
+
+const WEB_PASSWORD_KEY = "pi-supervisor-web-password";
+
+function withAuth(options: RequestInit = {}): RequestInit {
+  const password =
+    typeof localStorage === "undefined" ? "" : localStorage.getItem(WEB_PASSWORD_KEY);
+  if (!password) return options;
+  const headers = new Headers(options.headers);
+  headers.set("x-supervisor-password", password);
+  return { ...options, headers };
+}
+
+export function saveWebPassword(password: string): void {
+  localStorage.setItem(WEB_PASSWORD_KEY, password);
+}
+
+export function clearWebPassword(): void {
+  localStorage.removeItem(WEB_PASSWORD_KEY);
+}
+
+export async function getAuthStatus(): Promise<{ required: boolean; authenticated: boolean }> {
+  const response = await fetch(`${API_BASE}/auth/status`, withAuth());
+  // Backward compatibility while the web UI and Supervisor process are being
+  // upgraded independently: an older server has no auth endpoint and therefore
+  // must be treated as password protection disabled.
+  if (response.status === 404) return { required: false, authenticated: true };
+  if (!response.ok) throw new Error("无法检查登录状态");
+  return response.json() as Promise<{ required: boolean; authenticated: boolean }>;
 }
 
 /** Upload an avatar image and return its public path. */
@@ -823,8 +853,12 @@ export async function updateProject(id: string, options: UpdateProjectRequest): 
   return mapProject(project);
 }
 
-export async function deleteProject(id: string): Promise<{ ok: boolean }> {
-  return deleteRequest<{ ok: boolean }>(`/projects/${id}`);
+export async function deleteProject(id: string, name: string): Promise<{ ok: boolean }> {
+  return fetchJson<{ ok: boolean }>(`/projects/${id}`, {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
 }
 
 export interface ProjectGitResult {
@@ -1167,15 +1201,18 @@ export function promptSession(
 
   void (async () => {
     try {
-      const res = await fetch(`${API_BASE}/sessions/${id}/prompt`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message,
-          images: images?.length ? images : undefined,
+      const res = await fetch(
+        `${API_BASE}/sessions/${id}/prompt`,
+        withAuth({
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message,
+            images: images?.length ? images : undefined,
+          }),
+          signal: abortController.signal,
         }),
-        signal: abortController.signal,
-      });
+      );
 
       if (!res.ok) {
         const err = await res.text().catch(() => "Unknown error");
@@ -1421,6 +1458,15 @@ export async function resolveSessionApproval(
   });
 }
 
+export async function getPendingSessionApprovals(
+  sessionId: string,
+): Promise<ApprovalPendingEvent[]> {
+  const result = await fetchJson<{ approvals: ApprovalPendingEvent[] }>(
+    `/sessions/${sessionId}/approvals`,
+  );
+  return result.approvals;
+}
+
 export interface ExternalInteractionResponse {
   action: "approve" | "approve_session" | "deny" | "cancel" | "answer";
   answers?: Record<string, string[]>;
@@ -1637,9 +1683,12 @@ export function subscribeSessionEvents(
 
   void (async () => {
     try {
-      const res = await fetch(`${API_BASE}/sessions/${sessionId}/events`, {
-        signal: abortController.signal,
-      });
+      const res = await fetch(
+        `${API_BASE}/sessions/${sessionId}/events`,
+        withAuth({
+          signal: abortController.signal,
+        }),
+      );
 
       if (!res.ok) {
         const err = await res.text().catch(() => "Unknown error");
@@ -2164,10 +2213,13 @@ export interface PromptImageInput {
 export async function uploadSessionMedia(sessionId: string, file: File): Promise<PromptImageInput> {
   const body = new FormData();
   body.append("file", file, file.name || "image.png");
-  const res = await fetch(`${API_BASE}/sessions/${encodeURIComponent(sessionId)}/media`, {
-    method: "POST",
-    body,
-  });
+  const res = await fetch(
+    `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/media`,
+    withAuth({
+      method: "POST",
+      body,
+    }),
+  );
   if (!res.ok) {
     const err = await res.text().catch(() => "upload failed");
     throw new Error(`HTTP ${res.status}: ${err}`);
@@ -2181,7 +2233,9 @@ export async function uploadSessionMedia(sessionId: string, file: File): Promise
 }
 
 export function sessionMediaUrl(sessionId: string, mediaId: string): string {
-  return `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/media/${encodeURIComponent(mediaId)}`;
+  const base = `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/media/${encodeURIComponent(mediaId)}`;
+  const password = localStorage.getItem(WEB_PASSWORD_KEY);
+  return password ? `${base}?password=${encodeURIComponent(password)}` : base;
 }
 
 // ============ Health API ============

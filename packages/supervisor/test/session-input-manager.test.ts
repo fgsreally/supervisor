@@ -81,9 +81,7 @@ describe("session input queue", () => {
       data: Buffer.from("queued"),
       name: "queued.png",
     });
-    const images = [
-      { mediaId: saved.mediaId, mimeType: saved.mimeType, name: saved.name },
-    ];
+    const images = [{ mediaId: saved.mediaId, mimeType: saved.mimeType, name: saved.name }];
 
     await expect(
       manager.submitSessionInput(inst.id, { message: "queued image", images }),

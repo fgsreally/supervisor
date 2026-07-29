@@ -43,7 +43,10 @@ export function isSafeMediaId(mediaId: string): boolean {
   return SAFE_MEDIA_ID.test(mediaId) && !mediaId.includes("..") && !mediaId.includes(sep);
 }
 
-export function resolveSessionMediaPath(sessionId: string | number, mediaId: string): string | null {
+export function resolveSessionMediaPath(
+  sessionId: string | number,
+  mediaId: string,
+): string | null {
   if (!isSafeMediaId(mediaId)) return null;
   const root = resolve(getSessionMediaDir(sessionId));
   const full = resolve(root, mediaId);

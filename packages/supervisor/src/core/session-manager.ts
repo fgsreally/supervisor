@@ -52,8 +52,12 @@ import { applyProjectRuntimeParse, runProjectRuntimeParse } from "./project-runt
 import { parseSessionServicesMeta, stopSessionProjectServices } from "./session-services.js";
 import { runWatsonTask, type WatsonRunOptions, type WatsonRunResult } from "./watson.js";
 import type { CreateHomeTaskOptions, HomeTask, UpdateHomeTaskOptions } from "../types.js";
-import { cancelPendingApprovals, submitApprovalResolution } from "../extension/runtime/index.js";
-import type { ApprovalResult } from "../extension/index.js";
+import {
+  cancelPendingApprovals,
+  submitApprovalResolution,
+  UiApprovalService,
+} from "../extension/runtime/index.js";
+import type { ApprovalRequest, ApprovalResult } from "../extension/index.js";
 import { normalizeSessionStage } from "./session-workflow.js";
 import {
   type AskAnswer,
@@ -204,7 +208,8 @@ export type SessionOutputEvent =
   | AgentHarnessEvent
   | ShadowSuggestionsEvent
   | UiNotifyEvent
-  | SessionStatusEvent;
+  | SessionStatusEvent
+  | { type: "approval.pending"; [key: string]: unknown };
 export type SessionOutputListener = (sessionId: number, event: SessionOutputEvent) => void;
 
 function isTrackedAgentEvent(event: AgentHarnessEvent): event is AgentEvent {
@@ -781,7 +786,9 @@ export class SessionManager {
         this,
       );
       if (agent?.backendType === "native") {
-        runtime.configureAgentPermissions(agent.permissionRules, session.cwd);
+        runtime.configureAgentPermissions(agent.permissionRules, session.cwd, (request) =>
+          this.requestSessionApproval(session.id, request),
+        );
       }
       const extensionTools = runtime.collectExtensionTools();
       if (extensionTools.length > 0) {
@@ -1094,7 +1101,9 @@ export class SessionManager {
         this,
       );
       if (agentInDb?.backendType === "native") {
-        runtime.configureAgentPermissions(agentInDb.permissionRules, activeSession.cwd);
+        runtime.configureAgentPermissions(agentInDb.permissionRules, activeSession.cwd, (request) =>
+          this.requestSessionApproval(activeSession.id, request),
+        );
       }
       const extensionTools = runtime.collectExtensionTools();
       if (extensionTools.length > 0) {
@@ -1145,6 +1154,44 @@ export class SessionManager {
     return () => {
       this.outputListeners.get(sessionId)?.delete(listener);
     };
+  }
+
+  publishSessionEvent(sessionId: number, event: SessionOutputEvent): void {
+    for (const listener of this.outputListeners.get(sessionId) ?? []) listener(sessionId, event);
+  }
+
+  reloadNativeSessionResources(agentId?: number): void {
+    for (const [sessionId, runtime] of this.runtimes) {
+      if (!(runtime instanceof SessionRuntime)) continue;
+      const session = this.db.get(sessionId);
+      if (agentId !== undefined && session?.agent_id !== agentId) continue;
+      runtime.reloadResources();
+    }
+  }
+
+  private async requestSessionApproval(
+    sessionId: number,
+    request: ApprovalRequest,
+  ): Promise<ApprovalResult> {
+    const service = new UiApprovalService(sessionId, {
+      pausing: async <T>(reason: string, work: Promise<T> | (() => Promise<T>)): Promise<T> => {
+        const before = this.db.get(sessionId)?.status;
+        this.db.updateStatus(sessionId, "blocked");
+        this.publishSessionStatus(sessionId);
+        try {
+          return typeof work === "function" ? await work() : await work;
+        } finally {
+          if (this.db.get(sessionId)?.status === "blocked") {
+            this.db.updateStatus(sessionId, before === "running" ? "running" : "idle");
+            this.publishSessionStatus(sessionId);
+          }
+          if (reason.trim())
+            console.debug(`[permission] approval resolved [${sessionId}]: ${reason}`);
+        }
+      },
+      broadcast: (event) => this.publishSessionEvent(sessionId, event as SessionOutputEvent),
+    });
+    return service.requestApproval(request);
   }
 
   publishShadowSuggestions(sessionId: number, questions: string[]): void {
@@ -1921,6 +1968,9 @@ export class SessionManager {
   }
 
   deleteProject(id: number): void {
+    for (const session of this.db.list({ projectId: id })) {
+      if (this.db.get(session.id)) this.delete(session.id, { allowBuiltin: true });
+    }
     this.db.deleteProject(id);
     removeProjectDirSync(id);
   }
@@ -2195,14 +2245,17 @@ export class SessionManager {
     this.db.setMessageMeta(sessionId, messageId, meta);
   }
 
-  delete(id: number): void {
-    for (const child of this.children(id)) {
-      if (child.spawnType === "subagent" || child.spawnType === "btw") {
-        this.delete(child.id);
-      }
-    }
+  delete(id: number, options: { allowBuiltin?: boolean } = {}): void {
     const row = this.db.get(id);
     const session = row ? rowToSession(row, this.db) : undefined;
+    if (session?.isBuiltin && !options.allowBuiltin) {
+      throw new Error("Pi 助手不能删除");
+    }
+    for (const child of this.children(id)) {
+      if (child.spawnType === "subagent" || child.spawnType === "btw") {
+        this.delete(child.id, options);
+      }
+    }
     const runtime = this.runtimes.get(id);
     if (runtime) {
       this.runtimes.delete(id);

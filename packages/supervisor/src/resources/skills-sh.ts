@@ -70,6 +70,8 @@ export async function searchSkillsSh(
 }
 
 /** Build an install source string for our skill installer from a search hit. */
-export function skillInstallSourceFromSearchHit(hit: Pick<SkillsShSearchHit, "source" | "name">): string {
+export function skillInstallSourceFromSearchHit(
+  hit: Pick<SkillsShSearchHit, "source" | "name">,
+): string {
   return `${hit.source}@${hit.name}`;
 }

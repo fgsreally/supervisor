@@ -181,6 +181,7 @@ export interface SkillInfo {
 export interface PromptTemplateInfo {
   name: string;
   description: string;
+  argumentHint?: string;
   filePath: string;
   content: string;
 }
@@ -322,6 +323,7 @@ function promptToInfo(template: PromptTemplate): PromptTemplateInfo {
   return {
     name: template.name,
     description: template.description,
+    argumentHint: template.argumentHint,
     filePath: template.filePath,
     content,
   };

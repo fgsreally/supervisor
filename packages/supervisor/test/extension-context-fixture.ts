@@ -28,18 +28,15 @@ import type {
   ToolInfo,
   ToolResultHandler,
 } from "../src/extension/index.js";
-import type {
-  CreateJobInput,
-  JobRecord,
-  UpdateJobInput,
-} from "../src/core/jobs.js";
+import type { CreateJobInput, JobRecord, UpdateJobInput } from "../src/core/jobs.js";
 import type { SessionWorkflowState, WorkflowStatePatch } from "../src/extension/types.js";
 
 function parseWorkflowState(value: unknown): SessionWorkflowState | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
-  const stage = typeof (value as { stage?: unknown }).stage === "string"
-    ? (value as { stage: string }).stage.trim()
-    : "";
+  const stage =
+    typeof (value as { stage?: unknown }).stage === "string"
+      ? (value as { stage: string }).stage.trim()
+      : "";
   return stage ? { stage, status: "working" } : null;
 }
 
@@ -47,10 +44,7 @@ function applyWorkflowPatch(
   current: SessionWorkflowState | null,
   patch: WorkflowStatePatch,
 ): SessionWorkflowState {
-  const stage =
-    typeof patch.stage === "string"
-      ? patch.stage.trim()
-      : (current?.stage ?? "");
+  const stage = typeof patch.stage === "string" ? patch.stage.trim() : (current?.stage ?? "");
   return { stage, status: "working" };
 }
 
@@ -184,6 +178,22 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
   let activeExtensionId: string | undefined;
   let host: TestExtensionHost | undefined;
   let workflow = parseWorkflowState(options.sessionMeta?.workflow);
+  let tasks: Array<{
+    id: number;
+    path: string;
+    kind: "goal" | "plan";
+    title: string | null;
+    status: string | null;
+    createdAt: number;
+    updatedAt: number;
+  }> = [];
+  let currentTaskPath: string | null = null;
+  let todos: Array<{
+    id: number;
+    title: string;
+    status: "pending" | "in_progress" | "completed" | "cancelled";
+    sortOrder: number;
+  }> = [];
   const jobs = new Map<string, JobRecord>();
   const cancelHandlers = new Map<string, () => void | Promise<void>>();
   const inputHandlers = new Map<string, (input: string) => void | Promise<void>>();
@@ -236,20 +246,48 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
         },
       },
       tasks: {
-        list: async () => [],
-        upsert: async (input) => ({
-          path: input.path,
-          kind: input.kind,
-          title: input.title ?? null,
-          status: input.status ?? null,
-        }),
-        remove: async () => false,
-        getCurrentPath: async () => null,
-        setCurrentPath: async () => {},
+        list: async () => tasks,
+        upsert: async (input) => {
+          const now = Date.now();
+          const previous = tasks.find((task) => task.path === input.path);
+          const task = {
+            id: previous?.id ?? tasks.length + 1,
+            path: input.path,
+            kind: input.kind,
+            title: input.title ?? previous?.title ?? null,
+            status: input.status ?? previous?.status ?? null,
+            createdAt: previous?.createdAt ?? now,
+            updatedAt: now,
+          };
+          tasks = [...tasks.filter((item) => item.path !== input.path), task];
+          await options.deps.patchSessionMeta({
+            tasks: tasks.map(({ path, kind, title, status }) => ({ path, kind, title, status })),
+          });
+          return task;
+        },
+        remove: async (path) => {
+          const found = tasks.some((task) => task.path === path);
+          tasks = tasks.filter((task) => task.path !== path);
+          await options.deps.patchSessionMeta({
+            tasks: tasks.map(({ path, kind, title, status }) => ({ path, kind, title, status })),
+          });
+          return found;
+        },
+        getCurrentPath: async () => currentTaskPath,
+        setCurrentPath: async (path) => {
+          currentTaskPath = path;
+          await options.deps.patchSessionMeta({ currentTask: path });
+        },
       },
       todos: {
-        list: async () => [],
-        replace: async (todos) => todos,
+        list: async () => todos,
+        replace: async (nextTodos) => {
+          todos = nextTodos.map((todo, index) => ({ ...todo, id: index + 1, sortOrder: index }));
+          await options.deps.patchSessionMeta({
+            todos: todos.map(({ title, status }) => ({ title, status })),
+          });
+          return todos;
+        },
       },
       tools: {
         setPolicy: (policy: ToolPolicy) => services.tools.setPolicy(policy),

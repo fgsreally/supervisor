@@ -95,10 +95,7 @@
             </div>
             <div class="flex-1 min-w-0">
               <div class="text-[13px] font-medium truncate" style="color: var(--app-text-primary)">
-                <span
-                  v-for="(part, i) in highlight(s.title || '会话', query)"
-                  :key="i"
-                >
+                <span v-for="(part, i) in highlight(s.title || '会话', query)" :key="i">
                   <span v-if="part.highlight" class="text-[#07c160] font-semibold">{{
                     part.text
                   }}</span>

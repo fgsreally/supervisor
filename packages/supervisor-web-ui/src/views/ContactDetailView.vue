@@ -38,28 +38,15 @@
           </p>
         </div>
 
-        <div class="mt-2 contact-detail-card border-y text-[15px]">
-          <button
-            v-if="provider"
-            type="button"
-            class="w-full px-6 py-3.5 border-b flex items-center gap-3 text-left transition-colors contact-detail-provider-row"
-            @click="emit('view-provider', provider.id)"
-          >
-            <ProviderAvatar
-              :provider-id="provider.id"
-              :provider-name="provider.name"
-              :icon="provider.icon"
-              class="w-9 h-9 text-sm"
-            />
-            <div class="flex-1 min-w-0">
-              <div class="text-[12px] contact-detail-subtitle">模型服务</div>
-              <div class="text-sm truncate contact-detail-title">{{ provider.name }}</div>
-              <div class="text-[12px] font-mono truncate mt-0.5 contact-detail-subtitle">
-                {{ provider.models.length }} models
-              </div>
-            </div>
-            <ChevronRight class="w-4 h-4 shrink-0 contact-detail-subtitle" />
-          </button>
+        <div v-if="canEdit" class="mt-2 contact-detail-card border-y px-5 py-3 text-[15px]">
+          <div class="mb-2 text-[12px] contact-detail-subtitle">模型</div>
+          <ModelTreeSelect
+            :model-value="agent.modelId || ''"
+            :groups="modelGroups"
+            :disabled="savingModel"
+            placeholder="稍后配置"
+            @change="changeModel"
+          />
         </div>
 
         <div v-if="isExternal" class="p-4">
@@ -71,26 +58,31 @@
 
     <!-- PC -->
     <div class="hidden md:flex flex-col h-full min-h-0">
-      <div
-        class="min-h-[5rem] py-4 border-b flex items-center px-6 shrink-0 gap-4 contact-detail-header"
-      >
-        <AgentAvatar
-          :agent-id="agent.id"
-          :agent-name="agent.name"
-          :icon="agent.avatar"
-          class="w-11 h-11 text-lg"
-        />
-        <div class="flex-1 min-w-0 py-0.5">
-          <div class="text-[17px] font-medium truncate leading-snug contact-detail-title">
-            {{ agent.name }}
+      <div class="min-h-[5rem] border-b flex items-center shrink-0 contact-detail-header">
+        <div class="contact-detail-identity">
+          <AgentAvatar
+            :agent-id="agent.id"
+            :agent-name="agent.name"
+            :icon="agent.avatar"
+            class="contact-detail-avatar"
+          />
+          <div class="flex-1 min-w-0 py-0.5">
+            <div class="text-[17px] font-medium truncate leading-snug contact-detail-title">
+              {{ agent.name }}
+            </div>
+            <div class="text-[13px] truncate mt-1 leading-snug contact-detail-subtitle">
+              {{ agent.description }}
+            </div>
           </div>
-          <div class="text-[13px] truncate mt-1 leading-snug contact-detail-subtitle">
-            {{ agent.description }}
-          </div>
+          <button
+            v-if="canEdit"
+            type="button"
+            class="wechat-secondary-btn"
+            @click="editOpen = true"
+          >
+            编辑
+          </button>
         </div>
-        <button v-if="canEdit" type="button" class="wechat-secondary-btn" @click="editOpen = true">
-          编辑
-        </button>
       </div>
 
       <div v-if="!isExternal" class="flex border-b shrink-0 contact-detail-tabs">
@@ -98,7 +90,7 @@
           v-for="t in rightTabs"
           :key="t.id"
           type="button"
-          class="px-5 py-2.5 text-[13px] transition-colors"
+          class="contact-detail-tab text-[13px] transition-colors"
           :class="rightTab === t.id ? 'contact-detail-tab--active' : 'contact-detail-tab--idle'"
           @click="rightTab = t.id"
         >
@@ -108,7 +100,9 @@
 
       <div v-if="!isExternal" class="flex-1 flex min-h-0 overflow-hidden">
         <template v-if="rightTab === 'config'">
-          <div class="flex flex-1 justify-center overflow-auto p-5 min-h-0 contact-detail-content">
+          <div
+            class="flex flex-1 justify-center overflow-auto min-h-0 contact-detail-content contact-detail-config-content"
+          >
             <AgentConfigPanel :agent-id="agentId" />
           </div>
         </template>
@@ -146,19 +140,20 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronLeft, ChevronRight } from "lucide-vue-next";
+import { ChevronLeft } from "lucide-vue-next";
 import AgentConfigPanel from "../components/AgentConfigPanel.vue";
 import AgentSystemPromptPanel from "../components/AgentSystemPromptPanel.vue";
 import AgentResourceBrowser from "../components/AgentResourceBrowser.vue";
 import AgentExtensionsPanel from "../components/AgentExtensionsPanel.vue";
 import MobileResourceTabs from "../components/MobileResourceTabs.vue";
-import ProviderAvatar from "../components/ProviderAvatar.vue";
 import AgentAvatar from "../components/AgentAvatar.vue";
+import ModelTreeSelect, { type ModelTreeGroup } from "../components/ModelTreeSelect.vue";
 import AgentEditDialog from "../components/AgentEditDialog.vue";
 import ExternalAgentDetails from "../components/ExternalAgentDetails.vue";
 import { useAgentStore, useProviderStore } from "@/store";
 import type { UIResourceKind } from "@/types/ui";
 import { providerToUI } from "@/utils/provider-ui";
+import { showUiMessage } from "@/composables/use-ui-message";
 
 type AgentTab = "config" | "system" | UIResourceKind;
 
@@ -180,6 +175,7 @@ const agent = computed(() => agentStore.getAgentById(props.agentId) ?? null);
 
 const rightTab = ref<AgentTab>("config");
 const editOpen = ref(false);
+const savingModel = ref(false);
 
 const rightTabs = computed(() => {
   const tabs: Array<{ id: AgentTab; label: string }> = [
@@ -187,7 +183,7 @@ const rightTabs = computed(() => {
     { id: "system", label: "System Prompt" },
     { id: "skills", label: "Skills" },
     { id: "extensions", label: "Extensions" },
-    { id: "prompts", label: "Prompt Template" },
+    { id: "prompts", label: "Template" },
     { id: "mcp", label: "MCP" },
   ];
   return tabs;
@@ -200,13 +196,17 @@ watch(
   },
 );
 
-const provider = computed(() => {
-  const a = agent.value;
-  if (!a?.providerId) return undefined;
-  const p = providerStore.getProviderById(a.providerId);
-  if (!p) return undefined;
-  return providerToUI(p, providerStore.models[p.id] ?? []);
-});
+const modelGroups = computed<ModelTreeGroup[]>(() =>
+  providerStore.providers
+    .map((provider) => providerToUI(provider, providerStore.models[provider.id] ?? []))
+    .filter((provider) => provider.isEnabled)
+    .map((provider) => ({
+      id: provider.id,
+      name: provider.name,
+      icon: provider.icon,
+      models: provider.models.map((model) => ({ value: model.id, name: model.name })),
+    })),
+);
 
 const isExternal = computed(() => agent.value?.backendType !== "native");
 const canEdit = computed(() => {
@@ -215,6 +215,19 @@ const canEdit = computed(() => {
 
 function onAgentSaved() {
   void agentStore.fetchAgent(props.agentId);
+}
+
+async function changeModel(modelId: string) {
+  if (!modelId || savingModel.value) return;
+  savingModel.value = true;
+  try {
+    await agentStore.updateAgent(props.agentId, { modelId });
+    showUiMessage("模型已更新", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "模型更新失败", "error");
+  } finally {
+    savingModel.value = false;
+  }
 }
 </script>
 
@@ -226,6 +239,20 @@ function onAgentSaved() {
 .contact-detail-header {
   background: var(--app-settings-bg);
   border-color: var(--app-border);
+}
+.contact-detail-identity {
+  display: flex;
+  width: 100%;
+  min-height: 94px;
+  align-items: center;
+  gap: 15px;
+  padding: 16px 28px;
+}
+.contact-detail-avatar {
+  width: 50px;
+  height: 50px;
+  border-radius: 11px;
+  font-size: 19px;
 }
 
 .contact-detail-back-btn {
@@ -259,8 +286,16 @@ function onAgentSaved() {
 }
 
 .contact-detail-tabs {
-  background: color-mix(in srgb, var(--app-settings-bg) 88%, transparent);
+  gap: 26px;
+  padding: 0 28px;
+  background: var(--app-settings-bg);
   border-color: var(--app-border);
+}
+.contact-detail-tab {
+  position: relative;
+  min-height: 48px;
+  padding: 0 2px;
+  border: 0;
 }
 
 .contact-detail-tab--idle {
@@ -269,17 +304,27 @@ function onAgentSaved() {
 
 .contact-detail-tab--idle:hover {
   color: var(--app-text-primary);
-  background: color-mix(in srgb, var(--app-hover) 50%, transparent);
 }
 
 .contact-detail-tab--active {
   color: var(--app-accent);
-  border-bottom: 2px solid var(--app-accent);
-  background: var(--app-settings-card);
+}
+.contact-detail-tab--active::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--app-accent);
+  content: "";
 }
 
 .contact-detail-content {
   background: var(--app-settings-bg);
+}
+.contact-detail-config-content {
+  padding: 26px 28px 42px;
 }
 
 .contact-detail-logs {
@@ -293,10 +338,10 @@ function onAgentSaved() {
 }
 
 .wechat-secondary-btn {
-  padding: 7px 16px;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
-  background: var(--app-settings-card);
+  padding: 7px 17px;
+  border: 1px solid color-mix(in srgb, var(--app-border) 84%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--app-hover) 70%, var(--app-settings-card));
   color: var(--app-text-primary);
   font-size: 13px;
 }

@@ -95,10 +95,7 @@ export function resolveProjectFromText(
   return { id: last.id, name: last.name };
 }
 
-function buildProjectTagDecorations(
-  view: EditorView,
-  projects: ProjectTagSource[],
-): DecorationSet {
+function buildProjectTagDecorations(view: EditorView, projects: ProjectTagSource[]): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
   for (const mention of findProjectMentions(view.state.doc.toString(), projects)) {
     builder.add(

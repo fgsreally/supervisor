@@ -25,9 +25,9 @@ export function getExternalAgentConfig(agent: Agent): ExternalAgentConfig {
       ? persisted.command.trim()
       : typeof agent.meta.command === "string" && agent.meta.command.trim()
         ? agent.meta.command.trim()
-      : typeof legacy?.command === "string" && legacy.command.trim()
-        ? legacy.command.trim()
-        : (DEFAULT_COMMANDS[agent.backendType] ?? "");
+        : typeof legacy?.command === "string" && legacy.command.trim()
+          ? legacy.command.trim()
+          : (DEFAULT_COMMANDS[agent.backendType] ?? "");
   const rawArgs = Array.isArray(persisted?.args)
     ? persisted.args
     : Array.isArray(agent.meta.args)
@@ -197,9 +197,7 @@ export function spawnExternalProcess(
   if (isVoltaShim(executable)) {
     const volta =
       resolveExecutable("volta", env) ??
-      (process.env.ProgramFiles
-        ? join(process.env.ProgramFiles, "Volta", "volta.exe")
-        : null);
+      (process.env.ProgramFiles ? join(process.env.ProgramFiles, "Volta", "volta.exe") : null);
     if (!volta || !isExecutable(volta)) {
       throw new Error(`Volta shim ${executable} 需要 volta.exe，但未找到`);
     }

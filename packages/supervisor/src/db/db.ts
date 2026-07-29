@@ -34,7 +34,10 @@ import type {
   UpdateHomeTaskOptions,
 } from "../types.js";
 import { HOME_TASK_PRIORITIES, HOME_TASK_STATUSES, normalizeSessionStatus } from "../types.js";
-import { normalizeAgentPermissionRules } from "../core/agent-permissions.js";
+import {
+  DEFAULT_AGENT_PERMISSION_RULES,
+  normalizeAgentPermissionRules,
+} from "../core/agent-permissions.js";
 import { getProjectDir } from "../core/session-files.js";
 import {
   ensureProjectScriptsTable,
@@ -398,11 +401,38 @@ export class SupervisorDb {
       CREATE INDEX IF NOT EXISTS idx_agent_resources_resource ON agent_resources(resource_id);
     `);
     this.rebuildTargetSchema();
+    this.ensureAgentPermissionDefaults();
     this.ensureMessageFts();
     this.ensureHomeTaskColumns();
 
     // Initialize default providers from environment variables
     this.initializeDefaultProviders();
+  }
+
+  /** One-time backfill for native Agents created before permission_rules had safe defaults. */
+  private ensureAgentPermissionDefaults(): void {
+    const migrationKey = "native-agent-permission-defaults-v1";
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS supervisor_migrations (
+        key TEXT PRIMARY KEY,
+        applied_at INTEGER NOT NULL
+      )
+    `);
+    const applied = this.db
+      .prepare("SELECT 1 FROM supervisor_migrations WHERE key = ?")
+      .get(migrationKey);
+    if (applied) return;
+    const migrate = this.db.transaction(() => {
+      this.db
+        .prepare(
+          "UPDATE agents SET permission_rules = ? WHERE backend_type = 'native' AND permission_rules = '{}'",
+        )
+        .run(JSON.stringify(DEFAULT_AGENT_PERMISSION_RULES));
+      this.db
+        .prepare("INSERT INTO supervisor_migrations (key, applied_at) VALUES (?, ?)")
+        .run(migrationKey, Date.now());
+    });
+    migrate();
   }
 
   /** Drop legacy home_tasks.meta (unused). */

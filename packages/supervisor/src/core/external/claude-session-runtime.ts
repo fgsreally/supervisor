@@ -16,7 +16,11 @@ import type {
 } from "../managed-session-runtime.js";
 import type { SlashCommandInfo } from "../session-runtime.js";
 import { ExternalSessionRuntime } from "./external-session-runtime.js";
-import { getExternalAgentConfig, resolveExecutable, spawnExternalProcess } from "./external-agent-config.js";
+import {
+  getExternalAgentConfig,
+  resolveExecutable,
+  spawnExternalProcess,
+} from "./external-agent-config.js";
 import { sessionServicePortEnv } from "../session-services.js";
 
 type JsonObject = Record<string, any>;

@@ -190,7 +190,8 @@ export class JobManager {
 
     const bySession = new Map<number, SessionTimer[]>();
     for (const row of rows) {
-      const list = bySession.get(row.session_id) ?? listSessionTimers(this.#supervisorDb, row.session_id);
+      const list =
+        bySession.get(row.session_id) ?? listSessionTimers(this.#supervisorDb, row.session_id);
       list.push({
         id: row.id || newSessionTimerId(),
         prompt: row.prompt,

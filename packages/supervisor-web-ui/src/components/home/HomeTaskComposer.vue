@@ -1,11 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="home-composer">
-      <div
-        v-if="open"
-        class="home-composer-overlay"
-        @mousedown.self="emit('close')"
-      >
+      <div v-if="open" class="home-composer-overlay" @mousedown.self="emit('close')">
         <div class="absolute inset-0 bg-black/35" />
         <div
           class="home-composer-dialog"
@@ -16,7 +12,12 @@
         >
           <header>
             <h2 id="home-composer-title">添加任务</h2>
-            <button type="button" class="home-composer-dialog__icon" title="关闭" @click="emit('close')">
+            <button
+              type="button"
+              class="home-composer-dialog__icon"
+              title="关闭"
+              @click="emit('close')"
+            >
               <X class="h-5 w-5" />
             </button>
           </header>
@@ -146,8 +147,7 @@ const filteredProjects = computed(() => {
   if (!q) return props.projects.slice(0, 8);
   return props.projects
     .filter(
-      (project) =>
-        project.name.toLowerCase().includes(q) || project.cwd.toLowerCase().includes(q),
+      (project) => project.name.toLowerCase().includes(q) || project.cwd.toLowerCase().includes(q),
     )
     .slice(0, 8);
 });

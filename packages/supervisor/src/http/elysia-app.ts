@@ -87,13 +87,20 @@ export class SupervisorElysiaBuilder {
     }),
   );
 
+  constructor(
+    private readonly requestGuard?: (context: SupervisorHttpContext) => Response | undefined,
+  ) {}
+
   private route(
     method: "get" | "post" | "put" | "patch" | "delete",
     path: string,
     handler: RouteHandler,
     hooks?: RouteHooks,
   ): this {
-    const adapted = (context: ElysiaRequestContext) => handler(createContext(context));
+    const adapted = (context: ElysiaRequestContext) => {
+      const supervisorContext = createContext(context);
+      return this.requestGuard?.(supervisorContext) ?? handler(supervisorContext);
+    };
     const parameterNames = [...path.matchAll(/:([A-Za-z0-9_]+)/g)].map((match) => match[1]);
     const module = path.split("/").filter(Boolean)[0] ?? "system";
     const routeHooks = {

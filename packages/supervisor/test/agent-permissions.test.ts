@@ -1,12 +1,14 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   evaluateAgentPermission,
   permissionPathTarget,
+  splitShellCommand,
   type AgentPermissionRules,
 } from "../src/core/agent-permissions.js";
+import { SessionRuntime } from "../src/core/session-runtime.js";
 
 const roots: string[] = [];
 
@@ -59,8 +61,73 @@ describe("agent permission rules", () => {
     ).toBe("ask");
   });
 
+  it("evaluates every command in a shell chain and applies the decision to the whole call", () => {
+    const rules: AgentPermissionRules = {
+      bash: { "rm -rf *": "ask", "sudo *": "deny" },
+    };
+    const ask = evaluateAgentPermission(
+      rules,
+      "bash",
+      { command: "cd build && rm -rf cache | tee result.log" },
+      process.cwd(),
+    );
+    expect(ask).toMatchObject({
+      effect: "ask",
+      target: "cd build && rm -rf cache | tee result.log",
+      matchedTarget: "rm -rf cache",
+    });
+    expect(
+      evaluateAgentPermission(
+        rules,
+        "bash",
+        { command: "rm -rf cache && sudo reboot" },
+        process.cwd(),
+      ).effect,
+    ).toBe("deny");
+  });
+
+  it("does not split shell operators inside quotes or escapes", () => {
+    expect(splitShellCommand('echo "a && b | c" && rm -rf cache')).toEqual([
+      'echo "a && b | c"',
+      "rm -rf cache",
+    ]);
+    expect(splitShellCommand("echo a\\|b; git status")).toEqual(["echo a\\|b", "git status"]);
+  });
+
   it("allows calls that expose no string parameter to match", () => {
     const rules: AgentPermissionRules = { custom: { "*": "deny" } };
     expect(evaluateAgentPermission(rules, "custom", {}, process.cwd()).effect).toBe("allow");
+  });
+
+  it("enforces permissions without an extension or Project", async () => {
+    const setTools = vi.fn(async () => {});
+    const runtime = new SessionRuntime({
+      session: { id: 7 } as never,
+      harness: { subscribe: vi.fn(), setTools } as never,
+      resource: {} as never,
+      getSession: () => ({ id: 7, projectId: null }) as never,
+      getMessages: async () => [],
+    });
+    runtime.configureAgentPermissions(
+      { read: { "external/**": "deny" } },
+      makeRoot("runtime"),
+      vi.fn(),
+    );
+    await runtime.setTools([
+      {
+        name: "read",
+        label: "read",
+        description: "read",
+        parameters: {} as never,
+        execute: vi.fn(async () => ({ content: [{ type: "text" as const, text: "executed" }] })),
+      },
+    ]);
+
+    const wrapped = setTools.mock.calls[0]?.[0][0];
+    const result = await wrapped.execute("call-1", { path: join(tmpdir(), "outside.txt") });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]).toEqual(
+      expect.objectContaining({ type: "text", text: expect.stringContaining("permission denied") }),
+    );
   });
 });

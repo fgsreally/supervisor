@@ -10,7 +10,7 @@
       >
         <header class="h-14 px-5 border-b flex items-center shrink-0">
           <h2 class="text-[16px] font-medium flex-1">
-            {{ kind === "mcp" ? "新建 MCP 配置" : "新建 Prompt Template" }}
+            {{ kind === "mcp" ? "新建 MCP 配置" : "新建 Template" }}
           </h2>
           <button type="button" class="resource-create-close" title="关闭" @click="close">
             <X class="w-5 h-5" />
@@ -81,9 +81,15 @@ const emit = defineEmits<{
   created: [slug: string];
 }>();
 
-const DEFAULT_PROMPT = `# Prompt Template
+const DEFAULT_PROMPT = `---
+description: 可复用的 Template
+argument-hint: <主题> [补充要求]
+---
+# Template
 
-在此编写可复用的提示词内容。
+请围绕 $1 完成任务。
+
+用户传入的全部参数：$ARGUMENTS
 `;
 
 const DEFAULT_MCP = `{
@@ -135,7 +141,7 @@ async function save() {
       name: nextName,
       content: content.value,
     });
-    showUiMessage(`${props.kind === "mcp" ? "MCP" : "Prompt Template"} 已创建`, "success");
+    showUiMessage(`${props.kind === "mcp" ? "MCP" : "Template"} 已创建`, "success");
     emit("created", nextSlug);
     close();
   } catch (err) {

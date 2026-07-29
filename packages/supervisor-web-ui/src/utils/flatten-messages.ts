@@ -15,6 +15,8 @@ export type RenderPiece =
       toolName: string;
       callArgs?: Record<string, unknown>;
       result?: ToolResultEntry;
+      /** Only the newest interaction for a child Session expands to a live card. */
+      latestSubagentInteraction?: boolean;
     }
   | {
       kind: "bash";
@@ -257,7 +259,25 @@ export function buildDisplayGroups(entries: ChatEntry[]): DisplayGroup[] {
   }
 
   flushAssistant();
+  markLatestSubagentInteractions(groups);
   return groups;
+}
+
+function markLatestSubagentInteractions(groups: DisplayGroup[]): void {
+  const latestByChild = new Map<string, Extract<RenderPiece, { kind: "toolStep" }>>();
+  for (const group of groups) {
+    if (!isGroupedAssistantGroup(group)) continue;
+    for (const piece of group.pieces) {
+      if (piece.kind !== "toolStep" || piece.toolName !== "spawn_agent") continue;
+      piece.latestSubagentInteraction = false;
+      const childId = spawnChildSessionId(group.pieces, piece.callId);
+      if (childId) latestByChild.set(childId, piece);
+      // While the first spawn is pending there is no child id yet, but it should
+      // still be presented as the current important activity.
+      else if (!piece.callArgs?.sessionId) latestByChild.set(`pending:${piece.callId}`, piece);
+    }
+  }
+  for (const piece of latestByChild.values()) piece.latestSubagentInteraction = true;
 }
 
 export function isGroupedAssistantGroup(
@@ -293,6 +313,6 @@ export function spawnChildSessionId(pieces: RenderPiece[], toolCallId: string): 
   }
 
   // Fallback: childSessionId in callArgs (mock format)
-  const id = step.callArgs?.childSessionId;
+  const id = step.callArgs?.sessionId ?? step.callArgs?.childSessionId;
   return typeof id === "string" || typeof id === "number" ? String(id) : undefined;
 }

@@ -18,10 +18,6 @@ import type {
   MessageContent,
 } from "../index.js";
 import type { SessionTreeEntry } from "@earendil-works/pi-agent-core";
-import {
-  evaluateAgentPermission,
-  type AgentPermissionRules,
-} from "../../core/agent-permissions.js";
 
 type AgentContentMessage = Extract<AgentMessage, { role: "user" | "assistant" }>;
 
@@ -74,43 +70,6 @@ export class SessionExtensionHost {
   /** 当前会话独占的工具、上下文注入、Turn 流程和审批服务。 */
   get services(): SessionExtensionRuntime["services"] {
     return this.runtime.services;
-  }
-
-  /** Install the native Agent's tool/argument permission policy for this session. */
-  configureAgentPermissions(rules: AgentPermissionRules, cwd: string): void {
-    const approvedCalls = new Set<string>();
-    const sessionAllowed = new Set<string>();
-    this.services.tools.beforeUse(
-      async (call) => {
-        if (approvedCalls.has(call.toolCallId)) return { allow: true };
-        const decision = evaluateAgentPermission(rules, call.name, call.args, cwd);
-        if (decision.effect === "allow") return { allow: true };
-        const key = JSON.stringify([decision.tool, decision.target]);
-        if (decision.effect === "deny") {
-          return {
-            allow: false,
-            reason: `Agent permission denied ${decision.tool}: ${decision.target || "(no parameter)"}`,
-          };
-        }
-        if (sessionAllowed.has(key)) {
-          approvedCalls.add(call.toolCallId);
-          return { allow: true };
-        }
-        const result = await this.services.uiApproval.requestApproval({
-          kind: "tool_permission",
-          title: `允许调用 ${decision.tool}？`,
-          body: `${decision.target || "(无可匹配参数)"}\n匹配规则：${decision.pattern}`,
-          actions: ["approve", "approve_session", "reject"],
-        });
-        if (result.action !== "approve" && result.action !== "approve_session") {
-          return { allow: false, reason: `User rejected ${decision.tool}: ${decision.target}` };
-        }
-        if (result.action === "approve_session") sessionAllowed.add(key);
-        approvedCalls.add(call.toolCallId);
-        return { allow: true };
-      },
-      { priority: 10_000 },
-    );
   }
 
   /** 为当前 Agent 激活一个已经导入的扩展定义。 */

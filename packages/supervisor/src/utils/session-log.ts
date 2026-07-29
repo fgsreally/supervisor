@@ -116,8 +116,12 @@ function parseJsonlLine(line: string): SessionLogEntry | null {
       t: typeof parsed.t === "number" ? parsed.t : Date.now(),
       l: normalizeLevel(parsed.l),
       m: parsed.m,
-      ...(Array.isArray(parsed.tags) ? { tags: parsed.tags.filter((t): t is string => typeof t === "string") } : {}),
-      ...(parsed.meta && typeof parsed.meta === "object" ? { meta: parsed.meta as Record<string, unknown> } : {}),
+      ...(Array.isArray(parsed.tags)
+        ? { tags: parsed.tags.filter((t): t is string => typeof t === "string") }
+        : {}),
+      ...(parsed.meta && typeof parsed.meta === "object"
+        ? { meta: parsed.meta as Record<string, unknown> }
+        : {}),
     };
   } catch {
     return null;

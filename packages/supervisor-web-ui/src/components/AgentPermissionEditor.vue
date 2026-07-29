@@ -7,35 +7,45 @@
           参数先转换为 project/** 或 external/**；未匹配的调用允许执行。
         </div>
       </div>
-      <UiButton type="button" @click="addTool">添加工具</UiButton>
     </div>
 
     <div v-for="(group, groupIndex) in groups" :key="group.id" class="permission-group">
-      <div class="permission-group__heading">
-        <UiField v-model="group.tool" placeholder="工具名，例如 read、bash" class="font-mono" />
-        <UiButton type="button" variant="secondary" @click="removeTool(groupIndex)">删除</UiButton>
-      </div>
-      <div v-for="(rule, ruleIndex) in group.rules" :key="rule.id" class="permission-rule">
-        <UiField
-          v-model="rule.pattern"
-          placeholder="参数 Glob，例如 external/**"
-          class="font-mono"
+      <button type="button" class="permission-group__toggle" @click="toggleGroup(group.id)">
+        <span class="font-mono">{{ group.tool }}</span>
+        <span class="permission-group__summary">{{ group.rules.length }} 条规则</span>
+        <ChevronDown
+          class="h-4 w-4"
+          :class="{ 'permission-group__chevron--open': openGroups.has(group.id) }"
         />
-        <UiField v-model="rule.effect" as="select" class="permission-rule__effect">
-          <option value="ask">ask</option>
-          <option value="deny">deny</option>
-        </UiField>
-        <UiButton type="button" variant="secondary" @click="removeRule(groupIndex, ruleIndex)">
-          删除
-        </UiButton>
-      </div>
-      <UiButton type="button" variant="secondary" @click="addRule(groupIndex)">添加规则</UiButton>
+      </button>
+      <Transition name="permission-collapse">
+        <div v-if="openGroups.has(group.id)" class="permission-group__body">
+          <div v-for="(rule, ruleIndex) in group.rules" :key="rule.id" class="permission-rule">
+            <UiField
+              v-model="rule.pattern"
+              placeholder="参数 Glob，例如 external/**"
+              class="font-mono"
+            />
+            <UiField v-model="rule.effect" as="select" class="permission-rule__effect">
+              <option value="ask">ask</option>
+              <option value="deny">deny</option>
+            </UiField>
+            <UiButton type="button" variant="secondary" @click="removeRule(groupIndex, ruleIndex)"
+              >删除</UiButton
+            >
+          </div>
+          <UiButton type="button" variant="secondary" @click="addRule(groupIndex)"
+            >添加规则</UiButton
+          >
+        </div>
+      </Transition>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { ChevronDown } from "lucide-vue-next";
 import type { AgentPermissionEffect, AgentPermissionRules } from "@/api";
 import { UiButton, UiField } from "./ui";
 
@@ -46,6 +56,7 @@ const props = defineProps<{ modelValue: AgentPermissionRules }>();
 const emit = defineEmits<{ "update:modelValue": [value: AgentPermissionRules] }>();
 let nextId = 1;
 const groups = ref<GroupDraft[]>([]);
+const openGroups = ref(new Set<number>());
 
 function fromRules(value: AgentPermissionRules): GroupDraft[] {
   return Object.entries(value).map(([tool, entries]) => ({
@@ -90,16 +101,11 @@ watch(
   { deep: true },
 );
 
-function addTool() {
-  groups.value.push({
-    id: nextId++,
-    tool: "",
-    rules: [{ id: nextId++, pattern: "", effect: "ask" }],
-  });
-}
-
-function removeTool(index: number) {
-  groups.value.splice(index, 1);
+function toggleGroup(id: number) {
+  const next = new Set(openGroups.value);
+  if (next.has(id)) next.delete(id);
+  else next.add(id);
+  openGroups.value = next;
 }
 
 function addRule(groupIndex: number) {
@@ -117,7 +123,6 @@ function removeRule(groupIndex: number, ruleIndex: number) {
   gap: 12px;
 }
 .permission-editor__heading,
-.permission-group__heading,
 .permission-rule {
   display: flex;
   align-items: center;
@@ -136,13 +141,46 @@ function removeRule(groupIndex: number, ruleIndex: number) {
   color: var(--app-text-muted);
 }
 .permission-group {
-  display: grid;
-  gap: 8px;
-  padding: 12px;
+  overflow: hidden;
   border: 1px solid var(--app-border);
   border-radius: 8px;
 }
-.permission-group__heading > :first-child,
+.permission-group__toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 12px;
+  color: var(--app-text-primary);
+  text-align: left;
+}
+.permission-group__summary {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+.permission-group__toggle svg {
+  transition: transform 180ms ease;
+}
+.permission-group__chevron--open {
+  transform: rotate(180deg);
+}
+.permission-group__body {
+  display: grid;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+.permission-collapse-enter-active,
+.permission-collapse-leave-active {
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+.permission-collapse-enter-from,
+.permission-collapse-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
 .permission-rule > :first-child {
   flex: 1;
   min-width: 0;

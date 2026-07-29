@@ -11,7 +11,9 @@ export const PROJECT_DESCRIPTION_META = {
 
 export type ProjectDescriptionStatus = "pending" | "ready" | "error" | "skipped";
 
-export function buildProjectDescriptionInstructions(project: Pick<Project, "name" | "cwd">): string {
+export function buildProjectDescriptionInstructions(
+  project: Pick<Project, "name" | "cwd">,
+): string {
   return [
     "你是临时项目分析助手。请只读探索当前工作目录，整理一份便于后续智能分配任务的项目描述。",
     "",

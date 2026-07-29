@@ -150,9 +150,7 @@ function buildTagDecorations(view: EditorView): DecorationSet {
 
     // skill (/skill:x) and slash (/name) both use message-area slash styling
     const slashSource =
-      token.kind === "skill"
-        ? ("skill" as const)
-        : resolveSlashCommandSource(token.text, catalog);
+      token.kind === "skill" ? ("skill" as const) : resolveSlashCommandSource(token.text, catalog);
     // Prefer display name without /skill: prefix
     const displayToken =
       token.kind === "skill" ? `/${getSkillNameFromToken(token.text)}` : token.text;

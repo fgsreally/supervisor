@@ -24,8 +24,8 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
   },
   {
     slug: "task-management",
-    name: "Task management",
-    description: "Goals, plans, and task tracking tools",
+    name: "Todo",
+    description: "Todo tracking, Plan mode, and Goal execution",
   },
   {
     slug: "tool-loop-guard",

@@ -94,11 +94,58 @@ export function matchPermissionGlob(pattern: string, value: string): boolean {
   return globToRegExp(pattern).test(slashes(value));
 }
 
+/** Split a shell command chain without treating operators inside quotes as separators. */
+export function splitShellCommand(command: string): string[] {
+  const parts: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  const flush = () => {
+    const value = current.trim();
+    if (value) parts.push(value);
+    current = "";
+  };
+
+  for (let index = 0; index < command.length; index++) {
+    const char = command[index]!;
+    if (escaped) {
+      current += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\" || char === "`") {
+      current += char;
+      escaped = true;
+      continue;
+    }
+    if (quote) {
+      current += char;
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === "\n" || char === ";" || char === "|" || char === "&") {
+      flush();
+      if ((char === "|" || char === "&") && command[index + 1] === char) index++;
+      continue;
+    }
+    current += char;
+  }
+  flush();
+  return parts;
+}
+
 export function permissionTargets(toolName: string, args: unknown, cwd: string): string[] {
   if (!args || typeof args !== "object") return [];
   const record = args as Record<string, unknown>;
   const name = toolName.toLowerCase();
-  if (name === "bash" && typeof record.command === "string") return [record.command.trim()];
+  if (name === "bash" && typeof record.command === "string") {
+    return splitShellCommand(record.command);
+  }
   if (PATH_TOOLS.has(name)) {
     const pathKeys = new Set(["file_path", "filePath", "path", "file"]);
     return Object.entries(record).flatMap(([key, value]) => {
@@ -116,6 +163,7 @@ export interface AgentPermissionDecision {
   tool: string;
   target: string;
   pattern?: string;
+  matchedTarget?: string;
 }
 
 export function evaluateAgentPermission(
@@ -134,12 +182,20 @@ export function evaluateAgentPermission(
       if (matchPermissionGlob(pattern, target)) matches.push({ effect, tool, target, pattern });
     }
   }
-  return (
-    matches.find((item) => item.effect === "deny") ??
+  const decision = matches.find((item) => item.effect === "deny") ??
     matches.find((item) => item.effect === "ask") ?? {
       effect: "allow",
       tool,
       target: targets[0] ?? "",
-    }
-  );
+    };
+  if (tool === "bash" && decision.effect !== "allow") {
+    const command =
+      args &&
+      typeof args === "object" &&
+      typeof (args as Record<string, unknown>).command === "string"
+        ? ((args as Record<string, unknown>).command as string).trim()
+        : decision.target;
+    return { ...decision, target: command, matchedTarget: decision.target };
+  }
+  return decision;
 }

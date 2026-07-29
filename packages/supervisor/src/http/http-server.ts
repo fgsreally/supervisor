@@ -20,6 +20,7 @@ import {
 import { readTaskArtifact } from "../core/task-artifacts.js";
 import { extractSessionFieldsFromMetaPatch } from "../core/session-fields.js";
 import { normalizeAgentPermissionRules } from "../core/agent-permissions.js";
+import { listPendingApprovals } from "../extension/runtime/index.js";
 import {
   parseBindResourceBody,
   parseInstallResourceBody,
@@ -222,11 +223,34 @@ function toHomeTaskResponse(task: HomeTask) {
   };
 }
 
-export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
-  const app = new SupervisorElysiaBuilder();
+export function createHttpServer(
+  manager: SessionManager,
+  options: { password?: string } = {},
+): SupervisorElysiaApp {
+  const password = options.password?.trim();
+  const app = new SupervisorElysiaBuilder((c) => {
+    const pathname = new URL(c.req.raw.url).pathname;
+    if (
+      !password ||
+      pathname === "/auth/status" ||
+      pathname === "/healthz" ||
+      pathname.startsWith("/public/") ||
+      pathname.startsWith("/uploaded-icons/")
+    )
+      return undefined;
+    if (c.req.header("x-supervisor-password") === password || c.req.query("password") === password)
+      return undefined;
+    return c.json({ error: "Unauthorized" }, 401);
+  });
   appendSystemLog(`HTTP server initialized pid=${process.pid}`);
 
   app.get("/healthz", (c) => c.json({ ok: true }));
+  app.get("/auth/status", (c) =>
+    c.json({
+      required: Boolean(password),
+      authenticated: !password || c.req.header("x-supervisor-password") === password,
+    }),
+  );
 
   // ============ Home ============
 
@@ -1046,11 +1070,15 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
     }
   });
 
-  app.delete("/projects/:id", (c) => {
+  app.delete("/projects/:id", async (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid project id");
     const project = manager.getProject(id);
     if (!project) return jsonError(c, 404, "not found");
+    const body = await c.req.json().catch(() => null);
+    if (!body || typeof body !== "object" || body.name !== project.name) {
+      return jsonError(c, 400, "请输入正确的项目名以确认删除");
+    }
     manager.deleteProject(id);
     return c.json({ ok: true });
   });
@@ -1556,6 +1584,7 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
+      if (manager.get(id)?.isBuiltin) return jsonError(c, 403, "Pi 助手不能归档");
       const session = await manager.complete(id);
       return c.json(session);
     } catch (e: unknown) {
@@ -2069,17 +2098,17 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
       const runtime = await manager.ensureRuntime(sessionId);
       commands = runtime.getSlashCommands();
     } catch {
-      // Idle/external/unrestorable sessions still expose builtin task commands.
+      // Unrestorable sessions cannot expose extension-owned commands.
     }
     try {
       return c.json(manager.mergeSessionSlashCommands(commands));
     } catch (e: unknown) {
-      // Listing commands must not fail the composer; fall back to builtins.
+      // Listing commands must not fail the composer.
       console.error(
         `[commands] merge failed for session ${sessionId}:`,
         e instanceof Error ? e.message : String(e),
       );
-      return c.json(manager.listTaskSlashCommands());
+      return c.json([]);
     }
   });
 
@@ -2117,10 +2146,6 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
       );
       if (runtime?.executeSlashCommand && runtimeHasCommand) {
         await runtime.executeSlashCommand(available.name, argument);
-        return c.json({ ok: true });
-      }
-      if (command === "goal" || command === "plan") {
-        await manager.executeTaskSlashCommand(sessionId, command, argument);
         return c.json({ ok: true });
       }
       return jsonError(c, 409, "slash commands are not executable");
@@ -2270,6 +2295,9 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
       const { fields, rest } = extractSessionFieldsFromMetaPatch(body as Record<string, unknown>);
+      if (manager.get(id)?.isBuiltin && fields.pinned === false) {
+        return jsonError(c, 403, "Pi 助手不能取消置顶");
+      }
       if (Object.keys(fields).length > 0) manager.updateSessionFields(id, fields);
       if (Object.keys(rest).length > 0) manager.updateMeta(id, rest);
       const session = manager.get(id);
@@ -2370,10 +2398,14 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
 
   // DELETE /sessions/:id  — delete DB record only, does NOT kill the process
   app.delete("/sessions/:id", (c) => {
-    const id = parseIntegerId(c.req.param("id"));
-    if (id === null) return jsonError(c, 400, "invalid session id");
-    manager.delete(id);
-    return c.json({ ok: true });
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      manager.delete(id);
+      return c.json({ ok: true });
+    } catch (e: unknown) {
+      return jsonError(c, 409, e instanceof Error ? e.message : String(e));
+    }
   });
 
   // POST /sessions/:id/btw - create a hidden child with a frozen parent context
@@ -2527,6 +2559,13 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
     }
   });
 
+  app.get("/sessions/:id/approvals", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    if (!manager.get(id)) return jsonError(c, 404, "session not found");
+    return c.json({ approvals: listPendingApprovals(id) });
+  });
+
   // POST /sessions/:id/external-interactions/:interactionId/respond
   app.post("/sessions/:id/external-interactions/:interactionId/respond", async (c) => {
     const body = await c.req.json().catch(() => ({}));
@@ -2655,6 +2694,7 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
         return jsonError(c, 400, "only prompt and mcp content can be edited in the UI");
       }
       const result = await manager.resources.upsertResourceContent(input);
+      if (input.kind === "prompt") manager.reloadNativeSessionResources();
       return c.json(result);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -2748,6 +2788,7 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
       const binding = manager.resources.bindResource(
         parseBindResourceBody(agentId, body as Record<string, unknown>),
       );
+      manager.reloadNativeSessionResources(agentId);
       return c.json({ ok: true, binding });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -2766,6 +2807,7 @@ export function createHttpServer(manager: SessionManager): SupervisorElysiaApp {
       const mutationError = getAgentMutationError(manager, agentId);
       if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
       await manager.resources.unbindResource({ agentId, resourceId });
+      manager.reloadNativeSessionResources(agentId);
       return c.json({ ok: true });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);

@@ -102,6 +102,7 @@
             @dragover.prevent
             @drop="onProjectDrop(group.workspace.id)"
             @dragend="draggedProjectId = null"
+            @contextmenu.prevent.stop="openProjectContextMenu(group.workspace.id, $event)"
           >
             <button
               type="button"
@@ -226,11 +227,20 @@
       :x="contextMenu?.x ?? 0"
       :y="contextMenu?.y ?? 0"
       :status="contextSession?.status"
+      :protected-session="contextSession?.isBuiltin"
       @close="closeContextMenu"
       @pin="togglePinnedSession"
       @delete="confirmDeleteSession"
       @achieve="achieveSession"
       @fork="forkFinishedSession"
+    />
+
+    <ProjectListContextMenu
+      :open="projectContextMenu != null"
+      :x="projectContextMenu?.x ?? 0"
+      :y="projectContextMenu?.y ?? 0"
+      @close="projectContextMenu = null"
+      @delete="confirmDeleteProject"
     />
 
     <ProjectSettingsMenu
@@ -290,6 +300,7 @@ import {
   pushProjectGit,
   getProjectGitInfo,
   checkoutProjectGit,
+  deleteProject as apiDeleteProject,
   listProjectScripts,
   regenerateProjectDescription as apiRegenerateProjectDescription,
   searchMessages,
@@ -300,6 +311,7 @@ import { requestUiConfirm } from "@/composables/use-ui-confirm";
 import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
 import ProjectCreateDialog from "./ProjectCreateDialog.vue";
 import ProjectGitMenu from "./ProjectGitMenu.vue";
+import ProjectListContextMenu from "./ProjectListContextMenu.vue";
 import ProjectSettingsMenu from "./ProjectSettingsMenu.vue";
 import SessionAgentPicker from "./SessionAgentPicker.vue";
 import SessionListContextMenu from "./SessionListContextMenu.vue";
@@ -389,6 +401,7 @@ const projectCreating = ref(false);
 const projectDescribing = ref(false);
 const externalImportOpen = ref(false);
 const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null);
+const projectContextMenu = ref<{ projectId: string; x: number; y: number } | null>(null);
 const contextSession = computed(() =>
   contextMenu.value
     ? sessionStore.sessions.find((session) => session.id === contextMenu.value?.sessionId)
@@ -523,7 +536,12 @@ function isPinnedRoot(session: UISession): boolean {
   return !!session.pinned || !!session.isBuiltin;
 }
 
-const pinnedRoots = computed(() => rootsToShow.value.filter(isPinnedRoot));
+const pinnedRoots = computed(() =>
+  rootsToShow.value.filter(isPinnedRoot).sort((left, right) => {
+    if (!!left.isBuiltin !== !!right.isBuiltin) return left.isBuiltin ? -1 : 1;
+    return sortByRecentActivity(left, right);
+  }),
+);
 const regularRoots = computed(() => rootsToShow.value.filter((s) => !isPinnedRoot(s)));
 
 const workspaceGroups = computed(() => {
@@ -556,6 +574,38 @@ function openAgentPicker(workspaceId: string) {
 function openProjectSettings(projectId: string) {
   closeProjectGit();
   projectSettingsId.value = projectId;
+}
+
+function openProjectContextMenu(projectId: string, event: MouseEvent) {
+  closeContextMenu();
+  projectContextMenu.value = {
+    projectId,
+    x: Math.max(8, Math.min(event.clientX, window.innerWidth - 136)),
+    y: Math.max(8, Math.min(event.clientY, window.innerHeight - 56)),
+  };
+}
+
+async function confirmDeleteProject() {
+  const target = projectContextMenu.value;
+  projectContextMenu.value = null;
+  if (!target) return;
+  const project = sessionStore.projects.find((item) => item.id === target.projectId);
+  if (!project) return;
+  const ok = await requestUiConfirm({
+    title: "删除项目",
+    message: `这会删除项目下的所有会话和对应目录。请输入项目名“${project.name}”确认。`,
+    confirmText: "删除项目",
+    danger: true,
+    expectedText: project.name,
+  });
+  if (!ok) return;
+  try {
+    await apiDeleteProject(project.id, project.name);
+    await Promise.all([sessionStore.fetchProjects(), sessionStore.fetchSessions()]);
+    showUiMessage("项目已删除", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "删除项目失败", "error");
+  }
 }
 
 function closeProjectSettings() {
@@ -720,6 +770,7 @@ async function regenerateProjectDescription() {
 }
 
 function openContextMenu(sessionId: string, pos: { x: number; y: number }) {
+  if (sessionStore.sessions.find((session) => session.id === sessionId)?.isBuiltin) return;
   const menuWidth = 120;
   const menuHeight = 80;
   const x = Math.min(pos.x, window.innerWidth - menuWidth - 8);
@@ -735,6 +786,7 @@ function togglePinnedSession() {
   const target = contextMenu.value;
   closeContextMenu();
   if (!target) return;
+  if (sessionStore.sessions.find((session) => session.id === target.sessionId)?.isBuiltin) return;
   const pinned = viewPreferences.pinnedSessionIds.includes(target.sessionId);
   setSessionViewFlag("pinnedSessionIds", target.sessionId, !pinned);
   showUiMessage(pinned ? "已取消置顶" : "已置顶", "success");
@@ -744,6 +796,7 @@ async function confirmDeleteSession() {
   const target = contextMenu.value;
   closeContextMenu();
   if (!target) return;
+  if (sessionStore.sessions.find((session) => session.id === target.sessionId)?.isBuiltin) return;
   const ok = await requestUiConfirm({
     title: "删除会话",
     message: "确定删除该会话？子会话也会一并删除。",
@@ -765,6 +818,7 @@ async function achieveSession() {
   closeContextMenu();
   if (!target) return;
   const session = sessionStore.sessions.find((item) => item.id === target.sessionId);
+  if (session?.isBuiltin) return;
   const prompt =
     session?.creationMethod === "spawn_agent"
       ? "完成该子代理会话？完成后会从会话列表隐藏，不会提交或合并代码。"

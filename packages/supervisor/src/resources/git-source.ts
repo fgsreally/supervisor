@@ -119,7 +119,10 @@ export function parseGitOrLocalSource(input: string): GitOrLocalSource {
 }
 
 /** Clone a git source into a temp directory and return the resolved content root. Caller must clean up. */
-export function cloneGitSourceToTemp(source: ParsedGitSource): { tempRoot: string; contentRoot: string } {
+export function cloneGitSourceToTemp(source: ParsedGitSource): {
+  tempRoot: string;
+  contentRoot: string;
+} {
   const tempRoot = mkdtempSync(join(tmpdir(), "pi-resource-git-"));
   const cloneArgs = ["clone", "--depth", "1"];
   if (source.ref) cloneArgs.push("--branch", source.ref);

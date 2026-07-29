@@ -12,6 +12,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -237,6 +238,14 @@ function ensurePackageJson(extDir: string): { name: string; version: string } {
   return fallback;
 }
 
+function removeLocalDevelopmentDependencies(extDir: string): void {
+  const packagePath = join(extDir, "package.json");
+  if (!existsSync(packagePath)) return;
+  const manifest = JSON.parse(readFileSync(packagePath, "utf8")) as Record<string, unknown>;
+  delete manifest.devDependencies;
+  writePackageJson(extDir, manifest);
+}
+
 function installDeps(extDir: string): "pnpm" | "npm" | "none" {
   if (!extensionHasInstallableDeps(extDir) && existsSync(join(extDir, "node_modules"))) {
     return "none";
@@ -245,8 +254,8 @@ function installDeps(extDir: string): "pnpm" | "npm" | "none" {
   const manager = detectPackageManager();
   const args =
     manager === "pnpm"
-      ? ["install", "--silent"]
-      : ["install", "--silent", "--no-audit", "--no-fund"];
+      ? ["install", "--prod", "--config.auto-install-peers=false", "--silent"]
+      : ["install", "--omit=dev", "--silent", "--no-audit", "--no-fund"];
   const res = run(manager, args, extDir);
   if (res.status !== 0) {
     const stderr = res.stderr ?? "";
@@ -300,8 +309,12 @@ function installLocal(source: string, targetDir: string): string {
   const fallbackId = safeId(basename(absoluteSource));
   const targetRoot = join(targetDir, fallbackId);
   rmSync(targetRoot, { recursive: true, force: true });
-  cpSync(absoluteSource, targetRoot, { recursive: true });
+  cpSync(absoluteSource, targetRoot, {
+    recursive: true,
+    filter: (sourcePath) => basename(sourcePath) !== "node_modules",
+  });
   ensurePackageJson(targetRoot);
+  removeLocalDevelopmentDependencies(targetRoot);
   return finalizeInstallRoot(targetDir, targetRoot, fallbackId);
 }
 

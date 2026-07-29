@@ -62,6 +62,10 @@ export default defineConfig({
     host: "0.0.0.0",
     allowedHosts: ["supervisor.fgsreally.online", ".fgsreally.online"],
     proxy: {
+      "/auth": {
+        target: "http://localhost:3030",
+        changeOrigin: true,
+      },
       "/sessions": {
         target: "http://localhost:3030",
         changeOrigin: true,

@@ -3,80 +3,208 @@
     class="flex h-screen w-screen overflow-hidden font-sans"
     style="background: var(--app-shell-bg)"
   >
-    <template v-if="!isMobile">
-      <ShellNav :tab="mainTab" @update:tab="onTabChange" />
+    <StartupGate v-if="!appReady" @ready="onStartupReady" />
+    <template v-else>
+      <template v-if="!isMobile">
+        <ShellNav :tab="mainTab" @update:tab="onTabChange" @tutorial="introTour?.start()" />
 
-      <div class="flex flex-1 min-w-0 min-h-0 overflow-hidden">
-        <HomeView
-          v-if="mainTab === 'home'"
-          class="flex-1 min-w-0 h-full"
-          @open-session="openSessionFromHome"
-        />
-        <SettingsPanel v-else-if="mainTab === 'settings'" class="flex-1 min-w-0 h-full" />
-        <template v-else>
-          <div
-            class="relative shrink-0 h-full hidden md:block"
-            :style="{ width: `${chatListWidth}px` }"
-          >
+        <div class="flex flex-1 min-w-0 min-h-0 overflow-hidden">
+          <TodoView
+            v-if="mainTab === 'todo'"
+            data-tour-page="todo"
+            class="flex-1 min-w-0 h-full"
+            @open-session="openSessionFromHome"
+          />
+          <HomeView
+            v-else-if="mainTab === 'dashboard'"
+            data-tour-page="dashboard"
+            class="flex-1 min-w-0 h-full"
+          />
+          <SettingsPanel
+            v-else-if="mainTab === 'settings'"
+            data-tour-page="settings"
+            class="flex-1 min-w-0 h-full"
+          />
+          <template v-else>
+            <div
+              class="relative shrink-0 h-full hidden md:block"
+              :style="{ width: `${chatListWidth}px` }"
+            >
+              <ChatListPanel
+                v-if="mainTab === 'chat'"
+                data-tour-page="chat"
+                class="h-full w-full"
+                :active-id="activeSessionId ?? ''"
+                @select="selectSession"
+                @delete="onSessionDelete"
+                @settings="onTabChange('settings')"
+              />
+              <ContactsPanel
+                v-else-if="mainTab === 'contacts'"
+                data-tour-page="contacts"
+                class="h-full w-full"
+                :active-id="activeAgentId ?? ''"
+                @select="selectAgent"
+                @add="openAgentAdd"
+              />
+              <ProvidersPanel
+                v-else-if="mainTab === 'providers'"
+                data-tour-page="providers"
+                class="h-full w-full"
+                :active-id="activeProviderId ?? ''"
+                @select-provider="selectProvider"
+                @add-provider="openProviderAdd"
+                @edit-provider="openProviderEditFor"
+                @delete-provider="onDeleteProvider"
+              />
+              <ResourcesPanel
+                v-else-if="mainTab === 'resources'"
+                data-tour-page="resources"
+                class="h-full w-full"
+                :active-id="activeResourceId"
+                @select="selectResource"
+              />
+              <ResizeHandle orientation="vertical" label="调整面板宽度" @start="startListResize" />
+            </div>
+
+            <main
+              class="flex flex-1 flex-col min-w-0 basis-0 h-full overflow-hidden"
+              style="background: var(--app-chat-bg)"
+            >
+              <ChatView
+                v-if="mainTab === 'chat' && chatSessionProps"
+                :key="activeSessionId ?? undefined"
+                :session="chatSessionProps"
+                :agent-id="chatSessionProps.agentId"
+                @navigate="selectSession"
+                @view-agent="viewAgent"
+              />
+              <AgentFormView
+                v-else-if="mainTab === 'contacts' && agentPage === 'add'"
+                @cancel="closeAgentForm"
+                @saved="onAgentSaved"
+              />
+              <ContactDetailView
+                v-else-if="mainTab === 'contacts' && activeAgent"
+                :agent-id="activeAgentId ?? ''"
+                @open-chat="openChatFromContact"
+                @view-provider="viewProvider"
+              />
+              <ProviderFormView
+                v-else-if="mainTab === 'providers' && providerPage === 'add'"
+                :provider-id="null"
+                @cancel="closeProviderForm"
+                @saved="onProviderSaved"
+              />
+              <ProviderModelFormView
+                v-else-if="
+                  mainTab === 'providers' &&
+                  activeProvider &&
+                  activeProviderId &&
+                  (providerPage === 'model-add' || providerPage === 'model-edit')
+                "
+                :provider-id="activeProviderId"
+                :provider-name="activeProvider.name"
+                :mode="providerPage === 'model-add' ? 'create' : 'edit'"
+                :model="activeProviderModelUi"
+                @cancel="closeModelForm"
+                @saved="onModelSaved"
+              />
+              <ProviderModelDetailView
+                v-else-if="mainTab === 'providers' && activeProvider && activeProviderModel"
+                :provider="activeProvider"
+                :model="activeProviderModel"
+                @edit="openModelEdit"
+                @deleted="deleteActiveModel"
+              />
+              <ProviderDetailView
+                v-else-if="mainTab === 'providers' && activeProviderUi"
+                :provider="activeProviderUi"
+                @view-agent="viewAgent"
+                @edit="openProviderEdit"
+                @add-model="openAddModel(activeProviderUi.id)"
+                @select-model="selectModelById"
+                @edit-model="editModelById"
+                @delete-model="deleteModelById"
+                @toggle-enabled="setProviderEnabled"
+              />
+              <ResourceDetailView
+                v-else-if="mainTab === 'resources' && activeResourceId"
+                :resource-id="activeResourceId"
+                @deleted="onResourceDeleted"
+              />
+              <EmptyPlaceholder v-else :tab="mainTab" />
+            </main>
+          </template>
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="flex-1 flex flex-col min-w-0">
+          <TodoView
+            v-if="mainTab === 'todo'"
+            class="flex-1 min-w-0 h-full"
+            @open-session="openSessionFromHome"
+          />
+          <HomeView v-else-if="mainTab === 'dashboard'" class="flex-1 min-w-0 h-full" />
+          <SettingsPanel
+            v-else-if="mainTab === 'settings'"
+            :show-back="true"
+            @back="onTabChange('chat')"
+          />
+          <template v-else-if="mobilePage === 'list'">
             <ChatListPanel
               v-if="mainTab === 'chat'"
-              class="h-full w-full"
               :active-id="activeSessionId ?? ''"
               @select="selectSession"
               @delete="onSessionDelete"
-              @settings="onTabChange('settings')"
+              @settings="openMobileSettings"
             />
             <ContactsPanel
               v-else-if="mainTab === 'contacts'"
-              class="h-full w-full"
               :active-id="activeAgentId ?? ''"
               @select="selectAgent"
               @add="openAgentAdd"
             />
             <ProvidersPanel
               v-else-if="mainTab === 'providers'"
-              class="h-full w-full"
               :active-id="activeProviderId ?? ''"
               @select-provider="selectProvider"
               @add-provider="openProviderAdd"
               @edit-provider="openProviderEditFor"
               @delete-provider="onDeleteProvider"
             />
-            <ResourcesPanel
-              v-else-if="mainTab === 'resources'"
-              class="h-full w-full"
-              :active-id="activeResourceId"
-              @select="selectResource"
-            />
-            <ResizeHandle orientation="vertical" label="调整面板宽度" @start="startListResize" />
-          </div>
-
-          <main
-            class="flex flex-1 flex-col min-w-0 basis-0 h-full overflow-hidden"
-            style="background: var(--app-chat-bg)"
-          >
+            <ResourcesPanel v-else :active-id="activeResourceId" @select="selectResource" />
+          </template>
+          <template v-else>
             <ChatView
               v-if="mainTab === 'chat' && chatSessionProps"
               :key="activeSessionId ?? undefined"
               :session="chatSessionProps"
               :agent-id="chatSessionProps.agentId"
+              :show-back="true"
+              @back="backToMobileList"
               @navigate="selectSession"
               @view-agent="viewAgent"
             />
             <AgentFormView
               v-else-if="mainTab === 'contacts' && agentPage === 'add'"
+              :show-back="true"
               @cancel="closeAgentForm"
               @saved="onAgentSaved"
             />
             <ContactDetailView
               v-else-if="mainTab === 'contacts' && activeAgent"
               :agent-id="activeAgentId ?? ''"
+              :show-back="true"
+              @back="backToMobileList"
               @open-chat="openChatFromContact"
               @view-provider="viewProvider"
             />
             <ProviderFormView
               v-else-if="mainTab === 'providers' && providerPage === 'add'"
               :provider-id="null"
+              :show-back="true"
               @cancel="closeProviderForm"
               @saved="onProviderSaved"
             />
@@ -104,6 +232,8 @@
             <ProviderDetailView
               v-else-if="mainTab === 'providers' && activeProviderUi"
               :provider="activeProviderUi"
+              :show-back="true"
+              @back="backToMobileList"
               @view-agent="viewAgent"
               @edit="openProviderEdit"
               @add-model="openAddModel(activeProviderUi.id)"
@@ -115,177 +245,80 @@
             <ResourceDetailView
               v-else-if="mainTab === 'resources' && activeResourceId"
               :resource-id="activeResourceId"
+              :show-back="true"
+              @back="backToMobileList"
               @deleted="onResourceDeleted"
             />
-            <EmptyPlaceholder v-else :tab="mainTab" />
-          </main>
-        </template>
-      </div>
-    </template>
-
-    <template v-else>
-      <div class="flex-1 flex flex-col min-w-0">
-        <HomeView
-          v-if="mainTab === 'home'"
-          class="flex-1 min-w-0 h-full"
-          @open-session="openSessionFromHome"
-        />
-        <SettingsPanel
-          v-else-if="mainTab === 'settings'"
-          :show-back="true"
-          @back="onTabChange('home')"
-        />
-        <template v-else-if="mobilePage === 'list'">
-          <ChatListPanel
-            v-if="mainTab === 'chat'"
-            :active-id="activeSessionId ?? ''"
-            @select="selectSession"
-            @delete="onSessionDelete"
-            @settings="openMobileSettings"
-          />
-          <ContactsPanel
-            v-else-if="mainTab === 'contacts'"
-            :active-id="activeAgentId ?? ''"
-            @select="selectAgent"
-            @add="openAgentAdd"
-          />
-          <ProvidersPanel
-            v-else-if="mainTab === 'providers'"
-            :active-id="activeProviderId ?? ''"
-            @select-provider="selectProvider"
-            @add-provider="openProviderAdd"
-            @edit-provider="openProviderEditFor"
-            @delete-provider="onDeleteProvider"
-          />
-          <ResourcesPanel v-else :active-id="activeResourceId" @select="selectResource" />
-        </template>
-        <template v-else>
-          <ChatView
-            v-if="mainTab === 'chat' && chatSessionProps"
-            :key="activeSessionId ?? undefined"
-            :session="chatSessionProps"
-            :agent-id="chatSessionProps.agentId"
-            :show-back="true"
-            @back="backToMobileList"
-            @navigate="selectSession"
-            @view-agent="viewAgent"
-          />
-          <AgentFormView
-            v-else-if="mainTab === 'contacts' && agentPage === 'add'"
-            :show-back="true"
-            @cancel="closeAgentForm"
-            @saved="onAgentSaved"
-          />
-          <ContactDetailView
-            v-else-if="mainTab === 'contacts' && activeAgent"
-            :agent-id="activeAgentId ?? ''"
-            :show-back="true"
-            @back="backToMobileList"
-            @open-chat="openChatFromContact"
-            @view-provider="viewProvider"
-          />
-          <ProviderFormView
-            v-else-if="mainTab === 'providers' && providerPage === 'add'"
-            :provider-id="null"
-            :show-back="true"
-            @cancel="closeProviderForm"
-            @saved="onProviderSaved"
-          />
-          <ProviderModelFormView
-            v-else-if="
-              mainTab === 'providers' &&
-              activeProvider &&
-              activeProviderId &&
-              (providerPage === 'model-add' || providerPage === 'model-edit')
-            "
-            :provider-id="activeProviderId"
-            :provider-name="activeProvider.name"
-            :mode="providerPage === 'model-add' ? 'create' : 'edit'"
-            :model="activeProviderModelUi"
-            @cancel="closeModelForm"
-            @saved="onModelSaved"
-          />
-          <ProviderModelDetailView
-            v-else-if="mainTab === 'providers' && activeProvider && activeProviderModel"
-            :provider="activeProvider"
-            :model="activeProviderModel"
-            @edit="openModelEdit"
-            @deleted="deleteActiveModel"
-          />
-          <ProviderDetailView
-            v-else-if="mainTab === 'providers' && activeProviderUi"
-            :provider="activeProviderUi"
-            :show-back="true"
-            @back="backToMobileList"
-            @view-agent="viewAgent"
-            @edit="openProviderEdit"
-            @add-model="openAddModel(activeProviderUi.id)"
-            @select-model="selectModelById"
-            @edit-model="editModelById"
-            @delete-model="deleteModelById"
-            @toggle-enabled="setProviderEnabled"
-          />
-          <ResourceDetailView
-            v-else-if="mainTab === 'resources' && activeResourceId"
-            :resource-id="activeResourceId"
-            :show-back="true"
-            @back="backToMobileList"
-            @deleted="onResourceDeleted"
-          />
-        </template>
-      </div>
-      <nav
-        v-if="mobilePage === 'list'"
-        class="md:hidden fixed bottom-0 inset-x-0 h-14 border-t z-30 flex mobile-bottom-nav"
-        style="background: var(--app-nav-bg); border-color: var(--app-border)"
-      >
-        <button
-          type="button"
-          class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-          :class="mainTab === 'home' ? 'mobile-bottom-nav__btn--active' : ''"
-          @click="onTabChange('home')"
+          </template>
+        </div>
+        <nav
+          v-if="mobilePage === 'list'"
+          class="md:hidden fixed bottom-0 inset-x-0 h-14 border-t z-30 flex mobile-bottom-nav"
+          style="background: var(--app-nav-bg); border-color: var(--app-border)"
         >
-          <Home class="w-5 h-5 mb-0.5" />
-          首页
-        </button>
-        <button
-          type="button"
-          class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-          :class="mainTab === 'chat' ? 'mobile-bottom-nav__btn--active' : ''"
-          @click="onTabChange('chat')"
-        >
-          <MessageSquare class="w-5 h-5 mb-0.5" />
-          聊天
-        </button>
-        <button
-          type="button"
-          class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-          :class="mainTab === 'contacts' ? 'mobile-bottom-nav__btn--active' : ''"
-          @click="onTabChange('contacts')"
-        >
-          <Users class="w-5 h-5 mb-0.5" />
-          智能代理
-        </button>
-        <button
-          type="button"
-          class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-          :class="mainTab === 'providers' ? 'mobile-bottom-nav__btn--active' : ''"
-          @click="onTabChange('providers')"
-        >
-          <Cloud class="w-5 h-5 mb-0.5" />
-          模型
-        </button>
-        <button
-          type="button"
-          class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-          :class="mainTab === 'resources' ? 'mobile-bottom-nav__btn--active' : ''"
-          @click="onTabChange('resources')"
-        >
-          <FolderOpen class="w-5 h-5 mb-0.5" />
-          资源
-        </button>
-      </nav>
-      <div v-if="mobilePage === 'list'" class="md:hidden h-14 shrink-0"></div>
+          <button
+            style="order: 2"
+            type="button"
+            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
+            :class="mainTab === 'todo' ? 'mobile-bottom-nav__btn--active' : ''"
+            @click="onTabChange('todo')"
+          >
+            <ListTodo class="w-5 h-5 mb-0.5" />
+            Todo
+          </button>
+          <button
+            style="order: 3"
+            type="button"
+            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
+            :class="mainTab === 'dashboard' ? 'mobile-bottom-nav__btn--active' : ''"
+            @click="onTabChange('dashboard')"
+          >
+            <LayoutDashboard class="w-5 h-5 mb-0.5" />
+            概览
+          </button>
+          <button
+            style="order: 1"
+            type="button"
+            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
+            :class="mainTab === 'chat' ? 'mobile-bottom-nav__btn--active' : ''"
+            @click="onTabChange('chat')"
+          >
+            <MessageSquare class="w-5 h-5 mb-0.5" />
+            聊天
+          </button>
+          <button
+            style="order: 4"
+            type="button"
+            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
+            :class="mainTab === 'contacts' ? 'mobile-bottom-nav__btn--active' : ''"
+            @click="onTabChange('contacts')"
+          >
+            <Users class="w-5 h-5 mb-0.5" />
+            智能代理
+          </button>
+          <button
+            style="order: 5"
+            type="button"
+            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
+            :class="mainTab === 'providers' ? 'mobile-bottom-nav__btn--active' : ''"
+            @click="onTabChange('providers')"
+          >
+            <Cloud class="w-5 h-5 mb-0.5" />
+            模型
+          </button>
+          <button
+            style="order: 6"
+            type="button"
+            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
+            :class="mainTab === 'resources' ? 'mobile-bottom-nav__btn--active' : ''"
+            @click="onTabChange('resources')"
+          >
+            <FolderOpen class="w-5 h-5 mb-0.5" />
+            资源
+          </button>
+        </nav>
+        <div v-if="mobilePage === 'list'" class="md:hidden h-14 shrink-0"></div>
+      </template>
     </template>
 
     <GlobalSearchModal :open="searchOpen" @close="searchOpen = false" @navigate="selectSession" />
@@ -300,6 +333,7 @@
     <UiMessageHost />
     <UiConfirmHost />
     <UiBusyHost />
+    <IntroTour ref="introTour" />
     <ProviderEditDialog
       :open="providerEditOpen"
       :provider-id="providerEditId ?? ''"
@@ -312,7 +346,14 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { Cloud, FolderOpen, Home, MessageSquare, Users } from "lucide-vue-next";
+import {
+  Cloud,
+  FolderOpen,
+  LayoutDashboard,
+  ListTodo,
+  MessageSquare,
+  Users,
+} from "lucide-vue-next";
 import ShellNav, { type MainTab } from "./components/ShellNav.vue";
 import ChatListPanel from "./components/ChatListPanel.vue";
 import ContactsPanel from "./components/ContactsPanel.vue";
@@ -333,10 +374,13 @@ import ProviderEditDialog from "./components/ProviderEditDialog.vue";
 import ProviderModelEditor from "./components/ProviderModelEditor.vue";
 import ChatView from "./views/ChatView.vue";
 import HomeView from "./views/HomeView.vue";
+import TodoView from "./views/TodoView.vue";
 import GlobalSearchModal from "./components/GlobalSearchModal.vue";
 import UiMessageHost from "./components/UiMessageHost.vue";
 import UiConfirmHost from "./components/UiConfirmHost.vue";
 import UiBusyHost from "./components/UiBusyHost.vue";
+import StartupGate from "./components/StartupGate.vue";
+import IntroTour from "./components/IntroTour.vue";
 import { showUiMessage } from "./composables/use-ui-message";
 import { useSessionStore, useAgentStore, useProviderStore, useResourceStore } from "./store";
 import { providerToUI } from "./utils/provider-ui";
@@ -359,7 +403,7 @@ const agentStore = useAgentStore();
 const providerStore = useProviderStore();
 const resourceStore = useResourceStore();
 
-const mainTab = ref<MainTab>("home");
+const mainTab = ref<MainTab>("chat");
 const activeSessionId = ref<string | null>(null);
 const activeAgentId = ref<string | null>(null);
 const activeProviderId = ref<string | null>(null);
@@ -377,6 +421,9 @@ const providerPage = ref<ProviderPage>("detail");
 const agentPage = ref<AgentPage>("detail");
 const providerEditOpen = ref(false);
 const providerEditId = ref<string | null>(null);
+const appReady = ref(false);
+const introTour = ref<InstanceType<typeof IntroTour> | null>(null);
+let appDataLoaded = false;
 
 function applyRoute() {
   const tab = tabFromRoute(route);
@@ -389,15 +436,19 @@ function applyRoute() {
     activeModelId.value = modelIdFromRoute(route) ?? null;
     providerPage.value = "detail";
   } else if (tab === "resources") activeResourceId.value = id ?? activeResourceId.value;
-  if (id && tab !== "settings" && tab !== "home" && isMobile.value) mobilePage.value = "detail";
+  if (id && tab !== "settings" && tab !== "todo" && tab !== "dashboard" && isMobile.value) {
+    mobilePage.value = "detail";
+  }
 }
 
 function pushRoute() {
   const tab = mainTab.value;
-  if (tab === "home") {
-    void router.push("/home");
-  } else if (tab === "chat") {
+  if (tab === "chat") {
     void router.push(activeSessionId.value ? `/chat/${activeSessionId.value}` : "/chat");
+  } else if (tab === "todo") {
+    void router.push("/todo");
+  } else if (tab === "dashboard") {
+    void router.push("/dashboard");
   } else if (tab === "contacts") {
     void router.push(activeAgentId.value ? `/contacts/${activeAgentId.value}` : "/contacts");
   } else if (tab === "providers") {
@@ -422,8 +473,17 @@ onMounted(() => {
   updateMobileFlag();
   window.addEventListener("resize", updateMobileFlag);
   document.addEventListener("visibilitychange", onVisibilityChange);
+});
 
-  Promise.all([
+function onStartupReady() {
+  appReady.value = true;
+  void loadAppData();
+}
+
+async function loadAppData() {
+  if (appDataLoaded) return;
+  appDataLoaded = true;
+  await Promise.all([
     sessionStore.fetchProjects(),
     sessionStore.fetchSessions(),
     agentStore.fetchAgents(),
@@ -436,7 +496,7 @@ onMounted(() => {
   ])
     .then(() => {
       if (route.path === "/" || route.path === "") {
-        void router.replace("/home");
+        void router.replace("/chat");
       } else {
         applyRoute();
         if (mainTab.value === "providers" && !activeProviderId.value) {
@@ -451,8 +511,11 @@ onMounted(() => {
         }
       }
     })
-    .catch(console.error);
-});
+    .catch((error) => {
+      appDataLoaded = false;
+      console.error(error);
+    });
+}
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", updateMobileFlag);
@@ -461,7 +524,7 @@ onBeforeUnmount(() => {
 
 function onVisibilityChange() {
   if (document.hidden) return;
-  if (mainTab.value !== "chat" && mainTab.value !== "home") return;
+  if (mainTab.value !== "chat" && mainTab.value !== "todo" && mainTab.value !== "dashboard") return;
   void sessionStore.fetchSessions();
 }
 
@@ -529,7 +592,12 @@ const chatSessionProps = computed(() => {
 
 function selectSession(id: string) {
   activeSessionId.value = id;
-  if (isMobile.value && mainTab.value !== "settings" && mainTab.value !== "home") {
+  if (
+    isMobile.value &&
+    mainTab.value !== "settings" &&
+    mainTab.value !== "todo" &&
+    mainTab.value !== "dashboard"
+  ) {
     mobilePage.value = "detail";
   }
   pushRoute();

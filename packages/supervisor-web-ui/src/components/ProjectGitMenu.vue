@@ -18,7 +18,7 @@
         <template v-else>
           <div class="project-git-menu__current">
             <GitBranch class="h-3.5 w-3.5 shrink-0" />
-            <span class="truncate">branch: {{ currentBranch || "—" }}</span>
+            <span class="truncate">branch</span>
           </div>
           <div v-if="branches?.length" class="project-git-menu__branches">
             <button

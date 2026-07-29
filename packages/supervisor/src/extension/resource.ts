@@ -16,12 +16,16 @@ export function getGlobalExtensionsDirectory(): string {
 export function createExtensionResourceHandler(options: {
   db: SupervisorDb;
   registry: ExtensionModuleRegistry;
+  discoveryDirectories?: string[];
   deactivateAgentExtension?: (agentId: number, slug: string) => Promise<void>;
 }): ResourceHandler {
   return {
     kind: "extension",
     discover() {
-      return listExtensionInfosInDirectories([getGlobalExtensionsDirectory()]).map((info) => {
+      return listExtensionInfosInDirectories([
+        ...(options.discoveryDirectories ?? []),
+        getGlobalExtensionsDirectory(),
+      ]).map((info) => {
         const pkg = readExtensionPackageJson(info.rootDir);
         return {
           kind: "extension" as const,

@@ -47,7 +47,9 @@
               :class="item.trigger === 'at' || item.trigger === 'atat' ? 'font-mono' : ''"
             >
               {{ displayLabel(item) }}
-              <span v-if="item.source" class="autocomplete-source">{{ item.source }}</span>
+              <span v-if="item.source" class="autocomplete-source">{{
+                item.source === "prompt" ? "template" : item.source
+              }}</span>
             </div>
             <div v-if="item.description" class="text-[11px] truncate mt-0.5 autocomplete-desc">
               {{ item.description }}

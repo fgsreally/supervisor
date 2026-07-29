@@ -21,12 +21,7 @@
         </button>
         <span class="chat-msg-time chat-msg-time--user">{{ timeLabel }}</span>
       </div>
-      <span
-        v-if="deliveryState === 'failed'"
-        class="chat-msg-delivery failed"
-      >
-        发送失败
-      </span>
+      <span v-if="deliveryState === 'failed'" class="chat-msg-delivery failed"> 发送失败 </span>
       <ChatFileBubble v-if="file" :file="file" class="relative" />
       <div
         v-else

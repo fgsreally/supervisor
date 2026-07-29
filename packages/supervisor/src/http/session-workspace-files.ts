@@ -66,16 +66,7 @@ const TEXT_EXT = new Set([
   ".lock",
 ]);
 
-const IMAGE_EXT = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".webp",
-  ".bmp",
-  ".ico",
-  ".avif",
-]);
+const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".avif"]);
 
 const PDF_EXT = new Set([".pdf"]);
 

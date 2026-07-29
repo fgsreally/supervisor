@@ -8,7 +8,7 @@ import "./mock-agent-harness.js";
 import { SupervisorDb } from "../src/db.js";
 import { SessionManager } from "../src/session-manager.js";
 import { MockAgentHarness } from "./mock-agent-harness.js";
-import { getSessionDir } from "../src/core/session-files.js";
+import { getProjectDir, getSessionDir } from "../src/core/session-files.js";
 import { ensurePackagedAgents, findPackagedAgentId } from "../src/agent/index.js";
 
 const SPAWN_OPTS = { cwd: "/proj" };
@@ -339,6 +339,26 @@ describe("supervisor: SessionManager", () => {
     manager.delete(inst.id);
 
     expect(existsSync(sessionDir)).toBe(false);
+  });
+
+  it("does not delete builtin assistant sessions directly", () => {
+    const session = manager.create({ isBuiltin: true });
+
+    expect(() => manager.delete(session.id)).toThrow("Pi 助手不能删除");
+    expect(manager.get(session.id)).toBeDefined();
+  });
+
+  it("deleteProject() deletes its sessions and owned directory", () => {
+    const project = manager.createProject({ cwd: join(tmpDir, "workspace") });
+    const parent = manager.create({ projectId: project.id, cwd: project.cwd });
+    manager.create({ projectId: project.id, cwd: project.cwd, parentId: parent.id });
+    expect(existsSync(getProjectDir(project.id))).toBe(true);
+
+    manager.deleteProject(project.id);
+
+    expect(manager.getProject(project.id)).toBeUndefined();
+    expect(db.list({ projectId: project.id })).toHaveLength(0);
+    expect(existsSync(getProjectDir(project.id))).toBe(false);
   });
 
   it("children() returns child instances", () => {

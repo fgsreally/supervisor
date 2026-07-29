@@ -112,10 +112,7 @@
                     session.cwd
                   }}</small>
                 </span>
-                <UiListStatus
-                  :status="rowStatus(session)"
-                  :title="rowStatusTitle(session)"
-                />
+                <UiListStatus :status="rowStatus(session)" :title="rowStatusTitle(session)" />
               </button>
             </li>
           </ul>

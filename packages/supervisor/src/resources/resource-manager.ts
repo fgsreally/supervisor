@@ -146,11 +146,7 @@ export class ResourceManager {
     });
   }
 
-  setResourceEnabled(
-    agentId: number,
-    resourceId: number,
-    enabled: boolean,
-  ): AgentResourceBinding {
+  setResourceEnabled(agentId: number, resourceId: number, enabled: boolean): AgentResourceBinding {
     assertAgentExists(this.deps.db, agentId);
     const resource = this.deps.db.getResource(resourceId);
     if (!resource) throw new Error(`Resource not found: ${resourceId}`);

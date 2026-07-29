@@ -1,9 +1,4 @@
-import type {
-  Session,
-  SessionAvatar,
-  SessionCreationMethod,
-  SessionRow,
-} from "../types.js";
+import type { Session, SessionAvatar, SessionCreationMethod, SessionRow } from "../types.js";
 import { normalizeSessionStatus } from "../types.js";
 import { normalizeSessionBranchType } from "./session-history.js";
 
@@ -40,11 +35,7 @@ export function resolveCreationMethod(row: SessionRow): SessionCreationMethod {
     return value;
   }
   if (row.spawn_type === "subagent" || row.spawn_type === "spawn") return "spawn_agent";
-  if (
-    row.spawn_type === "btw" ||
-    row.spawn_type === "fork" ||
-    row.spawn_type === "clone"
-  ) {
+  if (row.spawn_type === "btw" || row.spawn_type === "fork" || row.spawn_type === "clone") {
     return row.spawn_type;
   }
   return "user";
@@ -147,12 +138,18 @@ export function mapRowToSession(
     creationMethod: resolveCreationMethod(row),
     title: row.title ?? (typeof meta.name === "string" ? meta.name : null),
     systemPrompt: row.system_prompt ?? null,
-    avatar: parseSessionAvatar(row.avatar) ??
+    avatar:
+      parseSessionAvatar(row.avatar) ??
       (meta.avatar && typeof meta.avatar === "object" ? (meta.avatar as SessionAvatar) : null),
     isBuiltin: row.is_builtin === 1 || meta.builtin === true,
     pinned: row.pinned === 1 || meta.pinned === true,
     muted: row.muted === 1 || meta.muted === true,
-    unread: typeof row.unread === "number" ? row.unread : typeof meta.unread === "number" ? meta.unread : 0,
+    unread:
+      typeof row.unread === "number"
+        ? row.unread
+        : typeof meta.unread === "number"
+          ? meta.unread
+          : 0,
     externalSessionId:
       row.external_session_id ??
       (typeof meta.externalSessionId === "string" ? meta.externalSessionId : null),
@@ -163,8 +160,6 @@ export function mapRowToSession(
     lastActiveAt: new Date(row.last_active_at),
     meta,
     currentTask:
-      typeof meta.currentTask === "string"
-        ? meta.currentTask
-        : (options?.currentTaskPath ?? null),
+      typeof meta.currentTask === "string" ? meta.currentTask : (options?.currentTaskPath ?? null),
   };
 }

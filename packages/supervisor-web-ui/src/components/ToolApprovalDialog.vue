@@ -1,13 +1,29 @@
 <template>
   <Teleport to="body">
-    <div class="tool-approval-overlay fixed inset-0 z-[120] flex items-center justify-center p-4">
+    <div
+      class="tool-approval-overlay fixed inset-0 z-[120] flex items-center justify-center p-4"
+      :class="{ 'tool-approval-overlay--plan': approval.kind === 'plan_review' }"
+    >
       <section class="tool-approval-dialog w-full max-w-lg rounded-lg border shadow-xl">
         <header class="px-5 py-4 border-b">
           <h2 class="text-[16px] font-medium">{{ approval.title }}</h2>
         </header>
-        <pre class="tool-approval-body px-5 py-4 text-[13px] whitespace-pre-wrap break-all">{{
-          approval.body
-        }}</pre>
+        <pre
+          v-if="approval.kind !== 'plan_review'"
+          class="tool-approval-body px-5 py-4 text-[13px] whitespace-pre-wrap break-all"
+          >{{ approval.body }}</pre>
+        <div v-else class="px-5 py-4">
+          <p class="tool-approval-body mb-3 text-[13px]">
+            Plan 已完成，打开右侧分屏查看完整内容后决定是否执行。
+          </p>
+          <button
+            type="button"
+            class="tool-approval-view-plan rounded-md border px-3 py-2 text-[13px]"
+            @click="emit('view-plan')"
+          >
+            分屏查看 Plan
+          </button>
+        </div>
         <div v-if="approval.actions.includes('revise')" class="px-5 pb-4">
           <textarea
             v-model="feedback"
@@ -65,7 +81,7 @@ import { showUiMessage } from "@/composables/use-ui-message";
 import UiActionButton from "./UiActionButton.vue";
 
 const props = defineProps<{ sessionId: string; approval: api.ApprovalPendingEvent }>();
-const emit = defineEmits<{ resolved: [] }>();
+const emit = defineEmits<{ resolved: []; "view-plan": [] }>();
 const submitting = ref<"approve" | "approve_session" | "reject" | "revise" | null>(null);
 const feedback = ref("");
 
@@ -90,6 +106,24 @@ async function resolve(action: "approve" | "approve_session" | "reject" | "revis
 <style scoped>
 .tool-approval-overlay {
   background: rgb(0 0 0 / 42%);
+}
+.tool-approval-overlay--plan {
+  align-items: flex-end;
+  justify-content: flex-start;
+  pointer-events: none;
+  background: transparent;
+}
+.tool-approval-overlay--plan .tool-approval-dialog {
+  margin: 0 0 84px 18px;
+  pointer-events: auto;
+  box-shadow: 0 12px 36px rgb(0 0 0 / 28%);
+}
+.tool-approval-view-plan {
+  border-color: var(--app-border);
+  color: var(--app-accent);
+}
+.tool-approval-view-plan:hover {
+  background: var(--app-hover);
 }
 .tool-approval-dialog,
 .tool-approval-dialog header,

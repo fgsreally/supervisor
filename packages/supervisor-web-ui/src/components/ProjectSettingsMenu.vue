@@ -104,7 +104,11 @@
                   <code class="project-settings-modal__script-cmd">{{ script.command }}</code>
                 </div>
               </div>
-              <div v-else-if="!regenerating && descriptionStatus === 'ready'" class="project-settings-modal__muted" style="margin-top: 8px">
+              <div
+                v-else-if="!regenerating && descriptionStatus === 'ready'"
+                class="project-settings-modal__muted"
+                style="margin-top: 8px"
+              >
                 无需安装/启动/销毁脚本
               </div>
             </div>

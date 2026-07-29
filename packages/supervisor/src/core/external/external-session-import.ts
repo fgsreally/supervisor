@@ -4,10 +4,7 @@ import { basename, join } from "node:path";
 import { createInterface } from "node:readline";
 import { randomUUID } from "node:crypto";
 import type { AgentMessage, SessionTreeEntry } from "@earendil-works/pi-agent-core";
-import {
-  copyPathIntoSessionMedia,
-  writeDataUrlIntoSessionMedia,
-} from "../session-media.js";
+import { copyPathIntoSessionMedia, writeDataUrlIntoSessionMedia } from "../session-media.js";
 
 export type ImportableExternalBackend = "codex" | "claude";
 
@@ -212,7 +209,10 @@ function parseCodexUserPayload(content: unknown): {
     });
   }
 
-  const text = ensureImagePlaceholders(texts.join("\n").trim(), images.map((image) => image.name));
+  const text = ensureImagePlaceholders(
+    texts.join("\n").trim(),
+    images.map((image) => image.name),
+  );
   return { text, images };
 }
 
@@ -265,7 +265,11 @@ function entryTimestamp(timestamp?: string): { iso: string; ms: number } {
   return { iso: timestamp ?? new Date(safe).toISOString(), ms: safe };
 }
 
-function asTextMessage(role: "user" | "assistant", content: string, timestamp?: string): SessionTreeEntry {
+function asTextMessage(
+  role: "user" | "assistant",
+  content: string,
+  timestamp?: string,
+): SessionTreeEntry {
   const { iso, ms } = entryTimestamp(timestamp);
   return {
     id: randomUUID(),
@@ -386,7 +390,10 @@ function extractPatchPaths(input: string): string[] {
   return [...new Set(paths)];
 }
 
-function classifyCodexExec(input: string, command: string | undefined): {
+function classifyCodexExec(
+  input: string,
+  command: string | undefined,
+): {
   name: string;
   arguments: Record<string, unknown>;
 } {
@@ -610,7 +617,10 @@ export async function loadExternalSession(
             isInjectedExternalUserText(textForInjectCheck)
           ) {
             // Keep images, drop injected instruction text.
-            parsed.text = ensureImagePlaceholders("", parsed.images.map((image) => image.name));
+            parsed.text = ensureImagePlaceholders(
+              "",
+              parsed.images.map((image) => image.name),
+            );
           }
           lastAssistantText = "";
           if (parsed.images.length > 0) {
@@ -680,7 +690,8 @@ export async function loadExternalSession(
               typeof (part as { content?: unknown }).content === "string"
                 ? (part as { content: string }).content
                 : textContent((part as { content?: unknown }).content, ["text"]);
-            const isError = !!(part as { is_error?: boolean }).is_error || looksLikeToolError(output);
+            const isError =
+              !!(part as { is_error?: boolean }).is_error || looksLikeToolError(output);
             const toolName = toolNames.get(callId) ?? "tool";
             push(asToolResultEntry(callId, toolName, output, timestamp, isError));
           }
@@ -703,11 +714,15 @@ export async function loadExternalSession(
           if (type === "text" && typeof (part as { text?: string }).text === "string") {
             const text = (part as { text: string }).text.trim();
             if (text) parts.push({ type: "text", text });
-          } else if (type === "thinking" && typeof (part as { thinking?: string }).thinking === "string") {
+          } else if (
+            type === "thinking" &&
+            typeof (part as { thinking?: string }).thinking === "string"
+          ) {
             const thinking = (part as { thinking: string }).thinking.trim();
             if (thinking) parts.push({ type: "thinking", thinking });
           } else if (type === "tool_use") {
-            const id = typeof (part as { id?: string }).id === "string" ? (part as { id: string }).id : "";
+            const id =
+              typeof (part as { id?: string }).id === "string" ? (part as { id: string }).id : "";
             if (!id) continue;
             const name = claudeToolName((part as { name?: string }).name);
             const args = parseJsonObject((part as { input?: unknown }).input);

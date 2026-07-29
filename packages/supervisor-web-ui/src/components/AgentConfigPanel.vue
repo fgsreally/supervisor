@@ -1,15 +1,18 @@
 <template>
-  <div v-if="agent" class="agent-config mx-auto w-full max-w-[920px]">
+  <div v-if="agent" class="agent-config mx-auto w-full max-w-[1040px]">
     <div v-if="loading" class="agent-config-loading">
       <Loader2 class="h-4 w-4 animate-spin" />
       正在加载 Agent 配置...
     </div>
     <template v-else>
-      <section class="agent-config-section border rounded-md overflow-hidden">
-        <div class="agent-config-section__title px-4 py-3 border-b text-[14px] font-medium">
-          基本配置
+      <section class="agent-config-section">
+        <div class="agent-config-section__title">
+          <div>
+            <h3>基本配置</h3>
+            <p>Agent 的身份与默认运行设置</p>
+          </div>
         </div>
-        <dl class="divide-y agent-config-divider">
+        <dl class="agent-config-list">
           <div class="agent-config-row">
             <dt>名称</dt>
             <dd>{{ agent.name }}</dd>
@@ -19,12 +22,17 @@
             <dd>{{ agent.description || "-" }}</dd>
           </div>
           <div class="agent-config-row">
-            <dt>模型服务</dt>
-            <dd>{{ providerLabel }}</dd>
-          </div>
-          <div class="agent-config-row">
             <dt>模型</dt>
-            <dd>{{ modelLabel }}</dd>
+            <dd>
+              <ModelTreeSelect
+                class="agent-model-select"
+                :model-value="agent.modelId || ''"
+                :groups="modelGroups"
+                :disabled="savingModel"
+                placeholder="稍后配置"
+                @change="changeModel"
+              />
+            </dd>
           </div>
           <div class="agent-config-row">
             <dt>工具集</dt>
@@ -37,10 +45,7 @@
         </dl>
       </section>
 
-      <section
-        v-if="resolvedTools.length"
-        class="agent-config-section border rounded-md overflow-hidden mt-4"
-      >
+      <section v-if="resolvedTools.length" class="agent-config-section agent-tools-section">
         <div class="agent-tools-header">
           <div>
             <div class="text-[14px] font-medium">可用工具</div>
@@ -48,7 +53,7 @@
           </div>
           <span>{{ enabledToolCount }}/{{ resolvedTools.length }} 已启用</span>
         </div>
-        <div class="divide-y agent-config-divider">
+        <div class="agent-tools-list">
           <div
             v-for="tool in resolvedTools"
             :key="tool.name"
@@ -95,28 +100,31 @@ import { useAgentStore, useProviderStore } from "@/store";
 import { getDefaultWorkspaceCwd } from "@/config/workspace";
 import { showUiMessage } from "@/composables/use-ui-message";
 import type { AgentResources } from "@/api";
+import { providerToUI } from "@/utils/provider-ui";
+import ModelTreeSelect, { type ModelTreeGroup } from "./ModelTreeSelect.vue";
 
 const props = defineProps<{ agentId: string }>();
 const agentStore = useAgentStore();
 const providerStore = useProviderStore();
 const agent = computed(() => agentStore.getAgentById(props.agentId));
-const providerLabel = computed(() => {
-  const id = agent.value?.providerId;
-  return id ? (providerStore.getProviderById(id)?.name ?? id) : "-";
-});
-const modelLabel = computed(() => {
-  const providerId = agent.value?.providerId;
-  const modelId = agent.value?.modelId;
-  if (!providerId || !modelId) return "-";
-  const model = providerStore.models[providerId]?.find((item) => item.id === modelId);
-  return model?.name || model?.modelId || "-";
-});
+const modelGroups = computed<ModelTreeGroup[]>(() =>
+  providerStore.providers
+    .map((provider) => providerToUI(provider, providerStore.models[provider.id] ?? []))
+    .filter((provider) => provider.isEnabled)
+    .map((provider) => ({
+      id: provider.id,
+      name: provider.name,
+      icon: provider.icon,
+      models: provider.models.map((model) => ({ value: model.id, name: model.name })),
+    })),
+);
 const homeDir = computed(
   () => agent.value?.homeDir || agentStore.agentResources[props.agentId]?.homeDir || "",
 );
 const resolvedTools = computed(() => agentStore.agentResources[props.agentId]?.tools ?? []);
 const enabledToolCount = computed(() => resolvedTools.value.filter((tool) => tool.enabled).length);
 const savingTool = ref<string | null>(null);
+const savingModel = ref(false);
 const loading = ref(false);
 
 function sourceLabel(tool: AgentResources["tools"][number]): string {
@@ -144,6 +152,23 @@ async function toggleTool(name: string, enabled: boolean) {
   }
 }
 
+async function changeModel(modelId: string) {
+  if (!agent.value || savingModel.value) return;
+  const provider = modelGroups.value.find((group) =>
+    group.models.some((model) => model.value === modelId),
+  );
+  if (!provider) return;
+  savingModel.value = true;
+  try {
+    await agentStore.updateAgent(props.agentId, { modelId });
+    showUiMessage("模型已更新", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "模型更新失败", "error");
+  } finally {
+    savingModel.value = false;
+  }
+}
+
 watch(
   () => props.agentId,
   async (id) => {
@@ -159,10 +184,21 @@ watch(
 </script>
 
 <style scoped>
+.agent-config {
+  padding: 2px 0 28px;
+}
+
 .agent-config-section {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--app-border-subtle) 84%, transparent);
+  border-radius: 12px;
   background: var(--app-settings-card);
-  border-color: var(--app-border-subtle);
   color: var(--app-text-primary);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+}
+
+.agent-tools-section {
+  margin-top: 18px;
 }
 
 .agent-config-loading {
@@ -175,22 +211,53 @@ watch(
   font-size: 13px;
 }
 
-.agent-config-section__title,
-.agent-config-divider > * {
-  border-color: var(--app-border-subtle);
+.agent-config-section__title {
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.agent-config-section__title h3 {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.agent-config-section__title p {
+  margin-top: 3px;
+  color: var(--app-text-muted);
+  font-size: 11px;
+}
+
+.agent-config-list {
+  padding: 0 20px;
 }
 
 .agent-config-row {
   display: grid;
-  grid-template-columns: 9rem minmax(0, 1fr);
-  gap: 1rem;
-  padding: 12px 16px;
+  grid-template-columns: 116px minmax(0, 1fr);
+  min-height: 54px;
+  align-items: center;
+  gap: 18px;
+  padding: 9px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border-subtle) 78%, transparent);
   font-size: 13px;
+}
+.agent-config-row:last-child {
+  border-bottom: 0;
 }
 
 .agent-config-row dt,
 .agent-config-muted {
   color: var(--app-text-secondary);
+}
+.agent-config-row dd {
+  min-width: 0;
+  color: var(--app-text-primary);
+  font-weight: 450;
+}
+.agent-model-select {
+  max-width: 560px;
 }
 
 .agent-config-tool-source {
@@ -206,11 +273,12 @@ watch(
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 13px 16px;
+  min-height: 68px;
+  padding: 14px 20px;
   border-bottom: 1px solid var(--app-border-subtle);
 }
 .agent-tools-header p {
-  margin-top: 3px;
+  margin-top: 4px;
   color: var(--app-text-secondary);
   font-size: 11px;
   font-weight: 400;
@@ -220,19 +288,27 @@ watch(
   padding: 4px 8px;
   border-radius: 999px;
   color: var(--app-text-secondary);
-  background: var(--app-hover);
+  background: color-mix(in srgb, var(--app-hover) 76%, transparent);
   font-size: 11px;
 }
 
+.agent-tools-list {
+  padding: 0 20px;
+}
 .agent-tool-row {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 11px 16px;
+  gap: 13px;
+  min-height: 72px;
+  padding: 12px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border-subtle) 78%, transparent);
   transition: background-color 0.15s ease;
 }
 .agent-tool-row:hover {
-  background: var(--app-hover);
+  background: color-mix(in srgb, var(--app-hover) 44%, transparent);
+}
+.agent-tool-row:last-child {
+  border-bottom: 0;
 }
 .agent-tool-row--disabled {
   opacity: 0.58;
@@ -244,11 +320,11 @@ watch(
 }
 .agent-tool-icon {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   flex: none;
   place-items: center;
-  border-radius: 7px;
+  border-radius: 9px;
   color: var(--app-accent);
   background: color-mix(in srgb, var(--app-accent) 10%, var(--app-settings-card));
 }
@@ -264,11 +340,15 @@ watch(
 .agent-tool-main p {
   margin-top: 3px;
   color: var(--app-text-secondary);
+  display: -webkit-box;
+  overflow: hidden;
   font-size: 11px;
-  line-height: 1.45;
+  line-height: 1.5;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .agent-tool-meta {
-  margin-top: 5px;
+  margin-top: 4px;
   color: var(--app-text-muted);
   font-size: 10px;
 }
@@ -301,5 +381,19 @@ watch(
 .agent-tool-toggle:disabled {
   cursor: wait;
   opacity: 0.55;
+}
+
+@media (max-width: 760px) {
+  .agent-config-row {
+    grid-template-columns: 86px minmax(0, 1fr);
+  }
+  .agent-config-list,
+  .agent-tools-list {
+    padding-inline: 16px;
+  }
+  .agent-config-section__title,
+  .agent-tools-header {
+    padding-inline: 16px;
+  }
 }
 </style>

@@ -28,9 +28,7 @@ function asTimer(value: unknown): SessionTimer | null {
         : NaN;
   if (!prompt || !Number.isFinite(nextFireAt)) return null;
   const id =
-    typeof record.id === "string" && record.id.trim()
-      ? record.id.trim()
-      : newSessionTimerId();
+    typeof record.id === "string" && record.id.trim() ? record.id.trim() : newSessionTimerId();
   const createdAt =
     typeof record.createdAt === "number" && Number.isFinite(record.createdAt)
       ? record.createdAt
@@ -53,7 +51,9 @@ function asTimer(value: unknown): SessionTimer | null {
   };
 }
 
-export function parseSessionTimers(meta: Record<string, unknown> | null | undefined): SessionTimer[] {
+export function parseSessionTimers(
+  meta: Record<string, unknown> | null | undefined,
+): SessionTimer[] {
   if (!Array.isArray(meta?.timers)) return [];
   const timers: SessionTimer[] = [];
   const seen = new Set<string>();

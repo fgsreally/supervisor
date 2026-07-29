@@ -6,10 +6,7 @@ import { createInterface } from "node:readline";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { SupervisorDb } from "../../db/db.js";
 import type { Agent, Session } from "../../types.js";
-import {
-  resolveSessionPromptImages,
-  type SessionPromptImage,
-} from "../session-media.js";
+import { resolveSessionPromptImages, type SessionPromptImage } from "../session-media.js";
 import { ExternalSessionRuntime } from "./external-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
 import {
@@ -180,23 +177,26 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
           env,
         },
       ) as ChildProcessWithoutNullStreams;
-      await timedSessionStep(sessionId, "codex/process.spawn", () =>
-        new Promise<void>((resolveReady, rejectReady) => {
-          const onError = (error: Error) => {
-            cleanup();
-            rejectReady(new Error(`启动 Codex 失败（${executable}）：${error.message}`));
-          };
-          const onSpawn = () => {
-            cleanup();
-            resolveReady();
-          };
-          const cleanup = () => {
-            child.off("error", onError);
-            child.off("spawn", onSpawn);
-          };
-          child.once("error", onError);
-          child.once("spawn", onSpawn);
-        }),
+      await timedSessionStep(
+        sessionId,
+        "codex/process.spawn",
+        () =>
+          new Promise<void>((resolveReady, rejectReady) => {
+            const onError = (error: Error) => {
+              cleanup();
+              rejectReady(new Error(`启动 Codex 失败（${executable}）：${error.message}`));
+            };
+            const onSpawn = () => {
+              cleanup();
+              resolveReady();
+            };
+            const cleanup = () => {
+              child.off("error", onError);
+              child.off("spawn", onSpawn);
+            };
+            child.once("error", onError);
+            child.once("spawn", onSpawn);
+          }),
       );
       const runtime = new CodexSessionRuntime({ ...options, child });
       const isBtw = options.session.spawnType === "btw";
@@ -800,9 +800,7 @@ function proxySummary(env: NodeJS.ProcessEnv): string | null {
  * the user's interactive terminal. On Windows, reuse a reachable proxy saved
  * in Internet Settings (proxy clients commonly leave ProxyServer populated).
  */
-async function withDetectedWindowsProxy(
-  env: NodeJS.ProcessEnv,
-): Promise<NodeJS.ProcessEnv> {
+async function withDetectedWindowsProxy(env: NodeJS.ProcessEnv): Promise<NodeJS.ProcessEnv> {
   if (proxySummary(env) || process.platform !== "win32") return env;
 
   const result = spawnSync(

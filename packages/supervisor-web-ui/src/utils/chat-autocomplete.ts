@@ -330,7 +330,7 @@ export function getAutocompleteSuggestions(
       value: prompt.name,
       label: `/${prompt.name}`,
       source: "prompt" as const,
-      description: prompt.description || "Prompt Template",
+      description: prompt.description || "Template",
     })),
     ...(options.commands ?? []).map((command) => ({
       trigger: "slash" as const,

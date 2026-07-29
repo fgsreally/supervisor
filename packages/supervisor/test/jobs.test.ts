@@ -59,9 +59,7 @@ describe("JobManager", () => {
       metadata: { timerId: "abc123" },
     });
 
-    expect(jobs.list(sessionId)).toMatchObject([
-      { id: run.id, metadata: { timerId: "abc123" } },
-    ]);
+    expect(jobs.list(sessionId)).toMatchObject([{ id: run.id, metadata: { timerId: "abc123" } }]);
   });
 
   it("marks unfinished executions interrupted after restart", () => {

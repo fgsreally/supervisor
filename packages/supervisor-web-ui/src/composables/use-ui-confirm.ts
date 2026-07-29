@@ -6,6 +6,7 @@ export interface UiConfirmOptions {
   confirmText?: string;
   cancelText?: string;
   danger?: boolean;
+  expectedText?: string;
 }
 
 interface UiConfirmState extends UiConfirmOptions {
@@ -33,6 +34,7 @@ export function requestUiConfirm(options: UiConfirmOptions): Promise<boolean> {
       confirmText: options.confirmText ?? "确定",
       cancelText: options.cancelText ?? "取消",
       danger: options.danger ?? false,
+      expectedText: options.expectedText,
       resolve,
     };
   });

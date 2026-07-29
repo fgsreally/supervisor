@@ -111,20 +111,14 @@ export async function commitSessionChanges(
   cwd: string,
   db: Pick<
     SupervisorDb,
-    | "get"
-    | "getProject"
-    | "listProviders"
-    | "listModelsByProvider"
-    | "getProvider"
-    | "getModel"
+    "get" | "getProject" | "listProviders" | "listModelsByProvider" | "getProvider" | "getModel"
   >,
   options: CommitSessionOptions = {},
   summaryText?: string,
 ): Promise<CommitSessionResult | null> {
   const row = db.get(sessionId);
   if (!row) throw new Error(`Session ${sessionId} not found`);
-  const projectCwd =
-    row.project_id != null ? db.getProject(row.project_id)?.cwd : undefined;
+  const projectCwd = row.project_id != null ? db.getProject(row.project_id)?.cwd : undefined;
   const git = resolveSessionGitContext({
     sessionId,
     cwd,
@@ -244,11 +238,13 @@ export async function prepareSessionLifecycleSpawn(
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`session lifecycle worktree create failed [${session.id}]:`, message);
-    sessionLog(session.id, "error", `Worktree create failed: ${message}`, [
-      "system",
-      "git",
-      "worktree",
-    ], { error: message });
+    sessionLog(
+      session.id,
+      "error",
+      `Worktree create failed: ${message}`,
+      ["system", "git", "worktree"],
+      { error: message },
+    );
     if (initialName) {
       db.updateSessionFields(session.id, { title: initialName });
       return rowToSession(db.get(session.id)!, db);
@@ -308,13 +304,7 @@ export function handleSessionLifecycleAgentEnd(
   if (hasPendingAsks(String(sessionId))) return;
 
   void (async () => {
-    await maybeRunRollingCompaction(
-      sessionId,
-      runtime,
-      event,
-      parseSessionMeta(session.meta),
-      db,
-    );
+    await maybeRunRollingCompaction(sessionId, runtime, event, parseSessionMeta(session.meta), db);
     await maybeAutoNameSession(sessionId, event, db);
   })().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
@@ -329,8 +319,7 @@ export async function finalizeSessionLifecycleGit(
 ): Promise<void> {
   const row = db.get(session.id);
   if (!row) return;
-  const projectCwd =
-    session.projectId != null ? db.getProject(session.projectId)?.cwd : undefined;
+  const projectCwd = session.projectId != null ? db.getProject(session.projectId)?.cwd : undefined;
   const git = resolveSessionGitContext({
     sessionId: session.id,
     cwd: session.cwd,
@@ -360,11 +349,7 @@ export async function finalizeSessionLifecycleGit(
       "Uncommitted changes in worktree. Commit with POST /sessions/:id/commit before completing.",
     );
   }
-  await mergeSessionBranch(
-    git.repoRoot,
-    git.branch,
-    await resolveMergeTargetBranch(git.repoRoot),
-  );
+  await mergeSessionBranch(git.repoRoot, git.branch, await resolveMergeTargetBranch(git.repoRoot));
   try {
     await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch);
   } catch (error: unknown) {

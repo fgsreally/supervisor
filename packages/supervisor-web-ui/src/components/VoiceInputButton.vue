@@ -149,7 +149,10 @@ function startBrowserRecognition(language: string) {
 
 function connect(language: string): Promise<void> {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(websocketUrl());
+    const url = new URL(websocketUrl());
+    const webPassword = localStorage.getItem("pi-supervisor-web-password");
+    if (webPassword) url.searchParams.set("password", webPassword);
+    const ws = new WebSocket(url);
     ws.binaryType = "arraybuffer";
     socket = ws;
     const timeout = window.setTimeout(() => reject(new Error("语音服务连接超时")), 20_000);

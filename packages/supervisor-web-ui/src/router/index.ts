@@ -1,11 +1,19 @@
 import { createRouter, createWebHistory, type RouteLocationNormalized } from "vue-router";
 
-export type AppRouteTab = "home" | "chat" | "contacts" | "providers" | "resources" | "settings";
+export type AppRouteTab =
+  | "chat"
+  | "todo"
+  | "dashboard"
+  | "contacts"
+  | "providers"
+  | "resources"
+  | "settings";
 
 export function tabFromRoute(route: RouteLocationNormalized): AppRouteTab {
   const seg = route.path.split("/").filter(Boolean)[0];
   if (
-    seg === "home" ||
+    seg === "todo" ||
+    seg === "dashboard" ||
     seg === "contacts" ||
     seg === "providers" ||
     seg === "resources" ||
@@ -14,7 +22,7 @@ export function tabFromRoute(route: RouteLocationNormalized): AppRouteTab {
     return seg;
   }
   if (seg === "chat") return "chat";
-  return "home";
+  return "chat";
 }
 
 export function idFromRoute(route: RouteLocationNormalized): string | undefined {
@@ -30,8 +38,10 @@ export function modelIdFromRoute(route: RouteLocationNormalized): string | undef
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/home" },
-    { path: "/home", name: "home", component: { template: "<div />" } },
+    { path: "/", redirect: "/chat" },
+    { path: "/home", redirect: "/dashboard" },
+    { path: "/todo", name: "todo", component: { template: "<div />" } },
+    { path: "/dashboard", name: "dashboard", component: { template: "<div />" } },
     { path: "/chat/:sessionId?", name: "chat", component: { template: "<div />" } },
     { path: "/contacts/:agentId?", name: "contacts", component: { template: "<div />" } },
     {
@@ -42,7 +52,7 @@ const router = createRouter({
     { path: "/providers/:providerId?", name: "providers", component: { template: "<div />" } },
     { path: "/resources/:resourceId?", name: "resources", component: { template: "<div />" } },
     { path: "/settings", name: "settings", component: { template: "<div />" } },
-    { path: "/search", redirect: "/home" },
+    { path: "/search", redirect: "/chat" },
   ],
 });
 

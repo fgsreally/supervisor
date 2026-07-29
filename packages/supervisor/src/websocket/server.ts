@@ -282,10 +282,15 @@ class SpeechConnection {
   }
 }
 
-export function registerWebSocketRoutes(app: WebSocketRouteBuilder): void {
+export function registerWebSocketRoutes(app: WebSocketRouteBuilder, password?: string): void {
   const connections = new WeakMap<object, SpeechConnection>();
   app.ws("/ws", {
     maxPayloadLength: MAX_AUDIO_FRAME_BYTES,
+    beforeHandle(context: { query?: Record<string, string | undefined> }) {
+      if (password && context.query?.password !== password) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+    },
     open(socket: ClientSocket & { raw: object }) {
       connections.set(socket.raw, new SpeechConnection(socket));
       sendJson(socket, { channel: "system", type: "system.ready" });

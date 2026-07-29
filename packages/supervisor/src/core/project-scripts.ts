@@ -99,14 +99,7 @@ export function replaceProjectScripts(
     const kind = script.kind;
     if (kind !== "install" && kind !== "start" && kind !== "destroy") continue;
     const name = script.name.trim() || kind;
-    insert.run(
-      projectId,
-      kind,
-      name,
-      command,
-      now,
-      now,
-    );
+    insert.run(projectId, kind, name, command, now, now);
   }
   return listProjectScripts(db, projectId);
 }

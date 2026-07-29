@@ -124,9 +124,33 @@ export class SQLiteSessionStorage implements SessionStorage {
   }
 
   async appendEntry(entry: SessionTreeEntry, options: AppendEntryOptions = {}): Promise<void> {
-    const { role, searchText } = extractMessageSearchFields(entry);
-    // Source labels are runtime diagnostics only and are intentionally not persisted.
-    if (!Object.hasOwn(options, "source")) this.consumeQueuedSource(entry);
+    const queuedSource = Object.hasOwn(options, "source")
+      ? options.source
+      : this.consumeQueuedSource(entry);
+    const hiddenFlowMessage =
+      entry.type === "message" &&
+      entry.message.role === "user" &&
+      typeof queuedSource === "string" &&
+      queuedSource.startsWith("extension:flow:");
+    const persistedMeta: Record<string, unknown> = { ...(options.meta ?? {}) };
+    if (hiddenFlowMessage) persistedMeta.hidden = true;
+    if (
+      entry.type === "message" &&
+      entry.message.role === "user" &&
+      typeof queuedSource === "string" &&
+      (queuedSource.startsWith("shadow:") ||
+        queuedSource.startsWith("spawn_agent:parent:") ||
+        queuedSource.startsWith("subagent:parent:"))
+    ) {
+      // The model must still receive a user-role message, while the UI needs to
+      // attribute agent-injected input separately from text typed by the user.
+      persistedMeta.inputSource = queuedSource;
+    }
+    const { role, searchText } = hiddenFlowMessage
+      ? { role: null, searchText: null }
+      : extractMessageSearchFields(entry);
+    // Most source labels remain runtime diagnostics. Only agent attribution above
+    // is persisted because it changes how an otherwise user-role message is shown.
     const originMsg = this.consumeQueuedOrigin(entry);
     this.db.db
       .prepare(
@@ -139,7 +163,7 @@ export class SQLiteSessionStorage implements SessionStorage {
         parent_entry_id: entry.parentId ?? null,
         type: entry.type,
         payload: JSON.stringify(entry),
-        meta: JSON.stringify(options.meta ?? {}),
+        meta: JSON.stringify(persistedMeta),
         is_old: options.isOld ? 1 : 0,
         origin_msg: originMsg,
         role,
@@ -277,13 +301,7 @@ export function createRuntimeSessionStorage(
   db: SupervisorDb,
   session: Session,
 ): SQLiteSessionStorage {
-  return createStorage(
-    db,
-    session.id,
-    session.parentId,
-    session.spawnType,
-    new Set(),
-  );
+  return createStorage(db, session.id, session.parentId, session.spawnType, new Set());
 }
 
 function createStorage(
@@ -297,13 +315,7 @@ function createStorage(
     const nextAncestors = new Set(ancestors).add(sessionId);
     const parent = db.get(parentId);
     const parentStorage = parent
-      ? createStorage(
-          db,
-          parent.id,
-          parent.parent_id,
-          parent.spawn_type,
-          nextAncestors,
-        )
+      ? createStorage(db, parent.id, parent.parent_id, parent.spawn_type, nextAncestors)
       : new SQLiteSessionStorage(db, parentId);
     return new BtwSessionStorage(db, sessionId, parentId, null, parentStorage);
   }

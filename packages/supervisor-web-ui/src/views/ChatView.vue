@@ -1,6 +1,7 @@
 <template>
   <div
     class="relative flex flex-col h-full w-full"
+    :class="{ 'chat-view--builtin-assistant': session.isBuiltin }"
     :style="{ background: 'var(--app-chat-bg)', '--chat-msg-font-size': fontSizePx }"
     v-if="session"
   >
@@ -8,7 +9,8 @@
       v-if="pendingApproval"
       :session-id="session.id"
       :approval="pendingApproval"
-      @resolved="pendingApproval = null"
+      @resolved="resolvePendingApproval"
+      @view-plan="openPendingPlan"
     />
     <ChatViewHeader
       :title="sessionTitle"
@@ -40,15 +42,14 @@
           </ChatHeaderAction>
           <SessionCommitPopover :session-id="session.id" />
           <ChatHeaderAction
-            v-if="tasks.length"
-            :title="`任务 · ${taskTypeSummary}`"
+            v-if="taskCount"
+            :title="`Todo · ${taskTypeSummary}`"
             :active="taskPaneOpen"
-            :count="tasks.length"
+            :count="taskCount"
             @click="taskPaneOpen = !taskPaneOpen"
           >
             <ClipboardList />
           </ChatHeaderAction>
-          <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
         </div>
         <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
         <ChatHeaderAction
@@ -60,7 +61,14 @@
           <Braces />
         </ChatHeaderAction>
         <div class="mobile-session-actions">
-          <SessionTodoPopover v-if="activeTodos.length" :todos="activeTodos" />
+          <ChatHeaderAction
+            v-if="taskCount"
+            title="Todo"
+            :active="taskPaneOpen"
+            :count="taskCount"
+            @click="taskPaneOpen = !taskPaneOpen"
+            ><ClipboardList
+          /></ChatHeaderAction>
           <ChatHeaderAction
             title="会话工具"
             :active="sessionActionsOpen"
@@ -163,11 +171,16 @@
       </div>
 
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="taskPaneOpen && tasks.length" class="chat-panel-host">
+        <div v-if="taskPaneOpen && taskCount" class="chat-panel-host" :style="sidePanelStyle">
+          <ResizeHandle
+            orientation="vertical"
+            label="调整会话分屏宽度"
+            @start="startSidePanelResize"
+          />
           <TaskWorkspacePanel
             class="chat-panel-host__body"
             :tasks="tasks"
-            :todos="[]"
+            :todos="todos"
             :selected-path="selectedTaskPath"
             @select="selectedTaskPath = $event"
             @close="taskPaneOpen = false"
@@ -175,7 +188,12 @@
         </div>
       </Transition>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="btwPanelOpen" class="chat-panel-host">
+        <div v-if="btwPanelOpen" class="chat-panel-host" :style="sidePanelStyle">
+          <ResizeHandle
+            orientation="vertical"
+            label="调整会话分屏宽度"
+            @start="startSidePanelResize"
+          />
           <BtwSplitPanel
             class="chat-panel-host__body"
             :parent-id="session.id"
@@ -185,7 +203,12 @@
         </div>
       </Transition>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="showLogPanel" class="chat-panel-host">
+        <div v-if="showLogPanel" class="chat-panel-host" :style="sidePanelStyle">
+          <ResizeHandle
+            orientation="vertical"
+            label="调整会话分屏宽度"
+            @start="startSidePanelResize"
+          />
           <SessionLogPanel
             class="chat-panel-host__body chat-workspace__side-panel"
             :session-id="session.id"
@@ -194,7 +217,12 @@
         </div>
       </Transition>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="showFilesPanel" class="chat-panel-host">
+        <div v-if="showFilesPanel" class="chat-panel-host" :style="sidePanelStyle">
+          <ResizeHandle
+            orientation="vertical"
+            label="调整会话分屏宽度"
+            @start="startSidePanelResize"
+          />
           <SessionFilesPanel
             class="chat-panel-host__body chat-workspace__side-panel"
             :session-id="session.id"
@@ -204,7 +232,12 @@
         </div>
       </Transition>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="toolPanel" class="chat-panel-host">
+        <div v-if="toolPanel" class="chat-panel-host" :style="sidePanelStyle">
+          <ResizeHandle
+            orientation="vertical"
+            label="调整会话分屏宽度"
+            @start="startSidePanelResize"
+          />
           <ToolDetailPanel
             class="chat-panel-host__body chat-workspace__tool-panel"
             :title="toolPanel.title"
@@ -405,6 +438,8 @@ import ExternalAgentCommandHost from "../components/external-agents/ExternalAgen
 import ChatSessionMenu from "../components/ChatSessionMenu.vue";
 import SessionLogPanel from "../components/SessionLogPanel.vue";
 import SessionFilesPanel from "../components/SessionFilesPanel.vue";
+import ResizeHandle from "../components/ResizeHandle.vue";
+import { useResizableWidth } from "../composables/use-resizable-width";
 import ChatViewHeader from "../components/chat/ChatViewHeader.vue";
 import ChatSearchBar from "../components/chat/ChatSearchBar.vue";
 import ChatMessageList from "../components/chat/ChatMessageList.vue";
@@ -414,7 +449,6 @@ import SessionJobsPopover, {
   type JobDetailRequest,
 } from "../components/chat/SessionJobsPopover.vue";
 import ChatHeaderAction from "../components/chat/ChatHeaderAction.vue";
-import SessionTodoPopover from "../components/chat/SessionTodoPopover.vue";
 import SessionChangesPopover, {
   type SessionChangedFileView,
 } from "../components/chat/SessionChangesPopover.vue";
@@ -478,6 +512,14 @@ const sessionChangedFiles = computed<SessionChangedFileView[]>(() => {
 });
 
 const sessionStore = useSessionStore();
+const { width: sidePanelWidth, startResize: startSidePanelResize } = useResizableWidth({
+  defaultWidth: 520,
+  minWidth: 320,
+  maxWidth: 960,
+  storageKey: "supervisor:chat-side-panel-width",
+  direction: "rtl",
+});
+const sidePanelStyle = computed(() => ({ width: `${sidePanelWidth.value}px` }));
 const agentStore = useAgentStore();
 const providerStore = useProviderStore();
 
@@ -507,7 +549,8 @@ const modelMissing = computed(() => {
 });
 const inputText = ref("");
 const suggestedQuestions = ref<string[]>([]);
-const pendingApproval = ref<api.ApprovalPendingEvent | null>(null);
+const pendingApprovals = ref<api.ApprovalPendingEvent[]>([]);
+const pendingApproval = computed(() => pendingApprovals.value[0] ?? null);
 const rewindableEntryIds = ref<string[]>([]);
 const inputPanelRef = ref<InstanceType<typeof ChatInputPanel> | null>(null);
 const externalCommandHostRef = ref<InstanceType<typeof ExternalAgentCommandHost> | null>(null);
@@ -601,15 +644,12 @@ const workspaceId = computed(() => props.session.workspaceId ?? "");
 const sessionMuted = computed(() => !!props.session.muted);
 const showThinking = ref(false);
 const retryingError = ref(false);
-const activeTodos = computed(() =>
-  todos.value.length > 0 && !todos.value.every((todo) => todo.status === "done") ? todos.value : [],
-);
-const taskCount = computed(() => tasks.value.length + (activeTodos.value.length ? 1 : 0));
+const taskCount = computed(() => tasks.value.length + todos.value.length);
 const taskTypeSummary = computed(() =>
   [
     ...new Set([
       ...tasks.value.map((task) => ({ goal: "Goal", plan: "Plan" })[task.type]),
-      ...(activeTodos.value.length ? ["Todo"] : []),
+      ...(todos.value.length ? ["Todo"] : []),
     ]),
   ].join(" / "),
 );
@@ -876,18 +916,19 @@ async function reloadMessagesFromServer(sessionId: string, localSnapshot = chatE
   rewindableEntryIds.value = checkpoints.map((checkpoint) => checkpoint.entryId);
   tasks.value = nextTasks;
   todos.value = nextTodos;
-  const todoActive = nextTodos.length > 0 && !nextTodos.every((todo) => todo.status === "done");
+  const hasTodos = nextTodos.length > 0;
   const preferredPath = props.session.currentTask;
   const selectionExists =
     nextTasks.some((task) => task.path === selectedTaskPath.value) ||
-    (selectedTaskPath.value === "$todo" && todoActive);
+    (selectedTaskPath.value === "$todo" && hasTodos);
   if (!selectedTaskPath.value || !selectionExists) {
     selectedTaskPath.value =
       preferredPath && nextTasks.some((task) => task.path === preferredPath)
         ? preferredPath
-        : (nextTasks[0]?.path ?? (todoActive ? "$todo" : null));
+        : (nextTasks.find((task) => task.type === "goal")?.path ??
+          (hasTodos ? "$todo" : (nextTasks[0]?.path ?? null)));
   }
-  if (nextTasks.length === 0 && !todoActive) taskPaneOpen.value = false;
+  if (nextTasks.length === 0 && !hasTodos) taskPaneOpen.value = false;
 }
 
 async function loadOlderMessages() {
@@ -979,15 +1020,43 @@ function handleUiNotifyEvent(event: { type?: string } | undefined) {
 
 function handleApprovalEvent(event: api.SessionStreamEvent | undefined) {
   if (!event || event.type !== "approval.pending") return false;
-  pendingApproval.value = event;
+  if (!pendingApprovals.value.some((item) => item.approvalId === event.approvalId)) {
+    pendingApprovals.value.push(event);
+  }
   return true;
+}
+
+function resolvePendingApproval() {
+  pendingApprovals.value.shift();
+}
+
+async function openPendingPlan() {
+  if (!tasks.value.some((task) => task.type === "plan")) {
+    tasks.value = await api.getSessionTasks(props.session.id).catch(() => tasks.value);
+  }
+  const plan =
+    tasks.value.find((task) => task.type === "plan" && task.status === "planning") ??
+    tasks.value.find((task) => task.type === "plan");
+  if (plan) selectedTaskPath.value = plan.path;
+  taskPaneOpen.value = true;
+}
+
+async function restorePendingApprovals(sessionId: string) {
+  try {
+    pendingApprovals.value = await api.getPendingSessionApprovals(sessionId);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") return;
+    console.error("Restore pending approvals failed:", error);
+  }
 }
 
 watch(
   () => props.session.id,
-  () => {
-    pendingApproval.value = null;
+  (sessionId) => {
+    pendingApprovals.value = [];
+    void restorePendingApprovals(sessionId);
   },
+  { immediate: true },
 );
 
 function subscribeShadowSuggestions(sessionId: string) {
@@ -1764,6 +1833,24 @@ async function executeCustomSlash(name: string) {
   overflow: hidden;
 }
 
+.chat-view--builtin-assistant :deep(.assistant-message-body .md-content) {
+  color: var(--app-accent);
+}
+
+.chat-panel-host {
+  position: relative;
+  display: flex;
+  min-width: 320px;
+  max-width: min(72vw, 960px);
+  flex: none;
+}
+
+.chat-panel-host > :deep(.resize-handle--vertical) {
+  right: auto;
+  left: 0;
+  transform: translateX(-50%);
+}
+
 .chat-composer-changes {
   margin: 0 8px 6px;
 }
@@ -1811,6 +1898,14 @@ async function executeCustomSlash(name: string) {
 }
 
 @media (max-width: 767px) {
+  .chat-panel-host {
+    width: 100% !important;
+    min-width: 0;
+    max-width: none;
+  }
+  .chat-panel-host > :deep(.resize-handle--vertical) {
+    display: none;
+  }
   .chat-composer-changes {
     margin: 0 5px 5px;
   }

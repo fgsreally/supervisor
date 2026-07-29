@@ -5,7 +5,9 @@ type ApprovalTarget = {
   input?: Record<string, unknown>;
 };
 
-function isExternalApprovalPiece(piece: RenderPiece): piece is Extract<RenderPiece, { kind: "toolStep" }> {
+function isExternalApprovalPiece(
+  piece: RenderPiece,
+): piece is Extract<RenderPiece, { kind: "toolStep" }> {
   if (piece.kind !== "toolStep") return false;
   if (piece.toolName !== "external_interaction" && piece.callArgs?.externalInteraction !== true) {
     return false;
@@ -13,9 +15,7 @@ function isExternalApprovalPiece(piece: RenderPiece): piece is Extract<RenderPie
   return piece.callArgs?.kind !== "question";
 }
 
-export function approvalTargetFromArgs(
-  callArgs?: Record<string, unknown>,
-): ApprovalTarget | null {
+export function approvalTargetFromArgs(callArgs?: Record<string, unknown>): ApprovalTarget | null {
   const request = callArgs?.request;
   if (!request || typeof request !== "object") return null;
   const toolName = (request as { toolName?: unknown }).toolName;

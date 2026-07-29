@@ -4,10 +4,7 @@ import { allocatePorts } from "../utils/ports.js";
 import { sessionLog } from "../utils/session-log.js";
 import type { JobManager } from "./jobs.js";
 import type { ProjectScript, ProjectScriptKind } from "./project-scripts.js";
-import {
-  extractPortPlaceholders,
-  type SessionServicesMeta,
-} from "./project-runtime.js";
+import { extractPortPlaceholders, type SessionServicesMeta } from "./project-runtime.js";
 
 const runningChildren = new Map<string, ChildProcess>();
 
@@ -403,12 +400,7 @@ export function parseSessionServicesMeta(
         )
       : {};
   const status = row.status;
-  if (
-    status !== "starting" &&
-    status !== "running" &&
-    status !== "stopped" &&
-    status !== "error"
-  ) {
+  if (status !== "starting" && status !== "running" && status !== "stopped" && status !== "error") {
     return null;
   }
   const scripts: SessionServicesMeta["scripts"] = [];
@@ -424,8 +416,7 @@ export function parseSessionServicesMeta(
         kind,
         name: typeof s.name === "string" ? s.name : kind,
         command: s.command,
-        resolvedCommand:
-          typeof s.resolvedCommand === "string" ? s.resolvedCommand : s.command,
+        resolvedCommand: typeof s.resolvedCommand === "string" ? s.resolvedCommand : s.command,
         jobId: typeof s.jobId === "string" ? s.jobId : undefined,
         pid: typeof s.pid === "number" ? s.pid : null,
       });

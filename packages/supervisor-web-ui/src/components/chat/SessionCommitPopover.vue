@@ -1,10 +1,10 @@
 <template>
-  <div class="commit-wrap">
+  <div ref="root" class="commit-wrap">
     <ChatHeaderAction title="Commit 记录" :active="open" @click="toggle">
       <GitCommitHorizontal />
     </ChatHeaderAction>
     <section v-if="open" class="commit-popover">
-      <header><strong>Commit 记录</strong><Loader2 v-if="loading" /></header>
+      <header><strong>Commit 记录</strong><Loader2 v-if="loading" class="commit-loading" /></header>
       <ul v-if="commits.length">
         <li v-for="commit in commits" :key="commit.hash">
           <code>{{ commit.shortHash }}</code>
@@ -23,11 +23,20 @@ import { ref } from "vue";
 import { GitCommitHorizontal, Loader2 } from "lucide-vue-next";
 import { getSessionCommits, type WorktreeCommit } from "@/api";
 import ChatHeaderAction from "./ChatHeaderAction.vue";
+import { useOutsideDismiss } from "@/composables/use-outside-dismiss";
 
-const props = defineProps<{ sessionId: string }>();
+const props = withDefaults(defineProps<{ sessionId: string; dismissOnOutside?: boolean }>(), {
+  dismissOnOutside: true,
+});
 const open = ref(false),
   loading = ref(false),
   commits = ref<WorktreeCommit[]>([]);
+const root = ref<HTMLElement | null>(null);
+useOutsideDismiss(
+  root,
+  () => (open.value = false),
+  () => open.value && props.dismissOnOutside,
+);
 async function toggle() {
   open.value = !open.value;
   if (!open.value) return;
@@ -73,6 +82,17 @@ function formatTime(value: number) {
   padding: 6px 8px 10px;
   color: var(--app-text-primary);
   font-size: 13px;
+}
+.commit-loading {
+  width: 15px;
+  height: 15px;
+  color: var(--app-accent);
+  animation: commit-spin 0.8s linear infinite;
+}
+@keyframes commit-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 .commit-popover ul {
   margin: 0;

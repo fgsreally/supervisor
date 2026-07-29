@@ -207,7 +207,12 @@ async function refreshSessionCommands(force = false) {
         .filter((command) => command.source === "prompt")
         .map((command) => ({
           name: command.name.replace(/^\//, ""),
-          description: command.description,
+          description: [
+            command.description,
+            command.arguments?.type === "text" ? command.arguments.placeholder : undefined,
+          ]
+            .filter(Boolean)
+            .join(" · "),
         }));
       skills.value = [
         ...skills.value.filter((item) => !commandSkills.some((c) => c.name === item.name)),
@@ -228,10 +233,7 @@ async function refreshSessionCommands(force = false) {
       }
     } catch (error) {
       if (/(^|\s)\/[^\s]*$/.test(props.modelValue)) {
-        showUiMessage(
-          error instanceof Error ? error.message : "斜杠命令列表加载失败",
-          "error",
-        );
+        showUiMessage(error instanceof Error ? error.message : "斜杠命令列表加载失败", "error");
       }
     } finally {
       commandRefreshInFlight = null;

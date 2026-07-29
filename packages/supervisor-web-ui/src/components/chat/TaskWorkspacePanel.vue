@@ -1,8 +1,8 @@
 <template>
-  <aside class="task-workspace" aria-label="任务视窗">
+  <aside class="task-workspace" aria-label="Todo">
     <header class="task-workspace__header">
       <div>
-        <div class="task-workspace__eyebrow">任务视窗</div>
+        <div class="task-workspace__eyebrow">Todo</div>
         <div class="task-workspace__title">{{ selectedTask?.title ?? "当前任务" }}</div>
       </div>
       <button
@@ -15,12 +15,15 @@
       </button>
     </header>
 
-    <nav v-if="entries.length > 1" class="task-workspace__tabs" aria-label="任务产物">
+    <nav v-if="entries.length > 1" class="task-workspace__tabs" aria-label="Todo 与 Goal">
       <button
         v-for="task in entries"
         :key="task.path"
         class="task-workspace__tab"
-        :class="{ 'task-workspace__tab--active': task.path === selectedPath }"
+        :class="{
+          'task-workspace__tab--active': task.path === selectedTask?.path,
+          'task-workspace__tab--goal': task.type === 'goal',
+        }"
         type="button"
         @click="emit('select', task.path)"
       >
@@ -40,9 +43,22 @@
       <ul v-if="selectedTask.type === 'todo'" class="task-workspace__todos">
         <li v-for="todo in selectedTask.todos" :key="`${todo.status}:${todo.title}`">
           <span class="task-workspace__todo-status" :data-status="todo.status">
-            {{ todo.status === "done" ? "✓" : todo.status === "in_progress" ? "●" : "○" }}
+            {{
+              todo.status === "completed"
+                ? "✓"
+                : todo.status === "cancelled"
+                  ? "−"
+                  : todo.status === "in_progress"
+                    ? "●"
+                    : "○"
+            }}
           </span>
-          <span :class="{ 'task-workspace__todo-done': todo.status === 'done' }">
+          <span
+            :class="{
+              'task-workspace__todo-done':
+                todo.status === 'completed' || todo.status === 'cancelled',
+            }"
+          >
             {{ todo.title }}
           </span>
         </li>
@@ -80,7 +96,7 @@ type TaskEntry =
     };
 
 const entries = computed<TaskEntry[]>(() => [
-  ...props.tasks,
+  ...props.tasks.filter((task) => task.type === "goal"),
   ...(props.todos.length
     ? ([
         {
@@ -93,6 +109,7 @@ const entries = computed<TaskEntry[]>(() => [
         },
       ] as const)
     : []),
+  ...props.tasks.filter((task) => task.type === "plan"),
 ]);
 const selectedTask = computed(
   () => entries.value.find((task) => task.path === props.selectedPath) ?? entries.value[0] ?? null,
@@ -183,6 +200,16 @@ function statusLabel(status: string): string {
 .task-workspace__tab--active {
   border-color: var(--app-accent, #64748b);
   background: color-mix(in srgb, var(--app-accent, #64748b) 10%, transparent);
+}
+
+.task-workspace__tab--goal {
+  border-color: color-mix(in srgb, #f59e0b 58%, var(--app-border-color));
+  background: linear-gradient(135deg, rgb(245 158 11 / 16%), rgb(239 68 68 / 8%));
+}
+
+.task-workspace__tab--goal .task-workspace__type {
+  color: #f59e0b;
+  font-size: 12px;
 }
 
 .task-workspace__type {

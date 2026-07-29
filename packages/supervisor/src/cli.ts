@@ -18,7 +18,7 @@ import { encryptApiKey } from "./utils/encrypt.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "./utils/supervisor-settings.js";
 import { registerWebSocketRoutes } from "./websocket/server.js";
 
-const KNOWN_CLI_OPTIONS = new Set(["port", "p", "cwd", "h", "help"]);
+const KNOWN_CLI_OPTIONS = new Set(["port", "p", "cwd", "password", "h", "help"]);
 
 function _parseExtensionFlags(argv: string[]): Record<string, string | boolean | undefined> {
   const flags: Record<string, string | boolean | undefined> = {};
@@ -41,6 +41,15 @@ function _parseExtensionFlags(argv: string[]): Record<string, string | boolean |
 const cli = createSupervisorCli();
 const parsed = cli.parse(process.argv, { run: false });
 const values = parsed.options;
+
+function rawCliValue(name: string): string | undefined {
+  const prefix = `--${name}=`;
+  const inline = process.argv.find((arg) => arg.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+  const index = process.argv.indexOf(`--${name}`);
+  const value = index >= 0 ? process.argv[index + 1] : undefined;
+  return value && !value.startsWith("-") ? value : undefined;
+}
 
 async function selectProviderLocal(db: SupervisorDb): Promise<Provider> {
   const providers = db.listProviders().filter((p) => p.isEnabled);
@@ -95,14 +104,18 @@ async function run() {
       manager.createProject({ cwd: workspaceCwd });
       ensureBuiltinAssistant(db, manager);
       ensurePackagedAgents(db);
-      const app = createHttpServer(manager);
-      registerWebSocketRoutes(app);
+      // Read from argv so numeric-looking passwords keep their exact string form
+      // (CAC otherwise coerces e.g. "123" to the number 123).
+      const webPassword = rawCliValue("password");
+      const app = createHttpServer(manager, { password: webPassword });
+      registerWebSocketRoutes(app, webPassword);
       app.listen({ hostname: "0.0.0.0", port });
       manager.resumePersistedSessionInputs();
       startDailyWorkScheduler(db);
       console.log(`Server listening on http://localhost:${port}`);
       console.log(`Workspace cwd: ${workspaceCwd}`);
       console.log(`Database: ${resolveDbPath()}`);
+      if (webPassword) console.log("Web password protection: enabled");
       break;
     }
 

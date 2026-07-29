@@ -65,10 +65,14 @@ export function sessionTreeToChatEntries(entries: SessionTreeEntry[]): ChatEntry
 }
 
 export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry | null {
+  if (entry.meta?.hidden === true) return null;
   const assets = messageAssets(entry.meta);
   const base = {
     ...(entry.isOld ? { isOld: true } : {}),
     ...(assets.length > 0 ? { assets } : {}),
+    ...(typeof entry.meta?.inputSource === "string"
+      ? { injectedSource: entry.meta.inputSource }
+      : {}),
   };
   if (entry.type === "system") {
     return {
@@ -82,9 +86,7 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
   if (entry.type === "custom" && entry.customType === "llm_error") {
     const data = entry.data ?? {};
     const text =
-      typeof data.text === "string" && data.text.trim()
-        ? data.text.trim()
-        : "模型调用失败，请重试";
+      typeof data.text === "string" && data.text.trim() ? data.text.trim() : "模型调用失败，请重试";
     return {
       ...base,
       id: entry.id,
@@ -93,7 +95,10 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
       createdAt: entry.createdAt,
     };
   }
-  if (entry.type === "custom" && (entry.customType === "custom_message" || entry.customType === "session_notice")) {
+  if (
+    entry.type === "custom" &&
+    (entry.customType === "custom_message" || entry.customType === "session_notice")
+  ) {
     const data = entry.data ?? {};
     const text =
       typeof data.text === "string" && data.text.trim()
@@ -197,7 +202,12 @@ export function createUserChatEntry(
     type: "message",
     createdAt: Date.now(),
     ...(deliveryState ? { deliveryState } : {}),
-    ...(source?.startsWith("shadow:") ? { shadowSource: source } : {}),
+    ...(source &&
+    (source.startsWith("shadow:") ||
+      source.startsWith("spawn_agent:parent:") ||
+      source.startsWith("subagent:parent:"))
+      ? { injectedSource: source }
+      : {}),
     message: { role: "user", content: text },
   };
 }
@@ -245,9 +255,7 @@ export function applyAgentEventToChatEntries(
       name: event.toolName,
       arguments: event.args ?? {},
     };
-    (
-      entry.message.content as Array<ChatTextPart | ChatThinkingPart | ChatToolPart>
-    ).push(part);
+    (entry.message.content as Array<ChatTextPart | ChatThinkingPart | ChatToolPart>).push(part);
     return;
   }
 
@@ -320,7 +328,6 @@ export function mergeStreamingToolsIntoPersistedEntries(
   const userIndex = lastUserEntryIndex(serverEntries);
   if (userIndex < 0) return serverEntries;
 
-  const tail = serverEntries.slice(userIndex + 1);
   if (tailHasAssistantToolCalls(serverEntries, userIndex)) return serverEntries;
 
   const merged = [...serverEntries];

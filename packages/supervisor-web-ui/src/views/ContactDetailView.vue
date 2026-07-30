@@ -179,11 +179,11 @@ const savingModel = ref(false);
 
 const rightTabs = computed(() => {
   const tabs: Array<{ id: AgentTab; label: string }> = [
-    { id: "config", label: "Config" },
-    { id: "system", label: "System Prompt" },
-    { id: "skills", label: "Skills" },
-    { id: "extensions", label: "Extensions" },
-    { id: "prompts", label: "Template" },
+    { id: "config", label: "配置" },
+    { id: "system", label: "系统提示" },
+    { id: "skills", label: "技能" },
+    { id: "extensions", label: "扩展" },
+    { id: "prompts", label: "模板" },
     { id: "mcp", label: "MCP" },
   ];
   return tabs;

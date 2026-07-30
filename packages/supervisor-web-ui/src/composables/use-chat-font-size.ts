@@ -6,15 +6,12 @@ const STORAGE_KEY = "pi-supervisor-chat-font-size";
 
 const SIZE_PX: Record<ChatFontSize, string> = {
   small: "12.5px",
-  medium: "14px",
-  large: "16px",
+  medium: "12.5px",
+  large: "12.5px",
 };
 
 function readStored(): ChatFontSize {
-  if (typeof localStorage === "undefined") return "medium";
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw === "small" || raw === "medium" || raw === "large") return raw;
-  return "medium";
+  return "small";
 }
 
 const chatFontSize = ref<ChatFontSize>(readStored());

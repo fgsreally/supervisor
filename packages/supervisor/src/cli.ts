@@ -17,6 +17,7 @@ import type { Provider } from "./types.js";
 import { encryptApiKey } from "./utils/encrypt.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "./utils/supervisor-settings.js";
 import { registerWebSocketRoutes } from "./websocket/server.js";
+import { resolveWebPin } from "./utils/web-password.js";
 
 const KNOWN_CLI_OPTIONS = new Set(["port", "p", "cwd", "password", "h", "help"]);
 
@@ -104,9 +105,9 @@ async function run() {
       manager.createProject({ cwd: workspaceCwd });
       ensureBuiltinAssistant(db, manager);
       ensurePackagedAgents(db);
-      // Read from argv so numeric-looking passwords keep their exact string form
-      // (CAC otherwise coerces e.g. "123" to the number 123).
-      const webPassword = rawCliValue("password");
+      // Read from argv so numeric-looking PINs keep their exact string form
+      // (CAC otherwise coerces e.g. "0123" to the number 123).
+      const { pin: webPassword, generated } = resolveWebPin(rawCliValue("password"));
       const app = createHttpServer(manager, { password: webPassword });
       registerWebSocketRoutes(app, webPassword);
       app.listen({ hostname: "0.0.0.0", port });
@@ -115,7 +116,11 @@ async function run() {
       console.log(`Server listening on http://localhost:${port}`);
       console.log(`Workspace cwd: ${workspaceCwd}`);
       console.log(`Database: ${resolveDbPath()}`);
-      if (webPassword) console.log("Web password protection: enabled");
+      if (generated) {
+        console.log(`Web PIN (generated): ${webPassword}`);
+      } else {
+        console.log("Web PIN protection: enabled");
+      }
       break;
     }
 

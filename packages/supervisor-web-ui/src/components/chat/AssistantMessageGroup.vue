@@ -314,7 +314,7 @@ onBeforeUnmount(cancelLongPress);
 }
 
 .external-details {
-  border-top: 1px solid var(--app-border-subtle);
+  margin-top: 4px;
   color: var(--app-text-secondary);
   font-size: 12px;
   padding-top: 0.25rem;

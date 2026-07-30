@@ -5,24 +5,24 @@
   >
     <div
       class="h-16 flex items-center px-4 shrink-0 border-b"
-      style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
+      style="background: var(--app-list-header-bg); border-color: var(--app-header-divider, var(--app-border-subtle))"
     >
       <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">聊天</h1>
       <button
         type="button"
         class="chat-list-import-icon"
         :class="{ 'chat-list-import-icon--active': externalImportOpen }"
-        title="从外部引入"
-        aria-label="从外部引入"
+        title="从外部引入会话"
+        aria-label="从外部引入会话"
         @click="openExternalImport"
       >
-        <Import class="h-[18px] w-[18px]" />
+        <MessageSquareReply class="h-5 w-5" stroke-width="1.75" />
       </button>
     </div>
 
     <div
       class="px-3 py-2 shrink-0 border-b"
-      style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
+      style="background: var(--app-list-header-bg); border-color: var(--app-header-divider, var(--app-border-subtle))"
     >
       <div class="relative">
         <Search class="w-4 h-4 absolute left-2.5 top-2" style="color: var(--app-text-muted)" />
@@ -281,7 +281,7 @@ import {
   ChevronDown,
   ChevronRight,
   GitBranch,
-  Import,
+  MessageSquareReply,
   Plus,
   Search,
   Settings,
@@ -948,10 +948,11 @@ async function onAgentPicked(agentId: string) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  margin-right: -7px;
-  border-radius: 6px;
+  width: 44px;
+  height: 44px;
+  margin-right: -8px;
+  flex: none;
+  border-radius: 10px;
   border: none;
   background: transparent;
   color: var(--app-text-secondary);
@@ -963,7 +964,7 @@ async function onAgentPicked(agentId: string) {
 }
 
 .chat-list-import-icon svg {
-  transform: translateY(2px);
+  display: block;
 }
 
 .chat-list-import-icon:hover,

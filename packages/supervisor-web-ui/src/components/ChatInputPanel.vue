@@ -148,11 +148,12 @@ const canSend = computed(
   () => (!!text.value.trim() || pendingImages.value.length > 0) && !props.disabled,
 );
 
+const isNarrow = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
 const { height: panelHeight, startResize } = useResizableHeight({
-  defaultHeight: 128,
-  minHeight: 96,
+  defaultHeight: isNarrow ? 80 : 96,
+  minHeight: isNarrow ? 72 : 80,
   maxHeight: 320,
-  storageKey: "pi-example-chat-input-height",
+  storageKey: "pi-supervisor-chat-input-height-v2",
 });
 
 const editorHeight = computed(() => Math.max(40, panelHeight.value - TOOLBAR_HEIGHT));

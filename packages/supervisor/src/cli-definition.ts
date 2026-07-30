@@ -13,7 +13,7 @@ export function createSupervisorCli(): CAC {
   cli
     .option("-p, --port <port>", "HTTP server port", { default: "3030" })
     .option("--cwd <path>", "Default workspace directory")
-    .option("--password <password>", "Require this password in the web UI")
+    .option("--password <pin>", "4-digit numeric PIN for the web UI (default: random)")
     .help();
   cli.command("serve", MODULE_DESCRIPTIONS.serve, { allowUnknownOptions: true });
   cli

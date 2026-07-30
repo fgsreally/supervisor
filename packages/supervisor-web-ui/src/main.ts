@@ -5,9 +5,13 @@ import App from "./App.vue";
 import router from "./router";
 import "./style.css";
 import { initAppTheme } from "./composables/use-app-theme";
+import { initAppStyle } from "./composables/use-app-style";
+import { initAppFontScale } from "./composables/use-app-font-scale";
 import { requestNotificationPermission } from "./composables/use-push-notifications";
 
 initAppTheme();
+void initAppStyle();
+initAppFontScale();
 
 if (import.meta.env.DEV) {
   if ("serviceWorker" in navigator) {

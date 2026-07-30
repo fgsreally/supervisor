@@ -119,7 +119,8 @@ function onContentClick(event: MouseEvent) {
 
 <style scoped>
 .md-content {
-  color: var(--app-text-primary);
+  color: var(--md-text, var(--app-text-primary));
+  font-family: var(--md-font-family, inherit);
 }
 
 /* ---- document / prose ---- */
@@ -132,6 +133,7 @@ function onContentClick(event: MouseEvent) {
 }
 .md-content--prose :deep(strong) {
   font-weight: 600;
+  color: var(--md-strong, inherit);
 }
 .md-content--prose :deep(em) {
   font-style: italic;
@@ -148,8 +150,8 @@ function onContentClick(event: MouseEvent) {
   font-size: 0.88em;
   padding: 0.12em 0.38em;
   border-radius: 4px;
-  background: var(--app-code-inline-bg);
-  color: var(--app-code-inline-text, inherit);
+  background: var(--md-inline-code-bg, var(--app-code-inline-bg));
+  color: var(--md-inline-code-text, var(--app-code-inline-text, inherit));
   word-break: break-word;
 }
 .md-content--prose :deep(pre) {
@@ -171,29 +173,34 @@ function onContentClick(event: MouseEvent) {
 }
 .md-content--prose :deep(blockquote) {
   margin: 0.55em 0;
-  padding: 0.15em 0 0.15em 0.85em;
-  border-left: 3px solid color-mix(in srgb, var(--app-accent) 55%, transparent);
-  color: var(--app-text-secondary);
+  padding: 0.35em 0.75em;
+  border-left: 3px solid var(--md-quote-border, var(--app-accent));
+  background: var(--md-quote-bg, transparent);
+  color: var(--md-quote-text, var(--app-text-secondary));
 }
 .md-content--prose :deep(hr) {
   margin: 0.95em 0;
   border: none;
-  border-top: 1px solid color-mix(in srgb, var(--app-text-secondary) 55%, transparent);
+  border-top: 1px solid var(--md-divider, var(--app-border-subtle));
+}
+.md-content--prose :deep(h1),
+.md-content--prose :deep(h2),
+.md-content--prose :deep(h3),
+.md-content--prose :deep(h4) {
+  color: var(--md-heading, var(--app-text-primary));
+  font-weight: var(--md-heading-weight, 600);
 }
 .md-content--prose :deep(h1) {
   font-size: 1.28em;
-  font-weight: 600;
   margin: 0 0 0.55em;
 }
 .md-content--prose :deep(h2) {
   font-size: 1.12em;
-  font-weight: 600;
   margin: 0.95em 0 0.4em;
 }
 .md-content--prose :deep(h3),
 .md-content--prose :deep(h4) {
   font-size: 1.02em;
-  font-weight: 600;
   margin: 0.8em 0 0.35em;
 }
 .md-content--prose :deep(ul),
@@ -209,12 +216,23 @@ function onContentClick(event: MouseEvent) {
   margin: 0.22em 0;
   line-height: 1.55;
 }
+.md-content--prose :deep(ul > li::marker) {
+  color: var(--md-list-marker, var(--app-accent));
+}
+.md-content--prose :deep(th) {
+  background: var(--md-table-header-bg, var(--app-hover));
+  color: var(--md-table-header-text, var(--app-text-primary));
+}
+.md-content--prose :deep(th),
+.md-content--prose :deep(td) {
+  border-color: var(--md-table-border, var(--app-border-subtle));
+}
 
-/* ---- terminal / chat (xterm-like; base font inherits from bubble) ---- */
+/* ---- terminal / chat ---- */
 .md-content--terminal {
   font-size: inherit;
   line-height: 1.42;
-  color: var(--app-text-primary);
+  color: var(--md-text, var(--app-text-primary));
 }
 .md-content--terminal :deep(p) {
   margin: 0 0 0.85em;
@@ -223,12 +241,12 @@ function onContentClick(event: MouseEvent) {
   margin-bottom: 0;
 }
 .md-content--terminal :deep(strong) {
-  font-weight: 700;
-  color: inherit;
+  font-weight: 650;
+  color: var(--md-strong, inherit);
 }
 .md-content--terminal :deep(em) {
   font-style: italic;
-  color: var(--app-text-secondary);
+  color: var(--md-muted, var(--app-text-secondary));
 }
 .md-content--terminal :deep(a) {
   color: #3ecf8e;
@@ -237,16 +255,16 @@ function onContentClick(event: MouseEvent) {
 }
 .md-content--terminal :deep(.md-term-h) {
   margin: 0.95em 0 0.35em;
-  font-weight: 700;
+  font-weight: var(--md-heading-weight, 600);
   font-size: 1em;
   line-height: 1.42;
-  color: #7dd3fc;
+  color: var(--md-heading, var(--app-text-primary));
 }
 .md-content--terminal :deep(.md-term-h:first-child) {
   margin-top: 0;
 }
 .md-content--terminal :deep(.md-term-h__mark) {
-  color: #64748b;
+  color: var(--md-heading-marker, var(--app-accent));
   font-weight: 500;
 }
 .md-content :deep(.tok-keyword) {
@@ -261,7 +279,7 @@ function onContentClick(event: MouseEvent) {
 .md-content--terminal :deep(hr.md-term-hr) {
   margin: 1.05em 0;
   border: none;
-  border-top: 1px dashed color-mix(in srgb, var(--app-text-secondary) 85%, #94a3b8);
+  border-top: 1px solid var(--md-divider, var(--app-border-subtle));
   height: 0;
   opacity: 1;
 }
@@ -291,7 +309,7 @@ function onContentClick(event: MouseEvent) {
 .md-content--terminal :deep(.md-term-bullet) {
   flex: none;
   min-width: 1.15em;
-  color: #94a3b8;
+  color: var(--md-list-marker, var(--app-accent));
   text-align: left;
 }
 .md-content--terminal :deep(.md-term-li) {
@@ -302,10 +320,10 @@ function onContentClick(event: MouseEvent) {
   margin: 0;
 }
 .md-content--terminal :deep(.md-term-code) {
-  padding: 0 0.15em;
-  border-radius: 2px;
-  background: rgba(56, 189, 248, 0.14);
-  color: #7dd3fc;
+  padding: 0.05em 0.28em;
+  border-radius: 3px;
+  background: var(--md-inline-code-bg, var(--app-code-inline-bg));
+  color: var(--md-inline-code-text, var(--app-accent));
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 1em;
 }
@@ -329,9 +347,10 @@ function onContentClick(event: MouseEvent) {
 }
 .md-content--terminal :deep(.md-term-quote) {
   margin: 0.3em 0;
-  padding: 0 0 0 0.7em;
-  border-left: 2px solid #475569;
-  color: #94a3b8;
+  padding: 0.25em 0.7em;
+  border-left: 3px solid var(--md-quote-border, var(--app-accent));
+  background: var(--md-quote-bg, transparent);
+  color: var(--md-quote-text, var(--app-text-secondary));
 }
 .md-content--terminal :deep(.md-term-quote p) {
   margin: 0;
@@ -345,24 +364,14 @@ function onContentClick(event: MouseEvent) {
 .md-content--terminal :deep(th),
 .md-content--terminal :deep(td) {
   padding: 0.15em 0.4em;
-  border: 1px solid #334155;
+  border: 1px solid var(--md-table-border, var(--app-border-subtle));
   text-align: left;
 }
 .md-content--terminal :deep(th) {
-  color: #7dd3fc;
+  color: var(--md-table-header-text, var(--app-text-primary));
+  background: var(--md-table-header-bg, transparent);
 }
 
-html[data-theme="light"] .md-content--terminal :deep(.md-term-h) {
-  color: #0369a1;
-}
-html[data-theme="light"] .md-content--terminal :deep(.md-term-h__mark),
-html[data-theme="light"] .md-content--terminal :deep(.md-term-bullet) {
-  color: #64748b;
-}
-html[data-theme="light"] .md-content--terminal :deep(.md-term-code) {
-  background: rgba(2, 132, 199, 0.1);
-  color: #0369a1;
-}
 html[data-theme="light"] .md-content--terminal :deep(.md-term-pre) {
   background: #f8fafc;
   border-color: #e2e8f0;

@@ -9,7 +9,7 @@ export type AppRouteTab =
   | "resources"
   | "settings";
 
-export function tabFromRoute(route: RouteLocationNormalized): AppRouteTab {
+export function tabFromRoute(route: Pick<RouteLocationNormalized, "path">): AppRouteTab {
   const seg = route.path.split("/").filter(Boolean)[0];
   if (
     seg === "todo" ||
@@ -25,8 +25,11 @@ export function tabFromRoute(route: RouteLocationNormalized): AppRouteTab {
   return "chat";
 }
 
-export function idFromRoute(route: RouteLocationNormalized): string | undefined {
+export function idFromRoute(route: Pick<RouteLocationNormalized, "path">): string | undefined {
   const parts = route.path.split("/").filter(Boolean);
+  if (parts[0] === "settings") return undefined;
+  if (parts[0] === "contacts" && parts[1] === "new") return undefined;
+  if (parts[0] === "providers" && parts[1] === "new") return undefined;
   return parts[1] || undefined;
 }
 
@@ -43,14 +46,27 @@ const router = createRouter({
     { path: "/todo", name: "todo", component: { template: "<div />" } },
     { path: "/dashboard", name: "dashboard", component: { template: "<div />" } },
     { path: "/chat/:sessionId?", name: "chat", component: { template: "<div />" } },
+    { path: "/contacts/new", name: "contact-new", component: { template: "<div />" } },
     { path: "/contacts/:agentId?", name: "contacts", component: { template: "<div />" } },
+    {
+      path: "/providers/:providerId/models/new",
+      name: "provider-model-new",
+      component: { template: "<div />" },
+    },
     {
       path: "/providers/:providerId/models/:modelId",
       name: "provider-model",
       component: { template: "<div />" },
     },
+    { path: "/providers/new", name: "provider-new", component: { template: "<div />" } },
     { path: "/providers/:providerId?", name: "providers", component: { template: "<div />" } },
     { path: "/resources/:resourceId?", name: "resources", component: { template: "<div />" } },
+    { path: "/settings/services", name: "settings-services", component: { template: "<div />" } },
+    {
+      path: "/settings/diagnostics",
+      name: "settings-diagnostics",
+      component: { template: "<div />" },
+    },
     { path: "/settings", name: "settings", component: { template: "<div />" } },
     { path: "/search", redirect: "/chat" },
   ],

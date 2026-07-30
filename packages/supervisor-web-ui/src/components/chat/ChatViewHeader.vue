@@ -1,7 +1,7 @@
 <template>
   <div
     class="chat-view-header relative z-50 h-12 md:h-[68px] border-b flex items-center px-2.5 md:px-6 shrink-0"
-    style="background: var(--app-chat-header-bg); border-color: var(--app-border)"
+    style="background: var(--app-chat-header-bg); border-color: var(--app-header-divider, var(--app-border-subtle))"
   >
     <button
       v-if="showBack"

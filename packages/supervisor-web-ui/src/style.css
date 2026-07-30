@@ -165,8 +165,8 @@
   --app-divider: #e8e8e8;
   --app-hover: #f0f0f0;
 
-  --app-bubble-user: #9df29f;
-  --app-bubble-assistant: #f3f3f3;
+  --app-bubble-user: #a8eda1;
+  --app-bubble-assistant: #ededf0;
   --app-bubble-assistant-border: transparent;
   --app-bubble-radius: 10px;
 
@@ -224,6 +224,35 @@
   --app-file-bubble-size: #b2b2b2;
   --app-file-bubble-footer-border: #e6e6e6;
   --app-file-bubble-footer-text: #b2b2b2;
+
+  --md-text: #191919;
+  --md-font-family: inherit;
+  --md-heading-weight: 500;
+  --md-muted: #888888;
+  --md-heading: #191919;
+  --md-strong: #191919;
+  --md-heading-marker: #07c160;
+  --md-link: #576b95;
+  --md-list-marker: #07c160;
+  --md-divider: rgb(7 193 96 / 20%);
+  --md-quote-border: #07c160;
+  --md-quote-bg: rgb(7 193 96 / 6%);
+  --md-quote-text: #888888;
+  --md-inline-code-bg: rgb(6 174 86 / 10%);
+  --md-inline-code-text: #06ae56;
+  --md-code-bg: #f7f7f7;
+  --md-code-border: rgb(7 193 96 / 17%);
+  --md-code-text: #191919;
+  --md-code-keyword: #07c160;
+  --md-code-string: #059a4c;
+  --md-code-number: #74a800;
+  --md-code-comment: #888888;
+  --md-code-type: #06ae56;
+  --md-code-property: #259c5c;
+  --md-code-operator: #77bc54;
+  --md-table-border: #e7e7e7;
+  --md-table-header-bg: rgb(6 174 86 / 10%);
+  --md-table-header-text: #191919;
 
   --app-list-tree-line: #bfc6d1;
   --app-list-status-ring: #e6e6e6;
@@ -337,6 +366,35 @@
   --app-file-bubble-size: #8a8a8a;
   --app-file-bubble-footer-border: #383838;
   --app-file-bubble-footer-text: #8a8a8a;
+
+  --md-text: rgb(255 255 255 / 80%);
+  --md-font-family: inherit;
+  --md-heading-weight: 500;
+  --md-muted: rgb(255 255 255 / 50%);
+  --md-heading: rgb(255 255 255 / 80%);
+  --md-strong: rgb(255 255 255 / 80%);
+  --md-heading-marker: #38cd7f;
+  --md-link: #7d90a9;
+  --md-list-marker: #38cd7f;
+  --md-divider: rgb(56 205 127 / 20%);
+  --md-quote-border: #38cd7f;
+  --md-quote-bg: rgb(56 205 127 / 8%);
+  --md-quote-text: rgb(255 255 255 / 50%);
+  --md-inline-code-bg: rgb(56 205 127 / 10%);
+  --md-inline-code-text: #38cd7f;
+  --md-code-bg: #202020;
+  --md-code-border: rgb(56 205 127 / 17%);
+  --md-code-text: rgb(255 255 255 / 80%);
+  --md-code-keyword: #38cd7f;
+  --md-code-string: #3eb575;
+  --md-code-number: #8fb933;
+  --md-code-comment: rgb(255 255 255 / 50%);
+  --md-code-type: #64c390;
+  --md-code-property: #51bc83;
+  --md-code-operator: #3eb575;
+  --md-table-border: rgb(255 255 255 / 15%);
+  --md-table-header-bg: rgb(56 205 127 / 10%);
+  --md-table-header-text: rgb(255 255 255 / 80%);
 
   --app-list-tree-line: #4a4a4a;
   --app-list-tree-line-active: #8de4be;

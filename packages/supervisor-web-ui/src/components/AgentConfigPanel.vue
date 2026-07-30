@@ -35,10 +35,6 @@
             </dd>
           </div>
           <div class="agent-config-row">
-            <dt>工具集</dt>
-            <dd>{{ agent.toolsPreset || "none" }}</dd>
-          </div>
-          <div class="agent-config-row">
             <dt>Home 目录</dt>
             <dd class="font-mono text-[12px] break-all">{{ homeDir || "-" }}</dd>
           </div>

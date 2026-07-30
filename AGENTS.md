@@ -97,6 +97,15 @@ pnpm docs:build
 - 中文优先
 - 引用源码时标注文件路径和行号
 
+## 移动端设计参考（微信）
+
+移动端 UI 优先对齐微信官方设计与控件语言，实施时尽量查阅官方资料：
+
+- WeUI：https://weui.io/
+- WeUI GitHub：https://github.com/Tencent/weui
+- 微信小程序设计指南：https://developers.weixin.qq.com/miniprogram/design/
+- 微信开放社区设计相关文档：https://developers.weixin.qq.com/community/develop/doc
+
 ## 华生（助手模型）
 
 - 设置页只配置一个**助手模型**（`featureModels.assistant`），不再按功能拆分模型。

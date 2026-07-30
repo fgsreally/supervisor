@@ -139,42 +139,67 @@
         </div>
       </template>
 
-      <template v-else>
+      <MobileAppShell
+        v-else
+        :tab="mainTab"
+        :show-nav="mobileShowPrimaryNav"
+        @navigate="navigateMobileRoot"
+      >
         <div class="flex-1 flex flex-col min-w-0">
-          <TodoView
-            v-if="mainTab === 'todo'"
-            class="flex-1 min-w-0 h-full"
-            @open-session="openSessionFromHome"
+          <MobileWorkView
+            v-if="mainTab === 'todo' || mainTab === 'dashboard'"
+            :mode="mainTab"
+            data-tour-page="work"
+            @navigate="navigateMobilePath"
+          >
+            <TodoView
+              v-if="mainTab === 'todo'"
+              class="flex-1 min-w-0 h-full"
+              @open-session="openSessionFromHome"
+            />
+            <HomeView v-else class="flex-1 min-w-0 h-full" />
+          </MobileWorkView>
+          <MobileMeView
+            v-else-if="mainTab === 'settings' && route.path === '/settings'"
+            @navigate="navigateMobilePath"
+            @tutorial="introTour?.start()"
           />
-          <HomeView v-else-if="mainTab === 'dashboard'" class="flex-1 min-w-0 h-full" />
           <SettingsPanel
             v-else-if="mainTab === 'settings'"
             :show-back="true"
-            @back="onTabChange('chat')"
+            @back="navigateMobilePath('/settings')"
           />
           <template v-else-if="mobilePage === 'list'">
             <ChatListPanel
               v-if="mainTab === 'chat'"
+              data-tour-page="chat"
               :active-id="activeSessionId ?? ''"
               @select="selectSession"
               @delete="onSessionDelete"
-              @settings="openMobileSettings"
+              @settings="navigateMobileRoot('/settings')"
             />
             <ContactsPanel
               v-else-if="mainTab === 'contacts'"
+              data-tour-page="contacts"
               :active-id="activeAgentId ?? ''"
               @select="selectAgent"
               @add="openAgentAdd"
             />
             <ProvidersPanel
               v-else-if="mainTab === 'providers'"
+              data-tour-page="providers"
               :active-id="activeProviderId ?? ''"
               @select-provider="selectProvider"
               @add-provider="openProviderAdd"
               @edit-provider="openProviderEditFor"
               @delete-provider="onDeleteProvider"
             />
-            <ResourcesPanel v-else :active-id="activeResourceId" @select="selectResource" />
+            <ResourcesPanel
+              v-else
+              data-tour-page="resources"
+              :active-id="activeResourceId"
+              @select="selectResource"
+            />
           </template>
           <template v-else>
             <ChatView
@@ -251,74 +276,7 @@
             />
           </template>
         </div>
-        <nav
-          v-if="mobilePage === 'list'"
-          class="md:hidden fixed bottom-0 inset-x-0 h-14 border-t z-30 flex mobile-bottom-nav"
-          style="background: var(--app-nav-bg); border-color: var(--app-border)"
-        >
-          <button
-            style="order: 2"
-            type="button"
-            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-            :class="mainTab === 'todo' ? 'mobile-bottom-nav__btn--active' : ''"
-            @click="onTabChange('todo')"
-          >
-            <ListTodo class="w-5 h-5 mb-0.5" />
-            Todo
-          </button>
-          <button
-            style="order: 3"
-            type="button"
-            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-            :class="mainTab === 'dashboard' ? 'mobile-bottom-nav__btn--active' : ''"
-            @click="onTabChange('dashboard')"
-          >
-            <LayoutDashboard class="w-5 h-5 mb-0.5" />
-            概览
-          </button>
-          <button
-            style="order: 1"
-            type="button"
-            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-            :class="mainTab === 'chat' ? 'mobile-bottom-nav__btn--active' : ''"
-            @click="onTabChange('chat')"
-          >
-            <MessageSquare class="w-5 h-5 mb-0.5" />
-            聊天
-          </button>
-          <button
-            style="order: 4"
-            type="button"
-            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-            :class="mainTab === 'contacts' ? 'mobile-bottom-nav__btn--active' : ''"
-            @click="onTabChange('contacts')"
-          >
-            <Users class="w-5 h-5 mb-0.5" />
-            智能代理
-          </button>
-          <button
-            style="order: 5"
-            type="button"
-            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-            :class="mainTab === 'providers' ? 'mobile-bottom-nav__btn--active' : ''"
-            @click="onTabChange('providers')"
-          >
-            <Cloud class="w-5 h-5 mb-0.5" />
-            模型
-          </button>
-          <button
-            style="order: 6"
-            type="button"
-            class="flex-1 flex flex-col items-center justify-center text-[10px] transition-colors mobile-bottom-nav__btn"
-            :class="mainTab === 'resources' ? 'mobile-bottom-nav__btn--active' : ''"
-            @click="onTabChange('resources')"
-          >
-            <FolderOpen class="w-5 h-5 mb-0.5" />
-            资源
-          </button>
-        </nav>
-        <div v-if="mobilePage === 'list'" class="md:hidden h-14 shrink-0"></div>
-      </template>
+      </MobileAppShell>
     </template>
 
     <GlobalSearchModal :open="searchOpen" @close="searchOpen = false" @navigate="selectSession" />
@@ -346,14 +304,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import {
-  Cloud,
-  FolderOpen,
-  LayoutDashboard,
-  ListTodo,
-  MessageSquare,
-  Users,
-} from "lucide-vue-next";
 import ShellNav, { type MainTab } from "./components/ShellNav.vue";
 import ChatListPanel from "./components/ChatListPanel.vue";
 import ContactsPanel from "./components/ContactsPanel.vue";
@@ -381,12 +331,19 @@ import UiConfirmHost from "./components/UiConfirmHost.vue";
 import UiBusyHost from "./components/UiBusyHost.vue";
 import StartupGate from "./components/StartupGate.vue";
 import IntroTour from "./components/IntroTour.vue";
+import MobileAppShell from "./components/mobile/MobileAppShell.vue";
+import MobileMeView from "./components/mobile/MobileMeView.vue";
+import MobileWorkView from "./components/mobile/MobileWorkView.vue";
 import { showUiMessage } from "./composables/use-ui-message";
 import { useSessionStore, useAgentStore, useProviderStore, useResourceStore } from "./store";
 import { providerToUI } from "./utils/provider-ui";
 import { getDefaultWorkspaceCwd } from "./config/workspace";
 import { idFromRoute, modelIdFromRoute, tabFromRoute } from "./router";
 import { viewPreferences } from "./utils/view-preferences";
+import "./styles/mobile/foundation.css";
+import "./styles/mobile/components.css";
+import "./styles/mobile/chat-density.css";
+import "./styles/font-scale.css";
 
 const { width: chatListWidth, startResize: startListResize } = useResizableWidth({
   defaultWidth: 148,
@@ -821,23 +778,68 @@ function onResourceDeleted() {
 
 function onTabChange(tab: MainTab) {
   mainTab.value = tab;
-  mobilePage.value = tab === "settings" ? "detail" : "list";
+  mobilePage.value = "list";
   providerPage.value = "detail";
   agentPage.value = "detail";
-  if (tab === "resources" && !activeResourceId.value) {
-    const first = resourceStore.resourceItems[0];
-    if (first) activeResourceId.value = first.id;
-  }
-  if (tab === "providers" && !activeProvider.value) {
-    const first = providerStore.providers[0];
-    if (first) activeProviderId.value = first.id;
+  if (isMobile.value) {
+    if (tab === "chat") {
+      activeSessionId.value = null;
+    } else if (tab === "contacts") {
+      activeAgentId.value = null;
+      agentPage.value = "detail";
+    } else if (tab === "providers") {
+      activeProviderId.value = null;
+      activeModelId.value = null;
+    } else if (tab === "resources") {
+      activeResourceId.value = null;
+    }
+  } else {
+    if (tab === "resources" && !activeResourceId.value) {
+      const first = resourceStore.resourceItems[0];
+      if (first) activeResourceId.value = first.id;
+    }
+    if (tab === "providers" && !activeProvider.value) {
+      const first = providerStore.providers[0];
+      if (first) activeProviderId.value = first.id;
+    }
   }
   pushRoute();
 }
 
-function openMobileSettings() {
-  onTabChange("settings");
-  mobilePage.value = "detail";
+const PRIMARY_MOBILE_PATHS = new Set([
+  "/chat",
+  "/todo",
+  "/dashboard",
+  "/contacts",
+  "/settings",
+]);
+
+const mobileShowPrimaryNav = computed(
+  () =>
+    mobilePage.value === "list" &&
+    PRIMARY_MOBILE_PATHS.has(route.path.split("/").slice(0, 2).join("/") || route.path),
+);
+
+function navigateMobileRoot(path: "/chat" | "/todo" | "/contacts" | "/settings") {
+  if (path === "/chat") onTabChange("chat");
+  else if (path === "/todo") onTabChange("todo");
+  else if (path === "/contacts") onTabChange("contacts");
+  else onTabChange("settings");
+  void router.replace(path);
+}
+
+function navigateMobilePath(path: string) {
+  if (path === "/todo") onTabChange("todo");
+  else if (path === "/dashboard") onTabChange("dashboard");
+  else if (path === "/providers") {
+    onTabChange("providers");
+  } else if (path === "/resources") {
+    onTabChange("resources");
+  } else if (path === "/settings" || path.startsWith("/settings/")) {
+    mainTab.value = "settings";
+    mobilePage.value = path === "/settings" ? "list" : "detail";
+  }
+  void router.push(path);
 }
 
 function viewAgent(agentId: string) {
@@ -885,10 +887,15 @@ async function openChatFromContact(id: string) {
 
 function backToMobileList() {
   mobilePage.value = "list";
+  if (mainTab.value === "chat") void router.replace("/chat");
+  else if (mainTab.value === "contacts") void router.replace("/contacts");
+  else if (mainTab.value === "providers") void router.replace("/providers");
+  else if (mainTab.value === "resources") void router.replace("/resources");
+  else if (mainTab.value === "settings") void router.replace("/settings");
 }
 
 function updateMobileFlag() {
-  isMobile.value = window.matchMedia("(max-width: 768px)").matches;
+  isMobile.value = window.matchMedia("(max-width: 767px)").matches;
   if (!isMobile.value) mobilePage.value = "list";
 }
 </script>

@@ -38,7 +38,7 @@ async function req(method: string, path: string, body?: unknown) {
 
 describe("supervisor: HTTP server", () => {
   it("protects API routes when a web password is configured", async () => {
-    const protectedApp = createHttpServer(manager, { password: "secret" });
+    const protectedApp = createHttpServer(manager, { password: "4827" });
     const status = await protectedApp.request("/auth/status");
     expect(status.status).toBe(200);
     expect(await status.json()).toEqual({ required: true, authenticated: false });
@@ -47,7 +47,7 @@ describe("supervisor: HTTP server", () => {
     expect(
       (
         await protectedApp.request("/sessions", {
-          headers: { "x-supervisor-password": "secret" },
+          headers: { "x-supervisor-password": "4827" },
         })
       ).status,
     ).toBe(200);

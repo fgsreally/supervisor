@@ -33,7 +33,7 @@
       <AgentExtensionsPanel :agent-id="agentId" />
     </div>
 
-    <div v-else-if="tab === 'skills'" class="px-4 py-3 space-y-4">
+    <div v-else-if="tab === 'skills'" class="px-4 py-3 space-y-3">
       <div
         v-for="skill in skillItems"
         :key="skill.id"
@@ -43,24 +43,12 @@
           <SkillListItem :skill="skill" />
           <ResourceLayerBadge :layer="skill.layer" />
         </div>
-        <div class="px-2 py-2 max-h-48 overflow-y-auto custom-scrollbar border-b border-gray-50">
+        <div class="px-2 py-2 max-h-48 overflow-y-auto custom-scrollbar">
           <SkillFileTree
             :files="skill.files"
-            :selected-file-id="expandedSkillFile[skill.id] ?? null"
-            @select="onSkillFileSelect(skill.id, $event)"
+            :selected-file-id="null"
+            @select="() => undefined"
           />
-        </div>
-        <div v-if="expandedSkillFile[skill.id]" class="px-3 py-2">
-          <div class="min-h-[8rem] border border-gray-100 rounded overflow-hidden">
-            <ResourceContentView
-              :content="getSkillFileContent(skill, expandedSkillFile[skill.id]!)"
-              kind="skills"
-              :language="
-                getSkillFileLanguage(findSkillFileName(skill, expandedSkillFile[skill.id]!))
-              "
-              :fill="false"
-            />
-          </div>
         </div>
       </div>
       <div v-if="skillItems.length === 0" class="py-6 text-center text-[13px] text-gray-400">
@@ -78,9 +66,6 @@
           <ResourceFileListItem :item="r" />
           <ResourceLayerBadge :layer="r.layer" />
         </div>
-        <div class="min-h-[10rem]">
-          <ResourceContentView :content="r.content" :kind="r.kind" :fill="false" />
-        </div>
       </div>
       <div v-if="fileItems.length === 0" class="py-6 text-center text-[13px] text-gray-400">
         暂无
@@ -90,12 +75,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { Loader2 } from "lucide-vue-next";
 import AgentConfigPanel from "./AgentConfigPanel.vue";
 import AgentSystemPromptPanel from "./AgentSystemPromptPanel.vue";
 import AgentExtensionsPanel from "./AgentExtensionsPanel.vue";
-import ResourceContentView from "./ResourceContentView.vue";
 import ResourceFileListItem from "./ResourceFileListItem.vue";
 import ResourceLayerBadge from "./ResourceLayerBadge.vue";
 import SkillFileTree from "./SkillFileTree.vue";
@@ -103,9 +87,9 @@ import SkillListItem from "./SkillListItem.vue";
 import { useAgentStore, useResourceStore } from "@/store";
 import { agentResourcesToUiItems, getLinkedResourcesForAgent } from "@/utils/resources-ui";
 import type { UIResourceKind } from "@/types/ui";
-import { getSkillFileLanguage, isFileItem, isSkillItem } from "@/utils/resource-utils";
+import { isFileItem, isSkillItem } from "@/utils/resource-utils";
 import { getDefaultWorkspaceCwd } from "@/config/workspace";
-import type { UIResourceItem, UISkillItem } from "@/types/ui";
+import type { UIResourceItem } from "@/types/ui";
 
 const props = defineProps<{
   agentId: string;
@@ -134,14 +118,13 @@ watch(
 );
 
 const tab = ref<MobileTab>("config");
-const expandedSkillFile = reactive<Record<string, string | null>>({});
 
 const tabs = [
-  { id: "config" as const, label: "Config" },
-  { id: "system" as const, label: "System" },
-  { id: "skills" as const, label: "Skills" },
-  { id: "extensions" as const, label: "Ext" },
-  { id: "prompts" as const, label: "Templates" },
+  { id: "config" as const, label: "配置" },
+  { id: "system" as const, label: "系统提示" },
+  { id: "skills" as const, label: "技能" },
+  { id: "extensions" as const, label: "扩展" },
+  { id: "prompts" as const, label: "模板" },
   { id: "mcp" as const, label: "MCP" },
 ];
 
@@ -155,16 +138,4 @@ const fileItems = computed(() => {
   if (tab.value === "skills" || tab.value === "config" || tab.value === "system") return [];
   return linked.value.filter((r) => r.kind === tab.value).filter(isFileItem);
 });
-
-function onSkillFileSelect(skillId: string, fileId: string) {
-  expandedSkillFile[skillId] = fileId;
-}
-
-function getSkillFileContent(skill: UISkillItem, fileId: string): string {
-  return skill.files.find((f) => f.id === fileId)?.content ?? "";
-}
-
-function findSkillFileName(skill: UISkillItem, fileId: string): string {
-  return skill.files.find((f) => f.id === fileId)?.fileName ?? "";
-}
 </script>

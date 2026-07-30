@@ -63,23 +63,6 @@
                   @change="emit('update:title', ($event.target as HTMLInputElement).value)"
                 />
               </label>
-              <div class="chat-session-menu__font mt-4">
-                <span class="chat-session-menu__muted text-[12px]">字号</span>
-                <div class="chat-font-size" role="radiogroup" aria-label="聊天字号">
-                  <button
-                    v-for="option in fontSizeOptions"
-                    :key="option.value"
-                    type="button"
-                    role="radio"
-                    :aria-checked="chatFontSize === option.value"
-                    class="chat-font-size__btn"
-                    :class="{ 'chat-font-size__btn--active': chatFontSize === option.value }"
-                    @click="setChatFontSize(option.value)"
-                  >
-                    {{ option.label }}
-                  </button>
-                </div>
-              </div>
               <p v-if="gitBranch" class="mt-4 text-[12px] chat-session-menu__muted break-all">
                 分支：<code class="text-[11px]">{{ gitBranch }}</code>
               </p>
@@ -326,7 +309,6 @@ import { ChevronRight, Plus, X } from "lucide-vue-next";
 import type { Session } from "@/api";
 import type { Agent } from "@/api";
 import { SESSION_AVATAR_COLORS, type SessionAvatarValue } from "@/utils/session-avatar";
-import { type ChatFontSize, useChatFontSize } from "../composables/use-chat-font-size";
 import AgentAvatar from "./AgentAvatar.vue";
 import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
 
@@ -375,13 +357,6 @@ const emit = defineEmits<{
   "update:shadowEnabled": [value: boolean];
   "update:spawnedAgents": [value: string[]];
 }>();
-
-const { chatFontSize, setChatFontSize } = useChatFontSize();
-const fontSizeOptions: Array<{ value: ChatFontSize; label: string }> = [
-  { value: "small", label: "小" },
-  { value: "medium", label: "中" },
-  { value: "large", label: "大" },
-];
 
 const spawnAgentPickerOpen = ref(false);
 const selectedSpawnAgents = computed(() =>
@@ -541,45 +516,6 @@ function childSessionName(child: Pick<Session, "id" | "title">): string {
   outline: none;
   color: var(--app-text-primary);
   background: var(--app-chat-bg);
-}
-
-.chat-session-menu__font {
-  display: grid;
-  grid-template-columns: 64px minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-}
-
-.chat-font-size {
-  display: inline-flex;
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--app-chat-bg);
-}
-
-.chat-font-size__btn {
-  flex: 1;
-  min-width: 36px;
-  padding: 6px 0;
-  border: 0;
-  border-right: 1px solid var(--app-border-subtle);
-  background: transparent;
-  color: var(--app-text-secondary);
-  font-size: 12px;
-  transition:
-    background-color 0.15s,
-    color 0.15s;
-}
-
-.chat-font-size__btn:last-child {
-  border-right: 0;
-}
-
-.chat-font-size__btn--active {
-  color: #075f32;
-  background: rgb(231 248 239 / 92%);
-  font-weight: 600;
 }
 
 .session-external-badge {

@@ -33,6 +33,7 @@ describe("packaged supervisor tools", () => {
       properties?: { action?: { enum?: string[] } };
     };
     expect(parameters.properties?.action?.enum).toContain("screenshot");
+    expect(parameters.properties?.action?.enum).toContain("start");
   });
 
   it("activates desktop recording", async () => {

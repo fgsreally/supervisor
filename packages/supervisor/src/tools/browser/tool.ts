@@ -1,13 +1,38 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
-import { mkdir, rename } from "node:fs/promises";
+import { mkdir, unlink } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import type { Page } from "playwright";
 import { createBrowserSession, type BrowserSession } from "./registry.js";
 
 const DEFAULT_TAB = "main";
 
+type BrowserAction =
+  | "open"
+  | "close"
+  | "run"
+  | "screenshot"
+  | "start"
+  | "show_actions"
+  | "chapter"
+  | "overlay"
+  | "complete"
+  | "abort";
+
+const IDLE_ACTIONS: BrowserAction[] = ["open", "close", "run", "screenshot", "start"];
+const RECORDING_ACTIONS: BrowserAction[] = [
+  "open",
+  "close",
+  "run",
+  "screenshot",
+  "show_actions",
+  "chapter",
+  "overlay",
+  "complete",
+  "abort",
+];
+
 interface BrowserParams {
-  action: "open" | "close" | "run" | "screenshot" | "start_recording" | "stop_recording";
+  action: BrowserAction;
   name?: string;
   url?: string;
   viewport?: { width: number; height: number };
@@ -15,6 +40,22 @@ interface BrowserParams {
   path?: string;
   timeout?: number;
   all?: boolean;
+  title?: string;
+  description?: string;
+  html?: string;
+  text?: string;
+  duration?: number;
+  position?: "top-left" | "top" | "top-right" | "bottom-left" | "bottom" | "bottom-right";
+  fontSize?: number;
+  cursor?: "none" | "pointer";
+  enabled?: boolean;
+}
+
+interface RecordingState {
+  page: Page;
+  path: string;
+  actions: { dispose(): Promise<void> } | null;
+  overlays: Array<{ dispose(): Promise<void> }>;
 }
 
 function clampTimeout(seconds: number | undefined): number {
@@ -34,25 +75,31 @@ function createTabHelpers(page: Page) {
       return page.content();
     },
     async text(selector: string): Promise<string | null> {
-      return page.$eval(selector, (el) => el.textContent?.trim() ?? null).catch(() => null);
+      return page
+        .locator(selector)
+        .first()
+        .textContent()
+        .then((value) => value?.trim() ?? null)
+        .catch(() => null);
     },
     async click(selector: string): Promise<void> {
-      await page.click(selector);
+      await page.locator(selector).first().click();
     },
     async type(selector: string, text: string): Promise<void> {
-      await page.type(selector, text);
+      await page.locator(selector).first().pressSequentially(text);
     },
     async fill(selector: string, value: string): Promise<void> {
-      await page.click(selector, { clickCount: 3 });
-      await page.keyboard.press("Backspace");
-      await page.type(selector, value);
+      await page.locator(selector).first().fill(value);
+    },
+    async press(key: string): Promise<void> {
+      await page.keyboard.press(key);
     },
     async screenshot(): Promise<string> {
-      const buffer = await page.screenshot({ encoding: "base64", type: "png" });
-      return typeof buffer === "string" ? buffer : Buffer.from(buffer).toString("base64");
+      const buffer = await page.screenshot({ type: "png" });
+      return Buffer.from(buffer).toString("base64");
     },
     async waitForSelector(selector: string, timeout = 10_000): Promise<void> {
-      await page.waitForSelector(selector, { timeout });
+      await page.locator(selector).first().waitFor({ state: "visible", timeout });
     },
     async evaluate<T>(fn: string | ((...args: unknown[]) => T), ...args: unknown[]): Promise<T> {
       if (typeof fn === "string") {
@@ -80,51 +127,95 @@ async function runInPage(page: Page, code: string, timeoutMs: number): Promise<u
   ]);
 }
 
-async function installRecordingCursor(page: Page): Promise<void> {
-  const install = () => {
-    if (document.getElementById("__supervisor_recording_cursor")) return;
-    const cursor = document.createElement("div");
-    cursor.id = "__supervisor_recording_cursor";
-    cursor.style.cssText =
-      "position:fixed;left:0;top:0;width:18px;height:18px;border:3px solid #ff3b30;border-radius:50%;background:rgba(255,255,255,.45);pointer-events:none;z-index:2147483647;transform:translate(-50%,-50%);transition:width .12s,height .12s,background .12s";
-    document.documentElement.appendChild(cursor);
-    document.addEventListener(
-      "pointermove",
-      (event) => {
-        cursor.style.left = `${event.clientX}px`;
-        cursor.style.top = `${event.clientY}px`;
-      },
-      true,
-    );
-    document.addEventListener(
-      "pointerdown",
-      () => {
-        cursor.style.width = "30px";
-        cursor.style.height = "30px";
-        cursor.style.background = "rgba(255,59,48,.45)";
-        setTimeout(() => {
-          cursor.style.width = "18px";
-          cursor.style.height = "18px";
-          cursor.style.background = "rgba(255,255,255,.45)";
-        }, 180);
-      },
-      true,
-    );
-  };
-  await page.evaluateOnNewDocument(install);
-  await page.evaluate(install);
+function overlayHtml(params: BrowserParams): string {
+  if (params.html?.trim()) return params.html.trim();
+  const text = params.text?.trim() || params.title?.trim();
+  if (!text) throw new Error("html, text, or title is required for overlay");
+  const escaped = text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;");
+  return `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;pointer-events:none;font:600 28px/1.3 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.45)"><div style="padding:16px 24px;border-radius:12px;background:rgba(0,0,0,.55)">${escaped}</div></div>`;
 }
 
 export function createBrowserTool(options?: {
   headless?: boolean;
   cwd?: string;
   sessionDir?: string;
+  browserSession?: BrowserSession;
 }): {
   tool: AgentTool;
   cleanup: () => Promise<void>;
 } {
-  const session: BrowserSession = createBrowserSession(options);
-  const recordings = new Map<string, { page: Page; path: string }>();
+  const session = options?.browserSession ?? createBrowserSession(options);
+  const recordings = new Map<string, RecordingState>();
+  const actionValues = [...IDLE_ACTIONS];
+
+  function updateActionSchema(): void {
+    const next = recordings.size ? RECORDING_ACTIONS : IDLE_ACTIONS;
+    actionValues.splice(0, actionValues.length, ...next);
+  }
+
+  async function ensureTab(
+    tabName: string,
+    url?: string,
+    viewport?: { width: number; height: number },
+  ) {
+    const recording = recordings.get(tabName);
+    if (recording && !recording.page.isClosed()) {
+      if (viewport) await recording.page.setViewportSize(viewport);
+      if (url) await recording.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      return { name: tabName, page: recording.page };
+    }
+    let handle = session.getTab(tabName);
+    if (!handle) handle = await session.openTab(tabName, url, viewport);
+    else {
+      if (viewport) await handle.page.setViewportSize(viewport);
+      if (url) await handle.page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    }
+    return handle;
+  }
+
+  async function requireRecording(tabName: string): Promise<RecordingState> {
+    const recording = recordings.get(tabName);
+    if (!recording) throw new Error(`tab "${tabName}" is not recording`);
+    return recording;
+  }
+
+  async function enableActions(
+    recording: RecordingState,
+    params: Pick<BrowserParams, "duration" | "position" | "fontSize" | "cursor">,
+  ): Promise<void> {
+    await recording.actions?.dispose();
+    recording.actions = await recording.page.screencast.showActions({
+      position: params.position ?? "top-right",
+      duration: params.duration ?? 600,
+      fontSize: params.fontSize ?? 24,
+      cursor: params.cursor ?? "pointer",
+    });
+  }
+
+  async function finishRecording(tabName: string, keepFile: boolean): Promise<string> {
+    const recording = await requireRecording(tabName);
+    recordings.delete(tabName);
+    updateActionSchema();
+    await recording.actions?.dispose().catch(() => {});
+    recording.actions = null;
+    await Promise.all(recording.overlays.map((overlay) => overlay.dispose().catch(() => {})));
+    await recording.page.screencast.hideActions().catch(() => {});
+    let stopError: unknown;
+    try {
+      await recording.page.screencast.stop();
+    } catch (error) {
+      stopError = error;
+    }
+    if (!keepFile || stopError) {
+      await unlink(recording.path).catch(() => {});
+    }
+    if (stopError) throw stopError;
+    return recording.path;
+  }
 
   const tool: AgentTool = {
     name: "browser",
@@ -134,18 +225,21 @@ export function createBrowserTool(options?: {
       "Actions:\n" +
       "- open: create or reuse a tab (default name 'main'), optionally navigate to url\n" +
       "- run: execute async JavaScript with `page` (Playwright Page) and `tab` helpers in scope\n" +
-      "- close: release a tab or all tabs (all=true)\n\n" +
+      "- close: release a tab or all tabs (all=true)\n" +
       "- screenshot: save the named tab as a PNG artifact\n" +
-      "- start_recording / stop_recording: record the named tab to a WebM artifact\n\n" +
+      "- start: start a Playwright WebM screencast and auto-enable action annotations\n" +
+      "- show_actions / chapter / overlay: configure annotations while recording\n" +
+      "- complete / abort: save or discard the recording and restore start\n\n" +
+      "While recording, prefer tab.click/fill/type/press (Playwright locators) so actions are auto-annotated.\n" +
       "tab helpers: title(), url(), content(), text(selector), click(selector), type(selector, text), " +
-      "fill(selector, value), screenshot() (returns base64 PNG), waitForSelector(selector), evaluate(fn)\n\n" +
+      "fill(selector, value), press(key), screenshot() (returns base64 PNG), waitForSelector(selector), evaluate(fn)\n\n" +
       "Use for JS-rendered pages, login flows, and interactive browsing. For static pages prefer web_fetch.",
     parameters: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          enum: ["open", "close", "run", "screenshot", "start_recording", "stop_recording"],
+          enum: actionValues,
           description: "Operation to perform.",
         },
         name: {
@@ -170,7 +264,7 @@ export function createBrowserTool(options?: {
         },
         path: {
           type: "string",
-          description: "Optional output path for screenshot (.png) or start_recording (.webm).",
+          description: "Optional output path for screenshot (.png) or start (.webm).",
         },
         timeout: {
           type: "number",
@@ -179,6 +273,44 @@ export function createBrowserTool(options?: {
         all: {
           type: "boolean",
           description: "Close all tabs (for action=close).",
+        },
+        title: {
+          type: "string",
+          description: "Chapter title or overlay text fallback.",
+        },
+        description: {
+          type: "string",
+          description: "Chapter description.",
+        },
+        html: {
+          type: "string",
+          description: "Raw HTML for overlay.",
+        },
+        text: {
+          type: "string",
+          description: "Plain text for overlay (wrapped into a simple HTML badge).",
+        },
+        duration: {
+          type: "number",
+          description: "Duration in ms for chapter/overlay/action annotations.",
+        },
+        position: {
+          type: "string",
+          enum: ["top-left", "top", "top-right", "bottom-left", "bottom", "bottom-right"],
+          description: "Action title position for show_actions (default top-right).",
+        },
+        fontSize: {
+          type: "number",
+          description: "Action title font size for show_actions (default 24).",
+        },
+        cursor: {
+          type: "string",
+          enum: ["none", "pointer"],
+          description: "Cursor decoration for show_actions (default pointer).",
+        },
+        enabled: {
+          type: "boolean",
+          description: "Enable or disable action annotations (default true).",
         },
       },
       required: ["action"],
@@ -200,7 +332,7 @@ export function createBrowserTool(options?: {
 
       try {
         if (params.action === "open") {
-          const handle = await session.openTab(tabName, params.url, params.viewport);
+          const handle = await ensureTab(tabName, params.url, params.viewport);
           const title = await handle.page.title();
           const currentUrl = handle.page.url();
           return {
@@ -218,11 +350,17 @@ export function createBrowserTool(options?: {
 
         if (params.action === "close") {
           if (params.all) {
+            for (const name of recordings.keys()) {
+              await finishRecording(name, false).catch(() => {});
+            }
             await session.closeAll();
             return {
               content: [{ type: "text", text: "Closed all browser tabs." }],
               details: { action: "close", all: true },
             };
+          }
+          if (recordings.has(tabName)) {
+            await finishRecording(tabName, false).catch(() => {});
           }
           await session.closeTab(tabName);
           return {
@@ -240,11 +378,7 @@ export function createBrowserTool(options?: {
             };
           }
 
-          let handle = session.getTab(tabName);
-          if (!handle) {
-            handle = await session.openTab(tabName);
-          }
-
+          const handle = await ensureTab(tabName);
           const result = await runInPage(handle.page, code, timeoutMs);
           const resultText =
             result === undefined
@@ -260,8 +394,7 @@ export function createBrowserTool(options?: {
         }
 
         if (params.action === "screenshot") {
-          let handle = session.getTab(tabName);
-          if (!handle) handle = await session.openTab(tabName, params.url, params.viewport);
+          const handle = await ensureTab(tabName, params.url, params.viewport);
           const baseDir = options?.sessionDir ?? options?.cwd ?? process.cwd();
           const safeTabName = tabName.replace(/[^A-Za-z0-9._-]+/g, "-");
           const outputPath = params.path
@@ -284,10 +417,9 @@ export function createBrowserTool(options?: {
           };
         }
 
-        if (params.action === "start_recording") {
-          if (recordings.has(tabName)) throw new Error(`tab "${tabName}" is already recording`);
-          let handle = session.getTab(tabName);
-          if (!handle) handle = await session.openTab(tabName, params.url, params.viewport);
+        if (params.action === "start") {
+          if (recordings.size) throw new Error("a browser recording is already active");
+          const handle = await ensureTab(tabName, params.url, params.viewport);
           const baseDir = options?.sessionDir ?? options?.cwd ?? process.cwd();
           const safeTabName = tabName.replace(/[^A-Za-z0-9._-]+/g, "-");
           const outputPath = params.path
@@ -296,34 +428,104 @@ export function createBrowserTool(options?: {
               : resolve(baseDir, params.path)
             : join(baseDir, "recordings", `browser-${safeTabName}-${Date.now()}.webm`);
           await mkdir(dirname(outputPath), { recursive: true });
-          const recordingDir = join(dirname(outputPath), `.supervisor-recording-${Date.now()}`);
-          await mkdir(recordingDir, { recursive: true });
-          const recordingHandle = await session.openTab(
-            tabName,
-            await handle.page.url(),
-            params.viewport,
-            recordingDir,
-          );
-          await installRecordingCursor(recordingHandle.page);
-          recordings.set(tabName, { page: recordingHandle.page, path: outputPath });
+
+          // Same capability as playwright-cli video-show-actions: screencast + showActions.
+          const recording: RecordingState = {
+            page: handle.page,
+            path: outputPath,
+            actions: null,
+            overlays: [],
+          };
+          try {
+            await handle.page.screencast.start({ path: outputPath, size: params.viewport });
+            await enableActions(recording, params);
+            recordings.set(tabName, recording);
+            updateActionSchema();
+          } catch (error) {
+            await handle.page.screencast.stop().catch(() => {});
+            await unlink(outputPath).catch(() => {});
+            updateActionSchema();
+            throw error;
+          }
+
           return {
-            content: [{ type: "text", text: `Browser recording started: ${outputPath}` }],
-            details: { action: "start_recording", name: tabName, path: outputPath },
+            content: [
+              {
+                type: "text",
+                text: `Browser recording started with action annotations: ${outputPath}`,
+              },
+            ],
+            details: { action: "start", name: tabName, path: outputPath },
           };
         }
 
-        if (params.action === "stop_recording") {
-          const recording = recordings.get(tabName);
-          if (!recording) throw new Error(`tab "${tabName}" is not recording`);
-          const video = recording.page.video();
-          await session.closeTab(tabName);
-          const recordedPath = video ? await video.path() : undefined;
-          if (!recordedPath) throw new Error("Playwright did not produce a recording");
-          await rename(recordedPath, recording.path);
-          recordings.delete(tabName);
+        if (params.action === "complete") {
+          const outputPath = await finishRecording(tabName, true);
           return {
-            content: [{ type: "text", text: `Browser recording saved: ${recording.path}` }],
-            details: { action: "stop_recording", name: tabName, path: recording.path },
+            content: [{ type: "text", text: `Browser recording saved: ${outputPath}` }],
+            details: { action: "complete", name: tabName, path: outputPath },
+          };
+        }
+
+        if (params.action === "abort") {
+          const outputPath = await finishRecording(tabName, false);
+          return {
+            content: [{ type: "text", text: `Browser recording aborted: ${outputPath}` }],
+            details: { action: "abort", name: tabName },
+          };
+        }
+
+        if (params.action === "chapter") {
+          const recording = await requireRecording(tabName);
+          const title = params.title?.trim();
+          if (!title) throw new Error("title is required for chapter");
+          await recording.page.screencast.showChapter(title, {
+            description: params.description,
+            duration: params.duration ?? 2000,
+          });
+          return {
+            content: [{ type: "text", text: `Chapter shown: ${title}` }],
+            details: {
+              action: "chapter",
+              name: tabName,
+              title,
+              description: params.description ?? null,
+            },
+          };
+        }
+
+        if (params.action === "overlay") {
+          const recording = await requireRecording(tabName);
+          const html = overlayHtml(params);
+          recording.overlays.push(
+            await recording.page.screencast.showOverlay(html, { duration: params.duration }),
+          );
+          return {
+            content: [{ type: "text", text: "Overlay shown." }],
+            details: { action: "overlay", name: tabName },
+          };
+        }
+
+        if (params.action === "show_actions") {
+          const recording = await requireRecording(tabName);
+          if (params.enabled === false) {
+            await recording.actions?.dispose().catch(() => {});
+            recording.actions = null;
+            await recording.page.screencast.hideActions();
+          } else {
+            await enableActions(recording, params);
+          }
+          return {
+            content: [
+              {
+                type: "text",
+                text:
+                  params.enabled === false
+                    ? "Action annotations disabled."
+                    : "Action annotations enabled.",
+              },
+            ],
+            details: { action: "show_actions", name: tabName, enabled: params.enabled !== false },
           };
         }
 
@@ -344,8 +546,11 @@ export function createBrowserTool(options?: {
   return {
     tool,
     cleanup: async () => {
-      for (const tabName of recordings.keys()) await session.closeTab(tabName).catch(() => {});
+      for (const name of recordings.keys()) {
+        await finishRecording(name, false).catch(() => {});
+      }
       recordings.clear();
+      updateActionSchema();
       await session.dispose();
     },
   };

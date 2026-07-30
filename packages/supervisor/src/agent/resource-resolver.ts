@@ -247,7 +247,6 @@ export interface AgentToolInfo {
   source: "preset" | "extension" | "system";
   extensionName?: string;
   description?: string;
-  enabled: boolean;
 }
 
 export interface AgentResources {
@@ -356,7 +355,6 @@ export function loadAgentSessionResources(
   agent: Agent | undefined,
   cwd: string,
 ): { skills: Skill[]; promptTemplates: PromptTemplate[]; systemMd: string } {
-  const agentHomeDir = agent?.homeDir ?? getAgentHomeDir(agent?.id ?? "default");
   const agentId = agent?.id;
 
   const skillPaths =
@@ -406,19 +404,16 @@ export async function resolveAgentTools(
   }
 
   const merged = new Map<string, AgentToolInfo>();
-  const disabledTools = new Set(agent.disabledTools);
-
   for (const tool of createDefaultTools(cwd, agent.toolsPreset ?? "coding")) {
     merged.set(tool.name, {
       name: tool.name,
       source: "preset",
       description: tool.description,
-      enabled: !disabledTools.has(tool.name),
     });
   }
 
   for (const tool of SYSTEM_TOOLS) {
-    merged.set(tool.name, { ...tool, enabled: !disabledTools.has(tool.name) });
+    merged.set(tool.name, tool);
   }
 
   const extensionSlugs = db.listAgentResourceSlugs(agentId, "extension");
@@ -431,7 +426,6 @@ export async function resolveAgentTools(
         source: "extension",
         extensionName: tool.extensionName,
         description: tool.description,
-        enabled: !disabledTools.has(tool.name),
       });
     }
   }
@@ -447,7 +441,6 @@ export async function resolveAgentTools(
         source: "extension",
         extensionName: toolId,
         description: tool.description,
-        enabled: !disabledTools.has(tool.name),
       });
     }
   }

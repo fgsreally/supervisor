@@ -1,8 +1,7 @@
 import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rename } from "node:fs/promises";
 import { dirname, isAbsolute, join, resolve } from "node:path";
-import type { Page, ScreenRecorder } from "puppeteer-core";
-import ffmpeg from "@ffmpeg-installer/ffmpeg";
+import type { Page } from "playwright";
 import { createBrowserSession, type BrowserSession } from "./registry.js";
 
 const DEFAULT_TAB = "main";
@@ -125,7 +124,7 @@ export function createBrowserTool(options?: {
   cleanup: () => Promise<void>;
 } {
   const session: BrowserSession = createBrowserSession(options);
-  const recordings = new Map<string, { recorder: ScreenRecorder; path: string }>();
+  const recordings = new Map<string, { page: Page; path: string }>();
 
   const tool: AgentTool = {
     name: "browser",
@@ -134,7 +133,7 @@ export function createBrowserTool(options?: {
       `Control a ${options?.headless === false ? "headed" : "headless"} Chromium browser. Stateful named tabs persist across calls.\n\n` +
       "Actions:\n" +
       "- open: create or reuse a tab (default name 'main'), optionally navigate to url\n" +
-      "- run: execute async JavaScript with `page` (puppeteer Page) and `tab` helpers in scope\n" +
+      "- run: execute async JavaScript with `page` (Playwright Page) and `tab` helpers in scope\n" +
       "- close: release a tab or all tabs (all=true)\n\n" +
       "- screenshot: save the named tab as a PNG artifact\n" +
       "- start_recording / stop_recording: record the named tab to a WebM artifact\n\n" +
@@ -297,13 +296,16 @@ export function createBrowserTool(options?: {
               : resolve(baseDir, params.path)
             : join(baseDir, "recordings", `browser-${safeTabName}-${Date.now()}.webm`);
           await mkdir(dirname(outputPath), { recursive: true });
-          await installRecordingCursor(handle.page);
-          const recorder = await handle.page.screencast({
-            path: outputPath as `${string}.webm`,
-            ffmpegPath: ffmpeg.path,
-            fps: 30,
-          });
-          recordings.set(tabName, { recorder, path: outputPath });
+          const recordingDir = join(dirname(outputPath), `.supervisor-recording-${Date.now()}`);
+          await mkdir(recordingDir, { recursive: true });
+          const recordingHandle = await session.openTab(
+            tabName,
+            await handle.page.url(),
+            params.viewport,
+            recordingDir,
+          );
+          await installRecordingCursor(recordingHandle.page);
+          recordings.set(tabName, { page: recordingHandle.page, path: outputPath });
           return {
             content: [{ type: "text", text: `Browser recording started: ${outputPath}` }],
             details: { action: "start_recording", name: tabName, path: outputPath },
@@ -313,7 +315,11 @@ export function createBrowserTool(options?: {
         if (params.action === "stop_recording") {
           const recording = recordings.get(tabName);
           if (!recording) throw new Error(`tab "${tabName}" is not recording`);
-          await recording.recorder.stop();
+          const video = recording.page.video();
+          await session.closeTab(tabName);
+          const recordedPath = video ? await video.path() : undefined;
+          if (!recordedPath) throw new Error("Playwright did not produce a recording");
+          await rename(recordedPath, recording.path);
           recordings.delete(tabName);
           return {
             content: [{ type: "text", text: `Browser recording saved: ${recording.path}` }],
@@ -338,7 +344,7 @@ export function createBrowserTool(options?: {
   return {
     tool,
     cleanup: async () => {
-      for (const recording of recordings.values()) await recording.recorder.stop().catch(() => {});
+      for (const tabName of recordings.keys()) await session.closeTab(tabName).catch(() => {});
       recordings.clear();
       await session.dispose();
     },

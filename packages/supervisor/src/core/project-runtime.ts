@@ -29,13 +29,17 @@ export interface SessionServicesMeta {
 
 export function buildProjectRuntimeInstructions(project: Pick<Project, "name" | "cwd">): string {
   return [
-    "请按顺序完成项目解析：",
-    "1. 确认 git 已安装，且当前目录是 git 仓库（必要时 git init，不要改远程）。",
-    "2. 探查 README / 包管理清单 / 脚本，整理依赖安装、长期服务启动、关闭命令。",
-    "   - 若不需要安装/启动/销毁，scripts 用空数组 []。",
-    "3. 若有需启动的服务：端口改为命令占位（如 `${PORT}` / `${API_PORT}`），最小必要改动。",
-    "4. 有文件改动则提交：`chore: make local service ports injectable for supervisor`。",
-    "5. 完成后必须调用工具 submit_result，参数 result 为下方 JSON 对象（任务以此结束）。",
+    "请按顺序完成项目解析和初始化：",
+    "1. 确认 git 已安装，且当前目录是 git 仓库；必要时执行 git init，但不要修改远程。",
+    "2. 探查 README、包管理清单、CI、格式化/检查配置、现有 Agent 指令和项目结构。",
+    "3. 整理依赖安装、长期服务启动和关闭命令；若不需要则 scripts 返回空数组 []。",
+    "4. 若有需启动的服务，确保端口可以通过命令行参数或环境变量传入。返回的启动命令使用 `${PORT}`、`${API_PORT}` 等占位符；多个服务使用不同变量。只做最小必要改动。",
+    "5. 在项目根目录创建或补充 AGENTS.md，达到类似 Claude Code `/init` 的效果：",
+    "   - 写清项目用途、主要目录、安装/启动/测试/检查命令、代码约定、运行时注意事项和修改边界。",
+    "   - 使用简洁 Markdown，不写密钥，不猜测不存在的命令；新文件尽量不超过 200 行。",
+    "   - 如果 AGENTS.md 已存在，必须逐字保留原内容，只能在末尾补充缺失信息。",
+    "6. 不要自行 commit 或 push；Supervisor 会在解析成功后统一提交改动。",
+    "7. 完成后必须调用工具 submit_result，参数 result 为下方 JSON 对象（任务以此结束）。",
     "结果对象格式：",
     "{",
     '  "description": "中文项目描述，200-600字",',
@@ -49,7 +53,7 @@ export function buildProjectRuntimeInstructions(project: Pick<Project, "name" | 
     "约束：",
     "- kind 仅限 install | start | destroy；command 为空的项不要输出。",
     "- 启动命令里用 `${PORT}` 占位；不要单独返回 portEnvVars。",
-    "- 不要 push；不要写密钥。",
+    "- 不要 commit 或 push；不要写密钥。",
     "",
     `项目名：${project.name}`,
     `路径：${project.cwd}`,
@@ -128,17 +132,25 @@ export async function runProjectRuntimeParse(options: {
   db: SupervisorDb;
   project: Project;
 }): Promise<ProjectRuntimeSpec> {
+  const agentsPath = join(options.project.cwd, "AGENTS.md");
+  const originalAgents = existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : null;
   const run = await runWatsonTask<unknown>({
     db: options.db,
     cwd: options.project.cwd,
     kind: "project-parse",
     structured: true,
     prompt: buildProjectRuntimeInstructions(options.project),
-    injectSystem: "本任务必须调用 submit_result 提交 description + scripts。",
+    injectSystem:
+      "本任务必须创建或补充项目根目录 AGENTS.md，并调用 submit_result 提交 description + scripts。",
   });
 
   if (run.result == null) {
     throw new Error("项目解析未得到 submit_result 结果");
+  }
+  const agents = existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : "";
+  if (!agents.trim()) throw new Error("项目解析未创建有效的 AGENTS.md");
+  if (originalAgents?.trim() && !agents.includes(originalAgents.trim())) {
+    throw new Error("项目解析修改了现有 AGENTS.md 内容；只允许追加缺失信息");
   }
   return parseProjectRuntimeSpec(run.result);
 }
@@ -151,7 +163,7 @@ export async function applyProjectRuntimeParse(
   const project = db.getProject(projectId);
   if (!project) throw new Error(`Project ${projectId} not found`);
 
-  await commitAll(project.cwd, "chore: make local service ports injectable for supervisor");
+  await commitAll(project.cwd, "chore: initialize project for supervisor");
 
   db.replaceProjectScripts(projectId, spec.scripts);
 
@@ -159,3 +171,5 @@ export async function applyProjectRuntimeParse(
 }
 
 export { normalizeProjectDescription };
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";

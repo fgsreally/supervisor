@@ -50,7 +50,6 @@
 | `home_dir`                  | TEXT                           | Agent 专属目录                             |
 | `is_builtin`                | INTEGER DEFAULT 0              | 内置标志                                   |
 | `external_config`           | TEXT                           | 外部 Agent 配置 JSON                       |
-| `disabled_tools`            | TEXT DEFAULT `[]`              | 禁用工具名 JSON 数组                       |
 | `meta`                      | TEXT DEFAULT `{}`              | 扩展命名空间数据及旧配置兼容读取           |
 | `created_at` / `updated_at` | INTEGER                        | 时间                                       |
 

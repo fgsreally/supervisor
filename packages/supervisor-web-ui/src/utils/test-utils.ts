@@ -51,7 +51,6 @@ export function createMockAgent(overrides: Partial<Agent> = {}): Agent {
     detectedVersion: null,
     compatibility: "compatible",
     externalConfig: null,
-    disabledTools: [],
     permissionRules: {},
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

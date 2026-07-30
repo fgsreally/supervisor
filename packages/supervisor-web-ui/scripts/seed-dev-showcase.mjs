@@ -455,8 +455,8 @@ const seed = db.transaction(() => {
     : null;
   const agent = db
     .prepare(`INSERT INTO agents
-    (name, description, icon, provider_id, backend_type, model_id, tools_preset, home_dir, is_builtin, spawn_type, external_config, disabled_tools, meta, created_at, updated_at)
-    VALUES (?, ?, NULL, ?, 'native', ?, 'coding', NULL, 0, NULL, NULL, '[]', ?, ?, ?)`)
+    (name, description, icon, provider_id, backend_type, model_id, tools_preset, home_dir, is_builtin, spawn_type, external_config, meta, created_at, updated_at)
+    VALUES (?, ?, NULL, ?, 'native', ?, 'coding', NULL, 0, NULL, NULL, ?, ?, ?)`)
     .run(
       "研发协作助手",
       "面向日常研发、发布与线上排障",

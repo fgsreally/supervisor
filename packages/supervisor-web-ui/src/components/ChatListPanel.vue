@@ -248,14 +248,14 @@
       :name="projectSettingsProject?.name"
       :cwd="projectSettingsProject?.cwd"
       :description="projectDescription"
-      :description-status="projectDescriptionStatus"
-      :description-error="projectDescriptionError"
+      :parse-status="projectParseStatus"
+      :parse-error="projectParseError"
       :scripts="projectScripts"
       :busy="projectBusy"
-      :regenerating="projectDescribing"
+      :parsing="projectParsing"
       @close="closeProjectSettings"
       @rename="renameProject"
-      @regenerate-description="regenerateProjectDescription"
+      @parse="parseCurrentProject"
     />
 
     <ProjectGitMenu
@@ -302,7 +302,7 @@ import {
   checkoutProjectGit,
   deleteProject as apiDeleteProject,
   listProjectScripts,
-  regenerateProjectDescription as apiRegenerateProjectDescription,
+  parseProject as apiParseProject,
   searchMessages,
   type ProjectScript,
 } from "@/api";
@@ -398,7 +398,7 @@ const knownWorkspaceIds = new Set<string>();
 const agentPickerWorkspaceId = ref<string | null>(null);
 const projectCreateOpen = ref(false);
 const projectCreating = ref(false);
-const projectDescribing = ref(false);
+const projectParsing = ref(false);
 const externalImportOpen = ref(false);
 const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null);
 const projectContextMenu = ref<{ projectId: string; x: number; y: number } | null>(null);
@@ -421,12 +421,8 @@ const projectSettingsProject = computed(() =>
 const projectDescription = computed(() => {
   return projectSettingsProject.value?.description ?? null;
 });
-const projectDescriptionStatus = computed(() => {
-  return projectDescription.value ? "ready" : null;
-});
-const projectDescriptionError = computed(() => {
-  return null;
-});
+const projectParseStatus = ref<string | null>(null);
+const projectParseError = ref<string | null>(null);
 const projectScripts = ref<ProjectScript[]>([]);
 
 async function refreshProjectScripts(projectId: string | null) {
@@ -574,6 +570,11 @@ function openAgentPicker(workspaceId: string) {
 function openProjectSettings(projectId: string) {
   closeProjectGit();
   projectSettingsId.value = projectId;
+  projectParseStatus.value = sessionStore.projects.find((project) => project.id === projectId)
+    ?.description
+    ? "ready"
+    : null;
+  projectParseError.value = null;
 }
 
 function openProjectContextMenu(projectId: string, event: MouseEvent) {
@@ -736,7 +737,7 @@ async function createProjectFromDialog(cwd: string) {
     const next = new Set(collapsedWorkspaceIds.value);
     next.delete(project.id);
     collapsedWorkspaceIds.value = next;
-    showUiMessage("项目已创建，正在生成描述", "success");
+    showUiMessage("项目已创建，正在解析", "success");
     projectSettingsId.value = project.id;
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : "创建项目失败", "error");
@@ -745,27 +746,34 @@ async function createProjectFromDialog(cwd: string) {
   }
 }
 
-async function regenerateProjectDescription() {
+async function parseCurrentProject() {
   const projectId = projectSettingsId.value;
-  if (!projectId || projectDescribing.value) return;
-  projectDescribing.value = true;
+  if (!projectId || projectParsing.value) return;
+  projectParsing.value = true;
+  projectParseStatus.value = "pending";
+  projectParseError.value = null;
   try {
-    const result = await apiRegenerateProjectDescription(projectId);
+    const result = await apiParseProject(projectId);
     const index = sessionStore.projects.findIndex((project) => project.id === result.project.id);
     if (index >= 0) sessionStore.projects[index] = result.project;
     else sessionStore.projects.unshift(result.project);
     projectScripts.value = result.scripts ?? [];
-    if (result.status === "ready") showUiMessage("华生已完成项目解析", "success");
+    projectParseStatus.value = result.status;
+    projectParseError.value = result.error ?? null;
+    if (result.status === "ready") showUiMessage("项目解析完成", "success");
     else if (result.status === "skipped") {
-      showUiMessage(result.error || "未配置「项目描述」功能模型", "error");
+      showUiMessage(result.error || "未配置「助手模型」", "error");
     } else {
-      showUiMessage(result.error || "生成失败", "error");
+      showUiMessage(result.error || "解析失败", "error");
     }
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "重新生成描述失败", "error");
+    const message = error instanceof Error ? error.message : "项目解析失败";
+    projectParseStatus.value = "error";
+    projectParseError.value = message;
+    showUiMessage(message, "error");
     await sessionStore.fetchProjects().catch(() => undefined);
   } finally {
-    projectDescribing.value = false;
+    projectParsing.value = false;
   }
 }
 

@@ -394,17 +394,9 @@ export class SessionManager {
     toolsPreset: "coding" | "readonly" | "none",
     overrideTools?: AgentTool[],
   ): AgentTool[] {
-    const disabledTools = this.getDisabledAgentTools(agentId);
-    const baseTools = (overrideTools ?? createDefaultTools(cwd, toolsPreset)).filter(
-      (tool) => !disabledTools.has(tool.name),
-    );
+    const baseTools = overrideTools ?? createDefaultTools(cwd, toolsPreset);
     this.sessionToolConfigs.set(sessionId, { cwd, agentId, toolsPreset, overrideTools });
     return baseTools;
-  }
-
-  private getDisabledAgentTools(agentId: number | null): Set<string> {
-    const agent = agentId == null ? undefined : this.db.getAgent(agentId);
-    return new Set(agent?.disabledTools ?? []);
   }
 
   /** BTW is always read-only, regardless of the parent agent's toolsPreset. */
@@ -792,12 +784,9 @@ export class SessionManager {
       }
       const extensionTools = runtime.collectExtensionTools();
       if (extensionTools.length > 0) {
-        const disabledTools = this.getDisabledAgentTools(session.agentId);
         const mergedTools = new Map<string, AgentTool>();
         for (const tool of tools) mergedTools.set(tool.name, tool);
-        for (const tool of extensionTools) {
-          if (!disabledTools.has(tool.name)) mergedTools.set(tool.name, tool);
-        }
+        for (const tool of extensionTools) mergedTools.set(tool.name, tool);
         await runtime.setTools([...mergedTools.values()]);
       }
 
@@ -1107,12 +1096,9 @@ export class SessionManager {
       }
       const extensionTools = runtime.collectExtensionTools();
       if (extensionTools.length > 0) {
-        const disabledTools = this.getDisabledAgentTools(activeSession.agentId);
         const mergedTools = new Map<string, AgentTool>();
         for (const tool of tools) mergedTools.set(tool.name, tool);
-        for (const tool of extensionTools) {
-          if (!disabledTools.has(tool.name)) mergedTools.set(tool.name, tool);
-        }
+        for (const tool of extensionTools) mergedTools.set(tool.name, tool);
         await runtime.setTools([...mergedTools.values()]);
       }
 
@@ -1817,7 +1803,7 @@ export class SessionManager {
       ...options,
     });
     const created = this.db.getProject(project.id)!;
-    void this.generateProjectDescription(created.id).catch((error: unknown) => {
+    void this.parseProject(created.id).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       sessionLog(0, "error", `Project parse failed [${created.id}]: ${message}`, [
         "system",
@@ -1837,9 +1823,9 @@ export class SessionManager {
   }
 
   /**
-   * 华生解析项目：写 project_scripts + 描述。
+   * 解析并初始化项目：写 AGENTS.md、project_scripts 和描述。
    */
-  async generateProjectDescription(projectId: number): Promise<{
+  async parseProject(projectId: number): Promise<{
     description: string | null;
     status: "ready" | "skipped" | "error";
     error?: string;

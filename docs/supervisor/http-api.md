@@ -58,16 +58,16 @@
 
 ## Project
 
-| Method               | Path                         | 说明                     |
-| -------------------- | ---------------------------- | ------------------------ |
-| GET / POST           | `/projects`                  | 列出 / 创建              |
-| GET / PATCH / DELETE | `/projects/:id`              | 获取 / 更新 / 删除       |
-| POST                 | `/projects/:id/describe`     | 使用助手模型生成项目描述 |
-| GET                  | `/projects/:id/scripts`      | 项目脚本                 |
-| GET                  | `/projects/:id/git`          | Git 状态                 |
-| POST                 | `/projects/:id/git/pull`     | 拉取                     |
-| POST                 | `/projects/:id/git/checkout` | 切换分支                 |
-| POST                 | `/projects/:id/git/push`     | 推送                     |
+| Method               | Path                         | 说明               |
+| -------------------- | ---------------------------- | ------------------ |
+| GET / POST           | `/projects`                  | 列出 / 创建        |
+| GET / PATCH / DELETE | `/projects/:id`              | 获取 / 更新 / 删除 |
+| POST                 | `/projects/:id/parse`        | 解析并初始化项目   |
+| GET                  | `/projects/:id/scripts`      | 项目脚本           |
+| GET                  | `/projects/:id/git`          | Git 状态           |
+| POST                 | `/projects/:id/git/pull`     | 拉取               |
+| POST                 | `/projects/:id/git/checkout` | 切换分支           |
+| POST                 | `/projects/:id/git/push`     | 推送               |
 
 ## Session — 生命周期与对话
 

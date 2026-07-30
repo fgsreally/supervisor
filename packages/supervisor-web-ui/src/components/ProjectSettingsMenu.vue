@@ -23,7 +23,7 @@
             <button
               type="button"
               class="project-settings-modal__icon"
-              :disabled="busy || saving || regenerating"
+              :disabled="busy || saving || parsing"
               title="关闭"
               @click="emit('close')"
             >
@@ -39,13 +39,13 @@
                   v-model="draftName"
                   type="text"
                   class="project-settings-modal__input"
-                  :disabled="busy || saving || regenerating"
+                  :disabled="busy || saving || parsing"
                   @keydown.enter.prevent="saveName"
                 />
                 <button
                   type="button"
                   class="project-settings-modal__save"
-                  :disabled="busy || saving || regenerating || !nameDirty"
+                  :disabled="busy || saving || parsing || !nameDirty"
                   @click="saveName"
                 >
                   {{ saving ? "..." : "保存" }}
@@ -58,58 +58,72 @@
               <div class="project-settings-modal__path" :title="cwd">{{ cwd || "—" }}</div>
             </div>
 
-            <div>
+            <div class="project-settings-modal__parse">
               <div class="project-settings-modal__desc-head">
-                <label class="project-settings-modal__label">项目描述 / 脚本</label>
+                <div>
+                  <div class="project-settings-modal__parse-title">解析</div>
+                  <div class="project-settings-modal__muted">初始化 Git、运行参数和 AGENTS.md</div>
+                </div>
                 <button
                   type="button"
                   class="project-settings-modal__refresh"
-                  title="让华生重新解析项目"
-                  :disabled="busy || regenerating"
-                  @click="emit('regenerate-description')"
+                  title="解析并初始化项目"
+                  :disabled="busy || parsing"
+                  @click="emit('parse')"
                 >
-                  <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': regenerating }" />
-                  华生解析
+                  <WatsonIcon class="h-3.5 w-3.5" />
+                  {{ parsing ? "解析中..." : "解析" }}
                 </button>
               </div>
-              <div class="project-settings-modal__desc">
-                <template v-if="regenerating || descriptionStatus === 'pending'">
-                  <span class="project-settings-modal__muted">华生正在解析项目…</span>
-                </template>
-                <template v-else-if="description">
-                  {{ description }}
-                </template>
-                <template v-else-if="descriptionStatus === 'skipped'">
-                  <span class="project-settings-modal__muted">
-                    {{ descriptionError || "未配置「助手模型」" }}
-                  </span>
-                </template>
-                <template v-else-if="descriptionStatus === 'error'">
-                  <span class="project-settings-modal__error">
-                    {{ descriptionError || "解析失败" }}
-                  </span>
-                </template>
-                <template v-else>
-                  <span class="project-settings-modal__muted">暂无描述，可点「华生解析」</span>
-                </template>
-              </div>
-              <div v-if="scripts?.length" class="project-settings-modal__scripts">
-                <div
-                  v-for="script in scripts"
-                  :key="`${script.kind}-${script.id}`"
-                  class="project-settings-modal__script"
-                >
-                  <span class="project-settings-modal__script-kind">{{ script.kind }}</span>
-                  <span class="project-settings-modal__script-name">{{ script.name }}</span>
-                  <code class="project-settings-modal__script-cmd">{{ script.command }}</code>
-                </div>
-              </div>
-              <div
-                v-else-if="!regenerating && descriptionStatus === 'ready'"
-                class="project-settings-modal__muted"
-                style="margin-top: 8px"
+              <button
+                type="button"
+                class="project-settings-modal__details-toggle"
+                :aria-expanded="detailsOpen"
+                @click="detailsOpen = !detailsOpen"
               >
-                无需安装/启动/销毁脚本
+                <ChevronRight class="h-4 w-4" :class="{ 'rotate-90': detailsOpen }" />
+                解析详情
+              </button>
+              <div v-if="detailsOpen" class="project-settings-modal__details">
+                <div class="project-settings-modal__desc">
+                  <template v-if="parsing || parseStatus === 'pending'">
+                    <span class="project-settings-modal__muted">正在解析项目…</span>
+                  </template>
+                  <template v-else-if="description">
+                    {{ description }}
+                  </template>
+                  <template v-else-if="parseStatus === 'skipped'">
+                    <span class="project-settings-modal__muted">
+                      {{ parseError || "未配置「助手模型」" }}
+                    </span>
+                  </template>
+                  <template v-else-if="parseStatus === 'error'">
+                    <span class="project-settings-modal__error">
+                      {{ parseError || "解析失败" }}
+                    </span>
+                  </template>
+                  <template v-else>
+                    <span class="project-settings-modal__muted">暂无解析结果</span>
+                  </template>
+                </div>
+                <div v-if="scripts?.length" class="project-settings-modal__scripts">
+                  <div
+                    v-for="script in scripts"
+                    :key="`${script.kind}-${script.id}`"
+                    class="project-settings-modal__script"
+                  >
+                    <span class="project-settings-modal__script-kind">{{ script.kind }}</span>
+                    <span class="project-settings-modal__script-name">{{ script.name }}</span>
+                    <code class="project-settings-modal__script-cmd">{{ script.command }}</code>
+                  </div>
+                </div>
+                <div
+                  v-else-if="!parsing && parseStatus === 'ready'"
+                  class="project-settings-modal__muted"
+                  style="margin-top: 8px"
+                >
+                  无需安装/启动/销毁脚本
+                </div>
               </div>
             </div>
           </div>
@@ -121,28 +135,30 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { RefreshCw, X } from "lucide-vue-next";
+import { ChevronRight, X } from "lucide-vue-next";
+import WatsonIcon from "./WatsonIcon.vue";
 
 const props = defineProps<{
   open: boolean;
   name?: string;
   cwd?: string;
   description?: string | null;
-  descriptionStatus?: string | null;
-  descriptionError?: string | null;
+  parseStatus?: string | null;
+  parseError?: string | null;
   scripts?: Array<{ id: number; kind: string; name: string; command: string }>;
   busy?: boolean;
-  regenerating?: boolean;
+  parsing?: boolean;
 }>();
 
 const emit = defineEmits<{
   close: [];
   rename: [name: string];
-  "regenerate-description": [];
+  parse: [];
 }>();
 
 const draftName = ref("");
 const saving = ref(false);
+const detailsOpen = ref(false);
 
 const nameDirty = computed(
   () => draftName.value.trim() !== "" && draftName.value.trim() !== (props.name ?? "").trim(),
@@ -154,12 +170,13 @@ watch(
     if (open) {
       draftName.value = name ?? "";
       saving.value = false;
+      detailsOpen.value = false;
     }
   },
 );
 
 function onBackdrop() {
-  if (props.busy || props.regenerating) return;
+  if (props.busy || props.parsing) return;
   emit("close");
 }
 
@@ -282,6 +299,32 @@ async function saveName() {
 
 .project-settings-modal__desc-head .project-settings-modal__label {
   margin-bottom: 0;
+}
+
+.project-settings-modal__parse {
+  padding-top: 2px;
+}
+
+.project-settings-modal__parse-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.project-settings-modal__details-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 8px;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+}
+
+.project-settings-modal__details-toggle svg {
+  transition: transform 0.15s ease;
+}
+
+.project-settings-modal__details {
+  margin-top: 8px;
 }
 
 .project-settings-modal__muted {

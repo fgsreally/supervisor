@@ -186,7 +186,6 @@ export interface Agent {
     env?: Record<string, string>;
     permissionPolicy?: "allow_once" | "reject_once";
   } | null;
-  disabledTools: string[];
   permissionRules: AgentPermissionRules;
   meta: Record<string, unknown>;
   available: boolean;
@@ -529,7 +528,6 @@ export interface CreateAgentRequest {
   toolsPreset?: ToolsPreset;
   homeDir?: string;
   externalConfig?: Agent["externalConfig"];
-  disabledTools?: string[];
   permissionRules?: AgentPermissionRules;
   meta?: Record<string, unknown>;
   systemPrompt?: string;
@@ -545,7 +543,6 @@ export interface UpdateAgentRequest {
   toolsPreset?: ToolsPreset;
   homeDir?: string;
   externalConfig?: Agent["externalConfig"];
-  disabledTools?: string[];
   permissionRules?: AgentPermissionRules;
   meta?: Record<string, unknown>;
 }
@@ -909,7 +906,7 @@ export async function listProjectScripts(id: string): Promise<ProjectScript[]> {
   return fetchJson<ProjectScript[]>(`/projects/${id}/scripts`);
 }
 
-export async function regenerateProjectDescription(id: string): Promise<{
+export async function parseProject(id: string): Promise<{
   description: string | null;
   status: "ready" | "skipped" | "error";
   error?: string;
@@ -922,7 +919,7 @@ export async function regenerateProjectDescription(id: string): Promise<{
     error?: string;
     project: RawProject;
     scripts?: ProjectScript[];
-  }>(`/projects/${id}/describe`, {});
+  }>(`/projects/${id}/parse`, {});
   return {
     ...result,
     project: mapProject(result.project),

@@ -147,16 +147,6 @@ function rowToAgent(row: AgentRow): Agent {
     externalConfig: row.external_config
       ? (JSON.parse(row.external_config) as Agent["externalConfig"])
       : null,
-    disabledTools: (() => {
-      try {
-        const value = JSON.parse(row.disabled_tools ?? "[]") as unknown;
-        return Array.isArray(value)
-          ? value.filter((tool): tool is string => typeof tool === "string")
-          : [];
-      } catch {
-        return [];
-      }
-    })(),
     permissionRules: (() => {
       try {
         return normalizeAgentPermissionRules(JSON.parse(row.permission_rules ?? "null"));
@@ -273,7 +263,6 @@ export class SupervisorDb {
 				home_dir      TEXT,
 				is_builtin    INTEGER NOT NULL DEFAULT 0,
         external_config TEXT,
-        disabled_tools TEXT NOT NULL DEFAULT '[]',
         permission_rules TEXT NOT NULL DEFAULT '{}',
 				meta          TEXT NOT NULL DEFAULT '{}',
 				created_at    INTEGER NOT NULL,
@@ -507,7 +496,6 @@ export class SupervisorDb {
           home_dir TEXT,
           is_builtin INTEGER NOT NULL DEFAULT 0,
           external_config TEXT,
-          disabled_tools TEXT NOT NULL DEFAULT '[]',
           permission_rules TEXT NOT NULL DEFAULT '{}',
           meta TEXT NOT NULL DEFAULT '{}',
           created_at INTEGER NOT NULL,
@@ -515,7 +503,7 @@ export class SupervisorDb {
         );
         INSERT INTO agents_new
           (id, name, description, avatar, backend_type, model_id, system_prompt, tools_preset,
-           home_dir, is_builtin, external_config, disabled_tools, permission_rules, meta, created_at, updated_at)
+           home_dir, is_builtin, external_config, permission_rules, meta, created_at, updated_at)
         SELECT a.id, a.name, a.description,
           ${pick(agentColumns, "avatar", pick(agentColumns, "icon", "NULL"))},
           ${pick(agentColumns, "backend_type", "'native'")},
@@ -531,7 +519,6 @@ export class SupervisorDb {
           ${pick(agentColumns, "home_dir", "NULL")},
           COALESCE(${pick(agentColumns, "is_builtin", pick(agentColumns, "is_internal", "0"))}, 0),
           ${pick(agentColumns, "external_config", "NULL")},
-          COALESCE(${pick(agentColumns, "disabled_tools", "NULL")}, '[]'),
           COALESCE(${pick(agentColumns, "permission_rules", "NULL")}, '{}'),
           COALESCE(${pick(agentColumns, "meta", "NULL")}, '{}'),
           a.created_at, a.updated_at
@@ -1626,7 +1613,6 @@ export class SupervisorDb {
     home_dir?: string | null;
     is_builtin?: boolean;
     external_config?: AgentRow["external_config"];
-    disabled_tools?: string | string[];
     permission_rules?: string | import("../core/agent-permissions.js").AgentPermissionRules;
     meta?: string | Record<string, unknown>;
   }): Agent {
@@ -1646,9 +1632,6 @@ export class SupervisorDb {
       home_dir: homeDir ?? null,
       is_builtin: row.is_builtin ? 1 : 0,
       external_config: row.external_config ?? null,
-      disabled_tools: Array.isArray(row.disabled_tools)
-        ? JSON.stringify(row.disabled_tools)
-        : (row.disabled_tools ?? "[]"),
       permission_rules:
         typeof row.permission_rules === "string"
           ? row.permission_rules
@@ -1662,8 +1645,8 @@ export class SupervisorDb {
     };
     const result = this.db
       .prepare(
-        `INSERT INTO agents (name, description, avatar, backend_type, model_id, system_prompt, tools_preset, home_dir, is_builtin, external_config, disabled_tools, permission_rules, meta, created_at, updated_at)
-				 VALUES (@name, @description, @avatar, @backend_type, @model_id, @system_prompt, @tools_preset, @home_dir, @is_builtin, @external_config, @disabled_tools, @permission_rules, @meta, @created_at, @updated_at)`,
+        `INSERT INTO agents (name, description, avatar, backend_type, model_id, system_prompt, tools_preset, home_dir, is_builtin, external_config, permission_rules, meta, created_at, updated_at)
+				 VALUES (@name, @description, @avatar, @backend_type, @model_id, @system_prompt, @tools_preset, @home_dir, @is_builtin, @external_config, @permission_rules, @meta, @created_at, @updated_at)`,
       )
       .run(full);
     const id = Number(result.lastInsertRowid);
@@ -1694,7 +1677,6 @@ export class SupervisorDb {
         | "home_dir"
         | "is_builtin"
         | "external_config"
-        | "disabled_tools"
         | "permission_rules"
       >
     > & {

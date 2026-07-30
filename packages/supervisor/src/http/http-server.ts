@@ -700,7 +700,6 @@ export function createHttpServer(
           tools_preset: body.toolsPreset,
           home_dir: body.homeDir,
           external_config: body.externalConfig ? JSON.stringify(body.externalConfig) : null,
-          disabled_tools: body.disabledTools,
           permission_rules:
             backendType === "native" ? normalizeAgentPermissionRules(body.permissionRules) : {},
           meta: body.meta,
@@ -734,7 +733,6 @@ export function createHttpServer(
         home_dir: body.homeDir,
         external_config:
           body.externalConfig === undefined ? undefined : JSON.stringify(body.externalConfig),
-        disabled_tools: body.disabledTools,
         permission_rules:
           current?.backendType === "native" && body.permissionRules !== undefined
             ? JSON.stringify(normalizeAgentPermissionRules(body.permissionRules))
@@ -1083,12 +1081,12 @@ export function createHttpServer(
     return c.json({ ok: true });
   });
 
-  app.post("/projects/:id/describe", async (c) => {
+  app.post("/projects/:id/parse", async (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid project id");
     if (!manager.getProject(id)) return jsonError(c, 404, "not found");
     try {
-      const result = await manager.generateProjectDescription(id);
+      const result = await manager.parseProject(id);
       return c.json({
         ...result,
         project: manager.getProject(id),

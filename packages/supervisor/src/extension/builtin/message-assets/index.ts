@@ -16,7 +16,7 @@ const messageAssetsExtension: ExtensionDefinition = {
       const path = details?.path;
       if (!path || !isAbsolute(path)) return;
       const isRecording =
-        (event.toolName === "browser" && details?.action === "stop_recording") ||
+        (event.toolName === "browser" && details?.action === "complete") ||
         (event.toolName === "desktop_recording" &&
           result.content?.some((part) => part.text?.includes("recording saved:")));
       const isScreenshot =

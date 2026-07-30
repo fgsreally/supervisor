@@ -278,7 +278,7 @@ describe("supervisor: SupervisorDb", () => {
       "home_dir",
       "is_builtin",
       "external_config",
-      "disabled_tools",
+      "permission_rules",
       "meta",
       "created_at",
       "updated_at",

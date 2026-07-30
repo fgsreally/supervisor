@@ -49,17 +49,12 @@
         <div class="agent-tools-header">
           <div>
             <div class="text-[14px] font-medium">可用工具</div>
-            <p>控制该 Agent 在后续新会话中可以调用的能力</p>
+            <p>由该 Agent 绑定的扩展提供，运行时可见性由扩展控制</p>
           </div>
-          <span>{{ enabledToolCount }}/{{ resolvedTools.length }} 已启用</span>
+          <span>{{ resolvedTools.length }} 项</span>
         </div>
         <div class="agent-tools-list">
-          <div
-            v-for="tool in resolvedTools"
-            :key="tool.name"
-            class="agent-tool-row"
-            :class="{ 'agent-tool-row--disabled': !tool.enabled }"
-          >
+          <div v-for="tool in resolvedTools" :key="tool.name" class="agent-tool-row">
             <div class="agent-tool-icon">
               <Puzzle v-if="tool.source === 'extension'" class="h-4 w-4" />
               <ShieldCheck v-else-if="tool.source === 'system'" class="h-4 w-4" />
@@ -71,21 +66,7 @@
                 <span class="agent-config-tool-source">{{ sourceLabel(tool) }}</span>
               </div>
               <p>{{ tool.description || "该工具暂未提供用途说明" }}</p>
-              <div class="agent-tool-meta">
-                <span>{{ tool.enabled ? "可在新会话中调用" : "已从新会话工具集中移除" }}</span>
-              </div>
             </div>
-            <button
-              class="agent-tool-toggle"
-              type="button"
-              role="switch"
-              :aria-checked="tool.enabled"
-              :disabled="savingTool === tool.name"
-              :title="tool.enabled ? '禁用工具' : '启用工具'"
-              @click="toggleTool(tool.name, tool.enabled)"
-            >
-              <span />
-            </button>
           </div>
         </div>
       </section>
@@ -122,34 +103,12 @@ const homeDir = computed(
   () => agent.value?.homeDir || agentStore.agentResources[props.agentId]?.homeDir || "",
 );
 const resolvedTools = computed(() => agentStore.agentResources[props.agentId]?.tools ?? []);
-const enabledToolCount = computed(() => resolvedTools.value.filter((tool) => tool.enabled).length);
-const savingTool = ref<string | null>(null);
 const savingModel = ref(false);
 const loading = ref(false);
 
 function sourceLabel(tool: AgentResources["tools"][number]): string {
   if (tool.source === "extension") return tool.extensionName || "扩展";
   return tool.source === "preset" ? "工具集" : "系统";
-}
-
-async function toggleTool(name: string, enabled: boolean) {
-  const current = agent.value;
-  if (!current || savingTool.value) return;
-  savingTool.value = name;
-  const disabled = new Set(current.disabledTools);
-  if (enabled) disabled.add(name);
-  else disabled.delete(name);
-  try {
-    await agentStore.updateAgent(props.agentId, {
-      disabledTools: [...disabled],
-    });
-    await agentStore.fetchAgentResources(props.agentId, getDefaultWorkspaceCwd());
-    showUiMessage(enabled ? `已禁用 ${name}` : `已启用 ${name}`, "success");
-  } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "工具设置失败", "error");
-  } finally {
-    savingTool.value = null;
-  }
 }
 
 async function changeModel(modelId: string) {
@@ -310,14 +269,6 @@ watch(
 .agent-tool-row:last-child {
   border-bottom: 0;
 }
-.agent-tool-row--disabled {
-  opacity: 0.58;
-}
-.agent-tool-row--disabled .agent-tool-heading > span:first-child {
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in srgb, var(--app-text-muted) 80%, transparent);
-}
 .agent-tool-icon {
   display: grid;
   width: 36px;
@@ -346,41 +297,6 @@ watch(
   line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
-}
-.agent-tool-meta {
-  margin-top: 4px;
-  color: var(--app-text-muted);
-  font-size: 10px;
-}
-.agent-tool-toggle {
-  position: relative;
-  width: 34px;
-  height: 20px;
-  flex: none;
-  border-radius: 999px;
-  background: var(--app-border);
-  transition: background-color 0.15s ease;
-}
-.agent-tool-toggle span {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: white;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 20%);
-  transition: transform 0.15s ease;
-}
-.agent-tool-toggle[aria-checked="true"] {
-  background: var(--app-accent);
-}
-.agent-tool-toggle[aria-checked="true"] span {
-  transform: translateX(14px);
-}
-.agent-tool-toggle:disabled {
-  cursor: wait;
-  opacity: 0.55;
 }
 
 @media (max-width: 760px) {

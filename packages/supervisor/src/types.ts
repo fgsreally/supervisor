@@ -249,7 +249,6 @@ export interface AgentRow {
   home_dir: string | null;
   is_builtin: number;
   external_config: string | null;
-  disabled_tools: string;
   permission_rules: string;
   meta: string;
   created_at: number;
@@ -269,7 +268,6 @@ export interface Agent {
   homeDir: string | null;
   isBuiltin: boolean;
   externalConfig: AgentExternalConfig | null;
-  disabledTools: string[];
   permissionRules: AgentPermissionRules;
   /** Extension-owned data only; core agent fields live in columns. */
   meta: Record<string, unknown>;

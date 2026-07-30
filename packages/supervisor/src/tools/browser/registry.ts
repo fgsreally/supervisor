@@ -1,5 +1,5 @@
-import type { Browser, Page } from "puppeteer-core";
-import { launchBrowser } from "./launch.js";
+import type { Browser, BrowserContext, Page } from "playwright";
+import { DEFAULT_VIEWPORT, launchBrowser } from "./launch.js";
 
 export interface TabHandle {
   name: string;
@@ -20,27 +20,34 @@ export interface BrowserSession {
 
 export function createBrowserSession(options?: { headless?: boolean }): BrowserSession {
   let browser: Browser | null = null;
+  let context: BrowserContext | null = null;
   const tabs = new Map<string, Page>();
 
-  async function ensureBrowser(): Promise<Browser> {
-    if (!browser || !browser.connected) {
-      browser = await launchBrowser(options?.headless ?? true);
-    }
-    return browser;
+  async function ensureContext(): Promise<BrowserContext> {
+    if (browser?.isConnected() && context) return context;
+    browser = await launchBrowser(options?.headless ?? true);
+    context = await browser.newContext({ viewport: DEFAULT_VIEWPORT });
+    return context;
+  }
+
+  async function closeBrowserIfIdle(): Promise<void> {
+    if (tabs.size || !browser) return;
+    await context?.close().catch(() => {});
+    await browser.close().catch(() => {});
+    context = null;
+    browser = null;
   }
 
   return {
     async openTab(name, url, viewport) {
-      const b = await ensureBrowser();
       const existing = tabs.get(name);
       if (existing && !existing.isClosed()) {
-        if (viewport) await existing.setViewport(viewport);
+        if (viewport) await existing.setViewportSize(viewport);
         if (url) await existing.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
         return { name, page: existing };
       }
-
-      const page = await b.newPage();
-      if (viewport) await page.setViewport(viewport);
+      const page = await (await ensureContext()).newPage();
+      if (viewport) await page.setViewportSize(viewport);
       if (url) await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
       tabs.set(name, page);
       return { name, page };
@@ -57,24 +64,22 @@ export function createBrowserSession(options?: { headless?: boolean }): BrowserS
       if (!page) return;
       tabs.delete(name);
       if (!page.isClosed()) await page.close();
-      if (tabs.size === 0 && browser) {
-        await browser.close();
-        browser = null;
-      }
+      await closeBrowserIfIdle();
     },
 
     async closeAll() {
-      for (const name of tabs.keys()) {
-        await this.closeTab(name);
-      }
+      const pages = [...tabs.values()];
+      tabs.clear();
+      await Promise.all(pages.map((page) => (page.isClosed() ? undefined : page.close())));
+      await closeBrowserIfIdle();
     },
 
     async dispose() {
-      await this.closeAll();
-      if (browser) {
-        await browser.close();
-        browser = null;
-      }
+      tabs.clear();
+      await context?.close().catch(() => {});
+      await browser?.close().catch(() => {});
+      context = null;
+      browser = null;
     },
   };
 }

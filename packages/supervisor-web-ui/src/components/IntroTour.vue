@@ -130,7 +130,7 @@ const stages: Stage[] = [
     eyebrow: "核心功能 · Agent",
     title: "模型只是 Agent 的一部分",
     content:
-      "为 Agent 选择模型，并按需要启用工具、权限、Skills 和 Extensions。新会话会使用这里的最新配置。",
+      "为 Agent 选择模型、权限、Skills 和 Extensions。工具的运行时可见性由扩展根据工作流控制。",
   },
   {
     kind: "nav",

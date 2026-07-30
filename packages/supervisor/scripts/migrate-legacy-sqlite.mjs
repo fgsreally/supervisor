@@ -107,7 +107,6 @@ function createSchema(db) {
       home_dir      TEXT,
       is_builtin    INTEGER NOT NULL DEFAULT 0,
       external_config TEXT,
-      disabled_tools TEXT NOT NULL DEFAULT '[]',
       meta          TEXT NOT NULL DEFAULT '{}',
       created_at    INTEGER NOT NULL,
       updated_at    INTEGER NOT NULL
@@ -360,8 +359,8 @@ function migrate() {
   console.log(`models: ${modelCount}`);
 
   const insertAgent = next.prepare(`
-    INSERT INTO agents (name, description, avatar, backend_type, system_prompt, tools_preset, model_id, home_dir, is_builtin, external_config, disabled_tools, meta, created_at, updated_at)
-    VALUES (@name, @description, @avatar, @backend_type, @system_prompt, @tools_preset, @model_id, @home_dir, @is_builtin, @external_config, @disabled_tools, @meta, @created_at, @updated_at)
+    INSERT INTO agents (name, description, avatar, backend_type, system_prompt, tools_preset, model_id, home_dir, is_builtin, external_config, meta, created_at, updated_at)
+    VALUES (@name, @description, @avatar, @backend_type, @system_prompt, @tools_preset, @model_id, @home_dir, @is_builtin, @external_config, @meta, @created_at, @updated_at)
   `);
   for (const row of old.prepare("SELECT * FROM agents ORDER BY created_at ASC").all()) {
     let meta = {};
@@ -383,9 +382,6 @@ function migrate() {
             ...(meta.external && typeof meta.external === "object" ? meta.external : {}),
           })
         : null;
-    const disabledTools = Array.isArray(meta.disabledTools)
-      ? JSON.stringify(meta.disabledTools)
-      : "[]";
     for (const key of [
       "builtin",
       "userSpawnable",
@@ -415,7 +411,6 @@ function migrate() {
       home_dir: row.home_dir ?? null,
       is_builtin: isBuiltin,
       external_config: externalConfig,
-      disabled_tools: disabledTools,
       meta: JSON.stringify(meta),
       created_at: row.created_at,
       updated_at: row.updated_at,

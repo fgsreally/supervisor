@@ -6,59 +6,45 @@
       <button v-if="startupError" type="button" @click="continueStartup">重试</button>
     </div>
 
-    <section v-else-if="state === 'login'" class="startup-pin" :class="{ 'startup-pin--shake': shake }">
-      <div class="startup-brand">Pi</div>
-      <h1>输入访问密码</h1>
-      <p>请输入启动服务时显示的 4 位数字密码</p>
+    <section v-else-if="state === 'login'" class="startup-pin">
+      <div class="startup-pin__content" :class="{ 'startup-pin--shake': shake }">
+        <LockKeyhole class="startup-pin__lock" aria-hidden="true" />
+        <h1>输入密码</h1>
 
-      <div class="pin-dots" aria-label="已输入位数">
-        <span
-          v-for="i in PIN_LENGTH"
-          :key="i"
-          class="pin-dot"
-          :class="{ 'pin-dot--filled': password.length >= i }"
-        />
-      </div>
+        <div class="pin-dots" aria-label="已输入位数">
+          <span
+            v-for="i in PIN_LENGTH"
+            :key="i"
+            class="pin-dot"
+            :class="{ 'pin-dot--filled': password.length >= i }"
+          />
+        </div>
 
-      <p v-if="error" class="startup-error">{{ error }}</p>
-      <p v-else-if="submitting" class="startup-hint">
-        <Loader2 />
-        正在验证…
-      </p>
-      <p v-else class="startup-hint">&nbsp;</p>
+        <div class="startup-feedback" aria-live="polite">
+          <p v-if="error" class="startup-error">{{ error }}</p>
+          <Loader2 v-else-if="submitting" class="startup-spinner" aria-label="正在验证" />
+        </div>
 
-      <div class="pin-pad" role="group" aria-label="数字键盘">
-        <button
-          v-for="digit in digits"
-          :key="digit"
-          type="button"
-          class="pin-key"
-          :disabled="submitting || password.length >= PIN_LENGTH"
-          @click="pressDigit(digit)"
-        >
-          <span class="pin-key__glow" aria-hidden="true" />
-          <span class="pin-key__label">{{ digit }}</span>
-        </button>
-        <span class="pin-key pin-key--spacer" aria-hidden="true" />
-        <button
-          type="button"
-          class="pin-key"
-          :disabled="submitting || password.length >= PIN_LENGTH"
-          @click="pressDigit('0')"
-        >
-          <span class="pin-key__glow" aria-hidden="true" />
-          <span class="pin-key__label">0</span>
-        </button>
-        <button
-          type="button"
-          class="pin-key pin-key--action"
-          :disabled="submitting || password.length === 0"
-          aria-label="删除"
-          @click="backspace"
-        >
-          <span class="pin-key__glow" aria-hidden="true" />
-          <Delete class="pin-key__icon" />
-        </button>
+        <div class="pin-pad" role="group" aria-label="数字键盘">
+          <button
+            v-for="digit in digits"
+            :key="digit"
+            type="button"
+            class="pin-key"
+            :class="keyClasses(digit)"
+            :style="keyLightStyle(digit)"
+            :disabled="submitting || password.length >= PIN_LENGTH"
+            @pointerenter="startHover(digit, $event)"
+            @pointerleave="stopHover(digit)"
+            @pointerdown="startPress(digit)"
+            @pointerup="stopPress"
+            @pointercancel="cancelPointerInteraction"
+            @click="pressDigit(digit)"
+          >
+            <span class="pin-key__glow" aria-hidden="true" />
+            <span class="pin-key__label">{{ digit }}</span>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -78,13 +64,27 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from "vue";
-import { Delete, Loader2 } from "lucide-vue-next";
+import { computed, onMounted, onUnmounted, ref } from "vue";
+import { Loader2, LockKeyhole } from "lucide-vue-next";
 import { getAuthStatus, listProviderModels, listProviders, saveWebPassword } from "@/api";
 import ProviderFormView from "@/views/ProviderFormView.vue";
 
-const PIN_LENGTH = 4;
-const digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9"] as const;
+const PIN_LENGTH = 6;
+const digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] as const;
+type PinDigit = (typeof digits)[number];
+
+const keyPositions: Record<PinDigit, { x: number; y: number }> = {
+  "1": { x: 0, y: 0 },
+  "2": { x: 1, y: 0 },
+  "3": { x: 2, y: 0 },
+  "4": { x: 0, y: 1 },
+  "5": { x: 1, y: 1 },
+  "6": { x: 2, y: 1 },
+  "7": { x: 0, y: 2 },
+  "8": { x: 1, y: 2 },
+  "9": { x: 2, y: 2 },
+  "0": { x: 1, y: 3 },
+};
 
 const emit = defineEmits<{ ready: [] }>();
 const state = ref<"checking" | "login" | "setup">("checking");
@@ -92,8 +92,65 @@ const password = ref("");
 const error = ref("");
 const submitting = ref(false);
 const shake = ref(false);
+const hoveredDigit = ref<PinDigit | null>(null);
+const pressedDigit = ref<PinDigit | null>(null);
+const illuminatedDigit = computed(() => pressedDigit.value ?? hoveredDigit.value);
 const startupError = ref("");
 let shakeTimer: ReturnType<typeof setTimeout> | undefined;
+
+function keyDistance(digit: PinDigit): number | null {
+  if (!illuminatedDigit.value) return null;
+  const source = keyPositions[illuminatedDigit.value];
+  const target = keyPositions[digit];
+  return Math.hypot(source.x - target.x, source.y - target.y);
+}
+
+function keyClasses(digit: PinDigit) {
+  const distance = keyDistance(digit);
+  return {
+    "pin-key--zero": digit === "0",
+    "pin-key--illuminated": distance === 0,
+    "pin-key--affected-near": distance === 1,
+    "pin-key--affected-far": distance !== null && distance > 1 && distance <= Math.SQRT2,
+  };
+}
+
+function keyLightStyle(digit: PinDigit) {
+  if (!illuminatedDigit.value || digit === illuminatedDigit.value) return undefined;
+  const source = keyPositions[illuminatedDigit.value];
+  const target = keyPositions[digit];
+  const dx = Math.sign(source.x - target.x);
+  const dy = Math.sign(source.y - target.y);
+  return {
+    "--light-x": `${50 + dx * 42}%`,
+    "--light-y": `${50 + dy * 42}%`,
+  };
+}
+
+function startHover(digit: PinDigit, event: PointerEvent) {
+  if (event.pointerType === "touch") return;
+  if (submitting.value || password.value.length >= PIN_LENGTH) return;
+  hoveredDigit.value = digit;
+}
+
+function stopHover(digit: PinDigit) {
+  if (hoveredDigit.value === digit) hoveredDigit.value = null;
+  if (pressedDigit.value === digit) pressedDigit.value = null;
+}
+
+function startPress(digit: PinDigit) {
+  if (submitting.value || password.value.length >= PIN_LENGTH) return;
+  pressedDigit.value = digit;
+}
+
+function stopPress() {
+  pressedDigit.value = null;
+}
+
+function cancelPointerInteraction() {
+  pressedDigit.value = null;
+  hoveredDigit.value = null;
+}
 
 async function hasUsableModel(): Promise<boolean> {
   const providers = (await listProviders()).filter((provider) => provider.isEnabled);
@@ -147,30 +204,26 @@ async function login() {
   }
 }
 
-function pressDigit(digit: string) {
+function pressDigit(digit: PinDigit) {
   if (submitting.value || password.value.length >= PIN_LENGTH) return;
   error.value = "";
   password.value += digit;
   if (password.value.length === PIN_LENGTH) void login();
 }
 
-function backspace() {
-  if (submitting.value || password.value.length === 0) return;
-  error.value = "";
-  password.value = password.value.slice(0, -1);
-}
-
 function onKeydown(event: KeyboardEvent) {
   if (state.value !== "login" || submitting.value) return;
   if (/^\d$/.test(event.key)) {
     event.preventDefault();
-    pressDigit(event.key);
-    return;
+    if (!event.repeat) {
+      startPress(event.key as PinDigit);
+      pressDigit(event.key as PinDigit);
+    }
   }
-  if (event.key === "Backspace") {
-    event.preventDefault();
-    backspace();
-  }
+}
+
+function onKeyup(event: KeyboardEvent) {
+  if (/^\d$/.test(event.key)) stopPress();
 }
 
 async function finishSetup() {
@@ -179,6 +232,7 @@ async function finishSetup() {
 
 onMounted(() => {
   window.addEventListener("keydown", onKeydown);
+  window.addEventListener("keyup", onKeyup);
   void continueStartup().catch(() => {
     // A connection/configuration failure is not evidence that password auth is
     // enabled. Keep the neutral startup screen instead of asking for a mystery password.
@@ -189,6 +243,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener("keydown", onKeydown);
+  window.removeEventListener("keyup", onKeyup);
   if (shakeTimer) clearTimeout(shakeTimer);
 });
 </script>
@@ -243,79 +298,104 @@ onUnmounted(() => {
 }
 
 .startup-pin {
+  position: fixed;
+  inset: 0;
   display: flex;
-  width: min(360px, 100%);
-  flex-direction: column;
+  width: 100%;
+  min-height: 100dvh;
   align-items: center;
+  justify-content: center;
+  overflow: auto;
+  background: #000;
+  color: #fff;
   text-align: center;
 }
 
-.startup-pin h1 {
-  margin-top: 22px;
-  font-size: 22px;
-  font-weight: 650;
+.startup-pin__content {
+  display: flex;
+  width: min(390px, 100%);
+  min-height: min(100dvh, 844px);
+  flex-direction: column;
+  align-items: center;
+  padding: max(54px, 7dvh) 24px max(32px, env(safe-area-inset-bottom));
+  background: transparent;
 }
 
-.startup-pin > p {
-  margin-top: 7px;
-  color: var(--app-text-secondary);
-  font-size: 13px;
+.startup-pin__lock {
+  width: 31px;
+  height: 31px;
+  flex: none;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 2px 8px rgb(0 0 0 / 18%));
+}
+
+.startup-pin h1 {
+  margin-top: clamp(104px, 18dvh, 154px);
+  font-size: 28px;
+  font-weight: 420;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-shadow: 0 2px 10px rgb(0 0 0 / 22%);
 }
 
 .pin-dots {
   display: flex;
   gap: 18px;
-  margin-top: 36px;
-  min-height: 14px;
+  margin-top: clamp(54px, 8dvh, 68px);
+  min-height: 11px;
 }
 
 .pin-dot {
-  width: 12px;
-  height: 12px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  border: 1.5px solid color-mix(in srgb, var(--app-text-primary) 28%, transparent);
-  background: transparent;
+  border: 0;
+  background: rgb(255 255 255 / 20%);
+  box-shadow: inset 0 1px 1px rgb(255 255 255 / 8%);
   transition:
-    background-color 0.16s ease,
-    border-color 0.16s ease,
-    transform 0.16s ease;
+    background-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
 }
 
 .pin-dot--filled {
-  background: var(--app-text-primary);
-  border-color: var(--app-text-primary);
-  transform: scale(1.08);
+  background: rgb(255 255 255 / 92%);
+  box-shadow: 0 0 12px rgb(255 255 255 / 35%);
+  transform: scale(1.06);
 }
 
-.startup-pin--shake .pin-dots {
+.startup-pin--shake {
   animation: pin-shake 0.42s ease;
 }
 
-.startup-error {
-  margin-top: 14px;
-  min-height: 18px;
-  color: #fa5151;
-  font-size: 12px;
+.startup-feedback {
+  display: grid;
+  height: 42px;
+  place-items: center;
+  margin-top: 7px;
 }
 
-.startup-hint {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 14px;
-  min-height: 18px;
-  color: var(--app-text-muted);
-  font-size: 12px;
+.startup-error {
+  color: #ff7878;
+  font-size: 13px;
+  text-shadow: 0 1px 8px rgb(0 0 0 / 45%);
+}
+
+.startup-spinner {
+  width: 18px;
+  height: 18px;
+  color: rgb(255 255 255 / 72%);
+  animation: startup-spin 1s linear infinite;
 }
 
 .pin-pad {
+  position: relative;
   display: grid;
   grid-template-columns: repeat(3, 72px);
-  gap: 18px 28px;
+  gap: 18px 24px;
   justify-content: center;
-  margin-top: 28px;
-  padding-bottom: 8px;
+  margin-top: clamp(28px, 4dvh, 34px);
+  isolation: isolate;
 }
 
 .pin-key {
@@ -325,15 +405,22 @@ onUnmounted(() => {
   height: 72px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 22%);
+  border: 1px solid rgb(255 255 255 / 16%);
   border-radius: 50%;
-  background: rgb(255 255 255 / 14%);
-  color: var(--app-text-primary);
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgb(2 2 4 / 98%) 0%,
+    rgb(7 7 10 / 96%) 42%,
+    rgb(22 22 27 / 94%) 68%,
+    rgb(68 69 76 / 90%) 100%
+  );
+  color: #fff;
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 28%),
-    0 1px 2px rgb(0 0 0 / 6%);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+    inset 0 0 12px rgb(255 255 255 / 10%),
+    inset 0 0 2px rgb(255 255 255 / 18%),
+    0 5px 18px rgb(0 0 0 / 26%);
+  backdrop-filter: blur(16px) brightness(1.34) saturate(0.72);
+  -webkit-backdrop-filter: blur(16px) brightness(1.34) saturate(0.72);
   isolation: isolate;
   transition:
     background-color 0.18s ease,
@@ -344,94 +431,113 @@ onUnmounted(() => {
   user-select: none;
 }
 
-html[data-theme="light"] .pin-key {
-  border-color: rgb(0 0 0 / 8%);
-  background: rgb(255 255 255 / 55%);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 80%),
-    0 1px 3px rgb(0 0 0 / 8%);
-}
-
 .pin-key__glow {
   position: absolute;
-  inset: -20%;
+  inset: 0;
   border-radius: 50%;
   background: radial-gradient(
-    circle at 50% 42%,
+    circle at var(--light-x, 50%) var(--light-y, 50%),
     rgb(255 255 255 / 78%) 0%,
-    rgb(255 255 255 / 28%) 42%,
-    transparent 72%
+    rgb(255 255 255 / 30%) 27%,
+    transparent 61%
   );
+  filter: blur(5px);
   opacity: 0;
-  transform: scale(0.72);
   transition:
-    opacity 0.16s ease,
-    transform 0.16s ease;
+    opacity 0.22s ease,
+    filter 0.22s ease;
   pointer-events: none;
   z-index: 0;
 }
 
-.pin-key__label,
-.pin-key__icon {
+.pin-key__label {
   position: relative;
   z-index: 1;
-}
-
-.pin-key__label {
   font-size: 28px;
-  font-weight: 450;
-  letter-spacing: 0.02em;
+  font-weight: 360;
   line-height: 1;
+  text-shadow: 0 1px 5px rgb(0 0 0 / 42%);
 }
 
-.pin-key__icon {
-  width: 22px;
-  height: 22px;
-  color: var(--app-text-secondary);
+.pin-key--affected-near .pin-key__glow {
+  opacity: 0.72;
 }
 
-.pin-key:active:not(:disabled),
+.pin-key--affected-far .pin-key__glow {
+  filter: blur(7px);
+  opacity: 0.32;
+}
+
+.pin-key--affected-near {
+  border-color: rgb(255 255 255 / 28%);
+  box-shadow:
+    inset 0 -7px 14px rgb(255 255 255 / 17%),
+    inset 0 8px 14px rgb(0 0 0 / 36%),
+    inset 0 1px 1px rgb(255 255 255 / 28%),
+    0 0 18px rgb(255 255 255 / 7%);
+}
+
+.pin-key--affected-far {
+  border-color: rgb(255 255 255 / 22%);
+}
+
+.pin-key--illuminated {
+  border-color: rgb(255 255 255 / 96%);
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgb(48 48 48) 0%,
+    rgb(61 61 61) 27%,
+    rgb(112 112 112) 44%,
+    rgb(218 218 218) 67%,
+    rgb(255 255 255) 88%
+  );
+  box-shadow:
+    0 0 1px 1px rgb(255 255 255 / 42%),
+    0 0 26px 6px rgb(255 255 255 / 16%),
+    inset 0 0 10px rgb(255 255 255 / 36%);
+}
+
+.pin-key--illuminated .pin-key__label {
+  text-shadow:
+    0 1px 5px rgb(0 0 0 / 48%),
+    0 0 8px rgb(255 255 255 / 48%);
+}
+
+.pin-key:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
 .pin-key:focus-visible:not(:disabled) {
-  background: rgb(255 255 255 / 78%);
-  border-color: rgb(255 255 255 / 70%);
-  box-shadow:
-    0 0 0 1px rgb(255 255 255 / 35%),
-    0 0 28px 10px rgb(255 255 255 / 28%),
-    inset 0 0 18px rgb(255 255 255 / 55%);
-  transform: scale(0.97);
-  outline: none;
+  outline: 2px solid rgb(255 255 255 / 62%);
+  outline-offset: 3px;
 }
 
-.pin-key:active:not(:disabled) .pin-key__glow,
-.pin-key:focus-visible:not(:disabled) .pin-key__glow {
-  opacity: 1;
-  transform: scale(1);
+.pin-key--illuminated .pin-key__glow {
+  opacity: 0;
 }
 
-html[data-theme="light"] .pin-key:active:not(:disabled),
-html[data-theme="light"] .pin-key:focus-visible:not(:disabled) {
-  background: rgb(255 255 255 / 92%);
-  border-color: rgb(255 255 255 / 95%);
-  box-shadow:
-    0 0 0 1px rgb(255 255 255 / 80%),
-    0 0 26px 8px rgb(255 255 255 / 70%),
-    inset 0 0 16px rgb(255 255 255 / 90%);
+.pin-key:active:not(:disabled) .pin-key__glow {
+  opacity: inherit;
 }
 
 .pin-key:disabled {
-  opacity: 0.45;
+  opacity: 1;
 }
 
-.pin-key--spacer {
-  visibility: hidden;
-  pointer-events: none;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
+.pin-key--zero {
+  grid-column: 2;
 }
 
-.pin-key--action .pin-key__icon {
-  color: var(--app-text-primary);
+@media (prefers-reduced-motion: reduce) {
+  .pin-key,
+  .pin-key__glow {
+    transition: none;
+  }
+}
+
+/* Keep the native keyboard focus distinct from the optical click state. */
+.pin-key:focus:not(:focus-visible) {
+  outline: none;
 }
 
 .startup-setup {
@@ -509,7 +615,6 @@ html[data-theme="light"] .pin-key:focus-visible:not(:disabled) {
 
   .startup-pin {
     width: 100%;
-    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   .pin-pad {

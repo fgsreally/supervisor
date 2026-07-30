@@ -52,6 +52,7 @@ export default defineConfig({
           text: "Web UI 前端",
           items: [
             { text: "概览", link: "/web-ui/overview" },
+            { text: "光场控件设计", link: "/web-ui/light-field-design" },
             { text: "路由", link: "/web-ui/routes" },
             { text: "Chat 子系统", link: "/web-ui/chat" },
             { text: "Agent 配置", link: "/web-ui/agents" },

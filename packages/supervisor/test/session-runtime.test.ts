@@ -35,7 +35,7 @@ describe("supervisor: SessionRuntime", () => {
 
     const state = await runtime.getState();
     expect(state.id).toBe(inst.id);
-    expect(state.sessionId).toBe(String(inst.id));
+    expect(state.sessionId).toBe(inst.sessionId);
     expect(state.isStreaming).toBe(false);
   });
 
@@ -64,5 +64,25 @@ describe("supervisor: SessionRuntime", () => {
     });
 
     expect(runtime.getLastAssistantText()).toBe("done");
+  });
+
+  it("exposes in-memory streamingMessage as streamingReply", async () => {
+    const inst = await manager.spawn({ cwd: "/proj" });
+    const runtime = manager.getRuntime(inst.id);
+    MockAgentHarness.instances[0]!.agent.state.streamingMessage = {
+      role: "assistant",
+      content: [{ type: "text", text: "partial reply" }],
+    };
+
+    const state = await runtime.getState();
+    expect(state.streamingReply).toBe("partial reply");
+  });
+
+  it("omits streamingReply when streamingMessage is empty", async () => {
+    const inst = await manager.spawn({ cwd: "/proj" });
+    const runtime = manager.getRuntime(inst.id);
+
+    const state = await runtime.getState();
+    expect(state.streamingReply).toBeUndefined();
   });
 });

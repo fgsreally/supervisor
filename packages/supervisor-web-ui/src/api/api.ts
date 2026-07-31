@@ -742,6 +742,8 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
 
 const WEB_PASSWORD_KEY = "pi-supervisor-web-password";
 
+let tunnelQuickCached: boolean | null = null;
+
 function withAuth(options: RequestInit = {}): RequestInit {
   const password =
     typeof localStorage === "undefined" ? "" : localStorage.getItem(WEB_PASSWORD_KEY);
@@ -749,6 +751,64 @@ function withAuth(options: RequestInit = {}): RequestInit {
   const headers = new Headers(options.headers);
   headers.set("x-supervisor-password", password);
   return { ...options, headers };
+}
+
+function readStoredPassword(): string {
+  if (typeof localStorage === "undefined") return "";
+  return localStorage.getItem(WEB_PASSWORD_KEY) ?? "";
+}
+
+function hostnameLooksLikeQuickTunnel(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.location.hostname.endsWith(".trycloudflare.com");
+}
+
+/** Prefer server flag; fall back to hostname for Quick Tunnel pages. */
+export async function shouldUseSessionWebSocket(): Promise<boolean> {
+  if (tunnelQuickCached !== null) return tunnelQuickCached;
+  if (hostnameLooksLikeQuickTunnel()) {
+    tunnelQuickCached = true;
+    return true;
+  }
+  try {
+    const response = await fetch(`${API_BASE}/healthz`);
+    if (response.ok) {
+      const body = (await response.json()) as { tunnelQuick?: boolean };
+      tunnelQuickCached = Boolean(body.tunnelQuick);
+      return tunnelQuickCached;
+    }
+  } catch {
+    // ignore — fall through
+  }
+  tunnelQuickCached = false;
+  return false;
+}
+
+function sessionWebSocketUrl(): string {
+  const base = new URL(API_BASE || window.location.origin);
+  base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
+  base.pathname = `${base.pathname.replace(/\/$/, "")}/ws`;
+  const password = readStoredPassword();
+  base.search = password ? `?password=${encodeURIComponent(password)}` : "";
+  return base.toString();
+}
+
+function openSessionSocket(): Promise<WebSocket> {
+  return new Promise((resolve, reject) => {
+    const ws = new WebSocket(sessionWebSocketUrl());
+    const timer = window.setTimeout(() => {
+      ws.close();
+      reject(new Error("WebSocket connection timeout"));
+    }, 15_000);
+    ws.addEventListener("open", () => {
+      window.clearTimeout(timer);
+      resolve(ws);
+    });
+    ws.addEventListener("error", () => {
+      window.clearTimeout(timer);
+      reject(new Error("WebSocket connection failed"));
+    });
+  });
 }
 
 export function saveWebPassword(password: string): void {
@@ -759,14 +819,26 @@ export function clearWebPassword(): void {
   localStorage.removeItem(WEB_PASSWORD_KEY);
 }
 
-export async function getAuthStatus(): Promise<{ required: boolean; authenticated: boolean }> {
+export async function getAuthStatus(): Promise<{
+  required: boolean;
+  authenticated: boolean;
+  tunnelQuick?: boolean;
+}> {
   const response = await fetch(`${API_BASE}/auth/status`, withAuth());
   // Backward compatibility while the web UI and Supervisor process are being
   // upgraded independently: an older server has no auth endpoint and therefore
   // must be treated as password protection disabled.
   if (response.status === 404) return { required: false, authenticated: true };
   if (!response.ok) throw new Error("无法检查登录状态");
-  return response.json() as Promise<{ required: boolean; authenticated: boolean }>;
+  const body = (await response.json()) as {
+    required: boolean;
+    authenticated: boolean;
+    tunnelQuick?: boolean;
+  };
+  if (typeof body.tunnelQuick === "boolean") {
+    tunnelQuickCached = body.tunnelQuick || hostnameLooksLikeQuickTunnel();
+  }
+  return body;
 }
 
 /** Upload an avatar image and return its public path. */
@@ -1183,7 +1255,7 @@ export async function deleteSession(id: string): Promise<{ ok: boolean }> {
 }
 
 /**
- * Send a prompt to a session and receive events via SSE.
+ * Send a prompt to a session and receive events via SSE (or WebSocket under Quick Tunnel).
  * Returns a cleanup function to abort the connection.
  */
 export function promptSession(
@@ -1195,9 +1267,72 @@ export function promptSession(
   images?: PromptImageInput[],
 ): () => void {
   const abortController = new AbortController();
+  let ws: WebSocket | null = null;
 
   void (async () => {
     try {
+      if (await shouldUseSessionWebSocket()) {
+        ws = await openSessionSocket();
+        if (abortController.signal.aborted) {
+          ws.close();
+          return;
+        }
+        const requestId = `prompt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        await new Promise<void>((resolve, reject) => {
+          const onMessage = (event: MessageEvent) => {
+            let parsed: {
+              id?: string;
+              channel?: string;
+              type?: string;
+              event?: SessionStreamEvent;
+              error?: string;
+            };
+            try {
+              parsed = JSON.parse(String(event.data)) as typeof parsed;
+            } catch {
+              return;
+            }
+            if (parsed.channel !== "session") return;
+            if (parsed.id && parsed.id !== requestId) return;
+            if (parsed.type === "event" && parsed.event) {
+              onEvent(parsed.event);
+            } else if (parsed.type === "error") {
+              cleanup();
+              reject(new Error(parsed.error || "prompt failed"));
+            } else if (parsed.type === "done" || parsed.type === "queued") {
+              cleanup();
+              resolve();
+            }
+          };
+          const cleanup = () => {
+            ws?.removeEventListener("message", onMessage);
+            ws?.close();
+            ws = null;
+          };
+          abortController.signal.addEventListener(
+            "abort",
+            () => {
+              cleanup();
+              resolve();
+            },
+            { once: true },
+          );
+          ws!.addEventListener("message", onMessage);
+          ws!.send(
+            JSON.stringify({
+              id: requestId,
+              channel: "session",
+              type: "prompt",
+              sessionId: id,
+              message,
+              images: images?.length ? images : undefined,
+            }),
+          );
+        });
+        onComplete?.();
+        return;
+      }
+
       const res = await fetch(
         `${API_BASE}/sessions/${id}/prompt`,
         withAuth({
@@ -1258,7 +1393,10 @@ export function promptSession(
     }
   })();
 
-  return () => abortController.abort();
+  return () => {
+    abortController.abort();
+    ws?.close();
+  };
 }
 
 /** Steer the active turn in a session. */
@@ -1668,7 +1806,7 @@ export async function updateMessageMeta(
   );
 }
 
-/** Subscribe to session events via SSE. */
+/** Subscribe to session events via SSE (or WebSocket under Quick Tunnel). */
 export function subscribeSessionEvents(
   sessionId: string,
   onEvent: (event: { type: string; event?: SessionStreamEvent }) => void,
@@ -1677,9 +1815,54 @@ export function subscribeSessionEvents(
   onClose?: () => void,
 ): () => void {
   const abortController = new AbortController();
+  let ws: WebSocket | null = null;
 
   void (async () => {
     try {
+      if (await shouldUseSessionWebSocket()) {
+        ws = await openSessionSocket();
+        if (abortController.signal.aborted) {
+          ws.close();
+          return;
+        }
+        const onMessage = (event: MessageEvent) => {
+          let parsed: { channel?: string; type?: string; event?: SessionStreamEvent };
+          try {
+            parsed = JSON.parse(String(event.data)) as typeof parsed;
+          } catch {
+            return;
+          }
+          if (parsed.channel !== "session") return;
+          onEvent(parsed);
+          if (parsed.type === "connected") onConnected?.();
+        };
+        ws.addEventListener("message", onMessage);
+        ws.addEventListener("close", () => {
+          if (!abortController.signal.aborted) onClose?.();
+        });
+        abortController.signal.addEventListener(
+          "abort",
+          () => {
+            try {
+              ws?.send(JSON.stringify({ channel: "session", type: "unsubscribe" }));
+            } catch {
+              // ignore
+            }
+            ws?.close();
+            ws = null;
+          },
+          { once: true },
+        );
+        ws.send(
+          JSON.stringify({
+            channel: "session",
+            type: "subscribe",
+            sessionId,
+          }),
+        );
+        return;
+      }
+
       const res = await fetch(
         `${API_BASE}/sessions/${sessionId}/events`,
         withAuth({
@@ -1728,11 +1911,14 @@ export function subscribeSessionEvents(
       if (isAbortError(error) || abortController.signal.aborted) return;
       onError?.(error instanceof Error ? error : new Error(String(error)));
     } finally {
-      if (!abortController.signal.aborted) onClose?.();
+      if (!abortController.signal.aborted && !ws) onClose?.();
     }
   })();
 
-  return () => abortController.abort();
+  return () => {
+    abortController.abort();
+    ws?.close();
+  };
 }
 
 // ============ Agent API ============

@@ -5,6 +5,7 @@
   >
     <StartupGate v-if="!appReady" @ready="onStartupReady" />
     <template v-else>
+      <AddToHomeScreenHint />
       <template v-if="!isMobile">
         <ShellNav :tab="mainTab" @update:tab="onTabChange" @tutorial="introTour?.start()" />
 
@@ -330,6 +331,7 @@ import UiMessageHost from "./components/UiMessageHost.vue";
 import UiConfirmHost from "./components/UiConfirmHost.vue";
 import UiBusyHost from "./components/UiBusyHost.vue";
 import StartupGate from "./components/StartupGate.vue";
+import AddToHomeScreenHint from "./components/AddToHomeScreenHint.vue";
 import IntroTour from "./components/IntroTour.vue";
 import MobileAppShell from "./components/mobile/MobileAppShell.vue";
 import MobileMeView from "./components/mobile/MobileMeView.vue";

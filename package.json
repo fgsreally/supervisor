@@ -10,10 +10,13 @@
   "scripts": {
     "clean": "pnpm --filter \"./packages/*\" --if-present run clean",
     "build": "pnpm --filter pi-supervisor run build",
+    "build:ui": "pnpm --filter pi-supervisor-ui run build",
+    "build:all": "pnpm run build:ui && pnpm run build",
     "dev": "pnpm --filter pi-supervisor-ui run dev",
     "dev:supervisor": "pnpm run build && pnpm --filter pi-supervisor run serve:playground",
     "dev:seed": "node packages/supervisor-web-ui/scripts/seed-dev-showcase.mjs playground/.supervisor/supervisor.db",
     "playground": "pnpm run build && pnpm --filter pi-supervisor run serve:playground",
+    "serve:tunnel": "pnpm run build:all && bun packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground --tunnel",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt .",

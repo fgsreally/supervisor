@@ -17,9 +17,12 @@ import type { Provider } from "./types.js";
 import { encryptApiKey } from "./utils/encrypt.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "./utils/supervisor-settings.js";
 import { registerWebSocketRoutes } from "./websocket/server.js";
+import { startQuickTunnel } from "./utils/cloudflare-tunnel.js";
+import { printMobileAccessBanner } from "./utils/mobile-access.js";
+import { resolveUiDistDir, warnMissingUiDist } from "./utils/ui-dist.js";
 import { resolveWebPin } from "./utils/web-password.js";
 
-const KNOWN_CLI_OPTIONS = new Set(["port", "p", "cwd", "password", "h", "help"]);
+const KNOWN_CLI_OPTIONS = new Set(["port", "p", "cwd", "password", "tunnel", "ui-dir", "h", "help"]);
 
 function _parseExtensionFlags(argv: string[]): Record<string, string | boolean | undefined> {
   const flags: Record<string, string | boolean | undefined> = {};
@@ -108,19 +111,44 @@ async function run() {
       // Read from argv so numeric-looking PINs keep their exact string form
       // (CAC otherwise coerces e.g. "0123" to the number 123).
       const { pin: webPassword, generated } = resolveWebPin(rawCliValue("password"));
-      const app = createHttpServer(manager, { password: webPassword });
-      registerWebSocketRoutes(app, webPassword);
+      const wantTunnel = values.tunnel === true;
+      const uiDir = resolveUiDistDir(rawCliValue("ui-dir"));
+      if (!uiDir) warnMissingUiDist();
+      const app = createHttpServer(manager, {
+        password: webPassword,
+        tunnelQuick: wantTunnel,
+        uiDir: uiDir ?? undefined,
+      });
+      registerWebSocketRoutes(app, webPassword, manager);
       app.listen({ hostname: "0.0.0.0", port });
       manager.resumePersistedSessionInputs();
       startDailyWorkScheduler(db);
-      console.log(`Server listening on http://localhost:${port}`);
+      console.log(`Server listening on http://127.0.0.1:${port}`);
       console.log(`Workspace cwd: ${workspaceCwd}`);
       console.log(`Database: ${resolveDbPath()}`);
-      if (generated) {
-        console.log(`Web PIN (generated): ${webPassword}`);
-      } else {
-        console.log("Web PIN protection: enabled");
+
+      let tunnelUrl: string | null = null;
+      if (wantTunnel) {
+        try {
+          console.log("Starting Cloudflare Quick Tunnel...");
+          const tunnel = await startQuickTunnel(port);
+          tunnelUrl = tunnel.url;
+        } catch (error) {
+          console.error(
+            `[tunnel] ${error instanceof Error ? error.message : String(error)}`,
+          );
+          console.error(
+            "[tunnel] Install tip: cloudflared is auto-downloaded via the npm package; check network access or install manually from https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/downloads/",
+          );
+        }
       }
+
+      printMobileAccessBanner({
+        port,
+        pin: webPassword,
+        pinGenerated: generated,
+        tunnelUrl,
+      });
       break;
     }
 

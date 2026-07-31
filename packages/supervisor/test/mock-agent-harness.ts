@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
       model: { provider: string; id: string };
       thinkingLevel: string;
       messages: unknown[];
+      streamingMessage?: unknown;
     };
 
     constructor() {

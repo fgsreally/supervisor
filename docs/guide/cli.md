@@ -29,7 +29,15 @@ pnpm run serve
 
 # 构建后启动 playground Supervisor
 pnpm run dev:supervisor
+
+# 手机远程：构建 UI + Quick Tunnel + 终端二维码
+pnpm run serve:tunnel
+# 等价：
+# pnpm run build:all
+# bun packages/supervisor/dist/cli.mjs serve --tunnel --cwd playground
 ```
+
+`--tunnel` 会自动下载并启动 `cloudflared` Quick Tunnel；扫码后手输 PIN。详情见 [手机远程访问](/guide/mobile-remote-access)。
 
 ## Provider
 

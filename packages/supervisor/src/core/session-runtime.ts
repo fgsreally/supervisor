@@ -65,7 +65,7 @@ export interface SessionState {
   isStreaming: boolean;
   messageCount: number;
   leafId: string | null;
-  /** Text currently being streamed (external agents); used to resume UI after refresh. */
+  /** Partial assistant text while a turn is streaming; used to resume UI after refresh. */
   streamingReply?: string;
 }
 
@@ -455,6 +455,9 @@ export class SessionRuntime implements ManagedSessionRuntime {
     if (!session) throw new Error(`Session ${this.id} not found`);
     const messages = await this.getMessagesForSession();
     const model = this.harness.agent.state.model;
+    const streamingReply = assistantMessagePlainText(
+      (this.harness.agent.state as { streamingMessage?: AgentMessage }).streamingMessage,
+    );
     return {
       id: session.id,
       sessionId: session.sessionId,
@@ -468,6 +471,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
       isStreaming: session.status === "running",
       messageCount: messages.filter((entry) => entry.type === "message").length,
       leafId: session.leafId,
+      ...(streamingReply?.trim() ? { streamingReply } : {}),
     };
   }
 
@@ -526,13 +530,20 @@ export class SessionRuntime implements ManagedSessionRuntime {
     for (let i = this.harness.agent.state.messages.length - 1; i >= 0; i--) {
       const message = this.harness.agent.state.messages[i] as AgentMessage | undefined;
       if (!message || message.role !== "assistant") continue;
-      const content = message.content;
-      if (typeof content === "string") return content;
-      return content
-        .filter((part): part is { type: "text"; text: string } => part.type === "text")
-        .map((part) => part.text)
-        .join("");
+      return assistantMessagePlainText(message);
     }
     return undefined;
   }
+}
+
+function assistantMessagePlainText(message?: AgentMessage): string | undefined {
+  if (!message) return undefined;
+  const content = message.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return undefined;
+  const text = content
+    .filter((part): part is { type: "text"; text: string } => part.type === "text")
+    .map((part) => part.text)
+    .join("");
+  return text || undefined;
 }

@@ -1,6 +1,6 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { extname, join } from "node:path";
 import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, normalize, resolve, sep } from "node:path";
@@ -119,6 +119,62 @@ function assetContentType(path: string): string {
   return ASSET_CONTENT_TYPES[extension] ?? "application/octet-stream";
 }
 
+const UI_STATIC_CONTENT_TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".ttf": "font/ttf",
+  ".map": "application/json",
+  ".webmanifest": "application/manifest+json",
+};
+
+const API_PATH_PREFIXES = [
+  "/sessions",
+  "/agents",
+  "/auth",
+  "/healthz",
+  "/ws",
+  "/public",
+  "/upload",
+  "/home",
+  "/providers",
+  "/models",
+  "/projects",
+  "/extensions",
+  "/resources",
+  "/settings",
+  "/jobs",
+  "/uploaded-icons",
+  "/approvals",
+  "/watson",
+  "/logs",
+];
+
+/** Auth-exempt UI shell when uiDir is set (PIN lives in the SPA, not HTTP middleware). */
+function isUiStaticPath(pathname: string, uiDir?: string): boolean {
+  if (!uiDir) return false;
+  if (API_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    return false;
+  }
+  // Allow SPA entry, assets, and history-mode deep links without a prior PIN cookie.
+  return true;
+}
+
+function uiContentType(filePath: string): string {
+  return UI_STATIC_CONTENT_TYPES[extname(filePath).toLowerCase()] ?? "application/octet-stream";
+}
+
 async function readOwnedAsset(root: string, relativePath: string): Promise<Uint8Array | null> {
   if (!relativePath || relativePath.includes("\0") || isAbsolute(relativePath)) return null;
   const rootPath = await realpath(root).catch(() => null);
@@ -225,17 +281,21 @@ function toHomeTaskResponse(task: HomeTask) {
 
 export function createHttpServer(
   manager: SessionManager,
-  options: { password?: string } = {},
+  options: { password?: string; tunnelQuick?: boolean; uiDir?: string } = {},
 ): SupervisorElysiaApp {
   const password = options.password?.trim();
+  const tunnelQuick = Boolean(options.tunnelQuick);
+  const uiDir = options.uiDir?.trim() || undefined;
   const app = new SupervisorElysiaBuilder((c) => {
     const pathname = new URL(c.req.raw.url).pathname;
+    const method = c.req.raw.method.toUpperCase();
     if (
       !password ||
       pathname === "/auth/status" ||
       pathname === "/healthz" ||
       pathname.startsWith("/public/") ||
-      pathname.startsWith("/uploaded-icons/")
+      pathname.startsWith("/uploaded-icons/") ||
+      (method === "GET" && isUiStaticPath(pathname, uiDir))
     )
       return undefined;
     if (c.req.header("x-supervisor-password") === password || c.req.query("password") === password)
@@ -244,11 +304,12 @@ export function createHttpServer(
   });
   appendSystemLog(`HTTP server initialized pid=${process.pid}`);
 
-  app.get("/healthz", (c) => c.json({ ok: true }));
+  app.get("/healthz", (c) => c.json({ ok: true, tunnelQuick }));
   app.get("/auth/status", (c) =>
     c.json({
       required: Boolean(password),
       authenticated: !password || c.req.header("x-supervisor-password") === password,
+      tunnelQuick,
     }),
   );
 
@@ -2993,6 +3054,57 @@ export function createHttpServer(
       return jsonError(c, 500, message);
     }
   });
+
+  // Single-port SPA: API routes above take priority; unknown GETs fall back to index.html.
+  if (uiDir && existsSync(join(uiDir, "index.html"))) {
+    const serveUiFile = async (relativePath: string) => {
+      const content = await readOwnedAsset(uiDir, relativePath);
+      if (!content) return null;
+      return new Response(content, {
+        headers: {
+          "Content-Type": uiContentType(relativePath),
+          "Cache-Control": relativePath === "index.html" ? "no-cache" : "public, max-age=31536000",
+        },
+      });
+    };
+
+    app.get("/", async () => {
+      const response = await serveUiFile("index.html");
+      return response ?? new Response("UI not found", { status: 404 });
+    });
+
+    app.get("/*", async (c) => {
+      const pathname = new URL(c.req.raw.url).pathname;
+      // Never hijack API-looking paths that somehow missed earlier routes.
+      if (
+        pathname.startsWith("/sessions") ||
+        pathname.startsWith("/agents") ||
+        pathname.startsWith("/auth") ||
+        pathname.startsWith("/healthz") ||
+        pathname.startsWith("/ws") ||
+        pathname.startsWith("/public") ||
+        pathname.startsWith("/upload") ||
+        pathname.startsWith("/home") ||
+        pathname.startsWith("/providers") ||
+        pathname.startsWith("/models") ||
+        pathname.startsWith("/projects") ||
+        pathname.startsWith("/extensions") ||
+        pathname.startsWith("/resources") ||
+        pathname.startsWith("/settings") ||
+        pathname.startsWith("/jobs") ||
+        pathname.startsWith("/uploaded-icons")
+      ) {
+        return jsonError(c, 404, "not found");
+      }
+      const relative = pathname.replace(/^\//, "");
+      if (relative && !relative.includes("..") && !relative.includes("\0")) {
+        const fileResponse = await serveUiFile(relative);
+        if (fileResponse) return fileResponse;
+      }
+      const spa = await serveUiFile("index.html");
+      return spa ?? jsonError(c, 404, "UI not found");
+    });
+  }
 
   return app.build();
 }

@@ -21,6 +21,7 @@ export default defineConfig({
             { text: "快速开始", link: "/guide/getting-started" },
             { text: "架构总览", link: "/guide/architecture" },
             { text: "CLI 命令", link: "/guide/cli" },
+            { text: "手机远程访问", link: "/guide/mobile-remote-access" },
           ],
         },
       ],

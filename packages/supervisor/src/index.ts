@@ -23,7 +23,7 @@ export function startSupervisor(options: SupervisorOptions = {}): {
   manager.createProject({ cwd: getDefaultCwd() });
   const app = createHttpServer(manager);
   const port = options.port ?? 3030;
-  registerWebSocketRoutes(app);
+  registerWebSocketRoutes(app, undefined, manager);
   app.listen({ hostname: "0.0.0.0", port });
   manager.resumePersistedSessionInputs();
   const stopDailyWork = startDailyWorkScheduler(db);

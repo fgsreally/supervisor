@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { WebSocket, type RawData } from "ws";
+import type { SessionManager } from "../core/session-manager.js";
+import type { SessionPromptImage } from "../core/session-media.js";
 import { decryptApiKey } from "../utils/encrypt.js";
 import { readSupervisorSettings } from "../utils/supervisor-settings.js";
 
@@ -11,8 +13,11 @@ type SpeechProvider = "qwen" | "doubao";
 
 interface ClientMessage {
   id?: string;
-  channel: "speech" | "system";
+  channel: "speech" | "system" | "session";
   type: string;
+  sessionId?: number | string;
+  message?: string;
+  images?: SessionPromptImage[];
   payload?: Record<string, unknown>;
 }
 
@@ -42,6 +47,15 @@ function sendJson(socket: ClientSocket, message: Record<string, unknown>): void 
 
 function eventId(): string {
   return `event_${randomUUID()}`;
+}
+
+function parseSessionId(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isInteger(raw) && raw > 0) return raw;
+  if (typeof raw === "string" && /^\d+$/.test(raw)) {
+    const n = Number(raw);
+    return Number.isInteger(n) && n > 0 ? n : null;
+  }
+  return null;
 }
 
 function qwenLanguage(language: unknown): string | undefined {
@@ -282,8 +296,128 @@ class SpeechConnection {
   }
 }
 
-export function registerWebSocketRoutes(app: WebSocketRouteBuilder, password?: string): void {
-  const connections = new WeakMap<object, SpeechConnection>();
+interface SocketSessionState {
+  speech: SpeechConnection;
+  unsubscribe: (() => void) | null;
+  subscribedSessionId: number | null;
+}
+
+function handleSessionMessage(
+  socket: ClientSocket,
+  state: SocketSessionState,
+  manager: SessionManager | undefined,
+  message: ClientMessage,
+): void {
+  if (!manager) {
+    sendJson(socket, {
+      channel: "session",
+      type: "error",
+      error: "session channel is unavailable",
+    });
+    return;
+  }
+
+  if (message.type === "subscribe") {
+    const sessionId = parseSessionId(message.sessionId ?? message.payload?.sessionId);
+    if (sessionId === null) {
+      sendJson(socket, { channel: "session", type: "error", error: "invalid sessionId" });
+      return;
+    }
+    state.unsubscribe?.();
+    state.subscribedSessionId = sessionId;
+    state.unsubscribe = manager.onOutput(sessionId, (_id, event) => {
+      sendJson(socket, { channel: "session", type: "agent", event });
+    });
+    sendJson(socket, { channel: "session", type: "connected", sessionId });
+    return;
+  }
+
+  if (message.type === "unsubscribe") {
+    state.unsubscribe?.();
+    state.unsubscribe = null;
+    state.subscribedSessionId = null;
+    return;
+  }
+
+  if (message.type === "prompt") {
+    const sessionId = parseSessionId(message.sessionId ?? message.payload?.sessionId);
+    const text =
+      typeof message.message === "string"
+        ? message.message
+        : typeof message.payload?.message === "string"
+          ? message.payload.message
+          : null;
+    if (sessionId === null || text === null) {
+      sendJson(socket, {
+        id: message.id,
+        channel: "session",
+        type: "error",
+        error: "invalid prompt, requires sessionId and message",
+      });
+      return;
+    }
+
+    const images = Array.isArray(message.images)
+      ? message.images
+      : Array.isArray(message.payload?.images)
+        ? (message.payload.images as SessionPromptImage[])
+        : undefined;
+
+    let promptUnsub = () => {};
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      promptUnsub();
+    };
+
+    promptUnsub = manager.onOutput(sessionId, (_id, event) => {
+      sendJson(socket, { id: message.id, channel: "session", type: "event", event });
+      if (event.type === "agent_end") {
+        sendJson(socket, { id: message.id, channel: "session", type: "done" });
+        finish();
+      }
+    });
+
+    sendJson(socket, { id: message.id, channel: "session", type: "started", sessionId });
+    void manager
+      .submitSessionInput(sessionId, { message: text, images })
+      .then((disposition) => {
+        if (disposition === "queued") {
+          sendJson(socket, { id: message.id, channel: "session", type: "queued", sessionId });
+          finish();
+          return;
+        }
+        if (!finished) {
+          sendJson(socket, { id: message.id, channel: "session", type: "done" });
+          finish();
+        }
+      })
+      .catch((error: unknown) => {
+        sendJson(socket, {
+          id: message.id,
+          channel: "session",
+          type: "error",
+          error: error instanceof Error ? error.message : String(error),
+        });
+        finish();
+      });
+    return;
+  }
+
+  sendJson(socket, {
+    channel: "session",
+    type: "error",
+    error: `unknown session message type: ${message.type}`,
+  });
+}
+
+export function registerWebSocketRoutes(
+  app: WebSocketRouteBuilder,
+  password?: string,
+  manager?: SessionManager,
+): void {
+  const connections = new WeakMap<object, SocketSessionState>();
   app.ws("/ws", {
     maxPayloadLength: MAX_AUDIO_FRAME_BYTES,
     beforeHandle(context: { query?: Record<string, string | undefined> }) {
@@ -292,22 +426,26 @@ export function registerWebSocketRoutes(app: WebSocketRouteBuilder, password?: s
       }
     },
     open(socket: ClientSocket & { raw: object }) {
-      connections.set(socket.raw, new SpeechConnection(socket));
+      connections.set(socket.raw, {
+        speech: new SpeechConnection(socket),
+        unsubscribe: null,
+        subscribedSessionId: null,
+      });
       sendJson(socket, { channel: "system", type: "system.ready" });
     },
     message(socket: ClientSocket & { raw: object }, data: unknown) {
-      const speech = connections.get(socket.raw);
-      if (!speech) return;
+      const state = connections.get(socket.raw);
+      if (!state) return;
       try {
         if (Buffer.isBuffer(data) || data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
-          speech.append(Buffer.from(data as ArrayBuffer));
+          state.speech.append(Buffer.from(data as ArrayBuffer));
           return;
         }
         const message = (typeof data === "string" ? JSON.parse(data) : data) as ClientMessage;
         if (message.channel === "system" && message.type === "ping") {
           sendJson(socket, { id: message.id, channel: "system", type: "pong" });
         } else if (message.channel === "speech" && message.type === "speech.start") {
-          void speech.start(message.payload?.language).catch((error: unknown) => {
+          void state.speech.start(message.payload?.language).catch((error: unknown) => {
             sendJson(socket, {
               id: message.id,
               channel: "speech",
@@ -316,7 +454,9 @@ export function registerWebSocketRoutes(app: WebSocketRouteBuilder, password?: s
             });
           });
         } else if (message.channel === "speech" && message.type === "speech.stop") {
-          speech.stop();
+          state.speech.stop();
+        } else if (message.channel === "session") {
+          handleSessionMessage(socket, state, manager, message);
         }
       } catch (error) {
         sendJson(socket, {
@@ -327,7 +467,9 @@ export function registerWebSocketRoutes(app: WebSocketRouteBuilder, password?: s
       }
     },
     close(socket: ClientSocket & { raw: object }) {
-      connections.get(socket.raw)?.close();
+      const state = connections.get(socket.raw);
+      state?.speech.close();
+      state?.unsubscribe?.();
       connections.delete(socket.raw);
     },
   });

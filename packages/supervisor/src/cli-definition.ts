@@ -14,6 +14,10 @@ export function createSupervisorCli(): CAC {
     .option("-p, --port <port>", "HTTP server port", { default: "3030" })
     .option("--cwd <path>", "Default workspace directory")
     .option("--password <pin>", "6-digit numeric PIN for the web UI (default: random)")
+    .option("--tunnel", "Expose via Cloudflare Quick Tunnel (auto-downloads cloudflared)", {
+      default: false,
+    })
+    .option("--ui-dir <path>", "Directory of built web UI (defaults to auto-detect dist)")
     .help();
   cli.command("serve", MODULE_DESCRIPTIONS.serve, { allowUnknownOptions: true });
   cli

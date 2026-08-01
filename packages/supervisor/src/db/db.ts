@@ -16,6 +16,7 @@ import type {
   AgentRow,
   CreateHomeTaskOptions,
   HomeTask,
+  HomeTaskPhase,
   HomeTaskPriority,
   HomeTaskRow,
   HomeTaskStatus,
@@ -33,7 +34,12 @@ import type {
   SessionTodoRow,
   UpdateHomeTaskOptions,
 } from "../types.js";
-import { HOME_TASK_PRIORITIES, HOME_TASK_STATUSES, normalizeSessionStatus } from "../types.js";
+import {
+  HOME_TASK_PHASES,
+  HOME_TASK_PRIORITIES,
+  HOME_TASK_STATUSES,
+  normalizeSessionStatus,
+} from "../types.js";
 import {
   DEFAULT_AGENT_PERMISSION_RULES,
   normalizeAgentPermissionRules,
@@ -61,6 +67,25 @@ function parseHomeTaskPriority(value: string): HomeTaskPriority {
     : "normal";
 }
 
+function parseHomeTaskPhase(value: string | null | undefined): HomeTaskPhase {
+  return (HOME_TASK_PHASES as readonly string[]).includes(value ?? "")
+    ? (value as HomeTaskPhase)
+    : "draft";
+}
+
+function parseIdListJson(value: string | null | undefined): number[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (item): item is number => typeof item === "number" && Number.isSafeInteger(item) && item > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
 function syntheticMetaId(value: string): number {
   let hash = 0;
   for (let index = 0; index < value.length; index += 1) {
@@ -84,6 +109,10 @@ function rowToHomeTask(row: HomeTaskRow): HomeTask {
     priority: parseHomeTaskPriority(row.priority),
     parentId: row.parent_id,
     sessionId: row.session_id,
+    agentId: row.agent_id ?? null,
+    dependsOn: parseIdListJson(row.depends_on),
+    subagentIds: parseIdListJson(row.subagent_ids),
+    phase: parseHomeTaskPhase(row.phase),
     error: row.error,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -225,6 +254,8 @@ export class SupervisorDb {
   }
 
   private migrate() {
+    // Must run before CREATE todo_task so legacy data is renamed, not shadowed by an empty table.
+    this.migrateHomeTasksToTodoTask();
     this.db.exec(`
 			CREATE TABLE IF NOT EXISTS providers (
 				id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -342,23 +373,27 @@ export class SupervisorDb {
       );
       CREATE INDEX IF NOT EXISTS idx_session_input_queue_session
         ON session_input_queue(session_id, level DESC, enqueued_at ASC);
-      CREATE TABLE IF NOT EXISTS home_tasks (
+      CREATE TABLE IF NOT EXISTS todo_task (
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         title         TEXT NOT NULL,
         description   TEXT NOT NULL DEFAULT '',
         project_id    INTEGER REFERENCES projects(id) ON DELETE SET NULL,
         status        TEXT NOT NULL DEFAULT 'todo',
         priority      TEXT NOT NULL DEFAULT 'normal',
-        parent_id     INTEGER REFERENCES home_tasks(id) ON DELETE CASCADE,
+        parent_id     INTEGER REFERENCES todo_task(id) ON DELETE CASCADE,
         session_id    INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
+        agent_id      INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+        depends_on    TEXT NOT NULL DEFAULT '[]',
+        subagent_ids  TEXT NOT NULL DEFAULT '[]',
+        phase         TEXT NOT NULL DEFAULT 'draft',
         error         TEXT,
         created_at    INTEGER NOT NULL,
         updated_at    INTEGER NOT NULL
       );
-      CREATE INDEX IF NOT EXISTS idx_home_tasks_status ON home_tasks(status);
-      CREATE INDEX IF NOT EXISTS idx_home_tasks_parent ON home_tasks(parent_id);
-      CREATE INDEX IF NOT EXISTS idx_home_tasks_session ON home_tasks(session_id);
-      CREATE INDEX IF NOT EXISTS idx_home_tasks_project ON home_tasks(project_id);
+      CREATE INDEX IF NOT EXISTS idx_todo_task_status ON todo_task(status);
+      CREATE INDEX IF NOT EXISTS idx_todo_task_parent ON todo_task(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_todo_task_session ON todo_task(session_id);
+      CREATE INDEX IF NOT EXISTS idx_todo_task_project ON todo_task(project_id);
 
       DROP TABLE IF EXISTS extensions;
 
@@ -392,7 +427,7 @@ export class SupervisorDb {
     this.rebuildTargetSchema();
     this.ensureAgentPermissionDefaults();
     this.ensureMessageFts();
-    this.ensureHomeTaskColumns();
+    this.ensureTodoTaskColumns();
 
     // Initialize default providers from environment variables
     this.initializeDefaultProviders();
@@ -424,17 +459,69 @@ export class SupervisorDb {
     migrate();
   }
 
-  /** Drop legacy home_tasks.meta (unused). */
-  private ensureHomeTaskColumns(): void {
-    const exists = this.db
+  /** Rename legacy `home_tasks` → `todo_task` when upgrading existing DBs. */
+  private migrateHomeTasksToTodoTask(): void {
+    const hasHome = this.db
       .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'home_tasks'")
+      .get();
+    const hasTodo = this.db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'todo_task'")
+      .get();
+    if (!hasHome) return;
+
+    if (!hasTodo) {
+      this.db.exec("ALTER TABLE home_tasks RENAME TO todo_task");
+    } else {
+      const todoCount = (
+        this.db.prepare("SELECT COUNT(*) AS n FROM todo_task").get() as { n: number }
+      ).n;
+      const homeCount = (
+        this.db.prepare("SELECT COUNT(*) AS n FROM home_tasks").get() as { n: number }
+      ).n;
+      if (todoCount === 0 && homeCount > 0) {
+        this.db.exec("DROP TABLE todo_task; ALTER TABLE home_tasks RENAME TO todo_task");
+      } else {
+        this.db.exec("DROP TABLE home_tasks");
+      }
+    }
+
+    this.db.exec(`
+      DROP INDEX IF EXISTS idx_home_tasks_status;
+      DROP INDEX IF EXISTS idx_home_tasks_parent;
+      DROP INDEX IF EXISTS idx_home_tasks_session;
+      DROP INDEX IF EXISTS idx_home_tasks_project;
+      CREATE INDEX IF NOT EXISTS idx_todo_task_status ON todo_task(status);
+      CREATE INDEX IF NOT EXISTS idx_todo_task_parent ON todo_task(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_todo_task_session ON todo_task(session_id);
+      CREATE INDEX IF NOT EXISTS idx_todo_task_project ON todo_task(project_id);
+    `);
+  }
+
+  /** Drop legacy todo_task.meta; add plan/execute columns. */
+  private ensureTodoTaskColumns(): void {
+    const exists = this.db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'todo_task'")
       .get();
     if (!exists) return;
     const names = new Set(
-      (this.db.pragma("table_info(home_tasks)") as Array<{ name: string }>).map((c) => c.name),
+      (this.db.pragma("table_info(todo_task)") as Array<{ name: string }>).map((c) => c.name),
     );
     if (names.has("meta")) {
-      this.db.exec("ALTER TABLE home_tasks DROP COLUMN meta");
+      this.db.exec("ALTER TABLE todo_task DROP COLUMN meta");
+    }
+    if (!names.has("agent_id")) {
+      this.db.exec(
+        "ALTER TABLE todo_task ADD COLUMN agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL",
+      );
+    }
+    if (!names.has("depends_on")) {
+      this.db.exec("ALTER TABLE todo_task ADD COLUMN depends_on TEXT NOT NULL DEFAULT '[]'");
+    }
+    if (!names.has("subagent_ids")) {
+      this.db.exec("ALTER TABLE todo_task ADD COLUMN subagent_ids TEXT NOT NULL DEFAULT '[]'");
+    }
+    if (!names.has("phase")) {
+      this.db.exec("ALTER TABLE todo_task ADD COLUMN phase TEXT NOT NULL DEFAULT 'draft'");
     }
   }
 
@@ -2256,27 +2343,27 @@ export class SupervisorDb {
     if (options?.parentId === null) {
       rows = this.db
         .prepare(
-          "SELECT * FROM home_tasks WHERE parent_id IS NULL ORDER BY updated_at DESC, id DESC",
+          "SELECT * FROM todo_task WHERE parent_id IS NULL ORDER BY updated_at DESC, id DESC",
         )
         .all() as HomeTaskRow[];
     } else if (typeof options?.parentId === "number") {
       rows = this.db
-        .prepare("SELECT * FROM home_tasks WHERE parent_id = ? ORDER BY created_at ASC, id ASC")
+        .prepare("SELECT * FROM todo_task WHERE parent_id = ? ORDER BY created_at ASC, id ASC")
         .all(options.parentId) as HomeTaskRow[];
     } else if (typeof options?.projectId === "number") {
       rows = this.db
-        .prepare("SELECT * FROM home_tasks WHERE project_id = ? ORDER BY updated_at DESC, id DESC")
+        .prepare("SELECT * FROM todo_task WHERE project_id = ? ORDER BY updated_at DESC, id DESC")
         .all(options.projectId) as HomeTaskRow[];
     } else {
       rows = this.db
-        .prepare("SELECT * FROM home_tasks ORDER BY updated_at DESC, id DESC")
+        .prepare("SELECT * FROM todo_task ORDER BY updated_at DESC, id DESC")
         .all() as HomeTaskRow[];
     }
     return rows.map(rowToHomeTask);
   }
 
   getHomeTask(id: number): HomeTask | undefined {
-    const row = this.db.prepare("SELECT * FROM home_tasks WHERE id = ?").get(id) as
+    const row = this.db.prepare("SELECT * FROM todo_task WHERE id = ?").get(id) as
       | HomeTaskRow
       | undefined;
     return row ? rowToHomeTask(row) : undefined;
@@ -2284,7 +2371,7 @@ export class SupervisorDb {
 
   getHomeTaskBySessionId(sessionId: number): HomeTask | undefined {
     const row = this.db
-      .prepare("SELECT * FROM home_tasks WHERE session_id = ? ORDER BY id DESC LIMIT 1")
+      .prepare("SELECT * FROM todo_task WHERE session_id = ? ORDER BY id DESC LIMIT 1")
       .get(sessionId) as HomeTaskRow | undefined;
     return row ? rowToHomeTask(row) : undefined;
   }
@@ -2295,9 +2382,10 @@ export class SupervisorDb {
     const now = Date.now();
     const result = this.db
       .prepare(
-        `INSERT INTO home_tasks (
-          title, description, project_id, status, priority, parent_id, session_id, error, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
+        `INSERT INTO todo_task (
+          title, description, project_id, status, priority, parent_id, session_id,
+          agent_id, depends_on, subagent_ids, phase, error, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)`,
       )
       .run(
         title,
@@ -2307,6 +2395,10 @@ export class SupervisorDb {
         options.priority ?? "normal",
         options.parentId ?? null,
         options.sessionId ?? null,
+        options.agentId ?? null,
+        JSON.stringify(options.dependsOn ?? []),
+        JSON.stringify(options.subagentIds ?? []),
+        options.phase ?? "draft",
         now,
         now,
       );
@@ -2324,15 +2416,24 @@ export class SupervisorDb {
       priority: patch.priority ?? current.priority,
       parent_id: patch.parentId !== undefined ? patch.parentId : current.parentId,
       session_id: patch.sessionId !== undefined ? patch.sessionId : current.sessionId,
+      agent_id: patch.agentId !== undefined ? patch.agentId : current.agentId,
+      depends_on: JSON.stringify(
+        patch.dependsOn !== undefined ? patch.dependsOn : current.dependsOn,
+      ),
+      subagent_ids: JSON.stringify(
+        patch.subagentIds !== undefined ? patch.subagentIds : current.subagentIds,
+      ),
+      phase: patch.phase ?? current.phase,
       error: patch.error !== undefined ? patch.error : current.error,
       updated_at: Date.now(),
     };
     if (!next.title) throw new Error("title is required");
     this.db
       .prepare(
-        `UPDATE home_tasks SET
+        `UPDATE todo_task SET
           title = ?, description = ?, project_id = ?, status = ?, priority = ?,
-          parent_id = ?, session_id = ?, error = ?, updated_at = ?
+          parent_id = ?, session_id = ?, agent_id = ?, depends_on = ?, subagent_ids = ?,
+          phase = ?, error = ?, updated_at = ?
          WHERE id = ?`,
       )
       .run(
@@ -2343,6 +2444,10 @@ export class SupervisorDb {
         next.priority,
         next.parent_id,
         next.session_id,
+        next.agent_id,
+        next.depends_on,
+        next.subagent_ids,
+        next.phase,
         next.error,
         next.updated_at,
         id,
@@ -2351,7 +2456,7 @@ export class SupervisorDb {
   }
 
   deleteHomeTask(id: number): boolean {
-    return this.db.prepare("DELETE FROM home_tasks WHERE id = ?").run(id).changes > 0;
+    return this.db.prepare("DELETE FROM todo_task WHERE id = ?").run(id).changes > 0;
   }
 
   listHomeTaskChildren(parentId: number): HomeTask[] {

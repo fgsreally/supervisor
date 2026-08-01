@@ -44,10 +44,12 @@ import {
 import { findPackagedAgentId, loadPackagedAgentPrompt } from "../agent/index.js";
 import { attachHomeTaskSessionSync } from "./home-task-sync.js";
 import {
-  generateTaskDecomposition,
-  resolveAssistantModelRef,
-  resolveFeatureModelAuth,
-} from "../utils/utility-llm.js";
+  buildTodoPlanPrompt,
+  parseTodoPlanResult,
+  validateHomeTaskDependencies,
+} from "./home-task-plan.js";
+import { scheduleReadyHomeTasks } from "./home-task-scheduler.js";
+import { resolveAssistantModelRef } from "../utils/utility-llm.js";
 import { applyProjectRuntimeParse, runProjectRuntimeParse } from "./project-runtime.js";
 import { parseSessionServicesMeta, stopSessionProjectServices } from "./session-services.js";
 import { runWatsonTask, type WatsonRunOptions, type WatsonRunResult } from "./watson.js";
@@ -315,7 +317,14 @@ export class SessionManager {
     this.db = db;
     configureSessionLogProjectResolver((sessionId) => this.db.get(sessionId)?.project_id ?? null);
     this.db.reconcileInterruptedSessionStatuses();
-    this.detachHomeTaskSync = attachHomeTaskSessionSync(this.db);
+    this.detachHomeTaskSync = attachHomeTaskSessionSync(this.db, {
+      onChildTerminal: (parentId) => {
+        void this.scheduleReadyHomeTasks(parentId).catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(`home task schedule failed [${parentId}]:`, message);
+        });
+      },
+    });
     for (const input of this.db.listPersistedSessionInputs()) {
       this.sessionInputQueues.enqueue(input.sessionId, {
         ...input,
@@ -2918,14 +2927,39 @@ export class SessionManager {
     if (options.projectId != null && !this.db.getProject(options.projectId)) {
       throw new Error(`Project ${options.projectId} not found`);
     }
-    return this.db.insertHomeTask(options);
+    if (options.agentId != null && !this.db.getAgent(options.agentId)) {
+      throw new Error(`Agent ${options.agentId} not found`);
+    }
+    return this.db.insertHomeTask({
+      ...options,
+      phase: options.phase ?? "draft",
+    });
   }
 
   updateHomeTask(id: number, patch: UpdateHomeTaskOptions): HomeTask {
     if (patch.projectId != null && !this.db.getProject(patch.projectId)) {
       throw new Error(`Project ${patch.projectId} not found`);
     }
-    return this.db.updateHomeTask(id, patch);
+    if (patch.agentId != null && !this.db.getAgent(patch.agentId)) {
+      throw new Error(`Agent ${patch.agentId} not found`);
+    }
+    const current = this.db.getHomeTask(id);
+    if (!current) throw new Error(`Home task ${id} not found`);
+    if (
+      current.parentId != null &&
+      current.sessionId != null &&
+      (patch.dependsOn !== undefined ||
+        patch.agentId !== undefined ||
+        patch.subagentIds !== undefined ||
+        patch.projectId !== undefined)
+    ) {
+      throw new Error("已开始执行的工作项不能再改规划字段");
+    }
+    const updated = this.db.updateHomeTask(id, patch);
+    if (updated.parentId != null && patch.dependsOn !== undefined) {
+      validateHomeTaskDependencies(this.db.listHomeTaskChildren(updated.parentId));
+    }
+    return updated;
   }
 
   deleteHomeTask(id: number): boolean {
@@ -2942,84 +2976,152 @@ export class SessionManager {
     return preferred.id;
   }
 
-  async decomposeHomeTask(id: number): Promise<{ task: HomeTask; children: HomeTask[] }> {
+  /** Watson plans work items with deps/agents; does not spawn sessions. */
+  async planHomeTask(id: number): Promise<{ task: HomeTask; children: HomeTask[] }> {
     const task = this.db.getHomeTask(id);
     if (!task) throw new Error(`Home task ${id} not found`);
-    if (task.parentId != null) throw new Error("Only root tasks can be decomposed");
-    if (!task.projectId) throw new Error("Task must be linked to a project before decompose");
+    if (task.parentId != null) throw new Error("Only root todos can be planned");
+    if (!task.projectId) throw new Error("Todo 必须先绑定项目再规划");
+    if (task.phase === "executing") throw new Error("Todo 已在执行中，不能重新规划");
 
     const project = this.db.getProject(task.projectId);
     if (!project) throw new Error(`Project ${task.projectId} not found`);
 
     const existingChildren = this.db.listHomeTaskChildren(id);
     if (existingChildren.some((child) => child.sessionId != null)) {
-      throw new Error("Task already has spawned subtasks");
+      throw new Error("已有工作项开始执行，不能重新规划");
     }
     for (const child of existingChildren) {
       this.db.deleteHomeTask(child.id);
     }
 
-    const auth = await resolveFeatureModelAuth(this.db, "task-decompose");
-    if (!auth) {
-      throw new Error("未配置「任务分解」功能模型，请在设置中绑定模型");
+    this.db.updateHomeTask(id, { phase: "planning", status: "todo", error: null });
+
+    const projects = this.db.listProjects().map((item) => ({
+      id: item.id,
+      name: item.name,
+      cwd: item.cwd,
+    }));
+    const agents = this.db.listAgents().map((agent) => ({ id: agent.id, name: agent.name }));
+
+    try {
+      const run = await this.runWatson<unknown>({
+        cwd: project.cwd,
+        kind: "todo-plan",
+        structured: true,
+        toolsPreset: "readonly",
+        prompt: buildTodoPlanPrompt({
+          title: task.title,
+          description: task.description,
+          project: { id: project.id, name: project.name, cwd: project.cwd },
+          projects,
+          agents,
+        }),
+      });
+      const drafts = parseTodoPlanResult(run.result);
+      const keyToId = new Map<string, number>();
+      const children: HomeTask[] = [];
+
+      for (const draft of drafts) {
+        const child = this.db.insertHomeTask({
+          title: draft.title,
+          description: draft.prompt,
+          projectId: draft.projectId === undefined ? project.id : draft.projectId,
+          parentId: id,
+          status: "todo",
+          priority: task.priority,
+          agentId: draft.agentId ?? null,
+          subagentIds: draft.subagentIds ?? [],
+          dependsOn: [],
+          phase: "draft",
+        });
+        keyToId.set(draft.key, child.id);
+        children.push(child);
+      }
+
+      for (const draft of drafts) {
+        const childId = keyToId.get(draft.key);
+        if (childId == null) continue;
+        const dependsOn = draft.dependsOnKeys
+          .map((key) => keyToId.get(key))
+          .filter((depId): depId is number => depId != null);
+        const updated = this.db.updateHomeTask(childId, { dependsOn });
+        const index = children.findIndex((item) => item.id === childId);
+        if (index >= 0) children[index] = updated;
+      }
+
+      validateHomeTaskDependencies(this.db.listHomeTaskChildren(id));
+
+      const root = this.db.updateHomeTask(id, {
+        phase: "awaiting_confirm",
+        status: "todo",
+        error: null,
+      });
+      return { task: root, children: this.db.listHomeTaskChildren(id) };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.db.updateHomeTask(id, { phase: "draft", status: "todo", error: message });
+      throw error;
+    }
+  }
+
+  async confirmHomeTask(id: number): Promise<{ task: HomeTask; children: HomeTask[] }> {
+    const task = this.db.getHomeTask(id);
+    if (!task) throw new Error(`Home task ${id} not found`);
+    if (task.parentId != null) throw new Error("Only root todos can be confirmed");
+    if (task.phase === "executing") {
+      return { task, children: this.db.listHomeTaskChildren(id) };
+    }
+    if (task.phase !== "awaiting_confirm") {
+      throw new Error("请先完成规划并确认后再执行");
     }
 
-    const subtasks = await generateTaskDecomposition(auth, {
-      title: task.title,
-      description: task.description,
-      projectName: project.name,
-      cwd: project.cwd,
-    });
-    if (!subtasks.length) throw new Error("模型未返回可执行子任务");
+    const children = this.db.listHomeTaskChildren(id);
+    if (children.length === 0) throw new Error("请先规划工作项");
+    if (children.some((child) => child.sessionId != null)) {
+      throw new Error("已有工作项开始执行");
+    }
 
-    const agentId = this.resolveDefaultSpawnAgentId();
-    const children: HomeTask[] = [];
-    this.db.updateHomeTask(id, { status: "in_progress", error: null });
-
-    for (const item of subtasks) {
-      const child = this.db.insertHomeTask({
-        title: item.title,
-        description: item.prompt,
-        projectId: project.id,
-        parentId: id,
-        status: "todo",
-        priority: task.priority,
-      });
-      try {
-        const session = await this.spawn({
-          projectId: project.id,
-          cwd: project.cwd,
-          agentId,
-          instructions: item.prompt,
-          title: item.title,
-        });
-        const linked = this.db.updateHomeTask(child.id, {
-          sessionId: session.id,
-          status: "in_progress",
-        });
-        children.push(linked);
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        children.push(
-          this.db.updateHomeTask(child.id, {
-            status: "error",
-            error: message,
-          }),
-        );
+    validateHomeTaskDependencies(children);
+    for (const child of children) {
+      const projectId = child.projectId ?? task.projectId;
+      if (projectId == null || !this.db.getProject(projectId)) {
+        throw new Error(`工作项「${child.title}」缺少有效项目`);
+      }
+      const agentId = child.agentId ?? this.resolveDefaultSpawnAgentId();
+      if (!this.db.getAgent(agentId)) {
+        throw new Error(`工作项「${child.title}」缺少有效 Agent`);
+      }
+      for (const subId of child.subagentIds) {
+        if (!this.db.getAgent(subId)) {
+          throw new Error(`工作项「${child.title}」的子 Agent ${subId} 不存在`);
+        }
       }
     }
 
-    if (children.every((child) => child.status === "error")) {
-      this.db.updateHomeTask(id, {
-        status: "error",
-        error: "all subtasks failed to spawn",
-      });
-    }
+    const root = this.db.updateHomeTask(id, {
+      phase: "executing",
+      status: "in_progress",
+      error: null,
+    });
+    await this.scheduleReadyHomeTasks(id);
+    return { task: this.db.getHomeTask(id) ?? root, children: this.db.listHomeTaskChildren(id) };
+  }
 
-    return {
-      task: this.db.getHomeTask(id)!,
-      children,
-    };
+  async scheduleReadyHomeTasks(parentId: number): Promise<HomeTask[]> {
+    return scheduleReadyHomeTasks(
+      {
+        db: this.db,
+        resolveDefaultSpawnAgentId: () => this.resolveDefaultSpawnAgentId(),
+        spawn: (options) => this.spawn(options),
+      },
+      parentId,
+    );
+  }
+
+  /** @deprecated Use planHomeTask */
+  async decomposeHomeTask(id: number): Promise<{ task: HomeTask; children: HomeTask[] }> {
+    return this.planHomeTask(id);
   }
 }
 

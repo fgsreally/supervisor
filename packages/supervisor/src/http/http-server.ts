@@ -56,9 +56,11 @@ import { listDailyWorkRecords, runDailyWorkAnalysis, yesterdayDayKey } from "../
 import { listWatsonLogFiles, readWatsonLogs } from "../core/watson.js";
 import { appendSystemLog, readSystemLogs } from "../utils/system-log.js";
 import {
+  HOME_TASK_PHASES,
   HOME_TASK_PRIORITIES,
   HOME_TASK_STATUSES,
   type HomeTask,
+  type HomeTaskPhase,
   type HomeTaskPriority,
   type HomeTaskStatus,
   type Model,
@@ -273,10 +275,22 @@ function toHomeTaskResponse(task: HomeTask) {
     priority: task.priority,
     parentId: task.parentId,
     sessionId: task.sessionId,
+    agentId: task.agentId,
+    dependsOn: task.dependsOn,
+    subagentIds: task.subagentIds,
+    phase: task.phase,
     error: task.error,
     createdAt: task.createdAt.toISOString(),
     updatedAt: task.updatedAt.toISOString(),
   };
+}
+
+function parseIdList(value: unknown): number[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return undefined;
+  return value.filter(
+    (item): item is number => typeof item === "number" && Number.isSafeInteger(item) && item > 0,
+  );
 }
 
 export function createHttpServer(
@@ -407,6 +421,12 @@ export function createHttpServer(
       if (typeof body.description === "string") patch.description = body.description;
       if (body.projectId === null) patch.projectId = null;
       else if (body.projectId !== undefined) patch.projectId = Number(body.projectId);
+      if (body.agentId === null) patch.agentId = null;
+      else if (body.agentId !== undefined) patch.agentId = Number(body.agentId);
+      const dependsOn = parseIdList(body.dependsOn);
+      if (dependsOn) patch.dependsOn = dependsOn;
+      const subagentIds = parseIdList(body.subagentIds);
+      if (subagentIds) patch.subagentIds = subagentIds;
       if (
         typeof body.status === "string" &&
         (HOME_TASK_STATUSES as readonly string[]).includes(body.status)
@@ -418,6 +438,12 @@ export function createHttpServer(
         (HOME_TASK_PRIORITIES as readonly string[]).includes(body.priority)
       ) {
         patch.priority = body.priority;
+      }
+      if (
+        typeof body.phase === "string" &&
+        (HOME_TASK_PHASES as readonly string[]).includes(body.phase)
+      ) {
+        patch.phase = body.phase as HomeTaskPhase;
       }
       if (body.error === null || typeof body.error === "string") patch.error = body.error;
       const task = manager.updateHomeTask(id, patch as never);
@@ -435,11 +461,49 @@ export function createHttpServer(
     return c.json({ ok: true });
   });
 
+  app.post("/home/tasks/:id/plan", async (c) => {
+    const id = Number.parseInt(c.req.param("id"), 10);
+    if (!Number.isFinite(id)) return jsonError(c, 400, "invalid task id");
+    try {
+      const result = await manager.planHomeTask(id);
+      return c.json({
+        task: toHomeTaskResponse(result.task),
+        children: result.children.map(toHomeTaskResponse),
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status =
+        message.includes("not found")
+          ? 404
+          : message.includes("未配置") || message.includes("必须")
+            ? 400
+            : 409;
+      return jsonError(c, status, message);
+    }
+  });
+
+  app.post("/home/tasks/:id/confirm", async (c) => {
+    const id = Number.parseInt(c.req.param("id"), 10);
+    if (!Number.isFinite(id)) return jsonError(c, 400, "invalid task id");
+    try {
+      const result = await manager.confirmHomeTask(id);
+      return c.json({
+        task: toHomeTaskResponse(result.task),
+        children: result.children.map(toHomeTaskResponse),
+      });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message.includes("not found") ? 404 : message.includes("请先") ? 400 : 409;
+      return jsonError(c, status, message);
+    }
+  });
+
+  /** @deprecated Prefer POST /home/tasks/:id/plan */
   app.post("/home/tasks/:id/decompose", async (c) => {
     const id = Number.parseInt(c.req.param("id"), 10);
     if (!Number.isFinite(id)) return jsonError(c, 400, "invalid task id");
     try {
-      const result = await manager.decomposeHomeTask(id);
+      const result = await manager.planHomeTask(id);
       return c.json({
         task: toHomeTaskResponse(result.task),
         children: result.children.map(toHomeTaskResponse),

@@ -445,6 +445,16 @@ export type HomeTaskStatus = (typeof HOME_TASK_STATUSES)[number];
 export const HOME_TASK_PRIORITIES = ["urgent", "high", "normal", "low"] as const;
 export type HomeTaskPriority = (typeof HOME_TASK_PRIORITIES)[number];
 
+export const HOME_TASK_PHASES = [
+  "draft",
+  "planning",
+  "awaiting_confirm",
+  "executing",
+  "done",
+  "error",
+] as const;
+export type HomeTaskPhase = (typeof HOME_TASK_PHASES)[number];
+
 export interface HomeTaskRow {
   id: number;
   title: string;
@@ -454,6 +464,10 @@ export interface HomeTaskRow {
   priority: string;
   parent_id: number | null;
   session_id: number | null;
+  agent_id: number | null;
+  depends_on: string;
+  subagent_ids: string;
+  phase: string;
   error: string | null;
   created_at: number;
   updated_at: number;
@@ -468,6 +482,10 @@ export interface HomeTask {
   priority: HomeTaskPriority;
   parentId: number | null;
   sessionId: number | null;
+  agentId: number | null;
+  dependsOn: number[];
+  subagentIds: number[];
+  phase: HomeTaskPhase;
   error: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -481,6 +499,10 @@ export interface CreateHomeTaskOptions {
   priority?: HomeTaskPriority;
   parentId?: number | null;
   sessionId?: number | null;
+  agentId?: number | null;
+  dependsOn?: number[];
+  subagentIds?: number[];
+  phase?: HomeTaskPhase;
 }
 
 export interface UpdateHomeTaskOptions {
@@ -491,5 +513,9 @@ export interface UpdateHomeTaskOptions {
   priority?: HomeTaskPriority;
   parentId?: number | null;
   sessionId?: number | null;
+  agentId?: number | null;
+  dependsOn?: number[];
+  subagentIds?: number[];
+  phase?: HomeTaskPhase;
   error?: string | null;
 }

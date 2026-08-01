@@ -187,58 +187,6 @@ export async function generateDailyWorkDigest(
   return completeUtilityText(auth, prompt);
 }
 
-export interface TaskDecompositionSubtask {
-  title: string;
-  prompt: string;
-}
-
-export async function generateTaskDecomposition(
-  auth: UtilityModelAuth,
-  input: { title: string; description?: string; projectName?: string; cwd?: string },
-): Promise<TaskDecompositionSubtask[]> {
-  const prompt = [
-    "Decompose the user task into concrete executable subtasks for coding agents.",
-    'Return ONLY valid JSON with shape: {"subtasks":[{"title":"...","prompt":"..."}]}',
-    "Rules:",
-    "- 2 to 8 subtasks",
-    "- each prompt must be a self-contained instruction the agent can start from",
-    "- titles should be short",
-    "- do not wrap JSON in markdown fences",
-    "",
-    `Title: ${input.title.slice(0, 200)}`,
-    `Description: ${(input.description ?? "").slice(0, 2000)}`,
-    `Project: ${input.projectName ?? ""}`,
-    `Cwd: ${input.cwd ?? ""}`,
-  ].join("\n");
-
-  const text = await completeUtilityText(auth, prompt);
-  const jsonText = text
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    throw new Error("task decompose model did not return valid JSON");
-  }
-  const subtasks = (parsed as { subtasks?: unknown }).subtasks;
-  if (!Array.isArray(subtasks) || subtasks.length === 0) {
-    throw new Error("task decompose model returned no subtasks");
-  }
-  return subtasks
-    .map((item) => {
-      if (!item || typeof item !== "object") return null;
-      const row = item as { title?: unknown; prompt?: unknown };
-      const title = typeof row.title === "string" ? row.title.trim() : "";
-      const promptText = typeof row.prompt === "string" ? row.prompt.trim() : "";
-      if (!title || !promptText) return null;
-      return { title: title.slice(0, 120), prompt: promptText.slice(0, 4000) };
-    })
-    .filter((item): item is TaskDecompositionSubtask => item !== null)
-    .slice(0, 8);
-}
-
 export async function compactWithUtilityModel(
   auth: UtilityModelAuth,
   preparation: CompactionPreparation,

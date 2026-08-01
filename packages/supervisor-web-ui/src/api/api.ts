@@ -1027,6 +1027,13 @@ export async function getSystemLogs(options?: { limit?: number }): Promise<{
 
 export type HomeTaskStatus = "backlog" | "todo" | "in_progress" | "blocked" | "done" | "error";
 export type HomeTaskPriority = "urgent" | "high" | "normal" | "low";
+export type HomeTaskPhase =
+  | "draft"
+  | "planning"
+  | "awaiting_confirm"
+  | "executing"
+  | "done"
+  | "error";
 
 export interface HomeTask {
   id: number;
@@ -1037,6 +1044,10 @@ export interface HomeTask {
   priority: HomeTaskPriority;
   parentId: number | null;
   sessionId: number | null;
+  agentId: number | null;
+  dependsOn: number[];
+  subagentIds: number[];
+  phase: HomeTaskPhase;
   error: string | null;
   createdAt: string;
   updatedAt: string;
@@ -1106,8 +1117,12 @@ export function updateHomeTask(
     title: string;
     description: string;
     projectId: number | null;
+    agentId: number | null;
+    dependsOn: number[];
+    subagentIds: number[];
     status: HomeTaskStatus;
     priority: HomeTaskPriority;
+    phase: HomeTaskPhase;
     error: string | null;
   }>,
 ): Promise<HomeTask> {
@@ -1118,8 +1133,17 @@ export function deleteHomeTask(id: number): Promise<{ ok: boolean }> {
   return deleteRequest<{ ok: boolean }>(`/home/tasks/${id}`);
 }
 
+export function planHomeTask(id: number): Promise<{ task: HomeTask; children: HomeTask[] }> {
+  return postJson(`/home/tasks/${id}/plan`, {});
+}
+
+export function confirmHomeTask(id: number): Promise<{ task: HomeTask; children: HomeTask[] }> {
+  return postJson(`/home/tasks/${id}/confirm`, {});
+}
+
+/** @deprecated Prefer planHomeTask */
 export function decomposeHomeTask(id: number): Promise<{ task: HomeTask; children: HomeTask[] }> {
-  return postJson(`/home/tasks/${id}/decompose`, {});
+  return planHomeTask(id);
 }
 
 // ============ Session API ============

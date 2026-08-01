@@ -16,7 +16,7 @@
 | GET    | `/system/watson/logs`    | 华生 Agent Home 日志 |
 
 首页任务使用 `/home/tasks` 的 GET/POST、`/home/tasks/:id` 的 PATCH/DELETE，以及
-`POST /home/tasks/:id/decompose`；daily work 使用 `/home/daily-work` 与 `/home/daily-work/run`。
+`POST /home/tasks/:id/plan`（华生规划，不 spawn）、`POST /home/tasks/:id/confirm`（确认后按依赖调度执行）；旧 `decompose` 仍指向 plan。daily work 使用 `/home/daily-work` 与 `/home/daily-work/run`。
 
 ## Provider
 

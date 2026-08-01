@@ -52,14 +52,16 @@ function isLegacy() {
     const sessionId = sessions.find((c) => c.name === "id");
     const messageEntry = messages.find((c) => c.name === "entry_id");
     const providerId = providers.find((c) => c.name === "id");
-    const homeTasks = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='home_tasks'")
+    const todoTask = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('todo_task', 'home_tasks')",
+      )
       .get();
     return (
       sessionId?.type?.toUpperCase().includes("TEXT") ||
       providerId?.type?.toUpperCase().includes("TEXT") ||
       !messageEntry ||
-      !homeTasks
+      !todoTask
     );
   } finally {
     db.close();
@@ -191,23 +193,27 @@ function createSchema(db) {
     );
     CREATE INDEX idx_project_scripts_project ON project_scripts(project_id, kind, id);
 
-    CREATE TABLE home_tasks (
+    CREATE TABLE todo_task (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       title         TEXT NOT NULL,
       description   TEXT NOT NULL DEFAULT '',
       project_id    INTEGER REFERENCES projects(id) ON DELETE SET NULL,
       status        TEXT NOT NULL DEFAULT 'todo',
       priority      TEXT NOT NULL DEFAULT 'normal',
-      parent_id     INTEGER REFERENCES home_tasks(id) ON DELETE CASCADE,
+      parent_id     INTEGER REFERENCES todo_task(id) ON DELETE CASCADE,
       session_id    INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
+      agent_id      INTEGER REFERENCES agents(id) ON DELETE SET NULL,
+      depends_on    TEXT NOT NULL DEFAULT '[]',
+      subagent_ids  TEXT NOT NULL DEFAULT '[]',
+      phase         TEXT NOT NULL DEFAULT 'draft',
       error         TEXT,
       created_at    INTEGER NOT NULL,
       updated_at    INTEGER NOT NULL
     );
-    CREATE INDEX idx_home_tasks_status ON home_tasks(status);
-    CREATE INDEX idx_home_tasks_parent ON home_tasks(parent_id);
-    CREATE INDEX idx_home_tasks_session ON home_tasks(session_id);
-    CREATE INDEX idx_home_tasks_project ON home_tasks(project_id);
+    CREATE INDEX idx_todo_task_status ON todo_task(status);
+    CREATE INDEX idx_todo_task_parent ON todo_task(parent_id);
+    CREATE INDEX idx_todo_task_session ON todo_task(session_id);
+    CREATE INDEX idx_todo_task_project ON todo_task(project_id);
 
     CREATE TABLE resources (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,

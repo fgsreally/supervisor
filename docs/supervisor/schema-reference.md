@@ -15,7 +15,7 @@
 | `sessions`                      | 会话、派生关系和运行状态                |
 | `messages` / `messages_fts`     | 消息树与全文索引                        |
 | `session_input_queue`           | 会话输入队列                            |
-| `home_tasks`                    | 首页任务树                              |
+| `todo_task`                     | Todo 任务树（规划 / 确认 / 执行）       |
 | `resources` / `agent_resources` | skill、MCP、extension 资源及 Agent 绑定 |
 | `jobs`                          | Session 执行记录                        |
 
@@ -138,11 +138,13 @@
 
 ## 任务、资源与执行
 
-### `home_tasks`
+### `todo_task`
 
 `id INTEGER PK`、`title TEXT NOT NULL`、`description TEXT DEFAULT ''`、`project_id INTEGER`、
 `status TEXT DEFAULT todo`、`priority TEXT DEFAULT normal`、`parent_id INTEGER`、
-`session_id INTEGER`、`error TEXT`、`created_at`、`updated_at`。该表没有 `meta`。
+`session_id INTEGER`、`agent_id INTEGER`、`depends_on TEXT DEFAULT []`、
+`subagent_ids TEXT DEFAULT []`、`phase TEXT DEFAULT draft`、`error TEXT`、
+`created_at`、`updated_at`。旧表名 `home_tasks` 会在启动时迁移为 `todo_task`。
 
 ### `resources` 与 `agent_resources`
 

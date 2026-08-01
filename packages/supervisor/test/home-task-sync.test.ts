@@ -47,6 +47,7 @@ describe("home-task-sync", () => {
 
     expect(db.getHomeTask(child.id)?.status).toBe("done");
     expect(db.getHomeTask(parent.id)?.status).toBe("done");
+    expect(db.getHomeTask(parent.id)?.phase).toBe("done");
   });
 
   it("maps session error to child error and parent blocked", () => {

@@ -20,12 +20,12 @@ export function syncHomeTaskFromSessionStatus(
   db: SupervisorDb,
   sessionId: number,
   status: SessionStatus,
-): void {
+): { parentId: number | null; childTerminal: boolean } {
   const task = db.getHomeTaskBySessionId(sessionId);
-  if (!task) return;
+  if (!task) return { parentId: null, childTerminal: false };
 
   const nextStatus = mapSessionStatusToHomeTask(status);
-  if (!nextStatus) return;
+  if (!nextStatus) return { parentId: task.parentId, childTerminal: false };
 
   const error =
     nextStatus === "error" ? (status === "stopped" ? "session stopped" : "session error") : null;
@@ -34,10 +34,18 @@ export function syncHomeTaskFromSessionStatus(
     db.updateHomeTask(task.id, { status: nextStatus, error });
   }
 
-  if (!task.parentId) return;
+  const childTerminal = nextStatus === "done" || nextStatus === "error";
+  if (!task.parentId) {
+    if (nextStatus === "done") {
+      db.updateHomeTask(task.id, { phase: "done" });
+    } else if (nextStatus === "error") {
+      db.updateHomeTask(task.id, { phase: "error" });
+    }
+    return { parentId: null, childTerminal };
+  }
 
   const siblings = db.listHomeTaskChildren(task.parentId);
-  if (siblings.length === 0) return;
+  if (siblings.length === 0) return { parentId: task.parentId, childTerminal };
 
   const allDone = siblings.every((item) => item.status === "done");
   const anyError = siblings.some((item) => item.status === "error");
@@ -50,17 +58,40 @@ export function syncHomeTaskFromSessionStatus(
   else if (anyError) parentStatus = "blocked";
   else if (anyActive || nextStatus === "in_progress") parentStatus = "in_progress";
 
-  if (!parentStatus) return;
+  if (!parentStatus) return { parentId: task.parentId, childTerminal };
   const parent = db.getHomeTask(task.parentId);
-  if (!parent || parent.status === parentStatus) return;
-  db.updateHomeTask(parent.id, {
-    status: parentStatus,
-    error: parentStatus === "blocked" ? "one or more subtasks failed" : null,
-  });
+  if (!parent) return { parentId: task.parentId, childTerminal };
+
+  const parentPatch: {
+    status?: HomeTaskStatus;
+    phase?: "done" | "error" | "executing";
+    error?: string | null;
+  } = {};
+  if (parent.status !== parentStatus) parentPatch.status = parentStatus;
+  if (parentStatus === "done") {
+    parentPatch.phase = "done";
+    parentPatch.error = null;
+  } else if (parentStatus === "blocked") {
+    parentPatch.error = "one or more subtasks failed";
+  } else if (parentStatus === "in_progress" && parent.phase !== "executing") {
+    parentPatch.phase = "executing";
+  }
+
+  if (Object.keys(parentPatch).length > 0) {
+    db.updateHomeTask(parent.id, parentPatch);
+  }
+
+  return { parentId: task.parentId, childTerminal };
 }
 
-export function attachHomeTaskSessionSync(db: SupervisorDb): () => void {
+export function attachHomeTaskSessionSync(
+  db: SupervisorDb,
+  options?: { onChildTerminal?: (parentId: number) => void },
+): () => void {
   return db.onSessionStatusChange((sessionId, status) => {
-    syncHomeTaskFromSessionStatus(db, sessionId, status);
+    const result = syncHomeTaskFromSessionStatus(db, sessionId, status);
+    if (result.childTerminal && result.parentId != null) {
+      options?.onChildTerminal?.(result.parentId);
+    }
   });
 }

@@ -31,21 +31,53 @@
           </div>
           <p v-if="task.description" class="home-task-card__desc">{{ task.description }}</p>
           <div class="home-task-card__meta">
+            <span v-if="phaseLabel(task)">{{ phaseLabel(task) }}</span>
             <span v-if="projectName(task)">{{ projectName(task) }}</span>
             <span v-if="childrenOf(task.id).length">
               {{ doneChildren(task.id) }}/{{ childrenOf(task.id).length }}
             </span>
             <span v-if="task.error" class="home-task-card__error">{{ task.error }}</span>
           </div>
+          <ul v-if="expandedId === task.id && childrenOf(task.id).length" class="home-task-card__kids">
+            <li v-for="child in childrenOf(task.id)" :key="child.id">
+              <span :data-status="child.status">{{ child.status }}</span>
+              <strong>{{ child.title }}</strong>
+              <em v-if="child.dependsOn?.length">依赖 {{ child.dependsOn.length }} 项</em>
+              <button
+                v-if="child.sessionId"
+                type="button"
+                class="home-task-card__btn"
+                @click.stop="emit('open-session', child)"
+              >
+                打开会话
+              </button>
+            </li>
+          </ul>
           <div class="home-task-card__actions">
             <button
-              v-if="!task.parentId && task.projectId && !childrenOf(task.id).length"
+              v-if="canPlan(task)"
               type="button"
               class="home-task-card__btn"
               :disabled="busyId === task.id"
-              @click.stop="emit('decompose', task)"
+              @click.stop="emit('plan', task)"
             >
-              分解
+              规划
+            </button>
+            <button
+              v-if="task.phase === 'awaiting_confirm'"
+              type="button"
+              class="home-task-card__btn"
+              @click.stop="emit('review', task)"
+            >
+              确认
+            </button>
+            <button
+              v-if="childrenOf(task.id).length"
+              type="button"
+              class="home-task-card__btn"
+              @click.stop="expandedId = expandedId === task.id ? null : task.id"
+            >
+              {{ expandedId === task.id ? "收起" : "展开" }}
             </button>
             <button
               v-if="task.sessionId"
@@ -64,7 +96,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { Plus } from "lucide-vue-next";
 import type { HomeTask, HomeTaskPriority, HomeTaskStatus, Project } from "@/api";
 
@@ -77,9 +109,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   create: [];
   select: [task: HomeTask];
-  decompose: [task: HomeTask];
+  plan: [task: HomeTask];
+  review: [task: HomeTask];
   "open-session": [task: HomeTask];
 }>();
+
+const expandedId = ref<number | null>(null);
 
 const columns: Array<{ id: string; label: string; statuses: HomeTaskStatus[] }> = [
   { id: "todo", label: "待办", statuses: ["backlog", "todo"] },
@@ -100,6 +135,22 @@ function childrenOf(id: number): HomeTask[] {
 
 function doneChildren(id: number): number {
   return childrenOf(id).filter((task) => task.status === "done").length;
+}
+
+function canPlan(task: HomeTask): boolean {
+  if (task.parentId != null || !task.projectId) return false;
+  if (task.phase === "executing" || task.phase === "planning") return false;
+  if (childrenOf(task.id).some((child) => child.sessionId != null)) return false;
+  return true;
+}
+
+function phaseLabel(task: HomeTask): string {
+  if (task.phase === "planning") return "规划中";
+  if (task.phase === "awaiting_confirm") return "待确认";
+  if (task.phase === "executing") return "执行中";
+  if (task.phase === "done") return "已完成";
+  if (task.phase === "error") return "失败";
+  return "";
 }
 
 function projectName(task: HomeTask): string {
@@ -243,8 +294,36 @@ function priorityLabel(priority: HomeTaskPriority): string {
 .home-task-card__error {
   color: var(--app-danger, #dc2626);
 }
+.home-task-card__kids {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.home-task-card__kids li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  padding: 4px 5px;
+  border-radius: 4px;
+  background: var(--app-hover);
+  font-size: 10px;
+  color: var(--app-text-secondary);
+}
+.home-task-card__kids strong {
+  color: var(--app-text-primary);
+  font-weight: 550;
+}
+.home-task-card__kids em {
+  font-style: normal;
+  color: var(--app-text-muted);
+}
 .home-task-card__actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 5px;
 }

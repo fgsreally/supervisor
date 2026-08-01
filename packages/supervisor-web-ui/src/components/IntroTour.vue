@@ -112,9 +112,9 @@ const desktopStages: Stage[] = [
     kind: "feature",
     selector: '[data-tour-page="todo"]',
     eyebrow: "核心功能 · 任务",
-    title: "目标、计划和 Todo 各司其职",
+    title: "规划确认后再执行",
     content:
-      "Goal 表示最终目标，Plan 先讨论方案再执行，Todo 记录当前要完成的具体事项。它们最终都会在这里呈现执行进度。",
+      "新建 Todo 后由华生拆成带依赖的工作项，你确认项目、Agent 与子 Agent 后，再进入任务面板按依赖并行/串行执行。",
   },
   {
     kind: "nav",
@@ -194,7 +194,7 @@ const mobileStages: Stage[] = [
     selector: '[data-tour-page="work"]',
     eyebrow: "工作",
     title: "任务与看板",
-    content: "在这里切换 Todo / 计划与 Dashboard，集中查看目标与执行进度。",
+    content: "在这里切换 Todo / 计划与 Dashboard；规划确认后可在看板查看依赖执行进度。",
   },
   {
     kind: "nav",

@@ -3,18 +3,29 @@
     <header class="todo-view__header">
       <div>
         <h1>Todo / 计划</h1>
-        <span>集中管理目标、计划与待办事项</span>
+        <span>输入目标 → 华生规划依赖 → 确认后进入任务面板执行</span>
       </div>
-      <button type="button" @click="composerOpen = true"><Plus />新建</button>
+      <button v-if="!reviewRoot" type="button" @click="composerOpen = true"><Plus />新建</button>
     </header>
     <main class="todo-view__content custom-scrollbar">
-      <section class="todo-panel">
+      <PlanConfirmPanel
+        v-if="reviewRoot"
+        :root="reviewRoot"
+        :children="reviewChildren"
+        :projects="projects"
+        :agents="agents"
+        :busy="busyId === reviewRoot.id"
+        @close="closeReview"
+        @confirmed="onConfirmed"
+      />
+      <section v-else class="todo-panel">
         <HomeTaskBoard
           :tasks="tasks"
           :projects="projects"
           :busy-id="busyId"
           @create="composerOpen = true"
-          @decompose="onDecompose"
+          @plan="onPlan"
+          @review="onReview"
           @open-session="onOpenSession"
         />
       </section>
@@ -34,8 +45,10 @@ import { onMounted, onUnmounted, ref } from "vue";
 import { Plus } from "lucide-vue-next";
 import {
   createHomeTask,
-  decomposeHomeTask,
+  listAgents,
   listHomeTasks,
+  planHomeTask,
+  type Agent,
   type HomeTask,
   type HomeTaskPriority,
   type Project,
@@ -44,20 +57,26 @@ import { useSessionStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
 import HomeTaskBoard from "@/components/home/HomeTaskBoard.vue";
 import HomeTaskComposer from "@/components/home/HomeTaskComposer.vue";
+import PlanConfirmPanel from "@/components/home/PlanConfirmPanel.vue";
 
 const emit = defineEmits<{ "open-session": [sessionId: string] }>();
 const sessionStore = useSessionStore();
 const projects = ref<Project[]>([]);
+const agents = ref<Agent[]>([]);
 const tasks = ref<HomeTask[]>([]);
 const creating = ref(false);
 const composerOpen = ref(false);
 const busyId = ref<number | null>(null);
+const reviewRoot = ref<HomeTask | null>(null);
+const reviewChildren = ref<HomeTask[]>([]);
 
 async function load() {
   await sessionStore.fetchProjects();
   projects.value = sessionStore.projects;
+  agents.value = await listAgents().catch(() => []);
   tasks.value = await listHomeTasks();
 }
+
 async function onCreate(payload: {
   title: string;
   description: string;
@@ -76,24 +95,51 @@ async function onCreate(payload: {
     creating.value = false;
   }
 }
-async function onDecompose(task: HomeTask) {
+
+async function onPlan(task: HomeTask) {
   busyId.value = task.id;
   try {
-    await decomposeHomeTask(task.id);
+    const result = await planHomeTask(task.id);
     tasks.value = await listHomeTasks();
-    showUiMessage("已生成计划并创建会话", "success");
+    reviewRoot.value = result.task;
+    reviewChildren.value = result.children;
+    showUiMessage("规划完成，请确认后执行", "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "任务分解失败", "error");
+    showUiMessage(error instanceof Error ? error.message : "规划失败", "error");
+    tasks.value = await listHomeTasks();
   } finally {
     busyId.value = null;
   }
 }
+
+function onReview(task: HomeTask) {
+  const children = tasks.value.filter((item) => item.parentId === task.id);
+  if (!children.length) {
+    showUiMessage("尚无规划结果，请先规划", "error");
+    return;
+  }
+  reviewRoot.value = task;
+  reviewChildren.value = children;
+}
+
+function closeReview() {
+  reviewRoot.value = null;
+  reviewChildren.value = [];
+}
+
+async function onConfirmed() {
+  closeReview();
+  tasks.value = await listHomeTasks();
+}
+
 function onOpenSession(task: HomeTask) {
   if (task.sessionId != null) emit("open-session", String(task.sessionId));
 }
+
 function onVisibilityChange() {
   if (!document.hidden) void load();
 }
+
 onMounted(() => {
   document.addEventListener("visibilitychange", onVisibilityChange);
   void load();

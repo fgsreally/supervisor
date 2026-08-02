@@ -103,20 +103,20 @@
           <div class="text-[14px] font-medium provider-form-title">连接配置</div>
 
           <div class="provider-form-field">
-            <div class="provider-form-subtitle text-[13px] md:pt-2">API Type</div>
+            <div class="provider-form-subtitle text-[13px] md:pt-2">Wire Protocol</div>
             <div class="flex flex-col sm:flex-row gap-2">
               <label
-                v-for="opt in PROVIDER_API_TYPES"
+                v-for="opt in WIRE_PROTOCOLS"
                 :key="opt.value"
                 class="flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer text-[13px] transition-colors"
                 :class="
-                  draft.apiType === opt.value
+                  draft.protocol === opt.value
                     ? 'provider-form-radio provider-form-radio--active'
                     : 'provider-form-radio provider-form-radio--idle'
                 "
               >
                 <input
-                  v-model="draft.apiType"
+                  v-model="draft.protocol"
                   type="radio"
                   :value="opt.value"
                   class="accent-[#07c160]"
@@ -198,7 +198,7 @@ import { ChevronLeft, Eye, EyeOff, Upload } from "lucide-vue-next";
 import ProviderModelTable from "../components/ProviderModelTable.vue";
 import ProviderAvatar from "../components/ProviderAvatar.vue";
 import type { UIProvider, UIProviderModel } from "@/types/ui";
-import { PROVIDER_API_TYPES, PROVIDER_PRESETS } from "@/constants/providers";
+import { WIRE_PROTOCOLS, PROVIDER_PRESETS } from "@/constants/providers";
 import { useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import { uploadIcon } from "@/api";
@@ -236,7 +236,7 @@ function emptyDraft(): UIProvider {
     slug: null,
     name: "",
     icon: null,
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: null,
     isEnabled: true,
     models: [],
@@ -319,7 +319,7 @@ function applyProviderPreset(preset: (typeof PROVIDER_PRESETS)[number]) {
     draft.value.id = "";
     draft.value.name = "";
     draft.value.icon = null;
-    draft.value.apiType = "openai-compatible";
+    draft.value.protocol = "chat-completions";
     draft.value.baseUrl = null;
     draft.value.models = [];
     apiKeyInput.value = "";
@@ -330,7 +330,7 @@ function applyProviderPreset(preset: (typeof PROVIDER_PRESETS)[number]) {
     draft.value.id = "";
     draft.value.name = "";
     draft.value.icon = preset.icon;
-    draft.value.apiType = preset.apiType;
+    draft.value.protocol = preset.protocol;
     draft.value.baseUrl = null;
     draft.value.models = preset.models.map((model) => ({ ...model }));
     apiKeyInput.value = "";
@@ -339,7 +339,7 @@ function applyProviderPreset(preset: (typeof PROVIDER_PRESETS)[number]) {
   draft.value.id = preset.id;
   draft.value.name = preset.name;
   draft.value.icon = preset.icon;
-  draft.value.apiType = preset.apiType;
+  draft.value.protocol = preset.protocol;
   draft.value.baseUrl = preset.baseUrl;
   draft.value.models = preset.models.map((model) => ({ ...model }));
   apiKeyInput.value = "";
@@ -394,7 +394,7 @@ async function save() {
         slug,
         name: payload.name,
         icon: payload.icon,
-        apiType: payload.apiType,
+        protocol: payload.protocol,
         baseUrl: payload.baseUrl,
         apiKey: apiKeyInput.value.trim() || null,
         isEnabled: payload.isEnabled,
@@ -407,7 +407,7 @@ async function save() {
         name: payload.name,
         isEnabled: payload.isEnabled,
         icon: payload.icon,
-        apiType: payload.apiType,
+        protocol: payload.protocol,
         baseUrl: payload.baseUrl,
       };
       if (apiKeyInput.value.trim()) patch.apiKey = apiKeyInput.value.trim();

@@ -63,7 +63,7 @@ curl -X POST http://localhost:3030/providers \
   -d '{
     "id": "minimax",
     "name": "Minimax",
-    "apiType": "openai-compatible",
+    "protocol": "chat-completions",
     "baseUrl": "https://api.minimax.chat/v1",
     "apiKey": "sk-..."
   }'

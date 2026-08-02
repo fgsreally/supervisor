@@ -197,8 +197,8 @@ export interface Agent {
   updatedAt: string;
 }
 
-/** Provider API types */
-export type ProviderApiType = "anthropic-messages" | "openai-compatible";
+/** Wire protocol values (vendor-neutral). */
+export type WireProtocol = "messages" | "chat-completions" | "responses";
 
 /** Model definition */
 export interface Model {
@@ -227,7 +227,7 @@ export interface Provider {
   slug: string | null;
   name: string;
   icon: string | null;
-  apiType: string;
+  protocol: WireProtocol | string;
   baseUrl: string | null;
   apiKey: null; // Always null in responses
   isEnabled: boolean;
@@ -564,7 +564,7 @@ export interface UpdateProviderRequest {
   slug?: string | null;
   isEnabled?: boolean;
   name?: string;
-  apiType?: string;
+  protocol?: WireProtocol | string;
   baseUrl?: string | null;
   icon?: string | null;
   apiKey?: string | null;
@@ -574,7 +574,7 @@ export interface CreateProviderRequest {
   slug?: string | null;
   name: string;
   icon?: string | null;
-  apiType: string;
+  protocol: WireProtocol | string;
   baseUrl?: string | null;
   apiKey?: string | null;
   isEnabled?: boolean;
@@ -629,7 +629,7 @@ interface RawProvider {
   slug: string | null;
   name: string;
   icon: string | null;
-  apiType: string;
+  protocol: WireProtocol | string;
   baseUrl: string | null;
   apiKey: null;
   isEnabled: boolean;

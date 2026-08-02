@@ -66,17 +66,17 @@
               <div class="provider-edit-label text-[13px]">API Type</div>
               <div class="flex flex-col sm:flex-row gap-2">
                 <label
-                  v-for="opt in PROVIDER_API_TYPES"
+                  v-for="opt in WIRE_PROTOCOLS"
                   :key="opt.value"
                   class="flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer text-[13px] transition-colors"
                   :class="
-                    draft.apiType === opt.value
+                    draft.protocol === opt.value
                       ? 'provider-edit-radio provider-edit-radio--active'
                       : 'provider-edit-radio provider-edit-radio--idle'
                   "
                 >
                   <input
-                    v-model="draft.apiType"
+                    v-model="draft.protocol"
                     type="radio"
                     :value="opt.value"
                     class="accent-[var(--app-accent)]"
@@ -135,7 +135,7 @@ import { computed, ref, watch } from "vue";
 import { Eye, EyeOff, Upload, X } from "lucide-vue-next";
 import ProviderAvatar from "./ProviderAvatar.vue";
 import { UiButton, UiField } from "./ui";
-import { PROVIDER_API_TYPES } from "@/constants/providers";
+import { WIRE_PROTOCOLS } from "@/constants/providers";
 import { useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import { uploadIcon } from "@/api";
@@ -151,11 +151,11 @@ const iconInput = ref<HTMLInputElement | null>(null);
 const apiKeyInput = ref("");
 const showApiKey = ref(false);
 
-const draft = ref<Pick<UIProvider, "id" | "name" | "icon" | "apiType" | "baseUrl">>({
+const draft = ref<Pick<UIProvider, "id" | "name" | "icon" | "protocol" | "baseUrl">>({
   id: "",
   name: "",
   icon: null,
-  apiType: "openai-compatible",
+  protocol: "chat-completions",
   baseUrl: null,
 });
 
@@ -193,7 +193,7 @@ function applyDraft(p: NonNullable<ReturnType<typeof providerStore.getProviderBy
     id: ui.id,
     name: ui.name,
     icon: ui.icon,
-    apiType: ui.apiType,
+    protocol: ui.protocol,
     baseUrl: ui.baseUrl,
   };
   apiKeyInput.value = "";
@@ -224,7 +224,7 @@ async function save() {
     const patch: import("@/api").UpdateProviderRequest = {
       name: draft.value.name.trim(),
       icon: draft.value.icon,
-      apiType: draft.value.apiType,
+      protocol: draft.value.protocol,
       baseUrl: draft.value.baseUrl,
     };
     if (apiKeyInput.value.trim()) patch.apiKey = apiKeyInput.value.trim();

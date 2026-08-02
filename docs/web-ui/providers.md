@@ -28,7 +28,7 @@ Action：`fetchProviders`、`createProvider`、`updateProvider`、`deleteProvide
 
 ## 后端 Provider 值
 
-Provider 可以配置 apiType（anthropic / openai / deepseek / google-genai / openai-compatible 等），由 DB provider 的 `baseUrl` / `apiType` 覆盖 AI SDK 中硬编码的 model 值。详见 `src/utils/model-utils.ts`。
+Provider 可以配置 `protocol`（`messages` / `chat-completions` / `responses`），由 DB provider 的 `baseUrl` / `protocol` 覆盖 AI SDK 中硬编码的 model 值。详见 `src/utils/model-utils.ts`。
 
 ## 备注
 

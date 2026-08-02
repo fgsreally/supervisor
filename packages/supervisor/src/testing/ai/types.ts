@@ -3,7 +3,7 @@ import type { AgentHarnessEvent, AgentMessage } from "@earendil-works/pi-agent-c
 export interface AiTestModelConfig {
   provider: string;
   name: string;
-  apiType: string;
+  protocol: string;
   baseUrl?: string;
   apiKey?: string;
   model: string;

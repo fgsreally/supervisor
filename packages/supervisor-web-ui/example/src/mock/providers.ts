@@ -1,8 +1,9 @@
-export type ProviderApiType = "anthropic-messages" | "openai-compatible";
+export type WireProtocol = "messages" | "chat-completions" | "responses";
 
-export const PROVIDER_API_TYPES: Array<{ value: ProviderApiType; label: string }> = [
-  { value: "anthropic-messages", label: "Anthropic Messages" },
-  { value: "openai-compatible", label: "OpenAI Compatible" },
+export const WIRE_PROTOCOLS: Array<{ value: WireProtocol; label: string }> = [
+  { value: "messages", label: "Messages" },
+  { value: "chat-completions", label: "Chat Completions" },
+  { value: "responses", label: "Responses" },
 ];
 
 export interface MockProviderModel {
@@ -16,7 +17,7 @@ export interface MockProviderModel {
 export interface MockProvider {
   id: string;
   name: string;
-  apiType: ProviderApiType;
+  protocol: WireProtocol;
   baseUrl: string | null;
   activeModelId: string;
   isEnabled: boolean;
@@ -37,7 +38,7 @@ export const mockProviders: MockProvider[] = [
   {
     id: "anthropic",
     name: "Anthropic",
-    apiType: "anthropic-messages",
+    protocol: "messages",
     baseUrl: null,
     activeModelId: "claude-sonnet-4-6",
     isEnabled: true,
@@ -68,7 +69,7 @@ export const mockProviders: MockProvider[] = [
   {
     id: "openai",
     name: "OpenAI",
-    apiType: "openai-compatible",
+    protocol: "responses",
     baseUrl: null,
     activeModelId: "gpt-4o",
     isEnabled: true,
@@ -106,7 +107,7 @@ export const mockProviders: MockProvider[] = [
   {
     id: "deepseek",
     name: "DeepSeek",
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: "https://api.deepseek.com",
     activeModelId: "deepseek-chat",
     isEnabled: true,
@@ -130,7 +131,7 @@ export const mockProviders: MockProvider[] = [
   {
     id: "minimax",
     name: "MiniMax",
-    apiType: "anthropic-messages",
+    protocol: "messages",
     baseUrl: "https://api.minimax.io/anthropic",
     activeModelId: "MiniMax-M2.7",
     isEnabled: false,
@@ -154,7 +155,7 @@ export const mockProviders: MockProvider[] = [
   {
     id: "openrouter",
     name: "OpenRouter",
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: "https://openrouter.ai/api",
     activeModelId: "anthropic/claude-3.5-sonnet",
     isEnabled: true,
@@ -196,3 +197,6 @@ export {
   updateProviderModel,
   removeProviderModel,
 } from "./store";
+
+/** @deprecated Use WIRE_PROTOCOLS */
+export const PROVIDER_API_TYPES = WIRE_PROTOCOLS;

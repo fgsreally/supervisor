@@ -62,7 +62,7 @@ describe("supervisor: SessionManager", () => {
     const providerId = db.insertProvider({
       slug: "test-provider",
       name: "Test Provider",
-      api_type: "anthropic-messages",
+      protocol: "anthropic-messages",
     });
     db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6" });
     ensurePackagedAgents(db);
@@ -143,7 +143,7 @@ describe("supervisor: SessionManager", () => {
     const providerId = db.insertProvider({
       slug: "disabled-provider",
       name: "Disabled Provider",
-      api_type: "openai-compatible",
+      protocol: "openai-compatible",
       is_enabled: 0,
     });
     const modelId = db.insertModel({ provider_id: providerId, model_id: "test-model" }).id;
@@ -210,7 +210,7 @@ describe("supervisor: SessionManager", () => {
     const providerId = db.insertProvider({
       slug: "test-provider",
       name: "Test Provider",
-      api_type: "anthropic-messages",
+      protocol: "anthropic-messages",
     });
     const modelId = db.insertModel({
       provider_id: providerId,

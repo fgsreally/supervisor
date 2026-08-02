@@ -24,7 +24,7 @@ describe("AgentResource", () => {
     const providerId = db.insertProvider({
       slug: "resource-test",
       name: "Resource Test",
-      api_type: "openai",
+      protocol: "chat-completions",
     });
     const homeDir = join(root, "agent-home");
     const agent = db.insertAgent({
@@ -99,7 +99,7 @@ describe("AgentResource", () => {
     const providerId = db.insertProvider({
       slug: "skill-tool-test",
       name: "Skill Tool Test",
-      api_type: "openai",
+      protocol: "chat-completions",
     });
     const agent = db.insertAgent({
       name: "Skill Tool Agent",
@@ -148,7 +148,7 @@ describe("AgentResource", () => {
     const providerId = db.insertProvider({
       slug: "skill-files-test",
       name: "Skill Files Test",
-      api_type: "openai",
+      protocol: "chat-completions",
     });
     const agent = db.insertAgent({
       name: "Skill Files Agent",

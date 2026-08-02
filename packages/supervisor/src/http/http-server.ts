@@ -7,6 +7,7 @@ import { isAbsolute, normalize, resolve, sep } from "node:path";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { t } from "elysia";
 import { getSupervisorAgentsRoot, isBuiltinAgent } from "../agent/index.js";
+import { normalizeApiProtocol } from "../config/api-protocol.js";
 import type { ExtensionEvent } from "../extension/index.js";
 import type { SessionManager } from "../core/session-manager.js";
 import { getProjectDir, getSessionDir } from "../core/session-files.js";
@@ -76,6 +77,11 @@ import { listSessionTimers, sessionTimersToScheduleDto } from "../core/session-t
 /** Strip apiKey before sending provider to clients. */
 function toProviderResponse(p: Provider): Omit<Provider, "apiKey"> & { apiKey: null } {
   return { ...p, apiKey: null };
+}
+
+function parseProtocolBody(body: Record<string, unknown>): string | undefined {
+  const raw = body.protocol ?? body.apiType;
+  return typeof raw === "string" ? raw : undefined;
 }
 
 function toModelResponse(m: Model) {
@@ -166,7 +172,9 @@ const API_PATH_PREFIXES = [
 /** Auth-exempt UI shell when uiDir is set (PIN lives in the SPA, not HTTP middleware). */
 function isUiStaticPath(pathname: string, uiDir?: string): boolean {
   if (!uiDir) return false;
-  if (API_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+  if (
+    API_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))
+  ) {
     return false;
   }
   // Allow SPA entry, assets, and history-mode deep links without a prior PIN cookie.
@@ -472,12 +480,11 @@ export function createHttpServer(
       });
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      const status =
-        message.includes("not found")
-          ? 404
-          : message.includes("未配置") || message.includes("必须")
-            ? 400
-            : 409;
+      const status = message.includes("not found")
+        ? 404
+        : message.includes("未配置") || message.includes("必须")
+          ? 400
+          : 409;
       return jsonError(c, status, message);
     }
   });
@@ -1084,7 +1091,12 @@ export function createHttpServer(
     const patch: Parameters<typeof manager.updateProvider>[1] = {};
     if (typeof body.name === "string") patch.name = body.name;
     if (typeof body.isEnabled === "boolean") patch.is_enabled = body.isEnabled ? 1 : 0;
-    if (typeof body.apiType === "string") patch.api_type = body.apiType;
+    const protocolInput = parseProtocolBody(body);
+    if (protocolInput !== undefined) {
+      const protocol = normalizeApiProtocol(protocolInput);
+      if (!protocol) return jsonError(c, 400, `invalid protocol: ${protocolInput}`);
+      patch.protocol = protocol;
+    }
     if (typeof body.baseUrl === "string" || body.baseUrl === null) patch.base_url = body.baseUrl;
     if (typeof body.icon === "string" || body.icon === null) patch.icon = body.icon;
     if (typeof body.apiKey === "string" || body.apiKey === null) patch.api_key = body.apiKey;
@@ -1101,13 +1113,18 @@ export function createHttpServer(
       if (!body.name || typeof body.name !== "string") {
         return jsonError(c, 400, "name is required");
       }
-      if (!body.apiType || typeof body.apiType !== "string") {
-        return jsonError(c, 400, "apiType is required");
+      const protocolInput = parseProtocolBody(body);
+      if (!protocolInput) {
+        return jsonError(c, 400, "protocol is required");
+      }
+      const protocol = normalizeApiProtocol(protocolInput);
+      if (!protocol) {
+        return jsonError(c, 400, `invalid protocol: ${protocolInput}`);
       }
       const provider = manager.insertProvider({
         name: body.name,
         icon: typeof body.icon === "string" ? body.icon : null,
-        apiType: body.apiType,
+        protocol,
         baseUrl: body.baseUrl,
         apiKey: body.apiKey,
         isEnabled: body.isEnabled,

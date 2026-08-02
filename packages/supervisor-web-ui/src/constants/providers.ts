@@ -1,16 +1,17 @@
-import type { ProviderApiType } from "@/api";
+import type { WireProtocol } from "@/api";
 import type { UIProviderModel } from "@/types/ui";
 
-export const PROVIDER_API_TYPES: Array<{ value: ProviderApiType; label: string }> = [
-  { value: "anthropic-messages", label: "Anthropic Messages" },
-  { value: "openai-compatible", label: "OpenAI Compatible" },
+export const WIRE_PROTOCOLS: Array<{ value: WireProtocol; label: string }> = [
+  { value: "messages", label: "Messages" },
+  { value: "chat-completions", label: "Chat Completions" },
+  { value: "responses", label: "Responses" },
 ];
 
 export interface ProviderPreset {
   id: string;
   name: string;
   icon: string;
-  apiType: ProviderApiType;
+  protocol: WireProtocol;
   baseUrl: string | null;
   color: string;
   models: UIProviderModel[];
@@ -25,7 +26,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "custom",
     name: "自定义",
     icon: "lucide:sparkles",
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: null,
     color: "#57606a",
     models: [],
@@ -34,7 +35,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "openai",
     name: "OpenAI",
     icon: "/icons/openai.svg",
-    apiType: "openai-compatible",
+    protocol: "responses",
     baseUrl: null,
     color: "#10a37f",
     models: presetModels("gpt-4o", "gpt-4o-mini", "o3", "o4-mini"),
@@ -43,7 +44,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "gemini",
     name: "Gemini",
     icon: "/icons/gemini.svg",
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: null,
     color: "#4285f4",
     models: presetModels("gemini-2.5-pro", "gemini-2.5-flash"),
@@ -52,7 +53,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "anthropic",
     name: "Claude (Anthropic)",
     icon: "/icons/anthropic.svg",
-    apiType: "anthropic-messages",
+    protocol: "messages",
     baseUrl: null,
     color: "#d97757",
     models: presetModels("claude-sonnet-4-6", "claude-opus-4-6", "claude-haiku-4-5-20251001"),
@@ -61,7 +62,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "deepseek",
     name: "DeepSeek",
     icon: "/icons/deepseek.svg",
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: "https://api.deepseek.com",
     color: "#4d6bfe",
     models: presetModels("deepseek-chat", "deepseek-reasoner"),
@@ -70,7 +71,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "minimax",
     name: "MiniMax",
     icon: "/icons/minimax.svg",
-    apiType: "anthropic-messages",
+    protocol: "messages",
     baseUrl: "https://api.minimax.io/anthropic",
     color: "#f04438",
     models: presetModels("MiniMax-M2.7", "MiniMax-M2.5"),
@@ -79,7 +80,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "minimax-cn",
     name: "MiniMax (国内)",
     icon: "/icons/minimax.svg",
-    apiType: "anthropic-messages",
+    protocol: "messages",
     baseUrl: "https://api.minimaxi.com/anthropic",
     color: "#f04438",
     models: presetModels("MiniMax-M2.7", "MiniMax-M2.5"),
@@ -88,7 +89,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "doubao",
     name: "豆包 (ByteDance)",
     icon: "/icons/doubao.svg",
-    apiType: "anthropic-messages",
+    protocol: "messages",
     baseUrl: "https://ark.cn-beijing.volces.com/api/coding",
     color: "#325dff",
     models: presetModels("doubao-pro-32k", "doubao-lite-32k", "doubao-pro-128k"),
@@ -97,7 +98,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "groq",
     name: "Groq",
     icon: "/icons/groq.svg",
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: "https://api.groq.com/openai",
     color: "#f55036",
     models: presetModels("llama-3.3-70b-versatile", "llama-3.1-8b-instant"),
@@ -106,7 +107,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "moonshot",
     name: "Kimi (Moonshot)",
     icon: "/icons/moonshot.svg",
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: "https://api.moonshot.cn/v1",
     color: "#171717",
     models: presetModels("moonshot-v1-128k", "kimi-k2-0711-preview"),
@@ -115,7 +116,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "qwen",
     name: "Qwen",
     icon: "/icons/qwen.svg",
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1",
     color: "#615ced",
     models: presetModels("qwen3-coder-plus", "qwen-plus"),
@@ -124,7 +125,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     id: "zhipu",
     name: "Zhipu AI",
     icon: "/icons/zhipu.svg",
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: "https://open.bigmodel.cn/api/paas/v4",
     color: "#2563eb",
     models: presetModels("glm-4.5", "glm-4.5-air"),
@@ -180,3 +181,6 @@ export function createEmptyProviderModel(id = ""): UIProviderModel {
     supportsVision: false,
   };
 }
+
+/** @deprecated Use WIRE_PROTOCOLS */
+export const PROVIDER_API_TYPES = WIRE_PROTOCOLS;

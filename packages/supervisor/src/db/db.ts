@@ -53,6 +53,7 @@ import {
   type ProjectScriptInput,
   type ProjectScriptKind,
 } from "../core/project-scripts.js";
+import { normalizeApiProtocol, requireApiProtocol } from "../config/api-protocol.js";
 import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.js";
 
 function parseHomeTaskStatus(value: string): HomeTaskStatus {
@@ -198,12 +199,16 @@ function rowToProvider(row: ProviderRow): Provider {
       // Credentials encrypted with an unavailable legacy key must not prevent startup.
     }
   }
+  const protocol = normalizeApiProtocol(row.protocol);
+  if (!protocol) {
+    throw new Error(`Provider ${row.id} has unknown wire protocol: ${row.protocol}`);
+  }
   return {
     id: row.id,
     slug: row.slug,
     name: row.name,
     icon: row.icon,
-    apiType: row.api_type,
+    protocol,
     baseUrl: row.base_url,
     apiKey,
     isEnabled: Boolean(row.is_enabled),
@@ -262,7 +267,7 @@ export class SupervisorDb {
 				slug          TEXT UNIQUE,
 				name          TEXT NOT NULL,
 				icon          TEXT,
-				api_type      TEXT NOT NULL,
+				protocol      TEXT NOT NULL,
 				base_url      TEXT,
 				api_key       TEXT,
 				is_enabled    INTEGER NOT NULL DEFAULT 1,
@@ -428,9 +433,36 @@ export class SupervisorDb {
     this.ensureAgentPermissionDefaults();
     this.ensureMessageFts();
     this.ensureTodoTaskColumns();
+    this.migrateProviderProtocolColumn();
 
     // Initialize default providers from environment variables
     this.initializeDefaultProviders();
+  }
+
+  /** Rename legacy providers.api_type → protocol and normalize stored values. */
+  private migrateProviderProtocolColumn(): void {
+    const exists = this.db
+      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'providers'")
+      .get();
+    if (!exists) return;
+
+    const columns = this.db.pragma("table_info(providers)") as Array<{ name: string }>;
+    const names = new Set(columns.map((column) => column.name));
+    if (names.has("api_type") && !names.has("protocol")) {
+      this.db.exec("ALTER TABLE providers RENAME COLUMN api_type TO protocol");
+    }
+
+    const rows = this.db.prepare("SELECT id, protocol FROM providers").all() as Array<{
+      id: number;
+      protocol: string;
+    }>;
+    const update = this.db.prepare("UPDATE providers SET protocol = ? WHERE id = ?");
+    for (const row of rows) {
+      const normalized = normalizeApiProtocol(row.protocol);
+      if (normalized && normalized !== row.protocol) {
+        update.run(normalized, row.id);
+      }
+    }
   }
 
   /** One-time backfill for native Agents created before permission_rules had safe defaults. */
@@ -1970,7 +2002,7 @@ export class SupervisorDb {
     slug?: string | null;
     name: string;
     icon?: string | null;
-    api_type: string;
+    protocol: string;
     base_url?: string | null;
     api_key?: string | null;
     is_enabled?: number;
@@ -1978,11 +2010,12 @@ export class SupervisorDb {
     const now = Date.now();
     const result = this.db
       .prepare(
-        `INSERT INTO providers (slug, name, icon, api_type, base_url, api_key, is_enabled, created_at, updated_at)
-				 VALUES (@slug, @name, @icon, @api_type, @base_url, @api_key, @is_enabled, @created_at, @updated_at)`,
+        `INSERT INTO providers (slug, name, icon, protocol, base_url, api_key, is_enabled, created_at, updated_at)
+				 VALUES (@slug, @name, @icon, @protocol, @base_url, @api_key, @is_enabled, @created_at, @updated_at)`,
       )
       .run({
         ...row,
+        protocol: requireApiProtocol(row.protocol),
         slug: row.slug ?? null,
         icon: row.icon ?? null,
         base_url: row.base_url ?? null,
@@ -2000,7 +2033,7 @@ export class SupervisorDb {
       slug: string | null;
       name: string;
       icon: string | null;
-      api_type: string;
+      protocol: string;
       base_url: string | null;
       api_key: string | null;
       is_enabled: number;
@@ -2010,7 +2043,13 @@ export class SupervisorDb {
     const params: unknown[] = [Date.now()];
     for (const [k, v] of Object.entries(patch)) {
       sets.push(`${k} = ?`);
-      params.push(k === "api_key" && typeof v === "string" && v ? encryptApiKey(v) : v);
+      if (k === "api_key" && typeof v === "string" && v) {
+        params.push(encryptApiKey(v));
+      } else if (k === "protocol" && typeof v === "string") {
+        params.push(requireApiProtocol(v));
+      } else {
+        params.push(v);
+      }
     }
     params.push(id);
     this.db.prepare(`UPDATE providers SET ${sets.join(", ")} WHERE id = ?`).run(...params);
@@ -2140,7 +2179,8 @@ export class SupervisorDb {
     if (!slug) return;
 
     const name = process.env.SS_PROVIDER_NAME || slug;
-    const apiType = process.env.SS_PROVIDER_API_TYPE || "anthropic-messages";
+    const protocol =
+      process.env.SS_PROVIDER_PROTOCOL || process.env.SS_PROVIDER_API_TYPE || "messages";
     const baseUrl = process.env.SS_PROVIDER_BASE_URL || null;
     const apiKey = process.env.SS_PROVIDER_API_KEY || null;
     const icon = process.env.SS_PROVIDER_ICON || null;
@@ -2148,7 +2188,7 @@ export class SupervisorDb {
     const id = this.insertProvider({
       slug: slug,
       name: name,
-      api_type: apiType,
+      protocol,
       base_url: baseUrl,
       api_key: apiKey,
       icon: icon,

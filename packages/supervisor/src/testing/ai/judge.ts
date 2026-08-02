@@ -7,6 +7,7 @@ import {
 } from "@earendil-works/pi-ai";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { normalizeApiProtocol, toPiApi } from "../../config/api-protocol.js";
 import { readAiJudgeConfig } from "./config.js";
 import type {
   AiComparisonInput,
@@ -18,12 +19,14 @@ import type {
 } from "./types.js";
 
 function configuredModel(config: AiTestModelConfig): Model<Api> {
-  const base = getModel(config.apiType as KnownProvider, config.model as never);
-  if (!base) throw new Error(`AI judge model not found: ${config.apiType}/${config.model}`);
+  const base = getModel(config.provider as KnownProvider, config.model as never);
+  if (!base) throw new Error(`AI judge model not found: ${config.provider}/${config.model}`);
+  const protocol = normalizeApiProtocol(config.protocol);
+  const api = protocol ? toPiApi(protocol) : base.api;
   return {
     ...base,
     ...(config.baseUrl ? { baseUrl: config.baseUrl } : {}),
-    ...(config.apiType !== base.api ? { api: config.apiType as never } : {}),
+    ...(api !== base.api ? { api } : {}),
   };
 }
 

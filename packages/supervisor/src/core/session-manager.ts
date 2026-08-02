@@ -2778,7 +2778,7 @@ export class SessionManager {
     slug?: string | null;
     name: string;
     icon?: string | null;
-    apiType: string;
+    protocol: string;
     baseUrl?: string | null;
     apiKey?: string | null;
     isEnabled?: boolean;
@@ -2787,7 +2787,7 @@ export class SessionManager {
       slug: options.slug ?? null,
       name: options.name,
       icon: options.icon ?? null,
-      api_type: options.apiType,
+      protocol: options.protocol,
       base_url: options.baseUrl ?? null,
       api_key: options.apiKey ?? null,
       is_enabled: options.isEnabled === false ? 0 : 1,

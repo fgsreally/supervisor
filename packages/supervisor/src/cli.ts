@@ -22,7 +22,16 @@ import { printMobileAccessBanner } from "./utils/mobile-access.js";
 import { resolveUiDistDir, warnMissingUiDist } from "./utils/ui-dist.js";
 import { resolveWebPin } from "./utils/web-password.js";
 
-const KNOWN_CLI_OPTIONS = new Set(["port", "p", "cwd", "password", "tunnel", "ui-dir", "h", "help"]);
+const KNOWN_CLI_OPTIONS = new Set([
+  "port",
+  "p",
+  "cwd",
+  "password",
+  "tunnel",
+  "ui-dir",
+  "h",
+  "help",
+]);
 
 function _parseExtensionFlags(argv: string[]): Record<string, string | boolean | undefined> {
   const flags: Record<string, string | boolean | undefined> = {};
@@ -134,9 +143,7 @@ async function run() {
           const tunnel = await startQuickTunnel(port);
           tunnelUrl = tunnel.url;
         } catch (error) {
-          console.error(
-            `[tunnel] ${error instanceof Error ? error.message : String(error)}`,
-          );
+          console.error(`[tunnel] ${error instanceof Error ? error.message : String(error)}`);
           console.error(
             "[tunnel] Install tip: cloudflared is auto-downloaded via the npm package; check network access or install manually from https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/downloads/",
           );
@@ -434,7 +441,7 @@ async function run() {
         let id: string;
         let name: string;
         let icon: string | null;
-        let apiType: string;
+        let protocol: string;
         let baseUrl: string | null;
         let defaultModels: string[];
 
@@ -454,11 +461,12 @@ async function run() {
             },
             {
               type: "select",
-              name: "apiType",
-              message: "API standard",
+              name: "protocol",
+              message: "Wire protocol",
               choices: [
-                { title: "anthropic-messages  (Claude API)", value: "anthropic-messages" },
-                { title: "openai-compatible  (OpenAI / compatible)", value: "openai-compatible" },
+                { title: "messages", value: "messages" },
+                { title: "chat-completions", value: "chat-completions" },
+                { title: "responses", value: "responses" },
               ],
             },
             {
@@ -467,11 +475,11 @@ async function run() {
               message: "Base URL (optional)",
             },
           ]);
-          if (!answers.id || !answers.apiType) throw new Error("Cancelled.");
+          if (!answers.id || !answers.protocol) throw new Error("Cancelled.");
           id = answers.id.trim();
           name = answers.name.trim();
           icon = null;
-          apiType = answers.apiType;
+          protocol = answers.protocol;
           baseUrl = answers.baseUrl?.trim() || null;
           defaultModels = [];
         } else {
@@ -479,7 +487,7 @@ async function run() {
           id = builtin.id;
           name = builtin.name;
           icon = builtin.icon;
-          apiType = builtin.apiType;
+          protocol = builtin.protocol;
           baseUrl = builtin.baseUrl;
           defaultModels = builtin.defaultModels;
         }
@@ -540,7 +548,7 @@ async function run() {
           id,
           name,
           icon,
-          api_type: apiType,
+          protocol,
           base_url: baseUrl,
           api_key: apiKey?.trim() || null,
           is_enabled: 1,

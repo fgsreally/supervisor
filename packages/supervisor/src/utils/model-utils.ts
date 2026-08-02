@@ -1,18 +1,19 @@
 import { getModel, type Api, type KnownProvider, type Model } from "@earendil-works/pi-ai";
+import { normalizeApiProtocol, toPiApi } from "../config/api-protocol.js";
 
 /**
  * Minimal provider shape needed for model override resolution.
  */
 interface ProviderLike {
+  slug?: string | null;
   baseUrl: string | null;
-  apiType: string;
+  protocol: string;
 }
 
 /**
- * Resolve a model from the pi-ai built-in registry, then apply overrides from
- * the DB provider's baseUrl and apiType. This lets CLI-configured providers
- * (e.g. Minimax at api.minimax.chat/v1 with openai-responses API) take effect
- * even when pi-ai's hardcoded registry specifies different values.
+ * Resolve a model from the pi-ai built-in registry, then apply the provider's
+ * endpoint and vendor-neutral wire protocol. The provider slug selects a model
+ * registry; protocol selects only the HTTP wire format.
  *
  * Returns undefined when neither pi-ai nor the DB has a match.
  */
@@ -24,19 +25,24 @@ export function resolveModelWithProviderOverrides(
   const providerConfig = db.getProvider(providerId);
   if (!providerConfig) return undefined;
 
-  const model = getModel(providerConfig.apiType as KnownProvider, modelId as never);
+  const protocol = normalizeApiProtocol(providerConfig.protocol);
+  if (!protocol) return undefined;
+
+  const fallbackProvider = protocol === "messages" ? "anthropic" : "openai";
+  const model =
+    (providerConfig.slug
+      ? getModel(providerConfig.slug as KnownProvider, modelId as never)
+      : undefined) ?? getModel(fallbackProvider, modelId as never);
   if (!model) return undefined;
 
-  const needsOverride =
-    providerConfig.baseUrl != null ||
-    (providerConfig.apiType != null && providerConfig.apiType !== model.api);
+  const api = toPiApi(protocol);
+
+  const needsOverride = providerConfig.baseUrl != null || api !== model.api;
   if (!needsOverride) return model;
 
   return {
     ...model,
     ...(providerConfig.baseUrl != null ? { baseUrl: providerConfig.baseUrl } : {}),
-    ...(providerConfig.apiType != null && providerConfig.apiType !== model.api
-      ? { api: providerConfig.apiType as never }
-      : {}),
+    ...(api !== model.api ? { api } : {}),
   };
 }

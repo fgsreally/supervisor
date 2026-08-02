@@ -87,7 +87,7 @@ export async function createAiTestEnvironment(
   const providerId = db.insertProvider({
     slug: subject.provider,
     name: subject.name,
-    api_type: subject.apiType,
+    protocol: subject.protocol,
     base_url: subject.baseUrl,
     api_key: subject.apiKey,
   });

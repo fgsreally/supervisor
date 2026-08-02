@@ -76,7 +76,7 @@ const filtered = computed(() => {
     (p) =>
       p.name.toLowerCase().includes(q) ||
       p.id.toLowerCase().includes(q) ||
-      p.apiType.toLowerCase().includes(q) ||
+      p.protocol.toLowerCase().includes(q) ||
       p.models.some((m) => m.id.toLowerCase().includes(q)),
   );
 });

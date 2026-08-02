@@ -54,8 +54,8 @@
         <div class="text-[14px] font-medium provider-detail-title">配置</div>
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[13px]">
           <div>
-            <div class="provider-detail-subtitle mb-1">API Type</div>
-            <div class="provider-detail-title font-mono">{{ apiTypeLabel }}</div>
+            <div class="provider-detail-subtitle mb-1">Wire Protocol</div>
+            <div class="provider-detail-title font-mono">{{ protocolLabel }}</div>
           </div>
           <div>
             <div class="provider-detail-subtitle mb-1">Base URL</div>
@@ -120,7 +120,7 @@ import { ChevronLeft, ChevronRight } from "lucide-vue-next";
 import ProviderModelTable from "../components/ProviderModelTable.vue";
 import type { MockProvider } from "../mock/providers";
 import {
-  PROVIDER_API_TYPES,
+  WIRE_PROTOCOLS,
   getAgentsUsingProvider,
   setProviderActiveModel,
 } from "../mock/providers";
@@ -142,10 +142,10 @@ const linkedAgents = computed(() => getAgentsUsingProvider(props.provider.id));
 
 const avatarClass = computed(() => providerAvatarClass(props.provider.id));
 
-const apiTypeLabel = computed(
+const protocolLabel = computed(
   () =>
-    PROVIDER_API_TYPES.find((t) => t.value === props.provider.apiType)?.label ??
-    props.provider.apiType,
+    WIRE_PROTOCOLS.find((t) => t.value === props.provider.protocol)?.label ??
+    props.provider.protocol,
 );
 </script>
 

@@ -38,7 +38,7 @@ describe("supervisor: Web UI API compatibility", () => {
     it("POST /providers creates a new provider", async () => {
       const res = await req("POST", "/providers", {
         name: "Test Provider",
-        apiType: "anthropic-messages",
+        protocol: "messages",
         baseUrl: "https://api.test.com",
       });
       expect(res.status).toBe(201);
@@ -46,14 +46,25 @@ describe("supervisor: Web UI API compatibility", () => {
       expect(body.id).toBeDefined();
       expect(body.name).toBe("Test Provider");
       expect(body.apiKey).toBeNull();
+      expect((body as { protocol: string }).protocol).toBe("messages");
+    });
+
+    it("POST /providers accepts legacy apiType alias", async () => {
+      const res = await req("POST", "/providers", {
+        name: "Legacy Provider",
+        apiType: "anthropic-messages",
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { protocol: string };
+      expect(body.protocol).toBe("messages");
     });
 
     it("POST /providers requires name", async () => {
-      const res = await req("POST", "/providers", { apiType: "anthropic-messages" });
+      const res = await req("POST", "/providers", { protocol: "messages" });
       expect(res.status).toBe(400);
     });
 
-    it("POST /providers requires apiType", async () => {
+    it("POST /providers requires protocol", async () => {
       const res = await req("POST", "/providers", { name: "Test" });
       expect(res.status).toBe(400);
     });
@@ -61,7 +72,7 @@ describe("supervisor: Web UI API compatibility", () => {
     it("DELETE /providers/:id removes provider", async () => {
       const createRes = await req("POST", "/providers", {
         name: "To Delete",
-        apiType: "anthropic-messages",
+        protocol: "messages",
       });
       const { id } = (await createRes.json()) as { id: string };
 
@@ -82,7 +93,7 @@ describe("supervisor: Web UI API compatibility", () => {
     it("GET /providers lists providers with null apiKey", async () => {
       await req("POST", "/providers", {
         name: "Provider 1",
-        apiType: "anthropic-messages",
+        protocol: "messages",
         apiKey: "secret-key",
       });
 
@@ -96,7 +107,7 @@ describe("supervisor: Web UI API compatibility", () => {
     it("PATCH /providers/:id updates the encrypted API key without exposing it", async () => {
       const createRes = await req("POST", "/providers", {
         name: "Provider with key",
-        apiType: "openai-compatible",
+        protocol: "chat-completions",
       });
       const { id } = (await createRes.json()) as { id: string };
 
@@ -112,7 +123,7 @@ describe("supervisor: Web UI API compatibility", () => {
       const providerId = db.insertProvider({
         slug: "builtin-test",
         name: "Builtin Test",
-        api_type: "anthropic-messages",
+        protocol: "anthropic-messages",
       });
       const agent = db.insertAgent({
         name: "Builtin",
@@ -149,7 +160,7 @@ describe("supervisor: Web UI API compatibility", () => {
       // First create a provider
       const providerRes = await req("POST", "/providers", {
         name: "Test Provider",
-        apiType: "anthropic-messages",
+        protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
 
@@ -199,7 +210,7 @@ describe("supervisor: Web UI API compatibility", () => {
       // Create provider and agent
       const providerRes = await req("POST", "/providers", {
         name: "Test Provider",
-        apiType: "anthropic-messages",
+        protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
 
@@ -225,7 +236,7 @@ describe("supervisor: Web UI API compatibility", () => {
     it("GET /agents/:id/system-md returns system prompt", async () => {
       const providerRes = await req("POST", "/providers", {
         name: "Test Provider",
-        apiType: "anthropic-messages",
+        protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
 
@@ -245,7 +256,7 @@ describe("supervisor: Web UI API compatibility", () => {
     it("PUT /agents/:id/system-md updates system prompt", async () => {
       const providerRes = await req("POST", "/providers", {
         name: "Test Provider",
-        apiType: "anthropic-messages",
+        protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
 
@@ -306,7 +317,7 @@ describe("supervisor: Web UI API compatibility", () => {
     it("POST /providers/:id/models creates model", async () => {
       const providerRes = await req("POST", "/providers", {
         name: "Test Provider",
-        apiType: "anthropic-messages",
+        protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
 
@@ -325,7 +336,7 @@ describe("supervisor: Web UI API compatibility", () => {
     it("PATCH /providers/:id/models/:modelId updates model", async () => {
       const providerRes = await req("POST", "/providers", {
         name: "Test Provider",
-        apiType: "anthropic-messages",
+        protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
 
@@ -347,7 +358,7 @@ describe("supervisor: Web UI API compatibility", () => {
     it("DELETE /providers/:id/models/:modelId removes model", async () => {
       const providerRes = await req("POST", "/providers", {
         name: "Test Provider",
-        apiType: "anthropic-messages",
+        protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
 
@@ -364,7 +375,7 @@ describe("supervisor: Web UI API compatibility", () => {
     it("DELETE /providers/:id/models/:modelId returns 409 when agent uses model", async () => {
       const providerRes = await req("POST", "/providers", {
         name: "Test Provider",
-        apiType: "anthropic-messages",
+        protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
 

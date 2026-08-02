@@ -171,7 +171,7 @@ describe("Provider Store", () => {
     const store = useProviderStore();
     store.providers = [];
 
-    await store.createProvider({ id: "p2", name: "New", apiType: "anthropic-messages" } as any);
+    await store.createProvider({ id: "p2", name: "New", protocol: "messages" } as any);
 
     expect(api.createProvider).toHaveBeenCalled();
     expect(store.providers).toHaveLength(1);

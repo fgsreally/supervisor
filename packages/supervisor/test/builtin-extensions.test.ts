@@ -23,7 +23,7 @@ beforeEach(() => {
   const providerId = db.insertProvider({
     slug: "test",
     name: "Test",
-    api_type: "anthropic-messages",
+    protocol: "anthropic-messages",
   });
   db.insertModel({ provider_id: providerId, model_id: "m1", name: "M1" });
 });

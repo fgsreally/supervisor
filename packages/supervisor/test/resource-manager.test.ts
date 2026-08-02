@@ -43,7 +43,7 @@ describe("ResourceManager", () => {
     const providerId = db.insertProvider({
       slug: "test",
       name: "Test",
-      api_type: "openai",
+      protocol: "chat-completions",
     });
     const agent = db.insertAgent({
       name: "A",
@@ -115,7 +115,7 @@ describe("ResourceManager", () => {
     const providerId = db.insertProvider({
       slug: "test2",
       name: "Test",
-      api_type: "openai",
+      protocol: "chat-completions",
     });
     const agent = db.insertAgent({
       name: "B",
@@ -133,7 +133,7 @@ describe("ResourceManager", () => {
     const providerId = db.insertProvider({
       slug: "extension-test",
       name: "Extension Test",
-      api_type: "openai",
+      protocol: "chat-completions",
     });
     const agent = db.insertAgent({ name: "Agent", provider_id: providerId });
     const extension = db.upsertResource({

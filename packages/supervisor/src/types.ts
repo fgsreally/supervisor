@@ -1,6 +1,7 @@
 import type { AgentTool, SessionMetadata, SessionTreeEntry } from "@earendil-works/pi-agent-core";
 import type { SessionBranchType } from "./core/session-history.js";
 import type { AgentPermissionRules } from "./core/agent-permissions.js";
+import type { ApiProtocol } from "./config/api-protocol.js";
 
 /** Runtime shape of SQLiteSessionStorage.getMetadata() in supervisor. */
 export interface SupervisorHarnessMetadata extends SessionMetadata {
@@ -349,7 +350,7 @@ export interface ProviderRow {
   slug: string | null;
   name: string;
   icon: string | null;
-  api_type: string;
+  protocol: string;
   base_url: string | null;
   api_key: string | null;
   is_enabled: number;
@@ -362,7 +363,8 @@ export interface Provider {
   slug: string | null;
   name: string;
   icon: string | null;
-  apiType: string;
+  /** Vendor-neutral wire protocol (messages / chat-completions / responses). */
+  protocol: ApiProtocol;
   baseUrl: string | null;
   apiKey: string | null;
   isEnabled: boolean;

@@ -9,6 +9,20 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import Database from "better-sqlite3";
 
+const LEGACY_PROTOCOLS = {
+  "anthropic-messages": "messages",
+  "openai-compatible": "chat-completions",
+  "openai-completions": "chat-completions",
+  "openai-responses": "responses",
+};
+
+function normalizeProtocol(value) {
+  if (value === "messages" || value === "chat-completions" || value === "responses") {
+    return value;
+  }
+  return LEGACY_PROTOCOLS[value] ?? value;
+}
+
 function encryptApiKey(apiKey) {
   const salt = process.env.SS_ENCRYPTION_SALT || "ss-default-salt";
   const keyFromEnv = process.env.SS_API_KEY_ENCRYPTION_KEY;
@@ -77,7 +91,7 @@ function createSchema(db) {
       slug          TEXT UNIQUE,
       name          TEXT NOT NULL,
       icon          TEXT,
-      api_type      TEXT NOT NULL,
+      protocol      TEXT NOT NULL,
       base_url      TEXT,
       api_key       TEXT,
       is_enabled    INTEGER NOT NULL DEFAULT 1,
@@ -320,15 +334,15 @@ function migrate() {
   const sessionMap = new Map();
 
   const insertProvider = next.prepare(`
-    INSERT INTO providers (slug, name, icon, api_type, base_url, api_key, is_enabled, created_at, updated_at)
-    VALUES (@slug, @name, @icon, @api_type, @base_url, @api_key, @is_enabled, @created_at, @updated_at)
+    INSERT INTO providers (slug, name, icon, protocol, base_url, api_key, is_enabled, created_at, updated_at)
+    VALUES (@slug, @name, @icon, @protocol, @base_url, @api_key, @is_enabled, @created_at, @updated_at)
   `);
   for (const row of old.prepare("SELECT * FROM providers").all()) {
     const result = insertProvider.run({
       slug: row.slug ?? row.id,
       name: row.name,
       icon: row.icon ?? null,
-      api_type: row.api_type,
+      protocol: normalizeProtocol(row.protocol ?? row.api_type),
       base_url: row.base_url ?? null,
       api_key: maybeEncrypt(row.api_key),
       is_enabled: row.is_enabled ?? 1,

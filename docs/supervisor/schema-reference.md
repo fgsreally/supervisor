@@ -26,7 +26,7 @@
 ### `providers`
 
 `id INTEGER PK`、`slug TEXT UNIQUE`、`name TEXT NOT NULL`、`icon TEXT`、
-`api_type TEXT NOT NULL`、`base_url TEXT`、`api_key TEXT`、
+`protocol TEXT NOT NULL`、`base_url TEXT`、`api_key TEXT`、
 `is_enabled INTEGER NOT NULL DEFAULT 1`、`created_at`、`updated_at`。
 
 ### `models`

@@ -114,7 +114,7 @@ describe("supervisor: HTTP server", () => {
     const providerId = db.insertProvider({
       slug: "test-provider",
       name: "Test Provider",
-      api_type: "anthropic-messages",
+      protocol: "anthropic-messages",
     });
     db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6" });
     ensurePackagedAgents(db);

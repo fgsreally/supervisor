@@ -190,11 +190,24 @@ describe("supervisor: SupervisorDb", () => {
     expect(() => db.updateMeta(99999, { x: 1 })).toThrow("not found");
   });
 
+  it("normalizes legacy protocol on insert and read", () => {
+    const providerId = db.insertProvider({
+      slug: "legacy",
+      name: "Legacy",
+      protocol: "anthropic-messages",
+    });
+    expect(db.getProvider(providerId)?.protocol).toBe("messages");
+    const row = db.db.prepare("SELECT protocol FROM providers WHERE id = ?").get(providerId) as {
+      protocol: string;
+    };
+    expect(row.protocol).toBe("messages");
+  });
+
   it("agents.meta defaults to {} and merges via updateAgentMeta", () => {
     const providerId = db.insertProvider({
       slug: "anthropic",
       name: "Anthropic",
-      api_type: "anthropic-messages",
+      protocol: "anthropic-messages",
     });
     const model = db.insertModel({ provider_id: providerId, model_id: "test-model" });
     const agent = db.insertAgent({
@@ -221,7 +234,7 @@ describe("supervisor: SupervisorDb", () => {
     const providerId = db.insertProvider({
       slug: "openai",
       name: "OpenAI",
-      api_type: "openai-compatible",
+      protocol: "openai-compatible",
     });
     const model = db.insertModel({
       provider_id: providerId,
@@ -237,7 +250,7 @@ describe("supervisor: SupervisorDb", () => {
     const providerId = db.insertProvider({
       slug: "anthropic",
       name: "Anthropic",
-      api_type: "anthropic-messages",
+      protocol: "anthropic-messages",
     });
     const model = db.insertModel({ provider_id: providerId, model_id: "claude-sonnet-4-6" });
     db.insertAgent({

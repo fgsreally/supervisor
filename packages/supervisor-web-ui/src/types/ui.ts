@@ -1,4 +1,4 @@
-import type { ProviderApiType, SessionCreationMethod, SessionStatus } from "@/api";
+import type { WireProtocol, SessionCreationMethod, SessionStatus } from "@/api";
 import type { SessionBranchType } from "@/utils/session-branch";
 import type { SessionAvatarValue } from "@/utils/session-avatar";
 
@@ -50,7 +50,7 @@ export interface UIProvider {
   slug: string | null;
   name: string;
   icon: string | null;
-  apiType: ProviderApiType;
+  protocol: WireProtocol;
   baseUrl: string | null;
   isEnabled: boolean;
   models: UIProviderModel[];

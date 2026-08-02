@@ -64,7 +64,7 @@ export function createMockProvider(overrides: Partial<Provider> = {}): Provider 
     slug: null,
     name: "Test Provider",
     icon: null,
-    apiType: "anthropic-messages",
+    protocol: "messages",
     baseUrl: null,
     apiKey: null,
     isEnabled: true,

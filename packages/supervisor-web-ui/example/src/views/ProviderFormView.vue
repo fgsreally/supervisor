@@ -84,20 +84,20 @@
           <div class="text-[14px] font-medium provider-form-title">连接配置</div>
 
           <div>
-            <div class="provider-form-subtitle text-[13px] mb-2">API Type</div>
+            <div class="provider-form-subtitle text-[13px] mb-2">Wire Protocol</div>
             <div class="flex flex-col sm:flex-row gap-2">
               <label
-                v-for="opt in PROVIDER_API_TYPES"
+                v-for="opt in WIRE_PROTOCOLS"
                 :key="opt.value"
                 class="flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer text-[13px] transition-colors"
                 :class="
-                  draft.apiType === opt.value
+                  draft.protocol === opt.value
                     ? 'provider-form-radio provider-form-radio--active'
                     : 'provider-form-radio provider-form-radio--idle'
                 "
               >
                 <input
-                  v-model="draft.apiType"
+                  v-model="draft.protocol"
                   type="radio"
                   :value="opt.value"
                   class="accent-[#07c160]"
@@ -137,7 +137,7 @@ import { ChevronLeft } from "lucide-vue-next";
 import ProviderModelTable from "../components/ProviderModelTable.vue";
 import type { MockProvider, MockProviderModel } from "../mock/providers";
 import {
-  PROVIDER_API_TYPES,
+  WIRE_PROTOCOLS,
   addProvider,
   getProviderById,
   updateProvider,
@@ -166,7 +166,7 @@ function emptyDraft(): MockProvider {
   return {
     id: "",
     name: "",
-    apiType: "openai-compatible",
+    protocol: "chat-completions",
     baseUrl: null,
     activeModelId: "",
     isEnabled: true,

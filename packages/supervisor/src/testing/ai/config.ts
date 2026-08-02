@@ -1,4 +1,5 @@
 import { getEnvApiKey } from "@earendil-works/pi-ai";
+import { normalizeApiProtocol } from "../../config/api-protocol.js";
 import type { AiTestModelConfig } from "./types.js";
 
 function positiveInt(value: string | undefined, fallback: number): number {
@@ -6,16 +7,24 @@ function positiveInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function readProtocol(prefix: "AI_TEST_SUBJECT" | "AI_TEST_JUDGE", override?: string): string {
+  const raw =
+    override ??
+    process.env[`${prefix}_PROTOCOL`] ??
+    process.env[`${prefix}_API_TYPE`] ??
+    "messages";
+  return normalizeApiProtocol(raw) ?? "messages";
+}
+
 function readModelConfig(
   prefix: "AI_TEST_SUBJECT" | "AI_TEST_JUDGE",
   overrides: Partial<AiTestModelConfig> = {},
 ): AiTestModelConfig {
   const provider = overrides.provider ?? process.env[`${prefix}_PROVIDER`] ?? "minimax";
-  const apiType = overrides.apiType ?? process.env[`${prefix}_API_TYPE`] ?? "anthropic-messages";
   return {
     provider,
     name: overrides.name ?? process.env[`${prefix}_NAME`] ?? provider,
-    apiType,
+    protocol: readProtocol(prefix, overrides.protocol),
     baseUrl: overrides.baseUrl ?? process.env[`${prefix}_BASE_URL`] ?? undefined,
     apiKey:
       overrides.apiKey ??

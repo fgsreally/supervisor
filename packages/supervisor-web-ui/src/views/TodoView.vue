@@ -147,14 +147,9 @@
               </linearGradient>
             </defs>
             <path
-              class="run-flow-gesture__shadow"
-              d="M568 24 C558 80 532 122 480 158 C397 214 294 218 176 224 L205 187 L64 238 L202 292 L174 249 C306 243 421 220 502 168 C553 134 571 84 568 24 Z"
-            />
-            <path
               class="run-flow-gesture__ribbon"
-              d="M568 24 C558 80 532 122 480 158 C397 214 294 218 176 224 L205 187 L64 238 L202 292 L174 249 C306 243 421 220 502 168 C553 134 571 84 568 24 Z"
+              d="M548 54 C531 103 493 139 438 166 C370 198 292 205 211 210 L235 180 L112 219 L229 263 L207 231 C301 226 389 212 458 179 C512 153 548 112 548 54 Z"
             />
-            <circle class="run-flow-gesture__origin" cx="568" cy="24" r="5" />
           </svg>
           <TaskCard
             v-for="task in visibleTasks"
@@ -572,25 +567,17 @@ button svg,
 .run-flow-gesture {
   position: absolute;
   z-index: 6;
-  left: 0;
-  top: 10px;
-  width: min(82%, 700px);
-  height: 300px;
+  left: 12%;
+  top: 8px;
+  width: min(58%, 510px);
+  height: 245px;
   overflow: visible;
   pointer-events: none;
   filter: drop-shadow(0 8px 10px rgb(255 112 26 / 18%));
 }
-.run-flow-gesture__shadow {
-  fill: rgb(112 47 8 / 24%);
-  transform: translate(3px, 6px);
-}
 .run-flow-gesture__ribbon {
   fill: url(#todo-flow-gradient);
   animation: run-flow-draw 0.46s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-.run-flow-gesture__origin {
-  fill: #ffd166;
-  filter: drop-shadow(0 0 5px rgb(255 183 61 / 70%));
 }
 @keyframes run-flow-draw {
   from {

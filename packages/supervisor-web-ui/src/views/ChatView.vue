@@ -860,10 +860,11 @@ watch(
 );
 
 watch(
-  () => props.session.id,
-  (id) => {
+  () => [props.session.id, isExternalAgent.value] as const,
+  ([id, external]) => {
     showThinking.value = getShowThinking(id);
     sessionUsage.value = null;
+    if (external) return;
     void api
       .getSessionUsage(id)
       .then((usage) => {

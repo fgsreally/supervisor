@@ -156,8 +156,7 @@ function projectColor(id: string) {
 function pointStyle(event: SessionTimelineEvent) {
   const stacked = stackIndex(event);
   return {
-    left: `${eventX(event)}%`,
-    top: `${18 + Math.min(stacked, 5) * 4}px`,
+    left: `calc(${eventX(event)}% + ${Math.min(stacked, 7) * 6}px)`,
     zIndex: 3 + stacked,
     background: sessionColor(event.sessionId),
   };
@@ -339,7 +338,6 @@ header p {
   border: 4px solid #9aa0aa;
   border-radius: 50%;
   transform: translateX(-50%);
-  box-shadow: 0 0 0 2px var(--app-settings-card);
   transition: transform 0.15s ease;
 }
 .point:hover,

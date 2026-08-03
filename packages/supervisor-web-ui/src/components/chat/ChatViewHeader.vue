@@ -33,7 +33,7 @@
     <div class="chat-header-status ml-4 text-xs" :class="statusBadgeClass">
       {{ statusLabel }}
     </div>
-    <div class="chat-header-cost" title="当前 Session 累计模型费用">
+    <div v-if="!externalAgent" class="chat-header-cost" title="当前 Session 累计模型费用">
       {{ usage ? formatCost(usage.cost.total) : "$0.00" }}
     </div>
     <div class="ml-auto flex items-center gap-1">

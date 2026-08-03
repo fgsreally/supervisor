@@ -66,7 +66,7 @@
               <p v-if="gitBranch" class="mt-4 text-[12px] chat-session-menu__muted break-all">
                 分支：<code class="text-[11px]">{{ gitBranch }}</code>
               </p>
-              <div class="session-usage">
+              <div v-if="!externalAgent" class="session-usage">
                 <div>
                   <span>当前 Session 费用</span
                   ><strong>{{ formatCost(usage?.cost.total ?? 0) }}</strong>

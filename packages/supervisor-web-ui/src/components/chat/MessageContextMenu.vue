@@ -18,14 +18,16 @@
             <span>复制</span>
           </button>
 
-          <div v-if="usage" class="message-context-menu__usage">
+          <div v-if="showUsage" class="message-context-menu__usage">
             <div>
               <Coins class="message-context-menu__icon" /><strong>本条用量</strong
-              ><b>{{ formatCost(usage.cost.total) }}</b>
+              ><b>{{ usage ? formatCost(usage.cost.total) : "暂无记录" }}</b>
             </div>
-            <span>输入 {{ formatTokens(usage.input) }}</span>
-            <span>输出 {{ formatTokens(usage.output) }}</span>
-            <span>缓存 {{ formatTokens(usage.cacheRead + usage.cacheWrite) }}</span>
+            <template v-if="usage">
+              <span>输入 {{ formatTokens(usage.input) }}</span>
+              <span>输出 {{ formatTokens(usage.output) }}</span>
+              <span>缓存 {{ formatTokens(usage.cacheRead + usage.cacheWrite) }}</span>
+            </template>
           </div>
 
           <button
@@ -64,9 +66,9 @@
         @click.self="emit('close')"
       >
         <section class="message-sheet">
-          <div v-if="usage" class="message-sheet__usage">
-            <strong>本条用量 {{ formatCost(usage.cost.total) }}</strong>
-            <span>{{ formatTokens(usage.totalTokens) }} tokens</span>
+          <div v-if="showUsage" class="message-sheet__usage">
+            <strong>本条用量 {{ usage ? formatCost(usage.cost.total) : "暂无记录" }}</strong>
+            <span v-if="usage">{{ formatTokens(usage.totalTokens) }} tokens</span>
           </div>
           <button v-if="canCopy" type="button" @click="emit('copy')">复制</button>
           <button v-if="canRewind" type="button" @click="emit('rewind')">回到这里</button>
@@ -93,6 +95,7 @@ const props = withDefaults(
     canFork?: boolean;
     canCopy?: boolean;
     usage?: MessageUsage | null;
+    showUsage?: boolean;
   }>(),
   {
     x: 0,
@@ -100,6 +103,7 @@ const props = withDefaults(
     canRewind: false,
     canFork: true,
     canCopy: false,
+    showUsage: false,
   },
 );
 

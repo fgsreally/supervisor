@@ -195,6 +195,9 @@ function formatTime(value: string) {
 <style scoped>
 .timeline {
   min-width: 0;
+  position: relative;
+  z-index: 1;
+  overflow: visible;
   border: 1px solid var(--app-border-subtle);
   border-radius: 12px;
   background: var(--app-settings-card);
@@ -243,8 +246,7 @@ header p {
   border-radius: 50%;
 }
 .scroll {
-  overflow-x: auto;
-  overflow-y: visible;
+  overflow: visible;
 }
 .canvas {
   display: grid;
@@ -333,17 +335,17 @@ header p {
   position: absolute;
   z-index: 2;
   top: 19px;
-  width: 15px;
-  height: 15px;
-  border: 4px solid #9aa0aa;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #9aa0aa;
   border-radius: 50%;
   transform: translateX(-50%);
   transition: transform 0.15s ease;
 }
 .point:hover,
 .point:focus-visible {
-  z-index: 10;
-  transform: translateX(-50%) scale(1.3);
+  z-index: 30;
+  transform: translateX(-50%) scale(1.18);
   outline: none;
 }
 .point[data-status="running"] {
@@ -363,6 +365,7 @@ header p {
   position: absolute;
   left: 8px;
   bottom: 22px;
+  z-index: 40;
   display: none;
   width: 230px;
   padding: 11px;

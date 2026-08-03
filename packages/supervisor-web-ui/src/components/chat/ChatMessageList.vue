@@ -97,6 +97,7 @@
       :can-fork="contextMenu.canFork"
       :can-copy="contextMenu.canCopy"
       :usage="contextMenu.usage"
+      :show-usage="contextMenu.showUsage"
       @close="closeContextMenu"
       @rewind="onContextRewind"
       @fork="onContextFork"
@@ -193,6 +194,7 @@ const contextMenu = reactive({
   canFork: false,
   canCopy: false,
   usage: null as import("@/api").MessageUsage | null,
+  showUsage: false,
 });
 
 const rowVirtualizer = useVirtualizer(
@@ -310,7 +312,9 @@ function openActions(
   contextMenu.canRewind = props.rewindableEntryIds.includes(group.id);
   contextMenu.canFork = true;
   contextMenu.canCopy = copyText.length > 0;
-  contextMenu.usage = isGroupedAssistantGroup(group) ? (group.usage ?? null) : null;
+  contextMenu.usage =
+    !props.externalAgent && isGroupedAssistantGroup(group) ? (group.usage ?? null) : null;
+  contextMenu.showUsage = !props.externalAgent && isGroupedAssistantGroup(group);
 }
 
 function closeContextMenu() {
@@ -319,6 +323,7 @@ function closeContextMenu() {
   contextMenu.copyText = "";
   contextMenu.canCopy = false;
   contextMenu.usage = null;
+  contextMenu.showUsage = false;
 }
 
 function onContextRewind() {

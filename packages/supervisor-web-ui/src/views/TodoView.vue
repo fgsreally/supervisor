@@ -148,7 +148,7 @@
             </defs>
             <path
               class="run-flow-gesture__ribbon"
-              d="M548 54 C531 103 493 139 438 166 C370 198 292 205 211 210 L235 180 L112 219 L229 263 L207 231 C301 226 389 212 458 179 C512 153 548 112 548 54 Z"
+              d="M356 252 C459 236 526 181 506 119 L548 139 L500 52 L428 119 L477 107 C490 166 444 219 356 252 Z"
             />
           </svg>
           <TaskCard
@@ -567,10 +567,10 @@ button svg,
 .run-flow-gesture {
   position: absolute;
   z-index: 6;
-  left: 12%;
-  top: 8px;
-  width: min(58%, 510px);
-  height: 245px;
+  left: 34%;
+  top: 4px;
+  width: min(42%, 430px);
+  height: 250px;
   overflow: visible;
   pointer-events: none;
   filter: drop-shadow(0 8px 10px rgb(255 112 26 / 18%));

@@ -20,6 +20,7 @@
             v-else-if="mainTab === 'dashboard'"
             data-tour-page="dashboard"
             class="flex-1 min-w-0 h-full"
+            @open-session="openSessionFromHome"
           />
           <SettingsPanel
             v-else-if="mainTab === 'settings'"
@@ -158,7 +159,7 @@
               class="flex-1 min-w-0 h-full"
               @open-session="openSessionFromHome"
             />
-            <HomeView v-else class="flex-1 min-w-0 h-full" />
+            <HomeView v-else class="flex-1 min-w-0 h-full" @open-session="openSessionFromHome" />
           </MobileWorkView>
           <MobileMeView
             v-else-if="mainTab === 'settings' && route.path === '/settings'"

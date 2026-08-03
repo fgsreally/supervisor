@@ -53,6 +53,33 @@
         </section>
 
         <section class="settings-card">
+          <h2>界面</h2>
+          <div class="service-list">
+            <div class="service-row service-row--switch">
+              <div class="service-copy">
+                <strong>高级动画</strong>
+                <span>列表移除与恢复时使用粒子消散 / 聚合效果</span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-label="高级动画"
+                :aria-checked="viewPreferences.advancedAnimations"
+                class="settings-switch"
+                :class="
+                  viewPreferences.advancedAnimations
+                    ? 'settings-switch--on'
+                    : 'settings-switch--off'
+                "
+                @click="toggleAdvancedAnimations"
+              >
+                <span class="settings-switch__thumb" />
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section class="settings-card">
           <h2>浏览器</h2>
           <label class="settings-field">
             <span>启动模式</span>
@@ -261,6 +288,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import ModelTreeSelect, { type ModelTreeGroup } from "./ModelTreeSelect.vue";
 import WatsonIcon from "./WatsonIcon.vue";
 import { resolveProviderIcon } from "@/constants/providers";
+import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
 import {
   getSystemLogs,
   getSupervisorSettings,
@@ -305,6 +333,11 @@ async function loadLog(kind: "watson" | "system") {
   } catch (error) {
     target.value = error instanceof Error ? error.message : "日志加载失败";
   }
+}
+
+function toggleAdvancedAnimations() {
+  viewPreferences.advancedAnimations = !viewPreferences.advancedAnimations;
+  saveViewPreferences();
 }
 
 const form = reactive({
@@ -712,6 +745,42 @@ input:focus {
 }
 .service-row:last-child {
   border-bottom: 0;
+}
+.service-row--switch {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.settings-switch {
+  position: relative;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.18s ease;
+}
+.settings-switch--on {
+  background: #07c160;
+}
+.settings-switch--off {
+  background: #e5e5e5;
+}
+:global(html[data-theme="dark"]) .settings-switch--off {
+  background: #4b5563;
+}
+.settings-switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 18%);
+  transition: transform 0.18s ease;
+}
+.settings-switch--on .settings-switch__thumb {
+  transform: translateX(20px);
 }
 .service-copy {
   display: flex;

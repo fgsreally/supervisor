@@ -9,21 +9,21 @@
 
     <div class="mobile-me__scroll">
       <MobileSection v-for="group in groups" :key="group.title" :title="group.title">
-          <MobileListRow
-            v-for="item in group.items"
-            :key="item.id"
-            :title="item.label"
-            :description="item.description"
-            :chevron="true"
-            :data-tour-tutorial="item.id === 'tutorial' ? '' : undefined"
-            @click="open(item.id)"
-          >
-            <template #icon>
+        <MobileListRow
+          v-for="item in group.items"
+          :key="item.id"
+          :title="item.label"
+          :description="item.description"
+          :chevron="true"
+          :data-tour-tutorial="item.id === 'tutorial' ? '' : undefined"
+          @click="open(item.id)"
+        >
+          <template #icon>
             <span class="mobile-me__icon" :style="{ '--m-feature-color': item.color }">
               <component :is="item.icon" />
             </span>
-            </template>
-          </MobileListRow>
+          </template>
+        </MobileListRow>
       </MobileSection>
     </div>
   </div>
@@ -38,10 +38,12 @@ import {
   FileSearch,
   MoonStar,
   Settings,
+  Sparkles,
   Sun,
 } from "lucide-vue-next";
 import { useAppTheme } from "@/composables/use-app-theme";
 import { useAppFontScale, type AppFontScale } from "@/composables/use-app-font-scale";
+import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
 import { MobileListRow, MobileSection } from "./ui";
 
 type ItemId =
@@ -49,6 +51,7 @@ type ItemId =
   | "resources"
   | "appearance"
   | "fontScale"
+  | "advancedAnimations"
   | "settings"
   | "tutorial"
   | "diagnostics";
@@ -69,6 +72,11 @@ const fontScaleDescription = computed(() => {
   if (fontScale.value === "large") return "当前：大号";
   return "当前：标准";
 });
+const advancedAnimationsDescription = computed(() =>
+  viewPreferences.advancedAnimations
+    ? "已开启：列表移除/恢复使用粒子效果"
+    : "已关闭：点击开启粒子消散动画",
+);
 const AppearanceIcon = computed(() => (isDark.value ? MoonStar : Sun));
 
 const groups = computed(() => [
@@ -107,6 +115,13 @@ const groups = computed(() => [
         description: fontScaleDescription.value,
         icon: BookOpenCheck,
         color: "#0ea5e9",
+      },
+      {
+        id: "advancedAnimations" as const,
+        label: "高级动画",
+        description: advancedAnimationsDescription.value,
+        icon: Sparkles,
+        color: "#f59e0b",
       },
       {
         id: "settings" as const,
@@ -149,7 +164,10 @@ function open(id: ItemId) {
   else if (id === "resources") emit("navigate", "/resources");
   else if (id === "appearance") toggleDark();
   else if (id === "fontScale") cycleFontScale();
-  else if (id === "settings") emit("navigate", "/settings/services");
+  else if (id === "advancedAnimations") {
+    viewPreferences.advancedAnimations = !viewPreferences.advancedAnimations;
+    saveViewPreferences();
+  } else if (id === "settings") emit("navigate", "/settings/services");
   else if (id === "diagnostics") emit("navigate", "/settings/diagnostics");
   else emit("tutorial");
 }
@@ -202,5 +220,4 @@ function open(id: ItemId) {
   width: 20px;
   height: 20px;
 }
-
 </style>

@@ -340,6 +340,7 @@ export interface SessionTreeEntry {
   message?: {
     role: string;
     content: string | TextPart[] | ToolCallPart[];
+    usage?: MessageUsage;
     customType?: string;
     details?: unknown;
   };
@@ -350,6 +351,29 @@ export interface SessionTreeEntry {
   summary?: string;
   firstKeptEntryId?: string;
   tokensBefore?: number;
+}
+
+export interface MessageUsage {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  totalTokens: number;
+  cost: { input: number; output: number; cacheRead: number; cacheWrite: number; total: number };
+}
+
+export interface SessionUsage extends MessageUsage {
+  messages: number;
+}
+
+export interface SessionTimelineEvent {
+  id: string;
+  sessionId: string;
+  projectId: string | null;
+  kind: "created" | "status_changed" | "synced" | string;
+  status: SessionStatus | null;
+  data: Record<string, unknown>;
+  createdAt: string;
 }
 
 export interface MessageSearchHit {
@@ -1089,6 +1113,19 @@ export function runDailyWork(day?: string): Promise<DailyWorkRecord> {
   return postJson<DailyWorkRecord>("/home/daily-work/run", day ? { day } : {});
 }
 
+export function listSessionTimelineEvents(options?: {
+  from?: string;
+  to?: string;
+  projectId?: string;
+}) {
+  const params = new URLSearchParams();
+  if (options?.from) params.set("from", options.from);
+  if (options?.to) params.set("to", options.to);
+  if (options?.projectId) params.set("projectId", options.projectId);
+  const qs = params.toString();
+  return fetchJson<SessionTimelineEvent[]>(`/home/session-events${qs ? `?${qs}` : ""}`);
+}
+
 export function listHomeTasks(params?: {
   parentId?: number | null;
   projectId?: number;
@@ -1226,6 +1263,12 @@ export async function killSession(id: string): Promise<{ ok: boolean }> {
 /** Complete a git work session: merge branch (requires committed changes), mark finished. */
 export async function completeSession(id: string): Promise<Session> {
   const session = await postJson<RawSession>(`/sessions/${id}/complete`, {});
+  return mapSession(session);
+}
+
+/** Merge the project current branch into this session and restart its project services. */
+export async function syncSession(id: string): Promise<Session> {
+  const session = await postJson<RawSession>(`/sessions/${id}/sync`, {});
   return mapSession(session);
 }
 
@@ -1661,6 +1704,10 @@ export async function getSessionMessages(id: string): Promise<SessionTreeEntry[]
   return fetchJson<SessionTreeEntry[]>(`/sessions/${id}/messages`);
 }
 
+export function getSessionUsage(id: string): Promise<SessionUsage> {
+  return fetchJson<SessionUsage>(`/sessions/${id}/usage`);
+}
+
 export interface SessionMessagesPage {
   messages: SessionTreeEntry[];
   hasMore: boolean;
@@ -1857,7 +1904,8 @@ export function subscribeSessionEvents(
             return;
           }
           if (parsed.channel !== "session") return;
-          onEvent(parsed);
+          if (typeof parsed.type !== "string") return;
+          onEvent({ type: parsed.type, event: parsed.event });
           if (parsed.type === "connected") onConnected?.();
         };
         ws.addEventListener("message", onMessage);

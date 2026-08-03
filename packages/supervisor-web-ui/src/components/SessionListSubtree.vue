@@ -1,5 +1,5 @@
 <template>
-  <TransitionGroup name="session-list" tag="div" class="session-list-subtree">
+  <DustTransitionGroup name="session-list" tag="div" content-class="session-list-subtree">
     <div v-for="(child, idx) in children" :key="child.id" class="session-list-node">
       <SessionListItem
         :session="child"
@@ -21,13 +21,14 @@
         @context-menu="$emit('context-menu', $event)"
       />
     </div>
-  </TransitionGroup>
+  </DustTransitionGroup>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
 import type { UISession } from "@/types/ui";
 import { compareSessionsByRecentActivity } from "@/utils/ui-session";
+import DustTransitionGroup from "./DustTransitionGroup.vue";
 import SessionListItem from "./SessionListItem.vue";
 import SessionListSubtree from "./SessionListSubtree.vue";
 
@@ -61,31 +62,3 @@ function nextAncestorDepths(idx: number): number[] {
   return result;
 }
 </script>
-
-<style scoped>
-.session-list-subtree {
-  position: relative;
-}
-
-.session-list-enter-active,
-.session-list-leave-active {
-  overflow: hidden;
-  transition:
-    opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.session-list-leave-active {
-  position: absolute;
-  left: 0;
-  right: 0;
-  pointer-events: none;
-}
-.session-list-move {
-  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
-}
-.session-list-enter-from,
-.session-list-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-</style>

@@ -51,7 +51,12 @@ import {
 import { scheduleReadyHomeTasks } from "./home-task-scheduler.js";
 import { resolveAssistantModelRef } from "../utils/utility-llm.js";
 import { applyProjectRuntimeParse, runProjectRuntimeParse } from "./project-runtime.js";
-import { parseSessionServicesMeta, stopSessionProjectServices } from "./session-services.js";
+import {
+  parseSessionServicesMeta,
+  startSessionProjectServices,
+  stopSessionProjectServices,
+} from "./session-services.js";
+import { syncSessionWorktree } from "../utils/git.js";
 import { runWatsonTask, type WatsonRunOptions, type WatsonRunResult } from "./watson.js";
 import type { CreateHomeTaskOptions, HomeTask, UpdateHomeTaskOptions } from "../types.js";
 import {
@@ -79,6 +84,7 @@ import {
   commitAll,
   commitGitSnapshot,
   ensureGitRepositorySync,
+  getGitStatusPorcelain,
   resolveSessionGitContext,
   removeSessionWorktree,
 } from "../utils/git.js";
@@ -1784,6 +1790,58 @@ export class SessionManager {
     }
     this.db.updateStatus(id, "finish");
     return rowToSession(this.db.get(id)!, this.db);
+  }
+
+  async syncSession(id: number): Promise<Session> {
+    const session = this.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    if (session.projectId == null) throw new Error("当前会话未绑定项目，无法同步");
+    const project = this.db.getProject(session.projectId);
+    if (!project) throw new Error(`Project ${session.projectId} not found`);
+    const git = resolveSessionGitContext({
+      sessionId: session.id,
+      cwd: session.cwd,
+      projectCwd: project.cwd,
+    });
+    if (!git) throw new Error("当前会话未启用独立 worktree，无需同步");
+    if ((await getGitStatusPorcelain(session.cwd)).trim()) {
+      throw new Error("同步前请先提交或清理当前会话中的修改");
+    }
+
+    const scripts = this.db.listProjectScripts(project.id);
+    const services = parseSessionServicesMeta(session.meta);
+    await stopSessionProjectServices({
+      sessionId: session.id,
+      cwd: session.cwd,
+      services,
+      destroyScripts: scripts.filter((script) => script.kind === "destroy"),
+      jobs: this.jobs,
+    });
+    try {
+      const branch = await syncSessionWorktree(project.cwd, session.cwd);
+      const nextServices = await startSessionProjectServices({
+        sessionId: session.id,
+        cwd: session.cwd,
+        project,
+        scripts,
+        jobs: this.jobs,
+      });
+      this.db.updateMeta(session.id, {
+        services: nextServices ?? { status: "stopped", portEnv: {}, scripts: [] },
+      });
+      sessionLog(session.id, "info", `Session synchronized from ${branch}`, [
+        "system",
+        "git",
+        "services",
+      ]);
+      return this.get(id)!;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.db.updateMeta(session.id, {
+        services: { status: "error", error: message, portEnv: {}, scripts: [] },
+      });
+      throw error;
+    }
   }
 
   list(filter?: Parameters<SupervisorDb["list"]>[0]): Session[] {

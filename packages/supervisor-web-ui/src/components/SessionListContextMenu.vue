@@ -23,6 +23,14 @@
           v-if="!protectedSession && status !== 'finish'"
           type="button"
           class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
+          @click="emit('sync')"
+        >
+          同步项目修改
+        </button>
+        <button
+          v-if="!protectedSession && status !== 'finish'"
+          type="button"
+          class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
           @click="emit('achieve')"
         >
           完成并归档
@@ -64,6 +72,7 @@ const emit = defineEmits<{
   achieve: [];
   fork: [];
   pin: [];
+  sync: [];
 }>();
 </script>
 

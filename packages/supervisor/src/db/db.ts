@@ -342,12 +342,30 @@ export class SupervisorDb {
 			CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 			CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
 
+			CREATE TABLE IF NOT EXISTS session_events (
+				id            INTEGER PRIMARY KEY AUTOINCREMENT,
+				session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+				project_id    INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+				kind          TEXT NOT NULL,
+				status        TEXT,
+				data          TEXT NOT NULL DEFAULT '{}',
+				created_at    INTEGER NOT NULL
+			);
+			CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id, created_at);
+			CREATE INDEX IF NOT EXISTS idx_session_events_project ON session_events(project_id, created_at);
+
 		`);
 
     this.ensureProjectScripts();
     this.migrateMembersToSubagentIds();
     this.ensureSessionTaskTables();
     this.db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id)");
+    this.db.exec(`
+      INSERT INTO session_events (session_id, project_id, kind, status, data, created_at)
+      SELECT s.id, s.project_id, 'created', s.status, '{}', s.created_at
+      FROM sessions s
+      WHERE NOT EXISTS (SELECT 1 FROM session_events e WHERE e.session_id = s.id)
+    `);
 
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS messages (
@@ -1304,7 +1322,9 @@ export class SupervisorDb {
         )`,
       )
       .run(full);
-    return rowToSession({ ...full, id: Number(result.lastInsertRowid) });
+    const created = rowToSession({ ...full, id: Number(result.lastInsertRowid) });
+    this.appendSessionEvent(created.id, "created", created.status, {}, created.created_at);
+    return created;
   }
 
   get(id: number): SessionRow | undefined {
@@ -1354,9 +1374,19 @@ export class SupervisorDb {
 
   updateStatus(id: number, status: SessionStatus): void {
     const now = Date.now();
+    const before = this.get(id);
     this.db
       .prepare("UPDATE sessions SET status = ?, last_active_at = ? WHERE id = ?")
       .run(status, now, id);
+    if (before && before.status !== status) {
+      this.appendSessionEvent(
+        id,
+        "status_changed",
+        status,
+        { from: before.status, to: status },
+        now,
+      );
+    }
     this.touchSessionActivityTree(id, now);
     for (const listener of this.statusListeners) {
       try {
@@ -1366,6 +1396,105 @@ export class SupervisorDb {
         console.error(`session status listener failed [${id}]:`, message);
       }
     }
+  }
+
+  appendSessionEvent(
+    sessionId: number,
+    kind: string,
+    status?: SessionStatus | null,
+    data: Record<string, unknown> = {},
+    createdAt = Date.now(),
+  ): void {
+    const session = this.get(sessionId);
+    if (!session) return;
+    this.db
+      .prepare(
+        `INSERT INTO session_events (session_id, project_id, kind, status, data, created_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        sessionId,
+        session.project_id,
+        kind,
+        status ?? session.status,
+        JSON.stringify(data),
+        createdAt,
+      );
+  }
+
+  listSessionEvents(options: { from?: number; to?: number; projectId?: number } = {}) {
+    let sql = `SELECT id, session_id, project_id, kind, status, data, created_at
+               FROM session_events WHERE 1=1`;
+    const params: Array<number> = [];
+    if (options.from != null) {
+      sql += " AND created_at >= ?";
+      params.push(options.from);
+    }
+    if (options.to != null) {
+      sql += " AND created_at <= ?";
+      params.push(options.to);
+    }
+    if (options.projectId != null) {
+      sql += " AND project_id = ?";
+      params.push(options.projectId);
+    }
+    sql += " ORDER BY created_at ASC, id ASC";
+    return (
+      this.db.prepare(sql).all(...params) as Array<{
+        id: number;
+        session_id: number;
+        project_id: number | null;
+        kind: string;
+        status: SessionStatus | null;
+        data: string;
+        created_at: number;
+      }>
+    ).map((row) => ({
+      id: String(row.id),
+      sessionId: String(row.session_id),
+      projectId: row.project_id == null ? null : String(row.project_id),
+      kind: row.kind,
+      status: row.status,
+      data: JSON.parse(row.data || "{}") as Record<string, unknown>,
+      createdAt: new Date(row.created_at).toISOString(),
+    }));
+  }
+
+  getSessionUsage(sessionId: number) {
+    const totals = {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+      messages: 0,
+    };
+    const rows = this.db
+      .prepare("SELECT payload FROM messages WHERE session_id = ? AND role = 'assistant'")
+      .all(sessionId) as Array<{ payload: string }>;
+    for (const row of rows) {
+      try {
+        const entry = JSON.parse(row.payload) as {
+          message?: { usage?: Record<string, unknown> };
+          usage?: Record<string, unknown>;
+        };
+        const usage = entry.message?.usage ?? entry.usage;
+        if (!usage) continue;
+        totals.messages += 1;
+        for (const key of ["input", "output", "cacheRead", "cacheWrite", "totalTokens"] as const) {
+          totals[key] += Number(usage[key]) || 0;
+        }
+        const cost = usage.cost as Record<string, unknown> | undefined;
+        if (cost)
+          for (const key of ["input", "output", "cacheRead", "cacheWrite", "total"] as const) {
+            totals.cost[key] += Number(cost[key]) || 0;
+          }
+      } catch {
+        /* Ignore malformed historic rows. */
+      }
+    }
+    return totals;
   }
 
   onSessionStatusChange(listener: (id: number, status: SessionStatus) => void): () => void {

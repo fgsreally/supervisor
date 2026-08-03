@@ -395,6 +395,19 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
+  async function syncSession(id: string) {
+    root.clearError();
+    try {
+      const session = await api.syncSession(id);
+      const index = sessions.value.findIndex((item) => item.id === id);
+      if (index >= 0) sessions.value[index] = session;
+      return session;
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to sync session");
+      throw err;
+    }
+  }
+
   async function createCheckpoint(id: string, label?: string) {
     root.clearError();
     return api.createCheckpoint(id, label ? { label } : undefined);
@@ -473,6 +486,7 @@ export const useSessionStore = defineStore("session", () => {
     createBtwSession,
     killSession,
     completeSession,
+    syncSession,
     createCheckpoint,
     rewindSession,
     commitSession,

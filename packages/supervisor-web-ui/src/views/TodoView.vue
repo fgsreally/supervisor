@@ -31,7 +31,24 @@
           </div>
           <button v-if="false" class="quiet" @click="addDraft"><Plus />添加任务</button>
         </div>
-        <TodoSequenceDiagram @select="selectDraft" />
+        <TodoSequenceDiagram :agents="agents" @select="selectDraft" />
+        <div class="mobile-plan-list" aria-label="规划任务列表">
+          <TaskCard
+            v-for="task in drafts"
+            :key="task.id"
+            class="mobile-plan-card"
+            :title="task.title"
+            :description="task.description"
+            :project-name="task.project"
+            :agent-id="agentInfo(task.agent)?.id ?? task.agent"
+            :agent-name="task.agent"
+            :agent-avatar="agentInfo(task.agent)?.avatar"
+            interactive
+            @select="selected = task"
+          >
+            <template #trailing><ChevronRight class="mobile-plan-card__arrow" /></template>
+          </TaskCard>
+        </div>
         <div v-if="false" class="dependency-list" @mouseleave="hovered = null">
           <article
             v-for="task in drafts"
@@ -44,11 +61,11 @@
             <span class="step">{{ task.id }}</span>
             <div class="task-main">
               <strong>{{ task.title }}</strong>
-              <p>{{ task.summary }}</p>
+              <p>{{ task.description }}</p>
               <div class="task-meta">
                 <span class="project-badge"><FolderGit2 />{{ task.project }}</span>
                 <span class="agent-badge"
-                  ><i>{{ avatarInitial(task.agent) }}</i
+                  ><i>{{ task.agent.slice(0, 1) }}</i
                   >{{ task.agent }}</span
                 >
               </div>
@@ -91,58 +108,76 @@
             <span>{{ runningCount }} 个任务正在进行</span>
           </div>
         </div>
-        <div class="run-toolbar">
-          <div class="view-switch">
-            <button :class="{ active: runView === 'list' }" @click="runView = 'list'">列表</button>
-            <button :class="{ active: runView === 'timeline' }" @click="runView = 'timeline'">
-              时间轴
+        <div class="run-controls">
+          <div class="run-toolbar">
+            <div class="view-switch">
+              <button :class="{ active: runView === 'list' }" @click="runView = 'list'">
+                列表
+              </button>
+              <button :class="{ active: runView === 'timeline' }" @click="runView = 'timeline'">
+                时间轴
+              </button>
+            </div>
+            <button class="quiet"><SlidersHorizontal />筛选</button>
+          </div>
+          <nav v-if="runView === 'list'" class="filters" aria-label="任务状态筛选">
+            <button
+              v-for="filter in filters"
+              :key="filter.id"
+              :class="{ active: activeFilter === filter.id }"
+              @click="activeFilter = filter.id"
+            >
+              {{ filter.label }} <span>{{ count(filter.id) }}</span>
             </button>
-          </div>
-          <button class="quiet"><SlidersHorizontal />筛选</button>
+          </nav>
         </div>
-        <nav v-if="runView === 'list'" class="filters">
-          <button
-            v-for="filter in filters"
-            :key="filter.id"
-            :class="{ active: activeFilter === filter.id }"
-            @click="activeFilter = filter.id"
-          >
-            {{ filter.label }} <span>{{ count(filter.id) }}</span>
-          </button>
-        </nav>
         <div v-if="runView === 'list'" class="run-list" @mouseleave="executionHovered = null">
-          <div v-if="executionHovered === 11 || executionHovered === 13" class="run-dependency">
-            <i /><span>⌄</span>
-          </div>
-          <article
+          <svg
+            v-if="executionHovered === 11 || executionHovered === 13"
+            class="run-flow-gesture"
+            viewBox="0 0 620 300"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+          >
+            <defs>
+              <linearGradient id="todo-flow-gradient" x1="1" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#ffd166" />
+                <stop offset="0.48" stop-color="#ff9f2d" />
+                <stop offset="1" stop-color="#ff5f1f" />
+              </linearGradient>
+            </defs>
+            <path
+              class="run-flow-gesture__shadow"
+              d="M568 24 C558 80 532 122 480 158 C397 214 294 218 176 224 L205 187 L64 238 L202 292 L174 249 C306 243 421 220 502 168 C553 134 571 84 568 24 Z"
+            />
+            <path
+              class="run-flow-gesture__ribbon"
+              d="M568 24 C558 80 532 122 480 158 C397 214 294 218 176 224 L205 187 L64 238 L202 292 L174 249 C306 243 421 220 502 168 C553 134 571 84 568 24 Z"
+            />
+            <circle class="run-flow-gesture__origin" cx="568" cy="24" r="5" />
+          </svg>
+          <TaskCard
             v-for="task in visibleTasks"
             :key="task.id"
-            class="task-card run-card"
+            class="run-card"
             :class="`status-${task.status}`"
+            :title="task.title"
+            :description="task.description"
+            :project-name="task.project"
+            :agent-id="agentInfo(task.agent)?.id ?? task.agent"
+            :agent-name="task.agent"
+            :agent-avatar="agentInfo(task.agent)?.avatar"
+            :status="task.status"
+            :status-label="statusLabel(task.status)"
+            :accent="task.status"
+            interactive
             @mouseenter="executionHovered = task.id"
-            @click="openTask(task)"
+            @select="openTask(task)"
           >
-            <div class="status-mark" />
-            <div class="task-main">
-              <div class="task-line">
-                <strong>{{ task.title }}</strong
-                ><span class="status-pill" :data-status="task.status">{{
-                  statusLabel(task.status)
-                }}</span>
-              </div>
-              <p>{{ task.summary }}</p>
-              <div class="task-meta">
-                <span class="project-badge"><FolderGit2 />{{ task.project }}</span>
-                <span class="agent-badge"
-                  ><i>{{ avatarInitial(task.agent) }}</i
-                  >{{ task.agent }}</span
-                >
-                ><span v-if="task.dependencies.length"
-                  ><Link2 />等待 {{ task.dependencies.length }} 项</span
-                >
-              </div>
-            </div>
-          </article>
+            <template v-if="task.dependencies.length" #meta>
+              <span><Link2 />等待 {{ task.dependencies.length }} 项</span>
+            </template>
+          </TaskCard>
         </div>
         <div v-else class="execution-timeline">
           <article v-for="(task, index) in execution" :key="task.id" @click="openTask(task)">
@@ -152,18 +187,17 @@
             </div>
             <div class="rail"><i :data-status="task.status" /></div>
             <div class="event">
-              <span class="status-pill" :data-status="task.status">{{
-                statusLabel(task.status)
-              }}</span
-              ><strong>{{ task.title }}</strong>
-              <p>{{ task.summary }}</p>
-              <footer>
-                <span class="project-badge"><FolderGit2 />{{ task.project }}</span
-                ><span class="agent-badge"
-                  ><i>{{ avatarInitial(task.agent) }}</i
-                  >{{ task.agent }}</span
-                >
-              </footer>
+              <TaskCard
+                :title="task.title"
+                :description="task.description"
+                :project-name="task.project"
+                :agent-id="agentInfo(task.agent)?.id ?? task.agent"
+                :agent-name="task.agent"
+                :agent-avatar="agentInfo(task.agent)?.avatar"
+                :status="task.status"
+                :status-label="statusLabel(task.status)"
+                density="compact"
+              />
             </div>
           </article>
         </div>
@@ -174,7 +208,7 @@
         <button class="close" @click="selected = null"><X /></button
         ><small>Task {{ selected.id }}</small>
         <h3>{{ selected.title }}</h3>
-        <p>{{ selected.detail }}</p>
+        <p>{{ selected.description }}</p>
         <dl>
           <div>
             <dt>项目</dt>
@@ -183,14 +217,6 @@
           <div>
             <dt>Agent</dt>
             <dd>{{ selected.agent }}</dd>
-          </div>
-          <div>
-            <dt>依赖</dt>
-            <dd>{{ dependencyNames(selected) }}</dd>
-          </div>
-          <div>
-            <dt>被依赖</dt>
-            <dd>{{ dependentNames(selected) }}</dd>
           </div>
         </dl>
         <button
@@ -205,7 +231,7 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import {
   Bot,
   ChevronRight,
@@ -219,12 +245,13 @@ import {
   X,
 } from "lucide-vue-next";
 import TodoSequenceDiagram from "@/components/home/TodoSequenceDiagram.vue";
+import TaskCard from "@/components/task/TaskCard.vue";
+import { listAgents, type Agent } from "@/api";
 type Status = "pending" | "running" | "blocked" | "done";
 interface MockTask {
   id: number;
   title: string;
-  summary: string;
-  detail: string;
+  description: string;
   project: string;
   agent: string;
   dependencies: number[];
@@ -241,12 +268,12 @@ const executionHovered = ref<number | null>(null);
 const selected = ref<MockTask | null>(null);
 const activeFilter = ref("all");
 const runView = ref<"list" | "timeline">("list");
+const agents = ref<Agent[]>([]);
 const drafts = ref<MockTask[]>([
   {
     id: 1,
     title: "梳理 Todo 数据模型",
-    summary: "确认任务字段、状态和迁移策略",
-    detail: "检查现有 Todo 的存储与调度逻辑，整理单表任务模型及兼容迁移方案。",
+    description: "检查现有 Todo 的存储与调度逻辑，整理单表任务模型及兼容迁移方案。",
     project: "supervisor",
     agent: "Codex",
     dependencies: [],
@@ -255,8 +282,7 @@ const drafts = ref<MockTask[]>([
   {
     id: 2,
     title: "重构任务接口",
-    summary: "实现规划确认、依赖调度与手动启动",
-    detail: "调整 HTTP API 和调度器，支持草稿确认、批次执行和可关闭的自动调度。",
+    description: "调整 HTTP API 和调度器，支持草稿确认、批次执行和可关闭的自动调度。",
     project: "supervisor",
     agent: "Codex",
     dependencies: [],
@@ -265,8 +291,7 @@ const drafts = ref<MockTask[]>([
   {
     id: 3,
     title: "重做 Todo 交互",
-    summary: "实现 PC 双栏与移动端双标签",
-    detail: "实现规划区、执行区、任务详情与依赖关系的双向高亮。",
+    description: "实现规划区、执行区、任务详情与依赖关系的双向高亮。",
     project: "supervisor-web-ui",
     agent: "Claude Code",
     dependencies: [1],
@@ -275,8 +300,7 @@ const drafts = ref<MockTask[]>([
   {
     id: 4,
     title: "联调与响应式验证",
-    summary: "覆盖 PC、手机和依赖执行顺序",
-    detail: "连接真实接口并验证任务状态同步、Session 跳转及窄屏体验。",
+    description: "连接真实接口并验证任务状态同步、Session 跳转及窄屏体验。",
     project: "supervisor-web-ui",
     agent: "Codex",
     dependencies: [2],
@@ -285,8 +309,7 @@ const drafts = ref<MockTask[]>([
   {
     id: 5,
     title: "联调与验证",
-    summary: "等待接口和界面任务完成后统一验证",
-    detail: "连接接口与界面，验证依赖调度、Session 跳转和响应式布局。",
+    description: "连接接口与界面，验证依赖调度、Session 跳转和响应式布局。",
     project: "supervisor-web-ui",
     agent: "Codex",
     dependencies: [3, 4],
@@ -297,8 +320,7 @@ const execution = ref<MockTask[]>([
   {
     id: 11,
     title: "统一助手模型设置",
-    summary: "清理按功能拆分的旧模型配置",
-    detail: "设置页只保留 featureModels.assistant，并完成旧配置兼容。",
+    description: "设置页只保留 featureModels.assistant，并完成旧配置兼容。",
     project: "supervisor-web-ui",
     agent: "Codex",
     dependencies: [],
@@ -308,8 +330,7 @@ const execution = ref<MockTask[]>([
   {
     id: 12,
     title: "Watson Runner 日志",
-    summary: "在 Agent 详情中展示内部运行日志",
-    detail: "读取 agent home logs 并按时间倒序展示。",
+    description: "读取 agent home logs 并按时间倒序展示。",
     project: "supervisor",
     agent: "Codex",
     dependencies: [],
@@ -319,8 +340,7 @@ const execution = ref<MockTask[]>([
   {
     id: 13,
     title: "移动端 Session 详情",
-    summary: "等待助手模型设置完成",
-    detail: "调整移动端详情页信息密度和主要操作位置。",
+    description: "调整移动端详情页信息密度和主要操作位置。",
     project: "supervisor-web-ui",
     agent: "Claude Code",
     dependencies: [11],
@@ -329,8 +349,7 @@ const execution = ref<MockTask[]>([
   {
     id: 14,
     title: "项目脚本启动异常",
-    summary: "缺少可用执行 Agent",
-    detail: "项目脚本已创建，但当前没有配置可用于该项目的 Agent。",
+    description: "项目脚本已创建，但当前没有配置可用于该项目的 Agent。",
     project: "supervisor",
     agent: "未分配",
     dependencies: [],
@@ -371,8 +390,8 @@ function count(id: string) {
     ? execution.value.length
     : execution.value.filter((t) => t.status === id).length;
 }
-function avatarInitial(agent: string) {
-  return agent === "Claude Code" ? "C" : agent === "Codex" ? "X" : "?";
+function agentInfo(name: string): Agent | undefined {
+  return agents.value.find((agent) => agent.name === name);
 }
 function statusLabel(s: Status) {
   return { pending: "待办", running: "进行中", blocked: "阻塞", done: "已完成" }[s];
@@ -393,22 +412,6 @@ function relationClass(id: number) {
     return "is-dependent";
   return "is-dim";
 }
-function dependencyNames(t: MockTask) {
-  return (
-    t.dependencies
-      .map((id) => allTasks().find((x) => x.id === id)?.title)
-      .filter(Boolean)
-      .join("、") || "无"
-  );
-}
-function dependentNames(t: MockTask) {
-  return (
-    allTasks()
-      .filter((x) => x.dependencies.includes(t.id))
-      .map((x) => x.title)
-      .join("、") || "无"
-  );
-}
 function openTask(t: MockTask) {
   if (t.sessionId) emit("open-session", t.sessionId);
   else selected.value = t;
@@ -420,8 +423,7 @@ function addDraft() {
   selected.value = {
     id: drafts.value.length + 1,
     title: "新任务",
-    summary: "填写任务说明",
-    detail: "",
+    description: "填写任务说明",
     project: "请选择项目",
     agent: "默认 Agent",
     dependencies: [],
@@ -432,6 +434,9 @@ function mockPlan() {
   planning.value = true;
   setTimeout(() => (planning.value = false), 700);
 }
+onMounted(async () => {
+  agents.value = await listAgents().catch(() => []);
+});
 </script>
 <style scoped>
 .todo-shell {
@@ -563,6 +568,41 @@ button svg,
   width: 18px;
   height: 205px;
   pointer-events: none;
+}
+.run-flow-gesture {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  top: 10px;
+  width: min(82%, 700px);
+  height: 300px;
+  overflow: visible;
+  pointer-events: none;
+  filter: drop-shadow(0 8px 10px rgb(255 112 26 / 18%));
+}
+.run-flow-gesture__shadow {
+  fill: rgb(112 47 8 / 24%);
+  transform: translate(3px, 6px);
+}
+.run-flow-gesture__ribbon {
+  fill: url(#todo-flow-gradient);
+  animation: run-flow-draw 0.46s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.run-flow-gesture__origin {
+  fill: #ffd166;
+  filter: drop-shadow(0 0 5px rgb(255 183 61 / 70%));
+}
+@keyframes run-flow-draw {
+  from {
+    opacity: 0;
+    transform: scale(0.88) rotate(-4deg);
+    transform-origin: 130px 150px;
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) rotate(0);
+    transform-origin: 130px 150px;
+  }
 }
 .run-dependency i {
   position: absolute;
@@ -960,6 +1000,9 @@ button svg,
 .mobile-tabs {
   display: none;
 }
+.mobile-plan-list {
+  display: none;
+}
 .task-popover {
   position: fixed;
   z-index: 50;
@@ -1014,9 +1057,13 @@ button svg,
   width: 100%;
 }
 @media (max-width: 720px) {
+  .todo-shell {
+    background: var(--m-page-bg, var(--app-settings-bg));
+  }
   .todo-head {
-    height: 48px;
-    padding: 0 12px;
+    height: auto;
+    padding: 8px 16px;
+    background: var(--m-header-bg, var(--app-settings-bg));
   }
   .todo-head h1 {
     display: none;
@@ -1026,13 +1073,14 @@ button svg,
     width: 100%;
     grid-template-columns: 1fr 1fr;
     padding: 3px;
-    border-radius: 8px;
-    background: var(--app-hover);
+    border-radius: 9px;
+    background: var(--m-pressed, var(--app-hover));
   }
   .mobile-tabs button {
-    padding: 6px;
-    border-radius: 6px;
-    font-size: 12px;
+    min-height: 36px;
+    padding: 6px 12px;
+    border-radius: 7px;
+    font-size: 14px;
     color: var(--app-text-muted);
   }
   .mobile-tabs button.active {
@@ -1046,17 +1094,29 @@ button svg,
   .plan-pane,
   .run-pane {
     height: 100%;
-    padding: 12px;
+    padding: 14px 16px 24px;
     border: 0;
+    overscroll-behavior: contain;
   }
   .mobile-hidden {
     display: none;
   }
   .plan-actions {
-    bottom: -12px;
-    margin: 14px -12px -12px;
-    padding: 10px 12px;
+    bottom: -24px;
+    z-index: 5;
+    margin: 16px -16px -24px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
     align-items: flex-end;
+  }
+  .plan-actions > div {
+    width: 100%;
+  }
+  .plan-actions .secondary,
+  .plan-actions .primary {
+    min-height: 44px;
+    flex: 1;
+    justify-content: center;
+    font-size: 14px;
   }
   .auto-switch {
     max-width: 90px;
@@ -1069,6 +1129,204 @@ button svg,
   }
   .pane-title {
     margin-bottom: 10px;
+  }
+  .pane-title h2 {
+    font-size: 18px;
+  }
+  .pane-title span {
+    margin-top: 2px;
+    font-size: 12px;
+  }
+  .pane-title .quiet,
+  .run-toolbar .quiet {
+    min-height: 40px;
+    padding-inline: 12px;
+    font-size: 13px;
+  }
+  .goal-box {
+    padding: 14px;
+    border-radius: 12px;
+  }
+  .goal-box textarea {
+    min-height: 92px;
+    font-size: 15px;
+  }
+  .goal-box__footer {
+    align-items: flex-end;
+  }
+  .goal-box__footer .primary {
+    min-height: 40px;
+    padding-inline: 14px;
+    font-size: 13px;
+  }
+  .project-pill {
+    max-width: 48%;
+    overflow: hidden;
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .draft-head {
+    margin-top: 20px;
+  }
+  .plan-pane > .sequence {
+    display: none;
+  }
+  .mobile-plan-list {
+    display: grid;
+    overflow: hidden;
+    border: 1px solid var(--m-divider, var(--app-border-subtle));
+    border-radius: 12px;
+    background: var(--m-surface, var(--app-settings-card));
+  }
+  .mobile-plan-card {
+    display: flex;
+    width: 100%;
+    min-height: 76px;
+    align-items: flex-start;
+    gap: 11px;
+    padding: 13px 12px;
+    text-align: left;
+  }
+  .mobile-plan-card + .mobile-plan-card {
+    border-top: 1px solid var(--m-divider, var(--app-border-subtle));
+  }
+  .mobile-plan-card:active {
+    background: var(--m-pressed, var(--app-hover));
+  }
+  .mobile-plan-card .step {
+    width: 26px;
+    height: 26px;
+    flex: none;
+    background: #07c160;
+    color: white;
+    font-size: 12px;
+  }
+  .mobile-plan-card .task-main > strong {
+    display: block;
+    font-size: 14px;
+  }
+  .mobile-plan-card .task-main > small {
+    display: -webkit-box;
+    margin: 3px 0 8px;
+    overflow: hidden;
+    color: var(--app-text-muted);
+    font-size: 12px;
+    line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+  .dependency-badge {
+    color: var(--app-text-muted) !important;
+  }
+  .mobile-plan-card__arrow {
+    width: 17px;
+    flex: none;
+    align-self: center;
+    color: var(--app-text-muted);
+  }
+  .run-controls {
+    position: sticky;
+    z-index: 4;
+    top: -14px;
+    margin: 0 -16px 10px;
+    padding: 8px 16px 1px;
+    background: color-mix(in srgb, var(--m-page-bg, var(--app-settings-bg)) 94%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  .run-toolbar {
+    justify-content: space-between;
+  }
+  .view-switch {
+    flex: 1;
+  }
+  .view-switch button {
+    min-height: 34px;
+    flex: 1;
+    font-size: 12px;
+  }
+  .filters {
+    gap: 6px;
+    margin: 0;
+    padding: 0 0 9px;
+    scrollbar-width: none;
+  }
+  .filters::-webkit-scrollbar {
+    display: none;
+  }
+  .filters button {
+    min-height: 34px;
+    padding: 6px 11px;
+    font-size: 12px;
+  }
+  .run-list {
+    gap: 9px;
+  }
+  .task-card {
+    min-height: 92px;
+    padding: 13px 12px;
+    border-radius: 11px;
+  }
+  .task-main strong {
+    font-size: 14px;
+  }
+  .task-main p {
+    margin-block: 5px 9px;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+  .task-meta span {
+    font-size: 10px;
+  }
+  .status-pill {
+    flex: none;
+    padding: 4px 7px;
+    font-size: 10px !important;
+  }
+  .run-dependency {
+    display: none;
+  }
+  .task-popover {
+    place-items: end center;
+    background: rgb(0 0 0 / 38%);
+  }
+  .task-popover section {
+    width: 100%;
+    max-height: min(78dvh, 680px);
+    overflow-y: auto;
+    padding: 22px 20px calc(18px + env(safe-area-inset-bottom));
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 32px rgb(0 0 0 / 18%);
+  }
+  .task-popover section::before {
+    content: "";
+    display: block;
+    width: 36px;
+    height: 4px;
+    margin: -12px auto 12px;
+    border-radius: 999px;
+    background: var(--app-border);
+  }
+  .task-popover h3 {
+    padding-right: 32px;
+    font-size: 18px;
+  }
+  .task-popover p {
+    font-size: 14px;
+  }
+  .task-popover dl div {
+    grid-template-columns: 70px 1fr;
+    min-height: 40px;
+    align-items: center;
+    font-size: 13px;
+  }
+  .task-popover .close {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    place-items: center;
+    right: 8px;
+    top: 9px;
   }
 }
 </style>

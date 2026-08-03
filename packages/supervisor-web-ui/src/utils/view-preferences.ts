@@ -8,6 +8,8 @@ export interface ViewPreferences {
   mutedSessionIds: string[];
   unreadBySession: Record<string, number>;
   collapseExternalAgentDetails: boolean;
+  /** DOM particle dissolve / assemble on list remove & restore. */
+  advancedAnimations: boolean;
 }
 
 const defaults: ViewPreferences = {
@@ -16,6 +18,7 @@ const defaults: ViewPreferences = {
   mutedSessionIds: [],
   unreadBySession: {},
   collapseExternalAgentDetails: true,
+  advancedAnimations: false,
 };
 
 function load(): ViewPreferences {

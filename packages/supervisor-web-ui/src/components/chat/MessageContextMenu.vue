@@ -18,6 +18,16 @@
             <span>复制</span>
           </button>
 
+          <div v-if="usage" class="message-context-menu__usage">
+            <div>
+              <Coins class="message-context-menu__icon" /><strong>本条用量</strong
+              ><b>{{ formatCost(usage.cost.total) }}</b>
+            </div>
+            <span>输入 {{ formatTokens(usage.input) }}</span>
+            <span>输出 {{ formatTokens(usage.output) }}</span>
+            <span>缓存 {{ formatTokens(usage.cacheRead + usage.cacheWrite) }}</span>
+          </div>
+
           <button
             v-if="canRewind"
             type="button"
@@ -54,6 +64,10 @@
         @click.self="emit('close')"
       >
         <section class="message-sheet">
+          <div v-if="usage" class="message-sheet__usage">
+            <strong>本条用量 {{ formatCost(usage.cost.total) }}</strong>
+            <span>{{ formatTokens(usage.totalTokens) }} tokens</span>
+          </div>
           <button v-if="canCopy" type="button" @click="emit('copy')">复制</button>
           <button v-if="canRewind" type="button" @click="emit('rewind')">回到这里</button>
           <button v-if="canFork" type="button" @click="emit('fork')">从此消息分支</button>
@@ -66,7 +80,8 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { Copy, GitBranch, Undo2 } from "lucide-vue-next";
+import { Coins, Copy, GitBranch, Undo2 } from "lucide-vue-next";
+import type { MessageUsage } from "@/api";
 
 const props = withDefaults(
   defineProps<{
@@ -77,6 +92,7 @@ const props = withDefaults(
     canRewind?: boolean;
     canFork?: boolean;
     canCopy?: boolean;
+    usage?: MessageUsage | null;
   }>(),
   {
     x: 0,
@@ -86,6 +102,16 @@ const props = withDefaults(
     canCopy: false,
   },
 );
+
+function formatCost(value: number) {
+  if (!value) return "$0.00";
+  return value < 0.01 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`;
+}
+function formatTokens(value: number) {
+  return new Intl.NumberFormat("zh-CN", {
+    notation: value >= 10_000 ? "compact" : "standard",
+  }).format(value);
+}
 
 const emit = defineEmits<{
   close: [];
@@ -175,6 +201,41 @@ const menuStyle = computed(() => {
   height: 1px;
   margin: 5px 6px;
   background: var(--app-border-subtle);
+}
+.message-context-menu__usage {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+  margin: 4px 2px 6px;
+  padding: 9px;
+  border-radius: 7px;
+  color: var(--app-text-muted);
+  background: var(--app-hover);
+  font-size: 10px;
+}
+.message-context-menu__usage div {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--app-text-primary);
+}
+.message-context-menu__usage b {
+  margin-left: auto;
+  color: #07c160;
+  font-variant-numeric: tabular-nums;
+}
+.message-sheet__usage {
+  display: flex;
+  justify-content: space-between;
+  padding: 14px;
+  border-radius: 12px;
+  background: var(--app-popup-bg);
+  color: var(--app-text-primary);
+  font-size: 13px;
+}
+.message-sheet__usage span {
+  color: var(--app-text-muted);
 }
 
 .message-sheet-backdrop {

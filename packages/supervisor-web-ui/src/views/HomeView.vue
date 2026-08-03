@@ -1,164 +1,152 @@
 <template>
   <div class="dashboard">
-    <header>
+    <header class="dashboard__header">
       <div>
         <h1>Dashboard</h1>
-        <p>项目与工作动态</p>
+        <p>跨项目查看会话推进、合并与代码提交</p>
       </div>
-      <div class="range"><button class="active">7 天</button><button>30 天</button></div>
+      <button type="button" :disabled="loading" @click="loadDashboard">
+        <RefreshCw :class="{ spin: loading }" />刷新
+      </button>
     </header>
     <main class="custom-scrollbar">
       <section class="overview">
         <article>
-          <span>进行中的 Session</span><strong>3</strong><small>涉及 2 个项目</small>
+          <span>活跃项目</span><strong>{{ projects.length }}</strong
+          ><small>{{ activeProjectCount }} 个正在推进</small>
         </article>
         <article>
-          <span>本周完成任务</span><strong>12</strong><small class="good">较上周 +4</small>
+          <span>进行中的 Session</span><strong>{{ runningCount }}</strong
+          ><small>跨 {{ activeProjectCount }} 个项目</small>
         </article>
-        <article><span>本周提交</span><strong>27</strong><small>6 个活跃分支</small></article>
+        <article>
+          <span>已合并 Session</span><strong>{{ mergedCount }}</strong
+          ><small>{{ totalCommits }} 个相关提交</small>
+        </article>
       </section>
-      <section class="timeline">
-        <div class="timeline-head">
-          <div>
-            <h2>工作时间线</h2>
-            <p>Session、任务和代码变更</p>
-          </div>
-          <button><Filter />筛选</button>
+
+      <ProjectSessionTimeline
+        :projects="projects"
+        :sessions="sessions"
+        :commits="commits"
+        :events="events"
+        @open-session="emit('open-session', $event)"
+      />
+
+      <section class="daily-analysis">
+        <div class="daily-analysis__copy">
+          <h2>每日分析</h2>
+          <p>保留历史分析与 commit 明细，按日期回看项目产出</p>
         </div>
-        <div v-for="group in groups" :key="group.day" class="day-group">
-          <div class="day-label">
-            <strong>{{ group.day }}</strong
-            ><span>{{ group.date }}</span>
-          </div>
-          <ol>
-            <li v-for="event in group.events" :key="event.id" :class="`kind-${event.kind}`">
-              <span class="rail-icon"
-                ><GitCommitHorizontal v-if="event.kind === 'commit'" /><PlayCircle
-                  v-else-if="event.kind === 'session'" /><CheckCircle2 v-else
-              /></span>
-              <article @click="event.sessionId && emit('open-session', event.sessionId)">
-                <div class="event-top">
-                  <div>
-                    <strong>{{ event.title }}</strong
-                    ><span>{{ event.time }}</span>
-                  </div>
-                  <span class="project"><FolderGit2 />{{ event.project }}</span>
-                </div>
-                <p>{{ event.detail }}</p>
-                <div v-if="event.commits" class="commits">
-                  <code v-for="commit in event.commits" :key="commit.hash"
-                    ><b>{{ commit.hash }}</b
-                    >{{ commit.subject }}</code
-                  >
-                </div>
-                <footer>
-                  <span v-if="event.agent"><Bot />{{ event.agent }}</span
-                  ><span v-if="event.sessionId"
-                    ><MessagesSquare />Session {{ event.sessionId }}</span
-                  ><button v-if="event.sessionId">打开会话 <ChevronRight /></button>
-                </footer>
-              </article>
-            </li>
-          </ol>
-        </div>
+        <HomeTimeline :records="dailyRecords" :loading="dailyLoading" @refresh="refreshDaily" />
       </section>
     </main>
   </div>
 </template>
+
 <script setup lang="ts">
+import { computed, onMounted, ref } from "vue";
+import { RefreshCw } from "lucide-vue-next";
 import {
-  Bot,
-  CheckCircle2,
-  ChevronRight,
-  PlayCircle,
-  Filter,
-  FolderGit2,
-  GitCommitHorizontal,
-  MessagesSquare,
-} from "lucide-vue-next";
+  getSessionCommits,
+  listDailyWork,
+  listProjects,
+  listSessions,
+  listSessionTimelineEvents,
+  runDailyWork,
+  type DailyWorkRecord,
+  type Project,
+  type Session,
+  type WorktreeCommit,
+  type SessionTimelineEvent,
+} from "@/api";
+import HomeTimeline from "@/components/home/HomeTimeline.vue";
+import ProjectSessionTimeline from "@/components/home/ProjectSessionTimeline.vue";
+import { showUiMessage } from "@/composables/use-ui-message";
+
 const emit = defineEmits<{ "open-session": [sessionId: string] }>();
-const groups = [
-  {
-    day: "今天",
-    date: "8 月 3 日",
-    events: [
-      {
-        id: 1,
-        kind: "commit",
-        time: "14:32",
-        title: "完成 Todo 交互原型",
-        project: "supervisor-web-ui",
-        detail: "Session 完成后产生 3 条提交，包含 PC 双栏、移动端布局和依赖高亮。",
-        agent: "Codex",
-        sessionId: "128",
-        commits: [
-          { hash: "8a24c1e", subject: "feat: redesign todo workspace" },
-          { hash: "44be719", subject: "feat: add dependency interactions" },
-          { hash: "2dc80aa", subject: "test: cover responsive todo view" },
-        ],
-      },
-      {
-        id: 2,
-        kind: "session",
-        time: "11:08",
-        title: "移动端 Session 详情开始执行",
-        project: "supervisor-web-ui",
-        detail: "Claude Code 正在调整移动端详情页的信息密度。",
-        agent: "Claude Code",
-        sessionId: "126",
-      },
-      {
-        id: 3,
-        kind: "task",
-        time: "09:45",
-        title: "助手模型设置已完成",
-        project: "supervisor",
-        detail: "统一助手模型配置已完成，相关后续任务可以开始。",
-        agent: "Codex",
-        sessionId: "123",
-      },
-    ],
-  },
-  {
-    day: "昨天",
-    date: "8 月 2 日",
-    events: [
-      {
-        id: 4,
-        kind: "commit",
-        time: "18:20",
-        title: "Supervisor 后端日结",
-        project: "supervisor",
-        detail: "完成 Watson runner、项目脚本和任务调度调整。",
-        agent: "Codex",
-        sessionId: "119",
-        commits: [
-          { hash: "4b612d0", subject: "refactor: use internal watson runner" },
-          { hash: "9074af1", subject: "feat: start project scripts as jobs" },
-        ],
-      },
-      {
-        id: 5,
-        kind: "task",
-        time: "15:40",
-        title: "项目脚本启动被阻塞",
-        project: "supervisor",
-        detail: "当前项目尚未配置可用执行 Agent，需要用户处理。",
-        agent: "未分配",
-      },
-    ],
-  },
-];
+const projects = ref<Project[]>([]);
+const sessions = ref<Session[]>([]);
+const commits = ref<Record<string, WorktreeCommit[]>>({});
+const events = ref<SessionTimelineEvent[]>([]);
+const dailyRecords = ref<DailyWorkRecord[]>([]);
+const loading = ref(false);
+const dailyLoading = ref(false);
+const visibleSessions = computed(() =>
+  sessions.value.filter((session) => session.showInSessionList),
+);
+const runningCount = computed(
+  () => visibleSessions.value.filter((session) => session.status === "running").length,
+);
+const mergedCount = computed(
+  () => visibleSessions.value.filter((session) => session.status === "finish").length,
+);
+const activeProjectCount = computed(
+  () =>
+    new Set(
+      visibleSessions.value
+        .filter((session) => session.status === "running")
+        .map((session) => session.projectId)
+        .filter(Boolean),
+    ).size,
+);
+const totalCommits = computed(() =>
+  Object.values(commits.value).reduce((sum, rows) => sum + rows.length, 0),
+);
+
+async function loadDashboard() {
+  if (loading.value) return;
+  loading.value = true;
+  try {
+    const [nextProjects, nextSessions, records, nextEvents] = await Promise.all([
+      listProjects(),
+      listSessions(),
+      listDailyWork({ limit: 30 }),
+      listSessionTimelineEvents(),
+    ]);
+    projects.value = nextProjects;
+    sessions.value = nextSessions;
+    dailyRecords.value = records;
+    events.value = nextEvents;
+    const rows = await Promise.all(
+      nextSessions
+        .filter((session) => session.projectId && session.showInSessionList)
+        .map(
+          async (session) =>
+            [session.id, await getSessionCommits(session.id).catch(() => [])] as const,
+        ),
+    );
+    commits.value = Object.fromEntries(rows);
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "Dashboard 加载失败", "error");
+  } finally {
+    loading.value = false;
+  }
+}
+async function refreshDaily() {
+  dailyLoading.value = true;
+  try {
+    await runDailyWork();
+    dailyRecords.value = await listDailyWork({ limit: 30 });
+    showUiMessage("每日分析已更新", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "每日分析更新失败", "error");
+  } finally {
+    dailyLoading.value = false;
+  }
+}
+onMounted(loadDashboard);
 </script>
+
 <style scoped>
 .dashboard {
-  height: 100%;
   display: flex;
+  height: 100%;
   flex-direction: column;
-  background: var(--app-settings-bg);
   color: var(--app-text-primary);
+  background: var(--app-settings-bg);
 }
-.dashboard > header {
+.dashboard__header {
   display: flex;
   min-height: 58px;
   align-items: center;
@@ -166,35 +154,37 @@ const groups = [
   padding: 8px 18px;
   border-bottom: 1px solid var(--app-border);
 }
-h1 {
+.dashboard__header h1 {
   font-size: 17px;
   font-weight: 680;
 }
-.dashboard > header p,
-.timeline-head p {
+.dashboard__header p {
   margin-top: 2px;
   color: var(--app-text-muted);
   font-size: 11px;
 }
-.range {
+.dashboard__header button {
   display: flex;
-  padding: 3px;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 10px;
   border-radius: 7px;
+  color: var(--app-text-secondary);
   background: var(--app-hover);
+  font-size: 11px;
 }
-.range button {
-  padding: 4px 8px;
-  border-radius: 5px;
-  color: var(--app-text-muted);
-  font-size: 10px;
+.dashboard__header svg {
+  width: 13px;
+  height: 13px;
 }
-.range .active {
-  background: var(--app-settings-card);
-  color: var(--app-text-primary);
+.spin {
+  animation: spin 0.8s linear infinite;
 }
 main {
+  display: grid;
   min-height: 0;
   flex: 1;
+  gap: 14px;
   overflow: auto;
   padding: 16px;
 }
@@ -202,8 +192,6 @@ main {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  max-width: 1050px;
-  margin: 0 auto 14px;
 }
 .overview article {
   display: grid;
@@ -224,192 +212,33 @@ main {
   color: var(--app-text-muted);
   font-size: 9px;
 }
-.overview .good {
-  color: #07964c;
-}
-.timeline {
-  max-width: 1050px;
-  margin: auto;
-  padding: 15px;
+.daily-analysis {
   border: 1px solid var(--app-border-subtle);
-  border-radius: 11px;
+  border-radius: 12px;
   background: var(--app-settings-card);
 }
-.timeline-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 18px;
+.daily-analysis__copy {
+  padding: 15px 18px 3px;
 }
-.timeline-head h2 {
-  font-size: 14px;
+.daily-analysis__copy h2 {
+  font-size: 15px;
   font-weight: 650;
 }
-.timeline-head button {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  background: var(--app-hover);
-  color: var(--app-text-secondary);
-  font-size: 10px;
-}
-.timeline svg {
-  width: 13px;
-}
-.day-group {
-  display: grid;
-  grid-template-columns: 90px 1fr;
-}
-.day-group + .day-group {
-  margin-top: 16px;
-}
-.day-label strong,
-.day-label span {
-  display: block;
-}
-.day-label strong {
-  font-size: 12px;
-}
-.day-label span {
-  margin-top: 2px;
+.daily-analysis__copy p {
+  margin-top: 3px;
   color: var(--app-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
-ol {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-li {
-  position: relative;
-  display: grid;
-  grid-template-columns: 28px 1fr;
-  padding-bottom: 10px;
-}
-li:not(:last-child):before {
-  content: "";
-  position: absolute;
-  left: 13px;
-  top: 25px;
-  bottom: -5px;
-  width: 1px;
-  background: var(--app-border);
-}
-.rail-icon {
-  z-index: 1;
-  display: grid;
-  width: 27px;
-  height: 27px;
-  place-items: center;
-  border: 4px solid var(--app-settings-card);
-  border-radius: 50%;
-  background: #eaf2ff;
-  color: #3b82f6;
-}
-.kind-commit .rail-icon {
-  background: #e8f8ef;
-  color: #07a65a;
-}
-.kind-task .rail-icon {
-  background: #f4f1ff;
-  color: #7c3aed;
-}
-li > article {
-  margin-left: 8px;
-  padding: 11px 12px;
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 9px;
-  background: var(--app-settings-bg);
-  cursor: default;
-}
-li > article:hover {
-  border-color: color-mix(in srgb, #07c160 30%, var(--app-border));
-  box-shadow: 0 3px 12px rgb(0 0 0/5%);
-}
-.event-top,
-.event-top > div,
-footer,
-footer span,
-.project {
-  display: flex;
-  align-items: center;
-}
-.event-top {
-  justify-content: space-between;
-  gap: 8px;
-}
-.event-top > div {
-  gap: 8px;
-}
-.event-top strong {
-  font-size: 12px;
-}
-.event-top > div span {
-  color: var(--app-text-muted);
-  font-size: 9px;
-}
-.project,
-footer span {
-  gap: 3px;
-}
-.project {
-  padding: 3px 6px;
-  border-radius: 5px;
-  background: var(--app-hover);
-  color: var(--app-text-secondary);
-  font-size: 9px;
-}
-li p {
-  margin: 5px 0 8px;
-  color: var(--app-text-secondary);
-  font-size: 10px;
-  line-height: 1.5;
-}
-.commits {
-  display: grid;
-  gap: 3px;
-  margin: 7px 0;
-  padding: 7px;
-  border-radius: 6px;
-  background: var(--app-settings-card);
-}
-.commits code {
-  color: var(--app-text-secondary);
-  font-size: 9px;
-}
-.commits b {
-  margin-right: 8px;
-  color: #078f49;
-  font-weight: 500;
-}
-footer {
-  gap: 12px;
-  color: var(--app-text-muted);
-  font-size: 9px;
-}
-footer button {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  margin-left: auto;
-  color: #078f49;
-  font-size: 9px;
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 @media (max-width: 640px) {
-  .dashboard > header {
-    min-height: 48px;
-    padding: 7px 12px;
-  }
-  .dashboard > header p {
-    display: none;
-  }
   main {
     padding: 10px;
   }
   .overview {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 6px;
   }
   .overview article {
@@ -419,33 +248,6 @@ footer button {
     font-size: 18px;
   }
   .overview small {
-    display: none;
-  }
-  .timeline {
-    padding: 11px;
-  }
-  .day-group {
-    display: block;
-  }
-  .day-label {
-    display: flex;
-    align-items: baseline;
-    gap: 7px;
-    margin: 12px 0 8px;
-  }
-  .day-label span {
-    margin: 0;
-  }
-  .event-top {
-    align-items: flex-start;
-  }
-  .project {
-    display: none;
-  }
-  li > article {
-    margin-left: 5px;
-  }
-  .commits code:nth-child(n + 3) {
     display: none;
   }
 }

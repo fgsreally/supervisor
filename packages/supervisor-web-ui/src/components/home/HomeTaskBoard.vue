@@ -17,28 +17,33 @@
         </button>
       </header>
       <div class="home-board__cards custom-scrollbar">
-        <button
+        <TaskCard
           v-for="task in tasksIn(column.statuses)"
           :key="task.id"
-          type="button"
           class="home-task-card"
-          :class="`home-task-card--${task.priority}`"
-          @click="emit('select', task)"
+          :title="task.title"
+          :description="task.description"
+          :project-name="projectName(task)"
+          :agent-id="task.agentId"
+          :agent-name="agentName(task)"
+          :agent-avatar="agentAvatar(task)"
+          :status="task.status"
+          :status-label="statusLabel(task.status)"
+          :accent="task.status"
+          interactive
+          @select="emit('select', task)"
         >
-          <div class="home-task-card__top">
-            <span class="home-task-card__priority" :title="priorityLabel(task.priority)" />
-            <strong>{{ task.title }}</strong>
-          </div>
-          <p v-if="task.description" class="home-task-card__desc">{{ task.description }}</p>
-          <div class="home-task-card__meta">
+          <template #meta>
             <span v-if="phaseLabel(task)">{{ phaseLabel(task) }}</span>
-            <span v-if="projectName(task)">{{ projectName(task) }}</span>
             <span v-if="childrenOf(task.id).length">
               {{ doneChildren(task.id) }}/{{ childrenOf(task.id).length }}
             </span>
             <span v-if="task.error" class="home-task-card__error">{{ task.error }}</span>
-          </div>
-          <ul v-if="expandedId === task.id && childrenOf(task.id).length" class="home-task-card__kids">
+          </template>
+          <ul
+            v-if="expandedId === task.id && childrenOf(task.id).length"
+            class="home-task-card__kids"
+          >
             <li v-for="child in childrenOf(task.id)" :key="child.id">
               <span :data-status="child.status">{{ child.status }}</span>
               <strong>{{ child.title }}</strong>
@@ -88,7 +93,7 @@
               打开会话
             </button>
           </div>
-        </button>
+        </TaskCard>
         <div v-if="!tasksIn(column.statuses).length" class="home-board__empty">暂无</div>
       </div>
     </div>
@@ -98,11 +103,13 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { Plus } from "lucide-vue-next";
-import type { HomeTask, HomeTaskPriority, HomeTaskStatus, Project } from "@/api";
+import type { Agent, HomeTask, HomeTaskStatus, Project } from "@/api";
+import TaskCard from "@/components/task/TaskCard.vue";
 
 const props = defineProps<{
   tasks: HomeTask[];
   projects: Project[];
+  agents?: Agent[];
   busyId?: number | null;
 }>();
 
@@ -158,11 +165,28 @@ function projectName(task: HomeTask): string {
   return props.projects.find((project) => Number(project.id) === task.projectId)?.name ?? "";
 }
 
-function priorityLabel(priority: HomeTaskPriority): string {
-  if (priority === "urgent") return "紧急";
-  if (priority === "high") return "高";
-  if (priority === "low") return "低";
-  return "普通";
+function agent(task: HomeTask): Agent | undefined {
+  if (task.agentId == null) return undefined;
+  return props.agents?.find((item) => Number(item.id) === task.agentId);
+}
+
+function agentName(task: HomeTask): string {
+  return agent(task)?.name ?? "";
+}
+
+function agentAvatar(task: HomeTask): string | null {
+  return agent(task)?.avatar ?? null;
+}
+
+function statusLabel(status: HomeTaskStatus): string {
+  return {
+    backlog: "待办",
+    todo: "待办",
+    in_progress: "进行中",
+    blocked: "阻塞",
+    done: "已完成",
+    error: "失败",
+  }[status];
 }
 </script>
 
@@ -230,66 +254,10 @@ function priorityLabel(priority: HomeTaskPriority): string {
   color: var(--app-text-muted);
 }
 .home-task-card {
-  display: block;
   width: 100%;
-  text-align: left;
-  padding: 6px 7px;
-  border-radius: 6px;
-  border: 1px solid var(--app-border-subtle);
-  background: var(--app-settings-card);
 }
 .home-task-card + .home-task-card {
   margin-top: 5px;
-}
-.home-task-card:hover {
-  border-color: color-mix(in srgb, #07c160 30%, var(--app-border));
-}
-.home-task-card__top {
-  display: flex;
-  align-items: flex-start;
-  gap: 6px;
-}
-.home-task-card__priority {
-  width: 6px;
-  height: 6px;
-  margin-top: 5px;
-  border-radius: 999px;
-  background: #9ca3af;
-  flex: none;
-}
-.home-task-card--urgent .home-task-card__priority {
-  background: #dc2626;
-}
-.home-task-card--high .home-task-card__priority {
-  background: #ea580c;
-}
-.home-task-card--normal .home-task-card__priority {
-  background: #07c160;
-}
-.home-task-card--low .home-task-card__priority {
-  background: #9ca3af;
-}
-.home-task-card__top strong {
-  font-size: 12px;
-  line-height: 1.3;
-  color: var(--app-text-primary);
-}
-.home-task-card__desc {
-  margin: 4px 0 0;
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  font-size: 11px;
-  color: var(--app-text-muted);
-}
-.home-task-card__meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: 4px;
-  font-size: 10px;
-  color: var(--app-text-secondary);
 }
 .home-task-card__error {
   color: var(--app-danger, #dc2626);

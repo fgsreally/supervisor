@@ -1,9 +1,19 @@
 <template>
   <div class="startup-gate">
-    <div v-if="state === 'checking'" class="startup-checking">
-      <Loader2 v-if="!startupError" />
-      <span>{{ startupError || "正在启动 Supervisor…" }}</span>
-      <button v-if="startupError" type="button" @click="continueStartup">重试</button>
+    <UiEmptyState
+      v-if="state === 'checking' && startupError"
+      tone="error"
+      title="无法连接 Supervisor"
+      description="服务暂时不可用，请确认服务已启动后重试。"
+      action-label="重新连接"
+      @action="continueStartup"
+    >
+      <template #icon><ServerOff /></template>
+      <template #action-icon><RefreshCw /></template>
+    </UiEmptyState>
+    <div v-else-if="state === 'checking'" class="startup-checking">
+      <Loader2 />
+      <span>正在启动 Supervisor…</span>
     </div>
 
     <section v-else-if="state === 'login'" class="startup-pin">
@@ -65,8 +75,9 @@
 
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
-import { Loader2, LockKeyhole } from "lucide-vue-next";
+import { Loader2, LockKeyhole, RefreshCw, ServerOff } from "lucide-vue-next";
 import { getAuthStatus, listProviderModels, listProviders, saveWebPassword } from "@/api";
+import UiEmptyState from "@/components/ui/UiEmptyState.vue";
 import ProviderFormView from "@/views/ProviderFormView.vue";
 
 const PIN_LENGTH = 6;
@@ -269,16 +280,7 @@ onUnmounted(() => {
   font-size: 13px;
 }
 
-.startup-checking button {
-  margin-left: 4px;
-  padding: 5px 10px;
-  border-radius: 6px;
-  background: var(--app-hover);
-  color: var(--app-text-primary);
-}
-
-.startup-checking svg,
-.startup-hint svg {
+.startup-checking svg {
   width: 17px;
   height: 17px;
   animation: startup-spin 1s linear infinite;

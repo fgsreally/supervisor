@@ -39,6 +39,7 @@ export type DisplayGroup =
       /** True when message was copied from parent session (is_old). */
       inherited?: boolean;
       assets: MessageAsset[];
+      usage?: import("@/api").MessageUsage;
     };
 
 function attachResult(pieces: RenderPiece[], result: ToolResultEntry) {
@@ -255,6 +256,7 @@ export function buildDisplayGroups(entries: ChatEntry[]): DisplayGroup[] {
       }
       appendMessagePieces(current.pieces, entry);
       current.assets.push(...(entry.assets ?? []));
+      if (entry.usage) current.usage = entry.usage;
     }
   }
 

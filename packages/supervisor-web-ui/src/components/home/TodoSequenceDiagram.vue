@@ -15,17 +15,21 @@
       @node-click="onNodeClick"
     >
       <template #node-task="{ data }">
-        <div class="task-node">
+        <div
+          class="task-node-wrap"
+          @mouseenter="hoveredNodeId = data.nodeId"
+          @mouseleave="hoveredNodeId = null"
+        >
           <Handle type="target" :position="Position.Left" />
-          <b>{{ data.letter }}</b>
-          <span>
-            <strong>{{ data.title }}</strong>
-            <small><FolderGit2 />{{ data.project }}</small>
-            <em
-              ><i>{{ data.agent[0] }}</i
-              >{{ data.agent }}</em
-            >
-          </span>
+          <TaskCard
+            :title="data.title"
+            :description="data.description"
+            :project-name="data.project"
+            :agent-id="agentInfo(data.agent)?.id ?? data.agent"
+            :agent-name="data.agent"
+            :agent-avatar="agentInfo(data.agent)?.avatar"
+            density="compact"
+          />
           <Handle type="source" :position="Position.Right" />
         </div>
       </template>
@@ -35,16 +39,21 @@
 
 <script setup lang="ts">
 import { Handle, MarkerType, Position, VueFlow, type NodeMouseEvent } from "@vue-flow/core";
-import { FolderGit2 } from "lucide-vue-next";
+import { computed, ref } from "vue";
+import TaskCard from "@/components/task/TaskCard.vue";
+import type { Agent } from "@/api";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 
 const emit = defineEmits<{ select: [id: number] }>();
+const props = withDefaults(defineProps<{ agents?: Agent[] }>(), { agents: () => [] });
+const hoveredNodeId = ref<string | null>(null);
 const taskData = [
   {
     id: "1",
     letter: "A",
     title: "梳理数据模型",
+    description: "确认任务字段、状态和迁移策略",
     project: "supervisor",
     agent: "Codex",
     x: 20,
@@ -54,8 +63,9 @@ const taskData = [
     id: "2",
     letter: "B",
     title: "设计交互方案",
+    description: "统一 Task 卡片和详情信息结构",
     project: "supervisor-web-ui",
-    agent: "Claude",
+    agent: "Claude Code",
     x: 20,
     y: 205,
   },
@@ -63,6 +73,7 @@ const taskData = [
     id: "3",
     letter: "C",
     title: "重构任务接口",
+    description: "实现规划确认、调度与手动启动",
     project: "supervisor",
     agent: "Codex",
     x: 330,
@@ -72,8 +83,9 @@ const taskData = [
     id: "4",
     letter: "D",
     title: "实现 Todo 界面",
+    description: "完成桌面端与移动端任务体验",
     project: "supervisor-web-ui",
-    agent: "Claude",
+    agent: "Claude Code",
     x: 330,
     y: 205,
   },
@@ -81,34 +93,67 @@ const taskData = [
     id: "5",
     letter: "E",
     title: "联调与验证",
+    description: "验证任务状态同步与执行顺序",
     project: "supervisor-web-ui",
     agent: "Codex",
     x: 640,
     y: 120,
   },
 ];
-const nodes = taskData.map(({ id, x, y, ...data }) => ({
-  id,
-  type: "task",
-  position: { x, y },
-  data,
-}));
 const edge = (id: string, source: string, target: string) => ({
   id,
   source,
   target,
   type: "bezier",
   markerEnd: MarkerType.ArrowClosed,
-  style: { stroke: "#8fa0b8", strokeWidth: 2.4 },
 });
-const edges = [
+const edgeData = [
   edge("a-c", "1", "3"),
   edge("b-d", "2", "4"),
   edge("c-e", "3", "5"),
   edge("d-e", "4", "5"),
 ];
+const connectedNodeIds = computed(() => {
+  const id = hoveredNodeId.value;
+  if (!id) return new Set<string>();
+  return new Set(
+    edgeData
+      .filter((edge) => edge.source === id || edge.target === id)
+      .flatMap((edge) => [edge.source, edge.target]),
+  );
+});
+const nodes = computed(() =>
+  taskData.map(({ id, x, y, ...data }) => ({
+    id,
+    type: "task",
+    position: { x, y },
+    data: { ...data, nodeId: id },
+    class:
+      !hoveredNodeId.value || connectedNodeIds.value.has(id)
+        ? id === hoveredNodeId.value
+          ? "sequence-node--current"
+          : "sequence-node--connected"
+        : "sequence-node--dim",
+  })),
+);
+const edges = computed(() =>
+  edgeData.map((edge) => {
+    const active = edge.source === hoveredNodeId.value || edge.target === hoveredNodeId.value;
+    return {
+      ...edge,
+      class: active ? "sequence-edge--active" : hoveredNodeId.value ? "sequence-edge--dim" : "",
+      style: {
+        stroke: active ? "#ff8a24" : "#8fa0b8",
+        strokeWidth: active ? 4 : 2.4,
+      },
+    };
+  }),
+);
 function onNodeClick(event: NodeMouseEvent) {
   emit("select", Number(event.node.id));
+}
+function agentInfo(name: string): Agent | undefined {
+  return props.agents.find((agent) => agent.name === name);
 }
 </script>
 
@@ -137,64 +182,10 @@ function onNodeClick(event: NodeMouseEvent) {
   height: 390px;
   background: var(--app-settings-card);
 }
-.task-node {
+.task-node-wrap {
   position: relative;
-  display: flex;
   width: 230px;
-  gap: 10px;
-  padding: 13px;
-  border: 1px solid var(--app-border);
-  border-radius: 9px;
-  text-align: left;
-  background: var(--app-settings-bg);
   box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
-}
-.task-node > b {
-  display: grid;
-  width: 28px;
-  height: 28px;
-  flex: none;
-  place-items: center;
-  border-radius: 7px;
-  background: #54c978;
-  color: white;
-  font-size: 12px;
-}
-.task-node > span {
-  min-width: 0;
-  display: grid;
-  gap: 5px;
-}
-.task-node strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-}
-.task-node small,
-.task-node em {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--app-text-muted);
-  font-size: 9px;
-  font-style: normal;
-}
-.task-node small svg {
-  width: 11px;
-  height: 11px;
-  flex: none;
-}
-.task-node em i {
-  display: grid;
-  width: 16px;
-  height: 16px;
-  place-items: center;
-  border-radius: 50%;
-  background: #24292f;
-  color: white;
-  font-size: 8px;
-  font-style: normal;
 }
 :deep(.vue-flow__handle) {
   width: 7px;
@@ -205,6 +196,29 @@ function onNodeClick(event: NodeMouseEvent) {
 }
 :deep(.vue-flow__edge-path) {
   stroke-linecap: round;
+  transition:
+    stroke 0.18s ease,
+    stroke-width 0.18s ease,
+    opacity 0.18s ease;
+}
+:deep(.sequence-edge--active .vue-flow__edge-path) {
+  filter: drop-shadow(0 0 5px rgb(255 138 36 / 55%));
+}
+:deep(.sequence-edge--dim),
+:deep(.sequence-node--dim) {
+  opacity: 0.24;
+}
+:deep(.vue-flow__node) {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+:deep(.sequence-node--current) {
+  z-index: 4 !important;
+  filter: drop-shadow(0 8px 13px rgb(255 138 36 / 20%));
+}
+:deep(.sequence-node--current .task-card-ui) {
+  border-color: #ff8a24;
 }
 :deep(.vue-flow__node) {
   cursor: pointer;

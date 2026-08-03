@@ -351,6 +351,19 @@ export function createHttpServer(
     );
   });
 
+  app.get("/home/session-events", (c) => {
+    const from = c.req.query("from");
+    const to = c.req.query("to");
+    const projectId = c.req.query("projectId");
+    return c.json(
+      manager.database.listSessionEvents({
+        ...(from ? { from: Date.parse(from) } : {}),
+        ...(to ? { to: Date.parse(to) } : {}),
+        ...(projectId ? { projectId: Number.parseInt(projectId, 10) } : {}),
+      }),
+    );
+  });
+
   app.post("/home/daily-work/run", async (c) => {
     const body = await c.req.json().catch(() => ({}));
     const dayKey =
@@ -1600,6 +1613,13 @@ export function createHttpServer(
     }
   });
 
+  app.get("/sessions/:id/usage", (c) => {
+    const id = Number.parseInt(c.req.param("id"), 10);
+    if (!Number.isFinite(id) || !manager.database.get(id))
+      return jsonError(c, 404, "session not found");
+    return c.json(manager.database.getSessionUsage(id));
+  });
+
   // GET /sessions/:id/messages — conversation history (paginated when limit is set)
   app.get("/sessions/:id/messages", async (c) => {
     try {
@@ -1727,6 +1747,19 @@ export function createHttpServer(
       if (manager.get(id)?.isBuiltin) return jsonError(c, 403, "Pi 助手不能归档");
       const session = await manager.complete(id);
       return c.json(session);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 409, message);
+    }
+  });
+
+  // POST /sessions/:id/sync — merge the project's current branch and restart project services.
+  app.post("/sessions/:id/sync", async (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      if (manager.get(id)?.isBuiltin) return jsonError(c, 403, "内置会话不能同步");
+      return c.json(await manager.syncSession(id));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 409, message);

@@ -140,6 +140,21 @@ export async function resolveMergeTargetBranch(repoRoot: string): Promise<string
   return getCurrentBranch(repoRoot);
 }
 
+/** Merge the project root's current checkout into an existing session worktree. */
+export async function syncSessionWorktree(repoRoot: string, worktreePath: string): Promise<string> {
+  const status = await getGitStatusPorcelain(worktreePath);
+  if (status.trim()) throw new Error("同步前请先提交或清理当前会话中的修改");
+  const target = await getCurrentBranch(repoRoot);
+  await runGit(worktreePath, [
+    "merge",
+    "--no-edit",
+    target,
+    "-m",
+    withSvCommitMarker(`Sync ${target}`),
+  ]);
+  return target;
+}
+
 async function runGit(
   cwd: string,
   args: string[],

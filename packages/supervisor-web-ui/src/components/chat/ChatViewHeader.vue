@@ -1,7 +1,10 @@
 <template>
   <div
     class="chat-view-header relative z-50 h-12 md:h-[68px] border-b flex items-center px-2.5 md:px-6 shrink-0"
-    style="background: var(--app-chat-header-bg); border-color: var(--app-header-divider, var(--app-border-subtle))"
+    style="
+      background: var(--app-chat-header-bg);
+      border-color: var(--app-header-divider, var(--app-border-subtle));
+    "
   >
     <button
       v-if="showBack"
@@ -30,6 +33,9 @@
     <div class="chat-header-status ml-4 text-xs" :class="statusBadgeClass">
       {{ statusLabel }}
     </div>
+    <div class="chat-header-cost" title="当前 Session 累计模型费用">
+      {{ usage ? formatCost(usage.cost.total) : "$0.00" }}
+    </div>
     <div class="ml-auto flex items-center gap-1">
       <slot name="actions" />
       <button
@@ -48,6 +54,7 @@
 import { computed } from "vue";
 import { ChevronLeft, MoreHorizontal } from "lucide-vue-next";
 import WorkflowStageTag from "../WorkflowStageTag.vue";
+import type { SessionUsage } from "@/api";
 
 /** UI-facing session phase (overrides backend idle while streaming / waiting on ask). */
 export type ChatHeaderStatus =
@@ -68,7 +75,12 @@ const props = defineProps<{
   statusKey: ChatHeaderStatus | string;
   showBack?: boolean;
   stage?: string | null;
+  usage?: SessionUsage | null;
 }>();
+
+function formatCost(value: number) {
+  return value > 0 && value < 0.01 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`;
+}
 
 const emit = defineEmits<{
   back: [];
@@ -129,6 +141,16 @@ const statusBadgeClass = computed(() => {
   align-items: center;
   gap: 6px;
   color: var(--app-text-secondary);
+}
+.chat-header-cost {
+  margin-left: 9px;
+  padding: 3px 7px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 999px;
+  color: var(--app-text-secondary);
+  background: var(--app-hover);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
 }
 
 .chat-header-status::before {

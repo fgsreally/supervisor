@@ -37,14 +37,16 @@
         >
           {{ group.label }}
         </div>
-        <AgentListItem
-          v-for="agent in group.agents"
-          :key="agent.id"
-          :agent="agent"
-          :active="activeId === agent.id"
-          @select="$emit('select', $event)"
-          @contextmenu="openContextMenu"
-        />
+        <DustTransitionGroup name="session-list" tag="div" content-class="agent-list-roots">
+          <AgentListItem
+            v-for="agent in group.agents"
+            :key="agent.id"
+            :agent="agent"
+            :active="activeId === agent.id"
+            @select="$emit('select', $event)"
+            @contextmenu="openContextMenu"
+          />
+        </DustTransitionGroup>
       </template>
 
       <div
@@ -87,6 +89,7 @@ import { Search, UserPlus } from "lucide-vue-next";
 import type { Agent } from "@/api";
 import { useAgentStore } from "@/store";
 import AgentListItem from "./AgentListItem.vue";
+import DustTransitionGroup from "./DustTransitionGroup.vue";
 import { requestUiConfirm } from "@/composables/use-ui-confirm";
 import { showUiMessage } from "@/composables/use-ui-message";
 

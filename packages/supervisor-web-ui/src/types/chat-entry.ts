@@ -17,6 +17,7 @@ export type ChatEntryBase = {
   slashSource?: "skill" | "prompt" | "custom" | "mcp";
   /** Agent/orchestrator input which remains role=user for the model. */
   injectedSource?: string;
+  usage?: import("@/api").MessageUsage;
 };
 
 export interface ChatToolPart {

@@ -73,6 +73,7 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
     ...(typeof entry.meta?.inputSource === "string"
       ? { injectedSource: entry.meta.inputSource }
       : {}),
+    ...(entry.type === "message" && entry.message?.usage ? { usage: entry.message.usage } : {}),
   };
   if (entry.type === "system") {
     return {

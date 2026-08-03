@@ -66,6 +66,21 @@
               <p v-if="gitBranch" class="mt-4 text-[12px] chat-session-menu__muted break-all">
                 分支：<code class="text-[11px]">{{ gitBranch }}</code>
               </p>
+              <div class="session-usage">
+                <div>
+                  <span>当前 Session 费用</span
+                  ><strong>{{ formatCost(usage?.cost.total ?? 0) }}</strong>
+                </div>
+                <p>
+                  {{ formatTokens(usage?.totalTokens ?? 0) }} tokens ·
+                  {{ usage?.messages ?? 0 }} 条模型回复
+                </p>
+                <small
+                  >输入 {{ formatTokens(usage?.input ?? 0) }} · 输出
+                  {{ formatTokens(usage?.output ?? 0) }} · 缓存
+                  {{ formatTokens((usage?.cacheRead ?? 0) + (usage?.cacheWrite ?? 0)) }}</small
+                >
+              </div>
               <p v-if="sessionStatus === 'finish'" class="mt-3 text-[13px] text-[#07c160]">
                 会话已完成
               </p>
@@ -250,6 +265,16 @@
             </button>
 
             <button
+              v-if="canSync"
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('sync')"
+            >
+              <span>同步项目修改</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <button
               v-if="canComplete"
               type="button"
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors text-[#576b95]"
@@ -311,6 +336,7 @@ import type { Agent } from "@/api";
 import { SESSION_AVATAR_COLORS, type SessionAvatarValue } from "@/utils/session-avatar";
 import AgentAvatar from "./AgentAvatar.vue";
 import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
+import type { SessionUsage } from "@/api";
 
 function toggleExternalDetails() {
   viewPreferences.collapseExternalAgentDetails = !viewPreferences.collapseExternalAgentDetails;
@@ -332,12 +358,23 @@ const props = defineProps<{
   gitBranch?: string | null;
   canComplete?: boolean;
   canCheckpoint?: boolean;
+  canSync?: boolean;
   childSessions: Array<Pick<Session, "id" | "status" | "spawnType" | "title" | "meta">>;
   configurableAgents: Agent[];
   shadowEnabled: boolean;
   spawnedAgentIds: string[];
   externalAgent?: boolean;
+  usage?: SessionUsage | null;
 }>();
+
+function formatCost(value: number) {
+  return value < 0.01 && value > 0 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`;
+}
+function formatTokens(value: number) {
+  return new Intl.NumberFormat("zh-CN", {
+    notation: value >= 10_000 ? "compact" : "standard",
+  }).format(value);
+}
 
 const emit = defineEmits<{
   close: [];
@@ -348,6 +385,7 @@ const emit = defineEmits<{
   checkpoint: [];
   rewind: [];
   commit: [];
+  sync: [];
   btw: [];
   navigate: [sessionId: string];
   "update:muted": [value: boolean];
@@ -393,6 +431,30 @@ function childSessionName(child: Pick<Session, "id" | "title">): string {
 </script>
 
 <style scoped>
+.session-usage {
+  margin-top: 14px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  background: var(--app-hover);
+}
+.session-usage div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.session-usage strong {
+  color: #07c160;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.session-usage p,
+.session-usage small {
+  display: block;
+  margin-top: 4px;
+  color: var(--app-text-muted);
+  font-size: 10px;
+}
 .chat-session-menu-backdrop {
   background: rgb(0 0 0 / 20%);
 }

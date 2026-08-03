@@ -18,6 +18,7 @@
       :agent-name="agentName"
       :agent-id="agentId"
       :external-agent="isExternalAgent"
+      :usage="sessionUsage"
       :status-key="headerStatusKey"
       :stage="stage"
       :show-back="showBack"
@@ -41,6 +42,9 @@
             <FolderTree />
           </ChatHeaderAction>
           <SessionCommitPopover :session-id="session.id" />
+          <ChatHeaderAction v-if="canSyncSession" title="同步项目修改" @click="onSyncSession">
+            <RefreshCw />
+          </ChatHeaderAction>
           <ChatHeaderAction
             v-if="taskCount"
             :title="`Todo · ${taskTypeSummary}`"
@@ -311,6 +315,7 @@
       :git-branch="gitBranch"
       :can-complete="canCompleteSession"
       :can-checkpoint="canCheckpointActions"
+      :can-sync="canSyncSession"
       :child-sessions="childSessions"
       :configurable-agents="configurableAgents"
       :shadow-enabled="shadowEnabled"
@@ -324,6 +329,7 @@
       @checkpoint="onCreateCheckpoint"
       @rewind="onRewindSession"
       @commit="onCommitSession"
+      @sync="onSyncSession"
       @btw="onCreateBtw"
       @navigate="navigateToSubagent"
       @update:muted="onMutedChange"
@@ -403,6 +409,7 @@ import {
   ClipboardList,
   FolderTree,
   Loader2,
+  RefreshCw,
   SlidersHorizontal,
   ScrollText,
   Search,
@@ -410,6 +417,7 @@ import {
 import { useSessionStore, useAgentStore, useProviderStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { requestUiConfirm } from "@/composables/use-ui-confirm";
+import { withUiBusy } from "@/composables/use-ui-busy";
 import { formatMessageClock } from "@/utils/format-time";
 import * as api from "@/api";
 import type { ChatCompactionEntry, ChatEntry } from "@/types/chat-entry";
@@ -589,6 +597,7 @@ const activeTurn = ref<{
   assistantActivitySeen: boolean;
 } | null>(null);
 const sessionMenuOpen = ref(false);
+const sessionUsage = ref<api.SessionUsage | null>(null);
 const modelPickerOpen = ref(false);
 const btwPanelOpen = ref(false);
 const modelPickerLoading = ref(false);
@@ -839,6 +848,9 @@ const canCheckpointActions = computed(() => {
   if (isStreaming.value) return false;
   return props.session.status === "idle";
 });
+const canSyncSession = computed(
+  () => !props.session.isBuiltin && props.session.status !== "finish" && !isStreaming.value,
+);
 
 watch(
   () => props.session.title,
@@ -851,6 +863,13 @@ watch(
   () => props.session.id,
   (id) => {
     showThinking.value = getShowThinking(id);
+    sessionUsage.value = null;
+    void api
+      .getSessionUsage(id)
+      .then((usage) => {
+        sessionUsage.value = usage;
+      })
+      .catch(() => {});
   },
   { immediate: true },
 );
@@ -1215,6 +1234,23 @@ async function onCompleteSession() {
   } catch (err) {
     showUiMessage(err instanceof Error ? err.message : "完成会话失败", "error");
     await sessionStore.fetchSession(props.session.id);
+  }
+}
+
+async function onSyncSession() {
+  sessionMenuOpen.value = false;
+  if (!canCheckpointActions.value || isStreaming.value) return;
+  const confirmed = await requestUiConfirm({
+    title: "同步项目修改",
+    message: "将合并项目最新修改，并重新安装依赖和启动服务。请先提交当前会话中的修改。",
+    confirmText: "同步",
+  });
+  if (!confirmed) return;
+  try {
+    await withUiBusy("正在同步项目修改…", () => sessionStore.syncSession(props.session.id));
+    showUiMessage("同步完成，服务已重新启动", "success");
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "同步失败", "error");
   }
 }
 

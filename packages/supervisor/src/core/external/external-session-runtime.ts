@@ -140,6 +140,11 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
   ): Promise<void> {
     const doneRun = beginSessionTiming(this.id, "external/runPrompt");
     try {
+      const isFirstDelegatedTurn =
+        this.session.spawnType === "subagent" &&
+        !(await this.storage.getEntries()).some(
+          (entry) => entry.type === "message" && entry.message?.role === "user",
+        );
       const imageContent = images?.length
         ? await timedSessionStep(this.id, "resolvePromptImages", () =>
             resolveSessionPromptImages(this.id, images),
@@ -186,9 +191,21 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
           this.session.spawnType === "btw" && this.session.systemPrompt
             ? this.session.systemPrompt
             : "";
-        const externalMessage = sideQuestionPrompt
+        const regularMessage = sideQuestionPrompt
           ? `${sideQuestionPrompt}\n\nSide question from the user:\n${message}`
           : message;
+        const externalMessage = isFirstDelegatedTurn
+          ? [
+              "You are running as a delegated subagent. Work independently on the task below.",
+              "Your final response will be returned to the parent agent, so report the concrete result, relevant changes, and any blocker clearly.",
+              this.session.systemPrompt
+                ? `Additional instructions from the parent:\n${this.session.systemPrompt}`
+                : "",
+              `Delegated task:\n${regularMessage}`,
+            ]
+              .filter(Boolean)
+              .join("\n\n")
+          : regularMessage;
         await this.runExternalTurn(externalMessage, imageContent);
         await this.waitForActiveToolsIdle();
         await this.turnBuffer.persist(this.storage, userId);

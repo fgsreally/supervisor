@@ -1,7 +1,8 @@
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentEvent, AgentHarnessEvent } from "@earendil-works/pi-agent-core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "./mock-agent-harness.js";
@@ -111,6 +112,42 @@ describe("supervisor: SessionManager", () => {
     expect(child.parentId).toBe(parent.id);
     expect(child.cwd).toBe(parent.cwd);
   });
+
+  it("runs an external Agent as a delegated child and normalizes its output", async () => {
+    const fixture = join(
+      dirname(fileURLToPath(import.meta.url)),
+      "fixtures",
+      "mock-codex-app-server.mjs",
+    );
+    const project = db.insertProject({ cwd: tmpDir, name: "external child test" });
+    const parent = manager.create({ projectId: project.id, cwd: tmpDir });
+    const external = db.insertAgent({
+      name: "External child",
+      backend_type: "codex",
+      meta: { external: { command: process.execPath, args: [fixture] } },
+    });
+
+    const child = await manager.spawn({
+      parentId: parent.id,
+      projectId: project.id,
+      cwd: tmpDir,
+      agentId: external.id,
+    });
+    await manager.prompt(child.id, "inspect input delegated task");
+
+    expect(child.parentId).toBe(parent.id);
+    expect(child.spawnType).toBe("subagent");
+    expect(child.agentId).toBe(external.id);
+    const messages = await manager.getMessages(child.id);
+    const assistantOutput = messages
+      .filter((message) => message.type === "message" && message.message.role === "assistant")
+      .map((message) => String(message.message.content))
+      .join("\n");
+    expect(assistantOutput).toContain("You are running as a delegated subagent");
+    expect(assistantOutput).toContain("Delegated task");
+    expect(assistantOutput).toContain("inspect input delegated task");
+    expect(assistantOutput).toContain("codex reply");
+  }, 60_000);
 
   it("onOutput() receives agent events", async () => {
     const inst = await manager.spawn(SPAWN_OPTS);

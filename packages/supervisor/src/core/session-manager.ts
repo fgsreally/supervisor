@@ -651,18 +651,6 @@ export class SessionManager {
     this.db.updateSessionFields(sessionId, { unread: current + 1 });
   }
 
-  /** Child sessions (BTW / subagent / fork / clone / …) must stay on native agents. */
-  private assertNativeAgentForChildSession(
-    parentId: number | null | undefined,
-    agent: Agent | undefined | null,
-    context: string,
-  ): void {
-    if (parentId == null || !agent) return;
-    if (agent.backendType !== "native") {
-      throw new Error(`${context}：子会话不能使用外部 Agent（${agent.backendType}）`);
-    }
-  }
-
   /** When forking/cloning an external-agent parent, remap to packaged Coding. */
   private resolveAgentIdForChildSession(parentAgentId: number | null | undefined): number | null {
     if (parentAgentId == null) return null;
@@ -676,9 +664,6 @@ export class SessionManager {
   }
 
   private createExternalRuntime(session: Session, agent: Agent): Promise<ManagedSessionRuntime> {
-    if (session.parentId != null) {
-      throw new Error("子会话不能使用外部 Agent");
-    }
     const availability = externalAgentAvailability(agent);
     if (!availability.available)
       throw new Error(availability.unavailableReason ?? "外部 Agent 不可用");
@@ -706,7 +691,6 @@ export class SessionManager {
 
       const agent = this.getAgentForSession(session.agentId);
       if (agent && agent.backendType !== "native") {
-        this.assertNativeAgentForChildSession(session.parentId, agent, "恢复子会话");
         const runtime = await timedSessionStep(id, "restoreRuntime/createExternalRuntime", () =>
           this.createExternalRuntime(session, agent),
         );
@@ -834,7 +818,6 @@ export class SessionManager {
       ...(agentSubagentIds.length > 0 ? { subagentIds: agentSubagentIds } : {}),
       ...options.meta,
     };
-    this.assertNativeAgentForChildSession(options.parentId, agent, "创建子会话");
     const avatar = withDefaultSessionAvatar(options.avatar ?? null, agent);
     const row = this.db.insert({
       parent_id: options.parentId ?? null,
@@ -874,7 +857,6 @@ export class SessionManager {
       throw new Error(`Agent ${options.agentId} not found`);
     }
     if (agentInDb) {
-      this.assertNativeAgentForChildSession(options.parentId, agentInDb, "创建子会话");
       const availability = externalAgentAvailability(agentInDb);
       if (!availability.available) {
         throw new Error(
@@ -984,7 +966,6 @@ export class SessionManager {
       }
 
       if (agentInDb && agentInDb.backendType !== "native") {
-        this.assertNativeAgentForChildSession(activeSession.parentId, agentInDb, "启动子会话");
         sessionLog(
           activeSession.id,
           "info",

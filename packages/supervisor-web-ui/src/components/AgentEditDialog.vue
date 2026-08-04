@@ -78,9 +78,9 @@
             <AgentPermissionEditor v-model="draft.permissionRules" />
             <section class="text-[13px]">
               <div class="agent-edit-label mb-2">默认子 Agent</div>
-              <div v-if="nativeAgents.length" class="grid gap-2">
+              <div v-if="subagentCandidates.length" class="grid gap-2">
                 <label
-                  v-for="child in nativeAgents"
+                  v-for="child in subagentCandidates"
                   :key="child.id"
                   class="flex items-center gap-2"
                 >
@@ -154,10 +154,8 @@ const draft = reactive({
 });
 
 const agent = computed(() => agentStore.getAgentById(props.agentId));
-const nativeAgents = computed(() =>
-  agentStore.agents.filter(
-    (candidate) => candidate.backendType === "native" && candidate.id !== props.agentId,
-  ),
+const subagentCandidates = computed(() =>
+  agentStore.agents.filter((candidate) => candidate.id !== props.agentId),
 );
 const providers = computed(() =>
   providerStore.providers.map((provider) =>

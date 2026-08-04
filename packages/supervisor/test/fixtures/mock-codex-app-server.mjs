@@ -12,6 +12,10 @@ lines.on("line", (line) => {
     send({ id: message.id, result: {} });
     return;
   }
+  if (message.method === "config/read") {
+    send({ id: message.id, result: { config: {} } });
+    return;
+  }
   if (message.method === "thread/start" || message.method === "thread/resume") {
     send({ id: message.id, result: { thread: { id: "mock-codex-thread" } } });
     return;
@@ -127,7 +131,7 @@ lines.on("line", (line) => {
       return;
     }
     if (message.params?.input?.some((item) => item.text === "hold for steer")) return;
-    if (message.params?.input?.some((item) => item.text?.startsWith("inspect input"))) {
+    if (message.params?.input?.some((item) => item.text?.includes("inspect input"))) {
       send({
         method: "item/agentMessage/delta",
         params: {

@@ -61,6 +61,10 @@ onMounted(() => {
 }
 
 .a2hs-hint__card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 12px 14px;
   pointer-events: auto;
   max-width: 430px;
   margin: 0 auto;
@@ -73,14 +77,15 @@ onMounted(() => {
 }
 
 .a2hs-hint__title {
-  margin: 0 0 7px;
+  grid-column: 1 / -1;
+  margin: 0;
   font-size: 16px;
   font-weight: 650;
   line-height: 1.35;
 }
 
 .a2hs-hint__body {
-  margin: 0 0 14px;
+  margin: 0;
   color: var(--app-text-secondary);
   font-size: 14px;
   line-height: 1.55;
@@ -88,8 +93,9 @@ onMounted(() => {
 
 .a2hs-hint__dismiss {
   appearance: none;
+  min-width: 88px;
   min-height: 40px;
-  padding: 0 20px;
+  padding: 0 16px;
   border: 0;
   border-radius: 8px;
   color: #fff;
@@ -97,6 +103,22 @@ onMounted(() => {
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
+}
+
+@media (max-width: 380px) {
+  .a2hs-hint__card {
+    gap: 10px;
+    padding: 14px;
+  }
+
+  .a2hs-hint__body {
+    font-size: 13px;
+  }
+
+  .a2hs-hint__dismiss {
+    min-width: 80px;
+    padding-inline: 12px;
+  }
 }
 
 .a2hs-hint__dismiss:active {

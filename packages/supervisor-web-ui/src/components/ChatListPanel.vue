@@ -1237,7 +1237,8 @@ async function onAgentPicked(agentId: string) {
   }
 
   .list-section-header {
-    padding: 12px 20px 8px;
+    min-height: 44px;
+    padding: 4px 20px;
   }
 
   .list-section-title {
@@ -1247,7 +1248,7 @@ async function onAgentPicked(agentId: string) {
   .chat-list-roots,
   .chat-list-projects {
     display: grid;
-    gap: 4px;
+    gap: 0;
   }
 
   .chat-list-root,
@@ -1261,8 +1262,8 @@ async function onAgentPicked(agentId: string) {
   }
 
   .section-action-btn {
-    width: 36px;
-    height: 36px;
+    width: 34px;
+    height: 34px;
     padding: 0;
   }
 }

@@ -45,9 +45,9 @@
             :style="keyLightStyle(digit)"
             :disabled="submitting || password.length >= PIN_LENGTH"
             @pointerenter="startHover(digit, $event)"
-            @pointerleave="stopHover(digit)"
+            @pointerleave="stopHover(digit, $event)"
             @pointerdown="startPress(digit)"
-            @pointerup="stopPress"
+            @pointerup="stopPress($event)"
             @pointercancel="cancelPointerInteraction"
             @click="pressDigit(digit)"
           >
@@ -108,6 +108,7 @@ const pressedDigit = ref<PinDigit | null>(null);
 const illuminatedDigit = computed(() => pressedDigit.value ?? hoveredDigit.value);
 const startupError = ref("");
 let shakeTimer: ReturnType<typeof setTimeout> | undefined;
+let pressReleaseTimer: ReturnType<typeof setTimeout> | undefined;
 
 function keyDistance(digit: PinDigit): number | null {
   if (!illuminatedDigit.value) return null;
@@ -144,21 +145,31 @@ function startHover(digit: PinDigit, event: PointerEvent) {
   hoveredDigit.value = digit;
 }
 
-function stopHover(digit: PinDigit) {
+function stopHover(digit: PinDigit, event?: PointerEvent) {
+  if (event?.pointerType === "touch") return;
   if (hoveredDigit.value === digit) hoveredDigit.value = null;
   if (pressedDigit.value === digit) pressedDigit.value = null;
 }
 
 function startPress(digit: PinDigit) {
   if (submitting.value || password.value.length >= PIN_LENGTH) return;
+  if (pressReleaseTimer) clearTimeout(pressReleaseTimer);
   pressedDigit.value = digit;
 }
 
-function stopPress() {
+function stopPress(event?: PointerEvent) {
+  if (pressReleaseTimer) clearTimeout(pressReleaseTimer);
+  if (event?.pointerType === "touch") {
+    pressReleaseTimer = setTimeout(() => {
+      pressedDigit.value = null;
+    }, 70);
+    return;
+  }
   pressedDigit.value = null;
 }
 
 function cancelPointerInteraction() {
+  if (pressReleaseTimer) clearTimeout(pressReleaseTimer);
   pressedDigit.value = null;
   hoveredDigit.value = null;
 }
@@ -256,6 +267,7 @@ onUnmounted(() => {
   window.removeEventListener("keydown", onKeydown);
   window.removeEventListener("keyup", onKeyup);
   if (shakeTimer) clearTimeout(shakeTimer);
+  if (pressReleaseTimer) clearTimeout(pressReleaseTimer);
 });
 </script>
 
@@ -307,18 +319,62 @@ onUnmounted(() => {
   min-height: 100dvh;
   align-items: center;
   justify-content: center;
-  overflow: auto;
-  background: #000;
+  overflow: hidden auto;
+  background:
+    radial-gradient(circle at 50% 38%, rgb(16 45 35 / 48%), transparent 44%),
+    linear-gradient(160deg, #07100d 0%, #020806 56%, #06100c 100%);
   color: #fff;
   text-align: center;
+  isolation: isolate;
+}
+
+.startup-pin::before,
+.startup-pin::after {
+  position: absolute;
+  width: min(96vw, 620px);
+  aspect-ratio: 1;
+  border-radius: 50%;
+  content: "";
+  filter: blur(52px);
+  mix-blend-mode: screen;
+  opacity: 0.72;
+  pointer-events: none;
+  will-change: transform;
+}
+
+.startup-pin::before {
+  top: -8%;
+  left: -18%;
+  background: radial-gradient(
+    circle,
+    rgb(7 193 96 / 62%) 0%,
+    rgb(18 128 82 / 32%) 42%,
+    transparent 70%
+  );
+  animation: pin-mist-a 13s ease-in-out infinite alternate;
+}
+
+.startup-pin::after {
+  right: -20%;
+  bottom: -8%;
+  background: radial-gradient(
+    circle,
+    rgb(29 181 116 / 52%) 0%,
+    rgb(24 160 166 / 25%) 45%,
+    transparent 70%
+  );
+  animation: pin-mist-b 16s ease-in-out infinite alternate;
 }
 
 .startup-pin__content {
+  position: relative;
+  z-index: 1;
   display: flex;
   width: min(390px, 100%);
   min-height: min(100dvh, 844px);
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   padding: max(54px, 7dvh) 24px max(32px, env(safe-area-inset-bottom));
   background: transparent;
 }
@@ -332,7 +388,7 @@ onUnmounted(() => {
 }
 
 .startup-pin h1 {
-  margin-top: clamp(104px, 18dvh, 154px);
+  margin-top: clamp(72px, 13dvh, 112px);
   font-size: 28px;
   font-weight: 420;
   letter-spacing: 0.08em;
@@ -343,7 +399,7 @@ onUnmounted(() => {
 .pin-dots {
   display: flex;
   gap: 18px;
-  margin-top: clamp(54px, 8dvh, 68px);
+  margin-top: clamp(42px, 6.5dvh, 58px);
   min-height: 11px;
 }
 
@@ -396,7 +452,7 @@ onUnmounted(() => {
   grid-template-columns: repeat(3, 72px);
   gap: 18px 24px;
   justify-content: center;
-  margin-top: clamp(28px, 4dvh, 34px);
+  margin-top: clamp(20px, 3dvh, 28px);
   isolation: isolate;
 }
 
@@ -425,10 +481,11 @@ onUnmounted(() => {
   -webkit-backdrop-filter: blur(16px) brightness(1.34) saturate(0.72);
   isolation: isolate;
   transition:
-    background-color 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease,
-    transform 0.12s ease;
+    background-color 0.11s cubic-bezier(0.4, 0, 1, 1),
+    border-color 0.11s cubic-bezier(0.4, 0, 1, 1),
+    box-shadow 0.11s cubic-bezier(0.4, 0, 1, 1),
+    transform 0.08s cubic-bezier(0.4, 0, 1, 1);
+  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
@@ -446,8 +503,8 @@ onUnmounted(() => {
   filter: blur(5px);
   opacity: 0;
   transition:
-    opacity 0.22s ease,
-    filter 0.22s ease;
+    opacity 0.11s cubic-bezier(0.4, 0, 1, 1),
+    filter 0.11s cubic-bezier(0.4, 0, 1, 1);
   pointer-events: none;
   z-index: 0;
 }
@@ -497,6 +554,8 @@ onUnmounted(() => {
     0 0 1px 1px rgb(255 255 255 / 42%),
     0 0 26px 6px rgb(255 255 255 / 16%),
     inset 0 0 10px rgb(255 255 255 / 36%);
+  transition-duration: 55ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .pin-key--illuminated .pin-key__label {
@@ -609,6 +668,30 @@ onUnmounted(() => {
   }
 }
 
+@keyframes pin-mist-a {
+  0% {
+    transform: translate3d(-4%, -3%, 0) scale(0.92);
+  }
+  55% {
+    transform: translate3d(32%, 20%, 0) scale(1.12);
+  }
+  100% {
+    transform: translate3d(18%, 48%, 0) scale(0.98);
+  }
+}
+
+@keyframes pin-mist-b {
+  0% {
+    transform: translate3d(5%, 4%, 0) scale(1.08);
+  }
+  48% {
+    transform: translate3d(-30%, -22%, 0) scale(0.9);
+  }
+  100% {
+    transform: translate3d(-12%, -46%, 0) scale(1.16);
+  }
+}
+
 @media (max-width: 767px) {
   .startup-gate {
     padding: 16px;
@@ -619,6 +702,18 @@ onUnmounted(() => {
     width: 100%;
   }
 
+  .startup-checking {
+    position: fixed;
+    inset: 0;
+    justify-content: center;
+  }
+
+  .startup-pin__content {
+    min-height: 100dvh;
+    padding-top: max(24px, env(safe-area-inset-top));
+    padding-bottom: max(20px, env(safe-area-inset-bottom));
+  }
+
   .pin-pad {
     grid-template-columns: repeat(3, 76px);
     gap: 16px 22px;
@@ -627,6 +722,38 @@ onUnmounted(() => {
   .pin-key {
     width: 76px;
     height: 76px;
+  }
+}
+
+@media (max-width: 767px) and (max-height: 760px) {
+  .startup-pin h1 {
+    margin-top: 42px;
+  }
+
+  .pin-dots {
+    margin-top: 32px;
+  }
+
+  .startup-feedback {
+    height: 32px;
+  }
+
+  .pin-pad {
+    grid-template-columns: repeat(3, 68px);
+    gap: 12px 20px;
+    margin-top: 14px;
+  }
+
+  .pin-key {
+    width: 68px;
+    height: 68px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .startup-pin::before,
+  .startup-pin::after {
+    animation: none;
   }
 }
 </style>

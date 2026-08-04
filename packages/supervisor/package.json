@@ -29,7 +29,7 @@
   "scripts": {
     "clean": "shx rm -rf dist",
     "dev": "tsdown --watch",
-    "serve:playground": "bun dist/cli.mjs serve --port 3030 --cwd ../../playground",
+    "serve:playground": "bun dist/cli.mjs serve --port 3030 --cwd ../../playground --password 123456",
     "build": "tsdown && shx cp -r src/db/sql dist/sql",
     "test": "vitest --run --config vitest.config.ts",
     "test:unit": "vitest --run --config vitest.config.ts",

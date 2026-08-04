@@ -93,9 +93,9 @@
         <AgentPermissionEditor v-model="draft.permissionRules" />
         <section class="text-[13px]">
           <div class="agent-form-label mb-2">默认子 Agent</div>
-          <div v-if="nativeAgents.length" class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <div v-if="subagentCandidates.length" class="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label
-              v-for="agent in nativeAgents"
+              v-for="agent in subagentCandidates"
               :key="agent.id"
               class="agent-form-subagent flex items-center gap-2.5 rounded-md border px-3 py-2.5"
             >
@@ -161,9 +161,7 @@ const draft = ref({
   subagentIds: [] as number[],
 });
 
-const nativeAgents = computed(() =>
-  agentStore.agents.filter((agent) => agent.backendType === "native"),
-);
+const subagentCandidates = computed(() => agentStore.agents);
 const avatarPreview = computed(() => {
   const value = draft.value.icon.trim();
   return /^(https?:\/\/|\/)/i.test(value) ? value : null;

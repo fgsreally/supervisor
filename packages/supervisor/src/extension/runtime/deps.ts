@@ -274,6 +274,7 @@ export function buildExtensionDeps(deps: {
         ...summary,
         parentId: sessionId,
         agentName: agent?.name,
+        agentBackend: agent?.backendType,
         queuedInputCount: manager.listSessionInputs(targetSessionId).length,
         lastActiveAt: child.lastActiveAt.getTime(),
       };
@@ -335,6 +336,7 @@ export function buildExtensionDeps(deps: {
             toolsPreset: agent.toolsPreset,
             role: "spawned",
             tags: [],
+            backendType: agent.backendType,
           };
         })
         .filter((agent): agent is MemberAgentInfo => agent !== undefined);
@@ -364,6 +366,7 @@ export function buildExtensionDeps(deps: {
         status: spawned.status,
         agentId: spawned.agentId,
         agentName: agent?.name,
+        agentBackend: agent?.backendType,
       };
     },
 

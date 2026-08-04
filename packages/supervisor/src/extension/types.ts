@@ -259,7 +259,7 @@ export interface ExtensionAgent {
   getTool(name: string): ToolInfo | undefined;
   /** Legacy lookup; session subagents no longer carry tags, so this returns an empty list. */
   findByTag(tag: string): Promise<MemberAgentInfo[]>;
-  /** `spawned` resolves the native-agent IDs in `sessions.meta.subagentIds`. */
+  /** `spawned` resolves the Agent IDs in `sessions.meta.subagentIds`. */
   findByRole(role: string): Promise<MemberAgentInfo[]>;
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: "none" | "low" | "medium" | "high"): void;
@@ -573,6 +573,7 @@ export interface SpawnSessionResult {
   status: string;
   agentId: number | null;
   agentName?: string;
+  agentBackend?: string;
 }
 
 export interface SessionResultSummary {
@@ -585,6 +586,7 @@ export interface SessionResultSummary {
 export interface SubagentStatusSnapshot extends SessionResultSummary {
   parentId: number;
   agentName?: string;
+  agentBackend?: string;
   queuedInputCount: number;
   lastActiveAt: number;
 }
@@ -934,6 +936,7 @@ export interface MemberAgentInfo {
   toolsPreset: string | null;
   tags: string[];
   role: string;
+  backendType: string;
 }
 
 // ============================================================================

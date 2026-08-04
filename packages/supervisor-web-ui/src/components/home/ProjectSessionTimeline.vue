@@ -45,16 +45,16 @@
               class="point"
               :style="pointStyle(event)"
               :data-status="event.status || 'idle'"
-              :aria-label="sessionTitle(event.sessionId)"
-              @click="emit('open-session', event.sessionId)"
+              :aria-label="sessionTitle(event.entityId)"
+              @click="emit('open-session', event.entityId)"
             >
               <span class="popover" :class="{ right: eventX(event) > 70 }">
                 <small>{{ formatTime(event.createdAt) }} · {{ eventLabel(event) }}</small>
-                <strong>{{ sessionTitle(event.sessionId) }}</strong>
+                <strong>{{ sessionTitle(event.entityId) }}</strong>
                 <em>{{ statusLabel(event.status) }}</em>
-                <template v-if="commits[event.sessionId]?.length">
+                <template v-if="commits[event.entityId]?.length">
                   <span
-                    v-for="commit in commits[event.sessionId].slice(0, 3)"
+                    v-for="commit in commits[event.entityId].slice(0, 3)"
                     :key="commit.hash"
                     class="commit"
                     ><code>{{ commit.shortHash }}</code
@@ -73,11 +73,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import type { Project, Session, SessionTimelineEvent, WorktreeCommit } from "@/api";
+import type { Project, Session, TimelineEvent, WorktreeCommit } from "@/api";
 const props = defineProps<{
   projects: Project[];
   sessions: Session[];
-  events: SessionTimelineEvent[];
+  events: TimelineEvent[];
   commits: Record<string, WorktreeCommit[]>;
 }>();
 const emit = defineEmits<{ "open-session": [id: string] }>();
@@ -96,7 +96,8 @@ const visibleEvents = computed(() =>
     (e) =>
       e.projectId &&
       visibleIds.value.has(e.projectId) &&
-      sessionMap.value.get(e.sessionId)?.showInSessionList,
+      e.type === "session" &&
+      sessionMap.value.get(e.entityId)?.showInSessionList,
   ),
 );
 const range = computed(() => {
@@ -130,7 +131,7 @@ function dayStart(value: string | number) {
   const date = new Date(value);
   return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
 }
-function stackIndex(event: SessionTimelineEvent) {
+function stackIndex(event: TimelineEvent) {
   const sameDay = laneEvents(event.projectId ?? "").filter(
     (item) => dayStart(item.createdAt) === dayStart(event.createdAt),
   );
@@ -139,7 +140,7 @@ function stackIndex(event: SessionTimelineEvent) {
     sameDay.findIndex((item) => item.id === event.id),
   );
 }
-function eventX(event: SessionTimelineEvent) {
+function eventX(event: TimelineEvent) {
   return (
     ((dayStart(event.createdAt) - range.value.min) / (range.value.max - range.value.min)) * 100
   );
@@ -153,19 +154,19 @@ function sessionColor(id: string) {
 function projectColor(id: string) {
   return sessionColor(`project-${id}`);
 }
-function pointStyle(event: SessionTimelineEvent) {
+function pointStyle(event: TimelineEvent) {
   const stacked = stackIndex(event);
   return {
     left: `calc(${eventX(event)}% + ${Math.min(stacked, 7) * 6}px)`,
     zIndex: 3 + stacked,
-    background: sessionColor(event.sessionId),
+    background: sessionColor(event.entityId),
   };
 }
 function sessionTitle(id: string) {
   const s = sessionMap.value.get(id);
   return s?.title || `Session ${id}`;
 }
-function statusLabel(status: SessionTimelineEvent["status"]) {
+function statusLabel(status: TimelineEvent["status"]) {
   return (
     (
       {
@@ -181,7 +182,7 @@ function statusLabel(status: SessionTimelineEvent["status"]) {
     "待命"
   );
 }
-function eventLabel(event: SessionTimelineEvent) {
+function eventLabel(event: TimelineEvent) {
   return event.kind === "created" ? "创建" : event.kind === "synced" ? "同步" : "状态变化";
 }
 function formatTime(value: string) {
@@ -419,14 +420,71 @@ header p {
   color: #5e6ad2;
 }
 @media (max-width: 640px) {
+  .timeline {
+    overflow: hidden;
+    border-radius: 12px;
+  }
   header {
     display: grid;
+    gap: 10px;
+    padding: 12px;
   }
   .filters {
     justify-content: flex-start;
+    overflow: hidden;
+  }
+  .filters button {
+    max-width: 100%;
+    min-width: 0;
   }
   .canvas {
-    grid-template-columns: 105px minmax(620px, 1fr);
+    display: block;
+    min-width: 0;
+  }
+  .axis-label,
+  .axis,
+  .grid,
+  .baseline {
+    display: none;
+  }
+  .lane {
+    display: block;
+    border-top: 1px solid var(--app-border-subtle);
+  }
+  .lane aside {
+    height: auto;
+    min-height: 44px;
+    border: 0;
+    padding: 10px 12px 4px;
+  }
+  .lane aside strong,
+  .lane aside small {
+    max-width: none;
+  }
+  .track {
+    display: flex;
+    min-height: 46px;
+    height: auto;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 4px 12px 12px 28px;
+    border: 0;
+  }
+  .point {
+    position: relative;
+    left: auto !important;
+    top: auto;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 auto;
+    transform: none;
+  }
+  .point:hover,
+  .point:focus-visible {
+    transform: scale(1.08);
+  }
+  .popover {
+    display: none !important;
   }
 }
 </style>

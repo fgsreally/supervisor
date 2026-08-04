@@ -351,17 +351,39 @@ export function createHttpServer(
     );
   });
 
-  app.get("/home/session-events", (c) => {
+  app.get("/home/timeline-events", (c) => {
     const from = c.req.query("from");
     const to = c.req.query("to");
     const projectId = c.req.query("projectId");
+    const type = c.req.query("type");
     return c.json(
-      manager.database.listSessionEvents({
+      manager.database.listTimelineEvents({
         ...(from ? { from: Date.parse(from) } : {}),
         ...(to ? { to: Date.parse(to) } : {}),
         ...(projectId ? { projectId: Number.parseInt(projectId, 10) } : {}),
+        ...(type === "session" || type === "todo_task" || type === "goal" ? { type } : {}),
       }),
     );
+  });
+
+  app.post("/home/goal-events", async (c) => {
+    const body = await c.req.json().catch(() => ({}));
+    const objective = typeof body?.objective === "string" ? body.objective.trim() : "";
+    if (!objective) return jsonError(c, 400, "objective is required");
+    const now = Date.now();
+    manager.database.appendTimelineEvent(
+      "goal",
+      now,
+      null,
+      "planned",
+      "created",
+      {
+        objective,
+        ...(typeof body?.source === "string" ? { source: body.source } : {}),
+      },
+      now,
+    );
+    return c.json({ ok: true });
   });
 
   app.post("/home/daily-work/run", async (c) => {

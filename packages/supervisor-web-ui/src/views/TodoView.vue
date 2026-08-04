@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="todo-shell">
     <header class="todo-head">
       <h1>Todo</h1>
@@ -14,7 +14,7 @@
             <h2>规划</h2>
             <span>把想法整理成可执行的任务</span>
           </div>
-          <button class="quiet"><History />历史</button>
+          <button class="quiet" @click="openGoalHistory"><History />历史</button>
         </div>
         <div class="goal-box">
           <textarea v-model="goal" rows="5" placeholder="描述你想完成的事情，输入 @ 关联项目" />
@@ -131,26 +131,7 @@
             </button>
           </nav>
         </div>
-        <div v-if="runView === 'list'" class="run-list" @mouseleave="executionHovered = null">
-          <svg
-            v-if="executionHovered === 11 || executionHovered === 13"
-            class="run-flow-gesture"
-            viewBox="0 0 620 300"
-            preserveAspectRatio="none"
-            aria-hidden="true"
-          >
-            <defs>
-              <linearGradient id="todo-flow-gradient" x1="1" y1="0" x2="0" y2="1">
-                <stop offset="0" stop-color="#ffd166" />
-                <stop offset="0.48" stop-color="#ff9f2d" />
-                <stop offset="1" stop-color="#ff5f1f" />
-              </linearGradient>
-            </defs>
-            <path
-              class="run-flow-gesture__ribbon"
-              d="M356 252 C459 236 526 181 506 119 L548 139 L500 52 L428 119 L477 107 C490 166 444 219 356 252 Z"
-            />
-          </svg>
+        <div v-if="runView === 'list'" class="run-list">
           <TaskCard
             v-for="task in visibleTasks"
             :key="task.id"
@@ -166,7 +147,6 @@
             :status-label="statusLabel(task.status)"
             :accent="task.status"
             interactive
-            @mouseenter="executionHovered = task.id"
             @select="openTask(task)"
           >
             <template v-if="task.dependencies.length" #meta>
@@ -177,7 +157,7 @@
         <div v-else class="execution-timeline">
           <article v-for="(task, index) in execution" :key="task.id" @click="openTask(task)">
             <div class="time">
-              <strong>{{ ["14:32", "13:10", "11:08", "09:45"][index] }}</strong
+              <strong>{{ taskEventTime(task.id, index) }}</strong
               ><span>今天</span>
             </div>
             <div class="rail"><i :data-status="task.status" /></div>
@@ -198,10 +178,9 @@
         </div>
       </section>
     </main>
-    <div v-if="selected" class="task-popover" @click.self="selected = null">
-      <section>
-        <button class="close" @click="selected = null"><X /></button
-        ><small>Task {{ selected.id }}</small>
+    <ResponsiveDialog :open="selected != null" @close="selected = null">
+      <div v-if="selected" class="task-detail">
+        <small>Task {{ selected.id }}</small>
         <h3>{{ selected.title }}</h3>
         <p>{{ selected.description }}</p>
         <dl>
@@ -214,15 +193,31 @@
             <dd>{{ selected.agent }}</dd>
           </div>
         </dl>
+        <TaskDependencyGraph
+          :key="selected.id"
+          :current="selected"
+          :dependencies="selectedDependencies"
+          :dependents="selectedDependents"
+          @select="selectTask"
+        />
         <button
           v-if="selected.sessionId"
           class="primary wide"
-          @click="emit('open-session', selected.sessionId)"
+          @click="viewSession(selected.sessionId)"
         >
-          打开 Session
+          <Eye />查看
         </button>
-      </section>
-    </div>
+      </div>
+    </ResponsiveDialog>
+    <ResponsiveDialog :open="goalHistoryOpen" title="规划历史" @close="goalHistoryOpen = false">
+      <div class="goal-history">
+        <article v-for="event in goalEvents" :key="event.id">
+          <time>{{ formatGoalTime(event.createdAt) }}</time>
+          <strong>{{ goalObjective(event) }}</strong>
+        </article>
+        <p v-if="!goalEvents.length" class="goal-history__empty">暂无规划历史</p>
+      </div>
+    </ResponsiveDialog>
   </div>
 </template>
 <script setup lang="ts">
@@ -230,18 +225,25 @@ import { computed, onMounted, ref } from "vue";
 import {
   Bot,
   ChevronRight,
+  Eye,
   FolderGit2,
   History,
-  Link2,
   Pencil,
   Plus,
   SlidersHorizontal,
   Sparkles,
-  X,
 } from "lucide-vue-next";
 import TodoSequenceDiagram from "@/components/home/TodoSequenceDiagram.vue";
 import TaskCard from "@/components/task/TaskCard.vue";
-import { listAgents, type Agent } from "@/api";
+import TaskDependencyGraph from "@/components/task/TaskDependencyGraph.vue";
+import ResponsiveDialog from "@/components/ui/ResponsiveDialog.vue";
+import {
+  listAgents,
+  listTimelineEvents,
+  recordGoalEvent,
+  type Agent,
+  type TimelineEvent,
+} from "@/api";
 type Status = "pending" | "running" | "blocked" | "done";
 interface MockTask {
   id: number;
@@ -259,11 +261,13 @@ const planning = ref(false);
 const autoExecute = ref(true);
 const mobileTab = ref<"plan" | "run">("plan");
 const hovered = ref<number | null>(null);
-const executionHovered = ref<number | null>(null);
 const selected = ref<MockTask | null>(null);
 const activeFilter = ref("all");
 const runView = ref<"list" | "timeline">("list");
 const agents = ref<Agent[]>([]);
+const taskEvents = ref<TimelineEvent[]>([]);
+const goalEvents = ref<TimelineEvent[]>([]);
+const goalHistoryOpen = ref(false);
 const drafts = ref<MockTask[]>([
   {
     id: 1,
@@ -350,7 +354,50 @@ const execution = ref<MockTask[]>([
     dependencies: [],
     status: "blocked",
   },
+  {
+    id: 15,
+    title: "迁移旧版模型配置",
+    description: "把历史功能模型配置归并到统一助手模型，并保留安全回退。",
+    project: "supervisor",
+    agent: "Codex",
+    dependencies: [11, 12],
+    status: "pending",
+  },
+  {
+    id: 16,
+    title: "补充设置页回归测试",
+    description: "覆盖模型读取、保存、旧配置迁移与异常提示。",
+    project: "supervisor-web-ui",
+    agent: "Claude Code",
+    dependencies: [15],
+    status: "pending",
+  },
+  {
+    id: 17,
+    title: "联调移动端任务详情",
+    description: "验证详情弹层、Session 跳转与依赖任务切换。",
+    project: "supervisor-web-ui",
+    agent: "Codex",
+    dependencies: [13, 15],
+    status: "running",
+    sessionId: "136",
+  },
+  {
+    id: 18,
+    title: "发布前验收",
+    description: "汇总设置、日志与移动端改动，完成发布检查。",
+    project: "supervisor-web-ui",
+    agent: "Codex",
+    dependencies: [14, 16, 17],
+    status: "pending",
+  },
 ]);
+const selectedDependencies = computed(() =>
+  selected.value ? allTasks().filter((task) => selected.value?.dependencies.includes(task.id)) : [],
+);
+const selectedDependents = computed(() =>
+  selected.value ? allTasks().filter((task) => task.dependencies.includes(selected.value!.id)) : [],
+);
 const draftLevels = computed(() => {
   const depth = new Map<number, number>();
   const visit = (task: MockTask): number => {
@@ -385,6 +432,17 @@ function count(id: string) {
     ? execution.value.length
     : execution.value.filter((t) => t.status === id).length;
 }
+function taskEventTime(taskId: number, index: number) {
+  const event = [...taskEvents.value].reverse().find((item) => Number(item.entityId) === taskId);
+  if (event) {
+    return new Intl.DateTimeFormat("zh-CN", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date(event.createdAt));
+  }
+  return ["14:32", "13:10", "11:08", "09:45", "09:18", "08:52", "08:26", "07:40"][index];
+}
 function agentInfo(name: string): Agent | undefined {
   return agents.value.find((agent) => agent.name === name);
 }
@@ -408,11 +466,17 @@ function relationClass(id: number) {
   return "is-dim";
 }
 function openTask(t: MockTask) {
-  if (t.sessionId) emit("open-session", t.sessionId);
-  else selected.value = t;
+  selected.value = t;
 }
 function selectDraft(id: number) {
   selected.value = drafts.value.find((task) => task.id === id) ?? null;
+}
+function selectTask(id: number) {
+  selected.value = allTasks().find((task) => task.id === id) ?? selected.value;
+}
+function viewSession(sessionId: string) {
+  selected.value = null;
+  emit("open-session", sessionId);
 }
 function addDraft() {
   selected.value = {
@@ -425,12 +489,41 @@ function addDraft() {
     status: "pending",
   };
 }
-function mockPlan() {
+async function mockPlan() {
+  const objective = goal.value.trim();
+  if (!objective) return;
   planning.value = true;
-  setTimeout(() => (planning.value = false), 700);
+  try {
+    await recordGoalEvent({ objective, source: "mobile-todo-plan" });
+    goalEvents.value = await listTimelineEvents({ type: "goal" }).catch(() => goalEvents.value);
+  } finally {
+    setTimeout(() => (planning.value = false), 400);
+  }
+}
+async function openGoalHistory() {
+  goalEvents.value = await listTimelineEvents({ type: "goal" }).catch(() => []);
+  goalHistoryOpen.value = true;
+}
+function goalObjective(event: TimelineEvent) {
+  return typeof event.data.objective === "string" ? event.data.objective : "未命名规划";
+}
+function formatGoalTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
 }
 onMounted(async () => {
-  agents.value = await listAgents().catch(() => []);
+  const [nextAgents, nextEvents, nextGoalEvents] = await Promise.all([
+    listAgents().catch(() => []),
+    listTimelineEvents({ type: "todo_task" }).catch(() => []),
+    listTimelineEvents({ type: "goal" }).catch(() => []),
+  ]);
+  agents.value = nextAgents;
+  taskEvents.value = nextEvents;
+  goalEvents.value = nextGoalEvents;
 });
 </script>
 <style scoped>
@@ -563,33 +656,6 @@ button svg,
   width: 18px;
   height: 205px;
   pointer-events: none;
-}
-.run-flow-gesture {
-  position: absolute;
-  z-index: 6;
-  left: 34%;
-  top: 4px;
-  width: min(42%, 430px);
-  height: 250px;
-  overflow: visible;
-  pointer-events: none;
-  filter: drop-shadow(0 8px 10px rgb(255 112 26 / 18%));
-}
-.run-flow-gesture__ribbon {
-  fill: url(#todo-flow-gradient);
-  animation: run-flow-draw 0.46s cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-@keyframes run-flow-draw {
-  from {
-    opacity: 0;
-    transform: scale(0.88) rotate(-4deg);
-    transform-origin: 130px 150px;
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) rotate(0);
-    transform-origin: 130px 150px;
-  }
 }
 .run-dependency i {
   position: absolute;
@@ -857,7 +923,7 @@ button svg,
 }
 .execution-timeline article {
   display: grid;
-  grid-template-columns: 48px 24px 1fr;
+  grid-template-columns: 48px 24px minmax(0, 1fr);
   min-height: 105px;
   cursor: pointer;
 }
@@ -911,11 +977,17 @@ button svg,
   background: #07c160;
 }
 .execution-timeline .event {
+  min-width: 0;
   margin-left: 5px;
   padding: 10px 11px;
   border: 1px solid var(--app-border-subtle);
   border-radius: 8px;
   background: var(--app-settings-card);
+}
+.execution-timeline .event :deep(.task-card-ui),
+.execution-timeline .event :deep(.task-card-ui__body),
+.execution-timeline .event :deep(.task-card-ui__heading) {
+  width: 100%;
 }
 .execution-timeline .event > strong {
   display: block;
@@ -990,54 +1062,64 @@ button svg,
 .mobile-plan-list {
   display: none;
 }
-.task-popover {
-  position: fixed;
-  z-index: 50;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgb(0 0 0/28%);
+.task-detail {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
 }
-.task-popover section {
-  position: relative;
-  width: min(430px, calc(100vw - 24px));
-  padding: 20px;
-  border-radius: 13px;
-  background: var(--app-settings-card);
-  box-shadow: 0 18px 55px rgb(0 0 0/22%);
-}
-.task-popover h3 {
+.task-detail h3 {
   margin: 4px 0 8px;
   font-size: 16px;
 }
-.task-popover p {
+.task-detail p {
   color: var(--app-text-secondary);
   font-size: 12px;
   line-height: 1.6;
 }
-.task-popover small {
+.task-detail small {
   color: var(--app-text-muted);
 }
-.task-popover dl {
+.task-detail dl {
   margin: 14px 0;
 }
-.task-popover dl div {
+.task-detail dl div {
   display: grid;
-  grid-template-columns: 60px 1fr;
+  grid-template-columns: 60px minmax(0, 1fr);
   padding: 6px 0;
   border-top: 1px solid var(--app-border-subtle);
   font-size: 11px;
 }
-.task-popover dt {
+.task-detail dt {
   color: var(--app-text-muted);
 }
-.close {
-  position: absolute;
-  right: 12px;
-  top: 12px;
+.task-detail :deep(.task-dependency-graph) {
+  margin: 4px 0 16px;
 }
-.close svg {
-  width: 16px;
+.goal-history {
+  display: grid;
+  gap: 8px;
+}
+.goal-history article {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 10px;
+  background: var(--app-settings-bg);
+}
+.goal-history time {
+  color: var(--app-text-muted);
+  font-size: 11px;
+}
+.goal-history strong {
+  font-size: 13px;
+  line-height: 1.45;
+}
+.goal-history__empty {
+  padding: 18px 0;
+  color: var(--app-text-muted);
+  text-align: center;
+  font-size: 13px;
 }
 .wide {
   justify-content: center;
@@ -1154,7 +1236,7 @@ button svg,
     white-space: nowrap;
   }
   .draft-head {
-    margin-top: 20px;
+    margin: 24px 0 12px;
   }
   .plan-pane > .sequence {
     display: none;
@@ -1273,47 +1355,30 @@ button svg,
   .run-dependency {
     display: none;
   }
-  .task-popover {
-    place-items: end center;
-    background: rgb(0 0 0 / 38%);
-  }
-  .task-popover section {
-    width: 100%;
-    max-height: min(78dvh, 680px);
-    overflow-y: auto;
-    padding: 22px 20px calc(18px + env(safe-area-inset-bottom));
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -8px 32px rgb(0 0 0 / 18%);
-  }
-  .task-popover section::before {
-    content: "";
-    display: block;
-    width: 36px;
-    height: 4px;
-    margin: -12px auto 12px;
-    border-radius: 999px;
-    background: var(--app-border);
-  }
-  .task-popover h3 {
+  .task-detail h3 {
     padding-right: 32px;
     font-size: 18px;
   }
-  .task-popover p {
+  .task-detail p {
     font-size: 14px;
   }
-  .task-popover dl div {
-    grid-template-columns: 70px 1fr;
+  .task-detail dl div {
+    grid-template-columns: 70px minmax(0, 1fr);
     min-height: 40px;
     align-items: center;
     font-size: 13px;
   }
-  .task-popover .close {
-    display: grid;
-    width: 44px;
-    height: 44px;
-    place-items: center;
-    right: 8px;
-    top: 9px;
+  .task-detail :deep(.task-dependency-graph) {
+    height: min(42dvh, 360px);
+    margin-bottom: 12px;
+  }
+  .task-detail .wide {
+    position: sticky;
+    z-index: 2;
+    bottom: 0;
+    min-height: 44px;
+    margin-top: 8px;
+    box-shadow: 0 -10px 18px var(--m-surface, var(--app-settings-card));
   }
 }
 </style>

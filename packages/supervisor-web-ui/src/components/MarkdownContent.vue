@@ -380,4 +380,34 @@ html[data-theme="light"] .md-content--terminal :deep(.md-term-pre) {
 html[data-theme="light"] .md-content--terminal :deep(a) {
   color: #059669;
 }
+
+@media (max-width: 767px) {
+  .md-content {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .md-content--prose :deep(pre),
+  .md-content--terminal :deep(.md-term-pre) {
+    max-width: 100%;
+    overflow-x: hidden;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .md-content--prose :deep(pre code),
+  .md-content--terminal :deep(.md-term-pre code) {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .md-content--terminal :deep(table),
+  .md-content--prose :deep(table) {
+    display: block;
+    max-width: 100%;
+    overflow-x: hidden;
+    table-layout: fixed;
+    word-break: break-word;
+  }
+}
 </style>

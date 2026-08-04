@@ -40,21 +40,17 @@ import {
   HOME_TASK_STATUSES,
   normalizeSessionStatus,
 } from "../types.js";
-import {
-  DEFAULT_AGENT_PERMISSION_RULES,
-  normalizeAgentPermissionRules,
-} from "../core/agent-permissions.js";
+import { normalizeAgentPermissionRules } from "../core/agent-permissions.js";
 import { getProjectDir } from "../core/session-files.js";
 import {
-  ensureProjectScriptsTable,
   listProjectScripts,
-  migrateLegacyProjectCommands,
   replaceProjectScripts,
   type ProjectScriptInput,
   type ProjectScriptKind,
 } from "../core/project-scripts.js";
 import { normalizeApiProtocol, requireApiProtocol } from "../config/api-protocol.js";
 import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.js";
+import { execSqlFile } from "./sql-loader.js";
 
 function parseHomeTaskStatus(value: string): HomeTaskStatus {
   return (HOME_TASK_STATUSES as readonly string[]).includes(value)
@@ -259,564 +255,29 @@ export class SupervisorDb {
   }
 
   private migrate() {
-    // Must run before CREATE todo_task so legacy data is renamed, not shadowed by an empty table.
-    this.migrateHomeTasksToTodoTask();
+    execSqlFile(this.db, "schema.sql");
     this.db.exec(`
-			CREATE TABLE IF NOT EXISTS providers (
-				id            INTEGER PRIMARY KEY AUTOINCREMENT,
-				slug          TEXT UNIQUE,
-				name          TEXT NOT NULL,
-				icon          TEXT,
-				protocol      TEXT NOT NULL,
-				base_url      TEXT,
-				api_key       TEXT,
-				is_enabled    INTEGER NOT NULL DEFAULT 1,
-				created_at    INTEGER NOT NULL,
-				updated_at    INTEGER NOT NULL
-			);
-
-			CREATE TABLE IF NOT EXISTS models (
-				id            INTEGER PRIMARY KEY AUTOINCREMENT,
-				provider_id   INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-				model_id      TEXT NOT NULL,
-				name          TEXT,
-				context_window INTEGER NOT NULL DEFAULT 128000,
-				supports_vision INTEGER NOT NULL DEFAULT 0,
-				created_at    INTEGER NOT NULL,
-				updated_at    INTEGER NOT NULL,
-				UNIQUE (provider_id, model_id)
-			);
-
-			CREATE TABLE IF NOT EXISTS agents (
-				id            INTEGER PRIMARY KEY AUTOINCREMENT,
-				name          TEXT NOT NULL,
-				description   TEXT,
-				avatar        TEXT,
-				backend_type  TEXT NOT NULL DEFAULT 'native',
-				system_prompt TEXT,
-				tools_preset  TEXT,
-				model_id      INTEGER REFERENCES models(id) ON DELETE SET NULL,
-				home_dir      TEXT,
-				is_builtin    INTEGER NOT NULL DEFAULT 0,
-        external_config TEXT,
-        permission_rules TEXT NOT NULL DEFAULT '{}',
-				meta          TEXT NOT NULL DEFAULT '{}',
-				created_at    INTEGER NOT NULL,
-				updated_at    INTEGER NOT NULL
-			);
-
-			CREATE TABLE IF NOT EXISTS projects (
-				id            INTEGER PRIMARY KEY AUTOINCREMENT,
-				name          TEXT NOT NULL,
-				description   TEXT,
-				cwd           TEXT NOT NULL UNIQUE,
-				home_dir      TEXT NOT NULL,
-				created_at    INTEGER NOT NULL,
-				updated_at    INTEGER NOT NULL
-			);
-
-			CREATE TABLE IF NOT EXISTS sessions (
-				id            INTEGER PRIMARY KEY AUTOINCREMENT,
-				project_id    INTEGER REFERENCES projects(id) ON DELETE CASCADE,
-				parent_id     INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
-				status        TEXT NOT NULL DEFAULT 'initializing',
-				thinking_level TEXT NOT NULL DEFAULT 'none',
-				cwd           TEXT NOT NULL DEFAULT '',
-				leaf_id       TEXT,
-				agent_id      INTEGER REFERENCES agents(id) ON DELETE SET NULL,
-				spawn_type    TEXT,
-				created_by    TEXT NOT NULL DEFAULT 'user',
-				title         TEXT,
-				system_prompt TEXT,
-				avatar        TEXT,
-				is_builtin    INTEGER NOT NULL DEFAULT 0,
-				external_session_id TEXT,
-				error_msg     TEXT,
-				stage         TEXT,
-				shadow_enabled INTEGER NOT NULL DEFAULT 0,
-				created_at    INTEGER NOT NULL,
-				last_active_at INTEGER NOT NULL,
-				meta          TEXT NOT NULL DEFAULT '{}'
-			);
-			CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_id);
-			CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
-			CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
-
-			CREATE TABLE IF NOT EXISTS session_events (
-				id            INTEGER PRIMARY KEY AUTOINCREMENT,
-				session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-				project_id    INTEGER REFERENCES projects(id) ON DELETE SET NULL,
-				kind          TEXT NOT NULL,
-				status        TEXT,
-				data          TEXT NOT NULL DEFAULT '{}',
-				created_at    INTEGER NOT NULL
-			);
-			CREATE INDEX IF NOT EXISTS idx_session_events_session ON session_events(session_id, created_at);
-			CREATE INDEX IF NOT EXISTS idx_session_events_project ON session_events(project_id, created_at);
-
-		`);
-
-    this.ensureProjectScripts();
-    this.migrateMembersToSubagentIds();
-    this.ensureSessionTaskTables();
-    this.db.exec("CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id)");
-    this.db.exec(`
-      INSERT INTO session_events (session_id, project_id, kind, status, data, created_at)
-      SELECT s.id, s.project_id, 'created', s.status, '{}', s.created_at
-      FROM sessions s
-      WHERE NOT EXISTS (SELECT 1 FROM session_events e WHERE e.session_id = s.id)
+      INSERT INTO timeline_events (type, entity_id, project_id, kind, status, data, created_at)
+      SELECT 'session', id, project_id, 'created', status, '{}', created_at
+      FROM sessions source
+      WHERE NOT EXISTS (
+        SELECT 1 FROM timeline_events target
+        WHERE target.type = 'session' AND target.entity_id = source.id
+      );
     `);
-
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS messages (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        entry_id      TEXT NOT NULL UNIQUE,
-        session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        parent_entry_id TEXT,
-        type          TEXT NOT NULL,
-        payload       TEXT NOT NULL,
-        meta          TEXT NOT NULL DEFAULT '{}',
-        is_old        INTEGER NOT NULL DEFAULT 0,
-        origin_msg    TEXT,
-        role          TEXT,
-        search_text   TEXT,
-        created_at    INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, role);
-      CREATE INDEX IF NOT EXISTS idx_messages_search_text ON messages(search_text) WHERE search_text IS NOT NULL;
-      CREATE TABLE IF NOT EXISTS session_input_queue (
-        id            TEXT PRIMARY KEY,
-        session_id    INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        message       TEXT NOT NULL,
-        level         INTEGER NOT NULL,
-        origin_msg    TEXT,
-        images        TEXT,
-        enqueued_at   INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_session_input_queue_session
-        ON session_input_queue(session_id, level DESC, enqueued_at ASC);
-      CREATE TABLE IF NOT EXISTS todo_task (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        title         TEXT NOT NULL,
-        description   TEXT NOT NULL DEFAULT '',
-        project_id    INTEGER REFERENCES projects(id) ON DELETE SET NULL,
-        status        TEXT NOT NULL DEFAULT 'todo',
-        priority      TEXT NOT NULL DEFAULT 'normal',
-        parent_id     INTEGER REFERENCES todo_task(id) ON DELETE CASCADE,
-        session_id    INTEGER REFERENCES sessions(id) ON DELETE SET NULL,
-        agent_id      INTEGER REFERENCES agents(id) ON DELETE SET NULL,
-        depends_on    TEXT NOT NULL DEFAULT '[]',
-        subagent_ids  TEXT NOT NULL DEFAULT '[]',
-        phase         TEXT NOT NULL DEFAULT 'draft',
-        error         TEXT,
-        created_at    INTEGER NOT NULL,
-        updated_at    INTEGER NOT NULL
-      );
-      CREATE INDEX IF NOT EXISTS idx_todo_task_status ON todo_task(status);
-      CREATE INDEX IF NOT EXISTS idx_todo_task_parent ON todo_task(parent_id);
-      CREATE INDEX IF NOT EXISTS idx_todo_task_session ON todo_task(session_id);
-      CREATE INDEX IF NOT EXISTS idx_todo_task_project ON todo_task(project_id);
-
-      DROP TABLE IF EXISTS extensions;
-
-      CREATE TABLE IF NOT EXISTS resources (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        kind          TEXT NOT NULL,
-        slug          TEXT NOT NULL,
-        name          TEXT,
-        description   TEXT,
-        source_path   TEXT,
-        version       TEXT,
-        meta          TEXT NOT NULL DEFAULT '{}',
-        created_at    INTEGER NOT NULL,
-        updated_at    INTEGER NOT NULL,
-        UNIQUE(kind, slug)
-      );
-      CREATE INDEX IF NOT EXISTS idx_resources_kind ON resources(kind);
-
-      CREATE TABLE IF NOT EXISTS agent_resources (
-        id            INTEGER PRIMARY KEY AUTOINCREMENT,
-        agent_id      INTEGER NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-        resource_id   INTEGER NOT NULL REFERENCES resources(id) ON DELETE CASCADE,
-        enabled       INTEGER NOT NULL DEFAULT 1,
-        priority      INTEGER NOT NULL DEFAULT 0,
-        created_at    INTEGER NOT NULL,
-        UNIQUE(agent_id, resource_id)
-      );
-      CREATE INDEX IF NOT EXISTS idx_agent_resources_agent ON agent_resources(agent_id);
-      CREATE INDEX IF NOT EXISTS idx_agent_resources_resource ON agent_resources(resource_id);
-    `);
-    this.rebuildTargetSchema();
-    this.ensureAgentPermissionDefaults();
     this.ensureMessageFts();
-    this.ensureTodoTaskColumns();
-    this.migrateProviderProtocolColumn();
+    this.db.exec(`
+      INSERT INTO timeline_events (type, entity_id, project_id, kind, status, data, created_at)
+      SELECT 'todo_task', id, project_id, 'created', status, '{}', created_at
+      FROM todo_task source
+      WHERE NOT EXISTS (
+        SELECT 1 FROM timeline_events target
+        WHERE target.type = 'todo_task' AND target.entity_id = source.id
+      );
+    `);
 
     // Initialize default providers from environment variables
     this.initializeDefaultProviders();
-  }
-
-  /** Rename legacy providers.api_type → protocol and normalize stored values. */
-  private migrateProviderProtocolColumn(): void {
-    const exists = this.db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'providers'")
-      .get();
-    if (!exists) return;
-
-    const columns = this.db.pragma("table_info(providers)") as Array<{ name: string }>;
-    const names = new Set(columns.map((column) => column.name));
-    if (names.has("api_type") && !names.has("protocol")) {
-      this.db.exec("ALTER TABLE providers RENAME COLUMN api_type TO protocol");
-    }
-
-    const rows = this.db.prepare("SELECT id, protocol FROM providers").all() as Array<{
-      id: number;
-      protocol: string;
-    }>;
-    const update = this.db.prepare("UPDATE providers SET protocol = ? WHERE id = ?");
-    for (const row of rows) {
-      const normalized = normalizeApiProtocol(row.protocol);
-      if (normalized && normalized !== row.protocol) {
-        update.run(normalized, row.id);
-      }
-    }
-  }
-
-  /** One-time backfill for native Agents created before permission_rules had safe defaults. */
-  private ensureAgentPermissionDefaults(): void {
-    const migrationKey = "native-agent-permission-defaults-v1";
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS supervisor_migrations (
-        key TEXT PRIMARY KEY,
-        applied_at INTEGER NOT NULL
-      )
-    `);
-    const applied = this.db
-      .prepare("SELECT 1 FROM supervisor_migrations WHERE key = ?")
-      .get(migrationKey);
-    if (applied) return;
-    const migrate = this.db.transaction(() => {
-      this.db
-        .prepare(
-          "UPDATE agents SET permission_rules = ? WHERE backend_type = 'native' AND permission_rules = '{}'",
-        )
-        .run(JSON.stringify(DEFAULT_AGENT_PERMISSION_RULES));
-      this.db
-        .prepare("INSERT INTO supervisor_migrations (key, applied_at) VALUES (?, ?)")
-        .run(migrationKey, Date.now());
-    });
-    migrate();
-  }
-
-  /** Rename legacy `home_tasks` → `todo_task` when upgrading existing DBs. */
-  private migrateHomeTasksToTodoTask(): void {
-    const hasHome = this.db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'home_tasks'")
-      .get();
-    const hasTodo = this.db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'todo_task'")
-      .get();
-    if (!hasHome) return;
-
-    if (!hasTodo) {
-      this.db.exec("ALTER TABLE home_tasks RENAME TO todo_task");
-    } else {
-      const todoCount = (
-        this.db.prepare("SELECT COUNT(*) AS n FROM todo_task").get() as { n: number }
-      ).n;
-      const homeCount = (
-        this.db.prepare("SELECT COUNT(*) AS n FROM home_tasks").get() as { n: number }
-      ).n;
-      if (todoCount === 0 && homeCount > 0) {
-        this.db.exec("DROP TABLE todo_task; ALTER TABLE home_tasks RENAME TO todo_task");
-      } else {
-        this.db.exec("DROP TABLE home_tasks");
-      }
-    }
-
-    this.db.exec(`
-      DROP INDEX IF EXISTS idx_home_tasks_status;
-      DROP INDEX IF EXISTS idx_home_tasks_parent;
-      DROP INDEX IF EXISTS idx_home_tasks_session;
-      DROP INDEX IF EXISTS idx_home_tasks_project;
-      CREATE INDEX IF NOT EXISTS idx_todo_task_status ON todo_task(status);
-      CREATE INDEX IF NOT EXISTS idx_todo_task_parent ON todo_task(parent_id);
-      CREATE INDEX IF NOT EXISTS idx_todo_task_session ON todo_task(session_id);
-      CREATE INDEX IF NOT EXISTS idx_todo_task_project ON todo_task(project_id);
-    `);
-  }
-
-  /** Drop legacy todo_task.meta; add plan/execute columns. */
-  private ensureTodoTaskColumns(): void {
-    const exists = this.db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'todo_task'")
-      .get();
-    if (!exists) return;
-    const names = new Set(
-      (this.db.pragma("table_info(todo_task)") as Array<{ name: string }>).map((c) => c.name),
-    );
-    if (names.has("meta")) {
-      this.db.exec("ALTER TABLE todo_task DROP COLUMN meta");
-    }
-    if (!names.has("agent_id")) {
-      this.db.exec(
-        "ALTER TABLE todo_task ADD COLUMN agent_id INTEGER REFERENCES agents(id) ON DELETE SET NULL",
-      );
-    }
-    if (!names.has("depends_on")) {
-      this.db.exec("ALTER TABLE todo_task ADD COLUMN depends_on TEXT NOT NULL DEFAULT '[]'");
-    }
-    if (!names.has("subagent_ids")) {
-      this.db.exec("ALTER TABLE todo_task ADD COLUMN subagent_ids TEXT NOT NULL DEFAULT '[]'");
-    }
-    if (!names.has("phase")) {
-      this.db.exec("ALTER TABLE todo_task ADD COLUMN phase TEXT NOT NULL DEFAULT 'draft'");
-    }
-  }
-
-  /** Rebuild evolving core tables so existing databases have the exact target columns. */
-  private rebuildTargetSchema(): void {
-    const columns = (table: string) =>
-      new Set(
-        (this.db.pragma(`table_info(${table})`) as Array<{ name: string }>).map(
-          (column) => column.name,
-        ),
-      );
-    const pick = (names: Set<string>, name: string, fallback: string) =>
-      names.has(name) ? name : fallback;
-
-    const modelColumns = columns("models");
-    const agentColumns = columns("agents");
-    const projectColumns = columns("projects");
-    const scriptColumns = columns("project_scripts");
-    const sessionColumns = columns("sessions");
-    const messageColumns = columns("messages");
-    const queueColumns = columns("session_input_queue");
-
-    this.db.exec(`
-      DROP TRIGGER IF EXISTS messages_fts_ai;
-      DROP TRIGGER IF EXISTS messages_fts_ad;
-      DROP TRIGGER IF EXISTS messages_fts_au;
-      DROP TABLE IF EXISTS messages_fts;
-      PRAGMA foreign_keys = OFF;
-    `);
-    const rebuild = this.db.transaction(() => {
-      this.db.exec(`
-        CREATE TABLE models_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
-          model_id TEXT NOT NULL,
-          name TEXT,
-          context_window INTEGER NOT NULL DEFAULT 128000,
-          supports_vision INTEGER NOT NULL DEFAULT 0,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL,
-          UNIQUE(provider_id, model_id)
-        );
-        INSERT INTO models_new
-          (id, provider_id, model_id, name, context_window, supports_vision, created_at, updated_at)
-        SELECT id, provider_id, model_id, name, context_window,
-          ${pick(modelColumns, "supports_vision", pick(modelColumns, "supports_multimodal", "0"))},
-          created_at, updated_at
-        FROM models;
-
-        CREATE TABLE agents_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          description TEXT,
-          avatar TEXT,
-          backend_type TEXT NOT NULL DEFAULT 'native',
-          model_id INTEGER REFERENCES models_new(id) ON DELETE SET NULL,
-          system_prompt TEXT,
-          tools_preset TEXT NOT NULL DEFAULT 'coding',
-          home_dir TEXT,
-          is_builtin INTEGER NOT NULL DEFAULT 0,
-          external_config TEXT,
-          permission_rules TEXT NOT NULL DEFAULT '{}',
-          meta TEXT NOT NULL DEFAULT '{}',
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
-        );
-        INSERT INTO agents_new
-          (id, name, description, avatar, backend_type, model_id, system_prompt, tools_preset,
-           home_dir, is_builtin, external_config, permission_rules, meta, created_at, updated_at)
-        SELECT a.id, a.name, a.description,
-          ${pick(agentColumns, "avatar", pick(agentColumns, "icon", "NULL"))},
-          ${pick(agentColumns, "backend_type", "'native'")},
-          CASE
-            WHEN typeof(a.model_id) = 'integer' THEN a.model_id
-            ELSE (SELECT m.id FROM models m
-                  WHERE m.model_id = a.model_id
-                    ${agentColumns.has("provider_id") ? "AND m.provider_id = a.provider_id" : ""}
-                  LIMIT 1)
-          END,
-          ${pick(agentColumns, "system_prompt", "NULL")},
-          COALESCE(${pick(agentColumns, "tools_preset", "NULL")}, 'coding'),
-          ${pick(agentColumns, "home_dir", "NULL")},
-          COALESCE(${pick(agentColumns, "is_builtin", pick(agentColumns, "is_internal", "0"))}, 0),
-          ${pick(agentColumns, "external_config", "NULL")},
-          COALESCE(${pick(agentColumns, "permission_rules", "NULL")}, '{}'),
-          COALESCE(${pick(agentColumns, "meta", "NULL")}, '{}'),
-          a.created_at, a.updated_at
-        FROM agents a;
-
-        CREATE TABLE projects_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          name TEXT NOT NULL,
-          description TEXT,
-          cwd TEXT NOT NULL UNIQUE,
-          home_dir TEXT NOT NULL,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
-        );
-        INSERT INTO projects_new (id, name, description, cwd, home_dir, created_at, updated_at)
-        SELECT id, name,
-          ${
-            projectColumns.has("description")
-              ? "description"
-              : projectColumns.has("meta")
-                ? "CASE WHEN json_valid(meta) THEN json_extract(meta, '$.description') ELSE NULL END"
-                : "NULL"
-          },
-          cwd, ${pick(projectColumns, "home_dir", pick(projectColumns, "work_dir", "''"))},
-          created_at, updated_at
-        FROM projects;
-
-        CREATE TABLE project_scripts_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          project_id INTEGER NOT NULL REFERENCES projects_new(id) ON DELETE CASCADE,
-          kind TEXT NOT NULL,
-          name TEXT NOT NULL,
-          command TEXT NOT NULL,
-          created_at INTEGER NOT NULL,
-          updated_at INTEGER NOT NULL
-        );
-        INSERT INTO project_scripts_new
-          (id, project_id, kind, name, command, created_at, updated_at)
-        SELECT id, project_id, kind, name, command, created_at, updated_at FROM project_scripts;
-
-        CREATE TABLE sessions_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          project_id INTEGER REFERENCES projects_new(id) ON DELETE CASCADE,
-          parent_id INTEGER REFERENCES sessions_new(id) ON DELETE SET NULL,
-          status TEXT NOT NULL DEFAULT 'initializing',
-          thinking_level TEXT NOT NULL DEFAULT 'none',
-          cwd TEXT NOT NULL DEFAULT '',
-          leaf_id TEXT,
-          agent_id INTEGER REFERENCES agents_new(id) ON DELETE SET NULL,
-          spawn_type TEXT,
-          created_by TEXT NOT NULL DEFAULT 'user',
-          title TEXT,
-          system_prompt TEXT,
-          avatar TEXT,
-          is_builtin INTEGER NOT NULL DEFAULT 0,
-          external_session_id TEXT,
-          error_msg TEXT,
-          stage TEXT,
-          shadow_enabled INTEGER NOT NULL DEFAULT 0,
-          created_at INTEGER NOT NULL,
-          last_active_at INTEGER NOT NULL,
-          meta TEXT NOT NULL DEFAULT '{}'
-        );
-        INSERT INTO sessions_new
-          (id, project_id, parent_id, status, thinking_level, cwd, leaf_id, agent_id, spawn_type,
-           created_by, title, system_prompt, avatar, is_builtin,
-           external_session_id, error_msg, stage, shadow_enabled, created_at, last_active_at, meta)
-        SELECT id, ${pick(sessionColumns, "project_id", "NULL")}, parent_id,
-          CASE WHEN status = 'starting' THEN 'initializing'
-               WHEN status IN ('waiting_user', 'needs_model') THEN 'blocked' ELSE status END,
-          ${pick(sessionColumns, "thinking_level", "'none'")}, cwd, leaf_id, agent_id,
-          CASE WHEN ${pick(sessionColumns, "spawn_type", pick(sessionColumns, "branch_type", "NULL"))} = 'spawn'
-               THEN 'subagent' ELSE ${pick(sessionColumns, "spawn_type", pick(sessionColumns, "branch_type", "NULL"))} END,
-          ${pick(sessionColumns, "created_by", pick(sessionColumns, "created_via", "'user'"))},
-          ${pick(sessionColumns, "title", "NULL")},
-          ${pick(sessionColumns, "system_prompt", "NULL")},
-          ${pick(sessionColumns, "avatar", "NULL")},
-          COALESCE(${pick(sessionColumns, "is_builtin", "0")}, 0),
-          ${pick(sessionColumns, "external_session_id", "NULL")},
-          ${pick(sessionColumns, "error_msg", "NULL")},
-          ${pick(sessionColumns, "stage", "NULL")},
-          COALESCE(${pick(sessionColumns, "shadow_enabled", "0")}, 0),
-          created_at, last_active_at,
-          CASE WHEN json_valid(meta)
-            THEN json_remove(meta, '$.git', '$.description') ELSE '{}' END
-        FROM sessions;
-
-        CREATE TABLE messages_new (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          entry_id TEXT NOT NULL UNIQUE,
-          session_id INTEGER NOT NULL REFERENCES sessions_new(id) ON DELETE CASCADE,
-          parent_entry_id TEXT,
-          type TEXT NOT NULL,
-          payload TEXT NOT NULL,
-          meta TEXT NOT NULL DEFAULT '{}',
-          is_old INTEGER NOT NULL DEFAULT 0,
-          origin_msg TEXT,
-          role TEXT,
-          search_text TEXT,
-          created_at INTEGER NOT NULL
-        );
-        INSERT INTO messages_new
-          (id, entry_id, session_id, parent_entry_id, type, payload, meta, is_old,
-           origin_msg, role, search_text, created_at)
-        SELECT id, entry_id, session_id, parent_entry_id, type, payload, meta, is_old,
-          ${pick(messageColumns, "origin_msg", pick(messageColumns, "origin", "NULL"))},
-          ${pick(messageColumns, "role", pick(messageColumns, "message_role", "NULL"))},
-          search_text, created_at FROM messages;
-
-        CREATE TABLE session_input_queue_new (
-          id TEXT PRIMARY KEY,
-          session_id INTEGER NOT NULL REFERENCES sessions_new(id) ON DELETE CASCADE,
-          message TEXT NOT NULL,
-          level INTEGER NOT NULL,
-          origin_msg TEXT,
-          images TEXT,
-          enqueued_at INTEGER NOT NULL
-        );
-        INSERT INTO session_input_queue_new
-          (id, session_id, message, level, origin_msg, images, enqueued_at)
-        SELECT id, session_id, message, level,
-          ${pick(queueColumns, "origin_msg", pick(queueColumns, "origin", "NULL"))},
-          images, enqueued_at FROM session_input_queue;
-
-        DROP TABLE messages;
-        DROP TABLE session_input_queue;
-        DROP TABLE project_scripts;
-        DROP TABLE sessions;
-        DROP TABLE agents;
-        DROP TABLE models;
-        DROP TABLE projects;
-        ALTER TABLE models_new RENAME TO models;
-        ALTER TABLE agents_new RENAME TO agents;
-        ALTER TABLE projects_new RENAME TO projects;
-        ALTER TABLE project_scripts_new RENAME TO project_scripts;
-        ALTER TABLE sessions_new RENAME TO sessions;
-        ALTER TABLE messages_new RENAME TO messages;
-        ALTER TABLE session_input_queue_new RENAME TO session_input_queue;
-      `);
-    });
-    rebuild();
-    this.db.exec(`
-      PRAGMA foreign_keys = ON;
-      CREATE INDEX IF NOT EXISTS idx_sessions_parent ON sessions(parent_id);
-      CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
-      CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
-      CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, role);
-      CREATE INDEX IF NOT EXISTS idx_messages_search_text
-        ON messages(search_text) WHERE search_text IS NOT NULL;
-      CREATE INDEX IF NOT EXISTS idx_session_input_queue_session
-        ON session_input_queue(session_id, level DESC, enqueued_at ASC);
-      CREATE INDEX IF NOT EXISTS idx_project_scripts_project
-        ON project_scripts(project_id, kind, id);
-    `);
-  }
-
-  private ensureProjectScripts(): void {
-    ensureProjectScriptsTable(this.db);
-    migrateLegacyProjectCommands(this.db);
   }
 
   listProjectScripts(projectId: number, kind?: ProjectScriptKind) {
@@ -825,345 +286,6 @@ export class SupervisorDb {
 
   replaceProjectScripts(projectId: number, scripts: ProjectScriptInput[]) {
     return replaceProjectScripts(this.db, projectId, scripts);
-  }
-
-  private ensureSessionSchemaColumns(): void {
-    const columns = this.db.pragma("table_info(sessions)") as Array<{ name: string }>;
-    const names = new Set(columns.map((column) => column.name));
-
-    if (names.has("created_via") && !names.has("created_by")) {
-      this.db.exec("ALTER TABLE sessions RENAME COLUMN created_via TO created_by");
-      names.delete("created_via");
-      names.add("created_by");
-    } else if (!names.has("created_by")) {
-      this.db.exec("ALTER TABLE sessions ADD COLUMN created_by TEXT NOT NULL DEFAULT 'user'");
-      names.add("created_by");
-    }
-
-    const addText = (name: string) => {
-      if (!names.has(name)) {
-        this.db.exec(`ALTER TABLE sessions ADD COLUMN ${name} TEXT`);
-        names.add(name);
-      }
-    };
-    const addInt = (name: string, def: number) => {
-      if (!names.has(name)) {
-        this.db.exec(`ALTER TABLE sessions ADD COLUMN ${name} INTEGER NOT NULL DEFAULT ${def}`);
-        names.add(name);
-      }
-    };
-
-    addText("title");
-    addText("system_prompt");
-    addText("avatar");
-    addInt("is_builtin", 0);
-    addInt("pinned", 0);
-    addInt("muted", 0);
-    addInt("unread", 0);
-    addText("external_session_id");
-    addText("error_msg");
-    addText("stage");
-    addInt("shadow_enabled", 0);
-    // One-time backfill from legacy meta keys / git_* columns into dedicated columns + meta.git.
-    this.db.exec(`
-      UPDATE sessions SET title = json_extract(meta, '$.name')
-      WHERE title IS NULL AND json_extract(meta, '$.name') IS NOT NULL
-    `);
-    this.db.exec(`
-      UPDATE sessions SET avatar = json_extract(meta, '$.avatar')
-      WHERE avatar IS NULL AND json_extract(meta, '$.avatar') IS NOT NULL
-    `);
-    this.db.exec(`
-      UPDATE sessions SET is_builtin = 1
-      WHERE is_builtin = 0 AND json_extract(meta, '$.builtin') = 1
-    `);
-    this.db.exec(`
-      UPDATE sessions SET pinned = 1
-      WHERE pinned = 0 AND json_extract(meta, '$.pinned') = 1
-    `);
-    this.db.exec(`
-      UPDATE sessions SET muted = 1
-      WHERE muted = 0 AND json_extract(meta, '$.muted') = 1
-    `);
-    this.db.exec(`
-      UPDATE sessions SET unread = CAST(json_extract(meta, '$.unread') AS INTEGER)
-      WHERE unread = 0 AND json_extract(meta, '$.unread') IS NOT NULL
-    `);
-    this.db.exec(`
-      UPDATE sessions SET external_session_id = json_extract(meta, '$.externalSessionId')
-      WHERE external_session_id IS NULL
-        AND json_extract(meta, '$.externalSessionId') IS NOT NULL
-    `);
-    this.db.exec(`
-      UPDATE sessions SET error_msg = json_extract(meta, '$.runtimeStartError')
-      WHERE error_msg IS NULL AND json_extract(meta, '$.runtimeStartError') IS NOT NULL
-    `);
-    this.db.exec(`
-      UPDATE sessions SET stage = json_extract(meta, '$.workflow.stage')
-      WHERE stage IS NULL AND json_extract(meta, '$.workflow.stage') IS NOT NULL
-    `);
-    this.db.exec(`
-      UPDATE sessions SET shadow_enabled = 1
-      WHERE shadow_enabled = 0 AND json_extract(meta, '$.shadowDisabled') = 0
-    `);
-    this.db.exec(`
-      UPDATE sessions SET system_prompt = json_extract(meta, '$.runtimeConfig.systemPrompt')
-      WHERE system_prompt IS NULL
-        AND json_extract(meta, '$.runtimeConfig.systemPrompt') IS NOT NULL
-    `);
-    this.db.exec(`
-      UPDATE sessions SET status = 'blocked',
-        error_msg = COALESCE(error_msg, 'Agent 未配置模型')
-      WHERE status = 'idle' AND json_extract(meta, '$.modelRequired') = 1
-    `);
-    this.db.exec(`
-      UPDATE sessions SET status = 'blocked'
-      WHERE status IN ('needs_model', 'waiting_user')
-    `);
-
-    // Move git_* columns (if present) and legacy meta.git into meta.git.worktreePath shape.
-    if (
-      names.has("git_worktree_enabled") ||
-      names.has("git_last_commit") ||
-      names.has("git_merge_error")
-    ) {
-      const rows = this.db
-        .prepare(
-          `SELECT id, cwd, project_id, meta,
-            ${names.has("git_worktree_enabled") ? "git_worktree_enabled" : "0"} AS git_worktree_enabled,
-            ${names.has("git_last_commit") ? "git_last_commit" : "NULL"} AS git_last_commit,
-            ${names.has("git_merge_error") ? "git_merge_error" : "NULL"} AS git_merge_error
-           FROM sessions`,
-        )
-        .all() as Array<{
-        id: number;
-        cwd: string;
-        project_id: number | null;
-        meta: string;
-        git_worktree_enabled: number;
-        git_last_commit: string | null;
-        git_merge_error: string | null;
-      }>;
-      const updateMeta = this.db.prepare("UPDATE sessions SET meta = ? WHERE id = ?");
-      for (const row of rows) {
-        let meta: Record<string, unknown> = {};
-        try {
-          meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
-        } catch {
-          meta = {};
-        }
-        const legacyGit =
-          meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)
-            ? ({ ...(meta.git as Record<string, unknown>) } as Record<string, unknown>)
-            : {};
-        let lastCommit = legacyGit.lastCommit ?? null;
-        if (!lastCommit && row.git_last_commit) {
-          try {
-            lastCommit = JSON.parse(row.git_last_commit);
-          } catch {
-            lastCommit = null;
-          }
-        }
-        const mergeError =
-          (typeof legacyGit.mergeError === "string" ? legacyGit.mergeError : null) ??
-          row.git_merge_error ??
-          null;
-        const worktreeEnabled =
-          row.git_worktree_enabled === 1 ||
-          legacyGit.worktreeEnabled === true ||
-          typeof legacyGit.worktreePath === "string";
-        let worktreePath =
-          typeof legacyGit.worktreePath === "string" ? legacyGit.worktreePath : null;
-        if (worktreeEnabled && !worktreePath && row.project_id != null) {
-          const project = this.getProject(row.project_id);
-          if (project) {
-            worktreePath = `${project.cwd.replace(/\\/g, "/")}/.pi/supervisor/worktrees/${row.id}`;
-          }
-        }
-        if (worktreeEnabled && !worktreePath && row.cwd) {
-          worktreePath = row.cwd;
-        }
-        meta.git = {
-          ...(typeof legacyGit.branch === "string" ? { branch: legacyGit.branch } : {}),
-          worktreePath: worktreeEnabled ? worktreePath : null,
-          ...(lastCommit ? { lastCommit } : {}),
-          ...(mergeError ? { mergeError } : {}),
-        };
-        updateMeta.run(JSON.stringify(meta), row.id);
-      }
-    }
-  }
-
-  /** Move the legacy spawned-agent whitelist into sessions.meta, then remove its table. */
-  private migrateMembersToSubagentIds(): void {
-    const exists = this.db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'members'")
-      .get();
-    if (!exists) return;
-
-    const migrate = this.db.transaction(() => {
-      const rows = this.db
-        .prepare(
-          `SELECT s.id, s.meta, m.agent_id
-           FROM sessions s
-           LEFT JOIN members m ON m.session_id = s.id AND m.role = 'spawned'
-           ORDER BY s.id, m.created_at`,
-        )
-        .all() as Array<{ id: number; meta: string; agent_id: number | null }>;
-      const sessions = new Map<number, { meta: string; agentIds: number[] }>();
-      for (const row of rows) {
-        const session = sessions.get(row.id) ?? { meta: row.meta, agentIds: [] };
-        if (row.agent_id !== null) session.agentIds.push(row.agent_id);
-        sessions.set(row.id, session);
-      }
-      const update = this.db.prepare("UPDATE sessions SET meta = ? WHERE id = ?");
-      for (const [id, session] of sessions) {
-        let meta: Record<string, unknown> = {};
-        try {
-          const parsed = JSON.parse(session.meta || "{}") as unknown;
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            meta = parsed as Record<string, unknown>;
-          }
-        } catch {
-          // Preserve usable spawned-agent membership even if legacy metadata is malformed.
-        }
-        const existing = Array.isArray(meta.subagentIds)
-          ? meta.subagentIds.filter((value): value is number => Number.isInteger(value))
-          : [];
-        meta.subagentIds = [...new Set([...existing, ...session.agentIds])];
-        update.run(JSON.stringify(meta), id);
-      }
-      this.db.exec("DROP TABLE members");
-    });
-    migrate();
-  }
-
-  private ensureSessionTaskTables(): void {
-    const tables = new Set(
-      (
-        this.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as Array<{
-          name: string;
-        }>
-      ).map((row) => row.name),
-    );
-    if (!tables.has("session_tasks") && !tables.has("session_todos")) return;
-
-    const columns = new Set(
-      (this.db.pragma("table_info(sessions)") as Array<{ name: string }>).map(
-        (column) => column.name,
-      ),
-    );
-    const taskRows = tables.has("session_tasks")
-      ? (this.db
-          .prepare("SELECT * FROM session_tasks ORDER BY created_at ASC, id ASC")
-          .all() as SessionTaskRow[])
-      : [];
-    const todoRows = tables.has("session_todos")
-      ? (this.db
-          .prepare("SELECT * FROM session_todos ORDER BY sort_order ASC, id ASC")
-          .all() as SessionTodoRow[])
-      : [];
-    const tasksBySession = new Map<number, SessionTaskRow[]>();
-    const todosBySession = new Map<number, SessionTodoRow[]>();
-    for (const task of taskRows)
-      tasksBySession.set(task.session_id, [...(tasksBySession.get(task.session_id) ?? []), task]);
-    for (const todo of todoRows)
-      todosBySession.set(todo.session_id, [...(todosBySession.get(todo.session_id) ?? []), todo]);
-
-    const sessionRows = this.db
-      .prepare(
-        `SELECT id, meta${columns.has("current_task_id") ? ", current_task_id" : ""} FROM sessions`,
-      )
-      .all() as Array<{ id: number; meta: string; current_task_id?: number | null }>;
-    const update = this.db.prepare("UPDATE sessions SET meta = ? WHERE id = ?");
-    const migrate = this.db.transaction(() => {
-      for (const row of sessionRows) {
-        let meta: Record<string, unknown> = {};
-        try {
-          const parsed = JSON.parse(row.meta || "{}") as unknown;
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
-            meta = parsed as Record<string, unknown>;
-        } catch {
-          // Preserve no invalid JSON; replace only with the migratable task state.
-        }
-        const taskMap = new Map<
-          string,
-          { path: string; kind: "goal" | "plan"; title: string | null; status: string | null }
-        >();
-        const addTask = (value: unknown) => {
-          const path =
-            typeof value === "string"
-              ? value
-              : value && typeof value === "object"
-                ? (value as { path?: unknown }).path
-                : undefined;
-          if (typeof path !== "string" || !path.trim()) return;
-          const item =
-            value && typeof value === "object"
-              ? (value as { kind?: unknown; title?: unknown; status?: unknown })
-              : {};
-          taskMap.set(path, {
-            path,
-            kind:
-              item.kind === "plan" || path.startsWith("plan/") || path.includes("/plan-")
-                ? "plan"
-                : "goal",
-            title: typeof item.title === "string" ? item.title : null,
-            status: typeof item.status === "string" ? item.status : null,
-          });
-        };
-        if (Array.isArray(meta.tasks)) for (const task of meta.tasks) addTask(task);
-        for (const task of tasksBySession.get(row.id) ?? []) {
-          taskMap.set(task.path, {
-            path: task.path,
-            kind: task.kind,
-            title: task.title,
-            status: task.status,
-          });
-        }
-
-        const todoItems: Array<{
-          title: string;
-          status: "pending" | "in_progress" | "completed" | "cancelled";
-        }> = [];
-        const addTodo = (value: unknown) => {
-          if (!value || typeof value !== "object") return;
-          const item = value as { title?: unknown; status?: unknown };
-          if (typeof item.title !== "string" || !item.title.trim()) return;
-          const status =
-            item.status === "in_progress" ||
-            item.status === "completed" ||
-            item.status === "cancelled"
-              ? item.status
-              : item.status === "done"
-                ? "completed"
-                : "pending";
-          if (
-            !todoItems.some((todo) => todo.title === item.title.trim() && todo.status === status)
-          ) {
-            todoItems.push({ title: item.title.trim(), status });
-          }
-        };
-        if (Array.isArray(meta.todos)) for (const todo of meta.todos) addTodo(todo);
-        for (const todo of todosBySession.get(row.id) ?? []) addTodo(todo);
-
-        const currentTaskRow =
-          row.current_task_id == null
-            ? undefined
-            : (tasksBySession.get(row.id) ?? []).find((task) => task.id === row.current_task_id);
-        const currentTask =
-          currentTaskRow?.path ??
-          (typeof meta.currentTask === "string" && taskMap.has(meta.currentTask)
-            ? meta.currentTask
-            : null);
-        meta.tasks = [...taskMap.values()];
-        meta.currentTask = currentTask;
-        meta.todos = todoItems;
-        update.run(JSON.stringify(meta), row.id);
-      }
-      this.db.exec("DROP TABLE IF EXISTS session_tasks; DROP TABLE IF EXISTS session_todos;");
-    });
-    migrate();
   }
 
   private projectNameFromCwd(cwd: string): string {
@@ -1323,7 +445,15 @@ export class SupervisorDb {
       )
       .run(full);
     const created = rowToSession({ ...full, id: Number(result.lastInsertRowid) });
-    this.appendSessionEvent(created.id, "created", created.status, {}, created.created_at);
+    this.appendTimelineEvent(
+      "session",
+      created.id,
+      created.project_id,
+      "created",
+      created.status,
+      {},
+      created.created_at,
+    );
     return created;
   }
 
@@ -1379,8 +509,10 @@ export class SupervisorDb {
       .prepare("UPDATE sessions SET status = ?, last_active_at = ? WHERE id = ?")
       .run(status, now, id);
     if (before && before.status !== status) {
-      this.appendSessionEvent(
+      this.appendTimelineEvent(
+        "session",
         id,
+        before.project_id,
         "status_changed",
         status,
         { from: before.status, to: status },
@@ -1398,34 +530,38 @@ export class SupervisorDb {
     }
   }
 
-  appendSessionEvent(
-    sessionId: number,
+  appendTimelineEvent(
+    type: "session" | "todo_task" | "goal",
+    entityId: number,
+    projectId: number | null,
     kind: string,
-    status?: SessionStatus | null,
+    status: string | null,
     data: Record<string, unknown> = {},
     createdAt = Date.now(),
   ): void {
-    const session = this.get(sessionId);
-    if (!session) return;
     this.db
       .prepare(
-        `INSERT INTO session_events (session_id, project_id, kind, status, data, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO timeline_events (type, entity_id, project_id, kind, status, data, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(
-        sessionId,
-        session.project_id,
-        kind,
-        status ?? session.status,
-        JSON.stringify(data),
-        createdAt,
-      );
+      .run(type, entityId, projectId, kind, status, JSON.stringify(data), createdAt);
   }
 
-  listSessionEvents(options: { from?: number; to?: number; projectId?: number } = {}) {
-    let sql = `SELECT id, session_id, project_id, kind, status, data, created_at
-               FROM session_events WHERE 1=1`;
-    const params: Array<number> = [];
+  listTimelineEvents(
+    options: {
+      from?: number;
+      to?: number;
+      projectId?: number;
+      type?: "session" | "todo_task" | "goal";
+    } = {},
+  ) {
+    let sql = `SELECT id, type, entity_id, project_id, kind, status, data, created_at
+               FROM timeline_events WHERE 1=1`;
+    const params: Array<number | string> = [];
+    if (options.type) {
+      sql += " AND type = ?";
+      params.push(options.type);
+    }
     if (options.from != null) {
       sql += " AND created_at >= ?";
       params.push(options.from);
@@ -1442,7 +578,8 @@ export class SupervisorDb {
     return (
       this.db.prepare(sql).all(...params) as Array<{
         id: number;
-        session_id: number;
+        type: "session" | "todo_task" | "goal";
+        entity_id: number;
         project_id: number | null;
         kind: string;
         status: SessionStatus | null;
@@ -1451,7 +588,8 @@ export class SupervisorDb {
       }>
     ).map((row) => ({
       id: String(row.id),
-      sessionId: String(row.session_id),
+      type: row.type,
+      entityId: String(row.entity_id),
       projectId: row.project_id == null ? null : String(row.project_id),
       kind: row.kind,
       status: row.status,
@@ -1513,7 +651,7 @@ export class SupervisorDb {
 
   /** Normalize process-bound Session state after Supervisor starts. */
   reconcileInterruptedSessionStatuses(): number {
-    // Transient busy / in-flight states → idle.
+    // Transient busy / in-flight states 鈫?idle.
     // `blocked` with error_msg (e.g. missing model) is kept; empty blocked was approval wait.
     const normalized = this.db
       .prepare(
@@ -1751,7 +889,8 @@ export class SupervisorDb {
       )
       .all() as Array<{
       id: string;
-      session_id: number;
+      type: "session" | "todo_task";
+      entity_id: number;
       message: string;
       level: number;
       origin_msg: string | null;
@@ -2072,39 +1211,7 @@ export class SupervisorDb {
   }
 
   private ensureMessageFts(): void {
-    this.db.exec(`
-			CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
-				search_text,
-				role,
-				session_id UNINDEXED,
-				message_id UNINDEXED,
-				tokenize='unicode61 remove_diacritics 2'
-			);
-		`);
-    this.db.exec(`
-			CREATE TRIGGER IF NOT EXISTS messages_fts_ai AFTER INSERT ON messages
-			WHEN NEW.search_text IS NOT NULL AND NEW.search_text != ''
-			BEGIN
-				INSERT INTO messages_fts(search_text, role, session_id, message_id)
-				VALUES (NEW.search_text, NEW.role, NEW.session_id, NEW.entry_id);
-			END;
-		`);
-    this.db.exec(`
-			CREATE TRIGGER IF NOT EXISTS messages_fts_ad AFTER DELETE ON messages BEGIN
-				DELETE FROM messages_fts WHERE message_id = OLD.entry_id;
-			END;
-		`);
-    this.db.exec(`
-			CREATE TRIGGER IF NOT EXISTS messages_fts_au AFTER UPDATE OF search_text, role ON messages BEGIN
-				DELETE FROM messages_fts WHERE message_id = OLD.entry_id;
-				INSERT INTO messages_fts(search_text, role, session_id, message_id)
-				SELECT NEW.search_text, NEW.role, NEW.session_id, NEW.entry_id
-				WHERE NEW.search_text IS NOT NULL AND NEW.search_text != '';
-			END;
-			INSERT INTO messages_fts(search_text, role, session_id, message_id)
-			SELECT search_text, role, session_id, entry_id FROM messages
-			WHERE search_text IS NOT NULL AND search_text != '';
-		`);
+    execSqlFile(this.db, "messages-fts.sql");
   }
 
   deleteAgent(id: number): void {
@@ -2571,7 +1678,17 @@ export class SupervisorDb {
         now,
         now,
       );
-    return this.getHomeTask(Number(result.lastInsertRowid))!;
+    const created = this.getHomeTask(Number(result.lastInsertRowid))!;
+    this.appendTimelineEvent(
+      "todo_task",
+      created.id,
+      created.projectId,
+      "created",
+      created.status,
+      {},
+      created.createdAt.getTime(),
+    );
+    return created;
   }
 
   updateHomeTask(id: number, patch: UpdateHomeTaskOptions): HomeTask {
@@ -2621,7 +1738,24 @@ export class SupervisorDb {
         next.updated_at,
         id,
       );
-    return this.getHomeTask(id)!;
+    const updated = this.getHomeTask(id)!;
+    if (current.status !== updated.status || current.phase !== updated.phase) {
+      this.appendTimelineEvent(
+        "todo_task",
+        id,
+        updated.projectId,
+        current.status !== updated.status ? "status_changed" : "phase_changed",
+        updated.status,
+        {
+          fromStatus: current.status,
+          toStatus: updated.status,
+          fromPhase: current.phase,
+          toPhase: updated.phase,
+        },
+        next.updated_at,
+      );
+    }
+    return updated;
   }
 
   deleteHomeTask(id: number): boolean {

@@ -18,6 +18,16 @@ afterEach(() => {
 });
 
 describe("todo_task schema", () => {
+  it("records task history in timeline_events by type", () => {
+    const task = db.insertHomeTask({ title: "Timeline task" });
+    db.updateHomeTask(task.id, { status: "in_progress" });
+
+    const events = db.listTimelineEvents({ type: "todo_task" });
+    expect(events.map((event) => event.kind)).toEqual(["created", "status_changed"]);
+    expect(events.every((event) => event.type === "todo_task")).toBe(true);
+    expect(events.at(-1)?.entityId).toBe(String(task.id));
+  });
+
   it("persists depends_on agent_id subagent_ids and phase", () => {
     const project = db.insertProject({ cwd: join(tmpDir, "repo"), name: "Demo" });
     const agent = db.insertAgent({ name: "A" });
@@ -123,7 +133,9 @@ describe("todo_task schema", () => {
         .get(),
     ).toBeUndefined();
     expect(
-      db.db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'todo_task'").get(),
+      db.db
+        .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'todo_task'")
+        .get(),
     ).toBeTruthy();
     expect(db.listHomeTasks().map((task) => task.title)).toEqual(["FromHome"]);
   });

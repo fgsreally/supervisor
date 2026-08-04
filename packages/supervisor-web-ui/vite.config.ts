@@ -58,7 +58,7 @@ export default defineConfig({
     "import.meta.env.VITE_WORKSPACE_CWD": JSON.stringify(playgroundCwd),
   },
   server: {
-    port: 5173,
+    port: 5163,
     host: "0.0.0.0",
     allowedHosts: ["supervisor.fgsreally.online", ".fgsreally.online"],
     proxy: {

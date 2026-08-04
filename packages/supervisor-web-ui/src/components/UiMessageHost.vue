@@ -70,7 +70,16 @@ const { message } = useUiMessage();
 
 @media (max-width: 767px) {
   .ui-message {
-    top: calc(12px + env(safe-area-inset-top));
+    top: auto;
+    bottom: calc(78px + env(safe-area-inset-bottom));
+    padding: 11px 14px;
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgb(0 0 0 / 20%);
+  }
+
+  .ui-message-enter-from,
+  .ui-message-leave-to {
+    transform: translate(-50%, 10px);
   }
 }
 </style>

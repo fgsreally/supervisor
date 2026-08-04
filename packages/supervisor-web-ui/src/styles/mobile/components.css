@@ -11,7 +11,9 @@
     font-size: var(--m-font-button);
     font-weight: 500;
     line-height: 1;
-    transition: transform var(--m-duration-press), opacity var(--m-duration-press),
+    transition:
+      transform var(--m-duration-press),
+      opacity var(--m-duration-press),
       background-color var(--m-duration-press);
   }
 
@@ -75,7 +77,9 @@
     border-radius: var(--m-icon-button-radius);
     color: var(--m-icon);
     background: transparent;
-    transition: color var(--m-duration-press), background-color var(--m-duration-press),
+    transition:
+      color var(--m-duration-press),
+      background-color var(--m-duration-press),
       transform var(--m-duration-press);
   }
 
@@ -410,9 +414,48 @@ body.m-overlay-open {
   transition: opacity 180ms ease;
 }
 
+.m-overlay-enter-active .m-dialog,
+.m-overlay-leave-active .m-dialog {
+  transition:
+    transform 180ms ease,
+    opacity 180ms ease;
+}
+
+.m-overlay-enter-active .m-sheet,
+.m-overlay-leave-active .m-sheet {
+  transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 .m-overlay-enter-from,
 .m-overlay-leave-to,
 .m-popover-enter-from,
 .m-popover-leave-to {
   opacity: 0;
+}
+
+.m-overlay-enter-from .m-dialog,
+.m-overlay-leave-to .m-dialog {
+  opacity: 0;
+  transform: scale(0.96);
+}
+
+.m-overlay-enter-from .m-sheet,
+.m-overlay-leave-to .m-sheet {
+  transform: translateY(100%);
+}
+
+@media (max-width: 767px) {
+  .m-overlay {
+    background: rgb(0 0 0 / 38%);
+  }
+
+  .m-overlay--sheet {
+    width: 100vw;
+    overflow: hidden;
+  }
+
+  .m-sheet {
+    border-radius: 16px 16px 0 0;
+    background: var(--m-surface, var(--app-settings-card));
+  }
 }

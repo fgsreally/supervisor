@@ -1,6 +1,6 @@
 <template>
   <div
-    class="min-h-0 flex-1 overflow-y-auto custom-scrollbar"
+    class="min-h-0 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar chat-message-list"
     ref="containerRef"
     @scroll.passive="onScroll"
   >
@@ -436,6 +436,20 @@ async function scrollToBottom() {
 
 defineExpose({ scrollToBottom, containerRef });
 </script>
+
+<style scoped>
+.chat-message-list {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chat-virtual-spacer,
+.chat-virtual-row {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+</style>
 
 <style scoped>
 .chat-virtual-spacer {

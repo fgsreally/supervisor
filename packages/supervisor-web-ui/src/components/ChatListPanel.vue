@@ -1222,4 +1222,48 @@ async function onAgentPicked(agentId: string) {
 .section-chevron--open {
   transform: rotate(90deg);
 }
+
+@media (max-width: 767px) {
+  .relative.h-full {
+    overflow-x: hidden;
+  }
+
+  .h-16.flex.items-center {
+    padding-inline: 20px;
+  }
+
+  .px-3.py-2 {
+    padding: 10px 20px 14px;
+  }
+
+  .list-section-header {
+    padding: 12px 20px 8px;
+  }
+
+  .list-section-title {
+    font-size: 13px;
+  }
+
+  .chat-list-roots,
+  .chat-list-projects {
+    display: grid;
+    gap: 4px;
+  }
+
+  .chat-list-root,
+  .workspace-group {
+    padding-inline: 6px;
+  }
+
+  .workspace-group .list-section-header {
+    margin-inline: -6px;
+    padding-inline: 18px;
+  }
+
+  .section-action-btn {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+  }
+}
 </style>

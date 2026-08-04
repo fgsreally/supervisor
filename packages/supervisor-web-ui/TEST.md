@@ -30,7 +30,7 @@ npm run test:e2e
 ```bash
 # 仓库根目录
 pnpm run serve          # supervisor :3030
-pnpm run dev            # web-ui :5173（代理到 3030）
+pnpm run dev            # web-ui :5163（代理到 3030）
 ```
 
 ## 检查

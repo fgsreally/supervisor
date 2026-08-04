@@ -30,7 +30,7 @@
     "clean": "shx rm -rf dist",
     "dev": "tsdown --watch",
     "serve:playground": "bun dist/cli.mjs serve --port 3030 --cwd ../../playground",
-    "build": "tsdown",
+    "build": "tsdown && shx cp -r src/db/sql dist/sql",
     "test": "vitest --run --config vitest.config.ts",
     "test:unit": "vitest --run --config vitest.config.ts",
     "test:ai": "vitest --run --config vitest.ai.config.ts",

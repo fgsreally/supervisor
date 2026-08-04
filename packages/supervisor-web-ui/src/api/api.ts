@@ -366,12 +366,13 @@ export interface SessionUsage extends MessageUsage {
   messages: number;
 }
 
-export interface SessionTimelineEvent {
+export interface TimelineEvent {
   id: string;
-  sessionId: string;
+  type: "session" | "todo_task" | "goal";
+  entityId: string;
   projectId: string | null;
-  kind: "created" | "status_changed" | "synced" | string;
-  status: SessionStatus | null;
+  kind: "created" | "status_changed" | "phase_changed" | string;
+  status: string | null;
   data: Record<string, unknown>;
   createdAt: string;
 }
@@ -1113,17 +1114,23 @@ export function runDailyWork(day?: string): Promise<DailyWorkRecord> {
   return postJson<DailyWorkRecord>("/home/daily-work/run", day ? { day } : {});
 }
 
-export function listSessionTimelineEvents(options?: {
+export function listTimelineEvents(options?: {
   from?: string;
   to?: string;
   projectId?: string;
+  type?: "session" | "todo_task" | "goal";
 }) {
   const params = new URLSearchParams();
   if (options?.from) params.set("from", options.from);
   if (options?.to) params.set("to", options.to);
   if (options?.projectId) params.set("projectId", options.projectId);
+  if (options?.type) params.set("type", options.type);
   const qs = params.toString();
-  return fetchJson<SessionTimelineEvent[]>(`/home/session-events${qs ? `?${qs}` : ""}`);
+  return fetchJson<TimelineEvent[]>(`/home/timeline-events${qs ? `?${qs}` : ""}`);
+}
+
+export function recordGoalEvent(body: { objective: string; source?: string }) {
+  return postJson<{ ok: boolean }>("/home/goal-events", body);
 }
 
 export function listHomeTasks(params?: {

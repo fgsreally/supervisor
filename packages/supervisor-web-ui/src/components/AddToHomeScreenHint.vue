@@ -18,19 +18,19 @@ const isIos = ref(false);
 
 const body = computed(() =>
   isIos.value
-    ? "在 Safari 底部点「分享」，再选择「添加到主屏幕」，即可像 App 一样打开。"
-    : "在浏览器菜单中选择「添加到主屏幕」或「安装应用」，方便下次快速打开。",
+    ? "在 Safari 底部点“分享”，再选择“添加到主屏幕”。下次可以像 App 一样打开。"
+    : "在浏览器菜单中选择“添加到主屏幕”或“安装应用”。下次可以像 App 一样打开。",
 );
 
 function isStandalone(): boolean {
   const mq = window.matchMedia("(display-mode: standalone)").matches;
-  const nav = "standalone" in navigator && Boolean((navigator as { standalone?: boolean }).standalone);
+  const nav =
+    "standalone" in navigator && Boolean((navigator as { standalone?: boolean }).standalone);
   return mq || nav;
 }
 
 function shouldShow(): boolean {
   if (typeof window === "undefined") return false;
-  if (window.location.protocol !== "https:") return false;
   if (isStandalone()) return false;
   if (localStorage.getItem(STORAGE_KEY) === "1") return false;
   const narrow = window.matchMedia("(max-width: 900px)").matches;
@@ -55,45 +55,51 @@ onMounted(() => {
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 80;
-  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  z-index: 170;
+  padding: 0 12px calc(12px + env(safe-area-inset-bottom));
   pointer-events: none;
 }
 
 .a2hs-hint__card {
   pointer-events: auto;
-  max-width: 420px;
+  max-width: 430px;
   margin: 0 auto;
-  padding: 14px 16px;
-  border-radius: 14px;
-  background: color-mix(in srgb, var(--app-shell-bg, #111) 92%, #000);
-  color: var(--app-fg, #f5f5f5);
-  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  padding: 16px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 12px;
+  color: var(--app-text-primary);
+  background: var(--app-popup-bg);
+  box-shadow: 0 -6px 28px rgb(0 0 0 / 18%);
 }
 
 .a2hs-hint__title {
-  margin: 0 0 6px;
-  font-size: 15px;
-  font-weight: 600;
+  margin: 0 0 7px;
+  font-size: 16px;
+  font-weight: 650;
+  line-height: 1.35;
 }
 
 .a2hs-hint__body {
-  margin: 0 0 12px;
-  font-size: 13px;
-  line-height: 1.45;
-  opacity: 0.85;
+  margin: 0 0 14px;
+  color: var(--app-text-secondary);
+  font-size: 14px;
+  line-height: 1.55;
 }
 
 .a2hs-hint__dismiss {
   appearance: none;
+  min-height: 40px;
+  padding: 0 20px;
   border: 0;
-  border-radius: 999px;
-  padding: 8px 14px;
-  font-size: 13px;
+  border-radius: 8px;
+  color: #fff;
+  background: #07c160;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  background: color-mix(in srgb, currentColor 14%, transparent);
-  color: inherit;
+}
+
+.a2hs-hint__dismiss:active {
+  background: #06ad56;
 }
 </style>

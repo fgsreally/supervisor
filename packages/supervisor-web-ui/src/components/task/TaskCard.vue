@@ -128,6 +128,7 @@ const emit = defineEmits<{ select: [] }>();
 }
 .task-card-ui__heading strong {
   min-width: 0;
+  flex: 1;
   color: var(--app-text-primary);
   font-size: 12px;
   line-height: 1.4;

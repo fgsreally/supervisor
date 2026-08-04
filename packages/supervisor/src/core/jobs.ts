@@ -1,11 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { SupervisorDb } from "../db/db.js";
-import {
-  listSessionTimers,
-  newSessionTimerId,
-  writeSessionTimers,
-  type SessionTimer,
-} from "./session-timers.js";
+import { execSqlFile } from "../db/sql-loader.js";
 
 export type JobStatus =
   | "queued"
@@ -126,12 +121,10 @@ const TERMINAL_STATUSES = new Set<JobStatus>(["succeeded", "failed", "cancelled"
  */
 export class JobManager {
   readonly #db: SupervisorDb["db"];
-  readonly #supervisorDb: SupervisorDb;
   readonly #cancelHandlers = new Map<string, () => void | Promise<void>>();
   readonly #inputHandlers = new Map<string, (input: string) => void | Promise<void>>();
 
   constructor(db: SupervisorDb) {
-    this.#supervisorDb = db;
     this.#db = db.db;
     this.#migrate();
     this.#db
@@ -142,70 +135,7 @@ export class JobManager {
   }
 
   #migrate(): void {
-    this.#db.exec(`
-      CREATE TABLE IF NOT EXISTS jobs (
-        id TEXT PRIMARY KEY,
-        session_id INTEGER NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
-        kind TEXT NOT NULL,
-        name TEXT NOT NULL,
-        label TEXT NOT NULL,
-        status TEXT NOT NULL,
-        execution_mode TEXT NOT NULL,
-        parent_job_id TEXT REFERENCES jobs(id) ON DELETE SET NULL,
-        capabilities TEXT NOT NULL DEFAULT '[]',
-        output TEXT NOT NULL DEFAULT '',
-        progress TEXT,
-        result TEXT,
-        error TEXT,
-        metadata TEXT NOT NULL DEFAULT '{}',
-        created_at INTEGER NOT NULL,
-        started_at INTEGER,
-        finished_at INTEGER
-      );
-      CREATE INDEX IF NOT EXISTS idx_jobs_session_created
-        ON jobs(session_id, created_at DESC);
-      CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
-    `);
-    this.#migrateSchedulesIntoSessionMeta();
-  }
-
-  /** One-time: job_schedules (timer defs) → sessions.meta.timers, then drop the table. */
-  #migrateSchedulesIntoSessionMeta(): void {
-    const exists = this.#db
-      .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'job_schedules'")
-      .get();
-    if (!exists) return;
-
-    const rows = this.#db
-      .prepare("SELECT * FROM job_schedules ORDER BY session_id, next_run_at ASC")
-      .all() as Array<{
-      id: string;
-      session_id: number;
-      label: string;
-      prompt: string;
-      next_run_at: number;
-      interval_ms: number | null;
-      created_at: number;
-    }>;
-
-    const bySession = new Map<number, SessionTimer[]>();
-    for (const row of rows) {
-      const list =
-        bySession.get(row.session_id) ?? listSessionTimers(this.#supervisorDb, row.session_id);
-      list.push({
-        id: row.id || newSessionTimerId(),
-        prompt: row.prompt,
-        nextFireAt: row.next_run_at,
-        createdAt: row.created_at,
-        ...(row.interval_ms != null && row.interval_ms > 0 ? { intervalMs: row.interval_ms } : {}),
-        ...(row.label ? { label: row.label } : {}),
-      });
-      bySession.set(row.session_id, list);
-    }
-    for (const [sessionId, timers] of bySession) {
-      writeSessionTimers(this.#supervisorDb, sessionId, timers);
-    }
-    this.#db.exec("DROP TABLE IF EXISTS job_schedules");
+    execSqlFile(this.#db, "jobs.sql");
   }
 
   create(sessionId: number, input: CreateJobInput): JobRecord {

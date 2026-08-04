@@ -8,7 +8,7 @@ Vue 3 + Vite 前端，连接 `pi-supervisor` HTTP API，提供聊天、Agent 管
 # 启动 supervisor（默认 3030）
 pi-supervisor serve
 
-# 启动 UI（默认 5173，API 代理到 3030）
+# 启动 UI（默认 5163，API 代理到 3030）
 cd packages/supervisor-web-ui
 npm run dev
 ```

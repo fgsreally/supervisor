@@ -24,7 +24,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { Bot, ListTodo, MessageSquare, UserRound } from "lucide-vue-next";
+import { Bot, CircleUserRound, ListTodo, MessageSquare } from "lucide-vue-next";
 import type { MainTab } from "@/components/ShellNav.vue";
 
 export type MobilePrimaryTab = "chat" | "work" | "agents" | "me";
@@ -40,7 +40,7 @@ const items = [
   { id: "chat" as const, label: "聊天", route: "/chat" as const, icon: MessageSquare },
   { id: "work" as const, label: "工作", route: "/todo" as const, icon: ListTodo },
   { id: "agents" as const, label: "智能代理", route: "/contacts" as const, icon: Bot },
-  { id: "me" as const, label: "我的", route: "/settings" as const, icon: UserRound },
+  { id: "me" as const, label: "我的", route: "/settings" as const, icon: CircleUserRound },
 ];
 
 const activeTab = computed<MobilePrimaryTab>(() => {
@@ -94,7 +94,9 @@ const activeTab = computed<MobilePrimaryTab>(() => {
   color: var(--m-text-secondary);
   font-size: 11px;
   line-height: 1;
-  transition: color 140ms ease, background-color 140ms ease;
+  transition:
+    color 140ms ease,
+    background-color 140ms ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -104,6 +106,14 @@ const activeTab = computed<MobilePrimaryTab>(() => {
 
 .mobile-tabbar__item--active {
   color: var(--m-accent);
+}
+
+.mobile-tabbar__item:nth-child(4) .mobile-tabbar__icon {
+  color: #7b61c9;
+}
+
+.mobile-tabbar__item--active:nth-child(4) .mobile-tabbar__icon {
+  color: #a78bfa;
 }
 
 .mobile-tabbar__icon {

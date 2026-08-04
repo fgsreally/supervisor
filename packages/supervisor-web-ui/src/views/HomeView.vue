@@ -52,13 +52,13 @@ import {
   listDailyWork,
   listProjects,
   listSessions,
-  listSessionTimelineEvents,
+  listTimelineEvents,
   runDailyWork,
   type DailyWorkRecord,
   type Project,
   type Session,
   type WorktreeCommit,
-  type SessionTimelineEvent,
+  type TimelineEvent,
 } from "@/api";
 import HomeTimeline from "@/components/home/HomeTimeline.vue";
 import ProjectSessionTimeline from "@/components/home/ProjectSessionTimeline.vue";
@@ -68,7 +68,7 @@ const emit = defineEmits<{ "open-session": [sessionId: string] }>();
 const projects = ref<Project[]>([]);
 const sessions = ref<Session[]>([]);
 const commits = ref<Record<string, WorktreeCommit[]>>({});
-const events = ref<SessionTimelineEvent[]>([]);
+const events = ref<TimelineEvent[]>([]);
 const dailyRecords = ref<DailyWorkRecord[]>([]);
 const loading = ref(false);
 const dailyLoading = ref(false);
@@ -102,7 +102,7 @@ async function loadDashboard() {
       listProjects(),
       listSessions(),
       listDailyWork({ limit: 30 }),
-      listSessionTimelineEvents(),
+      listTimelineEvents({ type: "session" }),
     ]);
     projects.value = nextProjects;
     sessions.value = nextSessions;
@@ -235,20 +235,36 @@ main {
   }
 }
 @media (max-width: 640px) {
+  .dashboard {
+    overflow-x: hidden;
+    background: var(--m-page-bg, var(--app-settings-bg));
+  }
+  .dashboard__header {
+    display: none;
+  }
   main {
-    padding: 10px;
+    width: 100%;
+    overflow-x: hidden;
+    padding: 14px 16px 24px;
   }
   .overview {
-    gap: 6px;
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
   .overview article {
-    padding: 9px;
+    min-width: 0;
+    padding: 12px;
+    border-radius: 12px;
   }
   .overview strong {
-    font-size: 18px;
+    font-size: 20px;
   }
   .overview small {
-    display: none;
+    display: block;
+  }
+  .daily-analysis {
+    min-width: 0;
+    overflow: hidden;
   }
 }
 </style>

@@ -533,7 +533,7 @@ async function run() {
           initialModelId = customModel?.trim() || null;
         }
 
-        const existing = db.getProvider(id);
+        const existing = db.listProviders().find((provider) => provider.slug === id);
         if (existing) {
           console.log(
             `Provider "${id}" already exists. Use \`providers set-key\` to update the key.`,
@@ -542,10 +542,8 @@ async function run() {
           break;
         }
 
-        const allProviders = db.listProviders();
-
-        db.insertProvider({
-          id,
+        const providerId = db.insertProvider({
+          slug: id,
           name,
           icon,
           protocol,
@@ -555,7 +553,7 @@ async function run() {
         });
 
         if (initialModelId) {
-          db.insertModel({ provider_id: id, model_id: initialModelId });
+          db.insertModel({ provider_id: providerId, model_id: initialModelId });
         }
 
         console.log(`Added provider: ${id}`);
@@ -609,7 +607,10 @@ async function run() {
           console.error("Usage: pi-supervisor models list <provider-id>");
           process.exit(1);
         }
-        const models = db.listModels().filter((m) => m.providerId === providerId);
+        const provider = db
+          .listProviders()
+          .find((item) => item.slug === providerId || String(item.id) === providerId);
+        const models = provider ? db.listModelsByProvider(provider.id) : [];
         if (models.length === 0) {
           console.log("No models.");
         } else {

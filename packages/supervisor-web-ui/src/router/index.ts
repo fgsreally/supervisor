@@ -68,7 +68,7 @@ const router = createRouter({
       component: { template: "<div />" },
     },
     { path: "/settings", name: "settings", component: { template: "<div />" } },
-    { path: "/search", redirect: "/chat" },
+    { path: "/search", name: "search", component: { template: "<div />" } },
   ],
 });
 

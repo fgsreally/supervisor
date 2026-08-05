@@ -36,7 +36,7 @@
       :style="treeDotStyle"
     />
 
-    <div class="flex items-center gap-3 relative">
+    <div class="flex min-w-0 items-center gap-3 relative overflow-hidden">
       <div class="relative shrink-0">
         <SessionAvatar
           :session-id="session.id"
@@ -53,8 +53,8 @@
       </div>
 
       <div class="flex-1 min-w-0">
-        <div class="flex items-center justify-between gap-2">
-          <div class="flex items-center gap-1.5 min-w-0">
+        <div class="flex min-w-0 items-center justify-between gap-2 overflow-hidden">
+          <div class="session-heading flex items-center gap-1.5 min-w-0">
             <span
               class="text-[13px] font-medium truncate session-name"
               :class="{ 'session-name--achieved': isAchieved }"
@@ -67,8 +67,8 @@
             formatListTime(session.lastActiveAt)
           }}</span>
         </div>
-        <div class="flex items-center justify-between gap-2 mt-0.5">
-          <span class="text-[11px] truncate session-preview">{{ preview }}</span>
+        <div class="flex min-w-0 items-center justify-between gap-2 mt-0.5 overflow-hidden">
+          <span class="min-w-0 flex-1 text-[11px] truncate session-preview">{{ preview }}</span>
           <span
             v-if="session.unread && session.unread > 0"
             class="shrink-0 min-w-[18px] h-[18px] px-1 rounded-full bg-[#fa5151] text-white text-[11px] font-medium flex items-center justify-center"
@@ -277,6 +277,8 @@ const statusDotClass = computed(() => {
 }
 
 .session-row {
+  max-width: 100%;
+  overflow: hidden;
   color: var(--app-text-primary);
 }
 
@@ -351,10 +353,36 @@ const statusDotClass = computed(() => {
 }
 
 .session-preview {
+  display: block;
+  overflow: hidden;
   color: var(--app-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .session-time {
   color: var(--app-text-muted);
+}
+
+@media (max-width: 767px) {
+  .session-row {
+    min-width: 0;
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+    border-bottom: 1px solid var(--app-divider);
+  }
+
+  .session-row:hover:not(.session-row--active):not(.session-row--achieved),
+  .session-row--active,
+  .session-row--active:hover {
+    box-shadow: none;
+  }
+
+  .session-heading,
+  .session-name,
+  .session-preview {
+    min-width: 0;
+    max-width: 100%;
+  }
 }
 </style>

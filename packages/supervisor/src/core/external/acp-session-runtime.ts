@@ -26,6 +26,7 @@ import type { ManagedSessionRuntime } from "../managed-session-runtime.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
 import type { SessionState, SlashCommandInfo } from "../session-runtime.js";
 import { resolveSessionPromptImages, type SessionPromptImage } from "../session-media.js";
+import { createExternalAssistantMessage } from "./external-session-runtime.js";
 import { SQLiteSessionStorage } from "../session-storage.js";
 import { getExternalAgentConfig } from "./external-agent-config.js";
 import { sessionServicePortEnv } from "../session-services.js";
@@ -233,7 +234,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
       this.turnBuffer.appendText(update.content.text);
       await this.emit({
         type: "message_update",
-        message: { role: "assistant", content: this.assistantText } as AgentMessage,
+        message: createExternalAssistantMessage(this.assistantText),
         assistantMessageEvent: { type: "text_delta", delta: update.content.text },
       } as AgentHarnessEvent);
       return;
@@ -242,7 +243,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
       this.turnBuffer.appendThinking(update.content.text);
       await this.emit({
         type: "message_update",
-        message: { role: "assistant", content: this.assistantText } as AgentMessage,
+        message: createExternalAssistantMessage(this.assistantText),
         assistantMessageEvent: {
           type: "thinking_delta",
           contentIndex: 0,
@@ -370,7 +371,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     this.tools.clear();
     this.turnBuffer.reset();
     await this.emit({ type: "agent_start" });
-    await this.emit({ type: "message_start", message: { role: "assistant", content: "" } });
+    await this.emit({ type: "message_start", message: createExternalAssistantMessage("") });
     try {
       await this.connection.prompt({
         sessionId: this.backendSessionId,
@@ -385,11 +386,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
         ],
       });
       await this.waitForActiveToolsIdle();
-      const assistantMessage = {
-        role: "assistant",
-        content: this.assistantText,
-        timestamp: Date.now(),
-      } as AgentMessage;
+      const assistantMessage = createExternalAssistantMessage(this.assistantText);
       await this.turnBuffer.persist(this.storage, userId);
       await this.emit({ type: "message_end", message: assistantMessage });
       await this.emit({ type: "agent_end", messages: [assistantMessage] });
@@ -459,11 +456,11 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     const messages = await this.storage.getEntries();
     return {
       id: this.id,
-      sessionId: session.external_session_id,
+      sessionId: session.external_session_id ?? null,
       cwd: session.cwd,
       status: session.status,
       model: { provider: "acp", modelId: this.agent.name },
-      thinkingLevel: session.thinking_level,
+      thinkingLevel: session.thinking_level === "none" ? "off" : session.thinking_level,
       isStreaming: this.running !== null,
       messageCount: messages.filter((entry) => entry.type === "message").length,
       leafId: session.leaf_id,

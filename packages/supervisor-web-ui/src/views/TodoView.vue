@@ -107,19 +107,26 @@
             <h2>执行</h2>
             <span>{{ runningCount }} 个任务正在进行</span>
           </div>
+          <div class="view-switch" aria-label="执行视图">
+            <button
+              :class="{ active: runView === 'list' }"
+              title="列表"
+              aria-label="列表"
+              @click="runView = 'list'"
+            >
+              <List />
+            </button>
+            <button
+              :class="{ active: runView === 'timeline' }"
+              title="时间轴"
+              aria-label="时间轴"
+              @click="runView = 'timeline'"
+            >
+              <GanttChart />
+            </button>
+          </div>
         </div>
         <div class="run-controls">
-          <div class="run-toolbar">
-            <div class="view-switch">
-              <button :class="{ active: runView === 'list' }" @click="runView = 'list'">
-                列表
-              </button>
-              <button :class="{ active: runView === 'timeline' }" @click="runView = 'timeline'">
-                时间轴
-              </button>
-            </div>
-            <button class="quiet"><SlidersHorizontal />筛选</button>
-          </div>
           <nav v-if="runView === 'list'" class="filters" aria-label="任务状态筛选">
             <button
               v-for="filter in filters"
@@ -224,13 +231,14 @@
 import { computed, onMounted, ref } from "vue";
 import {
   Bot,
+  GanttChart,
   ChevronRight,
   Eye,
   FolderGit2,
   History,
+  List,
   Pencil,
   Plus,
-  SlidersHorizontal,
   Sparkles,
 } from "lucide-vue-next";
 import TodoSequenceDiagram from "@/components/home/TodoSequenceDiagram.vue";
@@ -921,7 +929,7 @@ button svg,
 .execution-timeline {
   padding: 4px 4px 20px;
 }
-.execution-timeline article {
+.execution-timeline > article {
   display: grid;
   grid-template-columns: 48px 24px minmax(0, 1fr);
   min-height: 105px;
@@ -953,7 +961,7 @@ button svg,
   width: 1px;
   background: var(--app-border);
 }
-.execution-timeline article:last-child .rail:after {
+.execution-timeline > article:last-child .rail:after {
   display: none;
 }
 .execution-timeline .rail i {
@@ -1243,10 +1251,10 @@ button svg,
   }
   .mobile-plan-list {
     display: grid;
-    overflow: hidden;
-    border: 1px solid var(--m-divider, var(--app-border-subtle));
-    border-radius: 12px;
-    background: var(--m-surface, var(--app-settings-card));
+    gap: 9px;
+    overflow: visible;
+    border: 0;
+    background: transparent;
   }
   .mobile-plan-card {
     display: flex;
@@ -1255,10 +1263,10 @@ button svg,
     align-items: flex-start;
     gap: 11px;
     padding: 13px 12px;
+    border: 0;
+    border-radius: 8px;
+    background: var(--m-surface, var(--app-settings-card));
     text-align: left;
-  }
-  .mobile-plan-card + .mobile-plan-card {
-    border-top: 1px solid var(--m-divider, var(--app-border-subtle));
   }
   .mobile-plan-card:active {
     background: var(--m-pressed, var(--app-hover));
@@ -1299,20 +1307,26 @@ button svg,
     z-index: 4;
     top: -14px;
     margin: 0 -16px 10px;
-    padding: 8px 16px 1px;
+    padding: 6px 16px 1px;
     background: color-mix(in srgb, var(--m-page-bg, var(--app-settings-bg)) 94%, transparent);
     backdrop-filter: blur(12px);
   }
-  .run-toolbar {
-    justify-content: space-between;
-  }
   .view-switch {
-    flex: 1;
+    display: flex;
+    width: auto;
+    margin: 0;
+    padding: 2px;
   }
   .view-switch button {
-    min-height: 34px;
-    flex: 1;
-    font-size: 12px;
+    display: grid;
+    width: 36px;
+    height: 34px;
+    padding: 0;
+    place-items: center;
+  }
+  .view-switch button svg {
+    width: 18px;
+    height: 18px;
   }
   .filters {
     gap: 6px;
@@ -1330,6 +1344,39 @@ button svg,
   }
   .run-list {
     gap: 9px;
+  }
+  .execution-timeline {
+    padding-inline: 0;
+  }
+  .execution-timeline > article {
+    grid-template-columns: 50px 18px minmax(0, 1fr);
+    min-width: 0;
+  }
+  .execution-timeline .rail:after {
+    left: 9px;
+  }
+  .execution-timeline .rail i {
+    left: 4px;
+  }
+  .execution-timeline .event {
+    min-width: 0;
+    margin-left: 4px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .execution-timeline .event :deep(.task-card-ui) {
+    min-width: 0;
+    min-height: 0;
+  }
+  .execution-timeline .event :deep(.task-card-ui__heading) {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .execution-timeline .event :deep(.task-card-ui__heading strong) {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
   .task-card {
     min-height: 92px;

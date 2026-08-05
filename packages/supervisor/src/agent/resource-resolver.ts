@@ -85,6 +85,16 @@ function createProbeContext(
         },
         clear: noopAsync,
       },
+      tasks: {
+        list: async () => [],
+        upsert: async () => {
+          throw new Error("Tasks are unavailable while probing resources");
+        },
+        remove: async () => false,
+        getCurrentPath: async () => null,
+        setCurrentPath: noopAsync,
+      },
+      todos: { list: async () => [], replace: async () => [] },
       getParent: async () => undefined,
       children: async () => [],
       appendEntry: async () => "",
@@ -92,6 +102,9 @@ function createProbeContext(
       sendCustomMessage: async () => "",
       sendUserMessage: noopAsync,
       sendToChild: noopAsync,
+      inspectChild: async () => {
+        throw new Error("Child sessions are unavailable while probing resources");
+      },
       pausing: async <T>(_reason: string, work: Promise<T> | (() => Promise<T>)) =>
         typeof work === "function" ? work() : work,
       spawn: async () => ({ sessionId: 0, parentId: null, status: "idle", agentId: null }),
@@ -146,6 +159,22 @@ function createProbeContext(
         throw new Error("Tool execution is unavailable while probing resources");
       },
     },
+    jobs: {
+      create: async () => {
+        throw new Error("Jobs are unavailable while probing resources");
+      },
+      get: async () => undefined,
+      list: async () => [],
+      update: async () => {
+        throw new Error("Jobs are unavailable while probing resources");
+      },
+      cancel: async () => {
+        throw new Error("Jobs are unavailable while probing resources");
+      },
+      input: noopAsync,
+      setCancelHandler: noop,
+      setInputHandler: noop,
+    },
     project: { cwd: process.cwd(), dir: process.cwd(), getDir: async () => process.cwd() },
     ui: { broadcast: noop, requestApproval: async () => ({ action: "approve" as const }) },
     on: () => noop,
@@ -162,6 +191,11 @@ function createProbeContext(
       endScope: noop,
     },
     inject: { schedule: noop, clear: noop, reattach: noop },
+    watson: {
+      run: async () => {
+        throw new Error("Watson is unavailable while probing resources");
+      },
+    },
   };
 }
 

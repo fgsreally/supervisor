@@ -58,19 +58,22 @@ export function createWebFetchTool(options?: {
     },
     async execute(
       _toolCallId: string,
-      params: WebFetchParams,
+      input: unknown,
       signal?: AbortSignal,
-    ): Promise<AgentToolResult> {
+    ): Promise<AgentToolResult<unknown> & { isError?: boolean }> {
+      const params = input as WebFetchParams;
       const url = params.url?.trim();
       if (!url) {
         return {
           content: [{ type: "text", text: "Error: url is required." }],
+          details: {},
           isError: true,
         };
       }
       if (!url.startsWith("http://") && !url.startsWith("https://")) {
         return {
           content: [{ type: "text", text: "Error: URL must start with http:// or https://" }],
+          details: {},
           isError: true,
         };
       }
@@ -102,7 +105,7 @@ export function createWebFetchTool(options?: {
                 options?.tavilyApiKeyEncrypted,
                 controller.signal,
               );
-        const enhancedFallback = async (): Promise<AgentToolResult | undefined> => {
+        const enhancedFallback = async (): Promise<AgentToolResult<unknown> | undefined> => {
           if (!provider.startsWith("native-then-")) return undefined;
           attemptedFallback = true;
           const text = await extractEnhanced();
@@ -134,6 +137,7 @@ export function createWebFetchTool(options?: {
             content: [
               { type: "text", text: `HTTP ${response.status} ${response.statusText} for ${url}` },
             ],
+            details: {},
             isError: true,
           };
         }
@@ -142,6 +146,7 @@ export function createWebFetchTool(options?: {
         if (contentLength && Number(contentLength) > MAX_RESPONSE_BYTES) {
           return {
             content: [{ type: "text", text: `Response too large (>${MAX_RESPONSE_BYTES} bytes)` }],
+            details: {},
             isError: true,
           };
         }
@@ -151,6 +156,7 @@ export function createWebFetchTool(options?: {
         if (buffer.byteLength > MAX_RESPONSE_BYTES) {
           return {
             content: [{ type: "text", text: `Response too large (>${MAX_RESPONSE_BYTES} bytes)` }],
+            details: {},
             isError: true,
           };
         }
@@ -175,6 +181,7 @@ export function createWebFetchTool(options?: {
                   text: "No readable text extracted. The page may require JavaScript to render — try the browser tool.",
                 },
               ],
+              details: {},
               isError: true,
             };
           }
@@ -188,6 +195,7 @@ export function createWebFetchTool(options?: {
                 text: `Unsupported content type: ${contentType || "unknown"}. Only text/html and text/plain are supported.`,
               },
             ],
+            details: {},
             isError: true,
           };
         }
@@ -243,6 +251,7 @@ export function createWebFetchTool(options?: {
                 : `web_fetch failed: ${message}`,
             },
           ],
+          details: {},
           isError: true,
         };
       } finally {

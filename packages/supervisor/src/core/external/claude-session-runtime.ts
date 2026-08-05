@@ -123,14 +123,29 @@ export class ClaudeSessionRuntime extends ExternalSessionRuntime {
         role: "user",
         content: [
           { type: "text", text: message },
-          ...(images ?? []).map((image) => ({
-            type: "image" as const,
-            source: {
-              type: "base64" as const,
-              media_type: image.mimeType,
-              data: image.data,
-            },
-          })),
+          ...(images ?? []).map((image) => {
+            if (
+              image.mimeType !== "image/jpeg" &&
+              image.mimeType !== "image/png" &&
+              image.mimeType !== "image/gif" &&
+              image.mimeType !== "image/webp"
+            ) {
+              throw new Error(`Unsupported Claude image type: ${image.mimeType}`);
+            }
+            const mediaType = image.mimeType as
+              | "image/jpeg"
+              | "image/png"
+              | "image/gif"
+              | "image/webp";
+            return {
+              type: "image" as const,
+              source: {
+                type: "base64" as const,
+                media_type: mediaType,
+                data: image.data,
+              },
+            };
+          }),
         ],
       },
     });

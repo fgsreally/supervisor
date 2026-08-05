@@ -73,7 +73,7 @@ const dailyRecords = ref<DailyWorkRecord[]>([]);
 const loading = ref(false);
 const dailyLoading = ref(false);
 const visibleSessions = computed(() =>
-  sessions.value.filter((session) => session.showInSessionList),
+  sessions.value.filter((session) => session.showInSessionList !== false),
 );
 const runningCount = computed(
   () => visibleSessions.value.filter((session) => session.status === "running").length,
@@ -110,7 +110,7 @@ async function loadDashboard() {
     events.value = nextEvents;
     const rows = await Promise.all(
       nextSessions
-        .filter((session) => session.projectId && session.showInSessionList)
+        .filter((session) => session.projectId && session.showInSessionList !== false)
         .map(
           async (session) =>
             [session.id, await getSessionCommits(session.id).catch(() => [])] as const,

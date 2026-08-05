@@ -1,7 +1,8 @@
 <template>
   <div class="h-full w-full flex flex-col shrink-0 min-w-0 provider-panel">
-    <div class="h-16 flex items-center px-4 shrink-0 border-b provider-panel__header">
+    <div v-if="!mobileSearchOpen" class="h-16 flex items-center px-4 shrink-0 border-b provider-panel__header">
       <h1 class="text-[16px] font-medium flex-1">模型供应商</h1>
+      <button type="button" class="mobile-search-trigger" aria-label="搜索" @click="mobileSearchOpen = true"><Search /></button>
       <button
         type="button"
         class="list-header-btn"
@@ -12,7 +13,13 @@
       </button>
     </div>
 
-    <div class="px-3 py-2 shrink-0 border-b provider-panel__header">
+    <div v-else class="mobile-search-page provider-panel__header">
+      <button type="button" aria-label="返回" @click="mobileSearchOpen = false"><ArrowLeft /></button>
+      <Search />
+      <input v-model="query" type="search" placeholder="搜索模型供应商" autofocus />
+    </div>
+
+    <div class="panel-inline-search px-3 py-2 shrink-0 border-b provider-panel__header">
       <div class="relative">
         <Search class="w-4 h-4 absolute left-2.5 top-2 provider-panel__muted" />
         <input
@@ -57,7 +64,7 @@
 
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import { Plus, Search } from "lucide-vue-next";
+import { ArrowLeft, Plus, Search } from "lucide-vue-next";
 import { useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import ProviderListItem from "./ProviderListItem.vue";
@@ -73,6 +80,7 @@ const emit = defineEmits<{
 
 const providerStore = useProviderStore();
 const query = ref("");
+const mobileSearchOpen = ref(false);
 const menu = reactive({ open: false, x: 0, y: 0, providerId: "" });
 
 const providers = computed(() =>
@@ -158,5 +166,53 @@ function deleteSelected() {
 
 .context-menu-item--danger {
   color: #dc2626;
+}
+
+.mobile-search-trigger,
+.mobile-search-page {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .panel-inline-search {
+    display: none;
+  }
+  .mobile-search-trigger {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    margin-left: auto;
+    place-items: center;
+  }
+  .mobile-search-trigger svg {
+    width: 21px;
+    height: 21px;
+  }
+  .mobile-search-page {
+    display: grid;
+    min-height: 52px;
+    grid-template-columns: 40px 20px minmax(0, 1fr);
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--app-border-subtle);
+  }
+  .mobile-search-page button {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+  }
+  .mobile-search-page svg {
+    width: 20px;
+    height: 20px;
+    color: var(--app-text-secondary);
+  }
+  .mobile-search-page input {
+    min-width: 0;
+    height: 36px;
+    background: transparent;
+    outline: none;
+  }
 }
 </style>

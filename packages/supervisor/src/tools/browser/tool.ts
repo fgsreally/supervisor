@@ -317,12 +317,14 @@ export function createBrowserTool(options?: {
     },
     async execute(
       _toolCallId: string,
-      params: BrowserParams,
+      input: unknown,
       signal?: AbortSignal,
-    ): Promise<AgentToolResult> {
+    ): Promise<AgentToolResult<unknown> & { isError?: boolean }> {
+      const params = input as BrowserParams;
       if (signal?.aborted) {
         return {
           content: [{ type: "text", text: "browser: aborted" }],
+          details: {},
           isError: true,
         };
       }
@@ -374,6 +376,7 @@ export function createBrowserTool(options?: {
           if (!code) {
             return {
               content: [{ type: "text", text: "Error: code is required for action=run." }],
+              details: {},
               isError: true,
             };
           }
@@ -531,12 +534,14 @@ export function createBrowserTool(options?: {
 
         return {
           content: [{ type: "text", text: `Unknown action: ${String(params.action)}` }],
+          details: {},
           isError: true,
         };
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         return {
           content: [{ type: "text", text: `browser failed: ${message}` }],
+          details: {},
           isError: true,
         };
       }

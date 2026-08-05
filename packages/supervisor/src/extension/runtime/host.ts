@@ -98,9 +98,12 @@ export class SessionExtensionHost {
   }
 
   /** 为当前 Agent 注册一个带类型的扩展事件处理器。 */
-  on<T extends ExtensionEvent>(
-    type: T["type"],
-    handler: (event: T, context: EventHandlerContext) => void | Promise<void>,
+  on<K extends ExtensionEvent["type"]>(
+    type: K,
+    handler: (
+      event: Extract<ExtensionEvent, { type: K }>,
+      context: EventHandlerContext,
+    ) => void | Promise<void>,
   ): () => void {
     return this.runtime.on("$runtime", type, handler);
   }
@@ -344,13 +347,23 @@ export class SessionExtensionHost {
       label: info.name,
       description: info.description,
       parameters: info.parameters,
-      execute: async (toolCallId: string, params: unknown, signal?: AbortSignal) =>
-        this.executeTool(info.name, params, {
+      execute: async (toolCallId: string, params: unknown, signal?: AbortSignal) => {
+        const result = await this.executeTool(info.name, params, {
           toolCallId,
           session: this.getToolExecutionSession(),
           signal,
           reportProgress: () => {},
-        }),
+        });
+        return {
+          content: result.content.map((part) =>
+            part.type === "text"
+              ? part
+              : { type: "text" as const, text: `[Image: ${part.url}]` },
+          ),
+          details: result.details ?? {},
+          ...(result.isError ? { isError: true } : {}),
+        };
+      },
     };
   }
 
@@ -414,7 +427,7 @@ export class SessionExtensionHost {
       .map((part) =>
         part.type === "text"
           ? { type: "text" as const, text: part.text }
-          : { type: "thinking" as const, text: part.text },
+          : { type: "thinking" as const, text: part.thinking },
       );
   }
 

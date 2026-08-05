@@ -111,10 +111,13 @@ export class SessionExtensionRuntime {
   /**
    * 绑定事件处理器
    */
-  on<T extends ExtensionEvent>(
+  on<K extends ExtensionEvent["type"]>(
     extensionId: string,
-    event: T["type"],
-    handler: (event: T, ctx: EventHandlerContext) => void | Promise<void>,
+    event: K,
+    handler: (
+      event: Extract<ExtensionEvent, { type: K }>,
+      ctx: EventHandlerContext,
+    ) => void | Promise<void>,
   ): () => void {
     const handlers = this.handlers.get(event) ?? new Set();
     handlers.add(handler as (event: unknown, ctx: EventHandlerContext) => unknown);

@@ -49,7 +49,7 @@ export async function compactWithUtilityModel(
   preparation: CompactionPreparation,
   customInstructions?: string,
 ): Promise<UtilityCompactionResult> {
-  return compact(
+  const result = await compact(
     preparation,
     config.model,
     config.apiKey,
@@ -57,5 +57,7 @@ export async function compactWithUtilityModel(
     customInstructions,
     undefined,
     "off",
-  ) as unknown as UtilityCompactionResult;
+  );
+  if (!result.ok) throw result.error;
+  return result.value;
 }

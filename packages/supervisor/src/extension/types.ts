@@ -342,9 +342,12 @@ export interface ExtensionContext {
   readonly db: ExtensionRawDatabase;
 
   /** 订阅扩展事件，返回解绑函数 */
-  on<T extends ExtensionEvent>(
-    event: T["type"],
-    handler: (event: T, ctx: EventHandlerContext) => void | Promise<void>,
+  on<K extends ExtensionEvent["type"]>(
+    event: K,
+    handler: (
+      event: Extract<ExtensionEvent, { type: K }>,
+      ctx: EventHandlerContext,
+    ) => void | Promise<void>,
   ): () => void;
 
   /** 写日志 */

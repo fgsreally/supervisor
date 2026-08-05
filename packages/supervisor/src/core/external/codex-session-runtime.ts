@@ -218,9 +218,7 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
         const configuredModel =
           typeof effectiveConfig?.config?.model === "string"
             ? effectiveConfig.config.model
-            : typeof options.agent.modelId === "string" && options.agent.modelId.trim()
-              ? options.agent.modelId.trim()
-              : undefined;
+            : undefined;
         const savedId = options.session.externalSessionId;
         const response = await timedSessionStep(
           sessionId,

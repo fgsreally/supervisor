@@ -1,5 +1,9 @@
 import { Type, type Static } from "typebox";
-import type { ExtensionContext, ExtensionDefinition } from "../../types.js";
+import type {
+  ExtensionContext,
+  ExtensionDefinition,
+  ExtensionToolCallResult,
+} from "../../types.js";
 
 const spawnAgentSchema = Type.Object({
   sessionId: Type.Optional(
@@ -100,7 +104,10 @@ export default {
         "normal queues the message and urgent interrupts the child's current turn." +
         (configuredNames ? ` Available agentName values: ${configuredNames}.` : ""),
       parameters: spawnAgentSchema,
-      async execute(params: SpawnAgentParams) {
+      async execute(
+        params: SpawnAgentParams,
+        _context,
+      ): Promise<ExtensionToolCallResult> {
         const instructions = (params.prompt ?? params.instructions ?? "").trim();
         if (!instructions) {
           throw new Error("spawn_agent requires prompt or instructions");

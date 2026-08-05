@@ -315,16 +315,20 @@ function asToolResultEntry(
   timestamp?: string,
   isError = false,
 ): SessionTreeEntry {
-  const { iso } = entryTimestamp(timestamp);
+  const { iso, ms } = entryTimestamp(timestamp);
   return {
     id: randomUUID(),
     parentId: null,
     timestamp: iso,
-    type: "toolResult",
-    toolCallId,
-    toolName,
-    content: [{ type: "text", text: output }],
-    isError,
+    type: "message",
+    message: {
+      role: "toolResult",
+      toolCallId,
+      toolName,
+      content: [{ type: "text", text: output }],
+      isError,
+      timestamp: ms,
+    },
   } as SessionTreeEntry;
 }
 
@@ -641,7 +645,7 @@ export async function loadExternalSession(
           prev.message.content[0]?.type === "text"
             ? (prev.message.content[0] as { type: "text"; text: string })
             : null;
-        if (prevTextPart) {
+        if (prevTextPart && prev?.type === "message") {
           const prevText = prevTextPart.text;
           if (prevText.startsWith(content)) {
             // Shorter / duplicate prefix of the previous assistant text.

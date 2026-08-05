@@ -4,7 +4,7 @@
     :style="{ ...panelStyle, background: 'var(--app-list-bg)' }"
   >
     <div
-      class="h-16 flex items-center px-4 shrink-0 border-b"
+      class="chat-list-header h-16 flex items-center px-4 shrink-0 border-b"
       style="
         background: var(--app-list-header-bg);
         border-color: var(--app-header-divider, var(--app-border-subtle));
@@ -13,7 +13,16 @@
       <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">聊天</h1>
       <button
         type="button"
-        class="chat-list-import-icon"
+        class="chat-list-search-icon"
+        title="搜索"
+        aria-label="搜索"
+        @click="openMobileSearch"
+      >
+        <Search />
+      </button>
+      <button
+        type="button"
+        class="chat-list-import-icon chat-list-import-icon--desktop"
         :class="{ 'chat-list-import-icon--active': externalImportOpen }"
         title="从外部引入会话"
         aria-label="从外部引入会话"
@@ -21,10 +30,36 @@
       >
         <MessageSquareReply class="h-5 w-5" stroke-width="1.75" />
       </button>
+      <button
+        type="button"
+        class="chat-list-add-icon"
+        :class="{ 'chat-list-add-icon--active': mobileAddMenuOpen }"
+        title="更多操作"
+        aria-label="更多操作"
+        :aria-expanded="mobileAddMenuOpen"
+        @click="mobileAddMenuOpen = !mobileAddMenuOpen"
+      >
+        <Plus />
+      </button>
+
+      <template v-if="mobileAddMenuOpen">
+        <button
+          type="button"
+          class="chat-list-add-backdrop"
+          aria-label="关闭更多操作"
+          @click="mobileAddMenuOpen = false"
+        />
+        <div class="chat-list-add-menu">
+          <button type="button" @click="openExternalImportFromMobileMenu">
+            <MessageSquareReply />
+            <span>从外部导入会话</span>
+          </button>
+        </div>
+      </template>
     </div>
 
     <div
-      class="px-3 py-2 shrink-0 border-b"
+      class="chat-list-search px-3 py-2 shrink-0 border-b"
       style="
         background: var(--app-list-header-bg);
         border-color: var(--app-header-divider, var(--app-border-subtle));
@@ -43,7 +78,7 @@
 
     <div
       ref="sessionScrollPanel"
-      class="flex-1 overflow-y-auto custom-scrollbar"
+      class="chat-list-scroll flex-1 overflow-y-auto custom-scrollbar"
       @scroll.passive="refreshProjectHighlight"
     >
       <template v-if="query.trim()">
@@ -304,6 +339,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import {
   ChevronDown,
   ChevronRight,
@@ -352,6 +388,11 @@ const props = defineProps<{
   activeId: string;
   width?: number;
 }>();
+const router = useRouter();
+
+function openMobileSearch() {
+  router.push("/search");
+}
 
 const emit = defineEmits<{
   select: [id: string];
@@ -363,6 +404,7 @@ const sessionStore = useSessionStore();
 const agentStore = useAgentStore();
 
 const query = ref("");
+const mobileAddMenuOpen = ref(false);
 const draggedProjectId = ref<string | null>(null);
 const highlightedProjectId = ref<string | null>(null);
 const projectBelowViewport = ref(false);
@@ -423,7 +465,6 @@ const searching = ref(false);
 const messageMatches = ref<Map<string, string>>(new Map());
 let searchGeneration = 0;
 const collapsedWorkspaceIds = ref<Set<string>>(new Set());
-const knownWorkspaceIds = new Set<string>();
 const agentPickerWorkspaceId = ref<string | null>(null);
 const projectCreateOpen = ref(false);
 const projectCreating = ref(false);
@@ -469,20 +510,6 @@ async function refreshProjectScripts(projectId: string | null) {
 watch(projectSettingsId, (projectId) => {
   if (projectId) void refreshProjectScripts(projectId);
 });
-
-watch(
-  () => sessionStore.projects.map((project) => project.id),
-  (projectIds) => {
-    const next = new Set(collapsedWorkspaceIds.value);
-    for (const projectId of projectIds) {
-      if (knownWorkspaceIds.has(projectId)) continue;
-      knownWorkspaceIds.add(projectId);
-      next.add(projectId);
-    }
-    collapsedWorkspaceIds.value = next;
-  },
-  { immediate: true },
-);
 
 const panelStyle = computed(() => {
   if (props.width == null) return undefined;
@@ -751,6 +778,11 @@ function openExternalImport() {
   externalImportOpen.value = true;
 }
 
+function openExternalImportFromMobileMenu() {
+  mobileAddMenuOpen.value = false;
+  openExternalImport();
+}
+
 function onExternalSessionImported(sessionId: string) {
   externalImportOpen.value = false;
   emit("select", sessionId);
@@ -1010,6 +1042,16 @@ async function onAgentPicked(agentId: string) {
     background-color 0.18s ease;
 }
 
+.chat-list-search-icon {
+  display: none;
+}
+
+.chat-list-add-icon,
+.chat-list-add-menu,
+.chat-list-add-backdrop {
+  display: none;
+}
+
 .chat-list-import-icon svg {
   display: block;
 }
@@ -1228,21 +1270,129 @@ async function onAgentPicked(agentId: string) {
     overflow-x: hidden;
   }
 
-  .h-16.flex.items-center {
-    padding-inline: 20px;
+  .chat-list-header {
+    position: relative;
+    height: 52px;
+    min-height: 52px;
+    padding-inline: 10px;
   }
 
-  .px-3.py-2 {
-    padding: 10px 20px 14px;
+  .chat-list-header h1 {
+    position: absolute;
+    left: 50%;
+    font-size: 19px;
+    font-weight: 400;
+    transform: translateX(-50%);
+  }
+
+  .chat-list-header .chat-list-import-icon--desktop {
+    display: none;
+  }
+
+  .chat-list-search-icon {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    margin-left: auto;
+    place-items: center;
+    color: var(--app-text-primary);
+  }
+
+  .chat-list-search-icon svg {
+    width: 27px;
+    height: 27px;
+    stroke-width: 1.9;
+  }
+
+  .chat-list-add-icon {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    flex: none;
+    place-items: center;
+    border-radius: 6px;
+    color: var(--app-text-primary);
+  }
+
+  .chat-list-add-icon:active,
+  .chat-list-add-icon--active {
+    background: var(--app-hover);
+  }
+
+  .chat-list-add-icon svg {
+    width: 29px;
+    height: 29px;
+    stroke-width: 1.8;
+  }
+
+  .chat-list-add-backdrop {
+    position: fixed;
+    z-index: 79;
+    inset: 0;
+    display: block;
+    background: transparent;
+  }
+
+  .chat-list-add-menu {
+    position: absolute;
+    z-index: 80;
+    top: 48px;
+    right: 8px;
+    display: block;
+    min-width: 190px;
+    overflow: hidden;
+    border-radius: 6px;
+    background: #4c4c4c;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 24%);
+  }
+
+  .chat-list-add-menu button {
+    display: flex;
+    width: 100%;
+    min-height: 52px;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    color: #fff;
+    font-size: 15px;
+    text-align: left;
+  }
+
+  .chat-list-add-menu button:active {
+    background: rgb(255 255 255 / 10%);
+  }
+
+  .chat-list-add-menu svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .chat-list-search {
+    display: none;
+  }
+
+  .chat-list-search .list-search-input {
+    height: 36px;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: 14px;
+  }
+
+  .chat-list-search .relative > svg {
+    top: 10px;
+  }
+
+  .chat-list-scroll {
+    padding-inline: 0;
   }
 
   .list-section-header {
-    min-height: 44px;
-    padding: 4px 20px;
+    min-height: 34px;
+    padding: 2px 4px;
   }
 
   .list-section-title {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .chat-list-roots,
@@ -1253,17 +1403,17 @@ async function onAgentPicked(agentId: string) {
 
   .chat-list-root,
   .workspace-group {
-    padding-inline: 6px;
+    padding-inline: 0;
   }
 
   .workspace-group .list-section-header {
-    margin-inline: -6px;
-    padding-inline: 18px;
+    margin-inline: 0;
+    padding-inline: 4px 0;
   }
 
   .section-action-btn {
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
     padding: 0;
   }
 }

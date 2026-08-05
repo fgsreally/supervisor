@@ -7,6 +7,7 @@ import type { SessionManager } from "../../core/session-manager.js";
 import { getGlobalSkillsDirectory } from "../skill-resource.js";
 import { loadPromptTemplate } from "../system-prompts.js";
 import { loadBuiltinAgentPrompt, loadPackagedAgentPrompt } from "./prompts.js";
+import { parseSessionMeta } from "../../core/session-fields.js";
 import {
   ensureAgentBuiltinExtensionBindings,
   ensureBuiltinExtensionResources,
@@ -250,7 +251,7 @@ function findBuiltinAssistantSessionId(db: SupervisorDb, agentId: number): numbe
     .list()
     .filter(
       (session) =>
-        (session.is_builtin === 1 || session.meta?.builtin === true) &&
+        (session.is_builtin === 1 || parseSessionMeta(session.meta).builtin === true) &&
         (session.agent_id === agentId ||
           (session.agent_id !== null && assistantAgentIds.has(session.agent_id))),
     )

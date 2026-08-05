@@ -332,7 +332,7 @@ export function buildExtensionDeps(deps: {
             name: agent.name,
             description: agent.description,
             providerId: agent.providerId,
-            modelId: agent.modelId,
+            modelId: agent.modelId == null ? null : String(agent.modelId),
             toolsPreset: agent.toolsPreset,
             role: "spawned",
             tags: [],
@@ -596,7 +596,7 @@ export function buildExtensionDeps(deps: {
         const provider = db.getProvider(agent.providerId);
         return {
           provider: provider?.slug ?? String(agent.providerId),
-          id: agent.modelId,
+          id: String(agent.modelId),
           contextWindow: 128000,
         };
       } catch {

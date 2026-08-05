@@ -57,7 +57,7 @@ export class SQLiteSessionStorage implements SessionStorage {
     const session = this.db.get(this.sessionId);
     if (!session) throw new Error(`Session ${this.sessionId} not found`);
     return {
-      id: session.id,
+      id: String(session.id),
       createdAt: new Date(session.created_at).toISOString(),
       meta: (typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta) ?? {},
     };

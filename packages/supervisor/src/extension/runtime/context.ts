@@ -190,10 +190,13 @@ export type Database = SupervisorDb;
 interface ContextExtensionHost {
   emit(event: ExtensionEvent): void | Promise<void>;
   listTools(): ToolInfo[];
-  on<T extends ExtensionEvent>(
+  on<K extends ExtensionEvent["type"]>(
     extensionId: string,
-    event: T["type"],
-    handler: (event: T, ctx: EventHandlerContext) => void | Promise<void>,
+    event: K,
+    handler: (
+      event: Extract<ExtensionEvent, { type: K }>,
+      ctx: EventHandlerContext,
+    ) => void | Promise<void>,
   ): () => void;
   registerTool<TParams extends TSchema, TResult>(
     extensionId: string,
@@ -490,7 +493,16 @@ export class Context {
     this.logger = deps.log;
     this.commandExecutor = deps.exec;
     this.watson = {
-      run: (options) =>
+      run: ((options: {
+        kind: string;
+        prompt: string;
+        mode: "simple" | "agent";
+        cwd?: string;
+        systemPrompt?: string;
+        injectSystem?: string;
+        toolsPreset?: "coding" | "readonly" | "none";
+        resultSchema?: TSchema;
+      }) =>
         runWatson({
           mode: options.mode,
           cwd: options.cwd?.trim() || session.cwd,
@@ -500,7 +512,7 @@ export class Context {
           injectSystem: options.injectSystem,
           ...(options.mode === "agent" ? { toolsPreset: options.toolsPreset } : {}),
           ...(options.resultSchema ? { resultSchema: options.resultSchema } : {}),
-        }),
+        })) as ExtensionContext["watson"]["run"],
     };
   }
 
@@ -523,9 +535,12 @@ export class Context {
     }
   }
 
-  on<T extends ExtensionEvent>(
-    event: T["type"],
-    handler: (event: T, ctx: EventHandlerContext) => void | Promise<void>,
+  on<K extends ExtensionEvent["type"]>(
+    event: K,
+    handler: (
+      event: Extract<ExtensionEvent, { type: K }>,
+      ctx: EventHandlerContext,
+    ) => void | Promise<void>,
   ): () => void {
     return this.requireExtensionHost().on(this.requireActiveExtension(), event, handler);
   }

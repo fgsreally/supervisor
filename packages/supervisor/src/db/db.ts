@@ -41,7 +41,9 @@ import {
   normalizeSessionStatus,
 } from "../types.js";
 import { normalizeAgentPermissionRules } from "../core/agent-permissions.js";
+import { parseSessionMeta } from "../core/session-fields.js";
 import { getProjectDir } from "../core/session-files.js";
+import type { SessionBranchType } from "../core/session-history.js";
 import {
   listProjectScripts,
   replaceProjectScripts,
@@ -394,7 +396,8 @@ export class SupervisorDb {
     },
   ): SessionRow {
     const now = Date.now();
-    const full: SessionRow = {
+    const full: Omit<SessionRow, "id"> = {
+      ...row,
       project_id: row.project_id ?? null,
       parent_id: row.parent_id ?? null,
       status: normalizeSessionStatus(row.status ?? "initializing"),
@@ -417,7 +420,6 @@ export class SupervisorDb {
       error_msg: row.error_msg ?? null,
       stage: row.stage ?? null,
       shadow_enabled: row.shadow_enabled ?? 0,
-      ...row,
       thinking_level:
         row.thinking_level === "low" ||
         row.thinking_level === "medium" ||
@@ -747,11 +749,9 @@ export class SupervisorDb {
   }
 
   listSessionTasks(sessionId: number): SessionTaskRow[] {
-    const meta = this.get(sessionId)?.meta;
-    const tasks =
-      meta && Array.isArray((meta as Record<string, unknown>).tasks)
-        ? (meta as Record<string, unknown>).tasks
-        : [];
+    const row = this.get(sessionId);
+    const meta = row ? parseSessionMeta(row.meta) : {};
+    const tasks = Array.isArray(meta.tasks) ? meta.tasks : [];
     return tasks.flatMap((item, index) => {
       if (!item || typeof item !== "object") return [];
       const task = item as { path?: unknown; kind?: unknown; title?: unknown; status?: unknown };
@@ -799,7 +799,7 @@ export class SupervisorDb {
     const tasks = this.listSessionTasks(sessionId);
     if (!tasks.some((task) => task.path === path)) return false;
     const session = this.get(sessionId);
-    const meta = session?.meta as Record<string, unknown>;
+    const meta = session ? parseSessionMeta(session.meta) : {};
     this.updateMeta(sessionId, {
       tasks: tasks
         .filter((task) => task.path !== path)
@@ -810,7 +810,8 @@ export class SupervisorDb {
   }
 
   listSessionTodos(sessionId: number): SessionTodoRow[] {
-    const meta = this.get(sessionId)?.meta as Record<string, unknown> | undefined;
+    const row = this.get(sessionId);
+    const meta = row ? parseSessionMeta(row.meta) : undefined;
     const todos = Array.isArray(meta?.todos) ? meta.todos : [];
     return todos.flatMap((item, index) => {
       if (!item || typeof item !== "object") return [];
@@ -887,8 +888,7 @@ export class SupervisorDb {
       )
       .all() as Array<{
       id: string;
-      type: "session" | "todo_task";
-      entity_id: number;
+      session_id: number;
       message: string;
       level: number;
       origin_msg: string | null;
@@ -1159,7 +1159,7 @@ export class SupervisorDb {
 
   searchMessages(
     query: string,
-    filter?: { sessionId?: string; role?: string; limit?: number },
+    filter?: { sessionId?: number; role?: string; limit?: number },
   ): MessageSearchHit[] {
     const trimmed = query.trim();
     if (!trimmed) return [];

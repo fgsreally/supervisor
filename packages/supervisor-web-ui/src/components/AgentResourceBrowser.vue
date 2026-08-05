@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-1 min-h-0 overflow-hidden">
+  <div class="resource-browser flex flex-1 min-h-0 overflow-hidden">
     <div
       v-if="loading"
       class="resource-browser-empty flex flex-1 items-center justify-center gap-2 text-[13px]"
@@ -490,6 +490,37 @@ watch(
 }
 
 @media (max-width: 767px) {
+  .resource-browser {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .resource-browser-sidebar,
+  .resource-browser-tree,
+  .resource-browser-main {
+    width: 100% !important;
+  }
+
+  .resource-browser-sidebar {
+    flex: none;
+    overflow: visible;
+    border-right: 0;
+    border-bottom: 1px solid var(--app-border-subtle);
+  }
+
+  .resource-browser-tree {
+    flex: none;
+    min-height: 180px;
+    border-right: 0;
+    border-bottom: 1px solid var(--app-border-subtle);
+  }
+
+  .resource-browser-main {
+    flex: none;
+    min-height: 320px;
+    padding: 12px;
+  }
+
   .resource-browser-resize-handle {
     display: none;
   }

@@ -11,11 +11,19 @@
           ref="panel"
           class="responsive-dialog"
           :class="{ 'responsive-dialog--sheet': sheet }"
+          :style="sheetHeight ? { height: `${sheetHeight}px` } : undefined"
           role="dialog"
           aria-modal="true"
           :aria-label="title || 'Dialog'"
         >
-          <div v-if="sheet" class="responsive-dialog__handle" />
+          <div
+            v-if="sheet"
+            class="responsive-dialog__handle-zone"
+            aria-label="拖动调整弹窗高度"
+            @pointerdown="startResize"
+          >
+            <div class="responsive-dialog__handle" />
+          </div>
           <header v-if="title || $slots.header" class="responsive-dialog__header">
             <slot name="header">
               <h2>{{ title }}</h2>
@@ -50,7 +58,10 @@ const emit = defineEmits<{ close: [] }>();
 
 const panel = ref<HTMLElement | null>(null);
 const sheet = ref(false);
+const sheetHeight = ref<number | null>(null);
 let previousFocus: HTMLElement | null = null;
+let resizeStartY = 0;
+let resizeStartHeight = 0;
 
 const transitionName = computed(() => (sheet.value ? "responsive-sheet" : "responsive-modal"));
 
@@ -62,12 +73,34 @@ function onKeydown(event: KeyboardEvent) {
   if (event.key === "Escape") emit("close");
 }
 
+function startResize(event: PointerEvent) {
+  if (!sheet.value || !panel.value) return;
+  event.preventDefault();
+  resizeStartY = event.clientY;
+  resizeStartHeight = panel.value.getBoundingClientRect().height;
+  document.addEventListener("pointermove", resizeSheet);
+  document.addEventListener("pointerup", stopResize, { once: true });
+}
+
+function resizeSheet(event: PointerEvent) {
+  const min = Math.min(280, window.innerHeight * 0.45);
+  const max = window.innerHeight * 0.92;
+  sheetHeight.value = Math.round(
+    Math.min(max, Math.max(min, resizeStartHeight + resizeStartY - event.clientY)),
+  );
+}
+
+function stopResize() {
+  document.removeEventListener("pointermove", resizeSheet);
+}
+
 watch(
   () => props.open,
   async (open) => {
     if (open) syncMode();
     document.body.classList.toggle("m-overlay-open", open);
     if (open) {
+      sheetHeight.value = null;
       previousFocus = document.activeElement as HTMLElement | null;
       document.addEventListener("keydown", onKeydown);
       await nextTick();
@@ -89,6 +122,7 @@ if (typeof window !== "undefined") {
 onBeforeUnmount(() => {
   document.body.classList.remove("m-overlay-open");
   document.removeEventListener("keydown", onKeydown);
+  stopResize();
   window.removeEventListener("resize", syncMode);
 });
 </script>
@@ -131,11 +165,20 @@ onBeforeUnmount(() => {
   box-shadow: 0 -8px 32px rgb(0 0 0 / 18%);
 }
 
+.responsive-dialog__handle-zone {
+  display: grid;
+  min-height: 24px;
+  flex: none;
+  place-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
 .responsive-dialog__handle {
   width: 36px;
   height: 4px;
   flex: none;
-  margin: 10px auto 4px;
+  margin: 0 auto;
   border-radius: 999px;
   background: var(--app-border);
 }

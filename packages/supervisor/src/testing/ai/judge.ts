@@ -98,7 +98,7 @@ async function completeJudge(config: AiTestModelConfig, prompt: string): Promise
         "You are an impartial evaluator of coding-agent behavior. Use only the supplied evidence.",
       messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
     },
-    { apiKey: config.apiKey, reasoning: "off", timeoutMs: 120_000 },
+    { apiKey: config.apiKey, timeoutMs: 120_000 },
   );
   return responseText(result.content);
 }

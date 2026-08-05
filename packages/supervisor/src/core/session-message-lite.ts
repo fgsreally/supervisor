@@ -82,7 +82,7 @@ export function toLiteSessionMessage(message: SessionMessageResponse): SessionMe
   const meta = { ...(message.meta ?? {}) };
   let truncated = false;
 
-  if (message.type === "message" && message.message) {
+  if (message.type === "message" && message.message && "content" in message.message) {
     const content = message.message.content;
     if (typeof content === "string") {
       const { text, truncated: cut } = truncateText(content, LITE_TEXT_CHARS);
@@ -91,7 +91,7 @@ export function toLiteSessionMessage(message: SessionMessageResponse): SessionMe
         ...message,
         message: { ...message.message, content: text },
         meta: truncated ? { ...meta, liteTruncated: true } : meta,
-      };
+      } as SessionMessageResponse;
     }
     if (Array.isArray(content)) {
       const { parts, truncated: cut } = liteContentParts(content as ContentPart[], LITE_TEXT_CHARS);
@@ -103,12 +103,17 @@ export function toLiteSessionMessage(message: SessionMessageResponse): SessionMe
           content: parts as typeof content,
         },
         meta: truncated ? { ...meta, liteTruncated: true } : meta,
-      };
+      } as SessionMessageResponse;
     }
   }
 
-  if (message.type === "toolResult") {
-    const raw = message as SessionMessageResponse & {
+  const legacy = message as unknown as {
+    type: string;
+    content?: ContentPart[];
+    details?: unknown;
+  };
+  if (legacy.type === "toolResult") {
+    const raw = message as unknown as SessionMessageResponse & {
       content?: ContentPart[];
       details?: unknown;
     };
@@ -120,7 +125,7 @@ export function toLiteSessionMessage(message: SessionMessageResponse): SessionMe
       ...rest,
       content: parts,
       meta: truncated ? { ...meta, liteTruncated: true } : meta,
-    } as SessionMessageResponse;
+    } as unknown as SessionMessageResponse;
   }
 
   if (message.type === "compaction" && typeof message.summary === "string") {

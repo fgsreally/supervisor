@@ -6,7 +6,7 @@ import type {
   SessionTreeEntry,
   ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import type { ImageContent, Model } from "@earendil-works/pi-ai";
+import type { AssistantMessage, ImageContent, Model, StopReason } from "@earendil-works/pi-ai";
 import type { SupervisorDb } from "../../db/db.js";
 import type { SessionExtensionHost } from "../../extension/runtime/index.js";
 import type { Agent, Session } from "../../types.js";
@@ -20,6 +20,31 @@ import { beginSessionTiming, timedSessionStep } from "../../utils/session-timing
 import { ExternalTurnBuffer } from "./external-turn-buffer.js";
 
 type Listener = (event: AgentHarnessEvent) => void | Promise<void>;
+
+export function createExternalAssistantMessage(
+  text: string,
+  stopReason: StopReason = "stop",
+  errorMessage?: string,
+): AssistantMessage {
+  return {
+    role: "assistant",
+    content: text ? [{ type: "text", text }] : [],
+    api: "external",
+    provider: "external",
+    model: "external",
+    usage: {
+      input: 0,
+      output: 0,
+      cacheRead: 0,
+      cacheWrite: 0,
+      totalTokens: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+    stopReason,
+    ...(errorMessage ? { errorMessage } : {}),
+    timestamp: Date.now(),
+  };
+}
 
 export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
   readonly id: number;
@@ -67,7 +92,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     this.turnBuffer.appendText(delta);
     await this.emit({
       type: "message_update",
-      message: { role: "assistant", content: this.assistantText } as AgentMessage,
+      message: createExternalAssistantMessage(this.assistantText),
       assistantMessageEvent: { type: "text_delta", delta },
     } as AgentHarnessEvent);
   }
@@ -77,7 +102,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     this.turnBuffer.appendThinking(delta);
     await this.emit({
       type: "message_update",
-      message: { role: "assistant", content: this.assistantText } as AgentMessage,
+      message: createExternalAssistantMessage(this.assistantText),
       assistantMessageEvent: { type: "thinking_delta", contentIndex: 0, delta },
     } as AgentHarnessEvent);
   }
@@ -185,7 +210,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
       this.activeTools.clear();
       this.turnBuffer.reset();
       await this.emit({ type: "agent_start" });
-      await this.emit({ type: "message_start", message: { role: "assistant", content: "" } });
+      await this.emit({ type: "message_start", message: createExternalAssistantMessage("") });
       try {
         const sideQuestionPrompt =
           this.session.spawnType === "btw" && this.session.systemPrompt
@@ -209,11 +234,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
         await this.runExternalTurn(externalMessage, imageContent);
         await this.waitForActiveToolsIdle();
         await this.turnBuffer.persist(this.storage, userId);
-        const assistantMessage = {
-          role: "assistant",
-          content: this.assistantText,
-          timestamp: Date.now(),
-        } as AgentMessage;
+        const assistantMessage = createExternalAssistantMessage(this.assistantText);
         await this.emit({ type: "message_end", message: assistantMessage });
         await this.emit({ type: "agent_end", messages: [assistantMessage] });
       } catch (error) {
@@ -224,13 +245,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
         await this.emit({
           type: "agent_end",
           messages: [
-            {
-              role: "assistant",
-              content: [],
-              stopReason: "error",
-              errorMessage: detail,
-              timestamp: Date.now(),
-            } as AgentMessage,
+            createExternalAssistantMessage("", "error", detail),
           ],
         });
         throw error;
@@ -304,11 +319,11 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     const streamingReply = this.assistantText.trim();
     return {
       id: this.id,
-      sessionId: session.external_session_id,
+      sessionId: session.external_session_id ?? null,
       cwd: session.cwd,
       status: session.status,
       model: { provider: this.agent.backendType, modelId: this.agent.name },
-      thinkingLevel: session.thinking_level,
+      thinkingLevel: session.thinking_level === "none" ? "off" : session.thinking_level,
       isStreaming: this.running !== null,
       messageCount: messages.filter((entry) => entry.type === "message").length,
       leafId: session.leaf_id,

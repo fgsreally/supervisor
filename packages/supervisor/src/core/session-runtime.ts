@@ -45,6 +45,26 @@ function harnessSession(harness: unknown): HarnessSessionTree {
   return (harness as { session: HarnessSessionTree }).session;
 }
 
+interface HarnessAgentState {
+  messages: AgentMessage[];
+  streamingMessage?: AgentMessage;
+}
+
+interface HarnessAgentController {
+  state: HarnessAgentState;
+  hasQueuedMessages?: () => boolean;
+  continue?: () => Promise<void>;
+}
+
+/** Compatibility boundary for transcript replacement, which has no public Harness setter. */
+export function harnessAgentState(harness: AgentHarness): HarnessAgentState {
+  return harnessAgentController(harness).state;
+}
+
+export function harnessAgentController(harness: AgentHarness): HarnessAgentController {
+  return (harness as unknown as { agent: HarnessAgentController }).agent;
+}
+
 export type SlashCommandSource = AgentResourceCommandSource | "extension" | string;
 
 export type SlashCommandInfo = Omit<AgentResourceCommandInfo, "source" | "sourceInfo"> & {
@@ -350,7 +370,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
   async reloadMessagesFromSessionTree(): Promise<void> {
     const session = harnessSession(this.harness);
     const context = await session.buildContext();
-    this.harness.agent.state.messages = context.messages;
+    harnessAgentState(this.harness).messages = context.messages;
   }
 
   /** Persist a compaction entry and sync agent state. */
@@ -459,20 +479,20 @@ export class SessionRuntime implements ManagedSessionRuntime {
     const session = this.getSession();
     if (!session) throw new Error(`Session ${this.id} not found`);
     const messages = await this.getMessagesForSession();
-    const model = this.harness.agent.state.model;
+    const model = this.harness.getModel();
     const streamingReply = assistantMessagePlainText(
-      (this.harness.agent.state as { streamingMessage?: AgentMessage }).streamingMessage,
+      harnessAgentState(this.harness).streamingMessage,
     );
     return {
       id: session.id,
-      sessionId: session.sessionId,
+      sessionId: session.externalSessionId,
       cwd: session.cwd,
       status: session.status,
       model: {
         provider: model.provider,
         modelId: model.id,
       },
-      thinkingLevel: this.harness.agent.state.thinkingLevel,
+      thinkingLevel: this.harness.getThinkingLevel(),
       isStreaming: session.status === "running",
       messageCount: messages.filter((entry) => entry.type === "message").length,
       leafId: session.leafId,
@@ -532,8 +552,9 @@ export class SessionRuntime implements ManagedSessionRuntime {
   }
 
   getLastAssistantText(): string | undefined {
-    for (let i = this.harness.agent.state.messages.length - 1; i >= 0; i--) {
-      const message = this.harness.agent.state.messages[i] as AgentMessage | undefined;
+    const messages = harnessAgentState(this.harness).messages;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const message = messages[i];
       if (!message || message.role !== "assistant") continue;
       return assistantMessagePlainText(message);
     }
@@ -542,7 +563,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
 }
 
 function assistantMessagePlainText(message?: AgentMessage): string | undefined {
-  if (!message) return undefined;
+  if (!message || !("content" in message)) return undefined;
   const content = message.content;
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return undefined;

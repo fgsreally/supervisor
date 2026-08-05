@@ -1,7 +1,7 @@
 <template>
   <div
     class="h-full w-full flex flex-col shrink-0 min-w-0"
-    :style="{ ...panelStyle, background: 'var(--app-list-bg)' }"
+    :style="{ ...panelStyle, background: 'var(--app-list-section-bg)' }"
   >
     <div
       v-if="!mobileSearchOpen"
@@ -191,7 +191,7 @@ const filteredGroups = computed(() => {
 }
 
 .list-section-label {
-  background: color-mix(in srgb, var(--app-list-section-bg) 95%, transparent);
+  background: var(--app-list-section-bg);
   color: var(--app-text-secondary);
 }
 

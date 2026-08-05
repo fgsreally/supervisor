@@ -1,6 +1,11 @@
 <template>
   <div class="mobile-app-shell">
-    <main class="mobile-app-shell__content">
+    <main
+      class="mobile-app-shell__content"
+      @touchstart.passive="onTouchStart"
+      @touchmove.passive="onTouchMove"
+      @touchend="onTouchEnd"
+    >
       <slot />
     </main>
 
@@ -23,7 +28,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { Bot, CircleUserRound, ListTodo, MessageSquare } from "lucide-vue-next";
 import type { MainTab } from "@/components/ShellNav.vue";
 
@@ -51,6 +56,39 @@ const activeTab = computed<MobilePrimaryTab>(() => {
   }
   return "chat";
 });
+
+const touchStart = ref<{ x: number; y: number } | null>(null);
+
+function onTouchStart(event: TouchEvent) {
+  const touch = event.touches[0];
+  if (
+    !touch ||
+    event.target instanceof HTMLInputElement ||
+    event.target instanceof HTMLTextAreaElement
+  ) {
+    touchStart.value = null;
+    return;
+  }
+  touchStart.value = { x: touch.clientX, y: touch.clientY };
+}
+
+function onTouchMove() {
+  // Keep the gesture passive so vertical scrolling remains native.
+}
+
+function onTouchEnd(event: TouchEvent) {
+  const start = touchStart.value;
+  const touch = event.changedTouches[0];
+  touchStart.value = null;
+  if (!start || !touch) return;
+  const dx = touch.clientX - start.x;
+  const dy = touch.clientY - start.y;
+  if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
+  const index = items.findIndex((item) => item.id === activeTab.value);
+  const nextIndex = index + (dx < 0 ? 1 : -1);
+  const next = items[nextIndex];
+  if (next) emit("navigate", next.route);
+}
 </script>
 
 <style scoped>

@@ -6,6 +6,8 @@ export interface ViewPreferences {
   projectOrder: string[];
   pinnedSessionIds: string[];
   mutedSessionIds: string[];
+  collapsedProjectIds: string[];
+  pinnedSectionCollapsed: boolean;
   unreadBySession: Record<string, number>;
   collapseExternalAgentDetails: boolean;
   /** DOM particle dissolve / assemble on list remove & restore. */
@@ -16,6 +18,8 @@ const defaults: ViewPreferences = {
   projectOrder: [],
   pinnedSessionIds: [],
   mutedSessionIds: [],
+  collapsedProjectIds: [],
+  pinnedSectionCollapsed: false,
   unreadBySession: {},
   collapseExternalAgentDetails: true,
   advancedAnimations: false,
@@ -59,5 +63,18 @@ export function setSessionViewFlag(
   if (enabled) next.add(sessionId);
   else next.delete(sessionId);
   viewPreferences[field] = [...next];
+  saveViewPreferences();
+}
+
+export function setProjectCollapsed(projectId: string, collapsed: boolean): void {
+  const next = new Set(viewPreferences.collapsedProjectIds);
+  if (collapsed) next.add(projectId);
+  else next.delete(projectId);
+  viewPreferences.collapsedProjectIds = [...next];
+  saveViewPreferences();
+}
+
+export function setPinnedSectionCollapsed(collapsed: boolean): void {
+  viewPreferences.pinnedSectionCollapsed = collapsed;
   saveViewPreferences();
 }

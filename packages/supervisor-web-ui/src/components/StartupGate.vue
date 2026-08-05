@@ -704,6 +704,7 @@ onUnmounted(() => {
 
   .startup-pin {
     width: 100%;
+    height: 100svh;
   }
 
   .startup-checking {
@@ -713,44 +714,54 @@ onUnmounted(() => {
   }
 
   .startup-pin__content {
-    min-height: 100dvh;
+    height: 100%;
+    min-height: 0;
+    justify-content: center;
     padding-top: max(24px, env(safe-area-inset-top));
     padding-bottom: max(20px, env(safe-area-inset-bottom));
   }
 
+  .startup-pin h1 {
+    margin-top: clamp(36px, 8svh, 72px);
+  }
+
+  .pin-dots {
+    margin-top: clamp(24px, 5svh, 42px);
+  }
+
+  .startup-feedback {
+    height: clamp(28px, 4.5svh, 38px);
+  }
+
   .pin-pad {
-    grid-template-columns: repeat(3, 76px);
-    gap: 16px 22px;
+    --pin-key-size: clamp(60px, 10svh, 80px);
+
+    grid-template-columns: repeat(3, var(--pin-key-size));
+    gap: clamp(10px, 1.8svh, 16px) 24px;
+    margin-top: clamp(8px, 1.7svh, 14px);
   }
 
   .pin-key {
-    width: 76px;
-    height: 76px;
+    width: var(--pin-key-size);
+    height: var(--pin-key-size);
   }
 }
 
 @media (max-width: 767px) and (max-height: 760px) {
   .startup-pin h1 {
-    margin-top: 42px;
+    margin-top: clamp(28px, 6svh, 42px);
   }
 
   .pin-dots {
-    margin-top: 32px;
+    margin-top: clamp(20px, 4svh, 32px);
   }
 
   .startup-feedback {
-    height: 32px;
+    height: clamp(24px, 4svh, 32px);
   }
 
   .pin-pad {
-    grid-template-columns: repeat(3, 68px);
-    gap: 12px 20px;
-    margin-top: 14px;
-  }
-
-  .pin-key {
-    width: 68px;
-    height: 68px;
+    column-gap: 20px;
   }
 }
 

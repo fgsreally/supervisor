@@ -1,7 +1,7 @@
 <template>
   <div
     class="relative h-full w-full flex flex-col shrink-0 min-w-0"
-    :style="{ ...panelStyle, background: 'var(--app-list-bg)' }"
+    :style="{ ...panelStyle, background: 'var(--app-list-section-bg)' }"
   >
     <div
       class="chat-list-header h-16 flex items-center px-4 shrink-0 border-b"
@@ -106,29 +106,67 @@
             :size="42"
           />
           <span class="chat-search-result__body">
-            <strong>{{ result.session.title }}</strong>
-            <small>{{ result.description }}</small>
+            <strong>
+              <template
+                v-for="(part, index) in highlightSearch(result.session.title)"
+                :key="`title-${index}`"
+              >
+                <span :class="{ 'chat-search-highlight': part.highlight }">{{ part.text }}</span>
+              </template>
+            </strong>
+            <small>
+              <template
+                v-for="(part, index) in highlightSearch(result.description)"
+                :key="`description-${index}`"
+              >
+                <span :class="{ 'chat-search-highlight': part.highlight }">{{ part.text }}</span>
+              </template>
+            </small>
           </span>
         </button>
         <div v-if="!searching && !searchResults.length" class="chat-search-state">无匹配会话</div>
       </template>
       <template v-else-if="pinnedRoots.length">
-        <div class="list-section-header sticky top-0 z-10">
-          <span class="list-section-title flex-1 truncate">置顶</span>
-        </div>
-        <DustTransitionGroup name="session-list" tag="div" content-class="chat-list-roots">
-          <div v-for="root in pinnedRoots" :key="root.id" class="chat-list-root">
-            <SessionListItem
-              :session="root"
-              :active="activeId === root.id"
-              mode="chat"
-              :depth="0"
-              @select="$emit('select', $event)"
-              @context-menu="openContextMenu(root.id, $event)"
-              @hover-change="highlightPinnedProject(root, $event)"
+        <div class="list-section-header list-section-header--pinned sticky top-0 z-10">
+          <button
+            type="button"
+            class="section-action-btn section-action-btn--chevron"
+            :title="pinnedSectionCollapsed ? '展开' : '折叠'"
+            @click="togglePinnedCollapse"
+          >
+            <ChevronRight
+              class="w-4 h-4 section-chevron"
+              :class="{ 'section-chevron--open': !pinnedSectionCollapsed }"
             />
+          </button>
+          <button
+            type="button"
+            class="list-section-title flex-1 truncate text-left"
+            @click="togglePinnedCollapse"
+          >
+            置顶
+          </button>
+        </div>
+        <div
+          class="workspace-collapse"
+          :class="{ 'workspace-collapse--open': !pinnedSectionCollapsed }"
+        >
+          <div class="workspace-collapse__inner">
+            <DustTransitionGroup name="session-list" tag="div" content-class="chat-list-roots">
+              <div v-for="root in pinnedRoots" :key="root.id" class="chat-list-root">
+                <SessionListItem
+                  :session="root"
+                  :active="activeId === root.id"
+                  mode="chat"
+                  :depth="0"
+                  @select="$emit('select', $event)"
+                  @context-menu="openContextMenu(root.id, $event)"
+                  @hover-change="highlightPinnedProject(root, $event)"
+                />
+              </div>
+            </DustTransitionGroup>
           </div>
-        </DustTransitionGroup>
+        </div>
       </template>
 
       <template v-if="!query.trim() && workspaceGroups.length">
@@ -155,7 +193,7 @@
             >
               <button
                 type="button"
-                class="section-action-btn"
+                class="section-action-btn section-action-btn--chevron"
                 :title="isWorkspaceCollapsed(group.workspace.id) ? '展开' : '折叠'"
                 @click="toggleWorkspaceCollapse(group.workspace.id)"
               >
@@ -349,7 +387,13 @@ import {
   Search,
   Settings,
 } from "lucide-vue-next";
-import { setProjectOrder, setSessionViewFlag, viewPreferences } from "@/utils/view-preferences";
+import {
+  setPinnedSectionCollapsed,
+  setProjectCollapsed,
+  setProjectOrder,
+  setSessionViewFlag,
+  viewPreferences,
+} from "@/utils/view-preferences";
 import type { UISession } from "@/types/ui";
 import { useAgentStore, useSessionStore } from "@/store";
 import {
@@ -464,7 +508,8 @@ function onProjectDrop(targetId: string) {
 const searching = ref(false);
 const messageMatches = ref<Map<string, string>>(new Map());
 let searchGeneration = 0;
-const collapsedWorkspaceIds = ref<Set<string>>(new Set());
+const collapsedWorkspaceIds = computed(() => new Set(viewPreferences.collapsedProjectIds));
+const pinnedSectionCollapsed = computed(() => viewPreferences.pinnedSectionCollapsed);
 const agentPickerWorkspaceId = ref<string | null>(null);
 const projectCreateOpen = ref(false);
 const projectCreating = ref(false);
@@ -550,6 +595,24 @@ const searchResults = computed(() => {
     .sort((a, b) => sortByRecentActivity(a.session, b.session));
 });
 
+function highlightSearch(text: string): Array<{ text: string; highlight: boolean }> {
+  const keyword = query.value.trim();
+  if (!keyword) return [{ text, highlight: false }];
+  const parts: Array<{ text: string; highlight: boolean }> = [];
+  const lowerText = text.toLocaleLowerCase();
+  const lowerKeyword = keyword.toLocaleLowerCase();
+  let cursor = 0;
+  let index = lowerText.indexOf(lowerKeyword, cursor);
+  while (index >= 0) {
+    if (index > cursor) parts.push({ text: text.slice(cursor, index), highlight: false });
+    parts.push({ text: text.slice(index, index + keyword.length), highlight: true });
+    cursor = index + keyword.length;
+    index = lowerText.indexOf(lowerKeyword, cursor);
+  }
+  if (cursor < text.length) parts.push({ text: text.slice(cursor), highlight: false });
+  return parts.length ? parts : [{ text, highlight: false }];
+}
+
 watch(query, async (value) => {
   const generation = ++searchGeneration;
   const normalized = value.trim();
@@ -613,10 +676,11 @@ function isWorkspaceCollapsed(workspaceId: string): boolean {
 }
 
 function toggleWorkspaceCollapse(workspaceId: string) {
-  const next = new Set(collapsedWorkspaceIds.value);
-  if (next.has(workspaceId)) next.delete(workspaceId);
-  else next.add(workspaceId);
-  collapsedWorkspaceIds.value = next;
+  setProjectCollapsed(workspaceId, !collapsedWorkspaceIds.value.has(workspaceId));
+}
+
+function togglePinnedCollapse() {
+  setPinnedSectionCollapsed(!pinnedSectionCollapsed.value);
 }
 
 function openAgentPicker(workspaceId: string) {
@@ -795,9 +859,7 @@ async function createProjectFromDialog(cwd: string) {
     const project = await sessionStore.createProject({ cwd });
     rememberCwd(cwd);
     projectCreateOpen.value = false;
-    const next = new Set(collapsedWorkspaceIds.value);
-    next.delete(project.id);
-    collapsedWorkspaceIds.value = next;
+    setProjectCollapsed(project.id, false);
     showUiMessage("项目已创建，正在解析", "success");
     projectSettingsId.value = project.id;
   } catch (error) {
@@ -964,9 +1026,7 @@ async function onAgentPicked(agentId: string) {
     meta: { name: agent?.name ?? agentId },
   });
 
-  const next = new Set(collapsedWorkspaceIds.value);
-  next.delete(project.id);
-  collapsedWorkspaceIds.value = next;
+  setProjectCollapsed(project.id, false);
 
   emit("select", session.id);
 }
@@ -1021,6 +1081,11 @@ async function onAgentPicked(agentId: string) {
 .chat-search-result__body small {
   color: var(--app-text-secondary);
   font-size: 12px;
+}
+
+.chat-search-highlight {
+  color: var(--app-accent);
+  font-weight: 600;
 }
 
 .chat-list-import-icon {
@@ -1256,6 +1321,12 @@ async function onAgentPicked(agentId: string) {
   cursor: pointer;
 }
 
+.section-action-btn--chevron:hover,
+.section-action-btn--chevron:active,
+.section-action-btn--chevron:focus-visible {
+  background: transparent;
+}
+
 .section-chevron {
   transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
   transform: rotate(0deg);
@@ -1268,6 +1339,15 @@ async function onAgentPicked(agentId: string) {
 @media (max-width: 767px) {
   .relative.h-full {
     overflow-x: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .relative.h-full input,
+  .relative.h-full textarea {
+    user-select: text;
+    -webkit-user-select: text;
   }
 
   .chat-list-header {
@@ -1280,8 +1360,9 @@ async function onAgentPicked(agentId: string) {
   .chat-list-header h1 {
     position: absolute;
     left: 50%;
-    font-size: 19px;
-    font-weight: 400;
+    color: var(--m-text-primary, var(--app-text-primary));
+    font-size: var(--m-font-page-title, 17px);
+    font-weight: 500;
     transform: translateX(-50%);
   }
 
@@ -1299,29 +1380,30 @@ async function onAgentPicked(agentId: string) {
   }
 
   .chat-list-search-icon svg {
-    width: 27px;
-    height: 27px;
-    stroke-width: 1.9;
+    width: 24px;
+    height: 24px;
+    stroke-width: 1.8;
   }
 
   .chat-list-add-icon {
     display: grid;
-    width: 42px;
-    height: 42px;
+    width: 36px;
+    height: 36px;
     flex: none;
     place-items: center;
+    border: none;
     border-radius: 6px;
-    color: var(--app-text-primary);
+    color: var(--m-icon, var(--app-text-primary));
   }
 
   .chat-list-add-icon:active,
   .chat-list-add-icon--active {
-    background: var(--app-hover);
+    background: var(--m-pressed, var(--app-hover));
   }
 
   .chat-list-add-icon svg {
-    width: 29px;
-    height: 29px;
+    width: 24px;
+    height: 24px;
     stroke-width: 1.8;
   }
 
@@ -1339,11 +1421,12 @@ async function onAgentPicked(agentId: string) {
     top: 48px;
     right: 8px;
     display: block;
-    min-width: 190px;
+    min-width: 180px;
     overflow: hidden;
-    border-radius: 6px;
-    background: #4c4c4c;
-    box-shadow: 0 4px 16px rgb(0 0 0 / 24%);
+    border: 1px solid var(--m-border, rgb(255 255 255 / 8%));
+    border-radius: var(--m-card-radius, 8px);
+    background: var(--m-surface, #2b2b2b);
+    box-shadow: 0 8px 28px rgb(0 0 0 / 28%);
   }
 
   .chat-list-add-menu button {
@@ -1353,13 +1436,13 @@ async function onAgentPicked(agentId: string) {
     align-items: center;
     gap: 12px;
     padding: 0 16px;
-    color: #fff;
-    font-size: 15px;
+    color: var(--m-text-primary, #fff);
+    font-size: 14px;
     text-align: left;
   }
 
   .chat-list-add-menu button:active {
-    background: rgb(255 255 255 / 10%);
+    background: var(--m-pressed, rgb(255 255 255 / 10%));
   }
 
   .chat-list-add-menu svg {
@@ -1384,11 +1467,24 @@ async function onAgentPicked(agentId: string) {
 
   .chat-list-scroll {
     padding-inline: 0;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .chat-list-scroll::-webkit-scrollbar {
+    display: none;
   }
 
   .list-section-header {
     min-height: 34px;
     padding: 2px 4px;
+  }
+
+  .list-section-header--pinned {
+    width: 100%;
+    margin-inline: 0;
+    padding-inline: 16px 12px;
   }
 
   .list-section-title {
@@ -1407,14 +1503,27 @@ async function onAgentPicked(agentId: string) {
   }
 
   .workspace-group .list-section-header {
+    width: 100%;
     margin-inline: 0;
-    padding-inline: 4px 0;
+    padding-inline: 16px 12px;
+  }
+
+  .workspace-group .list-section-header > .section-action-btn:last-child {
+    margin-right: 14px;
   }
 
   .section-action-btn {
     width: 32px;
     height: 32px;
     padding: 0;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .section-action-btn--chevron:hover,
+  .section-action-btn--chevron:active,
+  .section-action-btn--chevron:focus-visible {
+    background: transparent;
+    color: var(--app-text-muted);
   }
 }
 </style>

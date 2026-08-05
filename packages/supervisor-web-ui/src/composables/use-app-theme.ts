@@ -44,7 +44,7 @@ export function useAppTheme() {
     const viewTransitions = document as Document & {
       startViewTransition?: (update: () => void) => { ready: Promise<void> };
     };
-    if (!viewTransitions.startViewTransition) {
+    if (typeof viewTransitions.startViewTransition !== "function") {
       commitDark(value);
       return;
     }

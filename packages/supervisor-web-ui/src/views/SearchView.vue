@@ -37,8 +37,8 @@
       </div>
     </div>
 
-    <!-- Search tabs -->
-    <div class="flex border-b shrink-0" style="border-color: var(--app-border-subtle)">
+    <!-- Search tabs are intentionally hidden: mobile search is session-centric. -->
+    <div v-if="false" class="flex border-b shrink-0" style="border-color: var(--app-border-subtle)">
       <button
         v-for="tab in searchTabs"
         :key="tab.key"

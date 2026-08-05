@@ -203,7 +203,19 @@ function open(id: ItemId) {
 .mobile-me__scroll {
   flex: 1;
   overflow-y: auto;
-  padding: 10px var(--m-page-inline) var(--m-space-6);
+  padding: 10px 0 var(--m-space-6);
+}
+
+.mobile-me__scroll :deep(.m-list) {
+  border-radius: 0;
+}
+
+.mobile-me__scroll :deep(.m-section__title) {
+  margin-inline: 16px;
+}
+
+.mobile-me__scroll :deep(.m-list-row) {
+  padding-inline: 16px;
 }
 
 .mobile-me__icon {

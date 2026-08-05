@@ -57,7 +57,12 @@ const { useCss, onLeave, onEnter } = useDustTransitionHooks({
 .session-list-enter-from,
 .session-list-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+}
+.session-list-enter-from {
+  transform: translateX(18px);
+}
+.session-list-leave-to {
+  transform: translateX(-18px);
 }
 .chat-list-roots,
 .chat-list-projects,

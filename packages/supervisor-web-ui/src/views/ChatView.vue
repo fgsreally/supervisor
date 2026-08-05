@@ -1856,26 +1856,7 @@ async function executeCustomSlash(name: string) {
 
 @media (min-width: 768px) {
   .chat-view {
-    --app-chat-bg: #ffffff;
-    --app-chat-header-bg: #ffffff;
-    --app-chat-message-bg: #ffffff;
-    --app-chat-message-inherited: #f5f5f5;
-    --app-chat-input-island-bg: #ffffff;
-    --app-chat-input-island-border: #dedede;
-    --app-bubble-user: #95ec69;
-    --app-bubble-assistant: #f1f1f3;
-    --app-bubble-radius: 4px;
-  }
-
-  :global(html[data-theme="dark"]) .chat-view {
-    --app-chat-bg: #191919;
-    --app-chat-header-bg: #191919;
-    --app-chat-message-bg: #191919;
-    --app-chat-message-inherited: #202020;
-    --app-chat-input-island-bg: #202020;
-    --app-chat-input-island-border: #2c2c2c;
-    --app-bubble-user: #3b8f58;
-    --app-bubble-assistant: #262626;
+    --app-chat-input-island-border: var(--app-border);
   }
 
   .chat-view :deep(.chat-view-header) {

@@ -431,9 +431,9 @@
   }
 
   [data-theme="dark"] {
-    --app-list-bg: #232323;
-    --app-list-header-bg: #232323;
-    --app-list-section-bg: #232323;
+    --app-list-bg: #2b2b2b;
+    --app-list-header-bg: #151515;
+    --app-list-section-bg: #151515;
   }
 }
 

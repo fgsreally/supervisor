@@ -32,17 +32,19 @@
               class="relative shrink-0 h-full hidden md:block"
               :style="{ width: `${chatListWidth}px` }"
             >
-              <ChatListPanel
-                v-if="mainTab === 'chat'"
-                data-tour-page="chat"
-                class="h-full w-full"
-                :active-id="activeSessionId ?? ''"
-                @select="selectSession"
-                @delete="onSessionDelete"
-                @settings="onTabChange('settings')"
-              />
+              <KeepAlive>
+                <ChatListPanel
+                  v-if="mainTab === 'chat'"
+                  data-tour-page="chat"
+                  class="h-full w-full"
+                  :active-id="activeSessionId ?? ''"
+                  @select="selectSession"
+                  @delete="onSessionDelete"
+                  @settings="onTabChange('settings')"
+                />
+              </KeepAlive>
               <ContactsPanel
-                v-else-if="mainTab === 'contacts'"
+                v-if="mainTab === 'contacts'"
                 data-tour-page="contacts"
                 class="h-full w-full"
                 :active-id="activeAgentId ?? ''"
@@ -50,7 +52,7 @@
                 @add="openAgentAdd"
               />
               <ProvidersPanel
-                v-else-if="mainTab === 'providers'"
+                v-if="mainTab === 'providers'"
                 data-tour-page="providers"
                 class="h-full w-full"
                 :active-id="activeProviderId ?? ''"
@@ -60,7 +62,7 @@
                 @delete-provider="onDeleteProvider"
               />
               <ResourcesPanel
-                v-else-if="mainTab === 'resources'"
+                v-if="mainTab === 'resources'"
                 data-tour-page="resources"
                 class="h-full w-full"
                 :active-id="activeResourceId"
@@ -173,23 +175,25 @@
             @back="navigateMobilePath('/settings')"
           />
           <template v-else-if="mobilePage === 'list'">
-            <ChatListPanel
-              v-if="mainTab === 'chat'"
-              data-tour-page="chat"
-              :active-id="activeSessionId ?? ''"
-              @select="selectSession"
-              @delete="onSessionDelete"
-              @settings="navigateMobileRoot('/settings')"
-            />
+            <KeepAlive>
+              <ChatListPanel
+                v-if="mainTab === 'chat'"
+                data-tour-page="chat"
+                :active-id="activeSessionId ?? ''"
+                @select="selectSession"
+                @delete="onSessionDelete"
+                @settings="navigateMobileRoot('/settings')"
+              />
+            </KeepAlive>
             <ContactsPanel
-              v-else-if="mainTab === 'contacts'"
+              v-if="mainTab === 'contacts'"
               data-tour-page="contacts"
               :active-id="activeAgentId ?? ''"
               @select="selectAgent"
               @add="openAgentAdd"
             />
             <ProvidersPanel
-              v-else-if="mainTab === 'providers'"
+              v-if="mainTab === 'providers'"
               data-tour-page="providers"
               :active-id="activeProviderId ?? ''"
               @select-provider="selectProvider"
@@ -198,7 +202,7 @@
               @delete-provider="onDeleteProvider"
             />
             <ResourcesPanel
-              v-else
+              v-if="mainTab === 'resources'"
               data-tour-page="resources"
               :active-id="activeResourceId"
               @select="selectResource"

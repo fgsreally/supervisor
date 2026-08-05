@@ -206,7 +206,7 @@ const rowStyle = computed(() => {
       paddingLeft: `${TREE_ROOT_PX + depth.value * TREE_STEP_PX}px`,
     };
   }
-  return { ...base, paddingLeft: "16px" };
+  return { ...base, paddingLeft: "12px" };
 });
 
 const preview = computed(() =>
@@ -279,6 +279,7 @@ const statusDotClass = computed(() => {
 .session-row {
   max-width: 100%;
   overflow: hidden;
+  background: var(--app-list-bg);
   color: var(--app-text-primary);
 }
 
@@ -354,8 +355,36 @@ const statusDotClass = computed(() => {
 
 .session-preview {
   display: block;
+  width: 0;
+  min-width: 0;
+  flex: 1 1 0%;
   overflow: hidden;
   color: var(--app-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-row > .flex > div:last-child {
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+}
+
+.session-row > .flex {
+  width: 100%;
+}
+
+.session-heading {
+  width: 0;
+  min-width: 0;
+  flex: 1 1 0%;
+  overflow: hidden;
+}
+
+.session-heading .session-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -367,9 +396,20 @@ const statusDotClass = computed(() => {
 @media (max-width: 767px) {
   .session-row {
     min-width: 0;
+    max-width: none;
+    width: 100%;
+    margin-inline: 0;
     padding-top: 8px !important;
     padding-bottom: 8px !important;
     border-bottom: 1px solid var(--app-divider);
+    padding-right: 16px !important;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  .session-row:not(.session-row--child) {
+    padding-left: 16px !important;
   }
 
   .session-row:hover:not(.session-row--active):not(.session-row--achieved),
@@ -383,6 +423,10 @@ const statusDotClass = computed(() => {
   .session-preview {
     min-width: 0;
     max-width: 100%;
+  }
+
+  .session-heading {
+    flex: 1 1 0%;
   }
 }
 </style>

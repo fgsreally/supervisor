@@ -304,7 +304,7 @@ export function handleSessionLifecycleAgentEnd(
   if (hasPendingAsks(String(sessionId))) return;
 
   void (async () => {
-    await maybeRunRollingCompaction(sessionId, runtime, event, parseSessionMeta(session.meta), db);
+    await maybeRunRollingCompaction(String(sessionId), runtime, event, parseSessionMeta(session.meta), db);
     await maybeAutoNameSession(sessionId, event, db);
   })().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);

@@ -15,6 +15,30 @@
         </button>
       </div>
     </header>
+    <div class="mobile-events">
+      <template v-for="project in visibleProjects" :key="`mobile-${project.id}`">
+        <section v-if="laneEvents(project.id).length" class="mobile-events__project">
+          <header>
+            <i :style="{ background: projectColor(project.id) }" />
+            <strong>{{ project.name }}</strong>
+          </header>
+          <button
+            v-for="event in laneEvents(project.id)"
+            :key="event.id"
+            type="button"
+            @click="emit('open-session', event.entityId)"
+          >
+            <span class="mobile-events__dot" :data-status="event.status || 'idle'" />
+            <span class="mobile-events__body">
+              <strong>{{ sessionTitle(event.entityId) }}</strong>
+              <small>{{ formatTime(event.createdAt) }} · {{ eventLabel(event) }}</small>
+            </span>
+            <em>{{ statusLabel(event.status) }}</em>
+          </button>
+        </section>
+      </template>
+      <p v-if="!visibleEvents.length" class="mobile-events__empty">暂无项目事件</p>
+    </div>
     <div class="scroll custom-scrollbar">
       <div class="canvas">
         <div class="axis-label">项目</div>
@@ -97,7 +121,7 @@ const visibleEvents = computed(() =>
       e.projectId &&
       visibleIds.value.has(e.projectId) &&
       e.type === "session" &&
-      sessionMap.value.get(e.entityId)?.showInSessionList,
+      sessionMap.value.get(e.entityId)?.showInSessionList !== false,
   ),
 );
 const range = computed(() => {
@@ -419,6 +443,9 @@ header p {
   margin-right: 5px;
   color: #5e6ad2;
 }
+.mobile-events {
+  display: none;
+}
 @media (max-width: 640px) {
   .timeline {
     overflow: hidden;
@@ -428,6 +455,84 @@ header p {
     display: grid;
     gap: 10px;
     padding: 12px;
+  }
+  .mobile-events {
+    display: grid;
+  }
+  .mobile-events__project > header {
+    display: flex;
+    min-height: 38px;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 12px;
+    border-top: 1px solid var(--app-border-subtle);
+    border-bottom: 0;
+  }
+  .mobile-events__project > header i {
+    width: 8px;
+    height: 8px;
+    border-radius: 3px;
+  }
+  .mobile-events__project > header strong {
+    font-size: 13px;
+  }
+  .mobile-events__project > button {
+    display: flex;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--app-border-subtle);
+    text-align: left;
+  }
+  .mobile-events__dot {
+    width: 10px;
+    height: 10px;
+    flex: none;
+    border-radius: 50%;
+    background: #9ca3af;
+  }
+  .mobile-events__dot[data-status="running"] {
+    background: #3b82f6;
+  }
+  .mobile-events__dot[data-status="finish"] {
+    background: #07c160;
+  }
+  .mobile-events__dot[data-status="blocked"],
+  .mobile-events__dot[data-status="error"] {
+    background: #fa5151;
+  }
+  .mobile-events__body {
+    display: grid;
+    min-width: 0;
+    flex: 1;
+    gap: 2px;
+  }
+  .mobile-events__body strong {
+    overflow: hidden;
+    font-size: 14px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-events__body small {
+    color: var(--app-text-muted);
+    font-size: 11px;
+  }
+  .mobile-events__project > button em {
+    flex: none;
+    color: var(--app-text-secondary);
+    font-size: 11px;
+    font-style: normal;
+  }
+  .mobile-events__empty {
+    padding: 28px 12px;
+    color: var(--app-text-muted);
+    text-align: center;
+    font-size: 13px;
+  }
+  .scroll {
+    display: none;
   }
   .filters {
     justify-content: flex-start;

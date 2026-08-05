@@ -105,6 +105,7 @@ const submitting = ref(false);
 const shake = ref(false);
 const hoveredDigit = ref<PinDigit | null>(null);
 const pressedDigit = ref<PinDigit | null>(null);
+const lastIlluminatedDigit = ref<PinDigit | null>(null);
 const illuminatedDigit = computed(() => pressedDigit.value ?? hoveredDigit.value);
 const startupError = ref("");
 let shakeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -128,8 +129,9 @@ function keyClasses(digit: PinDigit) {
 }
 
 function keyLightStyle(digit: PinDigit) {
-  if (!illuminatedDigit.value || digit === illuminatedDigit.value) return undefined;
-  const source = keyPositions[illuminatedDigit.value];
+  const sourceDigit = illuminatedDigit.value ?? lastIlluminatedDigit.value;
+  if (!sourceDigit || digit === sourceDigit) return undefined;
+  const source = keyPositions[sourceDigit];
   const target = keyPositions[digit];
   const dx = Math.sign(source.x - target.x);
   const dy = Math.sign(source.y - target.y);
@@ -142,6 +144,7 @@ function keyLightStyle(digit: PinDigit) {
 function startHover(digit: PinDigit, event: PointerEvent) {
   if (event.pointerType === "touch") return;
   if (submitting.value || password.value.length >= PIN_LENGTH) return;
+  lastIlluminatedDigit.value = digit;
   hoveredDigit.value = digit;
 }
 
@@ -154,6 +157,7 @@ function stopHover(digit: PinDigit, event?: PointerEvent) {
 function startPress(digit: PinDigit) {
   if (submitting.value || password.value.length >= PIN_LENGTH) return;
   if (pressReleaseTimer) clearTimeout(pressReleaseTimer);
+  lastIlluminatedDigit.value = digit;
   pressedDigit.value = digit;
 }
 
@@ -316,10 +320,10 @@ onUnmounted(() => {
   inset: 0;
   display: flex;
   width: 100%;
-  min-height: 100dvh;
+  height: 100dvh;
   align-items: center;
   justify-content: center;
-  overflow: hidden auto;
+  overflow: hidden;
   background:
     radial-gradient(circle at 50% 38%, rgb(16 45 35 / 48%), transparent 44%),
     linear-gradient(160deg, #07100d 0%, #020806 56%, #06100c 100%);

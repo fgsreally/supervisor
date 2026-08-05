@@ -1,6 +1,6 @@
 import { Type } from "typebox";
 import { sessionServicePortEnv } from "../../../core/session-services.js";
-import type { ExtensionDefinition } from "../../types.js";
+import type { ExtensionDefinition, ExtensionToolCallResult } from "../../types.js";
 import {
   getPersistentBashSession,
   listPersistentBashSessions,
@@ -29,7 +29,7 @@ export default {
         input: Type.Optional(Type.String()),
         tailChars: Type.Optional(Type.Number({ minimum: 1, maximum: 200_000 })),
       }),
-      async execute(params) {
+      async execute(params, _context): Promise<ExtensionToolCallResult> {
         if (params.action === "start") {
           const meta = await ctx.session.meta.get();
           const item = await startPersistentBashSession({

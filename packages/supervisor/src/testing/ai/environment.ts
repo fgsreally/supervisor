@@ -91,16 +91,14 @@ export async function createAiTestEnvironment(
     base_url: subject.baseUrl,
     api_key: subject.apiKey,
   });
-  db.insertModel({
+  const model = db.insertModel({
     provider_id: providerId,
     model_id: subject.model,
     context_window: subject.contextWindow,
-    max_tokens: subject.maxTokens,
   });
   const agent = db.insertAgent({
     name: "AI test subject",
-    provider_id: providerId,
-    model_id: subject.model,
+    model_id: model.id,
     tools_preset: "coding",
     home_dir: join(root, "agent-home"),
   });
@@ -134,7 +132,9 @@ export async function createAiTestEnvironment(
         toolsPreset: input.toolsPreset ?? "coding",
       });
       const events: AgentHarnessEvent[] = [];
-      const unsubscribe = manager.onOutput(session.id, (_sessionId, event) => events.push(event));
+      const unsubscribe = manager.onOutput(session.id, (_sessionId, event) => {
+        if (!event.type.includes(".")) events.push(event as unknown as AgentHarnessEvent);
+      });
       const startedAt = Date.now();
       try {
         await manager.prompt(session.id, input.prompt);

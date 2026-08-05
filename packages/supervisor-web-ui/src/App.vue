@@ -148,8 +148,9 @@
         @navigate="navigateMobileRoot"
       >
         <div class="flex-1 flex flex-col min-w-0">
+          <SearchView v-if="route.path === '/search'" />
           <MobileWorkView
-            v-if="mainTab === 'todo' || mainTab === 'dashboard'"
+            v-else-if="mainTab === 'todo' || mainTab === 'dashboard'"
             :mode="mainTab"
             data-tour-page="work"
             @navigate="navigateMobilePath"
@@ -327,12 +328,13 @@ import ProviderModelEditor from "./components/ProviderModelEditor.vue";
 import ChatView from "./views/ChatView.vue";
 import HomeView from "./views/HomeView.vue";
 import TodoView from "./views/TodoView.vue";
+import SearchView from "./views/SearchView.vue";
+import AddToHomeScreenHint from "./components/AddToHomeScreenHint.vue";
 import GlobalSearchModal from "./components/GlobalSearchModal.vue";
 import UiMessageHost from "./components/UiMessageHost.vue";
 import UiConfirmHost from "./components/UiConfirmHost.vue";
 import UiBusyHost from "./components/UiBusyHost.vue";
 import StartupGate from "./components/StartupGate.vue";
-import AddToHomeScreenHint from "./components/AddToHomeScreenHint.vue";
 import IntroTour from "./components/IntroTour.vue";
 import MobileAppShell from "./components/mobile/MobileAppShell.vue";
 import MobileMeView from "./components/mobile/MobileMeView.vue";

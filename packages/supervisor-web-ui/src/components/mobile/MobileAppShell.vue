@@ -108,14 +108,6 @@ const activeTab = computed<MobilePrimaryTab>(() => {
   color: var(--m-accent);
 }
 
-.mobile-tabbar__item:nth-child(4) .mobile-tabbar__icon {
-  color: #7b61c9;
-}
-
-.mobile-tabbar__item--active:nth-child(4) .mobile-tabbar__icon {
-  color: #a78bfa;
-}
-
 .mobile-tabbar__icon {
   width: 22px;
   height: 22px;

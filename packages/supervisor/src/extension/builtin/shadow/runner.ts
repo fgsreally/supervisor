@@ -46,7 +46,7 @@ function formatHarnessMessages(messages: unknown[]): string {
 }
 
 function resolveShadowAgentId(db: SupervisorDb): number | null {
-  return findPackagedAgentId(db, "shadow") ?? findPackagedAgentId(db, "watson") ?? null;
+  return findPackagedAgentId(db, "shadow") ?? null;
 }
 
 export async function runShadow(

@@ -12,7 +12,7 @@ export function getPackagedAgentsDir(): string {
   throw new Error(`Packaged agents directory not found: ${candidates.join(", ")}`);
 }
 
-export function loadBuiltinAgentPrompt(kind: PackagedAgentKind | "assistant"): string {
+export function loadBuiltinAgentPrompt(kind: PackagedAgentKind | "assistant" | "watson"): string {
   const filePath = join(getPackagedAgentsDir(), kind, "prompt.md");
   if (!existsSync(filePath)) {
     throw new Error(`Missing packaged agent prompt: ${filePath}`);

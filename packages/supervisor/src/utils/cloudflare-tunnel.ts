@@ -44,14 +44,7 @@ export async function startQuickTunnel(port: number): Promise<QuickTunnel> {
   return new Promise<QuickTunnel>((resolve, reject) => {
     const proc: ChildProcess = spawn(
       binPath,
-      [
-        "tunnel",
-        "--url",
-        `http://127.0.0.1:${port}`,
-        "--protocol",
-        "http2",
-        "--no-autoupdate",
-      ],
+      ["tunnel", "--url", `http://127.0.0.1:${port}`, "--protocol", "http2", "--no-autoupdate"],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
 
@@ -137,7 +130,7 @@ export function getLanIPv4(): string | null {
 }
 
 function isVirtualInterface(name: string): boolean {
-  return /^(docker|br-|veth|vEthernet|vmnet|VMware|VirtualBox|vboxnet|Hyper-V|Default Switch|WSL|tun|tap|singbox|sing-box|clash|utun|tailscale|Tailscale|ZeroTier|zt|wg|wireguard|ham|Hamachi|npcap|lo)/i.test(
+  return /^(docker|br-|veth|vEthernet|vgate|wintun|vmnet|VMware|VirtualBox|vboxnet|Hyper-V|Default Switch|WSL|tun|tap|singbox|sing-box|clash|utun|tailscale|Tailscale|ZeroTier|zt|wg|wireguard|ham|Hamachi|npcap|lo)/i.test(
     name,
   );
 }

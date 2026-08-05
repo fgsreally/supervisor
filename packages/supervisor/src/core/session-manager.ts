@@ -43,6 +43,7 @@ import {
 } from "../agent/resource-resolver.js";
 import { findPackagedAgentId, loadPackagedAgentPrompt } from "../agent/index.js";
 import { attachHomeTaskSessionSync } from "./home-task-sync.js";
+import { listSessionTimers, type SessionTimer } from "./session-timers.js";
 import {
   buildTodoPlanPrompt,
   parseTodoPlanResult,
@@ -100,7 +101,11 @@ import {
   rewindSessionToCheckpoint,
 } from "./session-history.js";
 import { commitSessionChanges } from "./session-lifecycle.js";
-import { SessionRuntime, type SessionState } from "./session-runtime.js";
+import {
+  harnessAgentController,
+  SessionRuntime,
+  type SessionState,
+} from "./session-runtime.js";
 import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
 import type {
   ExternalInteractionRequest,
@@ -266,12 +271,20 @@ function rowToSession(row: SessionRow, _db?: unknown): Session {
   return mapRowToSession(row);
 }
 
+function toHarnessThinkingLevel(level: Session["thinkingLevel"]): ThinkingLevel {
+  return level === "none" ? "off" : level;
+}
+
+function toSessionThinkingLevel(level: ThinkingLevel): Session["thinkingLevel"] {
+  return level === "low" || level === "medium" || level === "high" ? level : "none";
+}
+
 /** Seed session avatar.icon from the linked agent when the client did not set one. */
 function withDefaultSessionAvatar(
   avatar: SessionAvatar | null | undefined,
-  agent: { name: string; icon: string | null } | null | undefined,
+  agent: { name: string; avatar: string | null } | null | undefined,
 ): SessionAvatar | null {
-  const icon = typeof agent?.icon === "string" ? agent.icon.trim() : "";
+  const icon = typeof agent?.avatar === "string" ? agent.avatar.trim() : "";
   if (!icon) return avatar ?? null;
 
   const existingIcon = typeof avatar?.icon === "string" ? avatar.icon.trim() : "";
@@ -334,6 +347,7 @@ export class SessionManager {
     for (const input of this.db.listPersistedSessionInputs()) {
       this.sessionInputQueues.enqueue(input.sessionId, {
         ...input,
+        source: null,
         images: input.images as SessionPromptImage[] | undefined,
       });
     }
@@ -544,7 +558,7 @@ export class SessionManager {
           willAttemptOverflowRecovery(
             sessionId,
             llmError,
-            runtime.harness.agent.state.model as never,
+            runtime.harness.getModel() as never,
           );
 
         if (llmError && !overflowRecovery && !hasPendingAsks(sessionId)) {
@@ -750,12 +764,14 @@ export class SessionManager {
         getApiKeyAndHeaders: async (m) => {
           const envKey = getEnvApiKey(m.provider);
           if (envKey) return { apiKey: envKey };
-          const provider = this.db.getProvider(m.provider);
+          const provider = this.db
+            .listProviders()
+            .find((item) => item.slug === m.provider || item.name === m.provider);
           if (provider?.apiKey) return { apiKey: provider.apiKey };
           return undefined;
         },
       });
-      await harness.setThinkingLevel(session.thinkingLevel);
+      await harness.setThinkingLevel(toHarnessThinkingLevel(session.thinkingLevel));
 
       const runtime = new SessionRuntime({
         session,
@@ -1059,12 +1075,14 @@ export class SessionManager {
         getApiKeyAndHeaders: async (m) => {
           const envKey = getEnvApiKey(m.provider);
           if (envKey) return { apiKey: envKey };
-          const provider = this.db.getProvider(m.provider);
+          const provider = this.db
+            .listProviders()
+            .find((item) => item.slug === m.provider || item.name === m.provider);
           if (provider?.apiKey) return { apiKey: provider.apiKey };
           return undefined;
         },
       });
-      await harness.setThinkingLevel(activeSession.thinkingLevel);
+      await harness.setThinkingLevel(toHarnessThinkingLevel(activeSession.thinkingLevel));
 
       const runtime = new SessionRuntime({
         session: activeSession,
@@ -1654,7 +1672,7 @@ export class SessionManager {
 
   async setThinkingLevel(id: number, level: ThinkingLevel): Promise<void> {
     await (await this.getOrRestoreRuntime(id)).setThinkingLevel(level);
-    this.db.updateThinkingLevel(id, level);
+    this.db.updateThinkingLevel(id, toSessionThinkingLevel(level));
   }
 
   async getState(id: number): Promise<SessionState> {
@@ -1667,14 +1685,14 @@ export class SessionManager {
     const agent = session.agentId == null ? undefined : this.db.getAgent(session.agentId);
     return {
       id: session.id,
-      sessionId: session.sessionId,
+      sessionId: session.externalSessionId,
       cwd: session.cwd,
       status: session.status,
       model: {
         provider: agent?.backendType ?? "native",
         modelId: agent?.name ?? "unknown",
       },
-      thinkingLevel: session.thinkingLevel,
+      thinkingLevel: toHarnessThinkingLevel(session.thinkingLevel),
       isStreaming: session.status === "running",
       messageCount: 0,
       leafId: session.leafId,
@@ -2305,7 +2323,6 @@ export class SessionManager {
             sessionId: id,
             cwd: session.cwd,
             projectCwd,
-            meta: parseSessionMeta(row.meta),
           })
         : null;
     const services = meta ? parseSessionServicesMeta(meta) : null;
@@ -2729,10 +2746,7 @@ export class SessionManager {
     }
 
     await runtime.reloadMessagesFromSessionTree();
-    const agent = runtime.harness.agent as {
-      state: { messages: AgentMessage[] };
-      continue?: () => Promise<void>;
-    };
+    const agent = harnessAgentController(runtime.harness);
     while (agent.state.messages.length > 0) {
       const last = agent.state.messages[agent.state.messages.length - 1];
       if (last?.role !== "assistant") break;
@@ -2754,9 +2768,13 @@ export class SessionManager {
 
   searchMessages(
     query: string,
-    filter?: { sessionId?: string; role?: string; limit?: number },
+    filter?: { sessionId?: number; role?: string; limit?: number },
   ): MessageSearchHit[] {
     return this.db.searchMessages(query, filter);
+  }
+
+  listTimers(sessionId: number): SessionTimer[] {
+    return listSessionTimers(this.db, sessionId);
   }
 
   updateAgentMeta(id: number, patch: Record<string, unknown>): Record<string, unknown> {

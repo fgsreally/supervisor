@@ -134,9 +134,9 @@ html[data-app-style="wechat"][data-theme="dark"] {
 
 @media (max-width: 767px) {
   html[data-app-style="wechat"][data-theme="light"] {
-    --m-page-bg: #fff;
-    --m-surface: #f7f7f7;
-    --m-header-bg: rgb(255 255 255 / 94%);
+    --m-page-bg: #ededed;
+    --m-surface: #fff;
+    --m-header-bg: rgb(237 237 237 / 94%);
     --m-text-primary: rgb(0 0 0 / 90%);
     --m-text-secondary: rgb(0 0 0 / 55%);
     --m-text-muted: rgb(0 0 0 / 30%);
@@ -152,6 +152,12 @@ html[data-app-style="wechat"][data-theme="dark"] {
     --m-focus-ring: #07c160;
     --m-bubble-assistant: #ededf0;
     --m-bubble-user: #a8eda1;
+    --app-shell-bg: #ededed;
+    --app-list-bg: #ededed;
+    --app-list-header-bg: #ededed;
+    --app-list-section-bg: #ededed;
+    --app-settings-bg: #ededed;
+    --app-settings-card: #fff;
   }
 
   html[data-app-style="wechat"][data-theme="dark"] {
@@ -204,7 +210,7 @@ html[data-app-style="wechat"][data-theme="dark"] {
   }
 
   html[data-app-style="wechat"] .mobile-me__icon {
-    color: var(--m-icon) !important;
-    background: transparent !important;
+    color: #fff !important;
+    background: var(--m-feature-color) !important;
   }
 }

@@ -54,7 +54,7 @@
 
       <div class="flex-1 min-w-0">
         <div class="flex items-center justify-between gap-2">
-          <div class="flex items-center gap-1.5 min-w-0">
+          <div class="session-heading flex items-center gap-1.5 min-w-0">
             <span
               class="text-[13px] font-medium truncate session-name"
               :class="{ 'session-name--achieved': isAchieved }"
@@ -356,5 +356,20 @@ const statusDotClass = computed(() => {
 
 .session-time {
   color: var(--app-text-muted);
+}
+
+@media (max-width: 767px) {
+  .session-row {
+    min-width: 0;
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .session-heading,
+  .session-name,
+  .session-preview {
+    min-width: 0;
+    max-width: 100%;
+  }
 }
 </style>

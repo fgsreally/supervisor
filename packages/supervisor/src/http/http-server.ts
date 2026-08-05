@@ -8,7 +8,7 @@ import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import { t } from "elysia";
 import { getSupervisorAgentsRoot, isBuiltinAgent } from "../agent/index.js";
 import { normalizeApiProtocol } from "../config/api-protocol.js";
-import type { ExtensionEvent } from "../extension/index.js";
+import type { ApprovalResult, ExtensionEvent } from "../extension/index.js";
 import type { SessionManager } from "../core/session-manager.js";
 import { getProjectDir, getSessionDir } from "../core/session-files.js";
 import {
@@ -72,7 +72,7 @@ import { listWorkspaceFiles } from "./workspace-files.js";
 import { listSessionWorkspaceFiles, readSessionWorkspaceFile } from "./session-workspace-files.js";
 import { readSessionLog } from "../utils/session-log.js";
 import { pickDirectory } from "../utils/pick-directory.js";
-import { listSessionTimers, sessionTimersToScheduleDto } from "../core/session-timers.js";
+import { sessionTimersToScheduleDto } from "../core/session-timers.js";
 
 /** Strip apiKey before sending provider to clients. */
 function toProviderResponse(p: Provider): Omit<Provider, "apiKey"> & { apiKey: null } {
@@ -367,7 +367,9 @@ export function createHttpServer(
   });
 
   app.post("/home/goal-events", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const objective = typeof body?.objective === "string" ? body.objective.trim() : "";
     if (!objective) return jsonError(c, 400, "objective is required");
     const now = Date.now();
@@ -387,7 +389,9 @@ export function createHttpServer(
   });
 
   app.post("/home/daily-work/run", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const dayKey =
       typeof body?.day === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.day)
         ? body.day
@@ -424,7 +428,7 @@ export function createHttpServer(
   });
 
   app.post("/home/tasks", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body.title !== "string" || !body.title.trim()) {
       return jsonError(c, 400, "title is required");
     }
@@ -456,7 +460,7 @@ export function createHttpServer(
   app.patch("/home/tasks/:id", async (c) => {
     const id = Number.parseInt(c.req.param("id"), 10);
     if (!Number.isFinite(id)) return jsonError(c, 400, "invalid task id");
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
     try {
       const patch: Record<string, unknown> = {};
@@ -588,7 +592,7 @@ export function createHttpServer(
   });
 
   app.patch("/settings", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
     const patch: Record<string, unknown> = {};
     if (body.utilityProvider !== undefined) {
@@ -651,6 +655,7 @@ export function createHttpServer(
     }
     if (body.webSearchProvider !== undefined) {
       if (
+        typeof body.webSearchProvider !== "string" ||
         !["duckduckgo", "tavily", "brave", "serper", "firecrawl"].includes(body.webSearchProvider)
       ) {
         return jsonError(c, 400, "invalid webSearchProvider");
@@ -659,6 +664,7 @@ export function createHttpServer(
     }
     if (body.webFetchProvider !== undefined) {
       if (
+        typeof body.webFetchProvider !== "string" ||
         !["native", "tavily", "firecrawl", "native-then-tavily", "native-then-firecrawl"].includes(
           body.webFetchProvider,
         )
@@ -696,7 +702,10 @@ export function createHttpServer(
       patch[savedField] = body[bodyField] ? encryptApiKey(body[bodyField]) : undefined;
     }
     if (body.speechRecognitionMode !== undefined) {
-      if (!["browser", "qwen", "doubao"].includes(body.speechRecognitionMode)) {
+      if (
+        typeof body.speechRecognitionMode !== "string" ||
+        !["browser", "qwen", "doubao"].includes(body.speechRecognitionMode)
+      ) {
         return jsonError(c, 400, "invalid speechRecognitionMode");
       }
       patch.speechRecognitionMode = body.speechRecognitionMode;
@@ -765,7 +774,7 @@ export function createHttpServer(
   });
 
   app.post("/settings/test-api-key", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     const providers: ApiKeyProvider[] = [
       "qwen",
       "doubao",
@@ -774,16 +783,22 @@ export function createHttpServer(
       "serper",
       "firecrawl",
     ];
-    if (!body || !providers.includes(body.provider)) return jsonError(c, 400, "invalid provider");
+    if (
+      !body ||
+      typeof body.provider !== "string" ||
+      !providers.includes(body.provider as ApiKeyProvider)
+    )
+      return jsonError(c, 400, "invalid provider");
+    const providerName = body.provider as ApiKeyProvider;
     const settings = readSupervisorSettings();
     try {
       let apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
-      if (!apiKey && body.provider === "qwen" && settings.speechApiKeyEncrypted) {
+      if (!apiKey && providerName === "qwen" && settings.speechApiKeyEncrypted) {
         apiKey = decryptApiKey(settings.speechApiKeyEncrypted);
-      } else if (!apiKey && body.provider === "doubao" && settings.doubaoSpeechApiKeyEncrypted) {
+      } else if (!apiKey && providerName === "doubao" && settings.doubaoSpeechApiKeyEncrypted) {
         apiKey = decryptApiKey(settings.doubaoSpeechApiKeyEncrypted);
-      } else if (!apiKey && !["qwen", "doubao"].includes(body.provider)) {
-        const name = body.provider as "tavily" | "brave" | "serper" | "firecrawl";
+      } else if (!apiKey && !["qwen", "doubao"].includes(providerName)) {
+        const name = providerName as "tavily" | "brave" | "serper" | "firecrawl";
         const envNames = {
           tavily: settings.tavilyApiKeyEnv ?? "TAVILY_API_KEY",
           brave: settings.braveApiKeyEnv ?? "BRAVE_API_KEY",
@@ -799,7 +814,7 @@ export function createHttpServer(
         apiKey = resolveApiKey(name, envNames[name], encrypted[name]);
       }
       if (!apiKey) return jsonError(c, 409, "API key is not configured");
-      await testApiKey(body.provider, apiKey, { resourceId: settings.doubaoSpeechResourceId });
+      await testApiKey(providerName, apiKey, { resourceId: settings.doubaoSpeechResourceId });
       return c.json({ ok: true });
     } catch (error) {
       return jsonError(c, 409, error instanceof Error ? error.message : String(error));
@@ -817,7 +832,9 @@ export function createHttpServer(
 
   // POST /system/pick-directory — native folder dialog on the supervisor host
   app.post("/system/pick-directory", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const defaultPath = typeof body.defaultPath === "string" ? body.defaultPath : undefined;
     try {
       const path = pickDirectory(defaultPath);
@@ -839,7 +856,9 @@ export function createHttpServer(
 
   // POST /agents
   app.post("/agents", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       if (!body.name || typeof body.name !== "string") {
         return jsonError(c, 400, "name is required");
@@ -851,7 +870,11 @@ export function createHttpServer(
         body.backendType === "acp"
           ? body.backendType
           : "native";
-      if (backendType === "acp" && typeof body.externalConfig?.command !== "string") {
+      const externalConfig =
+        body.externalConfig && typeof body.externalConfig === "object"
+          ? (body.externalConfig as Record<string, unknown>)
+          : undefined;
+      if (backendType === "acp" && typeof externalConfig?.command !== "string") {
         return jsonError(c, 400, "externalConfig.command is required for ACP agents");
       }
       if (backendType === "native" && !Number.isSafeInteger(body.modelId)) {
@@ -860,18 +883,26 @@ export function createHttpServer(
       const agent = manager.insertAgent(
         {
           name: body.name,
-          description: body.description,
-          avatar: body.avatar,
+          description: typeof body.description === "string" ? body.description : null,
+          avatar: typeof body.avatar === "string" ? body.avatar : null,
           backend_type: backendType,
-          model_id: body.modelId,
-          tools_preset: body.toolsPreset,
-          home_dir: body.homeDir,
-          external_config: body.externalConfig ? JSON.stringify(body.externalConfig) : null,
+          model_id: typeof body.modelId === "number" ? body.modelId : null,
+          tools_preset:
+            body.toolsPreset === "coding" ||
+            body.toolsPreset === "readonly" ||
+            body.toolsPreset === "none"
+              ? body.toolsPreset
+              : undefined,
+          home_dir: typeof body.homeDir === "string" ? body.homeDir : null,
+          external_config: externalConfig ? JSON.stringify(externalConfig) : null,
           permission_rules:
             backendType === "native" ? normalizeAgentPermissionRules(body.permissionRules) : {},
-          meta: body.meta,
+          meta:
+            body.meta && typeof body.meta === "object"
+              ? (body.meta as Record<string, unknown>)
+              : undefined,
         },
-        { systemMd: body.systemPrompt },
+        { systemMd: typeof body.systemPrompt === "string" ? body.systemPrompt : undefined },
       );
       return c.json(agent, 201);
     } catch (e: unknown) {
@@ -882,7 +913,9 @@ export function createHttpServer(
 
   // PATCH /agents/:id
   app.patch("/agents/:id", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid agent id");
@@ -891,15 +924,30 @@ export function createHttpServer(
       });
       if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
       const current = manager.getAgent(id);
+      const externalConfig =
+        body.externalConfig && typeof body.externalConfig === "object"
+          ? (body.externalConfig as Record<string, unknown>)
+          : undefined;
       const agent = manager.updateAgent(id, {
-        name: body.name,
-        description: body.description,
-        avatar: body.avatar,
-        model_id: body.modelId,
-        tools_preset: body.toolsPreset,
-        home_dir: body.homeDir,
+        name: typeof body.name === "string" ? body.name : undefined,
+        description:
+          typeof body.description === "string" || body.description === null
+            ? body.description
+            : undefined,
+        avatar:
+          typeof body.avatar === "string" || body.avatar === null ? body.avatar : undefined,
+        model_id:
+          typeof body.modelId === "number" || body.modelId === null ? body.modelId : undefined,
+        tools_preset:
+          body.toolsPreset === "coding" ||
+          body.toolsPreset === "readonly" ||
+          body.toolsPreset === "none"
+            ? body.toolsPreset
+            : undefined,
+        home_dir:
+          typeof body.homeDir === "string" || body.homeDir === null ? body.homeDir : undefined,
         external_config:
-          body.externalConfig === undefined ? undefined : JSON.stringify(body.externalConfig),
+          body.externalConfig === undefined ? undefined : JSON.stringify(externalConfig ?? {}),
         permission_rules:
           current?.backendType === "native" && body.permissionRules !== undefined
             ? JSON.stringify(normalizeAgentPermissionRules(body.permissionRules))
@@ -978,7 +1026,9 @@ export function createHttpServer(
 
   // PUT /agents/:id/system-md — allowed for built-in agents (prompt customization)
   app.put("/agents/:id/system-md", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     if (typeof body.content !== "string") {
       return jsonError(c, 400, "content is required");
     }
@@ -1007,7 +1057,9 @@ export function createHttpServer(
 
   // PATCH /agents/:id/meta
   app.patch("/agents/:id/meta", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid agent id");
@@ -1053,7 +1105,9 @@ export function createHttpServer(
     const provider = manager.getProvider(providerId);
     if (!provider) return jsonError(c, 404, "provider not found");
 
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     if (typeof body.modelId !== "string" || !body.modelId.trim()) {
       return jsonError(c, 400, "modelId is required");
     }
@@ -1080,7 +1134,9 @@ export function createHttpServer(
     if (!provider) return jsonError(c, 404, "provider not found");
     if (!manager.getModel(providerId, modelId)) return jsonError(c, 404, "model not found");
 
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const patch: Parameters<typeof manager.updateModel>[2] = {};
     if (typeof body.name === "string") patch.name = body.name.trim() || modelId;
     if (typeof body.contextWindow === "number") patch.contextWindow = body.contextWindow;
@@ -1117,7 +1173,9 @@ export function createHttpServer(
 
   // PATCH /providers/:id — supports provider configuration updates.
   app.patch("/providers/:id", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const id = parseInt(c.req.param("id"), 10);
     if (isNaN(id)) return jsonError(c, 400, "invalid provider id");
     const provider = manager.getProvider(id);
@@ -1143,7 +1201,9 @@ export function createHttpServer(
 
   // POST /providers — create a new provider
   app.post("/providers", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       if (!body.name || typeof body.name !== "string") {
         return jsonError(c, 400, "name is required");
@@ -1160,9 +1220,9 @@ export function createHttpServer(
         name: body.name,
         icon: typeof body.icon === "string" ? body.icon : null,
         protocol,
-        baseUrl: body.baseUrl,
-        apiKey: body.apiKey,
-        isEnabled: body.isEnabled,
+        baseUrl: typeof body.baseUrl === "string" || body.baseUrl === null ? body.baseUrl : null,
+        apiKey: typeof body.apiKey === "string" || body.apiKey === null ? body.apiKey : null,
+        isEnabled: typeof body.isEnabled === "boolean" ? body.isEnabled : undefined,
       });
       return c.json(toProviderResponse(provider), 201);
     } catch (e: unknown) {
@@ -1193,7 +1253,9 @@ export function createHttpServer(
   });
 
   app.post("/projects", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     if (typeof body.cwd !== "string" || !body.cwd.trim()) {
       return jsonError(c, 400, "cwd is required");
     }
@@ -1201,10 +1263,6 @@ export function createHttpServer(
       const project = manager.createProject({
         cwd: body.cwd,
         name: typeof body.name === "string" ? body.name : undefined,
-        meta:
-          typeof body.meta === "object" && body.meta !== null
-            ? (body.meta as Record<string, unknown>)
-            : undefined,
       });
       return c.json(project, 201);
     } catch (e: unknown) {
@@ -1225,7 +1283,9 @@ export function createHttpServer(
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid project id");
     if (!manager.getProject(id)) return jsonError(c, 404, "not found");
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const patch: { name?: string; meta?: Record<string, unknown> } = {};
     if (typeof body.name === "string") {
       if (!body.name.trim()) return jsonError(c, 400, "name cannot be empty");
@@ -1250,7 +1310,7 @@ export function createHttpServer(
     if (id === null) return jsonError(c, 400, "invalid project id");
     const project = manager.getProject(id);
     if (!project) return jsonError(c, 404, "not found");
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object" || body.name !== project.name) {
       return jsonError(c, 400, "请输入正确的项目名以确认删除");
     }
@@ -1317,7 +1377,9 @@ export function createHttpServer(
     if (id === null) return jsonError(c, 400, "invalid project id");
     const project = manager.getProject(id);
     if (!project) return jsonError(c, 404, "not found");
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const branch = typeof body?.branch === "string" ? body.branch : "";
     if (!branch.trim()) return jsonError(c, 400, "branch is required");
     try {
@@ -1475,7 +1537,7 @@ export function createHttpServer(
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, "session not found");
     try {
-      const form = await c.req.parseBody({ all: true });
+      const form = await c.req.parseBody();
       const file = form.file;
       if (!file || typeof file === "string") {
         return jsonError(c, 400, "file is required");
@@ -1614,7 +1676,7 @@ export function createHttpServer(
 
   // POST /external-sessions/import — import history and resume in a new worktree.
   app.post("/external-sessions/import", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (
       !body ||
       (body.backend !== "codex" && body.backend !== "claude") ||
@@ -1690,7 +1752,9 @@ export function createHttpServer(
 
   // POST /sessions  — spawn a new session
   app.post("/sessions", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     if (
       body.meta &&
       typeof body.meta === "object" &&
@@ -1729,14 +1793,21 @@ export function createHttpServer(
       const session = await manager.spawn({
         projectId,
         parentId,
-        cwd: body.cwd,
-        meta: body.meta,
-        systemPrompt: body.systemPrompt,
-        instructions: body.instructions,
-        provider: body.provider,
-        model: body.model,
-        toolsPreset: body.toolsPreset,
-        tools: body.tools,
+        cwd: typeof body.cwd === "string" ? body.cwd : undefined,
+        meta:
+          body.meta && typeof body.meta === "object"
+            ? (body.meta as Record<string, unknown>)
+            : undefined,
+        systemPrompt: typeof body.systemPrompt === "string" ? body.systemPrompt : undefined,
+        instructions: typeof body.instructions === "string" ? body.instructions : undefined,
+        provider: typeof body.provider === "string" ? body.provider : undefined,
+        model: typeof body.model === "string" ? body.model : undefined,
+        toolsPreset:
+          body.toolsPreset === "coding" ||
+          body.toolsPreset === "readonly" ||
+          body.toolsPreset === "none"
+            ? body.toolsPreset
+            : undefined,
         agentId,
         // Return as `initializing` so the UI can show readiness; worktree/runtime finish in background.
         awaitReady: false,
@@ -1790,7 +1861,7 @@ export function createHttpServer(
 
   // POST /sessions/:id/prompt  — send a prompt to session
   app.post("/sessions/:id/prompt", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object" || typeof body.message !== "string") {
       return jsonError(c, 400, "invalid body, requires { message: string }");
     }
@@ -1805,6 +1876,7 @@ export function createHttpServer(
     const sessionId = parseIntegerId(c.req.param("id"));
     if (sessionId === null) return jsonError(c, 400, "invalid session id");
     const clientId = randomUUID();
+    const promptMessage = body.message;
     emitSessionExtensionEvent(manager, sessionId, {
       type: "http.request",
       method: "POST",
@@ -1853,7 +1925,7 @@ export function createHttpServer(
       try {
         await writeSse({ type: "started", sessionId });
         const disposition = await manager.submitSessionInput(sessionId, {
-          message: body.message,
+          message: promptMessage,
           images,
           source,
           level,
@@ -1896,7 +1968,7 @@ export function createHttpServer(
 
   // POST /sessions/:id/steer — steer the active turn
   app.post("/sessions/:id/steer", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object" || typeof body.message !== "string") {
       return jsonError(c, 400, "invalid body, requires { message: string }");
     }
@@ -1917,7 +1989,7 @@ export function createHttpServer(
 
   // POST /sessions/:id/follow-up — enqueue a follow-up for the active turn
   app.post("/sessions/:id/follow-up", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object" || typeof body.message !== "string") {
       return jsonError(c, 400, "invalid body, requires { message: string }");
     }
@@ -1992,7 +2064,7 @@ export function createHttpServer(
     if (!session) return jsonError(c, 404, `Session ${id} not found`);
     return c.json({
       jobs: manager.jobs.list(id, { limit: 50 }),
-      schedules: sessionTimersToScheduleDto(id, listSessionTimers(manager.db, id)),
+      schedules: sessionTimersToScheduleDto(id, manager.listTimers(id)),
     });
   });
 
@@ -2001,7 +2073,9 @@ export function createHttpServer(
     if (id === null) return jsonError(c, 400, "invalid session id");
     const job = manager.jobs.get(c.req.param("jobId"));
     if (!job || job.sessionId !== id) return jsonError(c, 404, "Job not found");
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     if (typeof body.input !== "string" || !body.input) {
       return jsonError(c, 400, "input is required");
     }
@@ -2046,7 +2120,9 @@ export function createHttpServer(
   app.post("/sessions/:id/bash-sessions/:bashId/input", async (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     if (typeof body.input !== "string" || !body.input) {
       return jsonError(c, 400, "input is required");
     }
@@ -2076,7 +2152,9 @@ export function createHttpServer(
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
-      const body = await c.req.json().catch(() => ({}));
+      const body = await c.req
+        .json<Record<string, unknown>>()
+        .catch((): Record<string, unknown> => ({}));
       const result = await manager.abort(id, {
         retractIfNoAssistant: body?.retractIfNoAssistant === true,
       });
@@ -2101,7 +2179,9 @@ export function createHttpServer(
 
   // POST /sessions/:id/compact — compact SQLite-backed conversation context
   app.post("/sessions/:id/compact", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
@@ -2118,7 +2198,9 @@ export function createHttpServer(
 
   // POST /sessions/:id/checkpoints — create conversation + code checkpoint
   app.post("/sessions/:id/checkpoints", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
@@ -2146,7 +2228,7 @@ export function createHttpServer(
 
   // POST /sessions/:id/rewind — rewind to checkpoint (code + conversation leaf)
   app.post("/sessions/:id/rewind", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (
       !body ||
       typeof body !== "object" ||
@@ -2160,7 +2242,7 @@ export function createHttpServer(
       const session =
         typeof body.entryId === "string"
           ? await manager.rewindToEntry(id, body.entryId)
-          : await manager.rewindToCheckpoint(id, body.checkpointId);
+          : await manager.rewindToCheckpoint(id, body.checkpointId as string);
       return c.json(session);
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -2170,7 +2252,9 @@ export function createHttpServer(
 
   // POST /sessions/:id/commit — explicit git commit (not tied to conversation turns)
   app.post("/sessions/:id/commit", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
@@ -2186,7 +2270,7 @@ export function createHttpServer(
 
   // POST /sessions/:id/model — switch model for a running session
   app.post("/sessions/:id/model", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (
       !body ||
       typeof body !== "object" ||
@@ -2208,7 +2292,7 @@ export function createHttpServer(
 
   // POST /sessions/:id/thinking-level — switch thinking level for a running session
   app.post("/sessions/:id/thinking-level", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object" || typeof body.level !== "string") {
       return jsonError(c, 400, "invalid body, requires { level: string }");
     }
@@ -2246,7 +2330,6 @@ export function createHttpServer(
       sessionId,
       cwd: session.cwd,
       projectCwd,
-      meta: session.meta,
     });
     if (!git) return c.json([]);
     const mergeBase = await getCurrentBranch(git.repoRoot);
@@ -2256,7 +2339,7 @@ export function createHttpServer(
   app.put("/sessions/:id/subagents", async (c) => {
     const sessionId = parseIntegerId(c.req.param("id"));
     if (sessionId === null) return jsonError(c, 400, "invalid session id");
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!Array.isArray(body?.agentIds) || !body.agentIds.every(Number.isInteger)) {
       return jsonError(c, 400, "agentIds must be an array of integers");
     }
@@ -2308,7 +2391,7 @@ export function createHttpServer(
   });
 
   app.post("/sessions/:id/commands", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body.command !== "string" || !body.command.trim()) {
       return jsonError(c, 400, "invalid body, requires { command: string, argument?: string }");
     }
@@ -2360,7 +2443,7 @@ export function createHttpServer(
   });
 
   app.post("/sessions/:id/external/codex/settings", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body.model !== "string" || !body.model.trim()) {
       return jsonError(c, 400, "invalid body, requires { model: string, effort?: string }");
     }
@@ -2378,7 +2461,7 @@ export function createHttpServer(
   });
 
   app.post("/sessions/:id/external/codex/commands", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body.command !== "string" || !body.command.trim()) {
       return jsonError(c, 400, "invalid body, requires { command: string, argument?: string }");
     }
@@ -2460,7 +2543,7 @@ export function createHttpServer(
 
   // POST /sessions/:id/send  — deprecated RPC passthrough
   app.post("/sessions/:id/send", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
     try {
       const id = parseIntegerId(c.req.param("id"));
@@ -2478,7 +2561,7 @@ export function createHttpServer(
   // onto the sessions row and merges the remaining keys into meta. Returns the
   // full updated Session so the client can sync columns and meta in one shot.
   app.patch("/sessions/:id/meta", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
     if (hasAgentManagedTaskMeta(body)) {
       return jsonError(c, 403, "tasks, currentTask, and todos are managed by the Agent");
@@ -2518,7 +2601,7 @@ export function createHttpServer(
 
   // PUT /sessions/:id/meta  — replace meta entirely
   app.put("/sessions/:id/meta", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
     if (hasAgentManagedTaskMeta(body)) {
       return jsonError(c, 403, "tasks, currentTask, and todos are managed by the Agent");
@@ -2551,7 +2634,7 @@ export function createHttpServer(
   });
 
   app.patch("/sessions/:id/workflow", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
     try {
       const id = parseIntegerId(c.req.param("id"));
@@ -2578,7 +2661,7 @@ export function createHttpServer(
 
   // PATCH /sessions/:id/messages/:messageId/meta — merge message meta
   app.patch("/sessions/:id/messages/:messageId/meta", async (c) => {
-    const body = await c.req.json().catch(() => null);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
     if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
     try {
       const id = parseIntegerId(c.req.param("id"));
@@ -2617,13 +2700,19 @@ export function createHttpServer(
 
   // POST /sessions/:id/fork — fork session from a message
   app.post("/sessions/:id/fork", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
+      if (typeof body.entryId !== "string") {
+        return jsonError(c, 400, "entryId is required");
+      }
       const session = await manager.fork(id, body.entryId, {
-        label: body.label,
-        customInstructions: body.customInstructions,
+        label: typeof body.label === "string" ? body.label : undefined,
+        customInstructions:
+          typeof body.customInstructions === "string" ? body.customInstructions : undefined,
       });
       return c.json(session, 201);
     } catch (e: unknown) {
@@ -2704,7 +2793,9 @@ export function createHttpServer(
 
   // POST /sessions/:id/ask-answer — resolve pending ask tool
   app.post("/sessions/:id/ask-answer", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const toolCallId = body.toolCallId;
     const answers = body.answers;
     if (!toolCallId || typeof toolCallId !== "string") {
@@ -2727,13 +2818,18 @@ export function createHttpServer(
 
   // POST /sessions/:id/approval-resolve — resolve pending extension UI approval
   app.post("/sessions/:id/approval-resolve", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const approvalId = body.approvalId;
-    const result = body.result;
+    const result =
+      body.result && typeof body.result === "object"
+        ? (body.result as Record<string, unknown>)
+        : null;
     if (!approvalId || typeof approvalId !== "string") {
       return jsonError(c, 400, "approvalId is required");
     }
-    if (!result || typeof result !== "object" || typeof result.action !== "string") {
+    if (!result || typeof result.action !== "string") {
       return jsonError(c, 400, "result.action is required");
     }
     if (!["approve", "approve_session", "reject", "revise"].includes(result.action)) {
@@ -2745,7 +2841,15 @@ export function createHttpServer(
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
-      const ok = manager.submitApprovalResolution(id, approvalId, result);
+      const normalizedResult: ApprovalResult =
+        result.action === "revise"
+          ? { action: "revise", feedback: result.feedback as string }
+          : result.action === "approve"
+            ? { action: "approve" }
+            : result.action === "approve_session"
+              ? { action: "approve_session" }
+              : { action: "reject" };
+      const ok = manager.submitApprovalResolution(id, approvalId, normalizedResult);
       if (!ok) return jsonError(c, 404, "No pending approval for this id");
       return c.json({ ok: true });
     } catch (e: unknown) {
@@ -2763,17 +2867,42 @@ export function createHttpServer(
 
   // POST /sessions/:id/external-interactions/:interactionId/respond
   app.post("/sessions/:id/external-interactions/:interactionId/respond", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const action = body.action;
-    if (!["approve", "approve_session", "deny", "cancel", "answer"].includes(action)) {
+    if (
+      typeof action !== "string" ||
+      !["approve", "approve_session", "deny", "cancel", "answer"].includes(action)
+    ) {
       return jsonError(c, 400, "invalid interaction action");
+    }
+    const normalizedAction = action as
+      | "approve"
+      | "approve_session"
+      | "deny"
+      | "cancel"
+      | "answer";
+    const answers = body.answers;
+    if (
+      answers !== undefined &&
+      (!answers ||
+        typeof answers !== "object" ||
+        !Object.values(answers as Record<string, unknown>).every(
+          (value) => Array.isArray(value) && value.every((item) => typeof item === "string"),
+        ))
+    ) {
+      return jsonError(c, 400, "answers must contain string arrays");
+    }
+    if (body.optionId !== undefined && typeof body.optionId !== "string") {
+      return jsonError(c, 400, "optionId must be a string");
     }
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
     const ok = manager.submitExternalInteraction(id, c.req.param("interactionId"), {
-      action,
-      answers: body.answers,
-      optionId: body.optionId,
+      action: normalizedAction,
+      answers: answers as Record<string, string[]> | undefined,
+      optionId: body.optionId as string | undefined,
     });
     if (!ok) return jsonError(c, 404, "No pending external interaction for this id");
     return c.json({ ok: true });
@@ -2783,7 +2912,9 @@ export function createHttpServer(
   app.post("/sessions/:id/external-interactions/request", async (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     if (body.kind !== "approval" && body.kind !== "question") {
       return jsonError(c, 400, "invalid interaction kind");
     }
@@ -2830,7 +2961,9 @@ export function createHttpServer(
 
   // POST /resources/install — install resource into global catalog (optionally bind to agent)
   app.post("/resources/install", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       const input = parseInstallResourceBody(body as Record<string, unknown>);
       const agentId =
@@ -2862,7 +2995,9 @@ export function createHttpServer(
 
   // POST /resources/uninstall — remove resource from global catalog
   app.post("/resources/uninstall", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     const kind = body.kind;
     const slug = body.slug;
     if (typeof kind !== "string" || typeof slug !== "string") {
@@ -2882,7 +3017,9 @@ export function createHttpServer(
 
   // PUT /resources/content — create or overwrite prompt/mcp content in the global catalog
   app.put("/resources/content", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       const input = parseUpsertResourceContentBody(body as Record<string, unknown>);
       if (input.kind !== "prompt" && input.kind !== "mcp") {
@@ -2974,7 +3111,9 @@ export function createHttpServer(
 
   // POST /agents/:id/resources — bind a catalog resource to an agent
   app.post("/agents/:id/resources", async (c) => {
-    const body = await c.req.json().catch(() => ({}));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
     try {
       const agentId = parseIntegerId(c.req.param("id"));
       if (agentId === null) return jsonError(c, 400, "invalid agent id");

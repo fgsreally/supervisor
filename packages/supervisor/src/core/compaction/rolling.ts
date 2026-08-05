@@ -19,7 +19,11 @@ import {
 } from "@earendil-works/pi-ai";
 import { hasPendingAsks } from "../../tools/ask/tool.js";
 import type { SupervisorDb } from "../../db/db.js";
-import type { SessionRuntime } from "../session-runtime.js";
+import {
+  harnessAgentController,
+  harnessAgentState,
+  type SessionRuntime,
+} from "../session-runtime.js";
 import { compactWithUtilityModel, resolveFeatureModelAuth } from "../../utils/utility-llm.js";
 
 const overflowRecoveryAttempted = new Set<string>();
@@ -71,10 +75,7 @@ function resetOverflowRecovery(sessionId: string, assistantMessage: AssistantMes
 }
 
 async function resumeQueuedMessages(runtime: SessionRuntime): Promise<void> {
-  const agent = runtime.harness.agent as {
-    hasQueuedMessages?: () => boolean;
-    continue?: () => Promise<void>;
-  };
+  const agent = harnessAgentController(runtime.harness);
   if (!agent.hasQueuedMessages?.()) return;
   await new Promise<void>((resolve) => {
     setTimeout(() => {
@@ -98,7 +99,9 @@ async function runCompaction(
   try {
     const settings = resolveRollingCompactionSettings(meta);
     const branchEntries = await runtime.getMessages();
-    const preparation = prepareCompaction(branchEntries, settings);
+    const preparationResult = prepareCompaction(branchEntries, settings);
+    if (!preparationResult.ok) throw preparationResult.error;
+    const preparation = preparationResult.value;
     if (!preparation) return;
 
     const utilityAuth = await resolveFeatureModelAuth(db, "summary");
@@ -115,7 +118,7 @@ async function runCompaction(
     }
 
     if (options.overflowRetry) {
-      const agent = runtime.harness.agent as { continue?: () => Promise<void> };
+      const agent = harnessAgentController(runtime.harness);
       await new Promise<void>((resolve) => {
         setTimeout(() => {
           void agent
@@ -154,7 +157,7 @@ export async function maybeRunRollingCompaction(
 
   resetOverflowRecovery(sessionId, assistantMessage);
 
-  const model = runtime.harness.agent.state.model as Model<Api>;
+  const model = runtime.harness.getModel() as Model<Api>;
   const contextWindow = model.contextWindow ?? 0;
   if (!contextWindow) return;
 
@@ -174,9 +177,10 @@ export async function maybeRunRollingCompaction(
     if (overflowRecoveryAttempted.has(sessionId)) return;
     overflowRecoveryAttempted.add(sessionId);
 
-    const messages = runtime.harness.agent.state.messages;
+    const state = harnessAgentState(runtime.harness);
+    const messages = state.messages;
     if (messages.length > 0 && messages[messages.length - 1]?.role === "assistant") {
-      runtime.harness.agent.state.messages = messages.slice(0, -1);
+      state.messages = messages.slice(0, -1);
     }
     await runCompaction(sessionId, runtime, db, meta, { overflowRetry: true });
     return;
@@ -184,9 +188,10 @@ export async function maybeRunRollingCompaction(
 
   let contextTokens: number;
   if (assistantMessage.stopReason === "error") {
-    const estimate = estimateContextTokens(runtime.harness.agent.state.messages);
+    const messages = harnessAgentState(runtime.harness).messages;
+    const estimate = estimateContextTokens(messages);
     if (estimate.lastUsageIndex === null) return;
-    const usageMessage = runtime.harness.agent.state.messages[estimate.lastUsageIndex];
+    const usageMessage = messages[estimate.lastUsageIndex];
     if (
       compactionEntry &&
       usageMessage?.role === "assistant" &&

@@ -4,19 +4,29 @@
     :style="{ ...panelStyle, background: 'var(--app-list-bg)' }"
   >
     <div
+      v-if="!mobileSearchOpen"
       class="h-16 flex items-center px-4 shrink-0 border-b"
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
       <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">
         智能代理
       </h1>
+      <button type="button" class="mobile-search-trigger" aria-label="搜索" @click="mobileSearchOpen = true">
+        <Search />
+      </button>
       <button type="button" class="list-header-btn" title="添加智能代理" @click="$emit('add')">
         <UserPlus class="w-5 h-5" />
       </button>
     </div>
 
+    <div v-else class="mobile-search-page">
+      <button type="button" aria-label="返回" @click="mobileSearchOpen = false"><ArrowLeft /></button>
+      <Search />
+      <input v-model="query" type="search" placeholder="搜索智能代理" autofocus />
+    </div>
+
     <div
-      class="px-3 py-2 shrink-0 border-b"
+      class="panel-inline-search px-3 py-2 shrink-0 border-b"
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
       <div class="relative">
@@ -85,7 +95,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Search, UserPlus } from "lucide-vue-next";
+import { ArrowLeft, Search, UserPlus } from "lucide-vue-next";
 import type { Agent } from "@/api";
 import { useAgentStore } from "@/store";
 import AgentListItem from "./AgentListItem.vue";
@@ -97,6 +107,7 @@ const props = defineProps<{
   activeId: string;
   width?: number;
 }>();
+const mobileSearchOpen = ref(false);
 
 const panelStyle = computed(() => {
   if (props.width == null) return undefined;
@@ -195,5 +206,54 @@ const filteredGroups = computed(() => {
 
 .agent-context-menu__delete:hover {
   background: var(--app-popup-hover);
+}
+
+.mobile-search-trigger,
+.mobile-search-page {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .panel-inline-search {
+    display: none;
+  }
+  .mobile-search-trigger {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    margin-left: auto;
+    place-items: center;
+  }
+  .mobile-search-trigger svg {
+    width: 21px;
+    height: 21px;
+  }
+  .mobile-search-page {
+    display: grid;
+    min-height: 52px;
+    grid-template-columns: 40px 20px minmax(0, 1fr);
+    align-items: center;
+    gap: 4px;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--app-border-subtle);
+    background: var(--app-list-header-bg);
+  }
+  .mobile-search-page button {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    place-items: center;
+  }
+  .mobile-search-page svg {
+    width: 20px;
+    height: 20px;
+    color: var(--app-text-secondary);
+  }
+  .mobile-search-page input {
+    min-width: 0;
+    height: 36px;
+    background: transparent;
+    outline: none;
+  }
 }
 </style>

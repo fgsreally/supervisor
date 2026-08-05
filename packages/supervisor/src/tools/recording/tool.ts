@@ -103,12 +103,17 @@ export function createDesktopRecordingTool(storageDir: string): {
       },
       required: ["action"],
     },
-    async execute(_id, params: RecordingParams): Promise<AgentToolResult> {
+    async execute(
+      _id,
+      input: unknown,
+    ): Promise<AgentToolResult<unknown> & { isError?: boolean }> {
+      const params = input as RecordingParams;
       if (params.action === "status") {
         return {
           content: [
             { type: "text", text: processHandle ? `Recording: ${currentPath}` : "Not recording." },
           ],
+          details: {},
         };
       }
       if (params.action === "stop") {
@@ -150,6 +155,7 @@ export function createDesktopRecordingTool(storageDir: string): {
                 text: `Desktop screenshot failed: ${error instanceof Error ? error.message : String(error)}`,
               },
             ],
+            details: {},
             isError: true,
           };
         }
@@ -157,6 +163,7 @@ export function createDesktopRecordingTool(storageDir: string): {
       if (processHandle)
         return {
           content: [{ type: "text", text: `Already recording: ${currentPath}` }],
+          details: {},
           isError: true,
         };
       const fps = Math.min(30, Math.max(1, Math.floor(params.fps ?? 15)));
@@ -167,7 +174,7 @@ export function createDesktopRecordingTool(storageDir: string): {
         : join(storageDir, "recordings", `desktop-${Date.now()}.webm`);
       await mkdir(dirname(path), { recursive: true });
       processHandle = spawn(ffmpeg.path, captureArgs(path, fps), {
-        stdio: ["pipe", "ignore", "pipe"],
+        stdio: ["pipe", "pipe", "pipe"],
       });
       currentPath = path;
       let startupError = "";
@@ -180,6 +187,7 @@ export function createDesktopRecordingTool(storageDir: string): {
         currentPath = undefined;
         return {
           content: [{ type: "text", text: `Desktop recording failed: ${startupError.trim()}` }],
+          details: {},
           isError: true,
         };
       }

@@ -50,13 +50,15 @@ export function createWebSearchTool(options?: {
     },
     async execute(
       _toolCallId: string,
-      params: WebSearchParams,
+      input: unknown,
       signal?: AbortSignal,
-    ): Promise<AgentToolResult> {
+    ): Promise<AgentToolResult<unknown> & { isError?: boolean }> {
+      const params = input as WebSearchParams;
       const query = params.query?.trim();
       if (!query) {
         return {
           content: [{ type: "text", text: "Error: query is required." }],
+          details: {},
           isError: true,
         };
       }
@@ -150,6 +152,7 @@ export function createWebSearchTool(options?: {
         const message = error instanceof Error ? error.message : String(error);
         return {
           content: [{ type: "text", text: `web_search failed: ${message}` }],
+          details: {},
           isError: true,
         };
       }

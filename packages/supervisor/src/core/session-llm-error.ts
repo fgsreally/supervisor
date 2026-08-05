@@ -34,7 +34,7 @@ export function extractAgentEndLlmError(event: AgentHarnessEvent): AssistantMess
 export function willAttemptOverflowRecovery(
   sessionId: string | number,
   assistant: AssistantMessage,
-  model: Model | undefined,
+  model: Model<any> | undefined,
 ): boolean {
   const contextWindow = model?.contextWindow ?? 0;
   if (!contextWindow) return false;

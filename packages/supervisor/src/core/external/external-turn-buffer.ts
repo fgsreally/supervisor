@@ -96,7 +96,11 @@ export class ExternalTurnBuffer {
         parentId: userId,
         timestamp: new Date().toISOString(),
         type: "message",
-        message: { role: "assistant", content: text, timestamp: Date.now() } as AgentMessage,
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text }],
+          timestamp: Date.now(),
+        } as unknown as AgentMessage,
       } as SessionTreeEntry);
       return;
     }

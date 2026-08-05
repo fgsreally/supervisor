@@ -31,6 +31,7 @@
     "dev": "tsdown --watch",
     "serve:playground": "bun dist/cli.mjs serve --port 3030 --cwd ../../playground --password 123456",
     "build": "tsdown && shx cp -r src/db/sql dist/sql",
+    "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest --run --config vitest.config.ts",
     "test:unit": "vitest --run --config vitest.config.ts",
     "test:ai": "vitest --run --config vitest.ai.config.ts",

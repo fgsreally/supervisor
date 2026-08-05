@@ -212,8 +212,8 @@ function open(id: ItemId) {
   height: 100%;
   place-items: center;
   border-radius: inherit;
-  color: var(--m-feature-color);
-  background: color-mix(in srgb, var(--m-feature-color) 13%, transparent);
+  color: #fff;
+  background: var(--m-feature-color);
 }
 
 .mobile-me__icon :deep(svg) {

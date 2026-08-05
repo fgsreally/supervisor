@@ -4,13 +4,22 @@
     :style="{ ...panelStyle, background: 'var(--app-list-bg)' }"
   >
     <div
-      class="h-16 flex items-center px-4 shrink-0 border-b"
+      class="chat-list-header h-16 flex items-center px-4 shrink-0 border-b"
       style="
         background: var(--app-list-header-bg);
         border-color: var(--app-header-divider, var(--app-border-subtle));
       "
     >
       <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">聊天</h1>
+      <button
+        type="button"
+        class="chat-list-search-icon"
+        title="搜索"
+        aria-label="搜索"
+        @click="openMobileSearch"
+      >
+        <Search />
+      </button>
       <button
         type="button"
         class="chat-list-import-icon"
@@ -24,7 +33,7 @@
     </div>
 
     <div
-      class="px-3 py-2 shrink-0 border-b"
+      class="chat-list-search px-3 py-2 shrink-0 border-b"
       style="
         background: var(--app-list-header-bg);
         border-color: var(--app-header-divider, var(--app-border-subtle));
@@ -43,7 +52,7 @@
 
     <div
       ref="sessionScrollPanel"
-      class="flex-1 overflow-y-auto custom-scrollbar"
+      class="chat-list-scroll flex-1 overflow-y-auto custom-scrollbar"
       @scroll.passive="refreshProjectHighlight"
     >
       <template v-if="query.trim()">
@@ -304,6 +313,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
+import { useRouter } from "vue-router";
 import {
   ChevronDown,
   ChevronRight,
@@ -352,6 +362,11 @@ const props = defineProps<{
   activeId: string;
   width?: number;
 }>();
+const router = useRouter();
+
+function openMobileSearch() {
+  router.push("/search");
+}
 
 const emit = defineEmits<{
   select: [id: string];
@@ -1010,6 +1025,10 @@ async function onAgentPicked(agentId: string) {
     background-color 0.18s ease;
 }
 
+.chat-list-search-icon {
+  display: none;
+}
+
 .chat-list-import-icon svg {
   display: block;
 }
@@ -1228,21 +1247,72 @@ async function onAgentPicked(agentId: string) {
     overflow-x: hidden;
   }
 
-  .h-16.flex.items-center {
-    padding-inline: 20px;
+  .chat-list-header {
+    position: relative;
+    height: 52px;
+    min-height: 52px;
+    padding-inline: 12px;
   }
 
-  .px-3.py-2 {
-    padding: 10px 20px 14px;
+  .chat-list-header h1 {
+    position: absolute;
+    left: 50%;
+    font-size: 17px;
+    font-weight: 600;
+    transform: translateX(-50%);
+  }
+
+  .chat-list-header .chat-list-import-icon {
+    width: 40px;
+    height: 40px;
+    margin-right: -6px;
+    margin-left: auto;
+  }
+
+  .chat-list-search-icon {
+    display: grid;
+    width: 40px;
+    height: 40px;
+    margin-left: auto;
+    place-items: center;
+    color: var(--app-text-primary);
+  }
+
+  .chat-list-search-icon svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .chat-list-header .chat-list-import-icon {
+    margin-left: 0;
+  }
+
+  .chat-list-search {
+    display: none;
+  }
+
+  .chat-list-search .list-search-input {
+    height: 36px;
+    padding-top: 0;
+    padding-bottom: 0;
+    font-size: 14px;
+  }
+
+  .chat-list-search .relative > svg {
+    top: 10px;
+  }
+
+  .chat-list-scroll {
+    padding-inline: 8px;
   }
 
   .list-section-header {
-    min-height: 44px;
-    padding: 4px 20px;
+    min-height: 34px;
+    padding: 2px 4px;
   }
 
   .list-section-title {
-    font-size: 13px;
+    font-size: 12px;
   }
 
   .chat-list-roots,
@@ -1253,17 +1323,17 @@ async function onAgentPicked(agentId: string) {
 
   .chat-list-root,
   .workspace-group {
-    padding-inline: 6px;
+    padding-inline: 0;
   }
 
   .workspace-group .list-section-header {
-    margin-inline: -6px;
-    padding-inline: 18px;
+    margin-inline: 0;
+    padding-inline: 4px 0;
   }
 
   .section-action-btn {
-    width: 34px;
-    height: 34px;
+    width: 32px;
+    height: 32px;
     padding: 0;
   }
 }

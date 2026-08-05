@@ -192,7 +192,7 @@ export async function compactWithUtilityModel(
   preparation: CompactionPreparation,
   customInstructions?: string,
 ): Promise<UtilityCompactionResult> {
-  return compact(
+  const result = await compact(
     preparation,
     auth.model,
     auth.apiKey,
@@ -201,4 +201,6 @@ export async function compactWithUtilityModel(
     undefined,
     "off",
   );
+  if (!result.ok) throw result.error;
+  return result.value;
 }

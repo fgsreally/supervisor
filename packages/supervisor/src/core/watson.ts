@@ -12,7 +12,7 @@ import { Type } from "typebox";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
 import { resolveAssistantModelAuth, type UtilityModelAuth } from "../utils/utility-llm.js";
-import { loadPackagedAgentPrompt } from "../agent/builtin/prompts.js";
+import { loadBuiltinAgentPrompt } from "../agent/builtin/prompts.js";
 import { getSupervisorHome } from "../utils/supervisor-home.js";
 
 export type WatsonTaskKind =
@@ -122,7 +122,7 @@ function createSubmitResultTool(capture: { value?: unknown }): AgentTool {
 }
 
 function defaultWatsonSystemPrompt(kind: WatsonTaskKind, structured: boolean): string {
-  const base = loadPackagedAgentPrompt("watson");
+  const base = loadBuiltinAgentPrompt("watson");
   const parts = [
     base,
     "",

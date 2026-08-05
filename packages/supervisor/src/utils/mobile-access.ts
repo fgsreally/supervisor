@@ -28,25 +28,25 @@ export function printMobileAccessBanner(options: MobileAccessBannerOptions): voi
   console.log(pinGenerated ? `Web PIN: ${pin}` : "Web PIN: (configured)");
   console.log("");
 
-  if (tunnelUrl) {
-    console.log("手机远程访问（扫码）:");
-    console.log(`  ${tunnelUrl}`);
-    printQr(tunnelUrl);
-    console.log("");
-    console.log("PIN 请在手机上手动输入。");
-    console.log("Restart 后 URL 会变，请重新扫码。");
-    console.log("");
-  }
-
   if (lanIp) {
     const lanUrl = `http://${lanIp}:${port}`;
-    console.log(tunnelUrl ? "LAN（同 WiFi，可选）:" : "手机访问（同 WiFi 扫码）:");
+    console.log("手机访问（同 WiFi 扫码）:");
     console.log(`  ${lanUrl}`);
     printQr(lanUrl);
     console.log("");
-    if (!tunnelUrl) {
-      console.log("PIN 请在手机上手动输入。");
+    console.log("PIN 请在手机上手动输入。");
+    console.log("");
+  }
+
+  if (tunnelUrl) {
+    console.log(lanIp ? "远程访问（可选）:" : "手机远程访问（扫码）:");
+    console.log(`  ${tunnelUrl}`);
+    if (!lanIp) {
+      printQr(tunnelUrl);
       console.log("");
+      console.log("PIN 请在手机上手动输入。");
     }
+    console.log("Restart 后 URL 会变。");
+    console.log("");
   }
 }

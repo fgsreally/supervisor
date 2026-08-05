@@ -22,7 +22,7 @@
       </button>
       <button
         type="button"
-        class="chat-list-import-icon"
+        class="chat-list-import-icon chat-list-import-icon--desktop"
         :class="{ 'chat-list-import-icon--active': externalImportOpen }"
         title="从外部引入会话"
         aria-label="从外部引入会话"
@@ -30,6 +30,32 @@
       >
         <MessageSquareReply class="h-5 w-5" stroke-width="1.75" />
       </button>
+      <button
+        type="button"
+        class="chat-list-add-icon"
+        :class="{ 'chat-list-add-icon--active': mobileAddMenuOpen }"
+        title="更多操作"
+        aria-label="更多操作"
+        :aria-expanded="mobileAddMenuOpen"
+        @click="mobileAddMenuOpen = !mobileAddMenuOpen"
+      >
+        <Plus />
+      </button>
+
+      <template v-if="mobileAddMenuOpen">
+        <button
+          type="button"
+          class="chat-list-add-backdrop"
+          aria-label="关闭更多操作"
+          @click="mobileAddMenuOpen = false"
+        />
+        <div class="chat-list-add-menu">
+          <button type="button" @click="openExternalImportFromMobileMenu">
+            <MessageSquareReply />
+            <span>从外部导入会话</span>
+          </button>
+        </div>
+      </template>
     </div>
 
     <div
@@ -378,6 +404,7 @@ const sessionStore = useSessionStore();
 const agentStore = useAgentStore();
 
 const query = ref("");
+const mobileAddMenuOpen = ref(false);
 const draggedProjectId = ref<string | null>(null);
 const highlightedProjectId = ref<string | null>(null);
 const projectBelowViewport = ref(false);
@@ -438,7 +465,6 @@ const searching = ref(false);
 const messageMatches = ref<Map<string, string>>(new Map());
 let searchGeneration = 0;
 const collapsedWorkspaceIds = ref<Set<string>>(new Set());
-const knownWorkspaceIds = new Set<string>();
 const agentPickerWorkspaceId = ref<string | null>(null);
 const projectCreateOpen = ref(false);
 const projectCreating = ref(false);
@@ -484,20 +510,6 @@ async function refreshProjectScripts(projectId: string | null) {
 watch(projectSettingsId, (projectId) => {
   if (projectId) void refreshProjectScripts(projectId);
 });
-
-watch(
-  () => sessionStore.projects.map((project) => project.id),
-  (projectIds) => {
-    const next = new Set(collapsedWorkspaceIds.value);
-    for (const projectId of projectIds) {
-      if (knownWorkspaceIds.has(projectId)) continue;
-      knownWorkspaceIds.add(projectId);
-      next.add(projectId);
-    }
-    collapsedWorkspaceIds.value = next;
-  },
-  { immediate: true },
-);
 
 const panelStyle = computed(() => {
   if (props.width == null) return undefined;
@@ -766,6 +778,11 @@ function openExternalImport() {
   externalImportOpen.value = true;
 }
 
+function openExternalImportFromMobileMenu() {
+  mobileAddMenuOpen.value = false;
+  openExternalImport();
+}
+
 function onExternalSessionImported(sessionId: string) {
   externalImportOpen.value = false;
   emit("select", sessionId);
@@ -1029,6 +1046,12 @@ async function onAgentPicked(agentId: string) {
   display: none;
 }
 
+.chat-list-add-icon,
+.chat-list-add-menu,
+.chat-list-add-backdrop {
+  display: none;
+}
+
 .chat-list-import-icon svg {
   display: block;
 }
@@ -1251,40 +1274,97 @@ async function onAgentPicked(agentId: string) {
     position: relative;
     height: 52px;
     min-height: 52px;
-    padding-inline: 12px;
+    padding-inline: 10px;
   }
 
   .chat-list-header h1 {
     position: absolute;
     left: 50%;
-    font-size: 17px;
-    font-weight: 600;
+    font-size: 19px;
+    font-weight: 400;
     transform: translateX(-50%);
   }
 
-  .chat-list-header .chat-list-import-icon {
-    width: 40px;
-    height: 40px;
-    margin-right: -6px;
-    margin-left: auto;
+  .chat-list-header .chat-list-import-icon--desktop {
+    display: none;
   }
 
   .chat-list-search-icon {
     display: grid;
-    width: 40px;
-    height: 40px;
+    width: 42px;
+    height: 42px;
     margin-left: auto;
     place-items: center;
     color: var(--app-text-primary);
   }
 
   .chat-list-search-icon svg {
-    width: 21px;
-    height: 21px;
+    width: 27px;
+    height: 27px;
+    stroke-width: 1.9;
   }
 
-  .chat-list-header .chat-list-import-icon {
-    margin-left: 0;
+  .chat-list-add-icon {
+    display: grid;
+    width: 42px;
+    height: 42px;
+    flex: none;
+    place-items: center;
+    border-radius: 6px;
+    color: var(--app-text-primary);
+  }
+
+  .chat-list-add-icon:active,
+  .chat-list-add-icon--active {
+    background: var(--app-hover);
+  }
+
+  .chat-list-add-icon svg {
+    width: 29px;
+    height: 29px;
+    stroke-width: 1.8;
+  }
+
+  .chat-list-add-backdrop {
+    position: fixed;
+    z-index: 79;
+    inset: 0;
+    display: block;
+    background: transparent;
+  }
+
+  .chat-list-add-menu {
+    position: absolute;
+    z-index: 80;
+    top: 48px;
+    right: 8px;
+    display: block;
+    min-width: 190px;
+    overflow: hidden;
+    border-radius: 6px;
+    background: #4c4c4c;
+    box-shadow: 0 4px 16px rgb(0 0 0 / 24%);
+  }
+
+  .chat-list-add-menu button {
+    display: flex;
+    width: 100%;
+    min-height: 52px;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    color: #fff;
+    font-size: 15px;
+    text-align: left;
+  }
+
+  .chat-list-add-menu button:active {
+    background: rgb(255 255 255 / 10%);
+  }
+
+  .chat-list-add-menu svg {
+    width: 21px;
+    height: 21px;
   }
 
   .chat-list-search {
@@ -1303,7 +1383,7 @@ async function onAgentPicked(agentId: string) {
   }
 
   .chat-list-scroll {
-    padding-inline: 8px;
+    padding-inline: 0;
   }
 
   .list-section-header {

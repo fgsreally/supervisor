@@ -4,7 +4,7 @@
     class="contact-detail-view flex flex-col flex-1 min-w-0 basis-0 h-full w-full overflow-hidden"
   >
     <!-- Mobile -->
-    <div class="md:hidden flex flex-col h-full">
+    <div v-if="!mobilePage" class="md:hidden flex flex-col h-full">
       <div class="h-14 border-b flex items-center px-3 shrink-0 contact-detail-header">
         <button
           v-if="showBack"
@@ -49,10 +49,46 @@
           />
         </div>
 
-        <div v-if="isExternal" class="p-4">
-          <ExternalAgentDetails :agent="agent" />
+        <div class="mobile-agent-sections">
+          <button
+            v-for="item in mobileSections"
+            :key="item.id"
+            type="button"
+            class="mobile-agent-section"
+            @click="mobilePage = item.id"
+          >
+            <span>{{ item.label }}</span>
+            <ChevronRight aria-hidden="true" />
+          </button>
         </div>
-        <MobileResourceTabs v-else :agent-id="agentId" class="mt-2" />
+      </div>
+    </div>
+
+    <div v-else class="md:hidden flex flex-col h-full mobile-agent-page">
+      <div class="h-14 border-b flex items-center px-3 shrink-0 contact-detail-header">
+        <button
+          type="button"
+          class="mr-2 p-1.5 rounded-md contact-detail-back-btn"
+          aria-label="返回 Agent 详情"
+          @click="mobilePage = null"
+        >
+          <ChevronLeft class="w-5 h-5" />
+        </button>
+        <div class="font-medium text-[17px] truncate contact-detail-title flex-1 text-center">
+          {{ mobilePageTitle }}
+        </div>
+        <span class="w-8" aria-hidden="true" />
+      </div>
+      <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar mobile-agent-page__content">
+        <ExternalAgentDetails v-if="mobilePage === 'runtime'" :agent="agent" />
+        <AgentConfigPanel v-else-if="mobilePage === 'config'" :agent-id="agentId" />
+        <AgentSystemPromptPanel v-else-if="mobilePage === 'system'" :agent-id="agentId" />
+        <AgentExtensionsPanel
+          v-else-if="mobilePage === 'extensions'"
+          class="min-h-full"
+          :agent-id="agentId"
+        />
+        <AgentResourceBrowser v-else :agent-id="agentId" :kind="mobilePage" />
       </div>
     </div>
 
@@ -140,12 +176,11 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronLeft } from "lucide-vue-next";
+import { ChevronLeft, ChevronRight } from "lucide-vue-next";
 import AgentConfigPanel from "../components/AgentConfigPanel.vue";
 import AgentSystemPromptPanel from "../components/AgentSystemPromptPanel.vue";
 import AgentResourceBrowser from "../components/AgentResourceBrowser.vue";
 import AgentExtensionsPanel from "../components/AgentExtensionsPanel.vue";
-import MobileResourceTabs from "../components/MobileResourceTabs.vue";
 import AgentAvatar from "../components/AgentAvatar.vue";
 import ModelTreeSelect, { type ModelTreeGroup } from "../components/ModelTreeSelect.vue";
 import AgentEditDialog from "../components/AgentEditDialog.vue";
@@ -156,6 +191,7 @@ import { providerToUI } from "@/utils/provider-ui";
 import { showUiMessage } from "@/composables/use-ui-message";
 
 type AgentTab = "config" | "system" | UIResourceKind;
+type MobileAgentPage = AgentTab | "runtime";
 
 const props = defineProps<{
   agentId: string;
@@ -174,6 +210,7 @@ const providerStore = useProviderStore();
 const agent = computed(() => agentStore.getAgentById(props.agentId) ?? null);
 
 const rightTab = ref<AgentTab>("config");
+const mobilePage = ref<MobileAgentPage | null>(null);
 const editOpen = ref(false);
 const savingModel = ref(false);
 
@@ -189,10 +226,18 @@ const rightTabs = computed(() => {
   return tabs;
 });
 
+const mobileSections = computed<Array<{ id: MobileAgentPage; label: string }>>(() =>
+  isExternal.value ? [{ id: "runtime", label: "运行配置" }] : rightTabs.value,
+);
+const mobilePageTitle = computed(
+  () => mobileSections.value.find((item) => item.id === mobilePage.value)?.label ?? "Agent 详情",
+);
+
 watch(
   () => props.agentId,
   () => {
     rightTab.value = "config";
+    mobilePage.value = null;
   },
 );
 
@@ -348,5 +393,42 @@ async function changeModel(modelId: string) {
 
 .wechat-secondary-btn:hover {
   background: var(--app-hover);
+}
+
+.mobile-agent-sections {
+  margin-top: 8px;
+  border-block: 1px solid var(--app-border-subtle);
+  background: var(--app-settings-card);
+}
+
+.mobile-agent-section {
+  display: flex;
+  width: 100%;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px 0 20px;
+  color: var(--app-text-primary);
+  font-size: 16px;
+  text-align: left;
+}
+
+.mobile-agent-section + .mobile-agent-section {
+  border-top: 1px solid var(--app-border-subtle);
+}
+
+.mobile-agent-section:active {
+  background: var(--app-hover);
+}
+
+.mobile-agent-section svg {
+  width: 19px;
+  height: 19px;
+  color: var(--app-text-muted);
+}
+
+.mobile-agent-page__content {
+  padding: 16px;
+  background: var(--app-settings-bg);
 }
 </style>

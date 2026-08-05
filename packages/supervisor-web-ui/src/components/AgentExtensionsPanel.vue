@@ -213,6 +213,21 @@ async function bindGlobalItem(item: UIResourceItem) {
 }
 
 @media (max-width: 767px) {
+  .agent-ext {
+    display: block;
+    overflow-y: auto;
+  }
+
+  .agent-ext-sidebar {
+    width: 100% !important;
+    min-height: 100%;
+    border-right: 0;
+  }
+
+  .agent-ext-main {
+    display: none;
+  }
+
   .agent-ext-resize-handle {
     display: none;
   }

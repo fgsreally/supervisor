@@ -132,6 +132,44 @@ html[data-app-style="wechat"][data-theme="dark"] {
   --md-table-header-text: rgb(255 255 255 / 80%);
 }
 
+@media (min-width: 768px) {
+  html[data-app-style="wechat"][data-theme="light"] {
+    --app-nav-bg: #d6d6d9;
+    --app-nav-border: #d6d6d9;
+    --app-nav-hover: #c9c9cd;
+    --app-nav-active-bg: #c9c9cd;
+    --app-list-bg: #e5e5e7;
+    --app-list-header-bg: #e5e5e7;
+    --app-list-search-bg: #f7f7f7;
+    --app-list-search-focus-bg: #fff;
+    --app-list-item-hover: #d9d9dc;
+    --app-list-item-child-hover: #d9d9dc;
+    --app-list-item-active: #55ad7d;
+    --app-list-item-active-text: #fff;
+    --app-list-item-active-secondary: rgb(255 255 255 / 76%);
+    --app-list-section-bg: #e5e5e7;
+    --app-list-status-ring: #e5e5e7;
+  }
+
+  html[data-app-style="wechat"][data-theme="dark"] {
+    --app-nav-bg: #202020;
+    --app-nav-border: #202020;
+    --app-nav-hover: #2b2b2b;
+    --app-nav-active-bg: #2b2b2b;
+    --app-list-bg: #2b2b2b;
+    --app-list-header-bg: #2b2b2b;
+    --app-list-search-bg: #202020;
+    --app-list-search-focus-bg: #191919;
+    --app-list-item-hover: #343434;
+    --app-list-item-child-hover: #343434;
+    --app-list-item-active: #3b8f58;
+    --app-list-item-active-text: rgb(255 255 255 / 88%);
+    --app-list-item-active-secondary: rgb(255 255 255 / 58%);
+    --app-list-section-bg: #2b2b2b;
+    --app-list-status-ring: #2b2b2b;
+  }
+}
+
 @media (max-width: 767px) {
   html[data-app-style="wechat"][data-theme="light"] {
     --m-page-bg: #ededed;
@@ -150,11 +188,21 @@ html[data-app-style="wechat"][data-theme="dark"] {
     --m-control-border: rgb(0 0 0 / 10%);
     --m-pressed: rgb(0 0 0 / 10%);
     --m-focus-ring: #07c160;
-    --m-bubble-assistant: #ededf0;
+    --m-bubble-assistant: #fff;
     --m-bubble-user: #a8eda1;
+    --app-chat-bg: #ededed;
+    --app-chat-header-bg: #ededed;
+    --app-chat-message-bg: #ededed;
     --app-shell-bg: #ededed;
-    --app-list-bg: #ededed;
+    --app-list-bg: #fff;
     --app-list-header-bg: #ededed;
+    --app-list-search-bg: #fff;
+    --app-list-search-focus-bg: #fff;
+    --app-list-item-hover: #f5f5f5;
+    --app-list-item-child-hover: #f5f5f5;
+    --app-list-item-active: #f5f5f5;
+    --app-list-item-active-text: rgb(0 0 0 / 90%);
+    --app-list-item-active-secondary: rgb(0 0 0 / 55%);
     --app-list-section-bg: #ededed;
     --app-settings-bg: #ededed;
     --app-settings-card: #fff;

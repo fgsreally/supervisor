@@ -367,7 +367,7 @@ defineExpose({ focus, clearAfterSend });
   display: flex;
   flex-direction: column;
   overflow: visible;
-  background: var(--app-chat-bg);
+  background: var(--app-chat-input-island-bg, var(--app-chat-bg));
   border: 1px solid var(--app-chat-input-island-border);
   border-radius: 10px;
 }

@@ -1,48 +1,37 @@
-import { getModel, type Api, type KnownProvider, type Model } from "@earendil-works/pi-ai";
-import { normalizeApiProtocol, toPiApi } from "../config/api-protocol.js";
+import type { Api, Model as PiModel, Provider as PiProvider } from "@earendil-works/pi-ai";
+import { toPiApi } from "../config/api-protocol.js";
+import { getDb } from "../db/db.js";
 
-/**
- * Minimal provider shape needed for model override resolution.
- */
-interface ProviderLike {
-  slug?: string | null;
-  baseUrl: string | null;
-  protocol: string;
+export interface LLMConfig {
+  model: PiModel<Api>;
+  apiKey: string;
 }
 
-/**
- * Resolve a model from the pi-ai built-in registry, then apply the provider's
- * endpoint and vendor-neutral wire protocol. The provider slug selects a model
- * registry; protocol selects only the HTTP wire format.
- *
- * Returns undefined when neither pi-ai nor the DB has a match.
- */
-export function resolveModelWithProviderOverrides(
-  db: { getProvider: (id: number) => ProviderLike | undefined },
-  providerId: number,
-  modelId: string,
-): Model<Api> | undefined {
-  const providerConfig = db.getProvider(providerId);
-  if (!providerConfig) return undefined;
+/** Build the complete LLM request configuration exclusively from the database. */
+export function resolveLLMConfig(modelId: number): LLMConfig {
+  const db = getDb();
+  const model = db.getModelById(modelId);
+  if (!model) throw new Error(`Model ${modelId} not found`);
 
-  const protocol = normalizeApiProtocol(providerConfig.protocol);
-  if (!protocol) return undefined;
-
-  const fallbackProvider = protocol === "messages" ? "anthropic" : "openai";
-  const model =
-    (providerConfig.slug
-      ? getModel(providerConfig.slug as KnownProvider, modelId as never)
-      : undefined) ?? getModel(fallbackProvider, modelId as never);
-  if (!model) return undefined;
-
-  const api = toPiApi(protocol);
-
-  const needsOverride = providerConfig.baseUrl != null || api !== model.api;
-  if (!needsOverride) return model;
+  const provider = db.getProvider(model.providerId);
+  if (!provider) throw new Error(`Provider ${model.providerId} not found`);
+  if (!provider.isEnabled) throw new Error(`Provider ${provider.name} is disabled`);
+  if (!provider.baseUrl?.trim()) throw new Error(`Provider ${provider.name} has no base URL`);
+  if (!provider.apiKey) throw new Error(`Provider ${provider.name} has no API key`);
 
   return {
-    ...model,
-    ...(providerConfig.baseUrl != null ? { baseUrl: providerConfig.baseUrl } : {}),
-    ...(api !== model.api ? { api } : {}),
+    model: {
+      id: model.modelId,
+      name: model.name ?? model.modelId,
+      api: toPiApi(provider.protocol),
+      provider: (provider.slug ?? `provider-${provider.id}`) as PiProvider,
+      baseUrl: provider.baseUrl,
+      reasoning: false,
+      input: model.supportsVision ? ["text", "image"] : ["text"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      contextWindow: model.contextWindow,
+      maxTokens: 0,
+    },
+    apiKey: provider.apiKey,
   };
 }

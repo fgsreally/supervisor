@@ -5,7 +5,7 @@ import {
   DEFAULT_PARENT_MESSAGE_LEVEL,
   SESSION_INPUT_INTERRUPT_LEVEL,
 } from "../../../core/session-input-queue.js";
-import { runWatsonTask } from "../../../core/watson.js";
+import { runWatson } from "../../../core/watson.js";
 import type { SupervisorDb } from "../../../db/db.js";
 import type { Session, SessionCheckpoint } from "../../../types.js";
 import { applyShadowMemoryUpdate, readShadowMemory } from "./memory.js";
@@ -13,6 +13,7 @@ import {
   formatShadowRunPrompt,
   getShadowSystemPrompt,
   normalizeShadowSubmitResult,
+  ShadowResultSchema,
 } from "./protocol.js";
 import type { ShadowProtocolResult } from "./types.js";
 
@@ -69,12 +70,12 @@ export async function runShadow(
 
   let result: ShadowProtocolResult;
   try {
-    const run = await runWatsonTask<unknown>({
-      db,
+    const run = await runWatson({
+      mode: "agent",
       cwd: session.cwd,
       kind: "shadow",
       toolsPreset: "none",
-      structured: true,
+      resultSchema: ShadowResultSchema,
       systemPrompt: getShadowSystemPrompt(session.cwd),
       prompt: formatShadowRunPrompt(shadowMemory, latestTurn),
     });

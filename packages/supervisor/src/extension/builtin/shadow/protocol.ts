@@ -1,5 +1,21 @@
 import { appendContextFilesToSystemPrompt } from "../../../agent/context-files.js";
 import type { ShadowProtocolResult } from "./types.js";
+import { Type } from "typebox";
+
+export const ShadowResultSchema = Type.Object({
+  shadowMemory: Type.Optional(
+    Type.Object({
+      action: Type.Union([Type.Literal("append"), Type.Literal("replace")]),
+      content: Type.String(),
+    }),
+  ),
+  message: Type.Optional(Type.String()),
+  interrupt: Type.Optional(Type.Boolean()),
+  status: Type.Optional(Type.String()),
+  suggestedQuestions: Type.Optional(Type.Array(Type.String())),
+  title: Type.Optional(Type.String()),
+  commitMessage: Type.Optional(Type.String()),
+});
 
 /**
  * Shadow 华生任务硬编码系统提示（不读 Agent SYSTEM.md，不走 XML）。

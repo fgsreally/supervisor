@@ -25,18 +25,13 @@ import type {
   SessionRow,
   SpawnSessionOptions,
 } from "../types.js";
-import {
-  generateCommitMessage,
-  generateSessionTitle,
-  resolveFeatureModelAuth,
-} from "../utils/utility-llm.js";
 import type { JobManager } from "./jobs.js";
 import {
   parseSessionServicesMeta,
   startSessionProjectServices,
   stopSessionProjectServices,
 } from "./session-services.js";
-import { runWatsonTask } from "./watson.js";
+import { runWatson } from "./watson.js";
 import { mapRowToSession, parseSessionMeta } from "./session-fields.js";
 
 export type SessionLifecycleDb = Pick<
@@ -135,14 +130,22 @@ export async function commitSessionChanges(
 
   let message = options.message?.trim() || fallbackCommitMessage(sessionId);
   if (!options.message?.trim()) {
-    const auth = await resolveFeatureModelAuth(db, "commit-message");
-    if (auth) {
-      try {
-        const diffStat = (await getGitDiffStat(cwd)) || status;
-        message = await generateCommitMessage(auth, summaryText ?? "Agent changes", diffStat);
-      } catch {
-        // keep fallback message
-      }
+    try {
+      const diffStat = (await getGitDiffStat(cwd)) || status;
+      const run = await runWatson({
+        mode: "simple",
+        kind: "commit-message",
+        prompt: [
+          "Write a concise git commit subject line for the latest work.",
+          "Return only one line, at most 72 characters, in imperative mood.",
+          "",
+          `Turn summary: ${(summaryText ?? "Agent changes").slice(0, 800)}`,
+          `Diff stat:\n${diffStat.slice(0, 1200)}`,
+        ].join("\n"),
+      });
+      message = run.text.split("\n")[0]?.trim().slice(0, 72) || message;
+    } catch {
+      // keep fallback message
     }
   }
 
@@ -173,11 +176,22 @@ async function maybeAutoNameSession(
   const assistantText = findLastAssistantText(event.messages);
   if (!userText || !assistantText) return;
 
-  const auth = await resolveFeatureModelAuth(db, "session-title");
-  if (!auth) return;
-
   try {
-    const title = await generateSessionTitle(auth, userText, assistantText);
+    const run = await runWatson({
+      mode: "simple",
+      kind: "session-title",
+      prompt: [
+        "Generate a short chat session title (6-20 Chinese or English characters).",
+        "Return only the title text without quotes.",
+        "",
+        `User: ${userText.slice(0, 500)}`,
+        `Assistant: ${assistantText.slice(0, 500)}`,
+      ].join("\n"),
+    });
+    const title = run.text
+      .replace(/^["'`]+|["'`]+$/g, "")
+      .slice(0, 40)
+      .trim();
     if (title) db.updateSessionFields(sessionId, { title });
   } catch {
     // skip auto naming on utility errors
@@ -360,8 +374,8 @@ export async function finalizeSessionLifecycleGit(
       "worktree",
       "watson",
     ]);
-    await runWatsonTask({
-      db,
+    await runWatson({
+      mode: "agent",
       cwd: git.repoRoot,
       kind: "worktree-cleanup",
       prompt: [

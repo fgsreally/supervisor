@@ -6,7 +6,7 @@ import type {
   SessionTreeEntry,
   ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
-import { getModel, type KnownProvider, type Model } from "@earendil-works/pi-ai";
+import type { Model } from "@earendil-works/pi-ai";
 import type { Session } from "../types.js";
 import type {
   AgentResource,
@@ -17,6 +17,8 @@ import { SessionExtensionHost } from "../extension/runtime/index.js";
 import { activatePackagedTools } from "../tools/loader.js";
 import { isPackagedToolId } from "../tools/catalog.js";
 import type { SupervisorDb } from "../db/db.js";
+import { getDb } from "../db/db.js";
+import { resolveLLMConfig } from "../utils/model-utils.js";
 import type { SessionManager } from "./session-manager.js";
 import { resolveSessionPromptImages, type SessionPromptImage } from "./session-media.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
@@ -364,10 +366,13 @@ export class SessionRuntime implements ManagedSessionRuntime {
   }
 
   async setModel(provider: string, modelId: string): Promise<Model<any>> {
-    const model = getModel(provider as KnownProvider, modelId as never);
-    if (!model) {
-      throw new Error(`Model ${modelId} from provider ${provider} not found`);
-    }
+    const db = getDb();
+    const providerRow = db
+      .listProviders()
+      .find((item) => item.slug === provider || String(item.id) === provider);
+    const configuredModel = providerRow ? db.getModel(providerRow.id, modelId) : undefined;
+    if (!configuredModel) throw new Error(`Model ${modelId} from provider ${provider} not found`);
+    const { model } = resolveLLMConfig(configuredModel.id);
     await this.harness.setModel(model);
     return model;
   }

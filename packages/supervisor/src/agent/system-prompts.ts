@@ -35,18 +35,3 @@ export function renderPromptTemplate(name: string, vars: Record<string, string>)
   }
   return text;
 }
-
-export function appendPromptSection(
-  baseSystemPrompt: string,
-  templateName: string,
-  dedupeMarker: string,
-): string {
-  const section = loadPromptTemplate(templateName);
-  if (baseSystemPrompt.includes(dedupeMarker)) return baseSystemPrompt;
-  if (!baseSystemPrompt.trim()) return section;
-  return `${baseSystemPrompt}\n\n${section}`;
-}
-
-export function appendReadOrchestrationHint(systemPrompt: string): string {
-  return appendPromptSection(systemPrompt, "reading-strategy", "Reading strategy (two-phase)");
-}

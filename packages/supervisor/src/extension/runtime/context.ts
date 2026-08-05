@@ -34,7 +34,7 @@ import type {
 import { getProjectDir, getSessionDir } from "../../core/session-files.js";
 import type { SessionManager } from "../../core/session-manager.js";
 import type { SessionRuntime } from "../../core/session-runtime.js";
-import { runWatsonTask } from "../../core/watson.js";
+import { runWatson } from "../../core/watson.js";
 import type {
   SessionTaskInfo,
   SessionTodoInfo,
@@ -491,15 +491,15 @@ export class Context {
     this.commandExecutor = deps.exec;
     this.watson = {
       run: (options) =>
-        runWatsonTask({
-          db,
+        runWatson({
+          mode: options.mode,
           cwd: options.cwd?.trim() || session.cwd,
           kind: options.kind,
           prompt: options.prompt,
           systemPrompt: options.systemPrompt,
           injectSystem: options.injectSystem,
-          toolsPreset: options.toolsPreset,
-          structured: options.structured,
+          ...(options.mode === "agent" ? { toolsPreset: options.toolsPreset } : {}),
+          ...(options.resultSchema ? { resultSchema: options.resultSchema } : {}),
         }),
     };
   }

@@ -252,6 +252,7 @@ export class SupervisorDb {
     this.db.pragma("journal_mode = WAL");
     this.db.pragma("foreign_keys = ON");
     this.migrate();
+    activeDb = this;
   }
 
   private migrate() {
@@ -275,9 +276,6 @@ export class SupervisorDb {
         WHERE target.type = 'todo_task' AND target.entity_id = source.id
       );
     `);
-
-    // Initialize default providers from environment variables
-    this.initializeDefaultProviders();
   }
 
   listProjectScripts(projectId: number, kind?: ProjectScriptKind) {
@@ -1406,33 +1404,6 @@ export class SupervisorDb {
     this.db.close();
   }
 
-  initializeDefaultProviders(): void {
-    const existing = this.db.prepare("SELECT id FROM providers").all() as Array<{ id: number }>;
-    if (existing.length > 0) return;
-
-    // Optional: auto-create a default provider from env
-    const slug = process.env.SS_PROVIDER_ID;
-    if (!slug) return;
-
-    const name = process.env.SS_PROVIDER_NAME || slug;
-    const protocol =
-      process.env.SS_PROVIDER_PROTOCOL || process.env.SS_PROVIDER_API_TYPE || "messages";
-    const baseUrl = process.env.SS_PROVIDER_BASE_URL || null;
-    const apiKey = process.env.SS_PROVIDER_API_KEY || null;
-    const icon = process.env.SS_PROVIDER_ICON || null;
-
-    const id = this.insertProvider({
-      slug: slug,
-      name: name,
-      protocol,
-      base_url: baseUrl,
-      api_key: apiKey,
-      icon: icon,
-    });
-
-    console.log(`Initialized default provider: ${name} (${slug}, id=${id})`);
-  }
-
   // ============ Resource catalog ============
 
   upsertResource(row: {
@@ -1816,6 +1787,14 @@ export class SupervisorDb {
     }
     return binding;
   }
+}
+
+let activeDb: SupervisorDb | undefined;
+
+/** Return the process-wide database opened by the application entrypoint. */
+export function getDb(): SupervisorDb {
+  if (!activeDb) throw new Error("Database has not been opened");
+  return activeDb;
 }
 
 function snippetFromSearchText(text: string | null, query: string): string {

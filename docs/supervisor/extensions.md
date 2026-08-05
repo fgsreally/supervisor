@@ -136,9 +136,13 @@ ctx.agent.registerTool({
 `setCancelHandler/setInputHandler`。它面向系统执行记录，不是 LLM 工具表面；定时定义应写
 `sessions.meta.timers`，触发实例才创建 Job。
 
-`ctx.watson.run({ kind, prompt, cwd?, systemPrompt?, injectSystem?, toolsPreset?, structured? })`
-使用 `featureModels.assistant`。结构化模式通过终止型 `submit_result` 返回 `result`；日志写 Agent
-Home 的 `logs/`。
+`ctx.watson.run(...)` 使用 `featureModels.assistant`，支持两种调用方式：
+
+- `mode: "simple"`：只请求模型一次。
+- `mode: "agent"`：使用 AgentHarness，多轮调用工具后结束。
+
+两种方式都可传 TypeBox `resultSchema`。传入后，华生要求模型通过 `submit_result` 提交并校验
+结构化结果；不传则返回文本。日志统一写入华生日志目录。
 
 `ctx.db.available` 可先检查原始数据库是否可用，再使用 `prepare/query/queryOne/execute`。
 核心表没有扩展迁移隔离，优先使用高层 facade；自定义数据推荐 namespaced meta 或扩展自有表。

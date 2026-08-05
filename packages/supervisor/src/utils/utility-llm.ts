@@ -1,22 +1,8 @@
 import type { CompactionPreparation } from "@earendil-works/pi-agent-core";
 import { compact } from "@earendil-works/pi-agent-core";
-import { type Api, completeSimple, getEnvApiKey, type Model } from "@earendil-works/pi-ai";
-import type { SupervisorDb } from "../db/db.js";
-import { resolveModelWithProviderOverrides } from "./model-utils.js";
-import {
-  isFeatureModelRef,
-  LEGACY_UTILITY_FEATURES,
-  readSupervisorSettings,
-  type FeatureModelRef,
-  type SupervisorSettings,
-  type UtilityFeature,
-} from "./supervisor-settings.js";
-
-export interface UtilityModelAuth {
-  model: Model<Api>;
-  apiKey: string;
-  headers?: Record<string, string>;
-}
+import { Type } from "typebox";
+import { runWatson } from "../core/watson.js";
+import type { LLMConfig } from "./model-utils.js";
 
 export interface UtilityCompactionResult {
   summary: string;
@@ -25,143 +11,7 @@ export interface UtilityCompactionResult {
   details?: unknown;
 }
 
-export type { UtilityFeature };
-
-type FeatureModelDb = Pick<
-  SupervisorDb,
-  "listProviders" | "listModelsByProvider" | "getProvider" | "getModel"
->;
-
-function extractText(content: Array<{ type: string; text?: string }> | string): string {
-  if (typeof content === "string") return content.trim();
-  return content
-    .filter((part): part is { type: "text"; text: string } => part.type === "text" && !!part.text)
-    .map((part) => part.text)
-    .join("")
-    .trim();
-}
-
-/** Resolve the unified 助手模型 (Watson). Falls back to legacy per-feature bindings. */
-export function resolveAssistantModelRef(
-  settings: SupervisorSettings = readSupervisorSettings(),
-): FeatureModelRef | null {
-  const assistant = settings.featureModels?.assistant;
-  if (isFeatureModelRef(assistant)) {
-    return {
-      providerId: assistant.providerId,
-      modelId: assistant.modelId.trim(),
-    };
-  }
-  for (const feature of LEGACY_UTILITY_FEATURES) {
-    const configured = settings.featureModels?.[feature];
-    if (isFeatureModelRef(configured)) {
-      return {
-        providerId: configured.providerId,
-        modelId: configured.modelId.trim(),
-      };
-    }
-  }
-  return null;
-}
-
-/** @deprecated Prefer resolveAssistantModelRef — all features share 助手模型. */
-export function getFeatureModelRef(
-  _feature: UtilityFeature | string,
-  settings: SupervisorSettings = readSupervisorSettings(),
-): FeatureModelRef | null {
-  return resolveAssistantModelRef(settings);
-}
-
-/** @deprecated Prefer resolveAssistantModelRef */
-export function resolveFeatureModelRef(
-  _feature: UtilityFeature | string,
-  settings: SupervisorSettings = readSupervisorSettings(),
-): FeatureModelRef | null {
-  return resolveAssistantModelRef(settings);
-}
-
-async function resolveAuthFromRef(
-  db: FeatureModelDb,
-  ref: FeatureModelRef,
-): Promise<UtilityModelAuth | null> {
-  const provider = db.getProvider(ref.providerId);
-  if (!provider?.isEnabled) return null;
-  if (!db.getModel(ref.providerId, ref.modelId)) return null;
-
-  const resolvedModel = resolveModelWithProviderOverrides(db, ref.providerId, ref.modelId);
-  if (!resolvedModel) return null;
-
-  const envKey = getEnvApiKey(resolvedModel.provider);
-  if (envKey) return { model: resolvedModel, apiKey: envKey };
-  if (provider.apiKey) return { model: resolvedModel, apiKey: provider.apiKey };
-  return null;
-}
-
-/** Resolve auth for the unified 助手模型. */
-export async function resolveAssistantModelAuth(
-  db: FeatureModelDb,
-  settings: SupervisorSettings = readSupervisorSettings(),
-): Promise<UtilityModelAuth | null> {
-  const ref = resolveAssistantModelRef(settings);
-  if (!ref) return null;
-  return resolveAuthFromRef(db, ref);
-}
-
-/**
- * @deprecated Prefer resolveAssistantModelAuth — feature name is ignored.
- */
-export async function resolveFeatureModelAuth(
-  db: FeatureModelDb,
-  _feature: UtilityFeature | string,
-  settings: SupervisorSettings = readSupervisorSettings(),
-): Promise<UtilityModelAuth | null> {
-  return resolveAssistantModelAuth(db, settings);
-}
-
-async function completeUtilityText(auth: UtilityModelAuth, prompt: string): Promise<string> {
-  const result = await completeSimple(auth.model, {
-    messages: [{ role: "user", content: prompt, timestamp: Date.now() }],
-  });
-  return extractText(result.content as Array<{ type: string; text?: string }>);
-}
-
-export async function generateSessionTitle(
-  auth: UtilityModelAuth,
-  userText: string,
-  assistantSummary: string,
-): Promise<string> {
-  const prompt = [
-    "Generate a short chat session title (6-20 Chinese or English characters).",
-    "Return ONLY the title text, no quotes or punctuation wrapper.",
-    "",
-    `User: ${userText.slice(0, 500)}`,
-    `Assistant: ${assistantSummary.slice(0, 500)}`,
-  ].join("\n");
-  const title = await completeUtilityText(auth, prompt);
-  return title
-    .replace(/^["'`]+|["'`]+$/g, "")
-    .slice(0, 40)
-    .trim();
-}
-
-export async function generateCommitMessage(
-  auth: UtilityModelAuth,
-  turnSummary: string,
-  gitDiffStat: string,
-): Promise<string> {
-  const prompt = [
-    "Write a concise git commit subject line for the agent's latest work.",
-    "Return ONLY one line (max 72 chars), imperative mood, no quotes.",
-    "",
-    `Turn summary: ${turnSummary.slice(0, 800)}`,
-    `Diff stat:\n${gitDiffStat.slice(0, 1200)}`,
-  ].join("\n");
-  const message = await completeUtilityText(auth, prompt);
-  return message.split("\n")[0]?.trim().slice(0, 72) || "sv: agent changes";
-}
-
 export async function generateDailyWorkDigest(
-  auth: UtilityModelAuth,
   dayKey: string,
   sections: Array<{
     projectName: string;
@@ -170,35 +20,42 @@ export async function generateDailyWorkDigest(
   }>,
 ): Promise<string> {
   const body = sections
-    .map((section) => {
-      const lines = section.commits.map((commit) => `- ${commit.shortHash} ${commit.subject}`);
-      return [`## ${section.projectName}`, `cwd: ${section.cwd}`, ...lines].join("\n");
-    })
+    .map((section) =>
+      [
+        `## ${section.projectName}`,
+        `cwd: ${section.cwd}`,
+        ...section.commits.map((commit) => `- ${commit.shortHash} ${commit.subject}`),
+      ].join("\n"),
+    )
     .join("\n\n");
-
-  const prompt = [
-    `Summarize the supervisor (sv) git work done on ${dayKey}.`,
-    "Write in Chinese when commits are mostly Chinese; otherwise English.",
-    "Focus on what was accomplished, group related commits, and keep it concise.",
-    "Return markdown only. Do not invent commits that are not listed.",
-    "",
-    body.slice(0, 12000),
-  ].join("\n");
-  return completeUtilityText(auth, prompt);
+  const run = await runWatson({
+    mode: "simple",
+    kind: "daily-work",
+    resultSchema: Type.Object({ summary: Type.String() }),
+    prompt: [
+      `Summarize the git work completed on ${dayKey}.`,
+      "Focus on accomplishments, group related commits, and do not invent anything.",
+      "Submit the markdown summary through submit_result.",
+      "",
+      body.slice(0, 12000),
+    ].join("\n"),
+  });
+  return run.result?.summary ?? "";
 }
 
+/** Compaction is a dedicated pi-agent-core capability and is not a Watson task. */
 export async function compactWithUtilityModel(
-  auth: UtilityModelAuth,
+  config: LLMConfig,
   preparation: CompactionPreparation,
   customInstructions?: string,
 ): Promise<UtilityCompactionResult> {
   return compact(
     preparation,
-    auth.model,
-    auth.apiKey,
-    auth.headers,
+    config.model,
+    config.apiKey,
+    undefined,
     customInstructions,
     undefined,
     "off",
-  );
+  ) as unknown as UtilityCompactionResult;
 }

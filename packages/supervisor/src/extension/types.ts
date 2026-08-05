@@ -6,6 +6,7 @@
 
 import type { Static, TSchema } from "typebox";
 import type { CreateJobInput, JobRecord, UpdateJobInput } from "../core/jobs.js";
+import type { WatsonRunResult } from "../core/watson.js";
 import type { SessionTaskKind, SessionTodoStatus } from "../types.js";
 
 /**
@@ -378,19 +379,25 @@ export interface ExtensionContext {
    * 不创建用户 session；可用于项目解析、清理等，支持 structured 结果。
    */
   readonly watson: {
-    run<T = unknown>(options: {
+    run<Schema extends TSchema>(options: {
       kind: string;
       prompt: string;
+      mode: "simple" | "agent";
       cwd?: string;
       systemPrompt?: string;
       injectSystem?: string;
       toolsPreset?: "coding" | "readonly" | "none";
-      structured?: boolean;
-    }): Promise<{
-      text: string;
-      result: T | null;
-      agentId: number | null;
-    }>;
+      resultSchema: Schema;
+    }): Promise<WatsonRunResult<Static<Schema>>>;
+    run(options: {
+      kind: string;
+      prompt: string;
+      mode: "simple" | "agent";
+      cwd?: string;
+      systemPrompt?: string;
+      injectSystem?: string;
+      toolsPreset?: "coding" | "readonly" | "none";
+    }): Promise<WatsonRunResult>;
   };
 }
 

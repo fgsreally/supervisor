@@ -1,6 +1,5 @@
-import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import {
   type AgentEvent,
   AgentHarness,
@@ -12,8 +11,6 @@ import {
   type ThinkingLevel,
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
-import { getEnvApiKey, getModel, type KnownProvider } from "@earendil-works/pi-ai";
-import { AuthStorage, ModelRegistry } from "@earendil-works/pi-coding-agent";
 import { getAgentHomeDir } from "../agent/index.js";
 import { getDefaultCwd } from "../config/default-cwd.js";
 import { initializeResourceCatalog } from "../resources/catalog-sync.js";
@@ -46,10 +43,11 @@ import { attachHomeTaskSessionSync } from "./home-task-sync.js";
 import {
   buildTodoPlanPrompt,
   parseTodoPlanResult,
+  TodoPlanResultSchema,
   validateHomeTaskDependencies,
 } from "./home-task-plan.js";
 import { scheduleReadyHomeTasks } from "./home-task-scheduler.js";
-import { resolveAssistantModelRef } from "../utils/utility-llm.js";
+import { isFeatureModelRef, readSupervisorSettings } from "../utils/supervisor-settings.js";
 import { applyProjectRuntimeParse, runProjectRuntimeParse } from "./project-runtime.js";
 import {
   parseSessionServicesMeta,
@@ -57,7 +55,7 @@ import {
   stopSessionProjectServices,
 } from "./session-services.js";
 import { syncSessionWorktree } from "../utils/git.js";
-import { runWatsonTask, type WatsonRunOptions, type WatsonRunResult } from "./watson.js";
+import { runWatson } from "./watson.js";
 import type { CreateHomeTaskOptions, HomeTask, UpdateHomeTaskOptions } from "../types.js";
 import {
   cancelPendingApprovals,
@@ -92,7 +90,6 @@ import { configureSessionLogProjectResolver, sessionLog } from "../utils/session
 import { beginSessionTiming, timedSessionStep } from "../utils/session-timing.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "../agent/prompt-templates.js";
-import { appendReadOrchestrationHint } from "../agent/system-prompts.js";
 import { copyMessagesWithInheritance } from "./session-history.js";
 import {
   createSessionCheckpoint,
@@ -149,7 +146,7 @@ import { getGlobalSkillsDirectory } from "../agent/skill-resource.js";
 import { getGlobalPromptsDirectory } from "../agent/prompt-resource.js";
 import { getGlobalExtensionsDirectory } from "../extension/resource.js";
 import { createResourceHandlers } from "../config/resource-handlers.js";
-import { resolveModelWithProviderOverrides } from "../utils/model-utils.js";
+import { resolveLLMConfig } from "../utils/model-utils.js";
 import {
   handleAgentEventForTurnFiles,
   mergeTurnIntoMeta,
@@ -187,9 +184,6 @@ import {
   serializeSessionAvatar,
   type SessionFieldsPatch,
 } from "./session-fields.js";
-
-const DEFAULT_PROVIDER: KnownProvider = "anthropic";
-const DEFAULT_MODEL_ID = "claude-sonnet-4-6";
 
 export type ShadowSuggestionsEvent = {
   type: "shadow_suggestions";
@@ -304,7 +298,6 @@ function resolveForkExclusiveEndIndex(
 
 export class SessionManager {
   private db: SupervisorDb;
-  private modelRegistry: ModelRegistry;
   private runtimes = new Map<number, ManagedSessionRuntime>();
   private turnTrackers = new Map<number, TurnFileTracker>();
   private outputListeners = new Map<number, Set<SessionOutputListener>>();
@@ -338,9 +331,6 @@ export class SessionManager {
       });
     }
     this.jobs = new JobManager(db);
-    const agentDir = join(homedir(), ".pi", "agent");
-    const authStorage = AuthStorage.create(join(agentDir, "auth.json"));
-    this.modelRegistry = ModelRegistry.create(authStorage, join(agentDir, "models.json"));
     this.resourceHandlers = createResourceHandlers({
       db: this.db,
       extensionRegistry: this.extensionRegistry,
@@ -392,10 +382,6 @@ export class SessionManager {
 
   private _childrenSessions(parentId: number): Session[] {
     return this.db.children(parentId).map((row) => this._getSession(row.id)!);
-  }
-
-  getModelRegistry(): ModelRegistry {
-    return this.modelRegistry;
   }
 
   private getAgentForSession(agentId: number | null) {
@@ -498,8 +484,7 @@ export class SessionManager {
 
   private buildSystemPrompt(sessionOverride: string, systemMd: string, cwd: string): string {
     const parts = [sessionOverride, systemMd].filter((p) => p.length > 0);
-    const base = appendContextFilesToSystemPrompt(parts.join("\n\n"), cwd);
-    return appendReadOrchestrationHint(base);
+    return appendContextFilesToSystemPrompt(parts.join("\n\n"), cwd);
   }
 
   private setupRuntime(sessionId: number, runtime: ManagedSessionRuntime): void {
@@ -706,13 +691,7 @@ export class SessionManager {
         session,
         agent?.toolsPreset ?? "coding",
       );
-      const boundModel = agent?.modelId ? this.db.getModelById(agent.modelId) : undefined;
-      const model = boundModel
-        ? resolveModelWithProviderOverrides(this.db, boundModel.providerId, boundModel.modelId)
-        : getModel(DEFAULT_PROVIDER, DEFAULT_MODEL_ID as never);
-      if (!model) {
-        throw new Error(`Model not found for session ${id}`);
-      }
+      const llm = resolveLLMConfig(agent.modelId);
 
       await this.ensureResourceCatalog();
       const resource = new AgentResource({
@@ -744,16 +723,10 @@ export class SessionManager {
       const harness = new AgentHarness({
         env,
         session: harnessSession,
-        model,
+        model: llm.model,
         systemPrompt,
         tools,
-        getApiKeyAndHeaders: async (m) => {
-          const envKey = getEnvApiKey(m.provider);
-          if (envKey) return { apiKey: envKey };
-          const provider = this.db.getProvider(m.provider);
-          if (provider?.apiKey) return { apiKey: provider.apiKey };
-          return undefined;
-        },
+        getApiKeyAndHeaders: async () => ({ apiKey: llm.apiKey }),
       });
       await harness.setThinkingLevel(session.thinkingLevel);
 
@@ -994,23 +967,15 @@ export class SessionManager {
         return rowToSession(this.db.get(activeSession.id)!, this.db);
       }
 
-      const boundModel = agentInDb?.modelId ? this.db.getModelById(agentInDb.modelId) : undefined;
-      const modelId = options.model ?? boundModel?.modelId ?? DEFAULT_MODEL_ID;
-      const fallbackProvider = (options.provider ?? DEFAULT_PROVIDER) as KnownProvider;
-      let model =
-        options.providerId != null
-          ? resolveModelWithProviderOverrides(this.db, options.providerId, modelId)
-          : undefined;
-      if (!model && boundModel) {
-        model = resolveModelWithProviderOverrides(this.db, boundModel.providerId, modelId);
-      }
-      if (!model) {
-        model = getModel(fallbackProvider, modelId as never);
-      }
-
-      if (!model) {
-        throw new Error(`Model ${modelId} from provider ${fallbackProvider} not found`);
-      }
+      const selectedModel =
+        options.providerId != null && options.model
+          ? this.db.getModel(options.providerId, options.model)
+          : agentInDb?.modelId
+            ? this.db.getModelById(agentInDb.modelId)
+            : undefined;
+      if (!selectedModel)
+        throw new Error(`Agent ${agentInDb?.id ?? "unknown"} has no model configured`);
+      const llm = resolveLLMConfig(selectedModel.id);
 
       const storage = createRuntimeSessionStorage(this.db, activeSession);
       this.enableMessageCheckpoints(storage, activeSession.id);
@@ -1053,16 +1018,10 @@ export class SessionManager {
       const harness = new AgentHarness({
         env,
         session: harnessSession,
-        model,
+        model: llm.model,
         systemPrompt,
         tools,
-        getApiKeyAndHeaders: async (m) => {
-          const envKey = getEnvApiKey(m.provider);
-          if (envKey) return { apiKey: envKey };
-          const provider = this.db.getProvider(m.provider);
-          if (provider?.apiKey) return { apiKey: provider.apiKey };
-          return undefined;
-        },
+        getApiKeyAndHeaders: async () => ({ apiKey: llm.apiKey }),
       });
       await harness.setThinkingLevel(activeSession.thinkingLevel);
 
@@ -1865,11 +1824,6 @@ export class SessionManager {
     return this.db.updateProject(id, patch);
   }
 
-  /** 华生内部任务入口（扩展 / 生命周期共用）。 */
-  runWatson<T = unknown>(options: Omit<WatsonRunOptions, "db">): Promise<WatsonRunResult<T>> {
-    return runWatsonTask<T>({ ...options, db: this.db });
-  }
-
   /**
    * 解析并初始化项目：写 AGENTS.md、project_scripts 和描述。
    */
@@ -1881,8 +1835,8 @@ export class SessionManager {
     const project = this.db.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
 
-    const ref = resolveAssistantModelRef();
-    if (!ref) {
+    const ref = readSupervisorSettings().featureModels?.assistant;
+    if (!isFeatureModelRef(ref)) {
       const message = "未配置「助手模型」";
       return { description: null, status: "skipped", error: message };
     }
@@ -2378,8 +2332,8 @@ export class SessionManager {
       const detail = error instanceof Error ? error.message : String(error);
       console.error(`removeSessionWorktree on delete failed [${id}]:`, detail);
       try {
-        await runWatsonTask({
-          db: this.db,
+        await runWatson({
+          mode: "agent",
           cwd: gitCleanup.repoRoot,
           kind: "worktree-cleanup",
           prompt: [
@@ -3044,10 +2998,11 @@ export class SessionManager {
     const agents = this.db.listAgents().map((agent) => ({ id: agent.id, name: agent.name }));
 
     try {
-      const run = await this.runWatson<unknown>({
+      const run = await runWatson({
+        mode: "agent",
         cwd: project.cwd,
         kind: "todo-plan",
-        structured: true,
+        resultSchema: TodoPlanResultSchema,
         toolsPreset: "readonly",
         prompt: buildTodoPlanPrompt({
           title: task.title,

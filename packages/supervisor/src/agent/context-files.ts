@@ -1,5 +1,4 @@
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { renderPromptTemplate } from "./system-prompts.js";
 
@@ -27,13 +26,6 @@ export function loadSupervisorContextFiles(cwd: string): ContextFile[] {
   const out: ContextFile[] = [];
   const seen = new Set<string>();
 
-  const globalAgentDir = join(homedir(), ".pi", "agent");
-  const globalContext = loadContextFileFromDir(globalAgentDir);
-  if (globalContext) {
-    out.push(globalContext);
-    seen.add(globalContext.path);
-  }
-
   let current = resolve(cwd);
   const root = resolve("/");
   while (true) {
@@ -60,5 +52,5 @@ export function appendContextFilesToSystemPrompt(baseSystemPrompt: string, cwd: 
       content: ctx.content.trim(),
     }),
   );
-  return `${baseSystemPrompt}${sections.join("\n")}`;
+  return [baseSystemPrompt.trim(), ...sections].filter(Boolean).join("\n\n");
 }

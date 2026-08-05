@@ -3,12 +3,24 @@ import type { Project } from "../types.js";
 import { commitAll } from "../utils/git.js";
 import { normalizeProjectDescription } from "./project-description.js";
 import type { ProjectScriptInput, ProjectScriptKind } from "./project-scripts.js";
-import { runWatsonTask } from "./watson.js";
+import { runWatson } from "./watson.js";
+import { Type } from "typebox";
 
 export interface ProjectRuntimeSpec {
   description: string;
   scripts: ProjectScriptInput[];
 }
+
+const ProjectRuntimeSpecSchema = Type.Object({
+  description: Type.String(),
+  scripts: Type.Array(
+    Type.Object({
+      kind: Type.Union([Type.Literal("install"), Type.Literal("start"), Type.Literal("destroy")]),
+      name: Type.String(),
+      command: Type.String(),
+    }),
+  ),
+});
 
 /** Session.meta snapshot for a running project service stack. */
 export interface SessionServicesMeta {
@@ -134,11 +146,11 @@ export async function runProjectRuntimeParse(options: {
 }): Promise<ProjectRuntimeSpec> {
   const agentsPath = join(options.project.cwd, "AGENTS.md");
   const originalAgents = existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : null;
-  const run = await runWatsonTask<unknown>({
-    db: options.db,
+  const run = await runWatson({
+    mode: "agent",
     cwd: options.project.cwd,
     kind: "project-parse",
-    structured: true,
+    resultSchema: ProjectRuntimeSpecSchema,
     prompt: buildProjectRuntimeInstructions(options.project),
     injectSystem:
       "本任务必须创建或补充项目根目录 AGENTS.md，并调用 submit_result 提交 description + scripts。",

@@ -3,7 +3,7 @@ import { join } from "node:path";
 import type { SupervisorDb } from "../db/db.js";
 import { listSvCommitsBetween, type SvCommitInfo } from "../utils/git.js";
 import { getSupervisorHome } from "../utils/supervisor-home.js";
-import { generateDailyWorkDigest, resolveFeatureModelAuth } from "../utils/utility-llm.js";
+import { generateDailyWorkDigest } from "../utils/utility-llm.js";
 
 export interface DailyWorkProjectSection {
   projectId: number;
@@ -153,11 +153,9 @@ export async function runDailyWorkAnalysis(
   let summary = "";
   let usedModel = false;
   if (sections.length) {
-    const auth = await resolveFeatureModelAuth(db, "daily-work");
-    if (auth) {
+    {
       try {
         summary = await generateDailyWorkDigest(
-          auth,
           dayKey,
           sections.map((section) => ({
             projectName: section.projectName,

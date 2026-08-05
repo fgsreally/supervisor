@@ -1,4 +1,19 @@
 import type { HomeTask } from "../types.js";
+import { Type } from "typebox";
+
+export const TodoPlanResultSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      key: Type.String(),
+      title: Type.String(),
+      prompt: Type.String(),
+      dependsOnKeys: Type.Array(Type.String()),
+      projectId: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+      agentId: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+      subagentIds: Type.Optional(Type.Array(Type.Number())),
+    }),
+  ),
+});
 
 export interface TodoPlanItemDraft {
   key: string;
@@ -54,9 +69,7 @@ export function parseTodoPlanResult(raw: unknown): TodoPlanItemDraft[] {
       : [];
 
     const subagentIds = Array.isArray(row.subagentIds)
-      ? row.subagentIds
-          .map(asPositiveInt)
-          .filter((id): id is number => id != null)
+      ? row.subagentIds.map(asPositiveInt).filter((id): id is number => id != null)
       : [];
 
     drafts.push({
@@ -163,9 +176,7 @@ export function buildTodoPlanPrompt(input: {
   const projectLines = input.projects
     .map((project) => `- id=${project.id} name=${project.name} cwd=${project.cwd}`)
     .join("\n");
-  const agentLines = input.agents
-    .map((agent) => `- id=${agent.id} name=${agent.name}`)
-    .join("\n");
+  const agentLines = input.agents.map((agent) => `- id=${agent.id} name=${agent.name}`).join("\n");
 
   return [
     "将用户 Todo 拆成可执行工作项依赖图。完成后必须调用 submit_result，result 形如：",

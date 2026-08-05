@@ -20,7 +20,9 @@ import {
 import { hasPendingAsks } from "../../tools/ask/tool.js";
 import type { SupervisorDb } from "../../db/db.js";
 import type { SessionRuntime } from "../session-runtime.js";
-import { compactWithUtilityModel, resolveFeatureModelAuth } from "../../utils/utility-llm.js";
+import { compactWithUtilityModel } from "../../utils/utility-llm.js";
+import { resolveLLMConfig } from "../../utils/model-utils.js";
+import { isFeatureModelRef, readSupervisorSettings } from "../../utils/supervisor-settings.js";
 
 const overflowRecoveryAttempted = new Set<string>();
 const compactingSessions = new Set<string>();
@@ -101,9 +103,15 @@ async function runCompaction(
     const preparation = prepareCompaction(branchEntries, settings);
     if (!preparation) return;
 
-    const utilityAuth = await resolveFeatureModelAuth(db, "summary");
-    if (utilityAuth) {
-      const result = await compactWithUtilityModel(utilityAuth, preparation);
+    const ref = readSupervisorSettings().featureModels?.assistant;
+    const configuredModel = isFeatureModelRef(ref)
+      ? db.getModel(ref.providerId, ref.modelId)
+      : null;
+    if (configuredModel) {
+      const result = await compactWithUtilityModel(
+        resolveLLMConfig(configuredModel.id),
+        preparation,
+      );
       await runtime.appendCompactionResult(
         result.summary,
         result.firstKeptEntryId,

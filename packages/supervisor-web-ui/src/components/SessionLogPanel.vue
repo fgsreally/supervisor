@@ -5,6 +5,7 @@
   >
     <!-- Header -->
     <div
+      v-if="!mobile"
       class="h-14 md:h-16 border-b flex items-center px-4 shrink-0 gap-3"
       style="background: var(--app-settings-bg); border-color: var(--app-border)"
     >
@@ -126,14 +127,20 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onBeforeUnmount } from "vue";
 import { ChevronLeft } from "lucide-vue-next";
 import type { LogEntry } from "@/api";
 import { getSessionLog } from "@/api";
 
-const props = defineProps<{
-  sessionId: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    sessionId: string;
+    mobile?: boolean;
+    /** 仅在为 true 时拉取/轮询日志 */
+    active?: boolean;
+  }>(),
+  { active: false },
+);
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -253,30 +260,46 @@ function formatMeta(meta: Record<string, unknown>): string {
 }
 
 async function fetchLogs() {
+  if (loading.value) return;
   loading.value = true;
   try {
     entries.value = await getSessionLog(props.sessionId);
   } catch {
     // silently fail
+  } finally {
+    loading.value = false;
   }
-  loading.value = false;
 }
 
 let pollTimer: ReturnType<typeof setInterval> | undefined;
 
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = undefined;
+  }
+}
+
+function startPolling() {
+  stopPolling();
+  if (!props.sessionId || !props.active) return;
+  void fetchLogs();
+  pollTimer = setInterval(() => {
+    if (document.hidden || !props.active) return;
+    void fetchLogs();
+  }, 10_000);
+}
+
 watch(
-  () => props.sessionId,
-  (id) => {
-    if (id) {
-      void fetchLogs();
-      pollTimer = setInterval(fetchLogs, 5000);
-    }
-    return () => {
-      if (pollTimer) clearInterval(pollTimer);
-    };
+  () => [props.sessionId, props.active] as const,
+  ([id, active]) => {
+    stopPolling();
+    if (id && active) startPolling();
   },
   { immediate: true },
 );
+
+onBeforeUnmount(stopPolling);
 </script>
 
 <style scoped>
@@ -284,20 +307,5 @@ watch(
   min-width: 22rem;
   background: var(--app-popup-bg);
   border-left: 1px solid var(--app-border-subtle);
-}
-
-@media (max-width: 767px) {
-  .session-log-panel {
-    position: absolute;
-    z-index: 60;
-    inset: auto 0 0;
-    width: 100%;
-    min-width: 0;
-    height: min(68%, 620px);
-    border-top: 1px solid var(--app-border-subtle);
-    border-left: 0;
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -10px 30px rgb(0 0 0 / 14%);
-  }
 }
 </style>

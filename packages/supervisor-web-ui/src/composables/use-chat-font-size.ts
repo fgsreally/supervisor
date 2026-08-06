@@ -1,32 +1,29 @@
-import { computed, ref, watch } from "vue";
+import { computed } from "vue";
+import { useAppFontScale, type AppFontScale } from "./use-app-font-scale";
 
 export type ChatFontSize = "small" | "medium" | "large";
 
-const STORAGE_KEY = "pi-supervisor-chat-font-size";
-
-const SIZE_PX: Record<ChatFontSize, string> = {
-  small: "12.5px",
-  medium: "12.5px",
-  large: "12.5px",
+const SIZE_PX: Record<AppFontScale, string> = {
+  compact: "11.5px",
+  standard: "12.5px",
+  large: "14px",
 };
 
-function readStored(): ChatFontSize {
-  return "small";
-}
-
-const chatFontSize = ref<ChatFontSize>(readStored());
-
-watch(chatFontSize, (value) => {
-  if (typeof localStorage === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, value);
-});
-
 export function useChatFontSize() {
-  const fontSizePx = computed(() => SIZE_PX[chatFontSize.value]);
+  const { fontScale, setFontScale } = useAppFontScale();
+  const fontSizePx = computed(() => SIZE_PX[fontScale.value]);
 
   function setChatFontSize(value: ChatFontSize) {
-    chatFontSize.value = value;
+    if (value === "small") setFontScale("compact");
+    else if (value === "large") setFontScale("large");
+    else setFontScale("standard");
   }
+
+  const chatFontSize = computed<ChatFontSize>(() => {
+    if (fontScale.value === "compact") return "small";
+    if (fontScale.value === "large") return "large";
+    return "medium";
+  });
 
   return {
     chatFontSize,

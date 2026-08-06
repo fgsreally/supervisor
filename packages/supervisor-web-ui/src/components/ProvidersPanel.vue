@@ -1,16 +1,18 @@
 <template>
   <div class="h-full w-full flex flex-col shrink-0 min-w-0 provider-panel">
-    <div v-if="!mobileSearchOpen" class="h-16 flex items-center px-4 shrink-0 border-b provider-panel__header">
-      <h1 class="text-[16px] font-medium flex-1">模型供应商</h1>
-      <button type="button" class="mobile-search-trigger" aria-label="搜索" @click="mobileSearchOpen = true"><Search /></button>
-      <button
-        type="button"
-        class="list-header-btn"
-        title="添加模型供应商"
-        @click="emit('add-provider')"
-      >
-        <Plus class="w-5 h-5" />
-      </button>
+    <div v-if="!mobileSearchOpen" class="h-16 flex items-center px-4 shrink-0 border-b provider-panel__header m-centered-list-header">
+      <h1 class="text-[16px] font-medium flex-1 max-md:flex-none">模型供应商</h1>
+      <div class="m-centered-list-header__actions">
+        <button type="button" class="mobile-search-trigger" aria-label="搜索" @click="mobileSearchOpen = true"><Search /></button>
+        <button
+          type="button"
+          class="list-header-btn"
+          title="添加模型供应商"
+          @click="emit('add-provider')"
+        >
+          <Plus class="w-5 h-5" />
+        </button>
+      </div>
     </div>
 
     <div v-else class="mobile-search-page provider-panel__header">
@@ -121,7 +123,7 @@ function deleteSelected() {
 
 .provider-panel__header {
   background: var(--app-list-header-bg);
-  border-color: var(--app-border-subtle);
+  border-color: var(--app-header-divider, var(--app-border-subtle));
 }
 
 .provider-panel__muted {

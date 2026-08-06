@@ -147,51 +147,64 @@
         v-else
         :tab="mainTab"
         :show-nav="mobileShowPrimaryNav"
-        @navigate="navigateMobileRoot"
+        @navigate="onMobileRootNavigate"
       >
         <div class="flex-1 flex flex-col min-w-0">
           <SearchView v-if="route.path === '/search'" />
-          <MobileWorkView
-            v-else-if="mainTab === 'todo' || mainTab === 'dashboard'"
-            :mode="mainTab"
-            data-tour-page="work"
-            @navigate="navigateMobilePath"
+          <MobilePrimaryTabPager
+            ref="mobileTabPagerRef"
+            v-else-if="mobileShowPrimaryNav"
+            :active-tab="mobilePrimaryTabKey"
+            @navigate="onMobilePrimaryTabNavigate"
           >
-            <TodoView
-              v-if="mainTab === 'todo'"
-              class="flex-1 min-w-0 h-full"
-              @open-session="openSessionFromHome"
-            />
-            <HomeView v-else class="flex-1 min-w-0 h-full" @open-session="openSessionFromHome" />
-          </MobileWorkView>
-          <MobileMeView
-            v-else-if="mainTab === 'settings' && route.path === '/settings'"
-            @navigate="navigateMobilePath"
-            @tutorial="introTour?.start()"
-          />
+            <template #chat>
+              <ChatListPanel
+                data-tour-page="chat"
+                :active-id="activeSessionId ?? ''"
+                @select="selectSession"
+                @delete="onSessionDelete"
+                @settings="onMobileRootNavigate('/settings')"
+              />
+            </template>
+            <template #work>
+              <MobileWorkView
+                :mode="mobileWorkMode"
+                data-tour-page="work"
+                @navigate="navigateMobilePath"
+              >
+                <TodoView
+                  v-if="mobileWorkMode === 'todo'"
+                  class="flex-1 min-w-0 h-full"
+                  @open-session="openSessionFromHome"
+                />
+                <HomeView
+                  v-else
+                  class="flex-1 min-w-0 h-full"
+                  @open-session="openSessionFromHome"
+                />
+              </MobileWorkView>
+            </template>
+            <template #agents>
+              <ContactsPanel
+                data-tour-page="contacts"
+                :active-id="activeAgentId ?? ''"
+                @select="selectAgent"
+                @add="openAgentAdd"
+              />
+            </template>
+            <template #me>
+              <MobileMeView
+                @navigate="navigateMobilePath"
+                @tutorial="introTour?.start()"
+              />
+            </template>
+          </MobilePrimaryTabPager>
           <SettingsPanel
             v-else-if="mainTab === 'settings'"
             :show-back="true"
             @back="navigateMobilePath('/settings')"
           />
           <template v-else-if="mobilePage === 'list'">
-            <KeepAlive>
-              <ChatListPanel
-                v-if="mainTab === 'chat'"
-                data-tour-page="chat"
-                :active-id="activeSessionId ?? ''"
-                @select="selectSession"
-                @delete="onSessionDelete"
-                @settings="navigateMobileRoot('/settings')"
-              />
-            </KeepAlive>
-            <ContactsPanel
-              v-if="mainTab === 'contacts'"
-              data-tour-page="contacts"
-              :active-id="activeAgentId ?? ''"
-              @select="selectAgent"
-              @add="openAgentAdd"
-            />
             <ProvidersPanel
               v-if="mainTab === 'providers'"
               data-tour-page="providers"
@@ -309,7 +322,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount, watch } from "vue";
+import { ref, computed, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import ShellNav, { type MainTab } from "./components/ShellNav.vue";
 import ChatListPanel from "./components/ChatListPanel.vue";
@@ -343,6 +356,9 @@ import IntroTour from "./components/IntroTour.vue";
 import MobileAppShell from "./components/mobile/MobileAppShell.vue";
 import MobileMeView from "./components/mobile/MobileMeView.vue";
 import MobileWorkView from "./components/mobile/MobileWorkView.vue";
+import MobilePrimaryTabPager, {
+  type MobilePrimaryTabKey,
+} from "./components/mobile/MobilePrimaryTabPager.vue";
 import { showUiMessage } from "./composables/use-ui-message";
 import { useSessionStore, useAgentStore, useProviderStore, useResourceStore } from "./store";
 import { providerToUI } from "./utils/provider-ui";
@@ -352,13 +368,15 @@ import { viewPreferences } from "./utils/view-preferences";
 import "./styles/mobile/foundation.css";
 import "./styles/mobile/components.css";
 import "./styles/mobile/chat-density.css";
+import "./styles/mobile/typography.css";
 import "./styles/font-scale.css";
 
 const { width: chatListWidth, startResize: startListResize } = useResizableWidth({
-  defaultWidth: 148,
+  // 导航栏(64px) + 聊天列表合计约 1/4 屏宽
+  defaultWidth: Math.max(136, Math.round(window.innerWidth * 0.25) - 64),
   minWidth: 136,
-  maxWidth: 360,
-  storageKey: "pi-supervisor-chat-list-width-v2",
+  maxWidth: Math.max(360, Math.round(window.innerWidth * 0.32) - 64),
+  storageKey: "pi-supervisor-chat-list-width-v3",
 });
 
 const route = useRoute();
@@ -377,6 +395,8 @@ const activeModelId = ref<string | null>(null);
 const activeResourceId = ref<string | null>(null);
 const isMobile = ref(false);
 const mobilePage = ref<"list" | "detail">("list");
+const mobileWorkMode = ref<"todo" | "dashboard">("todo");
+const mobileTabPagerRef = ref<InstanceType<typeof MobilePrimaryTabPager> | null>(null);
 const searchOpen = ref(false);
 const modelEditorOpen = ref(false);
 const modelEditorSaving = ref(false);
@@ -395,6 +415,8 @@ function applyRoute() {
   const tab = tabFromRoute(route);
   const id = idFromRoute(route);
   mainTab.value = tab;
+  if (tab === "todo") mobileWorkMode.value = "todo";
+  else if (tab === "dashboard") mobileWorkMode.value = "dashboard";
   if (tab === "chat") activeSessionId.value = id ?? activeSessionId.value;
   else if (tab === "contacts") activeAgentId.value = id ?? activeAgentId.value;
   else if (tab === "providers") {
@@ -823,24 +845,70 @@ const PRIMARY_MOBILE_PATHS = new Set([
   "/settings",
 ]);
 
+const mobilePrimaryTabKey = computed<MobilePrimaryTabKey>(() => {
+  if (mainTab.value === "todo" || mainTab.value === "dashboard") return "work";
+  if (mainTab.value === "contacts") return "agents";
+  if (mainTab.value === "settings" && route.path === "/settings") return "me";
+  return "chat";
+});
+
+function mobilePrimaryTabKeyToPath(tab: MobilePrimaryTabKey): "/chat" | "/todo" | "/contacts" | "/settings" {
+  if (tab === "chat") return "/chat";
+  if (tab === "work") return "/todo";
+  if (tab === "agents") return "/contacts";
+  return "/settings";
+}
+
+function onMobilePrimaryTabNavigate(tab: MobilePrimaryTabKey, _direction: "forward" | "back") {
+  navigateMobileRoot(mobilePrimaryTabKeyToPath(tab), "swipe");
+}
+
+function onMobileRootNavigate(path: "/chat" | "/todo" | "/contacts" | "/settings") {
+  navigateMobileRoot(path, "tab-click");
+}
+
 const mobileShowPrimaryNav = computed(
   () =>
     mobilePage.value === "list" &&
     PRIMARY_MOBILE_PATHS.has(route.path.split("/").slice(0, 2).join("/") || route.path),
 );
 
-function navigateMobileRoot(path: "/chat" | "/todo" | "/contacts" | "/settings") {
+function mobileRootPathToTabKey(path: "/chat" | "/todo" | "/contacts" | "/settings"): MobilePrimaryTabKey {
+  if (path === "/chat") return "chat";
+  if (path === "/todo") return "work";
+  if (path === "/contacts") return "agents";
+  return "me";
+}
+
+function navigateMobileRoot(
+  path: "/chat" | "/todo" | "/contacts" | "/settings",
+  source: "tab-click" | "swipe" = "tab-click",
+) {
+  if (path === "/todo" && mainTab.value !== "todo" && mainTab.value !== "dashboard") {
+    mobileWorkMode.value = "todo";
+  }
   if (path === "/chat") onTabChange("chat");
   else if (path === "/todo") onTabChange("todo");
   else if (path === "/contacts") onTabChange("contacts");
   else onTabChange("settings");
+  if (source === "tab-click") {
+    const tabKey = mobileRootPathToTabKey(path);
+    mobileTabPagerRef.value?.syncFromParent(tabKey);
+    void nextTick(() => {
+      mobileTabPagerRef.value?.syncFromParent(tabKey);
+    });
+  }
   void router.replace(path);
 }
 
 function navigateMobilePath(path: string) {
-  if (path === "/todo") onTabChange("todo");
-  else if (path === "/dashboard") onTabChange("dashboard");
-  else if (path === "/providers") {
+  if (path === "/todo") {
+    mobileWorkMode.value = "todo";
+    onTabChange("todo");
+  } else if (path === "/dashboard") {
+    mobileWorkMode.value = "dashboard";
+    onTabChange("dashboard");
+  } else if (path === "/providers") {
     onTabChange("providers");
   } else if (path === "/resources") {
     onTabChange("resources");

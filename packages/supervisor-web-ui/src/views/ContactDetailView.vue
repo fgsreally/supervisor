@@ -5,21 +5,21 @@
   >
     <!-- Mobile -->
     <div v-if="!mobilePage" class="md:hidden flex flex-col h-full">
-      <div class="h-14 border-b flex items-center px-3 shrink-0 contact-detail-header">
+      <div class="border-b shrink-0 contact-detail-header m-mobile-header">
         <button
           v-if="showBack"
           type="button"
-          class="mr-2 p-1.5 rounded-md contact-detail-back-btn"
+          class="contact-detail-back-btn"
           @click="$emit('back')"
         >
           <ChevronLeft class="w-5 h-5" />
         </button>
-        <div class="font-medium text-[17px] truncate contact-detail-title flex-1">
-          {{ agent.name }}
-        </div>
+        <span v-else aria-hidden="true" />
+        <div class="m-mobile-header__title">{{ agent.name }}</div>
         <button v-if="canEdit" type="button" class="wechat-secondary-btn" @click="editOpen = true">
           编辑
         </button>
+        <span v-else aria-hidden="true" />
       </div>
 
       <div class="flex-1 overflow-y-auto custom-scrollbar">
@@ -65,19 +65,17 @@
     </div>
 
     <div v-else class="md:hidden flex flex-col h-full mobile-agent-page">
-      <div class="h-14 border-b flex items-center px-3 shrink-0 contact-detail-header">
+      <div class="border-b shrink-0 contact-detail-header m-mobile-header">
         <button
           type="button"
-          class="mr-2 p-1.5 rounded-md contact-detail-back-btn"
+          class="contact-detail-back-btn"
           aria-label="返回 Agent 详情"
           @click="mobilePage = null"
         >
           <ChevronLeft class="w-5 h-5" />
         </button>
-        <div class="font-medium text-[17px] truncate contact-detail-title flex-1 text-center">
-          {{ mobilePageTitle }}
-        </div>
-        <span class="w-8" aria-hidden="true" />
+        <div class="m-mobile-header__title">{{ mobilePageTitle }}</div>
+        <span aria-hidden="true" />
       </div>
       <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar mobile-agent-page__content">
         <ExternalAgentDetails v-if="mobilePage === 'runtime'" :agent="agent" />
@@ -301,6 +299,11 @@ async function changeModel(modelId: string) {
 }
 
 .contact-detail-back-btn {
+  display: grid;
+  width: var(--m-action-hit-size, 40px);
+  height: var(--m-action-hit-size, 40px);
+  place-items: center;
+  border-radius: 6px;
   color: var(--app-text-secondary);
 }
 

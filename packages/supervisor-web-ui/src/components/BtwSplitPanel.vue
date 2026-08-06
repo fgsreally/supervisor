@@ -1,6 +1,6 @@
 <template>
   <aside class="btw-panel">
-    <header class="btw-panel__header">
+    <header v-if="!mobile" class="btw-panel__header">
       <div><strong>顺便问一下</strong><span>不影响主对话</span></div>
       <button type="button" title="关闭" @click="emit('close')"><X /></button>
     </header>
@@ -54,7 +54,7 @@ import * as api from "@/api";
 import { useSessionStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
 
-const props = defineProps<{ parentId: string; sessions: Session[] }>();
+const props = defineProps<{ parentId: string; sessions: Session[]; mobile?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const sessionStore = useSessionStore();
 const activeId = ref<string | null>(null);

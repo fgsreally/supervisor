@@ -32,6 +32,7 @@ import {
   isFeatureModelRef,
   isUtilityFeature,
   readSupervisorSettings,
+  isDoubaoSpeechConfigured,
   writeSupervisorSettings,
 } from "../utils/supervisor-settings.js";
 import { ensureSupervisorPublicDir } from "../utils/supervisor-home.js";
@@ -43,6 +44,7 @@ import {
 import { encryptApiKey } from "../utils/encrypt.js";
 import { decryptApiKey } from "../utils/encrypt.js";
 import { testApiKey, type ApiKeyProvider } from "../utils/test-api-key.js";
+import { formatUnknownError } from "../utils/format-error.js";
 import { resolveApiKey } from "../tools/web/credentials.js";
 import {
   getCurrentBranch,
@@ -569,7 +571,7 @@ export function createHttpServer(
       serperApiKeyEncrypted: _serper,
       firecrawlApiKeyEncrypted: _firecrawl,
       speechApiKeyEncrypted,
-      doubaoSpeechApiKeyEncrypted,
+      doubaoSpeechAccessTokenEncrypted,
       ...safeSettings
     } = settings;
     return c.json({
@@ -587,7 +589,9 @@ export function createHttpServer(
         _firecrawl || process.env[safeSettings.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY"],
       ),
       speechApiKeyConfigured: Boolean(speechApiKeyEncrypted),
-      doubaoSpeechApiKeyConfigured: Boolean(doubaoSpeechApiKeyEncrypted),
+      doubaoSpeechAppIdConfigured: Boolean(safeSettings.doubaoSpeechAppId?.trim()),
+      doubaoSpeechAccessTokenConfigured: Boolean(doubaoSpeechAccessTokenEncrypted),
+      doubaoSpeechConfigured: isDoubaoSpeechConfigured(settings),
     });
   });
 
@@ -726,22 +730,20 @@ export function createHttpServer(
         ? encryptApiKey(body.speechApiKey)
         : undefined;
     }
-    if (body.doubaoSpeechApiKey !== undefined) {
-      if (typeof body.doubaoSpeechApiKey !== "string") {
-        return jsonError(c, 400, "doubaoSpeechApiKey must be a string");
+    if (body.doubaoSpeechAppId !== undefined) {
+      if (typeof body.doubaoSpeechAppId !== "string") {
+        return jsonError(c, 400, "doubaoSpeechAppId must be a string");
       }
-      patch.doubaoSpeechApiKeyEncrypted = body.doubaoSpeechApiKey
-        ? encryptApiKey(body.doubaoSpeechApiKey)
-        : undefined;
+      const appId = body.doubaoSpeechAppId.trim();
+      patch.doubaoSpeechAppId = appId || undefined;
     }
-    if (body.doubaoSpeechResourceId !== undefined) {
-      if (
-        typeof body.doubaoSpeechResourceId !== "string" ||
-        body.doubaoSpeechResourceId.length > 128
-      ) {
-        return jsonError(c, 400, "invalid doubaoSpeechResourceId");
+    if (body.doubaoSpeechAccessToken !== undefined) {
+      if (typeof body.doubaoSpeechAccessToken !== "string") {
+        return jsonError(c, 400, "doubaoSpeechAccessToken must be a string");
       }
-      patch.doubaoSpeechResourceId = body.doubaoSpeechResourceId;
+      patch.doubaoSpeechAccessTokenEncrypted = body.doubaoSpeechAccessToken
+        ? encryptApiKey(body.doubaoSpeechAccessToken)
+        : undefined;
     }
     const saved = writeSupervisorSettings(patch);
     const {
@@ -750,7 +752,7 @@ export function createHttpServer(
       serperApiKeyEncrypted,
       firecrawlApiKeyEncrypted,
       speechApiKeyEncrypted,
-      doubaoSpeechApiKeyEncrypted,
+      doubaoSpeechAccessTokenEncrypted,
       ...safeSaved
     } = saved;
     return c.json({
@@ -769,7 +771,9 @@ export function createHttpServer(
         process.env[safeSaved.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY"],
       ),
       speechApiKeyConfigured: Boolean(speechApiKeyEncrypted),
-      doubaoSpeechApiKeyConfigured: Boolean(doubaoSpeechApiKeyEncrypted),
+      doubaoSpeechAppIdConfigured: Boolean(safeSaved.doubaoSpeechAppId?.trim()),
+      doubaoSpeechAccessTokenConfigured: Boolean(doubaoSpeechAccessTokenEncrypted),
+      doubaoSpeechConfigured: isDoubaoSpeechConfigured(saved),
     });
   });
 
@@ -792,11 +796,23 @@ export function createHttpServer(
     const providerName = body.provider as ApiKeyProvider;
     const settings = readSupervisorSettings();
     try {
+      if (providerName === "doubao") {
+        let appId = typeof body.appId === "string" ? body.appId.trim() : "";
+        let accessToken = typeof body.accessToken === "string" ? body.accessToken.trim() : "";
+        if (!appId) appId = settings.doubaoSpeechAppId?.trim() ?? "";
+        if (!accessToken && settings.doubaoSpeechAccessTokenEncrypted) {
+          accessToken = decryptApiKey(settings.doubaoSpeechAccessTokenEncrypted);
+        }
+        if (!appId || !accessToken) {
+          return jsonError(c, 409, "App ID or Access Token is not configured");
+        }
+        await testApiKey(providerName, { appId, accessToken });
+        return c.json({ ok: true });
+      }
+
       let apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
       if (!apiKey && providerName === "qwen" && settings.speechApiKeyEncrypted) {
         apiKey = decryptApiKey(settings.speechApiKeyEncrypted);
-      } else if (!apiKey && providerName === "doubao" && settings.doubaoSpeechApiKeyEncrypted) {
-        apiKey = decryptApiKey(settings.doubaoSpeechApiKeyEncrypted);
       } else if (!apiKey && !["qwen", "doubao"].includes(providerName)) {
         const name = providerName as "tavily" | "brave" | "serper" | "firecrawl";
         const envNames = {
@@ -814,10 +830,10 @@ export function createHttpServer(
         apiKey = resolveApiKey(name, envNames[name], encrypted[name]);
       }
       if (!apiKey) return jsonError(c, 409, "API key is not configured");
-      await testApiKey(providerName, apiKey, { resourceId: settings.doubaoSpeechResourceId });
+      await testApiKey(providerName, apiKey);
       return c.json({ ok: true });
     } catch (error) {
-      return jsonError(c, 409, error instanceof Error ? error.message : String(error));
+      return jsonError(c, 409, formatUnknownError(error, "连接测试失败"));
     }
   });
 

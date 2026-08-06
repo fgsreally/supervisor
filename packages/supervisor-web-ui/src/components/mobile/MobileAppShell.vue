@@ -1,11 +1,6 @@
 <template>
   <div class="mobile-app-shell">
-    <main
-      class="mobile-app-shell__content"
-      @touchstart.passive="onTouchStart"
-      @touchmove.passive="onTouchMove"
-      @touchend="onTouchEnd"
-    >
+    <main class="mobile-app-shell__content">
       <slot />
     </main>
 
@@ -18,7 +13,7 @@
         :class="{ 'mobile-tabbar__item--active': activeTab === item.id }"
         :aria-current="activeTab === item.id ? 'page' : undefined"
         :data-tour-nav="item.id"
-        @click="emit('navigate', item.route)"
+        @click="onTabClick(item)"
       >
         <component :is="item.icon" class="mobile-tabbar__icon" />
         <span>{{ item.label }}</span>
@@ -28,7 +23,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import { Bot, CircleUserRound, ListTodo, MessageSquare } from "lucide-vue-next";
 import type { MainTab } from "@/components/ShellNav.vue";
 
@@ -39,7 +34,9 @@ const props = defineProps<{
   showNav?: boolean;
 }>();
 
-const emit = defineEmits<{ navigate: [route: "/chat" | "/todo" | "/contacts" | "/settings"] }>();
+const emit = defineEmits<{
+  navigate: [route: "/chat" | "/todo" | "/contacts" | "/settings", direction: "forward" | "back"];
+}>();
 
 const items = [
   { id: "chat" as const, label: "聊天", route: "/chat" as const, icon: MessageSquare },
@@ -57,37 +54,11 @@ const activeTab = computed<MobilePrimaryTab>(() => {
   return "chat";
 });
 
-const touchStart = ref<{ x: number; y: number } | null>(null);
-
-function onTouchStart(event: TouchEvent) {
-  const touch = event.touches[0];
-  if (
-    !touch ||
-    event.target instanceof HTMLInputElement ||
-    event.target instanceof HTMLTextAreaElement
-  ) {
-    touchStart.value = null;
-    return;
-  }
-  touchStart.value = { x: touch.clientX, y: touch.clientY };
-}
-
-function onTouchMove() {
-  // Keep the gesture passive so vertical scrolling remains native.
-}
-
-function onTouchEnd(event: TouchEvent) {
-  const start = touchStart.value;
-  const touch = event.changedTouches[0];
-  touchStart.value = null;
-  if (!start || !touch) return;
-  const dx = touch.clientX - start.x;
-  const dy = touch.clientY - start.y;
-  if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.25) return;
-  const index = items.findIndex((item) => item.id === activeTab.value);
-  const nextIndex = index + (dx < 0 ? 1 : -1);
-  const next = items[nextIndex];
-  if (next) emit("navigate", next.route);
+function onTabClick(item: (typeof items)[number]) {
+  const activeIndex = items.findIndex((entry) => entry.id === activeTab.value);
+  const nextIndex = items.findIndex((entry) => entry.id === item.id);
+  if (nextIndex === -1 || nextIndex === activeIndex) return;
+  emit("navigate", item.route, nextIndex > activeIndex ? "forward" : "back");
 }
 </script>
 
@@ -99,7 +70,7 @@ function onTouchEnd(event: TouchEvent) {
   min-width: 0;
   flex-direction: column;
   overflow: hidden;
-  background: var(--m-page-bg);
+  background: var(--app-list-section-bg, var(--m-page-bg));
 }
 
 .mobile-app-shell__content {
@@ -116,8 +87,8 @@ function onTouchEnd(event: TouchEvent) {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   flex: 0 0 auto;
   padding-bottom: env(safe-area-inset-bottom);
-  border-top: 1px solid var(--m-divider);
-  background: color-mix(in srgb, var(--m-header-bg) 94%, transparent);
+  border-top: 1px solid var(--app-header-divider, var(--m-divider));
+  background: color-mix(in srgb, var(--app-list-header-bg, var(--m-header-bg)) 94%, transparent);
   backdrop-filter: blur(18px);
 }
 
@@ -129,8 +100,8 @@ function onTouchEnd(event: TouchEvent) {
   justify-content: center;
   flex-direction: column;
   gap: 3px;
-  color: var(--m-text-secondary);
-  font-size: 11px;
+  color: var(--app-text-secondary, var(--m-text-secondary));
+  font-size: var(--m-font-tabbar, 11px);
   line-height: 1;
   transition:
     color 140ms ease,

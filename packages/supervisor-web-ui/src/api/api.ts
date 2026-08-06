@@ -57,9 +57,11 @@ export interface SupervisorSettings {
   speechRecognitionLanguage?: string;
   speechApiKeyConfigured?: boolean;
   speechApiKey?: string;
-  doubaoSpeechApiKeyConfigured?: boolean;
-  doubaoSpeechApiKey?: string;
-  doubaoSpeechResourceId?: string;
+  doubaoSpeechAppIdConfigured?: boolean;
+  doubaoSpeechAccessTokenConfigured?: boolean;
+  doubaoSpeechConfigured?: boolean;
+  doubaoSpeechAppId?: string;
+  doubaoSpeechAccessToken?: string;
 }
 export type SessionBranchType = "subagent" | "fork" | "clone" | "btw";
 export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork" | "clone";
@@ -756,6 +758,15 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, withAuth(options));
   if (!res.ok) {
     const err = await res.text().catch(() => "Unknown error");
+    try {
+      const parsed = JSON.parse(err) as { error?: string; message?: string };
+      const message = parsed.error ?? parsed.message;
+      if (message) throw new Error(message);
+    } catch (error) {
+      if (error instanceof Error && error.message !== err && !error.message.startsWith("HTTP ")) {
+        throw error;
+      }
+    }
     throw new Error(`HTTP ${res.status}: ${err}`);
   }
   const contentType = res.headers.get("content-type") ?? "";
@@ -909,8 +920,9 @@ export function updateSupervisorSettings(
 export function testSettingsApiKey(
   provider: "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl",
   apiKey?: string,
+  options?: { appId?: string; accessToken?: string },
 ): Promise<{ ok: true }> {
-  return postJson<{ ok: true }>("/settings/test-api-key", { provider, apiKey });
+  return postJson<{ ok: true }>("/settings/test-api-key", { provider, apiKey, ...options });
 }
 
 async function putJson<T>(path: string, body: unknown): Promise<T> {

@@ -183,8 +183,17 @@ function appendMessagePieces(
   }
 }
 
-/** One assistant bubble per user turn; tool results inline with calls. */
-export function buildDisplayGroups(entries: ChatEntry[]): DisplayGroup[] {
+export type BuildDisplayGroupsOptions = {
+  /** When true, each assistant message entry is its own bubble (tool results stay with the call). */
+  splitAssistantMessages?: boolean;
+};
+
+/** One assistant bubble per user turn by default; tool results inline with calls. */
+export function buildDisplayGroups(
+  entries: ChatEntry[],
+  options: BuildDisplayGroupsOptions = {},
+): DisplayGroup[] {
+  const splitAssistantMessages = options.splitAssistantMessages ?? false;
   const groups: DisplayGroup[] = [];
   let current: Extract<DisplayGroup, { type: "grouped_assistant" }> | null = null;
 
@@ -238,7 +247,18 @@ export function buildDisplayGroups(entries: ChatEntry[]): DisplayGroup[] {
     }
 
     if (entry.type === "message") {
-      if (!current) {
+      if (splitAssistantMessages) {
+        flushAssistant();
+        current = {
+          id: entry.id,
+          type: "grouped_assistant",
+          role: "assistant",
+          pieces: [],
+          createdAt: entry.createdAt,
+          endedAt: entry.createdAt,
+          assets: [],
+        };
+      } else if (!current) {
         current = {
           id: entry.id,
           type: "grouped_assistant",

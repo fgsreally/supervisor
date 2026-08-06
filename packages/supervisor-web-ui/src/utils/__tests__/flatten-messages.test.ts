@@ -103,4 +103,77 @@ describe("buildDisplayGroups", () => {
       { kind: "text", text: "你好" },
     ]);
   });
+
+  it("merges consecutive assistant messages into one bubble by default", () => {
+    const groups = buildDisplayGroups([
+      {
+        id: "u1",
+        type: "message",
+        message: { role: "user", content: "hi" },
+      },
+      {
+        id: "a1",
+        type: "message",
+        message: { role: "assistant", content: "第一段" },
+      },
+      {
+        id: "a2",
+        type: "message",
+        message: { role: "assistant", content: "第二段" },
+      },
+    ] as import("@/types/chat-entry").ChatEntry[]);
+    const assistantGroups = groups.filter((g) => g.type === "grouped_assistant");
+    expect(assistantGroups).toHaveLength(1);
+    expect(assistantGroups[0] && "pieces" in assistantGroups[0] ? assistantGroups[0].pieces : []).toEqual([
+      { kind: "text", text: "第一段\n\n第二段" },
+    ]);
+  });
+
+  it("splits consecutive assistant messages when splitAssistantMessages is enabled", () => {
+    const groups = buildDisplayGroups(
+      [
+        {
+          id: "u1",
+          type: "message",
+          message: { role: "user", content: "hi" },
+        },
+        {
+          id: "a1",
+          type: "message",
+          message: { role: "assistant", content: "第一段" },
+        },
+        {
+          id: "r1",
+          type: "toolResult",
+          toolCallId: "t1",
+          toolName: "read",
+          content: [{ type: "text", text: "file body" }],
+        },
+        {
+          id: "a2",
+          type: "message",
+          message: { role: "assistant", content: "第二段" },
+        },
+      ] as import("@/types/chat-entry").ChatEntry[],
+      { splitAssistantMessages: true },
+    );
+    const assistantGroups = groups.filter((g) => g.type === "grouped_assistant");
+    expect(assistantGroups).toHaveLength(2);
+    expect(assistantGroups[0]?.type === "grouped_assistant" && assistantGroups[0].id).toBe("a1");
+    expect(assistantGroups[1]?.type === "grouped_assistant" && assistantGroups[1].id).toBe("a2");
+    expect(
+      assistantGroups[0]?.type === "grouped_assistant" ? assistantGroups[0].pieces : [],
+    ).toEqual([
+      { kind: "text", text: "第一段" },
+      {
+        kind: "toolStep",
+        callId: "t1",
+        toolName: "read",
+        result: expect.objectContaining({ id: "r1" }),
+      },
+    ]);
+    expect(
+      assistantGroups[1]?.type === "grouped_assistant" ? assistantGroups[1].pieces : [],
+    ).toEqual([{ kind: "text", text: "第二段" }]);
+  });
 });

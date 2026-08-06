@@ -1,7 +1,7 @@
 <template>
   <aside class="tool-detail-panel">
-    <div class="tool-detail-panel__grabber" />
-    <header>
+    <div v-if="!mobile" class="tool-detail-panel__grabber" />
+    <header v-if="!mobile">
       <span>{{ title }}</span>
       <button type="button" title="关闭" @click="$emit('close')"><X /></button>
     </header>
@@ -29,6 +29,7 @@ const props = defineProps<{
   sections: ToolDetailSection[];
   terminal?: "bash" | "eval";
   sessionId?: string;
+  mobile?: boolean;
 }>();
 defineEmits<{ close: [] }>();
 const evalState = ref<EvalRuntimeState>();

@@ -50,7 +50,7 @@
             :title="`Todo · ${taskTypeSummary}`"
             :active="taskPaneOpen"
             :count="taskCount"
-            @click="taskPaneOpen = !taskPaneOpen"
+            @click="toggleTaskPane"
           >
             <ClipboardList />
           </ChatHeaderAction>
@@ -70,7 +70,7 @@
             title="Todo"
             :active="taskPaneOpen"
             :count="taskCount"
-            @click="taskPaneOpen = !taskPaneOpen"
+            @click="toggleTaskPane"
             ><ClipboardList
           /></ChatHeaderAction>
           <ChatHeaderAction
@@ -93,11 +93,16 @@
 
     <div class="chat-workspace">
       <div class="chat-workspace__conversation">
-        <div v-if="sessionLoading && !chatEntries.length" class="session-loading">
+        <div
+          v-if="!chatViewportReady && !searchOpen"
+          class="session-loading session-loading--overlay"
+        >
           <Loader2 /><span>正在加载聊天记录...</span>
         </div>
         <ChatMessageList
           ref="messageListRef"
+          class="chat-message-list-host"
+          :class="{ 'chat-message-list-host--positioning': !chatViewportReady && !searchOpen }"
           :session-id="session.id"
           :groups="visibleGroups"
           :show-thinking-blocks="showThinking"
@@ -115,6 +120,7 @@
           :retrying="retryingError"
           :has-older="hasOlderMessages"
           :loading-older="loadingOlder"
+          :scroll-ready="chatViewportReady || searchOpen"
           :external-agent="isExternalAgent"
           @load-older="loadOlderMessages"
           @open-tool="openToolDetail"
@@ -174,8 +180,29 @@
         />
       </div>
 
+      <MobileDrawer
+        :open="isMobileViewport && Boolean(taskPaneOpen && taskCount)"
+        ariaLabel="任务"
+        size="tall"
+        :resizable="true"
+        @close="taskPaneOpen = false"
+      >
+        <TaskWorkspacePanel
+          mobile
+          class="chat-panel-host__body"
+          :tasks="tasks"
+          :todos="todos"
+          :selected-path="selectedTaskPath"
+          @select="selectedTaskPath = $event"
+          @close="taskPaneOpen = false"
+        />
+      </MobileDrawer>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="taskPaneOpen && taskCount" class="chat-panel-host" :style="sidePanelStyle">
+        <div
+          v-if="!isMobileViewport && taskPaneOpen && taskCount"
+          class="chat-panel-host"
+          :style="sidePanelStyle"
+        >
           <ResizeHandle
             orientation="vertical"
             label="调整会话分屏宽度"
@@ -191,8 +218,23 @@
           />
         </div>
       </Transition>
+      <MobileDrawer
+        :open="isMobileViewport && btwPanelOpen"
+        ariaLabel="顺便问一下"
+        size="tall"
+        :resizable="true"
+        @close="btwPanelOpen = false"
+      >
+        <BtwSplitPanel
+          mobile
+          class="chat-panel-host__body"
+          :parent-id="session.id"
+          :sessions="btwSessions"
+          @close="btwPanelOpen = false"
+        />
+      </MobileDrawer>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="btwPanelOpen" class="chat-panel-host" :style="sidePanelStyle">
+        <div v-if="!isMobileViewport && btwPanelOpen" class="chat-panel-host" :style="sidePanelStyle">
           <ResizeHandle
             orientation="vertical"
             label="调整会话分屏宽度"
@@ -206,22 +248,53 @@
           />
         </div>
       </Transition>
+      <MobileDrawer
+        :open="isMobileViewport && showLogPanel"
+        ariaLabel="会话日志"
+        size="tall"
+        :resizable="true"
+        @close="showLogPanel = false"
+      >
+        <SessionLogPanel
+          mobile
+          :active="showLogPanel"
+          class="chat-panel-host__body chat-workspace__side-panel"
+          :session-id="session.id"
+          @close="showLogPanel = false"
+        />
+      </MobileDrawer>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="showLogPanel" class="chat-panel-host" :style="sidePanelStyle">
+        <div v-if="!isMobileViewport && showLogPanel" class="chat-panel-host" :style="sidePanelStyle">
           <ResizeHandle
             orientation="vertical"
             label="调整会话分屏宽度"
             @start="startSidePanelResize"
           />
           <SessionLogPanel
+            :active="showLogPanel"
             class="chat-panel-host__body chat-workspace__side-panel"
             :session-id="session.id"
             @close="showLogPanel = false"
           />
         </div>
       </Transition>
+      <MobileDrawer
+        :open="isMobileViewport && showFilesPanel"
+        ariaLabel="工作区文件"
+        size="tall"
+        :resizable="true"
+        @close="showFilesPanel = false"
+      >
+        <SessionFilesPanel
+          mobile
+          class="chat-panel-host__body chat-workspace__side-panel"
+          :session-id="session.id"
+          :initial-path="requestedFilePath"
+          @close="showFilesPanel = false"
+        />
+      </MobileDrawer>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="showFilesPanel" class="chat-panel-host" :style="sidePanelStyle">
+        <div v-if="!isMobileViewport && showFilesPanel" class="chat-panel-host" :style="sidePanelStyle">
           <ResizeHandle
             orientation="vertical"
             label="调整会话分屏宽度"
@@ -235,8 +308,26 @@
           />
         </div>
       </Transition>
+      <MobileDrawer
+        :open="isMobileViewport && Boolean(toolPanel)"
+        :ariaLabel="toolPanel?.title ?? '工具详情'"
+        size="tall"
+        :resizable="true"
+        @close="toolPanel = null"
+      >
+        <ToolDetailPanel
+          v-if="toolPanel"
+          mobile
+          class="chat-panel-host__body chat-workspace__tool-panel"
+          :title="toolPanel.title"
+          :sections="toolPanel.sections"
+          :terminal="toolPanel.terminal"
+          :session-id="session.id"
+          @close="toolPanel = null"
+        />
+      </MobileDrawer>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="toolPanel" class="chat-panel-host" :style="sidePanelStyle">
+        <div v-if="!isMobileViewport && toolPanel" class="chat-panel-host" :style="sidePanelStyle">
           <ResizeHandle
             orientation="vertical"
             label="调整会话分屏宽度"
@@ -261,44 +352,15 @@
       @insert="insertExternalAgentText"
     />
 
-    <Teleport to="body">
-      <Transition name="chat-sheet" :duration="{ enter: 300, leave: 180 }">
-        <div
-          v-if="sessionActionsOpen"
-          class="mobile-actions-backdrop"
-          @click.self="sessionActionsOpen = false"
-        >
-          <section class="mobile-actions-sheet">
-            <div class="mobile-actions-handle" />
-            <div class="mobile-actions-grid">
-              <button type="button" @click="runMobileAction(openSearch)">
-                <Search /><span>搜索</span>
-              </button>
-              <button type="button" @click="runMobileAction(openLogPanel)">
-                <ScrollText /><span>日志</span>
-              </button>
-              <button type="button" @click="runMobileAction(openFilesPanel)">
-                <FolderTree /><span>文件</span>
-              </button>
-              <button
-                v-if="tasks.length"
-                type="button"
-                @click="
-                  runMobileAction(() => {
-                    taskPaneOpen = true;
-                  })
-                "
-              >
-                <ClipboardList /><span>任务</span>
-              </button>
-            </div>
-            <button class="mobile-actions-cancel" type="button" @click="sessionActionsOpen = false">
-              取消
-            </button>
-          </section>
-        </div>
-      </Transition>
-    </Teleport>
+    <ChatSessionToolsSheet
+      :open="sessionActionsOpen"
+      :show-tasks="tasks.length > 0"
+      @close="sessionActionsOpen = false"
+      @search="runMobileAction(openSearch)"
+      @logs="runMobileAction(openLogPanel)"
+      @files="runMobileAction(openFilesPanel)"
+      @tasks="runMobileAction(() => openSidePanel('task'))"
+    />
 
     <ChatSessionMenu
       :open="sessionMenuOpen"
@@ -311,6 +373,7 @@
       :avatar-agent-id="agentId ?? session.id"
       :muted="sessionMuted"
       :show-thinking="showThinking"
+      :split-assistant-messages="splitAssistantMessages"
       :session-status="session.status"
       :git-branch="gitBranch"
       :can-complete="canCompleteSession"
@@ -334,6 +397,7 @@
       @navigate="navigateToSubagent"
       @update:muted="onMutedChange"
       @update:show-thinking="onShowThinkingChange"
+      @update:split-assistant-messages="onSplitAssistantMessagesChange"
       @update:avatar="onAvatarChange"
       @update:title="onSessionTitleChange"
       @update:shadow-enabled="onShadowEnabledChange"
@@ -457,13 +521,20 @@ import SessionJobsPopover, {
   type JobDetailRequest,
 } from "../components/chat/SessionJobsPopover.vue";
 import ChatHeaderAction from "../components/chat/ChatHeaderAction.vue";
+import ChatSessionToolsSheet from "../components/chat/ChatSessionToolsSheet.vue";
 import SessionChangesPopover, {
   type SessionChangedFileView,
 } from "../components/chat/SessionChangesPopover.vue";
 import SessionCommitPopover from "../components/chat/SessionCommitPopover.vue";
 import ToolApprovalDialog from "../components/ToolApprovalDialog.vue";
+import { MobileDrawer } from "../components/mobile/ui";
 import type { ChatSendPayload } from "@/types/chat-compose";
-import { getShowThinking, setShowThinking } from "../composables/use-chat-session-prefs";
+import {
+  getShowThinking,
+  getSplitAssistantMessages,
+  setShowThinking,
+  setSplitAssistantMessages,
+} from "../composables/use-chat-session-prefs";
 import { useChatFontSize } from "../composables/use-chat-font-size";
 import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-push-notifications";
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
@@ -527,7 +598,15 @@ const { width: sidePanelWidth, startResize: startSidePanelResize } = useResizabl
   storageKey: "supervisor:chat-side-panel-width",
   direction: "rtl",
 });
-const sidePanelStyle = computed(() => ({ width: `${sidePanelWidth.value}px` }));
+const isMobileViewport = ref(false);
+
+function syncMobileViewport() {
+  isMobileViewport.value = window.matchMedia("(max-width: 767px)").matches;
+}
+
+const sidePanelStyle = computed(() =>
+  isMobileViewport.value ? undefined : { width: `${sidePanelWidth.value}px` },
+);
 const agentStore = useAgentStore();
 const providerStore = useProviderStore();
 
@@ -567,6 +646,7 @@ const searchBarRef = ref<InstanceType<typeof ChatSearchBar> | null>(null);
 const sessionTitle = ref("");
 const chatEntries = ref<ChatEntry[]>([]);
 const sessionLoading = ref(false);
+const chatViewportReady = ref(false);
 const historyHasMore = ref(false);
 const loadingOlder = ref(false);
 const toolModal = ref<{ title: string; sections: { label: string; content: string }[] } | null>(
@@ -579,12 +659,12 @@ const toolPanel = ref<{
 } | null>(null);
 
 function openJobDetail(request: JobDetailRequest): void {
-  if (request.presentation === "panel" || window.matchMedia("(max-width: 767px)").matches) {
-    toolPanel.value = {
+  if (request.presentation === "panel" || isMobileViewport.value) {
+    setToolPanel({
       title: request.title,
       sections: request.sections,
       terminal: request.terminal,
-    };
+    });
     return;
   }
   toolModal.value = { title: request.title, sections: request.sections };
@@ -608,6 +688,49 @@ const showLogPanel = ref(false);
 const showFilesPanel = ref(false);
 const requestedFilePath = ref<string | null>(null);
 
+type SidePanelKind = "task" | "btw" | "log" | "files";
+
+function closeAllSidePanels() {
+  taskPaneOpen.value = false;
+  btwPanelOpen.value = false;
+  showLogPanel.value = false;
+  showFilesPanel.value = false;
+  toolPanel.value = null;
+}
+
+function openSidePanel(kind: SidePanelKind) {
+  if (isMobileViewport.value) closeAllSidePanels();
+  switch (kind) {
+    case "task":
+      taskPaneOpen.value = true;
+      break;
+    case "btw":
+      btwPanelOpen.value = true;
+      break;
+    case "log":
+      showLogPanel.value = true;
+      if (!isMobileViewport.value) showFilesPanel.value = false;
+      break;
+    case "files":
+      showFilesPanel.value = true;
+      if (!isMobileViewport.value) showLogPanel.value = false;
+      break;
+  }
+}
+
+function setToolPanel(panel: NonNullable<typeof toolPanel.value>) {
+  if (isMobileViewport.value) closeAllSidePanels();
+  toolPanel.value = panel;
+}
+
+function toggleTaskPane() {
+  if (taskPaneOpen.value) {
+    taskPaneOpen.value = false;
+    return;
+  }
+  openSidePanel("task");
+}
+
 function onOpenFileEvent(event: Event) {
   const path = (event as CustomEvent<{ path?: string }>).detail?.path;
   if (!path) return;
@@ -618,26 +741,34 @@ function onOpenFileEvent(event: Event) {
   });
 }
 
-onMounted(() => window.addEventListener("supervisor:open-file", onOpenFileEvent));
+onMounted(() => {
+  syncMobileViewport();
+  window.addEventListener("resize", syncMobileViewport);
+  window.addEventListener("supervisor:open-file", onOpenFileEvent);
+});
 
 function toggleLogPanel() {
-  showLogPanel.value = !showLogPanel.value;
-  if (showLogPanel.value) showFilesPanel.value = false;
+  if (showLogPanel.value) {
+    showLogPanel.value = false;
+    return;
+  }
+  openSidePanel("log");
 }
 
 function toggleFilesPanel() {
-  showFilesPanel.value = !showFilesPanel.value;
-  if (showFilesPanel.value) showLogPanel.value = false;
+  if (showFilesPanel.value) {
+    showFilesPanel.value = false;
+    return;
+  }
+  openSidePanel("files");
 }
 
 function openLogPanel() {
-  showLogPanel.value = true;
-  showFilesPanel.value = false;
+  openSidePanel("log");
 }
 
 function openFilesPanel() {
-  showFilesPanel.value = true;
-  showLogPanel.value = false;
+  openSidePanel("files");
 }
 const searchOpen = ref(false);
 const searchQuery = ref("");
@@ -652,6 +783,7 @@ let streamingReconcileTimer: ReturnType<typeof setInterval> | null = null;
 const workspaceId = computed(() => props.session.workspaceId ?? "");
 const sessionMuted = computed(() => !!props.session.muted);
 const showThinking = ref(false);
+const splitAssistantMessages = ref(false);
 const retryingError = ref(false);
 const taskCount = computed(() => tasks.value.length + todos.value.length);
 const taskTypeSummary = computed(() =>
@@ -834,7 +966,7 @@ const btwSessions = computed(() =>
 
 function onCreateBtw() {
   sessionMenuOpen.value = false;
-  btwPanelOpen.value = true;
+  openSidePanel("btw");
 }
 
 const canCompleteSession = computed(() => {
@@ -863,6 +995,7 @@ watch(
   () => [props.session.id, isExternalAgent.value] as const,
   ([id, external]) => {
     showThinking.value = getShowThinking(id);
+    splitAssistantMessages.value = getSplitAssistantMessages(id);
     sessionUsage.value = null;
     if (external) return;
     void api
@@ -1058,7 +1191,7 @@ async function openPendingPlan() {
     tasks.value.find((task) => task.type === "plan" && task.status === "planning") ??
     tasks.value.find((task) => task.type === "plan");
   if (plan) selectedTaskPath.value = plan.path;
-  taskPaneOpen.value = true;
+  openSidePanel("task");
 }
 
 async function restorePendingApprovals(sessionId: string) {
@@ -1172,6 +1305,11 @@ async function onMutedChange(muted: boolean) {
 function onShowThinkingChange(value: boolean) {
   showThinking.value = value;
   setShowThinking(props.session.id, value);
+}
+
+function onSplitAssistantMessagesChange(value: boolean) {
+  splitAssistantMessages.value = value;
+  setSplitAssistantMessages(props.session.id, value);
 }
 
 async function onAvatarChange(avatar: SessionAvatarValue) {
@@ -1335,11 +1473,25 @@ async function scrollToBottom() {
   await messageListRef.value?.scrollToBottom();
 }
 
+async function prepareChatViewport(sessionId: string) {
+  await scrollToBottom();
+  await nextTick();
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+  if (props.session.id !== sessionId) return;
+  await scrollToBottom();
+  chatViewportReady.value = true;
+}
+
 watch(
   () => props.session.id,
   (id) => {
+    chatViewportReady.value = false;
     subscribeShadowSuggestions(id);
-    void loadSessionMessages(id).then(() => scrollToBottom());
+    void loadSessionMessages(id).then(() => prepareChatViewport(id));
   },
   { immediate: true },
 );
@@ -1363,6 +1515,7 @@ watch(
 
 onBeforeUnmount(() => {
   window.removeEventListener("supervisor:open-file", onOpenFileEvent);
+  window.removeEventListener("resize", syncMobileViewport);
   stopStreaming();
   shadowSuggestionCleanup?.();
   shadowSuggestionCleanup = null;
@@ -1376,7 +1529,11 @@ onBeforeUnmount(() => {
   }
 });
 
-const displayGroups = computed(() => buildDisplayGroups(chatEntries.value));
+const displayGroups = computed(() =>
+  buildDisplayGroups(chatEntries.value, {
+    splitAssistantMessages: splitAssistantMessages.value,
+  }),
+);
 const hasEvalActivity = computed(
   () =>
     sessionTitle.value.toLowerCase().includes("eval") ||
@@ -1498,8 +1655,8 @@ async function openToolDetail(
   const normalizedToolName = toolName.toLowerCase();
   const isEval = normalizedToolName.includes("eval");
   const isTerminal = isEval || normalizedToolName.includes("bash");
-  if (isTerminal || window.matchMedia("(max-width: 767px)").matches) {
-    toolPanel.value = { ...detail, ...(isTerminal ? { terminal: isEval ? "eval" : "bash" } : {}) };
+  if (isTerminal || isMobileViewport.value) {
+    setToolPanel({ ...detail, ...(isTerminal ? { terminal: isEval ? "eval" : "bash" } : {}) });
   } else toolModal.value = detail;
 }
 
@@ -1511,11 +1668,11 @@ function openExternalInteractionDetail(
 }
 
 function openEvalPanel() {
-  toolPanel.value = {
+  setToolPanel({
     title: "Eval",
     sections: [{ label: "运行环境", content: "正在读取 Eval 历史…" }],
     terminal: "eval",
-  };
+  });
 }
 
 function toggleEvalPanel() {
@@ -1550,7 +1707,7 @@ async function openBashDetail(
   const output = content?.map((part) => part.text ?? "").join("\n") ?? "";
   const terminalPresentation =
     content === undefined || output.length > 1000 || output.split(/\r?\n/).length > 8;
-  if (terminalPresentation) toolPanel.value = { ...detail, terminal: "bash" };
+  if (terminalPresentation) setToolPanel({ ...detail, terminal: "bash" });
   else toolModal.value = detail;
 }
 
@@ -1873,12 +2030,23 @@ async function executeCustomSlash(name: string) {
 }
 
 .chat-workspace__conversation {
+  position: relative;
   display: flex;
   min-width: 0;
   flex: 1;
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+.chat-message-list-host {
+  min-height: 0;
+  flex: 1;
+}
+
+.chat-message-list-host--positioning {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .chat-view--builtin-assistant :deep(.assistant-message-body .md-content) {
@@ -1906,7 +2074,8 @@ async function executeCustomSlash(name: string) {
 .chat-panel-host :deep(.tool-detail-panel),
 .chat-panel-host :deep(.task-workspace),
 .chat-panel-host :deep(.btw-panel),
-.chat-panel-host :deep(.session-log-panel) {
+.chat-panel-host :deep(.session-log-panel),
+.chat-panel-host :deep(.session-files-panel) {
   width: 100% !important;
   min-width: 0 !important;
   max-width: none !important;
@@ -1923,6 +2092,13 @@ async function executeCustomSlash(name: string) {
   gap: 8px;
   color: var(--app-text-muted);
   font-size: 13px;
+}
+.session-loading--overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  min-height: 0;
+  background: var(--app-chat-message-bg, var(--app-chat-bg));
 }
 .session-loading svg {
   width: 17px;
@@ -1951,21 +2127,12 @@ async function executeCustomSlash(name: string) {
     min-width: 0;
     max-width: none;
   }
+
   .chat-panel-host > :deep(.resize-handle--vertical) {
     display: none;
   }
   .chat-composer-changes {
     margin: 0 5px 5px;
-  }
-
-  .chat-panel-host :deep(.tool-detail-panel),
-  .chat-panel-host :deep(.task-workspace),
-  .chat-panel-host :deep(.btw-panel),
-  .chat-panel-host :deep(.session-log-panel) {
-    border-top: 1px solid var(--app-border-subtle);
-    border-left: 0;
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -10px 30px rgb(0 0 0 / 14%);
   }
 }
 
@@ -1985,71 +2152,6 @@ async function executeCustomSlash(name: string) {
   padding: 5px 10px;
   background: var(--app-chat-bg);
   color: var(--app-text-primary);
-}
-
-.mobile-actions-backdrop {
-  position: fixed;
-  z-index: 80;
-  inset: 0;
-  display: flex;
-  align-items: flex-end;
-  background: rgb(0 0 0 / 32%);
-}
-
-.mobile-actions-sheet {
-  width: 100%;
-  padding: 8px 12px calc(12px + env(safe-area-inset-bottom));
-  border-radius: 16px 16px 0 0;
-  background: #f7f7f7;
-}
-
-.mobile-actions-handle {
-  width: 34px;
-  height: 4px;
-  margin: 0 auto 12px;
-  border-radius: 999px;
-  background: #c8c8c8;
-}
-
-.mobile-actions-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  padding: 14px 10px;
-  border-radius: 12px;
-  background: #fff;
-}
-
-.mobile-actions-grid button {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 2px;
-  color: #575757;
-  font-size: 12px;
-}
-
-.mobile-actions-grid button :deep(svg) {
-  width: 22px;
-  height: 22px;
-  color: #07a65a;
-}
-
-.mobile-actions-grid button:active {
-  border-radius: 8px;
-  background: #ededed;
-}
-
-.mobile-actions-cancel {
-  width: 100%;
-  margin-top: 8px;
-  padding: 12px;
-  border-radius: 12px;
-  background: #fff;
-  color: #191919;
-  font-size: 15px;
 }
 
 .model-picker-backdrop {

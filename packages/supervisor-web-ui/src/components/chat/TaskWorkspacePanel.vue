@@ -1,6 +1,6 @@
 <template>
   <aside class="task-workspace" aria-label="Todo">
-    <header class="task-workspace__header">
+    <header v-if="!mobile" class="task-workspace__header">
       <div>
         <div class="task-workspace__eyebrow">Todo</div>
         <div class="task-workspace__title">{{ selectedTask?.title ?? "当前任务" }}</div>
@@ -77,6 +77,7 @@ const props = defineProps<{
   tasks: TaskArtifact[];
   todos: TodoItem[];
   selectedPath: string | null;
+  mobile?: boolean;
 }>();
 
 const emit = defineEmits<{

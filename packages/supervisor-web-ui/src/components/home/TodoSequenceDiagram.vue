@@ -1,6 +1,6 @@
 <template>
   <section class="sequence">
-    <header><strong>顺序图</strong><span>5 个任务</span></header>
+    <header><strong>顺序图</strong><span>5 个任务 · 拖拽平移 / 滚轮缩放</span></header>
     <VueFlow
       class="sequence-flow"
       :nodes="nodes"
@@ -8,8 +8,8 @@
       :nodes-draggable="false"
       :nodes-connectable="false"
       :elements-selectable="false"
-      :zoom-on-scroll="false"
-      :pan-on-drag="false"
+      :zoom-on-scroll="true"
+      :pan-on-drag="true"
       fit-view-on-init
       :fit-view-on-init-options="{ padding: 0.16 }"
       @node-click="onNodeClick"

@@ -1,30 +1,39 @@
 <template>
-  <div class="mobile-me" data-tour-page="me">
-    <header class="mobile-me__header">
-      <div>
-        <h1>我的</h1>
-        <p>能力、偏好与系统服务</p>
-      </div>
+  <div
+    class="mobile-me h-full w-full flex flex-col shrink-0 min-w-0"
+    data-tour-page="me"
+    style="background: var(--app-list-section-bg)"
+  >
+    <header class="mobile-me__header m-mobile-header">
+      <span aria-hidden="true" />
+      <h1 class="m-mobile-header__title">我的</h1>
+      <span aria-hidden="true" />
     </header>
 
-    <div class="mobile-me__scroll">
-      <MobileSection v-for="group in groups" :key="group.title" :title="group.title">
-        <MobileListRow
+    <div class="mobile-me__scroll flex-1 overflow-y-auto custom-scrollbar">
+      <template v-for="group in groups" :key="group.title">
+        <div
+          class="list-section-label px-4 py-1.5 font-semibold tracking-wide sticky top-0 z-10"
+        >
+          {{ group.title }}
+        </div>
+        <button
           v-for="item in group.items"
           :key="item.id"
-          :title="item.label"
-          :description="item.description"
-          :chevron="true"
+          type="button"
+          class="mobile-me-item"
           :data-tour-tutorial="item.id === 'tutorial' ? '' : undefined"
           @click="open(item.id)"
         >
-          <template #icon>
-            <span class="mobile-me__icon" :style="{ '--m-feature-color': item.color }">
-              <component :is="item.icon" />
-            </span>
-          </template>
-        </MobileListRow>
-      </MobileSection>
+          <span class="mobile-me-item__icon" :style="{ '--m-feature-color': item.color }">
+            <component :is="item.icon" />
+          </span>
+          <div class="flex-1 min-w-0">
+            <div class="font-medium truncate mobile-me-item__name">{{ item.label }}</div>
+            <div class="truncate mt-0.5 mobile-me-item__desc">{{ item.description }}</div>
+          </div>
+        </button>
+      </template>
     </div>
   </div>
 </template>
@@ -44,7 +53,6 @@ import {
 import { useAppTheme } from "@/composables/use-app-theme";
 import { useAppFontScale, type AppFontScale } from "@/composables/use-app-font-scale";
 import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
-import { MobileListRow, MobileSection } from "./ui";
 
 type ItemId =
   | "providers"
@@ -174,61 +182,50 @@ function open(id: ItemId) {
 </script>
 
 <style scoped>
-.mobile-me {
+.mobile-me__header {
+  flex-shrink: 0;
+}
+
+.list-section-label {
+  background: var(--app-list-section-bg);
+  color: var(--app-text-secondary);
+}
+
+.mobile-me-item {
   display: flex;
   width: 100%;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-  background: var(--m-page-bg);
-  color: var(--m-text-primary);
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--app-list-bg);
+  text-align: left;
+  transition: background-color 0.15s;
 }
 
-.mobile-me__header {
-  padding: calc(var(--m-space-5) + env(safe-area-inset-top)) var(--m-space-5) 18px;
-  background: var(--m-header-bg);
+.mobile-me-item:active {
+  background: var(--app-list-item-hover);
 }
 
-.mobile-me__header h1 {
-  font-size: var(--m-font-page-title);
-  font-weight: var(--m-font-page-title-weight);
+.mobile-me-item__name {
+  color: var(--app-text-primary);
 }
 
-.mobile-me__header p {
-  margin-top: 4px;
-  color: var(--m-text-secondary);
-  font-size: 13px;
+.mobile-me-item__desc {
+  color: var(--app-text-secondary);
 }
 
-.mobile-me__scroll {
-  flex: 1;
-  overflow-y: auto;
-  padding: 10px 0 var(--m-space-6);
-}
-
-.mobile-me__scroll :deep(.m-list) {
-  border-radius: 0;
-}
-
-.mobile-me__scroll :deep(.m-section__title) {
-  margin-inline: 16px;
-}
-
-.mobile-me__scroll :deep(.m-list-row) {
-  padding-inline: 16px;
-}
-
-.mobile-me__icon {
+.mobile-me-item__icon {
   display: grid;
-  width: 100%;
-  height: 100%;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
   place-items: center;
-  border-radius: inherit;
+  border-radius: 6px;
   color: #fff;
   background: var(--m-feature-color);
 }
 
-.mobile-me__icon :deep(svg) {
+.mobile-me-item__icon :deep(svg) {
   width: 20px;
   height: 20px;
 }

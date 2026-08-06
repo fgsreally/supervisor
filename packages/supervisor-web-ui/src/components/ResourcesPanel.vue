@@ -9,10 +9,10 @@
     }"
   >
     <div
-      class="px-4 py-3 border-b"
+      class="px-4 py-3 border-b resources-panel__header"
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
-      <div class="text-[17px] font-medium mb-3" style="color: var(--app-text-primary)">资源</div>
+      <div class="resources-panel__title text-[17px] font-medium mb-3" style="color: var(--app-text-primary)">资源</div>
       <div class="flex gap-1">
         <button
           v-for="k in kinds"
@@ -231,5 +231,12 @@ async function onExtensionInstalled(id: string) {
 
 .resources-item--active .resources-item__desc {
   color: var(--app-list-item-active-secondary);
+}
+
+@media (max-width: 767px) {
+  .resources-panel__title {
+    margin-bottom: 12px;
+    text-align: center;
+  }
 }
 </style>

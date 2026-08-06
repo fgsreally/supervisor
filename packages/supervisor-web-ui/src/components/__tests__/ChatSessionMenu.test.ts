@@ -10,6 +10,7 @@ const baseProps = {
   avatarColor: "#000",
   muted: false,
   showThinking: false,
+  splitAssistantMessages: false,
   childSessions: [],
   configurableAgents: [],
   shadowEnabled: true,

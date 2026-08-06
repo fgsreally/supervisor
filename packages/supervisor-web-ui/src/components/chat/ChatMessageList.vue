@@ -8,6 +8,12 @@
       <Loader2 class="w-4 h-4 animate-spin" />
       <span>加载更早消息…</span>
     </div>
+    <div
+      v-else-if="scrollReady && hasOlder && !searchOpen"
+      class="chat-load-older chat-load-older--hint"
+    >
+      <span>上滑加载更早消息</span>
+    </div>
     <div class="chat-virtual-spacer" :style="{ height: `${rowVirtualizer.getTotalSize()}px` }">
       <div
         v-for="virtualRow in rowVirtualizer.getVirtualItems()"
@@ -146,6 +152,7 @@ const props = defineProps<{
   rewindableEntryIds: string[];
   hasOlder?: boolean;
   loadingOlder?: boolean;
+  scrollReady?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -178,7 +185,7 @@ const LOAD_OLDER_THRESHOLD_PX = 80;
 
 function onScroll() {
   const el = containerRef.value;
-  if (!el || !props.hasOlder || props.loadingOlder || props.searchOpen) return;
+  if (!el || !props.scrollReady || !props.hasOlder || props.loadingOlder || props.searchOpen) return;
   if (el.scrollTop <= LOAD_OLDER_THRESHOLD_PX) emit("load-older");
 }
 
@@ -429,9 +436,13 @@ async function scrollToBottom() {
     rowVirtualizer.value.scrollToIndex(props.groups.length - 1, { align: "end" });
   }
   await nextTick();
-  if (containerRef.value) {
-    containerRef.value.scrollTop = containerRef.value.scrollHeight;
-  }
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      const el = containerRef.value;
+      if (el) el.scrollTop = el.scrollHeight;
+      resolve();
+    });
+  });
 }
 
 defineExpose({ scrollToBottom, containerRef });
@@ -472,6 +483,9 @@ defineExpose({ scrollToBottom, containerRef });
   padding: 10px 12px 4px;
   color: var(--app-text-muted);
   font-size: 12px;
+}
+.chat-load-older--hint {
+  opacity: 0.72;
 }
 
 .chat-row {

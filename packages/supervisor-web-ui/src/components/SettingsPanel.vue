@@ -1,10 +1,12 @@
 <template>
   <div class="flex-1 flex flex-col min-w-0 overflow-hidden settings-page">
-    <div class="h-16 flex items-center px-6 border-b settings-header">
+    <div class="settings-header m-mobile-header">
       <button v-if="showBack" type="button" class="settings-back" @click="emit('back')">
         <ChevronLeft class="h-5 w-5" />
       </button>
-      <h1 class="text-[17px] font-medium">设置</h1>
+      <span v-else aria-hidden="true" />
+      <h1 class="m-mobile-header__title">设置</h1>
+      <span aria-hidden="true" />
     </div>
 
     <div class="flex-1 overflow-y-auto custom-scrollbar p-6">
@@ -217,6 +219,27 @@
               </label>
               <p class="dialog-note">仅作为浏览器识别提示，不影响云端服务。</p>
             </template>
+            <template v-else-if="activeService === 'doubao'">
+              <label>
+                <span>APP ID</span>
+                <input
+                  v-model.trim="draftDoubaoAppId"
+                  autocomplete="off"
+                  :placeholder="activeMeta.configured ? '已配置，留空则保持不变' : '输入 APP ID'"
+                />
+              </label>
+              <label>
+                <span>Access Token</span>
+                <input
+                  v-model.trim="draftDoubaoAccessToken"
+                  type="password"
+                  autocomplete="new-password"
+                  :placeholder="
+                    activeMeta.configured ? '已配置，留空则保持不变' : '输入 Access Token'
+                  "
+                />
+              </label>
+            </template>
             <template v-else>
               <label>
                 <span>API Key</span>
@@ -231,11 +254,6 @@
                 <span>环境变量名（可选）</span>
                 <input v-model.trim="draftEnvName" placeholder="也可以从环境变量读取" />
               </label>
-              <label v-if="activeService === 'doubao'">
-                <span>资源 ID</span>
-                <input v-model.trim="form.doubaoSpeechResourceId" />
-              </label>
-              <p class="dialog-note">密钥加密保存在本机，不会返回到浏览器。</p>
             </template>
             <p
               v-if="dialogMessage"
@@ -346,7 +364,6 @@ const form = reactive({
   webFetchProvider: "native" as NonNullable<SupervisorSettings["webFetchProvider"]>,
   speechRecognitionMode: "browser" as NonNullable<SupervisorSettings["speechRecognitionMode"]>,
   speechRecognitionLanguage: "",
-  doubaoSpeechResourceId: "volc.seedasr.sauc.duration",
 });
 const featureModelKeys = reactive<Record<UtilityFeature, string>>({
   assistant: "",
@@ -406,6 +423,8 @@ const webServices = computed(() =>
 );
 const activeService = ref<ServiceId | null>(null);
 const draftApiKey = ref("");
+const draftDoubaoAppId = ref("");
+const draftDoubaoAccessToken = ref("");
 const draftEnvName = ref("");
 const clearRequested = ref(false);
 const testingKey = ref("");
@@ -455,13 +474,12 @@ function apply(settings: SupervisorSettings) {
   form.webFetchProvider = settings.webFetchProvider ?? "native";
   form.speechRecognitionMode = settings.speechRecognitionMode ?? "browser";
   form.speechRecognitionLanguage = settings.speechRecognitionLanguage ?? "";
-  form.doubaoSpeechResourceId = settings.doubaoSpeechResourceId ?? "volc.seedasr.sauc.duration";
   envNames.tavily = settings.tavilyApiKeyEnv ?? "TAVILY_API_KEY";
   envNames.brave = settings.braveApiKeyEnv ?? "BRAVE_API_KEY";
   envNames.serper = settings.serperApiKeyEnv ?? "SERPER_API_KEY";
   envNames.firecrawl = settings.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY";
   configured.qwen = settings.speechApiKeyConfigured ?? false;
-  configured.doubao = settings.doubaoSpeechApiKeyConfigured ?? false;
+  configured.doubao = settings.doubaoSpeechConfigured ?? false;
   configured.tavily = settings.tavilyApiKeyConfigured ?? false;
   configured.brave = settings.braveApiKeyConfigured ?? false;
   configured.serper = settings.serperApiKeyConfigured ?? false;
@@ -472,6 +490,8 @@ function apply(settings: SupervisorSettings) {
 function openService(id: ServiceId) {
   activeService.value = id;
   draftApiKey.value = "";
+  draftDoubaoAppId.value = "";
+  draftDoubaoAccessToken.value = "";
   draftEnvName.value = id in envNames ? envNames[id as keyof typeof envNames] : "";
   clearRequested.value = false;
   dialogMessage.value = "";
@@ -484,6 +504,8 @@ function closeService() {
 function clearActiveKey() {
   if (!activeService.value || activeService.value === "browser") return;
   draftApiKey.value = "";
+  draftDoubaoAppId.value = "";
+  draftDoubaoAccessToken.value = "";
   clearRequested.value = true;
   dialogMessage.value = "保存后将清除密钥";
   dialogFailed.value = false;
@@ -494,12 +516,19 @@ async function testActiveKey() {
   testingKey.value = activeService.value;
   dialogMessage.value = "";
   try {
-    await testSettingsApiKey(activeService.value, draftApiKey.value || undefined);
+    if (activeService.value === "doubao") {
+      await testSettingsApiKey("doubao", undefined, {
+        appId: draftDoubaoAppId.value || undefined,
+        accessToken: draftDoubaoAccessToken.value || undefined,
+      });
+    } else {
+      await testSettingsApiKey(activeService.value, draftApiKey.value || undefined);
+    }
     dialogFailed.value = false;
-    dialogMessage.value = "API Key 测试通过";
+    dialogMessage.value = "连接测试通过";
   } catch (error) {
     dialogFailed.value = true;
-    dialogMessage.value = error instanceof Error ? error.message : "API Key 测试失败";
+    dialogMessage.value = error instanceof Error ? error.message : "连接测试失败";
   } finally {
     testingKey.value = "";
   }
@@ -519,7 +548,6 @@ function mainPatch(): Partial<SupervisorSettings> {
     webFetchProvider: form.webFetchProvider,
     speechRecognitionMode: form.speechRecognitionMode,
     speechRecognitionLanguage: form.speechRecognitionLanguage,
-    doubaoSpeechResourceId: form.doubaoSpeechResourceId,
     tavilyApiKeyEnv: envNames.tavily,
     braveApiKeyEnv: envNames.brave,
     serperApiKeyEnv: envNames.serper,
@@ -532,20 +560,45 @@ async function saveService() {
   if (!activeService.value) return;
   saving.value = true;
   dialogMessage.value = "";
+  dialogFailed.value = false;
   try {
     const patch = mainPatch();
     const id = activeService.value;
     if (id !== "browser") {
-      const keyFields: Record<RemoteServiceId, keyof SupervisorSettings> = {
-        qwen: "speechApiKey",
-        doubao: "doubaoSpeechApiKey",
-        tavily: "tavilyApiKey",
-        brave: "braveApiKey",
-        serper: "serperApiKey",
-        firecrawl: "firecrawlApiKey",
-      };
-      if (draftApiKey.value || clearRequested.value) {
-        Object.assign(patch, { [keyFields[id]]: clearRequested.value ? "" : draftApiKey.value });
+      if (id === "doubao") {
+        const nextAppId = draftDoubaoAppId.value.trim();
+        const nextToken = draftDoubaoAccessToken.value.trim();
+        if (!clearRequested.value && !configured.doubao && (!nextAppId || !nextToken)) {
+          dialogFailed.value = true;
+          dialogMessage.value = "请同时填写 APP ID 与 Access Token";
+          return;
+        }
+        if (draftDoubaoAppId.value || clearRequested.value) {
+          Object.assign(patch, {
+            doubaoSpeechAppId: clearRequested.value ? "" : nextAppId,
+          });
+        }
+        if (draftDoubaoAccessToken.value || clearRequested.value) {
+          Object.assign(patch, {
+            doubaoSpeechAccessToken: clearRequested.value ? "" : nextToken,
+          });
+        }
+        patch.speechRecognitionMode = "doubao";
+        form.speechRecognitionMode = "doubao";
+      } else if (id === "qwen") {
+        patch.speechRecognitionMode = "qwen";
+        form.speechRecognitionMode = "qwen";
+      } else {
+        const keyFields: Record<Exclude<RemoteServiceId, "doubao">, keyof SupervisorSettings> = {
+          qwen: "speechApiKey",
+          tavily: "tavilyApiKey",
+          brave: "braveApiKey",
+          serper: "serperApiKey",
+          firecrawl: "firecrawlApiKey",
+        };
+        if (draftApiKey.value || clearRequested.value) {
+          Object.assign(patch, { [keyFields[id]]: clearRequested.value ? "" : draftApiKey.value });
+        }
       }
       if (id in envNames) {
         envNames[id as keyof typeof envNames] = draftEnvName.value;
@@ -664,6 +717,11 @@ onMounted(async () => {
   background: var(--app-settings-bg);
 }
 .settings-header {
+  display: flex;
+  align-items: center;
+  min-height: 64px;
+  padding-inline: 24px;
+  border-bottom: 1px solid var(--app-border);
   border-color: var(--app-border);
   color: var(--app-text-primary);
 }
@@ -979,6 +1037,22 @@ input:focus {
   .console-link {
     width: 100%;
     margin-bottom: 4px;
+  }
+  .settings-header {
+    display: grid;
+    min-height: 52px;
+    height: 52px;
+    padding-inline: 10px;
+    border-bottom: 1px solid var(--app-header-divider, var(--app-border-subtle));
+    background: var(--app-list-header-bg);
+    grid-template-columns: var(--m-action-hit-size, 40px) minmax(0, 1fr) var(--m-action-hit-size, 40px);
+    align-items: center;
+  }
+  .settings-header .m-mobile-header__title {
+    font-weight: 500;
+  }
+  .settings-header .settings-back {
+    margin: 0;
   }
 }
 </style>

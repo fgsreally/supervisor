@@ -199,6 +199,7 @@ export function chatInputTheme(editorHeightPx: number) {
     ".cm-content": {
       fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif',
       fontSize: "14px",
+      fontWeight: "400",
       lineHeight: "1.625",
       caretColor: "var(--app-cm-caret)",
       color: "var(--app-cm-text)",

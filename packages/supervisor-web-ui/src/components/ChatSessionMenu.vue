@@ -321,6 +321,26 @@
                 />
               </button>
             </div>
+
+            <div
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
+              <span class="text-[15px]">分条显示回复</span>
+              <button
+                type="button"
+                role="switch"
+                aria-label="分条显示模型回复"
+                :aria-checked="splitAssistantMessages"
+                class="relative w-11 h-6 rounded-full transition-colors"
+                :class="splitAssistantMessages ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
+                @click="emit('update:splitAssistantMessages', !splitAssistantMessages)"
+              >
+                <span
+                  class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                  :class="splitAssistantMessages ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </button>
+            </div>
           </div>
         </aside>
       </div>
@@ -354,6 +374,7 @@ const props = defineProps<{
   avatarAgentId?: string;
   muted: boolean;
   showThinking: boolean;
+  splitAssistantMessages: boolean;
   sessionStatus?: string;
   gitBranch?: string | null;
   canComplete?: boolean;
@@ -390,6 +411,7 @@ const emit = defineEmits<{
   navigate: [sessionId: string];
   "update:muted": [value: boolean];
   "update:showThinking": [value: boolean];
+  "update:splitAssistantMessages": [value: boolean];
   "update:avatar": [value: SessionAvatarValue];
   "update:title": [value: string];
   "update:shadowEnabled": [value: boolean];

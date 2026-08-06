@@ -1,38 +1,84 @@
-import { randomUUID } from "node:crypto";
 import { WebSocket } from "ws";
+import { formatUnknownError } from "./format-error.js";
+import { buildDoubaoSpeechWsHeaders } from "./supervisor-settings.js";
 
 export type ApiKeyProvider = "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl";
 
-function testWebSocket(url: string, headers: Record<string, string>): Promise<void> {
+function testWebSocket(url: string, headers: Record<string, string>, label: string): Promise<void> {
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      fn();
+    };
     const socket = new WebSocket(url, { headers, handshakeTimeout: 12_000 });
+
     socket.once("open", () => {
-      socket.close();
-      resolve();
+      finish(() => {
+        socket.close();
+        resolve();
+      });
     });
-    socket.once("error", reject);
+
+    socket.on("unexpected-response", (_req, res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (chunk) => chunks.push(chunk as Buffer));
+      res.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8").trim();
+        let detail = raw;
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw) as { message?: string; error?: string; code?: number };
+            detail = parsed.message ?? parsed.error ?? raw;
+          } catch {
+            detail = raw.slice(0, 240);
+          }
+        }
+        finish(() =>
+          reject(
+            new Error(
+              `${label}连接被拒绝 (HTTP ${res.statusCode})${detail ? `: ${detail}` : ""}`,
+            ),
+          ),
+        );
+      });
+    });
+
+    socket.once("error", (error) => {
+      finish(() => reject(new Error(formatUnknownError(error, `${label}连接失败`))));
+    });
   });
 }
 
+export type DoubaoSpeechCredentials = { appId: string; accessToken: string };
+
 export async function testApiKey(
   provider: ApiKeyProvider,
-  apiKey: string,
-  options: { resourceId?: string } = {},
+  credential: string | DoubaoSpeechCredentials,
 ): Promise<void> {
+  const apiKey = typeof credential === "string" ? credential : "";
   const signal = AbortSignal.timeout(12_000);
   let response: Response | undefined;
   switch (provider) {
     case "qwen":
       return testWebSocket(
         "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3-asr-flash-realtime",
-        { Authorization: `Bearer ${apiKey}` },
+        { Authorization: `Bearer ${typeof credential === "string" ? credential : ""}` },
+        "DashScope 语音",
       );
-    case "doubao":
-      return testWebSocket("wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async", {
-        "X-Api-Key": apiKey,
-        "X-Api-Resource-Id": options.resourceId || "volc.seedasr.sauc.duration",
-        "X-Api-Connect-Id": randomUUID(),
-      });
+    case "doubao": {
+      const creds =
+        typeof credential === "string" ? { appId: "", accessToken: credential } : credential;
+      if (!creds.appId.trim() || !creds.accessToken.trim()) {
+        throw new Error("App ID 与 Access Token 不能为空");
+      }
+      return testWebSocket(
+        "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
+        buildDoubaoSpeechWsHeaders(creds.appId, creds.accessToken),
+        "豆包语音",
+      );
+    }
     case "tavily":
       response = await fetch("https://api.tavily.com/search", {
         method: "POST",
@@ -64,5 +110,5 @@ export async function testApiKey(
       });
       break;
   }
-  if (!response.ok) throw new Error(`${provider} returned HTTP ${response.status}`);
+  if (!response!.ok) throw new Error(`${provider} returned HTTP ${response!.status}`);
 }

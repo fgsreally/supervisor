@@ -4,6 +4,8 @@ const STORAGE_KEY = "pi-supervisor-chat-prefs";
 
 interface SessionChatPrefs {
   showThinking?: boolean;
+  /** Each assistant message entry renders as its own bubble (default: one bubble per user turn). */
+  splitAssistantMessages?: boolean;
 }
 
 interface ChatPrefsStore {
@@ -35,5 +37,15 @@ export function getShowThinking(sessionId: string): boolean {
 export function setShowThinking(sessionId: string, value: boolean): void {
   const store = readStore();
   store.sessions[sessionId] = { ...store.sessions[sessionId], showThinking: value };
+  writeStore(store);
+}
+
+export function getSplitAssistantMessages(sessionId: string): boolean {
+  return !!readStore().sessions[sessionId]?.splitAssistantMessages;
+}
+
+export function setSplitAssistantMessages(sessionId: string, value: boolean): void {
+  const store = readStore();
+  store.sessions[sessionId] = { ...store.sessions[sessionId], splitAssistantMessages: value };
   writeStore(store);
 }

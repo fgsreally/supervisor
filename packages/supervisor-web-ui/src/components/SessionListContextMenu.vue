@@ -5,11 +5,13 @@
       class="fixed inset-0 z-[150]"
       @mousedown="emit('close')"
       @contextmenu.prevent="emit('close')"
+      @selectstart.prevent
     >
       <div
         class="session-context-menu fixed min-w-[120px] rounded-md border shadow-lg py-1"
         :style="{ left: `${x}px`, top: `${y}px` }"
         @mousedown.stop
+        @selectstart.prevent
       >
         <button
           v-if="!protectedSession"
@@ -80,11 +82,17 @@ const emit = defineEmits<{
 .session-context-menu {
   background: var(--app-popup-bg);
   border-color: var(--app-popup-border);
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .session-context-menu__item {
   color: var(--app-text-primary);
   transition: background-color 0.15s;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .session-context-menu__item:last-child {

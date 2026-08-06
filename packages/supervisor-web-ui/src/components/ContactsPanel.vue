@@ -5,18 +5,18 @@
   >
     <div
       v-if="!mobileSearchOpen"
-      class="h-16 flex items-center px-4 shrink-0 border-b"
-      style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
+      class="h-16 flex items-center px-4 shrink-0 border-b m-centered-list-header"
+      style="background: var(--app-list-header-bg); border-color: var(--app-header-divider, var(--app-border-subtle))"
     >
-      <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">
-        智能代理
-      </h1>
-      <button type="button" class="mobile-search-trigger" aria-label="搜索" @click="mobileSearchOpen = true">
-        <Search />
-      </button>
-      <button type="button" class="list-header-btn" title="添加智能代理" @click="$emit('add')">
-        <UserPlus class="w-5 h-5" />
-      </button>
+      <h1 class="text-[16px] font-medium flex-1 max-md:flex-none" style="color: var(--app-text-primary)">智能代理</h1>
+      <div class="m-centered-list-header__actions">
+        <button type="button" class="mobile-search-trigger" aria-label="搜索" @click="mobileSearchOpen = true">
+          <Search />
+        </button>
+        <button type="button" class="list-header-btn" title="添加智能代理" @click="$emit('add')">
+          <UserPlus class="w-5 h-5" />
+        </button>
+      </div>
     </div>
 
     <div v-else class="mobile-search-page">

@@ -126,50 +126,64 @@
         </button>
         <div v-if="!searching && !searchResults.length" class="chat-search-state">无匹配会话</div>
       </template>
-      <template v-else-if="pinnedRoots.length">
-        <div class="list-section-header list-section-header--pinned sticky top-0 z-10">
-          <button
-            type="button"
-            class="section-action-btn section-action-btn--chevron"
-            :title="pinnedSectionCollapsed ? '展开' : '折叠'"
-            @click="togglePinnedCollapse"
-          >
-            <ChevronRight
-              class="w-4 h-4 section-chevron"
-              :class="{ 'section-chevron--open': !pinnedSectionCollapsed }"
-            />
-          </button>
-          <button
-            type="button"
-            class="list-section-title flex-1 truncate text-left"
-            @click="togglePinnedCollapse"
-          >
-            置顶
-          </button>
-        </div>
-        <div
-          class="workspace-collapse"
-          :class="{ 'workspace-collapse--open': !pinnedSectionCollapsed }"
-        >
-          <div class="workspace-collapse__inner">
-            <DustTransitionGroup name="session-list" tag="div" content-class="chat-list-roots">
-              <div v-for="root in pinnedRoots" :key="root.id" class="chat-list-root">
-                <SessionListItem
-                  :session="root"
-                  :active="activeId === root.id"
-                  mode="chat"
-                  :depth="0"
-                  @select="$emit('select', $event)"
-                  @context-menu="openContextMenu(root.id, $event)"
-                  @hover-change="highlightPinnedProject(root, $event)"
-                />
-              </div>
-            </DustTransitionGroup>
+      <template v-else>
+        <template v-if="showPinnedSection">
+          <div class="list-section-header list-section-header--pinned sticky top-0 z-10">
+            <button
+              type="button"
+              class="section-action-btn section-action-btn--chevron"
+              :title="pinnedSectionCollapsed ? '展开' : '折叠'"
+              @click="togglePinnedCollapse"
+            >
+              <ChevronRight
+                class="w-4 h-4 section-chevron"
+                :class="{ 'section-chevron--open': !pinnedSectionCollapsed }"
+              />
+            </button>
+            <button
+              type="button"
+              class="list-section-title flex-1 truncate text-left"
+              @click="togglePinnedCollapse"
+            >
+              置顶
+            </button>
           </div>
-        </div>
-      </template>
+          <div
+            class="workspace-collapse"
+            :class="{ 'workspace-collapse--open': !pinnedSectionCollapsed }"
+          >
+            <div
+              class="workspace-collapse__inner"
+              :class="{ 'workspace-collapse__inner--hold-leave': unpinLeaveIds.size > 0 }"
+            >
+              <DustTransitionGroup
+                name="session-list"
+                tag="div"
+                content-class="chat-list-roots"
+                @after-leave="onPinnedSessionAfterLeave"
+              >
+                <div
+                  v-for="root in pinnedRoots"
+                  :key="root.id"
+                  class="chat-list-root"
+                  :data-session-id="root.id"
+                >
+                  <SessionListItem
+                    :session="root"
+                    :active="activeId === root.id"
+                    mode="chat"
+                    :depth="0"
+                    @select="$emit('select', $event)"
+                    @context-menu="openContextMenu(root.id, $event)"
+                    @hover-change="highlightPinnedProject(root, $event)"
+                  />
+                </div>
+              </DustTransitionGroup>
+            </div>
+          </div>
+        </template>
 
-      <template v-if="!query.trim() && workspaceGroups.length">
+        <template v-if="workspaceGroups.length">
         <DustTransitionGroup name="session-list" tag="div" content-class="chat-list-projects">
           <div
             v-for="group in workspaceGroups"
@@ -239,18 +253,21 @@
               class="workspace-collapse"
               :class="{ 'workspace-collapse--open': !isWorkspaceCollapsed(group.workspace.id) }"
             >
-              <div class="workspace-collapse__inner">
-                <div v-if="!group.sessions.length" class="workspace-empty">暂无会话</div>
+              <div
+                class="workspace-collapse__inner"
+                :class="{ 'workspace-collapse__inner--hold-leave': pinLeaveIds.size > 0 }"
+              >
                 <DustTransitionGroup
-                  v-else
                   name="session-list"
                   tag="div"
                   content-class="chat-list-roots"
+                  @after-leave="onRegularSessionAfterLeave"
                 >
                   <div
                     v-for="root in group.sessions"
                     :key="root.id"
                     class="workspace-session-block"
+                    :data-session-id="root.id"
                   >
                     <SessionListItem
                       :session="root"
@@ -272,19 +289,21 @@
                     />
                   </div>
                 </DustTransitionGroup>
+                <div v-if="!group.sessions.length" class="workspace-empty">暂无会话</div>
               </div>
             </div>
           </div>
         </DustTransitionGroup>
-      </template>
+        </template>
 
-      <div
-        v-if="!query.trim() && !pinnedRoots.length && !workspaceGroups.length"
-        class="py-12 text-center text-sm"
-        style="color: var(--app-text-muted)"
-      >
-        暂无项目
-      </div>
+        <div
+          v-if="!showPinnedSection && !workspaceGroups.length"
+          class="py-12 text-center text-sm"
+          style="color: var(--app-text-muted)"
+        >
+          暂无项目
+        </div>
+      </template>
     </div>
 
     <Transition name="project-beacon">
@@ -418,6 +437,9 @@ import { requestUiConfirm } from "@/composables/use-ui-confirm";
 import { withUiBusy } from "@/composables/use-ui-busy";
 import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
 import DustTransitionGroup from "./DustTransitionGroup.vue";
+import {
+  isAdvancedAnimationEnabled,
+} from "@/composables/use-dust-transition";
 import ProjectCreateDialog from "./ProjectCreateDialog.vue";
 import ProjectGitMenu from "./ProjectGitMenu.vue";
 import ProjectListContextMenu from "./ProjectListContextMenu.vue";
@@ -453,6 +475,8 @@ const draggedProjectId = ref<string | null>(null);
 const highlightedProjectId = ref<string | null>(null);
 const projectBelowViewport = ref(false);
 const sessionScrollPanel = ref<HTMLElement | null>(null);
+const pinLeaveIds = ref<Set<string>>(new Set());
+const unpinLeaveIds = ref<Set<string>>(new Set());
 const projectHeaderRefs = new Map<string, HTMLElement>();
 const highlightedProjectName = computed(
   () =>
@@ -651,13 +675,29 @@ function isPinnedRoot(session: UISession): boolean {
   return !!session.pinned || !!session.isBuiltin;
 }
 
+function isPinnedListVisible(session: UISession): boolean {
+  if (!isPinnedRoot(session)) return false;
+  return !unpinLeaveIds.value.has(session.id);
+}
+
+function isRegularListVisible(session: UISession): boolean {
+  if (isPinnedRoot(session)) return false;
+  return !pinLeaveIds.value.has(session.id);
+}
+
 const pinnedRoots = computed(() =>
-  rootsToShow.value.filter(isPinnedRoot).sort((left, right) => {
+  rootsToShow.value.filter(isPinnedListVisible).sort((left, right) => {
     if (!!left.isBuiltin !== !!right.isBuiltin) return left.isBuiltin ? -1 : 1;
     return sortByRecentActivity(left, right);
   }),
 );
-const regularRoots = computed(() => rootsToShow.value.filter((s) => !isPinnedRoot(s)));
+const showPinnedSection = computed(
+  () =>
+    pinnedRoots.value.length > 0 ||
+    unpinLeaveIds.value.size > 0 ||
+    pinLeaveIds.value.size > 0,
+);
+const regularRoots = computed(() => rootsToShow.value.filter(isRegularListVisible));
 
 const workspaceGroups = computed(() => {
   const groups = groupSessionsByWorkspace(regularRoots.value, sessionStore.projects);
@@ -913,14 +953,97 @@ function closeContextMenu() {
   contextMenu.value = null;
 }
 
+function sessionIdFromLeaveEl(el: Element): string | null {
+  if (!(el instanceof HTMLElement)) return null;
+  return el.dataset.sessionId ?? el.closest("[data-session-id]")?.getAttribute("data-session-id") ?? null;
+}
+
+function completePinLeave(sessionId: string) {
+  if (!pinLeaveIds.value.has(sessionId)) return;
+  if (pinLeaveTimer != null) {
+    clearTimeout(pinLeaveTimer);
+    pinLeaveTimer = null;
+  }
+  const next = new Set(pinLeaveIds.value);
+  next.delete(sessionId);
+  pinLeaveIds.value = next;
+  setSessionViewFlag("pinnedSessionIds", sessionId, true);
+}
+
+function completeUnpinLeave(sessionId: string) {
+  if (!unpinLeaveIds.value.has(sessionId)) return;
+  if (unpinLeaveTimer != null) {
+    clearTimeout(unpinLeaveTimer);
+    unpinLeaveTimer = null;
+  }
+  const next = new Set(unpinLeaveIds.value);
+  next.delete(sessionId);
+  unpinLeaveIds.value = next;
+  setSessionViewFlag("pinnedSessionIds", sessionId, false);
+  const raw = sessionStore.sessions.find((item) => item.id === sessionId);
+  if (raw) {
+    const session = toUISession(raw);
+    if (session.workspaceId !== "none") {
+      setProjectCollapsed(session.workspaceId, false);
+    }
+  }
+}
+
+function onRegularSessionAfterLeave(el: Element) {
+  const sessionId = sessionIdFromLeaveEl(el);
+  if (!sessionId) return;
+  completePinLeave(sessionId);
+}
+
+function onPinnedSessionAfterLeave(el: Element) {
+  const sessionId = sessionIdFromLeaveEl(el);
+  if (!sessionId) return;
+  completeUnpinLeave(sessionId);
+}
+
 function togglePinnedSession() {
   const target = contextMenu.value;
   closeContextMenu();
   if (!target) return;
   if (sessionStore.sessions.find((session) => session.id === target.sessionId)?.isBuiltin) return;
   const pinned = viewPreferences.pinnedSessionIds.includes(target.sessionId);
-  setSessionViewFlag("pinnedSessionIds", target.sessionId, !pinned);
+  const willPin = !pinned;
+
+  if (isAdvancedAnimationEnabled()) {
+    setSessionViewFlag("pinnedSessionIds", target.sessionId, willPin);
+    showUiMessage(pinned ? "已取消置顶" : "已置顶", "success");
+    return;
+  }
+
+  if (willPin) {
+    setPinnedSectionCollapsed(false);
+    pinLeaveIds.value = new Set([...pinLeaveIds.value, target.sessionId]);
+    schedulePinLeaveFallback(target.sessionId);
+  } else {
+    setPinnedSectionCollapsed(false);
+    unpinLeaveIds.value = new Set([...unpinLeaveIds.value, target.sessionId]);
+    scheduleUnpinLeaveFallback(target.sessionId);
+  }
   showUiMessage(pinned ? "已取消置顶" : "已置顶", "success");
+}
+
+let pinLeaveTimer: ReturnType<typeof setTimeout> | null = null;
+let unpinLeaveTimer: ReturnType<typeof setTimeout> | null = null;
+
+function schedulePinLeaveFallback(sessionId: string) {
+  if (pinLeaveTimer != null) clearTimeout(pinLeaveTimer);
+  pinLeaveTimer = setTimeout(() => {
+    pinLeaveTimer = null;
+    completePinLeave(sessionId);
+  }, 360);
+}
+
+function scheduleUnpinLeaveFallback(sessionId: string) {
+  if (unpinLeaveTimer != null) clearTimeout(unpinLeaveTimer);
+  unpinLeaveTimer = setTimeout(() => {
+    unpinLeaveTimer = null;
+    completeUnpinLeave(sessionId);
+  }, 360);
 }
 
 async function confirmDeleteSession() {
@@ -1152,6 +1275,17 @@ async function onAgentPicked(agentId: string) {
   transform: translateY(0);
   pointer-events: auto;
 }
+.workspace-collapse__inner--hold-leave,
+.workspace-collapse__inner:has(.session-list-leave-active) {
+  min-height: 68px;
+  overflow: visible;
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+.workspace-collapse:has(.workspace-collapse__inner--hold-leave) {
+  grid-template-rows: 1fr;
+}
 
 .workspace-empty {
   padding: 14px 16px 16px 40px;
@@ -1174,7 +1308,7 @@ async function onAgentPicked(agentId: string) {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 12px 6px 8px;
+  padding: 6px 16px 6px 12px;
   background: color-mix(in srgb, var(--app-list-section-bg) 95%, transparent);
   transition:
     box-shadow 180ms ease,
@@ -1321,10 +1455,24 @@ async function onAgentPicked(agentId: string) {
   cursor: pointer;
 }
 
+.section-action-btn:not(.section-action-btn--chevron) svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2.25;
+}
+
 .section-action-btn--chevron:hover,
 .section-action-btn--chevron:active,
 .section-action-btn--chevron:focus-visible {
   background: transparent;
+}
+
+.section-action-btn--chevron {
+  width: 16px;
+  min-width: 16px;
+  justify-content: flex-start;
+  padding: 0;
+  flex-shrink: 0;
 }
 
 .section-chevron {
@@ -1355,12 +1503,13 @@ async function onAgentPicked(agentId: string) {
     height: 52px;
     min-height: 52px;
     padding-inline: 10px;
+    border-bottom-color: var(--app-header-divider, var(--app-border-subtle));
   }
 
   .chat-list-header h1 {
     position: absolute;
     left: 50%;
-    color: var(--m-text-primary, var(--app-text-primary));
+    color: var(--app-text-primary);
     font-size: var(--m-font-page-title, 17px);
     font-weight: 500;
     transform: translateX(-50%);
@@ -1478,13 +1627,13 @@ async function onAgentPicked(agentId: string) {
 
   .list-section-header {
     min-height: 34px;
-    padding: 2px 4px;
+    padding: 2px 16px;
   }
 
   .list-section-header--pinned {
     width: 100%;
     margin-inline: 0;
-    padding-inline: 16px 12px;
+    padding-inline: 16px;
   }
 
   .list-section-title {
@@ -1505,11 +1654,7 @@ async function onAgentPicked(agentId: string) {
   .workspace-group .list-section-header {
     width: 100%;
     margin-inline: 0;
-    padding-inline: 16px 12px;
-  }
-
-  .workspace-group .list-section-header > .section-action-btn:last-child {
-    margin-right: 14px;
+    padding-inline: 16px;
   }
 
   .section-action-btn {
@@ -1517,6 +1662,17 @@ async function onAgentPicked(agentId: string) {
     height: 32px;
     padding: 0;
     -webkit-tap-highlight-color: transparent;
+  }
+
+  .section-action-btn--chevron {
+    width: 16px;
+    min-width: 16px;
+  }
+
+  .section-action-btn:not(.section-action-btn--chevron) svg {
+    width: 19px;
+    height: 19px;
+    stroke-width: 2.4;
   }
 
   .section-action-btn--chevron:hover,

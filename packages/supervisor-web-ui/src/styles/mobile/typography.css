@@ -1,0 +1,79 @@
+@media (max-width: 767px) {
+  /* standard = 改字号功能接入前的原始移动端字号 */
+  html[data-font-scale="standard"] {
+    --m-font-page-title: 17px;
+    --m-font-list-primary: 13px;
+    --m-font-list-secondary: 11px;
+    --m-font-section: 11px;
+    --m-font-tabbar: 11px;
+    --m-font-time: 10px;
+    --chat-msg-font-size: 12.5px;
+    --chat-input-font-size: 13px;
+  }
+
+  html[data-font-scale="compact"] {
+    --m-font-page-title: 16px;
+    --m-font-list-primary: 12px;
+    --m-font-list-secondary: 10px;
+    --m-font-section: 10px;
+    --m-font-tabbar: 10px;
+    --m-font-time: 9px;
+    --chat-msg-font-size: 11.5px;
+    --chat-input-font-size: 12px;
+  }
+
+  html[data-font-scale="large"] {
+    --m-font-page-title: 18px;
+    --m-font-list-primary: 15px;
+    --m-font-list-secondary: 13px;
+    --m-font-section: 12px;
+    --m-font-tabbar: 12px;
+    --m-font-time: 11px;
+    --chat-msg-font-size: 14px;
+    --chat-input-font-size: 15px;
+  }
+
+  .mobile-app-shell .session-name,
+  .mobile-app-shell .agent-list-item__name,
+  .mobile-app-shell .mobile-me-item__name {
+    font-size: var(--m-font-list-primary) !important;
+  }
+
+  .mobile-app-shell .session-preview,
+  .mobile-app-shell .agent-list-item__desc,
+  .mobile-app-shell .mobile-me-item__desc {
+    font-size: var(--m-font-list-secondary) !important;
+  }
+
+  .mobile-app-shell .session-time {
+    font-size: var(--m-font-time) !important;
+  }
+
+  .mobile-app-shell .list-section-label {
+    font-size: var(--m-font-section) !important;
+  }
+
+  .mobile-app-shell .list-search-input {
+    font-size: var(--m-font-list-primary) !important;
+  }
+
+  .mobile-app-shell .m-mobile-header__title,
+  .mobile-app-shell .m-centered-list-header > h1,
+  .mobile-app-shell .chat-list-header h1 {
+    font-size: var(--m-font-page-title) !important;
+    font-weight: 500 !important;
+  }
+
+  .mobile-app-shell .mobile-tabbar__item {
+    font-size: var(--m-font-tabbar);
+  }
+
+  .mobile-app-shell .chat-bubble {
+    font-size: var(--chat-msg-font-size) !important;
+  }
+
+  .mobile-app-shell .chat-input-editor .cm-content,
+  .mobile-app-shell .chat-input-editor .cm-line {
+    font-size: var(--chat-input-font-size) !important;
+  }
+}

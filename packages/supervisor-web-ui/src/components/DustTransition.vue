@@ -1,5 +1,8 @@
 <template>
-  <Transition :css="useCss" :name="useCss ? name : undefined" @enter="onEnter" @leave="onLeave">
+  <Transition v-if="useCss" :css="true" :name="name">
+    <slot />
+  </Transition>
+  <Transition v-else :css="false" @enter="onEnter" @leave="onLeave">
     <slot />
   </Transition>
 </template>

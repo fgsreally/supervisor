@@ -3,12 +3,17 @@ import { WebSocket, type RawData } from "ws";
 import type { SessionManager } from "../core/session-manager.js";
 import type { SessionPromptImage } from "../core/session-media.js";
 import { decryptApiKey } from "../utils/encrypt.js";
-import { readSupervisorSettings } from "../utils/supervisor-settings.js";
+import { formatUnknownError } from "../utils/format-error.js";
+import {
+  buildDoubaoSpeechWsHeaders,
+  readSupervisorSettings,
+  isDoubaoSpeechConfigured,
+} from "../utils/supervisor-settings.js";
 
 const MAX_AUDIO_FRAME_BYTES = 256 * 1024;
 const QWEN_REALTIME_URL =
   "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3-asr-flash-realtime";
-const DOUBAO_REALTIME_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async";
+const DOUBAO_REALTIME_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
 type SpeechProvider = "qwen" | "doubao";
 
 interface ClientMessage {
@@ -115,12 +120,22 @@ class SpeechConnection {
     if (this.upstream) throw new Error("speech session is already active");
     const settings = readSupervisorSettings();
     this.provider = settings.speechRecognitionMode === "doubao" ? "doubao" : "qwen";
-    const encryptedKey =
-      this.provider === "doubao"
-        ? settings.doubaoSpeechApiKeyEncrypted
-        : settings.speechApiKeyEncrypted;
-    if (!encryptedKey) throw new Error(`${this.provider} speech API key is not configured`);
-    const apiKey = decryptApiKey(encryptedKey);
+    let doubaoAppId = "";
+    let doubaoAccessToken = "";
+    let qwenApiKey = "";
+    if (this.provider === "doubao") {
+      if (!isDoubaoSpeechConfigured(settings)) {
+        throw new Error("doubao speech App ID or Access Token is not configured");
+      }
+      doubaoAppId = settings.doubaoSpeechAppId?.trim() ?? "";
+      doubaoAccessToken = decryptApiKey(settings.doubaoSpeechAccessTokenEncrypted!);
+      if (!doubaoAppId || !doubaoAccessToken) {
+        throw new Error("doubao speech App ID or Access Token is not configured");
+      }
+    } else {
+      if (!settings.speechApiKeyEncrypted) throw new Error("qwen speech API key is not configured");
+      qwenApiKey = decryptApiKey(settings.speechApiKeyEncrypted);
+    }
 
     await new Promise<void>((resolve, reject) => {
       const upstream = new WebSocket(
@@ -128,13 +143,8 @@ class SpeechConnection {
         {
           headers:
             this.provider === "doubao"
-              ? {
-                  "X-Api-Key": apiKey,
-                  "X-Api-Resource-Id":
-                    settings.doubaoSpeechResourceId || "volc.seedasr.sauc.duration",
-                  "X-Api-Connect-Id": randomUUID(),
-                }
-              : { Authorization: `Bearer ${apiKey}`, "User-Agent": "pi-supervisor" },
+              ? buildDoubaoSpeechWsHeaders(doubaoAppId, doubaoAccessToken)
+              : { Authorization: `Bearer ${qwenApiKey}`, "User-Agent": "pi-supervisor" },
           handshakeTimeout: 15_000,
         },
       );
@@ -154,7 +164,7 @@ class SpeechConnection {
               },
               request: {
                 model_name: "bigmodel",
-                enable_nonstream: true,
+                enable_nonstream: false,
                 enable_itn: true,
                 enable_punc: true,
                 show_utterances: true,
@@ -192,7 +202,7 @@ class SpeechConnection {
               payload: { text },
             });
           } catch (error) {
-            this.fail(error instanceof Error ? error.message : String(error));
+            this.fail(formatUnknownError(error, "豆包语音识别失败"));
           }
           return;
         }
@@ -204,9 +214,29 @@ class SpeechConnection {
           this.forwardEvent(event);
         }
       });
+      upstream.on("unexpected-response", (_req, res) => {
+        const chunks: Buffer[] = [];
+        res.on("data", (chunk) => chunks.push(chunk as Buffer));
+        res.on("end", () => {
+          const raw = Buffer.concat(chunks).toString("utf8").trim();
+          let detail = raw;
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw) as { message?: string; error?: string };
+              detail = parsed.message ?? parsed.error ?? raw;
+            } catch {
+              detail = raw.slice(0, 240);
+            }
+          }
+          const message = `${this.provider === "doubao" ? "豆包语音" : "DashScope 语音"}连接被拒绝 (HTTP ${res.statusCode})${detail ? `: ${detail}` : ""}`;
+          if (upstream.readyState !== WebSocket.OPEN) reject(new Error(message));
+          this.fail(message);
+        });
+      });
       upstream.on("error", (error) => {
-        if (upstream.readyState !== WebSocket.OPEN) reject(error);
-        this.fail(error.message);
+        const message = formatUnknownError(error, "语音服务连接失败");
+        if (upstream.readyState !== WebSocket.OPEN) reject(new Error(message));
+        this.fail(message);
       });
       upstream.on("close", () => {
         if (!this.stopping) this.fail("speech provider connection closed");

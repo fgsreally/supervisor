@@ -1,15 +1,16 @@
 <template>
   <div class="task-dependency-graph" aria-label="任务依赖图">
+    <span class="dependency-graph__hint">拖拽平移 · 滚轮缩放</span>
     <VueFlow
       :nodes="nodes"
       :edges="edges"
       :nodes-draggable="false"
       :nodes-connectable="false"
       :elements-selectable="false"
-      :zoom-on-scroll="false"
-      :zoom-on-pinch="false"
-      :pan-on-drag="false"
-      :prevent-scrolling="false"
+      :zoom-on-scroll="true"
+      :zoom-on-pinch="true"
+      :pan-on-drag="true"
+      :prevent-scrolling="true"
       :default-viewport="{ x: 10, y: 0, zoom: 1 }"
       @node-click="onNodeClick"
     >
@@ -92,6 +93,7 @@ function onNodeClick(event: NodeMouseEvent) {
 
 <style scoped>
 .task-dependency-graph {
+  position: relative;
   width: 100%;
   height: 330px;
   overflow: hidden;
@@ -100,6 +102,19 @@ function onNodeClick(event: NodeMouseEvent) {
   background-color: var(--app-settings-bg);
   background-image: radial-gradient(circle, rgb(132 142 156 / 28%) 1px, transparent 1px);
   background-size: 18px 18px;
+}
+.dependency-graph__hint {
+  position: absolute;
+  z-index: 2;
+  top: 8px;
+  right: 10px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-text-muted) 14%, transparent);
+  color: var(--app-text-muted);
+  font-size: 10px;
+  pointer-events: none;
+  user-select: none;
 }
 .dependency-node {
   position: relative;

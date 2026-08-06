@@ -1,6 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { decryptApiKey } from "./encrypt.js";
 
 /**
  * Settings bind a single 助手模型 (Watson / 华生).
@@ -55,8 +57,31 @@ export interface SupervisorSettings {
   speechRecognitionMode?: "browser" | "qwen" | "doubao";
   speechRecognitionLanguage?: string;
   speechApiKeyEncrypted?: string;
-  doubaoSpeechApiKeyEncrypted?: string;
-  doubaoSpeechResourceId?: string;
+  /** Volcengine console App ID (not secret). */
+  doubaoSpeechAppId?: string;
+  doubaoSpeechAccessTokenEncrypted?: string;
+}
+
+/** Fixed resource id for Doubao streaming ASR 2.0 (hourly). */
+export const DOUBAO_SPEECH_RESOURCE_ID = "volc.seedasr.sauc.duration";
+
+/** WebSocket handshake headers for legacy console (APP ID + Access Token). */
+export function buildDoubaoSpeechWsHeaders(
+  appId: string,
+  accessToken: string,
+): Record<string, string> {
+  return {
+    "X-Api-App-Key": appId.trim(),
+    "X-Api-Access-Key": accessToken.trim(),
+    "X-Api-Resource-Id": DOUBAO_SPEECH_RESOURCE_ID,
+    "X-Api-Connect-Id": randomUUID(),
+    "X-Api-Request-Id": randomUUID(),
+    "X-Api-Sequence": "-1",
+  };
+}
+
+export function isDoubaoSpeechConfigured(settings: SupervisorSettings): boolean {
+  return Boolean(settings.doubaoSpeechAppId?.trim() && settings.doubaoSpeechAccessTokenEncrypted);
 }
 
 const DEFAULT_SETTINGS: SupervisorSettings = {};
@@ -85,8 +110,19 @@ export function readSupervisorSettings(): SupervisorSettings {
   const path = getSupervisorSettingsPath();
   if (!existsSync(path)) return { ...DEFAULT_SETTINGS };
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf-8")) as SupervisorSettings;
-    return { ...DEFAULT_SETTINGS, ...parsed };
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as SupervisorSettings & {
+      doubaoSpeechAppIdEncrypted?: string;
+      doubaoSpeechApiKeyEncrypted?: string;
+    };
+    const settings: SupervisorSettings = { ...DEFAULT_SETTINGS, ...parsed };
+    if (!settings.doubaoSpeechAppId?.trim() && parsed.doubaoSpeechAppIdEncrypted) {
+      try {
+        settings.doubaoSpeechAppId = decryptApiKey(parsed.doubaoSpeechAppIdEncrypted).trim();
+      } catch {
+        // ignore legacy migration failures
+      }
+    }
+    return settings;
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -94,7 +130,11 @@ export function readSupervisorSettings(): SupervisorSettings {
 
 export function writeSupervisorSettings(patch: Partial<SupervisorSettings>): SupervisorSettings {
   const current = readSupervisorSettings();
-  const next = { ...current, ...patch };
+  const next: SupervisorSettings = { ...current };
+  for (const [key, value] of Object.entries(patch) as [keyof SupervisorSettings, unknown][]) {
+    if (value === undefined) delete next[key];
+    else next[key] = value as never;
+  }
   const path = getSupervisorSettingsPath();
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(next, null, 2)}\n`, "utf-8");

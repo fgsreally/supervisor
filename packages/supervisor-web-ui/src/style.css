@@ -435,6 +435,30 @@
     --app-list-header-bg: #151515;
     --app-list-section-bg: #151515;
   }
+
+  .session-context-menu,
+  .session-context-menu *,
+  .agent-context-menu,
+  .agent-context-menu *,
+  .context-menu,
+  .context-menu *,
+  .message-context-menu,
+  .message-context-menu *,
+  .chat-session-menu,
+  .chat-session-menu *,
+  .chat-session-menu-backdrop {
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .chat-view .assistant-message-content,
+  .chat-view .user-message-row .chat-bubble,
+  .chat-view .cm-content {
+    -webkit-touch-callout: default;
+    user-select: text;
+    -webkit-user-select: text;
+  }
 }
 
 html,
@@ -561,13 +585,14 @@ body,
 
 @media (max-width: 767px) {
   .chat-panel-host {
-    position: absolute;
+    position: fixed;
     z-index: 60;
     inset: auto 0 0;
     max-width: none;
     min-width: 0;
     width: 100%;
-    height: min(68%, 620px);
+    height: min(68vh, 620px);
+    max-height: min(68vh, 620px);
   }
 
   .chat-panel-host__body {

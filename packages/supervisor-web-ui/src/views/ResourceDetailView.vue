@@ -7,17 +7,24 @@
       <aside
         class="resource-detail-aside shrink-0 w-full md:w-64 lg:w-72 flex flex-col border-b md:border-b-0 md:border-r min-h-0"
       >
-        <div class="resource-detail-header h-14 shrink-0 flex items-center px-4 border-b">
-          <button
-            v-if="showBack"
-            type="button"
-            class="mr-2 p-1.5 rounded-md resource-detail-back-btn md:hidden"
-            @click="emit('back')"
-          >
-            <ChevronLeft class="w-5 h-5" />
-          </button>
-          <div class="resource-detail-title flex-1 font-medium text-[17px] truncate min-w-0">
-            {{ resource.name }}
+        <div class="resource-detail-header shrink-0 border-b">
+          <div class="m-mobile-header md:hidden">
+            <button
+              v-if="showBack"
+              type="button"
+              class="resource-detail-back-btn"
+              @click="emit('back')"
+            >
+              <ChevronLeft class="w-5 h-5" />
+            </button>
+            <span v-else aria-hidden="true" />
+            <div class="m-mobile-header__title">{{ resource.name }}</div>
+            <span aria-hidden="true" />
+          </div>
+          <div class="hidden md:flex h-14 items-center px-4">
+            <div class="resource-detail-title flex-1 font-medium text-[17px] truncate min-w-0">
+              {{ resource.name }}
+            </div>
           </div>
         </div>
 
@@ -332,6 +339,11 @@ async function removeResource() {
 }
 
 .resource-detail-back-btn {
+  display: grid;
+  width: var(--m-action-hit-size, 40px);
+  height: var(--m-action-hit-size, 40px);
+  place-items: center;
+  border-radius: 6px;
   color: var(--app-text-secondary);
 }
 

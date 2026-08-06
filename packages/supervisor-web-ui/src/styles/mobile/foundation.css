@@ -38,6 +38,24 @@
     -webkit-tap-highlight-color: transparent;
   }
 
+  .mobile-app-shell,
+  .mobile-app-shell * {
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .mobile-app-shell input,
+  .mobile-app-shell textarea,
+  .mobile-app-shell select,
+  .mobile-app-shell [contenteditable="true"],
+  .mobile-app-shell .cm-content,
+  .mobile-app-shell .cm-editor {
+    -webkit-touch-callout: default;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
   .mobile-app-shell :focus-visible {
     outline: 2px solid var(--m-focus-ring);
     outline-offset: 2px;

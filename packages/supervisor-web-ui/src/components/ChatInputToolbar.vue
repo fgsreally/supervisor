@@ -39,6 +39,9 @@
       </button>
       <VoiceInputButton
         :disabled="disabled"
+        @start="emit('voice-start')"
+        @end="emit('voice-end')"
+        @preview="emit('voice-preview', $event)"
         @transcript="emit('transcript', $event)"
         @error="emit('voice-error', $event)"
       />
@@ -64,14 +67,7 @@
 </template>
 
 <script setup lang="ts">
-import {
-  FolderOpen,
-  ImagePlus,
-  MessageCircleQuestion,
-  Smile,
-  Sparkles,
-  Square,
-} from "lucide-vue-next";
+import { FolderOpen, ImagePlus, MessageCircleQuestion, Smile, Sparkles, Square } from "lucide-vue-next";
 import VoiceInputButton from "./VoiceInputButton.vue";
 
 export type ChatToolbarAction = "emoji" | "skill" | "attach" | "upload-image" | "voice" | "btw";
@@ -86,6 +82,9 @@ const emit = defineEmits<{
   action: [action: ChatToolbarAction];
   send: [];
   interrupt: [];
+  "voice-start": [];
+  "voice-end": [];
+  "voice-preview": [text: string];
   transcript: [text: string];
   "voice-error": [message: string];
 }>();
@@ -167,7 +166,6 @@ function onPrimaryAction() {
   background: var(--app-accent-hover);
 }
 
-/* Compact square stop control — avoid the wide “发送” pill with only an icon. */
 .send-btn--interrupt {
   min-width: 32px;
   width: 32px;

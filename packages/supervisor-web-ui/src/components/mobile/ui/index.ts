@@ -7,6 +7,7 @@ export { default as MobileListRow } from "./MobileListRow.vue";
 export { default as MobilePopover } from "./MobilePopover.vue";
 export { default as MobileSection } from "./MobileSection.vue";
 export { default as MobileSelect } from "./MobileSelect.vue";
+export { default as MobileDrawer } from "./MobileDrawer.vue";
 export { default as MobileSheet } from "./MobileSheet.vue";
 export { default as MobileSwitch } from "./MobileSwitch.vue";
 export { default as MobileTextarea } from "./MobileTextarea.vue";

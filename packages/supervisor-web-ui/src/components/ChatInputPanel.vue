@@ -38,6 +38,9 @@
         @action="onToolbarAction"
         @send="emit('send', { text, images: pendingImages })"
         @interrupt="emit('interrupt')"
+        @voice-start="onVoiceStart"
+        @voice-end="onVoiceEnd"
+        @voice-preview="onVoicePreview"
         @transcript="appendTranscript"
         @voice-error="onVoiceError"
       />
@@ -159,6 +162,7 @@ const { height: panelHeight, startResize } = useResizableHeight({
 const editorHeight = computed(() => Math.max(40, panelHeight.value - TOOLBAR_HEIGHT));
 
 const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null);
+const voiceBaseText = ref("");
 
 async function loadAutocompleteData() {
   const cwd = props.workspaceId.trim();
@@ -284,13 +288,35 @@ function onToolbarAction(action: ChatToolbarAction) {
   }
 }
 
+function onVoiceStart() {
+  voiceBaseText.value = text.value;
+}
+
+function onVoiceEnd() {
+  voiceBaseText.value = text.value;
+}
+
+function applyVoicePreview(preview: string) {
+  const chunk = preview.trim();
+  if (!chunk) {
+    text.value = voiceBaseText.value;
+    return;
+  }
+  const sep = voiceBaseText.value && !/\s$/.test(voiceBaseText.value) ? " " : "";
+  text.value = voiceBaseText.value + sep + chunk;
+}
+
+function onVoicePreview(preview: string) {
+  applyVoicePreview(preview);
+}
+
 function appendTranscript(transcript: string) {
-  const separator = text.value && !/\s$/.test(text.value) ? " " : "";
-  text.value += `${separator}${transcript}`;
+  applyVoicePreview(transcript);
   void nextTick(() => composerRef.value?.focus());
 }
 
 function onVoiceError(message: string) {
+  onVoiceEnd();
   showUiMessage(message, "error");
 }
 

@@ -6,7 +6,8 @@
     :aria-disabled="isAchieved ? 'true' : undefined"
     @click="onRowClick"
     @contextmenu.prevent="onContextMenu"
-    @touchstart.passive="onTouchStart"
+    @selectstart.prevent
+    @touchstart="onTouchStart"
     @touchend="onTouchEnd"
     @touchmove="onTouchCancel"
     @touchcancel="onTouchCancel"
@@ -125,6 +126,7 @@ function onTouchStart(event: TouchEvent) {
   const touch = event.touches[0];
   if (!touch) return;
   longPressTimer = setTimeout(() => {
+    window.getSelection()?.removeAllRanges();
     suppressClick = true;
     emitContextMenu(touch.clientX, touch.clientY);
   }, LONG_PRESS_MS);

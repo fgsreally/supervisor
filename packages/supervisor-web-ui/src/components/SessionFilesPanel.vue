@@ -4,9 +4,19 @@
     style="background: var(--app-settings-bg)"
   >
     <div
+      v-if="!mobile"
       class="h-14 md:h-16 border-b flex items-center px-4 shrink-0 gap-3"
       style="background: var(--app-settings-bg); border-color: var(--app-border)"
     >
+      <button
+        type="button"
+        class="p-1.5 rounded-md md:hidden"
+        style="color: var(--app-text-secondary)"
+        title="文件目录"
+        @click="treeDrawerOpen = true"
+      >
+        <FolderTree class="w-5 h-5" />
+      </button>
       <button
         type="button"
         class="p-1.5 rounded-md"
@@ -37,9 +47,15 @@
       </button>
     </div>
 
-    <div class="flex-1 min-h-0 flex flex-col md:flex-row">
+    <div class="session-files-panel__body flex-1 min-h-0 flex flex-col md:flex-row relative">
+      <div
+        v-if="treeDrawerOpen"
+        class="session-files-panel__tree-backdrop md:hidden"
+        @click="treeDrawerOpen = false"
+      />
       <div
         class="session-files-panel__tree border-b md:border-b-0 md:border-r shrink-0 overflow-hidden flex flex-col"
+        :class="{ 'session-files-panel__tree--open': treeDrawerOpen }"
         :style="{ '--session-tree-width': `${treePaneWidth}px` }"
         style="border-color: var(--app-border)"
       >
@@ -119,17 +135,49 @@
 
       <div class="flex-1 min-h-0 flex flex-col overflow-hidden">
         <div
-          v-if="!selectedPath"
-          class="flex-1 flex items-center justify-center text-[13px] px-4 text-center"
+          v-if="showFileAreaLoading"
+          class="flex-1 flex flex-col items-center justify-center gap-2 text-[13px]"
           style="color: var(--app-text-muted)"
         >
-          选择左侧文件以预览内容
+          <Loader2 class="w-5 h-5 animate-spin" />
+          <span>读取中…</span>
+        </div>
+        <div
+          v-else-if="previewError && !selectedPath"
+          class="flex-1 flex flex-col items-center justify-center gap-3 text-[13px] px-4 text-center"
+          style="color: var(--app-danger, #ef4444)"
+        >
+          {{ previewError }}
+        </div>
+        <div
+          v-else-if="!selectedPath"
+          class="flex-1 flex flex-col items-center justify-center gap-3 text-[13px] px-4 text-center"
+          style="color: var(--app-text-muted)"
+        >
+          <span>选择文件以预览内容</span>
+          <button
+            v-if="mobile"
+            type="button"
+            class="session-files-panel__browse-btn"
+            @click="treeDrawerOpen = true"
+          >
+            浏览文件
+          </button>
         </div>
         <template v-else>
           <div
-            class="px-4 py-2 border-b flex items-center gap-2 shrink-0"
+            class="px-3 md:px-4 py-2 border-b flex items-center gap-2 shrink-0"
             style="border-color: var(--app-border-subtle)"
           >
+            <button
+              v-if="mobile"
+              type="button"
+              class="session-files-panel__toolbar-btn shrink-0"
+              title="文件目录"
+              @click="treeDrawerOpen = true"
+            >
+              <FolderTree class="w-4 h-4" />
+            </button>
             <nav class="file-breadcrumb flex-1 min-w-0" :title="selectedPath">
               <template v-for="(segment, index) in breadcrumbSegments" :key="`${segment}-${index}`">
                 <ChevronRight v-if="index > 0" class="file-breadcrumb__separator" />
@@ -142,6 +190,15 @@
                 >
               </template>
             </nav>
+            <button
+              v-if="mobile"
+              type="button"
+              class="session-files-panel__toolbar-btn shrink-0"
+              title="刷新"
+              @click="refresh"
+            >
+              <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
+            </button>
             <span v-if="preview" class="text-[11px] shrink-0" style="color: var(--app-text-muted)">
               {{ formatSize(preview.size) }}<template v-if="preview.truncated"> · 已截断</template>
             </span>
@@ -201,7 +258,15 @@
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { BaseTree } from "@he-tree/vue";
 import "@he-tree/vue/style/default.css";
-import { ChevronLeft, ChevronRight, FileText, Folder, RefreshCw } from "lucide-vue-next";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Folder,
+  FolderTree,
+  Loader2,
+  RefreshCw,
+} from "lucide-vue-next";
 import {
   getSessionFileContent,
   getSessionFiles,
@@ -220,9 +285,12 @@ interface FileTreeNode {
 const props = defineProps<{
   sessionId: string;
   initialPath?: string | null;
+  mobile?: boolean;
 }>();
 
 defineEmits<{ close: [] }>();
+
+const treeDrawerOpen = ref(false);
 
 const cwd = ref("");
 const files = ref<SessionWorkspaceFileEntry[]>([]);
@@ -237,6 +305,23 @@ const imageUrl = ref<string | null>(null);
 
 const fileCount = computed(() => files.value.filter((f) => !f.isDirectory).length);
 const breadcrumbSegments = computed(() => selectedPath.value?.split("/").filter(Boolean) ?? []);
+const hasRequestedFile = computed(() => Boolean(props.initialPath?.trim()));
+const showFileAreaLoading = computed(() => {
+  if (previewLoading.value) return true;
+  if (hasRequestedFile.value && loading.value) return true;
+  if (hasRequestedFile.value && selectedPath.value && !preview.value && !previewError.value) {
+    return true;
+  }
+  if (
+    hasRequestedFile.value &&
+    !selectedPath.value &&
+    !previewError.value &&
+    files.value.length > 0
+  ) {
+    return true;
+  }
+  return false;
+});
 const treePaneWidth = ref(Number(localStorage.getItem("pi-supervisor:file-tree-width")) || 220);
 let stopTreeResize: (() => void) | null = null;
 
@@ -400,13 +485,29 @@ function openRequestedPath(rawPath: string) {
     return;
   }
   selectedPath.value = path;
+  if (props.mobile) treeDrawerOpen.value = false;
   void loadPreview(path);
+}
+
+function syncMobileTreeDrawer() {
+  if (
+    props.mobile &&
+    !props.initialPath?.trim() &&
+    !selectedPath.value &&
+    !loading.value &&
+    !listError.value
+  ) {
+    treeDrawerOpen.value = true;
+  }
 }
 
 function onNodeClick(node: FileTreeNode) {
   if (!node.filePath) return;
   selectedPath.value = node.filePath;
   void loadPreview(node.filePath);
+  if (window.matchMedia("(max-width: 767px)").matches) {
+    treeDrawerOpen.value = false;
+  }
 }
 
 function isSelectedFile(node: FileTreeNode): boolean {
@@ -430,6 +531,7 @@ async function refresh() {
     listError.value = e instanceof Error ? e.message : "加载文件树失败";
   } finally {
     loading.value = false;
+    syncMobileTreeDrawer();
   }
 }
 
@@ -439,6 +541,7 @@ watch(
     selectedPath.value = null;
     preview.value = null;
     previewError.value = null;
+    treeDrawerOpen.value = false;
     revokeImageUrl();
     if (id) void refresh();
   },
@@ -453,6 +556,11 @@ watch(
   },
 );
 
+watch(
+  () => [props.mobile, selectedPath.value, props.initialPath] as const,
+  () => syncMobileTreeDrawer(),
+);
+
 onBeforeUnmount(() => {
   stopTreeResize?.();
   revokeImageUrl();
@@ -460,9 +568,36 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.session-files-panel__body {
+  min-height: 0;
+}
+
 .session-files-panel__tree {
-  height: 42%;
   width: 100%;
+}
+
+.session-files-panel__tree-backdrop {
+  position: absolute;
+  z-index: 9;
+  inset: 0;
+  background: rgb(0 0 0 / 38%);
+}
+
+.session-files-panel__browse-btn {
+  padding: 8px 14px;
+  border-radius: 8px;
+  color: var(--app-text-primary);
+  background: var(--app-hover);
+  font-size: 13px;
+}
+
+.session-files-panel__toolbar-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 6px;
+  color: var(--app-text-secondary);
 }
 
 .session-files-panel__resize-handle {
@@ -477,6 +612,27 @@ onBeforeUnmount(() => {
   width: max-content;
   min-width: 100%;
   overflow: visible;
+}
+
+@media (max-width: 767px) {
+  .session-files-panel__tree {
+    position: absolute;
+    z-index: 10;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: min(78%, 280px);
+    height: 100% !important;
+    border-bottom: 0;
+    background: var(--app-settings-bg);
+    box-shadow: 4px 0 24px rgb(0 0 0 / 28%);
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .session-files-panel__tree--open {
+    transform: translateX(0);
+  }
 }
 
 @media (min-width: 768px) {

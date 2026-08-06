@@ -1,6 +1,6 @@
 <template>
   <DustTransitionGroup name="session-list" tag="div" content-class="session-list-subtree">
-    <div v-for="(child, idx) in children" :key="child.id" class="session-list-node">
+    <div v-for="(child, idx) in children" :key="child.id" class="session-list-node" :data-session-id="child.id">
       <SessionListItem
         :session="child"
         :active="activeId === child.id"

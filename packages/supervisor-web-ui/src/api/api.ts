@@ -176,7 +176,7 @@ export interface Agent {
   description: string | null;
   avatar: string | null;
   providerId: string | null;
-  backendType: "native" | "codex" | "claude" | "kimi" | "acp";
+  backendType: "native" | "codex" | "claude" | "kimi" | "cursor" | "mimo" | "acp";
   modelId: string | null;
   systemPrompt: string | null;
   toolsPreset: ToolsPreset | null;
@@ -550,7 +550,7 @@ export interface CreateAgentRequest {
   name: string;
   description?: string;
   avatar?: string | null;
-  backendType?: "native" | "codex" | "claude" | "kimi" | "acp";
+  backendType?: "native" | "codex" | "claude" | "kimi" | "cursor" | "mimo" | "acp";
   modelId?: string;
   toolsPreset?: ToolsPreset;
   homeDir?: string;
@@ -564,7 +564,7 @@ export interface UpdateAgentRequest {
   name?: string;
   description?: string;
   avatar?: string | null;
-  backendType?: "native" | "codex" | "claude" | "kimi" | "acp";
+  backendType?: "native" | "codex" | "claude" | "kimi" | "cursor" | "mimo" | "acp";
   modelId?: string | null;
   systemPrompt?: string | null;
   toolsPreset?: ToolsPreset;

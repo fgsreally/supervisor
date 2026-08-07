@@ -1,9 +1,9 @@
 import { mkdirSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
+import { getSupervisorHome } from "../utils/supervisor-home.js";
 
 export function getGlobalResourceRoot(): string {
-  return join(homedir(), ".pi", "supervisor", "global");
+  return join(getSupervisorHome(), "global");
 }
 
 export function getGlobalResourceDirectory(directoryName: string): string {

@@ -12,7 +12,7 @@ export function createSupervisorCli(): CAC {
   const cli = cac("pi-supervisor");
   cli
     .option("-p, --port <port>", "HTTP server port", { default: "3030" })
-    .option("--cwd <path>", "Default workspace directory")
+    .option("--cwd <path>", "Supervisor global root (db/public/global/agents/projects; default: ~/.supervisor)")
     .option("--password <pin>", "6-digit numeric PIN for the web UI (default: random)")
     .option("--tunnel", "Expose via Cloudflare Quick Tunnel (auto-downloads cloudflared)", {
       default: false,

@@ -1,17 +1,8 @@
 <template>
   <TransitionGroup
-    v-if="useCss"
-    :css="true"
-    :name="name"
-    :tag="tag"
-    :class="contentClass"
-    @after-leave="onAfterLeave"
-  >
-    <slot />
-  </TransitionGroup>
-  <TransitionGroup
-    v-else
-    :css="false"
+    :css="useCss"
+    :name="useCss ? name : undefined"
+    :duration="useCss ? { enter: 320, leave: 320 } : undefined"
     :tag="tag"
     :class="contentClass"
     @enter="onEnter"
@@ -59,26 +50,28 @@ function onAfterLeave(el: Element) {
 .session-list-leave-active {
   overflow: hidden;
   transition:
-    opacity 0.26s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+    opacity 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .session-list-leave-active {
-  position: absolute;
-  left: 0;
-  right: 0;
+  /* Keep in flow: absolute + display:grid parents makes leave invisible. */
+  z-index: 1;
   pointer-events: none;
 }
 .session-list-move {
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.session-list-enter-from,
-.session-list-leave-to {
-  opacity: 0;
-}
 .session-list-enter-from {
+  opacity: 0;
   transform: translateX(32px);
 }
+.session-list-enter-to,
+.session-list-leave-from {
+  opacity: 1;
+  transform: translateX(0);
+}
 .session-list-leave-to {
+  opacity: 0;
   transform: translateX(-32px);
 }
 

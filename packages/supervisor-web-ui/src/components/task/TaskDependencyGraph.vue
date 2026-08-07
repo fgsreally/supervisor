@@ -1,7 +1,8 @@
 <template>
-  <div class="task-dependency-graph" aria-label="任务依赖图">
-    <span class="dependency-graph__hint">拖拽平移 · 滚轮缩放</span>
+  <div ref="rootRef" class="task-dependency-graph" aria-label="任务依赖图">
+    <span class="dependency-graph__hint">{{ hintText }}</span>
     <VueFlow
+      :id="flowId"
       :nodes="nodes"
       :edges="edges"
       :nodes-draggable="false"
@@ -11,7 +12,10 @@
       :zoom-on-pinch="true"
       :pan-on-drag="true"
       :prevent-scrolling="true"
-      :default-viewport="{ x: 10, y: 0, zoom: 1 }"
+      :min-zoom="0.15"
+      :max-zoom="1.6"
+      fit-view-on-init
+      :fit-view-on-init-options="fitOptions"
       @node-click="onNodeClick"
     >
       <template #node-task="{ data }">
@@ -27,8 +31,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import { Handle, MarkerType, Position, VueFlow, type NodeMouseEvent } from "@vue-flow/core";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  Handle,
+  MarkerType,
+  Position,
+  useVueFlow,
+  VueFlow,
+  type NodeMouseEvent,
+} from "@vue-flow/core";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 
@@ -45,14 +56,50 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ select: [id: number] }>();
 
+const flowId = `task-dep-${Math.random().toString(36).slice(2, 9)}`;
+const rootRef = ref<HTMLElement | null>(null);
+const narrow = ref(false);
+const { fitView, onPaneReady, onNodesInitialized } = useVueFlow(flowId);
+onPaneReady(() => scheduleFit());
+onNodesInitialized(() => scheduleFit());
+
+const fitOptions = computed(() => ({
+  padding: narrow.value ? 0.14 : 0.2,
+  includeHiddenNodes: false,
+}));
+
+const hintText = computed(() =>
+  narrow.value ? "拖拽平移 · 双指缩放" : "拖拽平移 · 滚轮缩放",
+);
+
+const layout = computed(() => {
+  if (narrow.value) {
+    return {
+      nodeWidth: 148,
+      currentX: 176,
+      dependentX: 352,
+      gap: 76,
+      currentY: 108,
+    };
+  }
+  return {
+    nodeWidth: 190,
+    currentX: 230,
+    dependentX: 460,
+    gap: 88,
+    currentY: 130,
+  };
+});
+
 function columnNodes(tasks: DependencyTask[], x: number) {
-  const gap = 88;
-  const start = 130 - ((tasks.length - 1) * gap) / 2;
+  const gap = layout.value.gap;
+  const start = layout.value.currentY - ((tasks.length - 1) * gap) / 2;
   return tasks.map((task, index) => ({
     id: String(task.id),
-    type: "task",
+    type: "task" as const,
     position: { x, y: start + index * gap },
     data: task,
+    style: { width: `${layout.value.nodeWidth}px` },
   }));
 }
 
@@ -60,12 +107,14 @@ const nodes = computed(() => [
   ...columnNodes(props.dependencies, 0),
   {
     id: String(props.current.id),
-    type: "task",
-    position: { x: 230, y: 130 },
+    type: "task" as const,
+    position: { x: layout.value.currentX, y: layout.value.currentY },
     data: { ...props.current, current: true },
+    style: { width: `${layout.value.nodeWidth}px` },
   },
-  ...columnNodes(props.dependents, 460),
+  ...columnNodes(props.dependents, layout.value.dependentX),
 ]);
+
 const edges = computed(() =>
   [
     ...props.dependencies.map((task) => ({
@@ -86,9 +135,48 @@ const edges = computed(() =>
   })),
 );
 
+let fitTimer: ReturnType<typeof setTimeout> | null = null;
+function scheduleFit() {
+  if (fitTimer != null) clearTimeout(fitTimer);
+  fitTimer = setTimeout(() => {
+    fitTimer = null;
+    void fitView({ ...fitOptions.value, duration: 160 });
+  }, 40);
+}
+
 function onNodeClick(event: NodeMouseEvent) {
   emit("select", Number(event.node.id));
 }
+
+function syncNarrow() {
+  narrow.value = window.matchMedia("(max-width: 720px)").matches;
+}
+
+let media: MediaQueryList | null = null;
+let resizeObserver: ResizeObserver | null = null;
+
+onMounted(() => {
+  syncNarrow();
+  media = window.matchMedia("(max-width: 720px)");
+  media.addEventListener("change", syncNarrow);
+
+  if (typeof ResizeObserver !== "undefined" && rootRef.value) {
+    resizeObserver = new ResizeObserver(() => scheduleFit());
+    resizeObserver.observe(rootRef.value);
+  }
+  scheduleFit();
+});
+
+onBeforeUnmount(() => {
+  media?.removeEventListener("change", syncNarrow);
+  resizeObserver?.disconnect();
+  if (fitTimer != null) clearTimeout(fitTimer);
+});
+
+watch(
+  () => [props.current.id, props.dependencies, props.dependents, narrow.value] as const,
+  () => scheduleFit(),
+);
 </script>
 
 <style scoped>
@@ -119,7 +207,7 @@ function onNodeClick(event: NodeMouseEvent) {
 .dependency-node {
   position: relative;
   display: flex;
-  width: 190px;
+  width: 100%;
   height: 64px;
   align-items: center;
   justify-content: center;
@@ -132,6 +220,13 @@ function onNodeClick(event: NodeMouseEvent) {
   font-size: 13px;
   font-weight: 600;
   text-align: center;
+}
+.dependency-node span {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 .dependency-node--current {
   border-color: color-mix(in srgb, #07c160 68%, var(--app-border));
@@ -197,15 +292,19 @@ function onNodeClick(event: NodeMouseEvent) {
 
 @media (max-width: 720px) {
   .task-dependency-graph {
-    overflow: auto hidden;
-    overscroll-behavior: contain;
-    -webkit-overflow-scrolling: touch;
+    height: min(42dvh, 360px);
   }
 
-  :deep(.vue-flow) {
-    width: 680px;
-    min-width: 680px;
-    height: 100%;
+  .dependency-node {
+    height: 56px;
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .dependency-graph__hint {
+    top: 6px;
+    right: 8px;
+    font-size: 9px;
   }
 }
 </style>

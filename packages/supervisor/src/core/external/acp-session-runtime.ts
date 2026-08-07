@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { Readable, Writable } from "node:stream";
 import {
   ClientSideConnection,
@@ -13,7 +13,6 @@ import {
 } from "@agentclientprotocol/sdk";
 import type {
   AgentHarnessEvent,
-  AgentMessage,
   AgentTool,
   SessionTreeEntry,
   ThinkingLevel,
@@ -28,7 +27,11 @@ import type { SessionState, SlashCommandInfo } from "../session-runtime.js";
 import { resolveSessionPromptImages, type SessionPromptImage } from "../session-media.js";
 import { createExternalAssistantMessage } from "./external-session-runtime.js";
 import { SQLiteSessionStorage } from "../session-storage.js";
-import { getExternalAgentConfig } from "./external-agent-config.js";
+import {
+  getExternalAgentConfig,
+  resolveExecutable,
+  spawnExternalProcess,
+} from "./external-agent-config.js";
 import { sessionServicePortEnv } from "../session-services.js";
 import { ExternalTurnBuffer } from "./external-turn-buffer.js";
 
@@ -40,6 +43,29 @@ export interface AcpAgentConfig {
 }
 
 type Listener = (event: AgentHarnessEvent) => void | Promise<void>;
+
+type CursorAskQuestion = {
+  id: string;
+  prompt: string;
+  options: Array<{ id: string; label: string }>;
+  allowMultiple?: boolean;
+};
+
+type PendingInteraction =
+  | {
+      kind: "permission";
+      request: RequestPermissionRequest;
+      resolve: (response: RequestPermissionResponse) => void;
+    }
+  | {
+      kind: "cursor_ask";
+      questions: CursorAskQuestion[];
+      resolve: (response: Record<string, unknown>) => void;
+    }
+  | {
+      kind: "cursor_plan";
+      resolve: (response: Record<string, unknown>) => void;
+    };
 
 function parseAcpConfig(agent: Agent): AcpAgentConfig {
   const config = getExternalAgentConfig(agent);
@@ -56,6 +82,37 @@ function toolResult(update: ToolCall | ToolCallUpdate): unknown {
   if (update.rawOutput !== undefined) return update.rawOutput;
   if (!update.content) return null;
   return update.content;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+function parseCursorAskQuestions(params: Record<string, unknown>): CursorAskQuestion[] {
+  const raw = Array.isArray(params.questions) ? params.questions : [];
+  const questions: CursorAskQuestion[] = [];
+  for (const item of raw) {
+    const question = asRecord(item);
+    const id = typeof question.id === "string" ? question.id : "";
+    if (!id) continue;
+    const options = Array.isArray(question.options)
+      ? question.options
+          .map((option) => {
+            const row = asRecord(option);
+            const optionId = typeof row.id === "string" ? row.id : "";
+            const label = typeof row.label === "string" ? row.label : optionId;
+            return optionId ? { id: optionId, label } : null;
+          })
+          .filter((option): option is { id: string; label: string } => option !== null)
+      : [];
+    questions.push({
+      id,
+      prompt: typeof question.prompt === "string" ? question.prompt : id,
+      options,
+      allowMultiple: question.allowMultiple === true,
+    });
+  }
+  return questions;
 }
 
 export class AcpSessionRuntime implements ManagedSessionRuntime {
@@ -75,13 +132,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
   private assistantText = "";
   private readonly turnBuffer = new ExternalTurnBuffer();
   private running: Promise<void> | null = null;
-  private readonly interactions = new Map<
-    string,
-    {
-      request: RequestPermissionRequest;
-      resolve: (response: RequestPermissionResponse) => void;
-    }
-  >();
+  private readonly interactions = new Map<string, PendingInteraction>();
 
   private constructor(options: {
     db: SupervisorDb;
@@ -107,17 +158,23 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
   }): Promise<AcpSessionRuntime> {
     const config = parseAcpConfig(options.agent);
     const portEnv = sessionServicePortEnv(options.session.meta);
-    const child = spawn(config.command, config.args ?? [], {
+    const env = { ...process.env, ...config.env, ...portEnv };
+    const executable = resolveExecutable(config.command, env);
+    if (!executable) {
+      throw new Error(`未找到外部 ACP Agent 命令：${config.command}`);
+    }
+    const child = spawnExternalProcess(executable, config.args ?? [], {
       cwd: options.session.cwd,
-      env: { ...process.env, ...config.env, ...portEnv },
+      env,
       stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
+    }) as ChildProcessWithoutNullStreams;
 
     let runtime: AcpSessionRuntime;
     const client: Client = {
       requestPermission: (request) => runtime.handlePermission(request),
       sessionUpdate: (notification) => runtime.handleUpdate(notification),
+      extMethod: (method, params) => runtime.handleExtMethod(method, params),
+      extNotification: (method, params) => runtime.handleExtNotification(method, params),
     };
     const stream = ndJsonStream(
       Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
@@ -143,6 +200,8 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
           child.once("error", reject);
         }),
       ]);
+      // Auth is assumed to be completed out-of-band by the user (agent login / env),
+      // matching Codex / Claude Code external agents.
       const savedId = options.session.externalSessionId;
       if (typeof savedId === "string" && savedId.length > 0) {
         await connection.loadSession({
@@ -195,7 +254,94 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
       },
     });
     return new Promise((resolve) => {
-      this.interactions.set(interactionId, { request, resolve });
+      this.interactions.set(interactionId, { kind: "permission", request, resolve });
+    });
+  }
+
+  private async handleExtMethod(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    if (method === "cursor/ask_question") {
+      return this.handleCursorAskQuestion(params);
+    }
+    if (method === "cursor/create_plan") {
+      return this.handleCursorCreatePlan(params);
+    }
+    // Unknown blocking extension methods: cancel so the turn cannot hang forever.
+    console.warn(`[acp:${this.id}] unsupported extension method: ${method}`);
+    return { outcome: { outcome: "cancelled" } };
+  }
+
+  private async handleExtNotification(
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<void> {
+    // Cursor notifications (update_todos / task / generate_image) are informational.
+    if (method.startsWith("cursor/")) {
+      console.error(`[acp:${this.id}] ${method} ${JSON.stringify(params).slice(0, 240)}`);
+    }
+  }
+
+  private async handleCursorAskQuestion(
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const questions = parseCursorAskQuestions(params);
+    const interactionId = `acp-ask-${randomUUID()}`;
+    await this.emit({
+      type: "tool_execution_start",
+      toolCallId: interactionId,
+      toolName: "external_interaction",
+      args: {
+        externalInteraction: true,
+        interactionId,
+        backend: this.agent.backendType,
+        kind: "question",
+        title:
+          typeof params.title === "string" && params.title.trim()
+            ? params.title
+            : `${this.agent.name} 需要你的选择`,
+        detail: "",
+        questions: questions.map((question) => ({
+          id: question.id,
+          question: question.prompt,
+          options: question.options.map((option) => ({
+            label: option.label,
+            description: option.id,
+          })),
+          required: true,
+        })),
+        request: params,
+      },
+    });
+    return new Promise((resolve) => {
+      this.interactions.set(interactionId, { kind: "cursor_ask", questions, resolve });
+    });
+  }
+
+  private async handleCursorCreatePlan(
+    params: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const name = typeof params.name === "string" ? params.name : "Plan";
+    const overview = typeof params.overview === "string" ? params.overview : "";
+    const plan = typeof params.plan === "string" ? params.plan : "";
+    const interactionId = `acp-plan-${randomUUID()}`;
+    await this.emit({
+      type: "tool_execution_start",
+      toolCallId: interactionId,
+      toolName: "external_interaction",
+      args: {
+        externalInteraction: true,
+        interactionId,
+        backend: this.agent.backendType,
+        kind: "approval",
+        title: `${this.agent.name} 请求确认计划：${name}`,
+        detail: [overview, plan].filter(Boolean).join("\n\n"),
+        request: params,
+      },
+    });
+    return new Promise((resolve) => {
+      this.interactions.set(interactionId, { kind: "cursor_plan", resolve });
     });
   }
 
@@ -206,15 +352,48 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     const pending = this.interactions.get(interactionId);
     if (!pending) return false;
     this.interactions.delete(interactionId);
-    const requestedKind = response.action.startsWith("approve") ? "allow" : "reject";
-    const selected =
-      pending.request.options.find((option) => option.optionId === response.optionId) ??
-      pending.request.options.find((option) => option.kind.includes(requestedKind));
-    pending.resolve(
-      selected
-        ? { outcome: { outcome: "selected", optionId: selected.optionId } }
-        : { outcome: { outcome: "cancelled" } },
-    );
+
+    if (pending.kind === "permission") {
+      const requestedKind = response.action.startsWith("approve") ? "allow" : "reject";
+      const selected =
+        pending.request.options.find((option) => option.optionId === response.optionId) ??
+        pending.request.options.find((option) => option.kind.includes(requestedKind));
+      pending.resolve(
+        selected
+          ? { outcome: { outcome: "selected", optionId: selected.optionId } }
+          : { outcome: { outcome: "cancelled" } },
+      );
+    } else if (pending.kind === "cursor_ask") {
+      if (response.action === "answer") {
+        const answers: Array<{ questionId: string; selectedOptionIds: string[] }> = [];
+        for (const question of pending.questions) {
+          const raw = response.answers?.[question.id] ?? [];
+          const selectedOptionIds = raw
+            .map((value) => {
+              const byId = question.options.find((option) => option.id === value);
+              if (byId) return byId.id;
+              const byLabel = question.options.find((option) => option.label === value);
+              return byLabel?.id;
+            })
+            .filter((value): value is string => typeof value === "string");
+          answers.push({ questionId: question.id, selectedOptionIds });
+        }
+        pending.resolve({ outcome: { outcome: "answered", answers } });
+      } else if (response.action === "deny") {
+        pending.resolve({ outcome: { outcome: "skipped", reason: "denied" } });
+      } else {
+        pending.resolve({ outcome: { outcome: "cancelled" } });
+      }
+    } else if (pending.kind === "cursor_plan") {
+      if (response.action === "approve" || response.action === "approve_session") {
+        pending.resolve({ outcome: { outcome: "accepted" } });
+      } else if (response.action === "deny") {
+        pending.resolve({ outcome: { outcome: "rejected", reason: "denied" } });
+      } else {
+        pending.resolve({ outcome: { outcome: "cancelled" } });
+      }
+    }
+
     void this.emit({
       type: "tool_execution_end",
       toolCallId: interactionId,
@@ -459,7 +638,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
       sessionId: session.external_session_id ?? null,
       cwd: session.cwd,
       status: session.status,
-      model: { provider: "acp", modelId: this.agent.name },
+      model: { provider: this.agent.backendType, modelId: this.agent.name },
       thinkingLevel: session.thinking_level === "none" ? "off" : session.thinking_level,
       isStreaming: this.running !== null,
       messageCount: messages.filter((entry) => entry.type === "message").length,

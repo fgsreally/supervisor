@@ -51,9 +51,9 @@ const LEGACY_ASSISTANT_SKILL = `# Supervisor 使用指南
 
 ## 目录结构
 
-- 全局资源：\`~/.pi/supervisor/global/{skills,extensions,prompts}\`
-- Agent 目录：\`~/.pi/supervisor/agents/{agentId}/\`
-- 数据库：\`~/.pi/supervisor.db\`
+- 全局资源：\`~/.supervisor/global/{skills,extensions,prompts}\`（可用 \`--cwd\` 覆盖整个全局根）
+- Agent 目录：\`<home>/agents/{agentId}/\`
+- 数据库：\`<home>/supervisor.db\`
 
 Agent 通过数据库 binding 使用全局资源，不在 Agent Home 中创建资源软链接。
 
@@ -66,7 +66,7 @@ Agent 通过数据库 binding 使用全局资源，不在 Agent Home 中创建�
 
 ## Skill 安装
 
-1. 将 skill 目录放入 \`~/.pi/supervisor/global/skills/\`
+1. 将 skill 目录放入 \`<home>/global/skills/\`
 2. 在 UI 资源面板或 API \`POST /agents/:id/resources\` 绑定到 Agent
 3. 输入框 \`/\` 可补全已关联的 skill 和 prompt
 
@@ -172,7 +172,7 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
 function ensureExternalAgent(
   db: SupervisorDb,
   spec: {
-    kind: "codex" | "claude" | "kimi";
+    kind: "codex" | "claude" | "kimi" | "cursor" | "mimo";
     name: string;
     description: string;
     command: string;
@@ -182,6 +182,15 @@ function ensureExternalAgent(
 ): void {
   const existing = db.listAgents().find((agent) => agent.backendType === spec.kind);
   if (existing) {
+    // Upgrade stale Cursor packaging to the bundled official avatar.
+    if (
+      spec.kind === "cursor" &&
+      (!existing.avatar ||
+        existing.avatar === "/icons/cursor.svg" ||
+        existing.avatar.includes("avatars.githubusercontent.com/u/126759922"))
+    ) {
+      db.updateAgent(existing.id, { avatar: spec.avatar });
+    }
     return;
   }
   db.insertAgent({
@@ -222,6 +231,22 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
     command: "kimi",
     args: ["acp"],
     avatar: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
+  });
+  ensureExternalAgent(db, {
+    kind: "cursor",
+    name: "Cursor",
+    description: "Cursor CLI connected through Agent Client Protocol",
+    command: "agent",
+    args: ["acp"],
+    avatar: "/icons/cursor.png",
+  });
+  ensureExternalAgent(db, {
+    kind: "mimo",
+    name: "MiMo Code",
+    description: "MiMoCode CLI connected through Agent Client Protocol",
+    command: "mimo",
+    args: ["acp"],
+    avatar: "/icons/mimo.png",
   });
   for (const kind of ACTIVE_PACKAGED_AGENT_KINDS) {
     const id = ensurePackagedAgent(db, kind);

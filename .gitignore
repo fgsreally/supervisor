@@ -31,3 +31,6 @@ test-results/
 .pi/hf-sessions-backup/
 docs/.vitepress/cache/
 docs/.vitepress/dist/
+
+# Playground — local dev workspace (db, agents, projects, worktrees)
+playground/

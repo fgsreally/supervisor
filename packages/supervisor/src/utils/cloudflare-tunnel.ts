@@ -113,20 +113,25 @@ export async function startQuickTunnel(port: number): Promise<QuickTunnel> {
   });
 }
 
-/** Prefer a physical LAN IPv4 address for same-WiFi QR codes. */
+/** Prefer Wi-Fi / Ethernet LAN IPv4 for same-WiFi QR codes. */
 export function getLanIPv4(): string | null {
   const interfaces = networkInterfaces();
-  let fallback: string | null = null;
+  const scored: { address: string; score: number }[] = [];
+
   for (const [name, addrs] of Object.entries(interfaces)) {
     if (!addrs) continue;
     const virtual = isVirtualInterface(name);
     for (const info of addrs) {
       if (info.internal || info.family !== "IPv4") continue;
-      if (!virtual) return info.address;
-      fallback ??= info.address;
+      let score = virtual ? 0 : 10;
+      if (/^(Wi-Fi|WLAN|无线|以太网|Ethernet)/i.test(name)) score += 20;
+      if (/^192\.168\.|^10\.|^172\.(1[6-9]|2\d|3[01])\./.test(info.address)) score += 5;
+      scored.push({ address: info.address, score });
     }
   }
-  return fallback;
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored[0]?.address ?? null;
 }
 
 function isVirtualInterface(name: string): boolean {

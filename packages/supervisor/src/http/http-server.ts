@@ -883,6 +883,8 @@ export function createHttpServer(
         body.backendType === "codex" ||
         body.backendType === "claude" ||
         body.backendType === "kimi" ||
+        body.backendType === "cursor" ||
+        body.backendType === "mimo" ||
         body.backendType === "acp"
           ? body.backendType
           : "native";

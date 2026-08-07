@@ -18,23 +18,15 @@ bun packages/supervisor/dist/cli.mjs --help
 pi-supervisor --help
 ```
 
-根目录 `pnpm run serve` 是常用 `serve` 参数的快捷方式。
-
 ## 启动 HTTP 服务器
 
 ```bash
-bun packages/supervisor/dist/cli.mjs serve --port 3030
-# 常用快捷方式（playground + 本地 db）
+# 开发：一条命令起 API + Vite（无需先 build）
+pnpm dev
+
+# 仅后端 / 隧道（暂用 --cwd playground）
 pnpm run serve
-
-# 构建后启动 playground Supervisor
-pnpm run dev:supervisor
-
-# 手机远程：构建 UI + Quick Tunnel + 终端二维码
 pnpm run serve:tunnel
-# 等价：
-# pnpm run build:all
-# bun packages/supervisor/dist/cli.mjs serve --tunnel --cwd playground
 ```
 
 `--tunnel` 会自动下载并启动 `cloudflared` Quick Tunnel；扫码后手输 PIN。详情见 [手机远程访问](/guide/mobile-remote-access)。
@@ -92,14 +84,12 @@ bun packages/supervisor/dist/cli.mjs extensions unbind <agent-id> <id>
 | 选项                | 说明                    |
 | ------------------- | ----------------------- |
 | `-p, --port <port>` | HTTP 端口，默认 3030    |
-| `--cwd <path>`      | 默认工作目录（`serve`） |
+| `--cwd <path>`      | Supervisor 全局根（db/public/global/agents/projects；默认 `~/.supervisor`） |
 | `-h, --help`        | 帮助                    |
 
-数据库路径不通过 CLI 参数传入，按以下顺序读取：
+`--cwd` 决定全局根。数据库默认在 `<cwd>/supervisor.db`（或 `~/.supervisor/supervisor.db`）。也可用 `<home>/settings.json` 的 `dbPath` 覆盖。
 
-1. 项目 `.supervisor/config.json` 的 `dbPath`
-2. `~/.pi/supervisor/settings.json` 的 `dbPath`
-3. 默认 `~/.pi/supervisor.db`
+开发时：`pnpm dev` 暂用 `--cwd playground`。
 
 ## 说明
 

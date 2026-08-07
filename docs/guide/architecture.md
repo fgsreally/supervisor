@@ -28,7 +28,7 @@ Pi Supervisor 由两个包组成：
 | SessionRuntime     | `src/core/session-runtime.ts`    | prompt / steer / follow-up / abort         |
 | SessionWorkflow    | `src/core/session-workflow.ts`   | `sessions.stage` 阶段标签                  |
 | Compaction         | `src/core/compaction/rolling.ts` | 滚动上下文压缩                             |
-| External runtimes  | `src/core/external/`             | Codex / Claude / ACP 外部 Agent 会话       |
+| External runtimes  | `src/core/external/`             | Codex / Claude / Kimi / Cursor / MiMo / ACP 外部 Agent 会话 |
 | SupervisorDb       | `src/db/db.ts`                   | schema、迁移、Session meta、输入队列、FTS5 |
 | Extension host     | `src/extension/runtime/`         | 激活扩展、事件、工具注入                   |
 | Builtin extensions | `src/extension/builtin/`         | mcp、subagent、timer、task、循环守卫等     |

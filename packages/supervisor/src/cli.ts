@@ -18,9 +18,15 @@ import { encryptApiKey } from "./utils/encrypt.js";
 import { readSupervisorSettings, writeSupervisorSettings } from "./utils/supervisor-settings.js";
 import { registerWebSocketRoutes } from "./websocket/server.js";
 import { startQuickTunnel } from "./utils/cloudflare-tunnel.js";
-import { printMobileAccessBanner } from "./utils/mobile-access.js";
-import { resolveUiDistDir, warnMissingUiDist } from "./utils/ui-dist.js";
+import { resolveUiDistDir } from "./utils/ui-dist.js";
 import { resolveWebPin } from "./utils/web-password.js";
+import { getSupervisorHome, setSupervisorHome } from "./utils/supervisor-home.js";
+import {
+  buildDevPublicUrl,
+  printStartupBanner,
+  printTunnelError,
+  printTunnelStarting,
+} from "./utils/startup-banner.js";
 
 const KNOWN_CLI_OPTIONS = new Set([
   "port",
@@ -101,7 +107,11 @@ if (values.help) {
 
 async function run() {
   const cwdArg = values.cwd as string | undefined;
-  if (cwdArg) setDefaultCwd(resolveWorkspacePath(cwdArg));
+  if (cwdArg) {
+    const home = resolveWorkspacePath(cwdArg);
+    setSupervisorHome(home);
+    setDefaultCwd(home);
+  }
 
   const db = new SupervisorDb(resolveDbPath());
   dedupeBuiltinAssistantSessions(db);
@@ -122,7 +132,10 @@ async function run() {
       const { pin: webPassword, generated } = resolveWebPin(rawCliValue("password"));
       const wantTunnel = values.tunnel === true;
       const uiDir = resolveUiDistDir(rawCliValue("ui-dir"));
-      if (!uiDir) warnMissingUiDist();
+      const uiDistMissing = !uiDir;
+      const devMode = process.env.PI_SUPERVISOR_DEV === "1";
+      const uiPort = Number(process.env.PI_SUPERVISOR_UI_PORT || "5163");
+      const publicUrl = devMode ? buildDevPublicUrl(uiPort) : null;
       const app = createHttpServer(manager, {
         password: webPassword,
         tunnelQuick: wantTunnel,
@@ -132,29 +145,29 @@ async function run() {
       app.listen({ hostname: "0.0.0.0", port });
       manager.resumePersistedSessionInputs();
       startDailyWorkScheduler(db);
-      console.log(`Server listening on http://127.0.0.1:${port}`);
-      console.log(`Workspace cwd: ${workspaceCwd}`);
-      console.log(`Database: ${resolveDbPath()}`);
 
       let tunnelUrl: string | null = null;
       if (wantTunnel) {
         try {
-          console.log("Starting Cloudflare Quick Tunnel...");
+          printTunnelStarting();
           const tunnel = await startQuickTunnel(port);
           tunnelUrl = tunnel.url;
         } catch (error) {
-          console.error(`[tunnel] ${error instanceof Error ? error.message : String(error)}`);
-          console.error(
-            "[tunnel] Install tip: cloudflared is auto-downloaded via the npm package; check network access or install manually from https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/downloads/",
-          );
+          printTunnelError(error instanceof Error ? error.message : String(error));
         }
       }
 
-      printMobileAccessBanner({
+      printStartupBanner({
         port,
         pin: webPassword,
         pinGenerated: generated,
+        home: getSupervisorHome(),
+        database: resolveDbPath(),
+        workspaceCwd,
+        publicUrl,
         tunnelUrl,
+        uiDistMissing,
+        devMode,
       });
       break;
     }

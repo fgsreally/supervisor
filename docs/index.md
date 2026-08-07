@@ -24,6 +24,6 @@ features:
     details: spawn_agent + Session 委派白名单；Shadow 旁路观察主会话
     link: /supervisor/subagents
   - title: 扩展与外部 Agent
-    details: 全局 catalog + bind；Codex / Claude / ACP；仓库扩展 strict-sdd 等
+    details: 全局 catalog + bind；Codex / Claude / Kimi / Cursor / MiMo / ACP；仓库扩展 strict-sdd 等
     link: /supervisor/extensions
 ---

@@ -15,6 +15,14 @@ const DEFAULT_COMMANDS: Partial<Record<Agent["backendType"], string>> = {
   claude: "claude",
   codex: "codex",
   kimi: "kimi",
+  cursor: "agent",
+  mimo: "mimo",
+};
+
+const DEFAULT_ARGS: Partial<Record<Agent["backendType"], string[]>> = {
+  kimi: ["acp"],
+  cursor: ["acp"],
+  mimo: ["acp"],
 };
 
 export function getExternalAgentConfig(agent: Agent): ExternalAgentConfig {
@@ -36,11 +44,12 @@ export function getExternalAgentConfig(agent: Agent): ExternalAgentConfig {
   const rawEnv =
     persisted?.env ??
     (agent.meta.env && typeof agent.meta.env === "object" ? agent.meta.env : legacy?.env);
+  const args = Array.isArray(rawArgs)
+    ? rawArgs.filter((value): value is string => typeof value === "string")
+    : [];
   return {
     command,
-    args: Array.isArray(rawArgs)
-      ? rawArgs.filter((value): value is string => typeof value === "string")
-      : [],
+    args: args.length > 0 ? args : (DEFAULT_ARGS[agent.backendType] ?? []),
     env:
       rawEnv && typeof rawEnv === "object"
         ? Object.fromEntries(
@@ -82,6 +91,10 @@ function extraUserBinDirs(): string[] {
       join(localAppData, "pnpm"),
       join(home, ".bun", "bin"),
       join(localAppData, "Programs", "cursor", "resources", "app", "bin"),
+      // Cursor CLI (`agent` / `cursor-agent`) install dir on Windows.
+      join(localAppData, "cursor-agent"),
+      // MiMoCode CLI default install: %USERPROFILE%\.mimocode\bin
+      join(home, ".mimocode", "bin"),
     ].filter((dir) => dir && existsSync(dir));
   }
   return [
@@ -89,6 +102,7 @@ function extraUserBinDirs(): string[] {
     join(home, ".volta", "bin"),
     join(home, ".npm-global", "bin"),
     join(home, ".bun", "bin"),
+    join(home, ".mimocode", "bin"),
     "/usr/local/bin",
     "/opt/homebrew/bin",
   ].filter((dir) => existsSync(dir));

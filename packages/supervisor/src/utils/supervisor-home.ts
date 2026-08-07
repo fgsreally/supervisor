@@ -1,13 +1,31 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 
-/** Supervisor runtime root: ~/.pi/supervisor */
-export function getSupervisorHome(): string {
-  return join(homedir(), ".pi", "supervisor");
+let explicitHome: string | null = null;
+
+function defaultSupervisorHome(): string {
+  return join(homedir(), ".supervisor");
 }
 
-/** Public static files (avatars etc.): ~/.pi/supervisor/public */
+/**
+ * Override supervisor global root (from `--cwd`).
+ * When set, db / public / global / agents / projects / media all live under this path.
+ * Takes precedence over `SUPERVISOR_HOME` and the default `~/.supervisor`.
+ */
+export function setSupervisorHome(path: string): void {
+  explicitHome = resolve(path);
+}
+
+/** Supervisor runtime root: `--cwd` → `SUPERVISOR_HOME` → `~/.supervisor` */
+export function getSupervisorHome(): string {
+  if (explicitHome) return explicitHome;
+  const fromEnv = process.env.SUPERVISOR_HOME?.trim();
+  if (fromEnv) return resolve(fromEnv);
+  return defaultSupervisorHome();
+}
+
+/** Public static files (avatars etc.): `<home>/public` */
 export function getSupervisorPublicDir(): string {
   return join(getSupervisorHome(), "public");
 }

@@ -63,7 +63,7 @@ describe("packaged agents", () => {
     expect(db.getAgentResourceBinding(assistant.id, resource.id)?.enabled).toBe(true);
   });
 
-  it("registers Codex, Claude Code, and Kimi Code without requiring a provider", () => {
+  it("registers Codex, Claude Code, Kimi Code, Cursor, and MiMo Code without requiring a provider", () => {
     ensurePackagedAgents(db);
     const external = db.listAgents().filter((agent) => agent.backendType !== "native");
     expect(external).toEqual(
@@ -78,8 +78,22 @@ describe("packaged agents", () => {
           name: "Kimi Code",
           backendType: "kimi",
           providerId: null,
-          icon: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
+          avatar: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
           externalConfig: { command: "kimi", args: ["acp"] },
+        }),
+        expect.objectContaining({
+          name: "Cursor",
+          backendType: "cursor",
+          providerId: null,
+          avatar: "/icons/cursor.png",
+          externalConfig: { command: "agent", args: ["acp"] },
+        }),
+        expect.objectContaining({
+          name: "MiMo Code",
+          backendType: "mimo",
+          providerId: null,
+          avatar: "/icons/mimo.png",
+          externalConfig: { command: "mimo", args: ["acp"] },
         }),
       ]),
     );

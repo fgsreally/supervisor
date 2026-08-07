@@ -19,8 +19,9 @@
           <div
             v-if="showHandle"
             class="m-drawer__handle-bar"
-            aria-label="拖动调整高度"
-            @pointerdown="startResize"
+            :class="{ 'm-drawer__handle-bar--resizable': canResize }"
+            :aria-label="canResize ? '拖动调整高度' : undefined"
+            @pointerdown="onHandlePointerDown"
           >
             <span class="m-drawer__handle" aria-hidden="true" />
           </div>
@@ -89,7 +90,7 @@ const props = withDefaults(
     footerCancelText: "取消",
     dismissOnBackdrop: true,
     minHeight: 240,
-    maxHeightRatio: 0.92,
+    maxHeightRatio: 0.94,
     modalBreakpoint: 720,
   },
 );
@@ -117,7 +118,8 @@ const canResize = computed(() => {
   return isTall.value;
 });
 
-const showHandle = computed(() => canResize.value);
+/** Sheet 模式始终展示把手（对齐会话工具菜单）；仅可调整高度时响应拖拽。 */
+const showHandle = computed(() => sheetMode.value);
 
 const showHeader = computed(
   () => Boolean(slots.header || props.title || (!sheetMode.value && props.showClose)),
@@ -158,6 +160,11 @@ function syncVariant() {
 
 function onBackdropClick() {
   if (props.dismissOnBackdrop) emit("close");
+}
+
+function onHandlePointerDown(event: PointerEvent) {
+  if (!canResize.value) return;
+  startResize(event);
 }
 
 function startResize(event: PointerEvent) {

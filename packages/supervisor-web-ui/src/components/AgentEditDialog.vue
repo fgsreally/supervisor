@@ -180,9 +180,13 @@ watch(
   () => [props.open, agent.value] as const,
   ([open, value]) => {
     if (!open || !value) return;
-    const external = value.meta.external as { command?: string; args?: string[] } | undefined;
-    const command = typeof value.meta.command === "string" ? value.meta.command : external?.command;
-    const args = Array.isArray(value.meta.args) ? value.meta.args : external?.args;
+    const legacy = value.meta.external as { command?: string; args?: string[] } | undefined;
+    const command =
+      value.externalConfig?.command ??
+      (typeof value.meta.command === "string" ? value.meta.command : legacy?.command);
+    const args =
+      value.externalConfig?.args ??
+      (Array.isArray(value.meta.args) ? value.meta.args : legacy?.args);
     Object.assign(draft, {
       name: value.name,
       description: value.description ?? "",
@@ -229,6 +233,13 @@ async function save() {
   if (!value || !canSave.value || saving.value) return;
   saving.value = true;
   try {
+    const args =
+      value.backendType === "native"
+        ? undefined
+        : draft.args
+            .split(/\r?\n/)
+            .map((arg) => arg.trim())
+            .filter(Boolean);
     await agentStore.updateAgent(value.id, {
       name: draft.name.trim(),
       description: draft.description.trim(),
@@ -236,16 +247,15 @@ async function save() {
       modelId: value.backendType === "native" ? draft.modelId || null : undefined,
       toolsPreset: value.backendType === "native" ? draft.toolsPreset : undefined,
       permissionRules: value.backendType === "native" ? draft.permissionRules : undefined,
-      meta:
+      externalConfig:
         value.backendType === "native"
-          ? { subagentIds: draft.subagentIds }
+          ? undefined
           : {
+              ...(value.externalConfig ?? {}),
               command: draft.command.trim(),
-              args: draft.args
-                .split(/\r?\n/)
-                .map((arg) => arg.trim())
-                .filter(Boolean),
+              args,
             },
+      meta: value.backendType === "native" ? { subagentIds: draft.subagentIds } : undefined,
     });
     emit("saved");
     emit("close");

@@ -1009,6 +1009,8 @@ function togglePinnedSession() {
   const pinned = viewPreferences.pinnedSessionIds.includes(target.sessionId);
   const willPin = !pinned;
 
+  setPinnedSectionCollapsed(false);
+
   if (isAdvancedAnimationEnabled()) {
     setSessionViewFlag("pinnedSessionIds", target.sessionId, willPin);
     showUiMessage(pinned ? "已取消置顶" : "已置顶", "success");
@@ -1016,11 +1018,9 @@ function togglePinnedSession() {
   }
 
   if (willPin) {
-    setPinnedSectionCollapsed(false);
     pinLeaveIds.value = new Set([...pinLeaveIds.value, target.sessionId]);
     schedulePinLeaveFallback(target.sessionId);
   } else {
-    setPinnedSectionCollapsed(false);
     unpinLeaveIds.value = new Set([...unpinLeaveIds.value, target.sessionId]);
     scheduleUnpinLeaveFallback(target.sessionId);
   }

@@ -1,16 +1,14 @@
 import { existsSync, readdirSync, rmSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
-import { homedir } from "node:os";
 import { join } from "node:path";
-
-const PROJECTS_ROOT = join(homedir(), ".pi", "supervisor", "projects");
+import { getSupervisorHome } from "../utils/supervisor-home.js";
 
 export function getSupervisorProjectsRoot(): string {
-  return PROJECTS_ROOT;
+  return join(getSupervisorHome(), "projects");
 }
 
 export function getProjectDir(projectId: string | number): string {
-  return join(PROJECTS_ROOT, String(projectId));
+  return join(getSupervisorProjectsRoot(), String(projectId));
 }
 
 export async function ensureProjectDir(projectId: string | number): Promise<string> {

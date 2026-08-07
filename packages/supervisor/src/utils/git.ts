@@ -84,7 +84,7 @@ export function sessionBranchName(sessionId: string): string {
 }
 
 export function sessionWorktreePath(repoRoot: string, sessionId: string): string {
-  return join(repoRoot, ".pi", "supervisor", "worktrees", sessionId);
+  return join(repoRoot, ".supervisor", "worktrees", sessionId);
 }
 
 export type SessionGitCommit = { hash: string; message: string };
@@ -246,7 +246,7 @@ export async function createSessionWorktree(
 ): Promise<CreatedSessionWorktree> {
   const branch = sessionBranchName(sessionId);
   const worktreePath = sessionWorktreePath(repoRoot, sessionId);
-  mkdirSync(join(repoRoot, ".pi", "supervisor", "worktrees"), { recursive: true });
+  mkdirSync(join(repoRoot, ".supervisor", "worktrees"), { recursive: true });
   const startBranch = await getCurrentBranch(repoRoot);
   await runGit(repoRoot, ["worktree", "add", "-b", branch, worktreePath, startBranch]);
   return {

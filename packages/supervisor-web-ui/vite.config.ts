@@ -24,6 +24,7 @@ export default defineConfig({
     vue(),
     tailwindcss(),
     VitePWA({
+      // 仅用于 PWA 安装与推送通知，不缓存静态资源
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg"],
       manifest: {
@@ -44,8 +45,10 @@ export default defineConfig({
         ],
       },
       workbox: {
-        navigateFallback: "/index.html",
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        globPatterns: [],
+        navigateFallback: undefined,
+        runtimeCaching: [],
+        cleanupOutdatedCaches: true,
       },
     }),
   ],
@@ -60,7 +63,9 @@ export default defineConfig({
   server: {
     port: 5163,
     host: "0.0.0.0",
-    allowedHosts: ["supervisor.fgsreally.online", ".fgsreally.online"],
+    strictPort: true,
+    // 允许局域网 IP + 隧道域名；勿只白名单域名（会挡手机扫码）
+    allowedHosts: true,
     proxy: {
       "/auth": {
         target: "http://localhost:3030",

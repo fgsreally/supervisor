@@ -147,6 +147,8 @@ const PROVIDER_ICON_BY_KEYWORD: Array<{ keyword: string; icon: string }> = [
   { keyword: "openrouter", icon: "/icons/openrouter.svg" },
   { keyword: "moonshot", icon: "/icons/moonshot.svg" },
   { keyword: "kimi", icon: "/icons/moonshot.svg" },
+  { keyword: "cursor", icon: "/icons/cursor.svg" },
+  { keyword: "mimo", icon: "/icons/mimo.png" },
   { keyword: "qwen", icon: "/icons/qwen.svg" },
   { keyword: "zhipu", icon: "/icons/zhipu.svg" },
   { keyword: "mistral", icon: "/icons/mistral.svg" },
@@ -157,6 +159,8 @@ const PROVIDER_ICON_BY_KEYWORD: Array<{ keyword: string; icon: string }> = [
 export function resolveBundledIconColor(icon: string | null): string | null {
   if (!icon?.startsWith("/icons/")) return null;
   if (icon === "/icons/kimi.svg") return "#111827";
+  // Full-color official avatars; skip invert tinting.
+  if (icon === "/icons/cursor.png" || icon === "/icons/mimo.png") return null;
   return PROVIDER_PRESETS.find((preset) => preset.icon === icon)?.color ?? "#57606a";
 }
 

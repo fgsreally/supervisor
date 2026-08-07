@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { getSupervisorHome } from "../utils/supervisor-home.js";
 
 let defaultCwd: string | null = null;
 
@@ -13,7 +14,7 @@ function packageRootCandidates(): string[] {
   ];
 }
 
-/** Resolve playground path when present in the monorepo layout. */
+/** Resolve playground path when present in the monorepo layout (explicit scripts only). */
 export function resolvePlaygroundPath(): string | null {
   for (const candidate of packageRootCandidates()) {
     if (existsSync(candidate)) return candidate;
@@ -29,12 +30,13 @@ export function setDefaultCwd(cwd: string): void {
   defaultCwd = resolveWorkspacePath(cwd);
 }
 
-/** Default session workspace directory for supervisor runtime. */
+/**
+ * Default session / project workspace directory.
+ * Priority: explicit set → `SS_CWD` → supervisor home (global root).
+ */
 export function getDefaultCwd(): string {
   if (defaultCwd) return defaultCwd;
   const fromEnv = process.env.SS_CWD?.trim();
   if (fromEnv) return resolveWorkspacePath(fromEnv);
-  const playground = resolvePlaygroundPath();
-  if (playground) return playground;
-  return process.cwd();
+  return getSupervisorHome();
 }

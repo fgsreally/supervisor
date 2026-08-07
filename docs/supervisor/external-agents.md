@@ -2,13 +2,30 @@
 
 Supervisor 除内置 harness 外，可驱动本机或协议型外部 Agent，实现位于 `src/core/external/`：
 
-| 模块        | 文件                          | 说明                     |
-| ----------- | ----------------------------- | ------------------------ |
-| 基类 / 编排 | `external-session-runtime.ts` | 外部会话运行时抽象       |
-| 配置        | `external-agent-config.ts`    | 探测与配置               |
-| Codex       | `codex-session-runtime.ts`    | OpenAI Codex 系 CLI/会话 |
-| Claude      | `claude-session-runtime.ts`   | Claude Agent SDK / CLI   |
-| ACP         | `acp-session-runtime.ts`      | Agent Client Protocol    |
+| 模块        | 文件                          | 说明                                       |
+| ----------- | ----------------------------- | ------------------------------------------ |
+| 基类 / 编排 | `external-session-runtime.ts` | 外部会话运行时抽象                         |
+| 配置        | `external-agent-config.ts`    | 探测与配置                                 |
+| Codex       | `codex-session-runtime.ts`    | OpenAI Codex 系 CLI/会话                   |
+| Claude      | `claude-session-runtime.ts`   | Claude Agent SDK / CLI                     |
+| ACP         | `acp-session-runtime.ts`      | Agent Client Protocol（Kimi / Cursor / MiMo / 通用） |
+
+内置外部 Agent（启动时种子写入 DB，不依赖 Provider）：
+
+| 名称        | `backendType` | 默认命令        | 协议 |
+| ----------- | ------------- | --------------- | ---- |
+| Codex       | `codex`       | `codex`         | app-server |
+| Claude Code | `claude`      | `claude`        | stream-json / Agent SDK |
+| Kimi Code   | `kimi`        | `kimi acp`      | ACP |
+| Cursor      | `cursor`      | `agent acp`     | ACP |
+| MiMo Code   | `mimo`        | `mimo acp`      | ACP |
+
+认证由用户在本机自行完成（如 `agent login`、`claude login`），Supervisor 不代管登录，与 Codex / Claude Code 一致。
+
+Cursor 通过 ACP 扩展方法时：
+
+- `cursor/ask_question` / `cursor/create_plan`：桥接到 Web UI 的 `external_interaction`
+- `cursor/update_todos` / `cursor/task` / `cursor/generate_image`：通知型，当前仅记录日志
 
 ## HTTP
 

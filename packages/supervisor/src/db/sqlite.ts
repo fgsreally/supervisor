@@ -26,11 +26,50 @@ interface NativeDatabase {
 
 type NativeDatabaseConstructor = new (path: string) => NativeDatabase;
 
+function usingBun(): boolean {
+  return Boolean((globalThis as { Bun?: unknown }).Bun);
+}
+
+/**
+ * bun:sqlite expects named-param object keys to include the `@` / `$` / `:` prefix.
+ * better-sqlite3 accepts bare keys. Normalize so call sites can keep using `{ name: "…" }`.
+ */
+function normalizeNamedParams(params: unknown[]): unknown[] {
+  if (!usingBun() || params.length !== 1) return params;
+  const only = params[0];
+  if (!only || typeof only !== "object" || Array.isArray(only)) return params;
+  const input = only as Record<string, unknown>;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(input)) {
+    if (key.startsWith("@") || key.startsWith("$") || key.startsWith(":")) {
+      out[key] = value;
+    } else {
+      out[`@${key}`] = value;
+    }
+  }
+  return [out];
+}
+
+function wrapStatement(stmt: SqliteStatement): SqliteStatement {
+  if (!usingBun()) return stmt;
+  return {
+    all(...params: unknown[]) {
+      return stmt.all(...normalizeNamedParams(params));
+    },
+    get(...params: unknown[]) {
+      return stmt.get(...normalizeNamedParams(params));
+    },
+    run(...params: unknown[]) {
+      return stmt.run(...normalizeNamedParams(params));
+    },
+  };
+}
+
 class DatabaseAdapter implements SqliteDatabase {
   constructor(private readonly native: NativeDatabase) {}
 
   prepare(sql: string): SqliteStatement {
-    return this.native.prepare(sql);
+    return wrapStatement(this.native.prepare(sql));
   }
 
   exec(sql: string): unknown {
@@ -52,7 +91,7 @@ class DatabaseAdapter implements SqliteDatabase {
 }
 
 async function loadDatabaseConstructor(): Promise<NativeDatabaseConstructor> {
-  if ((globalThis as { Bun?: unknown }).Bun) {
+  if (usingBun()) {
     const module = await import("bun:sqlite");
     return module.Database as unknown as NativeDatabaseConstructor;
   }

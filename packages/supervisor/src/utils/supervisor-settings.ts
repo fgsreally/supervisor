@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { decryptApiKey } from "./encrypt.js";
+import { getSupervisorHome } from "./supervisor-home.js";
 
 /**
  * Settings bind a single 助手模型 (Watson / 华生).
@@ -103,7 +103,7 @@ export function isFeatureModelRef(value: unknown): value is FeatureModelRef {
 }
 
 export function getSupervisorSettingsPath(): string {
-  return join(homedir(), ".pi", "supervisor", "settings.json");
+  return join(getSupervisorHome(), "settings.json");
 }
 
 export function readSupervisorSettings(): SupervisorSettings {

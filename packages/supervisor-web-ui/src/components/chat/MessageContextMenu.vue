@@ -59,24 +59,23 @@
       </div>
     </Transition>
 
-    <Transition name="chat-sheet" :duration="{ enter: 300, leave: 180 }">
-      <div
-        v-if="open && mode === 'sheet'"
-        class="message-sheet-backdrop"
-        @click.self="emit('close')"
-      >
-        <section class="message-sheet">
-          <div v-if="showUsage" class="message-sheet__usage">
-            <strong>本条用量 {{ usage ? formatCost(usage.cost.total) : "暂无记录" }}</strong>
-            <span v-if="usage">{{ formatTokens(usage.totalTokens) }} tokens</span>
-          </div>
-          <button v-if="canCopy" type="button" @click="emit('copy')">复制</button>
-          <button v-if="canRewind" type="button" @click="emit('rewind')">回到这里</button>
-          <button v-if="canFork" type="button" @click="emit('fork')">从此消息分支</button>
-          <button type="button" class="message-sheet__cancel" @click="emit('close')">取消</button>
-        </section>
+    <MobileDrawer
+      :open="open && mode === 'sheet'"
+      ariaLabel="消息操作"
+      size="auto"
+      show-footer
+      @close="emit('close')"
+    >
+      <div class="message-sheet__actions">
+        <div v-if="showUsage" class="message-sheet__usage">
+          <strong>本条用量 {{ usage ? formatCost(usage.cost.total) : "暂无记录" }}</strong>
+          <span v-if="usage">{{ formatTokens(usage.totalTokens) }} tokens</span>
+        </div>
+        <button v-if="canCopy" type="button" @click="emit('copy')">复制</button>
+        <button v-if="canRewind" type="button" @click="emit('rewind')">回到这里</button>
+        <button v-if="canFork" type="button" @click="emit('fork')">从此消息分支</button>
       </div>
-    </Transition>
+    </MobileDrawer>
   </Teleport>
 </template>
 
@@ -84,6 +83,7 @@
 import { computed } from "vue";
 import { Coins, Copy, GitBranch, Undo2 } from "lucide-vue-next";
 import type { MessageUsage } from "@/api";
+import { MobileDrawer } from "@/components/mobile/ui";
 
 const props = withDefaults(
   defineProps<{
@@ -229,54 +229,41 @@ const menuStyle = computed(() => {
   color: #07c160;
   font-variant-numeric: tabular-nums;
 }
+
+.message-sheet__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: -14px -10px;
+}
+
 .message-sheet__usage {
   display: flex;
   justify-content: space-between;
-  padding: 14px;
-  border-radius: 12px;
-  background: var(--app-popup-bg);
-  color: var(--app-text-primary);
+  gap: 8px;
+  padding: 14px 16px;
+  color: var(--m-text-primary, var(--app-text-primary));
   font-size: 13px;
+  border-bottom: 1px solid var(--m-divider, var(--app-border-subtle));
 }
+
 .message-sheet__usage span {
-  color: var(--app-text-muted);
+  color: var(--m-text-muted, var(--app-text-muted));
 }
 
-.message-sheet-backdrop {
-  position: fixed;
-  z-index: 160;
-  inset: 0;
-  display: flex;
-  align-items: flex-end;
-  background: rgb(0 0 0 / 30%);
-}
-
-.message-sheet {
+.message-sheet__actions > button {
   width: 100%;
-  padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
-}
-
-.message-sheet button {
-  width: 100%;
-  padding: 14px;
-  border-radius: 12px;
-  color: var(--app-text-primary);
-  background: var(--app-popup-bg);
+  padding: 14px 16px;
+  color: var(--m-text-primary, var(--app-text-primary));
   font-size: 15px;
-  transition:
-    transform 0.12s ease,
-    background-color 0.12s ease;
+  text-align: center;
 }
 
-.message-sheet button:active {
-  transform: scale(0.985);
+.message-sheet__actions > button + button {
+  border-top: 1px solid var(--m-divider, var(--app-border-subtle));
 }
 
-.message-sheet button + button {
-  margin-top: 8px;
-}
-
-.message-sheet__cancel {
-  color: var(--app-text-secondary) !important;
+.message-sheet__actions > button:active {
+  background: var(--m-pressed, var(--app-hover));
 }
 </style>

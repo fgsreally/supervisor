@@ -49,7 +49,11 @@
           />
         </div>
 
-        <div class="mobile-agent-sections">
+        <div v-if="isExternal" class="mt-2 px-4 pb-4">
+          <ExternalAgentDetails :agent="agent" @saved="onAgentSaved" />
+        </div>
+
+        <div v-else class="mobile-agent-sections">
           <button
             v-for="item in mobileSections"
             :key="item.id"
@@ -78,8 +82,7 @@
         <span aria-hidden="true" />
       </div>
       <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar mobile-agent-page__content">
-        <ExternalAgentDetails v-if="mobilePage === 'runtime'" :agent="agent" />
-        <AgentConfigPanel v-else-if="mobilePage === 'config'" :agent-id="agentId" />
+        <AgentConfigPanel v-if="mobilePage === 'config'" :agent-id="agentId" />
         <AgentSystemPromptPanel v-else-if="mobilePage === 'system'" :agent-id="agentId" />
         <AgentExtensionsPanel
           v-else-if="mobilePage === 'extensions'"
@@ -159,7 +162,7 @@
       </div>
 
       <div v-else class="flex-1 overflow-y-auto custom-scrollbar p-6 contact-detail-content">
-        <ExternalAgentDetails :agent="agent" />
+        <ExternalAgentDetails :agent="agent" @saved="onAgentSaved" />
       </div>
     </div>
 
@@ -189,7 +192,7 @@ import { providerToUI } from "@/utils/provider-ui";
 import { showUiMessage } from "@/composables/use-ui-message";
 
 type AgentTab = "config" | "system" | UIResourceKind;
-type MobileAgentPage = AgentTab | "runtime";
+type MobileAgentPage = AgentTab;
 
 const props = defineProps<{
   agentId: string;
@@ -225,7 +228,7 @@ const rightTabs = computed(() => {
 });
 
 const mobileSections = computed<Array<{ id: MobileAgentPage; label: string }>>(() =>
-  isExternal.value ? [{ id: "runtime", label: "运行配置" }] : rightTabs.value,
+  isExternal.value ? [] : rightTabs.value,
 );
 const mobilePageTitle = computed(
   () => mobileSections.value.find((item) => item.id === mobilePage.value)?.label ?? "Agent 详情",

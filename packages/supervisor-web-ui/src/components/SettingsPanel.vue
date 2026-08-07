@@ -1,17 +1,20 @@
 <template>
-  <div class="flex-1 flex flex-col min-w-0 overflow-hidden settings-page">
+  <div
+    class="flex-1 flex flex-col min-w-0 overflow-hidden settings-page"
+    :class="`settings-page--${mode}`"
+  >
     <div class="settings-header m-mobile-header">
       <button v-if="showBack" type="button" class="settings-back" @click="emit('back')">
         <ChevronLeft class="h-5 w-5" />
       </button>
       <span v-else aria-hidden="true" />
-      <h1 class="m-mobile-header__title">设置</h1>
+      <h1 class="m-mobile-header__title">{{ pageTitle }}</h1>
       <span aria-hidden="true" />
     </div>
 
-    <div class="flex-1 overflow-y-auto custom-scrollbar p-6">
-      <div class="settings-content space-y-5">
-        <section class="settings-card">
+    <div class="settings-scroll flex-1 overflow-y-auto custom-scrollbar">
+      <div class="settings-content">
+        <section v-if="showServices" class="settings-card">
           <h2 class="settings-card-title-row">
             <span class="settings-watson-title"><WatsonIcon />华生</span>
             <small>负责项目解析、摘要等系统内部任务</small>
@@ -26,7 +29,7 @@
               @change="saveMain"
             />
           </label>
-          <div class="service-list">
+          <div v-if="showDiagnostics" class="service-list">
             <div class="service-row">
               <div class="service-copy">
                 <strong>运行日志</strong>
@@ -39,12 +42,21 @@
           </div>
         </section>
 
-        <section class="settings-card">
-          <h2>系统</h2>
+        <section v-if="showDiagnostics" class="settings-card">
+          <h2>{{ mode === "diagnostics" ? "运行日志" : "系统" }}</h2>
           <div class="service-list">
+            <div v-if="mode === 'diagnostics'" class="service-row">
+              <div class="service-copy">
+                <strong>华生运行日志</strong>
+                <span>项目解析、摘要等内部任务的执行记录</span>
+              </div>
+              <button class="configure-button" type="button" @click="loadLog('watson')">
+                <ScrollText class="h-4 w-4" />查看
+              </button>
+            </div>
             <div class="service-row">
               <div class="service-copy">
-                <strong>运行与诊断</strong>
+                <strong>{{ mode === "diagnostics" ? "系统运行日志" : "运行与诊断" }}</strong>
                 <span>Supervisor 服务状态和诊断记录</span>
               </div>
               <button class="configure-button" type="button" @click="loadLog('system')">
@@ -54,7 +66,7 @@
           </div>
         </section>
 
-        <section class="settings-card">
+        <section v-if="showDiagnostics" class="settings-card">
           <h2>界面</h2>
           <div class="service-list">
             <div class="service-row service-row--switch">
@@ -81,7 +93,7 @@
           </div>
         </section>
 
-        <section class="settings-card">
+        <section v-if="showServices" class="settings-card">
           <h2>浏览器</h2>
           <label class="settings-field">
             <span>启动模式</span>
@@ -92,7 +104,7 @@
           </label>
         </section>
 
-        <section class="settings-card">
+        <section v-if="showServices" class="settings-card">
           <h2>语音识别</h2>
           <label class="settings-field">
             <span>当前服务</span>
@@ -118,7 +130,7 @@
           </div>
         </section>
 
-        <section class="settings-card">
+        <section v-if="showServices" class="settings-card">
           <h2>Web Search 与 Fetch</h2>
           <label class="settings-field">
             <span>搜索服务</span>
@@ -156,7 +168,7 @@
           </div>
         </section>
 
-        <div class="flex items-center justify-end gap-3">
+        <div v-if="showServices" class="settings-save-bar">
           <span v-if="message" class="text-sm" :class="failed ? 'text-red-500' : 'text-green-600'">
             {{ message }}
           </span>
@@ -323,8 +335,24 @@ import {
 type ServiceId = "browser" | "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl";
 type RemoteServiceId = Exclude<ServiceId, "browser">;
 
-defineProps<{ showBack?: boolean }>();
+const props = withDefaults(
+  defineProps<{
+    showBack?: boolean;
+    /** all=桌面完整页；services/diagnostics=移动端拆分页 */
+    mode?: "all" | "services" | "diagnostics";
+  }>(),
+  { mode: "all" },
+);
 const emit = defineEmits<{ back: [] }>();
+
+const mode = computed(() => props.mode);
+const showServices = computed(() => mode.value === "all" || mode.value === "services");
+const showDiagnostics = computed(() => mode.value === "all" || mode.value === "diagnostics");
+const pageTitle = computed(() => {
+  if (mode.value === "services") return "服务设置";
+  if (mode.value === "diagnostics") return "高级与诊断";
+  return "设置";
+});
 
 const watsonLogText = ref("");
 const systemLogText = ref("");
@@ -725,9 +753,20 @@ onMounted(async () => {
   border-color: var(--app-border);
   color: var(--app-text-primary);
 }
+.settings-scroll {
+  padding: 24px;
+}
 .settings-content {
+  display: grid;
   width: min(920px, 100%);
   margin-inline: auto;
+  gap: 20px;
+}
+.settings-save-bar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
 }
 .settings-card {
   overflow: hidden;
@@ -1002,25 +1041,109 @@ input:focus {
 .danger-button {
   color: var(--app-danger, #dc2626);
 }
-@media (max-width: 640px) {
+@media (max-width: 767px) {
+  .settings-page {
+    background: var(--m-page-bg, var(--app-settings-bg));
+  }
+  .settings-scroll {
+    padding: 0 0 calc(12px + env(safe-area-inset-bottom));
+  }
+  .settings-content {
+    width: 100%;
+    gap: 0;
+  }
+  .settings-card {
+    margin-top: 8px;
+    padding: 0 16px;
+    border-radius: 0;
+    box-shadow: none;
+    background: var(--m-surface, var(--app-settings-card));
+  }
+  .settings-card:first-child {
+    margin-top: 0;
+  }
+  .settings-card h2,
+  .settings-card-title-row {
+    display: block;
+    margin: 0 -16px;
+    padding: 16px 16px 8px;
+    border: 0;
+    background: var(--m-page-bg, var(--app-settings-bg));
+    color: var(--m-text-secondary, var(--app-text-secondary));
+    font-size: 13px;
+    font-weight: 400;
+  }
+  .settings-card-title-row small {
+    display: none;
+  }
+  .settings-watson-title {
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 400;
+  }
+  .settings-watson-title svg {
+    width: 16px;
+    height: 16px;
+  }
   .settings-field {
     grid-template-columns: 1fr;
-    gap: 6px;
-    padding: 10px 0;
+    gap: 8px;
+    min-height: 0;
+    padding: 14px 0;
+  }
+  .settings-field :deep(.model-tree-select) {
+    width: 100%;
+    justify-self: stretch;
+  }
+  .settings-field > span {
+    font-size: 15px;
+  }
+  select,
+  input {
+    min-height: 44px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 15px;
+    background: var(--m-control-bg, var(--app-settings-bg));
+  }
+  .service-list {
+    padding-top: 0;
   }
   .service-row {
     grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-    padding: 8px 0;
+    gap: 10px;
+    min-height: 56px;
+    padding: 12px 0;
   }
-  .configured-state,
-  .local-state,
-  .unconfigured-state {
-    grid-column: 1;
+  .service-copy strong {
+    font-size: 16px;
+    font-weight: 400;
+  }
+  .service-copy span {
+    font-size: 13px;
   }
   .configure-button {
-    grid-column: 2;
-    grid-row: 1 / span 2;
+    height: 36px;
+    padding: 0 12px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .settings-save-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    margin-top: 16px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--m-divider, var(--app-border-subtle));
+    background: color-mix(in srgb, var(--m-page-bg, var(--app-settings-bg)) 92%, transparent);
+    backdrop-filter: blur(12px);
+  }
+  .save-button {
+    width: 100%;
+    min-height: 44px;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 500;
   }
   .service-overlay {
     align-items: flex-end;
@@ -1029,7 +1152,7 @@ input:focus {
   .service-dialog {
     width: 100%;
     max-height: 86vh;
-    border-radius: 8px 8px 0 0;
+    border-radius: 12px 12px 0 0;
   }
   .service-dialog footer {
     flex-wrap: wrap;
@@ -1044,15 +1167,24 @@ input:focus {
     height: 52px;
     padding-inline: 10px;
     border-bottom: 1px solid var(--app-header-divider, var(--app-border-subtle));
-    background: var(--app-list-header-bg);
-    grid-template-columns: var(--m-action-hit-size, 40px) minmax(0, 1fr) var(--m-action-hit-size, 40px);
+    background: var(--m-header-bg, var(--app-list-header-bg));
+    grid-template-columns:
+      var(--m-action-hit-size, 40px) minmax(0, 1fr) var(--m-action-hit-size, 40px);
     align-items: center;
   }
   .settings-header .m-mobile-header__title {
     font-weight: 500;
   }
   .settings-header .settings-back {
+    display: grid;
+    width: var(--m-action-hit-size, 40px);
+    height: var(--m-action-hit-size, 40px);
     margin: 0;
+    place-items: center;
+  }
+  .settings-header .settings-back svg {
+    width: 22px;
+    height: 22px;
   }
 }
 </style>

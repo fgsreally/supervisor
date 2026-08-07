@@ -1,13 +1,11 @@
 import { createWriteStream, existsSync, rmSync } from "node:fs";
 import { copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { basename, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { pipeline } from "node:stream/promises";
 import type { Readable } from "node:stream";
 import type { ImageContent } from "@earendil-works/pi-ai";
-
-const MEDIA_ROOT = join(homedir(), ".pi", "supervisor", "media");
+import { getSupervisorHome } from "../utils/supervisor-home.js";
 
 export interface SessionPromptImage {
   mediaId: string;
@@ -16,11 +14,11 @@ export interface SessionPromptImage {
 }
 
 export function getSupervisorMediaRoot(): string {
-  return MEDIA_ROOT;
+  return join(getSupervisorHome(), "media");
 }
 
 export function getSessionMediaDir(sessionId: string | number): string {
-  return join(MEDIA_ROOT, String(sessionId));
+  return join(getSupervisorMediaRoot(), String(sessionId));
 }
 
 export async function ensureSessionMediaDir(sessionId: string | number): Promise<string> {

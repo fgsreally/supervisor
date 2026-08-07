@@ -76,8 +76,8 @@ const appearanceDescription = computed(() =>
   isDark.value ? "当前暗色，点击切换为亮色" : "当前亮色，点击切换为暗色",
 );
 const fontScaleDescription = computed(() => {
-  if (fontScale.value === "compact") return "当前：紧凑";
-  if (fontScale.value === "large") return "当前：大号";
+  if (fontScale.value === "small") return "当前：小";
+  if (fontScale.value === "large") return "当前：大";
   return "当前：标准";
 });
 const advancedAnimationsDescription = computed(() =>
@@ -162,7 +162,7 @@ const groups = computed(() => [
 ]);
 
 function cycleFontScale() {
-  const order: AppFontScale[] = ["compact", "standard", "large"];
+  const order: AppFontScale[] = ["small", "standard", "large"];
   const idx = order.indexOf(fontScale.value);
   setFontScale(order[(idx + 1) % order.length]!);
 }

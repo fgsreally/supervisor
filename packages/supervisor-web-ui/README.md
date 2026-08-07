@@ -4,13 +4,25 @@ Vue 3 + Vite 前端，连接 `pi-supervisor` HTTP API，提供聊天、Agent 管
 
 ## 开发
 
-```bash
-# 启动 supervisor（默认 3030）
-pi-supervisor serve
+仓库根目录一条命令同时起后端 + Vite（无需先 build）：
 
-# 启动 UI（默认 5163，API 代理到 3030）
-cd packages/supervisor-web-ui
-npm run dev
+```bash
+cd supervisor
+pnpm dev
+```
+
+- API：`http://localhost:3030`（bun 直接跑源码）
+- UI：`http://localhost:5163`（Vite，API 代理到 3030）
+- 开发暂用 `--cwd playground`：db / public / agents / projects 都在 `playground/`
+- 终端二维码指向局域网 Vite 地址（如 `http://192.168.x.x:5163`）
+
+手机同 WiFi 扫终端二维码，或访问 `http://{局域网IP}:5163`。
+
+生产单端口 / 隧道：
+
+```bash
+pnpm run serve:tunnel   # 构建产物 + Cloudflare，QR 为 CF URL
+pnpm run serve          # 后端 +（若有）UI dist；同样 --cwd playground
 ```
 
 ## 聊天 UI 组件映射
@@ -56,17 +68,15 @@ npm run dev
 
 ## PWA 与推送
 
-- 构建时通过 `vite-plugin-pwa` 生成 Service Worker，可安装到桌面
+- 构建时通过 `vite-plugin-pwa` 生成 Service Worker，可安装到桌面（不做资源缓存）
 - 消息流完成且页面在后台时，通过浏览器 `Notification` API 推送（需用户授权）
 - 逻辑：`src/composables/use-push-notifications.ts`
 - 静音会话（`meta.muted`）不推送
 
-首次使用可在浏览器设置中允许通知；安装 PWA 后后台收消息更稳定。
-
 ## 全局资源
 
-- 全局库：`~/.pi/supervisor/global/{skills,extensions,prompts}`
-- Agent 通过符号链接关联全局资源，见 `ResourcesPanel` / `GlobalResourceLinkBar`
+- 默认全局根：`~/.supervisor`；开发时 `--cwd playground`
+- 其下：`global/{skills,extensions,prompts}`、`agents/`、`public/`、`supervisor.db`
 
 ## 检查
 

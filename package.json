@@ -12,7 +12,7 @@
     "build": "pnpm --filter pi-supervisor run build",
     "build:ui": "pnpm --filter pi-supervisor-ui run build",
     "build:all": "pnpm run build:ui && pnpm run build",
-    "dev": "pnpm --filter pi-supervisor-ui run dev",
+    "dev": "concurrently -k -p none -n api,ui -c cyan,magenta \"pnpm --filter pi-supervisor run serve:dev\" \"pnpm --filter pi-supervisor-ui run dev\"",
     "dev:supervisor": "pnpm run build && pnpm --filter pi-supervisor run serve:playground",
     "dev:seed": "node packages/supervisor-web-ui/scripts/seed-dev-showcase.mjs playground/.supervisor/supervisor.db",
     "playground": "pnpm run build && pnpm --filter pi-supervisor run serve:playground",
@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.3.0",
+    "concurrently": "^9.2.1",
     "oxfmt": "latest",
     "oxlint": "latest",
     "shx": "^0.4.0",

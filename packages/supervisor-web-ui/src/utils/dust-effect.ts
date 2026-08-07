@@ -332,6 +332,19 @@ export async function dustVanish(
   layer.remove();
 }
 
+function readLayoutRect(el: HTMLElement): DOMRect {
+  return el.getBoundingClientRect();
+}
+
+async function waitUntilLaidOut(el: HTMLElement, attempts = 8): Promise<DOMRect | null> {
+  for (let i = 0; i < attempts; i++) {
+    const rect = readLayoutRect(el);
+    if (rect.width >= 2 && rect.height >= 2) return rect;
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  }
+  return null;
+}
+
 /**
  * Assemble a DOM node from particles (enter / restore).
  * Element stays hidden until particles settle, then fades in.
@@ -346,23 +359,23 @@ export async function dustAssemble(
   }
 
   ensureDustLayerStyle();
-  const rect = el.getBoundingClientRect();
-  if (rect.width < 2 || rect.height < 2) {
+  const rect = await waitUntilLaidOut(el);
+  if (!rect) {
     onStart();
     return;
   }
 
   const scale = Math.min(window.devicePixelRatio || 1, 2);
-  el.style.visibility = "hidden";
-
+  // Snapshot while still visible, then hide — mirrors dustVanish and avoids empty rasters.
   let shot: HTMLCanvasElement;
   try {
     shot = await rasterizeDOM(el, scale);
   } catch {
-    el.style.visibility = "";
     onStart();
     return;
   }
+
+  el.style.visibility = "hidden";
 
   const layer = document.createElement("canvas");
   layer.className = "dust-layer";

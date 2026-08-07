@@ -8,97 +8,113 @@
       </div>
     </header>
     <main class="todo-stage">
-      <section class="plan-pane" :class="{ 'mobile-hidden': mobileTab !== 'plan' }">
-        <div class="pane-title">
+      <section
+        class="plan-pane"
+        :class="{
+          'mobile-hidden': mobileTab !== 'plan',
+          'plan-pane--ready': drafts.length > 0,
+        }"
+      >
+        <div class="pane-title plan-desktop-only">
           <div>
             <h2>规划</h2>
             <span>把想法整理成可执行的任务</span>
           </div>
           <button class="quiet" @click="openGoalHistory"><History />历史</button>
         </div>
-        <div class="goal-box">
-          <textarea v-model="goal" rows="5" placeholder="描述你想完成的事情，输入 @ 关联项目" />
-          <div class="goal-box__footer">
-            <span class="project-pill"><FolderGit2 />supervisor-web-ui</span
-            ><button class="primary" @click="mockPlan">
-              <Sparkles />{{ planning ? "正在整理…" : "开始规划" }}
-            </button>
+
+        <div class="plan-mobile-toolbar">
+          <div>
+            <strong>{{ planMobileTitle }}</strong>
+            <span>{{ planMobileSubtitle }}</span>
           </div>
+          <button
+            type="button"
+            class="plan-icon-btn"
+            title="规划历史"
+            aria-label="规划历史"
+            @click="openGoalHistory"
+          >
+            <History />
+          </button>
         </div>
-        <div class="draft-head">
+
+        <div class="goal-box" :class="{ 'goal-box--summary': showGoalSummary }">
+          <button
+            v-if="showGoalSummary"
+            type="button"
+            class="goal-summary"
+            @click="goalComposerOpen = true"
+          >
+            <span class="goal-summary__label">当前目标</span>
+            <strong>{{ goal }}</strong>
+            <span class="goal-summary__hint">点击修改并重新规划</span>
+          </button>
+          <template v-else>
+            <textarea
+              v-model="goal"
+              rows="5"
+              placeholder="描述你想完成的事情，输入 @ 关联项目"
+            />
+            <div class="goal-box__footer">
+              <span class="project-pill"><FolderGit2 />supervisor-web-ui</span>
+              <button class="primary" :disabled="planning" @click="mockPlan">
+                <Sparkles />{{ planning ? "正在整理…" : "开始规划" }}
+              </button>
+            </div>
+            <button
+              v-if="drafts.length"
+              type="button"
+              class="goal-box__collapse plan-mobile-only"
+              @click="goalComposerOpen = false"
+            >
+              收起
+            </button>
+          </template>
+        </div>
+
+        <div class="draft-head plan-desktop-only">
           <div>
             <strong>当前任务</strong><span>{{ drafts.length }}</span>
           </div>
-          <button v-if="false" class="quiet" @click="addDraft"><Plus />添加任务</button>
         </div>
-        <TodoSequenceDiagram :agents="agents" @select="selectDraft" />
-        <div class="mobile-plan-list" aria-label="规划任务列表">
-          <TaskCard
-            v-for="task in drafts"
-            :key="task.id"
-            class="mobile-plan-card"
-            :title="task.title"
-            :description="task.description"
-            :project-name="task.project"
-            :agent-id="agentInfo(task.agent)?.id ?? task.agent"
-            :agent-name="task.agent"
-            :agent-avatar="agentInfo(task.agent)?.avatar"
-            interactive
-            @select="selected = task"
-          >
-            <template #trailing><ChevronRight class="mobile-plan-card__arrow" /></template>
-          </TaskCard>
-        </div>
-        <div v-if="false" class="dependency-list" @mouseleave="hovered = null">
-          <article
-            v-for="task in drafts"
-            :key="task.id"
-            class="task-card draft-card"
-            :class="relationClass(task.id)"
-            @mouseenter="hovered = task.id"
-            @click="selected = task"
-          >
-            <span class="step">{{ task.id }}</span>
-            <div class="task-main">
-              <strong>{{ task.title }}</strong>
-              <p>{{ task.description }}</p>
-              <div class="task-meta">
-                <span class="project-badge"><FolderGit2 />{{ task.project }}</span>
-                <span class="agent-badge"
-                  ><i>{{ task.agent.slice(0, 1) }}</i
-                  >{{ task.agent }}</span
+        <TodoSequenceDiagram
+          class="plan-desktop-only"
+          :agents="agents"
+          @select="selectDraft"
+        />
+
+        <div v-if="drafts.length" class="mobile-plan-list" aria-label="规划任务列表">
+          <div class="mobile-plan-section-label">待确认任务 · {{ drafts.length }}</div>
+          <div class="mobile-plan-group">
+            <button
+              v-for="(task, index) in drafts"
+              :key="task.id"
+              type="button"
+              class="mobile-plan-row"
+              @click="selected = task"
+            >
+              <span class="mobile-plan-row__index">{{ index + 1 }}</span>
+              <div class="mobile-plan-row__body">
+                <strong>{{ task.title }}</strong>
+                <p>{{ task.description }}</p>
+                <small
+                  >{{ task.project }} · {{ task.agent
+                  }}<template v-if="task.dependencies.length"
+                    > · 依赖 {{ task.dependencies.length }} 项</template
+                  ></small
                 >
               </div>
-            </div>
-            <button class="icon-btn"><Pencil /></button>
-          </article>
+              <ChevronRight class="mobile-plan-row__arrow" />
+            </button>
+          </div>
         </div>
-        <section v-if="false" class="todo-timeline" @mouseleave="hovered = null">
-          <header><strong>执行时间轴</strong><span>同列并行，向右依次执行</span></header>
-          <div class="timeline-grid">
-            <div v-for="(level, index) in draftLevels" :key="index" class="timeline-level">
-              <b>阶段 {{ index + 1 }}</b>
-              <button
-                v-for="task in level"
-                :key="task.id"
-                :class="relationClass(task.id)"
-                @mouseenter="hovered = task.id"
-                @click="selected = task"
-              >
-                <span>{{ task.title }}</span
-                ><small>{{ task.project }}</small>
-              </button>
-              <ChevronRight v-if="index < draftLevels.length - 1" class="timeline-arrow" />
-            </div>
-          </div>
-        </section>
-        <div class="plan-actions">
-          <label v-if="false" class="auto-switch"
-            ><input v-model="autoExecute" type="checkbox" /><span />自动开始后续任务</label
-          >
-          <div>
-            <button class="secondary">仅加入待办</button><button class="primary">开始执行</button>
-          </div>
+
+        <div v-if="drafts.length" class="plan-actions">
+          <button type="button" class="plan-actions__secondary">仅加入待办</button>
+          <button type="button" class="primary plan-actions__main" @click="startPlanExecution">
+            开始执行
+          </button>
         </div>
       </section>
       <section class="run-pane" :class="{ 'mobile-hidden': mobileTab !== 'run' }">
@@ -230,15 +246,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import {
-  Bot,
   GanttChart,
   ChevronRight,
   Eye,
   FolderGit2,
   History,
+  Link2,
   List,
-  Pencil,
-  Plus,
   Sparkles,
 } from "lucide-vue-next";
 import TodoSequenceDiagram from "@/components/home/TodoSequenceDiagram.vue";
@@ -266,9 +280,9 @@ interface MockTask {
 const emit = defineEmits<{ "open-session": [sessionId: string] }>();
 const goal = ref("优化 Supervisor 的 Todo，让规划、依赖和执行状态更清晰");
 const planning = ref(false);
-const autoExecute = ref(true);
+const goalComposerOpen = ref(false);
+const isNarrowUi = ref(false);
 const mobileTab = ref<"plan" | "run">("plan");
-const hovered = ref<number | null>(null);
 const selected = ref<MockTask | null>(null);
 const activeFilter = ref("all");
 const runView = ref<"list" | "timeline">("list");
@@ -406,22 +420,6 @@ const selectedDependencies = computed(() =>
 const selectedDependents = computed(() =>
   selected.value ? allTasks().filter((task) => task.dependencies.includes(selected.value!.id)) : [],
 );
-const draftLevels = computed(() => {
-  const depth = new Map<number, number>();
-  const visit = (task: MockTask): number => {
-    const cached = depth.get(task.id);
-    if (cached !== undefined) return cached;
-    const value = task.dependencies.reduce((max, id) => {
-      const dependency = drafts.value.find((item) => item.id === id);
-      return dependency ? Math.max(max, visit(dependency) + 1) : max;
-    }, 0);
-    depth.set(task.id, value);
-    return value;
-  };
-  const levels: MockTask[][] = [];
-  for (const task of drafts.value) (levels[visit(task)] ??= []).push(task);
-  return levels;
-});
 const filters = [
   { id: "all", label: "全部" },
   { id: "pending", label: "待办" },
@@ -435,6 +433,19 @@ const visibleTasks = computed(() =>
     : execution.value.filter((t) => t.status === activeFilter.value),
 );
 const runningCount = computed(() => execution.value.filter((t) => t.status === "running").length);
+const showGoalSummary = computed(
+  () =>
+    isNarrowUi.value &&
+    drafts.value.length > 0 &&
+    !goalComposerOpen.value &&
+    !planning.value,
+);
+const planMobileTitle = computed(() => (drafts.value.length ? "确认规划" : "新建规划"));
+const planMobileSubtitle = computed(() =>
+  drafts.value.length
+    ? `${drafts.value.length} 个任务待确认`
+    : "写清目标，华生会拆成可执行任务",
+);
 function count(id: string) {
   return id === "all"
     ? execution.value.length
@@ -460,19 +471,6 @@ function statusLabel(s: Status) {
 function allTasks() {
   return [...drafts.value, ...execution.value];
 }
-function relationClass(id: number) {
-  if (!hovered.value) return "";
-  if (id === hovered.value) return "is-current";
-  const current = allTasks().find((t) => t.id === hovered.value);
-  if (current?.dependencies.includes(id)) return "is-dependency";
-  if (
-    allTasks()
-      .find((t) => t.id === id)
-      ?.dependencies.includes(hovered.value)
-  )
-    return "is-dependent";
-  return "is-dim";
-}
 function openTask(t: MockTask) {
   selected.value = t;
 }
@@ -486,27 +484,24 @@ function viewSession(sessionId: string) {
   selected.value = null;
   emit("open-session", sessionId);
 }
-function addDraft() {
-  selected.value = {
-    id: drafts.value.length + 1,
-    title: "新任务",
-    description: "填写任务说明",
-    project: "请选择项目",
-    agent: "默认 Agent",
-    dependencies: [],
-    status: "pending",
-  };
-}
 async function mockPlan() {
   const objective = goal.value.trim();
   if (!objective) return;
   planning.value = true;
+  goalComposerOpen.value = true;
   try {
     await recordGoalEvent({ objective, source: "mobile-todo-plan" });
     goalEvents.value = await listTimelineEvents({ type: "goal" }).catch(() => goalEvents.value);
   } finally {
-    setTimeout(() => (planning.value = false), 400);
+    setTimeout(() => {
+      planning.value = false;
+      goalComposerOpen.value = false;
+    }, 400);
   }
+}
+function startPlanExecution() {
+  if (!drafts.value.length) return;
+  mobileTab.value = "run";
 }
 async function openGoalHistory() {
   goalEvents.value = await listTimelineEvents({ type: "goal" }).catch(() => []);
@@ -524,6 +519,13 @@ function formatGoalTime(value: string) {
   }).format(new Date(value));
 }
 onMounted(async () => {
+  const media = window.matchMedia("(max-width: 720px)");
+  const syncNarrow = () => {
+    isNarrowUi.value = media.matches;
+  };
+  syncNarrow();
+  media.addEventListener("change", syncNarrow);
+
   const [nextAgents, nextEvents, nextGoalEvents] = await Promise.all([
     listAgents().catch(() => []),
     listTimelineEvents({ type: "todo_task" }).catch(() => []),
@@ -608,6 +610,9 @@ onMounted(async () => {
 .primary {
   color: #fff;
   background: #07c160;
+}
+.primary:disabled {
+  opacity: 0.55;
 }
 .secondary {
   color: var(--app-text-primary);
@@ -862,29 +867,34 @@ button svg,
 .plan-actions {
   position: sticky;
   bottom: -18px;
+  justify-content: flex-end;
+  gap: 8px;
   margin: 16px -18px -18px;
   padding: 12px 18px;
   border-top: 1px solid var(--app-border);
   background: color-mix(in srgb, var(--app-settings-bg) 92%, transparent);
   backdrop-filter: blur(10px);
 }
-.plan-actions {
-  justify-content: flex-end;
-}
-.plan-actions > div {
-  display: flex;
-  gap: 7px;
-}
-.auto-switch {
-  display: none;
-  display: flex;
+.plan-actions__secondary {
+  display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  min-height: 34px;
+  padding: 7px 12px;
+  border-radius: 7px;
   color: var(--app-text-secondary);
-  font-size: 10px;
+  background: var(--app-hover);
+  font-size: 11px;
 }
-.auto-switch input {
-  accent-color: #07c160;
+.plan-actions__main {
+  min-width: 108px;
+  justify-content: center;
+}
+.plan-mobile-toolbar,
+.plan-mobile-only,
+.goal-summary,
+.goal-box__collapse {
+  display: none;
 }
 .filters {
   display: flex;
@@ -1074,6 +1084,8 @@ button svg,
   display: flex;
   min-height: 0;
   flex-direction: column;
+  padding: 4px 4px 8px;
+  gap: 2px;
 }
 .task-detail h3 {
   margin: 4px 0 8px;
@@ -1171,136 +1183,236 @@ button svg,
   .plan-pane,
   .run-pane {
     height: 100%;
-    padding: 14px 16px 24px;
+    padding: 12px 16px 24px;
     border: 0;
     overscroll-behavior: contain;
+  }
+  .plan-pane {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
   .mobile-hidden {
     display: none;
   }
-  .plan-actions {
-    bottom: -24px;
-    z-index: 5;
-    margin: 16px -16px -24px;
-    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
-    align-items: flex-end;
+  .plan-desktop-only {
+    display: none !important;
   }
-  .plan-actions > div {
-    width: 100%;
+  .plan-mobile-toolbar {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
   }
-  .plan-actions .secondary,
-  .plan-actions .primary {
-    min-height: 44px;
-    flex: 1;
-    justify-content: center;
-    font-size: 14px;
+  .plan-mobile-toolbar strong {
+    display: block;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.3;
   }
-  .auto-switch {
-    max-width: 90px;
-  }
-  .task-main p {
-    white-space: normal;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-  }
-  .pane-title {
-    margin-bottom: 10px;
-  }
-  .pane-title h2 {
-    font-size: 18px;
-  }
-  .pane-title span {
+  .plan-mobile-toolbar span {
+    display: block;
     margin-top: 2px;
+    color: var(--m-text-secondary, var(--app-text-secondary));
     font-size: 12px;
   }
-  .pane-title .quiet,
+  .plan-icon-btn {
+    display: grid;
+    width: 44px;
+    height: 44px;
+    flex: none;
+    place-items: center;
+    margin: -4px -8px 0 0;
+    border-radius: 999px;
+    color: var(--m-text-secondary, var(--app-text-secondary));
+  }
+  .plan-icon-btn:active {
+    background: var(--m-pressed, var(--app-hover));
+  }
+  .plan-icon-btn svg {
+    width: 22px;
+    height: 22px;
+  }
+  .goal-box {
+    padding: 14px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--m-surface, var(--app-settings-card));
+  }
+  .goal-box--summary {
+    padding: 0;
+    background: transparent;
+  }
+  .goal-box textarea {
+    min-height: 104px;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+  .goal-box__footer {
+    align-items: flex-end;
+    margin-top: 12px;
+  }
+  .goal-box__footer .primary {
+    min-height: 40px;
+    padding-inline: 14px;
+    font-size: 14px;
+  }
+  .goal-box__collapse {
+    display: block;
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px 0 2px;
+    color: var(--m-link, #576b95);
+    font-size: 14px;
+    text-align: center;
+  }
+  .goal-summary {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    padding: 14px 16px;
+    border-radius: 12px;
+    background: var(--m-surface, var(--app-settings-card));
+    text-align: left;
+  }
+  .goal-summary:active {
+    background: var(--m-pressed, var(--app-hover));
+  }
+  .goal-summary__label,
+  .goal-summary__hint {
+    color: var(--m-text-muted, var(--app-text-muted));
+    font-size: 12px;
+  }
+  .goal-summary strong {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--m-text-primary, var(--app-text-primary));
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  .project-pill {
+    max-width: 46%;
+    overflow: hidden;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-plan-list {
+    display: grid;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .mobile-plan-section-label {
+    padding: 0 4px;
+    color: var(--m-text-secondary, var(--app-text-secondary));
+    font-size: 13px;
+  }
+  .mobile-plan-group {
+    overflow: hidden;
+    border-radius: 12px;
+    background: var(--m-surface, var(--app-settings-card));
+  }
+  .mobile-plan-row {
+    display: flex;
+    width: 100%;
+    min-height: 72px;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 12px 14px 14px;
+    border-top: 1px solid var(--m-divider, var(--app-border-subtle));
+    color: inherit;
+    text-align: left;
+  }
+  .mobile-plan-row:first-child {
+    border-top: 0;
+  }
+  .mobile-plan-row:active {
+    background: var(--m-pressed, var(--app-hover));
+  }
+  .mobile-plan-row__index {
+    display: grid;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    place-items: center;
+    border-radius: 8px;
+    background: color-mix(in srgb, #07c160 16%, transparent);
+    color: #07c160;
+    font-size: 13px;
+    font-weight: 600;
+  }
+  .mobile-plan-row__body {
+    min-width: 0;
+    flex: 1;
+  }
+  .mobile-plan-row__body strong {
+    display: block;
+    font-size: 16px;
+    font-weight: 500;
+    line-height: 1.35;
+  }
+  .mobile-plan-row__body p {
+    display: -webkit-box;
+    margin: 4px 0 0;
+    overflow: hidden;
+    color: var(--m-text-secondary, var(--app-text-secondary));
+    font-size: 13px;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+  .mobile-plan-row__body small {
+    display: block;
+    margin-top: 6px;
+    color: var(--m-text-muted, var(--app-text-muted));
+    font-size: 12px;
+  }
+  .mobile-plan-row__arrow {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    color: var(--m-text-muted, var(--app-text-muted));
+  }
+  .plan-actions {
+    position: sticky;
+    bottom: -24px;
+    z-index: 6;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 10px;
+    align-items: center;
+    margin: 8px -16px -24px;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+    border-top: 1px solid var(--m-divider, var(--app-border-subtle));
+    background: color-mix(in srgb, var(--m-page-bg, var(--app-settings-bg)) 92%, transparent);
+    backdrop-filter: blur(14px);
+  }
+  .plan-actions__secondary {
+    min-height: 44px;
+    padding: 0 12px;
+    border: 0;
+    background: transparent;
+    color: var(--m-link, #576b95);
+    font-size: 15px;
+  }
+  .plan-actions__main {
+    min-height: 44px;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 500;
+  }
   .run-toolbar .quiet {
     min-height: 40px;
     padding-inline: 12px;
     font-size: 13px;
   }
-  .goal-box {
-    padding: 14px;
-    border-radius: 12px;
-  }
-  .goal-box textarea {
-    min-height: 92px;
-    font-size: 15px;
-  }
-  .goal-box__footer {
-    align-items: flex-end;
-  }
-  .goal-box__footer .primary {
-    min-height: 40px;
-    padding-inline: 14px;
-    font-size: 13px;
-  }
-  .project-pill {
-    max-width: 48%;
-    overflow: hidden;
-    font-size: 11px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .draft-head {
-    margin: 24px 0 12px;
-  }
-  .plan-pane > .sequence {
-    display: none;
-  }
-  .mobile-plan-list {
-    display: grid;
-    gap: 9px;
-    overflow: visible;
-    border: 0;
-    background: transparent;
-  }
-  .mobile-plan-card {
-    display: flex;
-    width: 100%;
-    min-height: 76px;
-    align-items: flex-start;
-    gap: 11px;
-    padding: 13px 12px;
-    border: 0;
-    border-radius: 8px;
-    background: var(--m-surface, var(--app-settings-card));
-    text-align: left;
-  }
-  .mobile-plan-card:active {
-    background: var(--m-pressed, var(--app-hover));
-  }
-  .mobile-plan-card .step {
-    width: 26px;
-    height: 26px;
-    flex: none;
-    background: #07c160;
-    color: white;
-    font-size: 12px;
-  }
-  .mobile-plan-card .task-main > strong {
-    display: block;
-    font-size: 14px;
-  }
-  .mobile-plan-card .task-main > small {
-    display: -webkit-box;
-    margin: 3px 0 8px;
-    overflow: hidden;
-    color: var(--app-text-muted);
-    font-size: 12px;
-    line-height: 1.45;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-  }
-  .dependency-badge {
-    color: var(--app-text-muted) !important;
-  }
-  .mobile-plan-card__arrow {
-    width: 17px;
-    flex: none;
-    align-self: center;
-    color: var(--app-text-muted);
+  .pane-title {
+    margin-bottom: 10px;
   }
   .run-controls {
     position: sticky;
@@ -1402,12 +1514,18 @@ button svg,
   .run-dependency {
     display: none;
   }
+  .task-detail {
+    padding: 2px 16px 12px;
+  }
   .task-detail h3 {
     padding-right: 32px;
     font-size: 18px;
   }
   .task-detail p {
     font-size: 14px;
+  }
+  .task-detail dl {
+    margin: 12px 0 10px;
   }
   .task-detail dl div {
     grid-template-columns: 70px minmax(0, 1fr);
@@ -1417,7 +1535,7 @@ button svg,
   }
   .task-detail :deep(.task-dependency-graph) {
     height: min(42dvh, 360px);
-    margin-bottom: 12px;
+    margin: 2px 0 12px;
   }
   .task-detail .wide {
     position: sticky;

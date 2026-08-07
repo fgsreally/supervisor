@@ -227,7 +227,15 @@ export interface SpawnSessionOptions extends CreateSessionOptions {
 }
 
 // ============ Agent Types ============
-export const AGENT_BACKEND_TYPES = ["native", "codex", "claude", "kimi", "acp"] as const;
+export const AGENT_BACKEND_TYPES = [
+  "native",
+  "codex",
+  "claude",
+  "kimi",
+  "cursor",
+  "mimo",
+  "acp",
+] as const;
 export type AgentBackendType = (typeof AGENT_BACKEND_TYPES)[number];
 export interface AgentExternalConfig {
   command: string;

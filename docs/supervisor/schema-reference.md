@@ -43,7 +43,7 @@
 | `id`                        | INTEGER PK                     | Agent ID                                   |
 | `name`                      | TEXT NOT NULL                  | 显示名                                     |
 | `description` / `avatar`    | TEXT                           | 展示字段                                   |
-| `backend_type`              | TEXT NOT NULL DEFAULT `native` | `native`、`codex`、`claude`、`kimi`、`acp` |
+| `backend_type`              | TEXT NOT NULL DEFAULT `native` | `native`、`codex`、`claude`、`kimi`、`cursor`、`mimo`、`acp` |
 | `model_id`                  | INTEGER FK                     | 指向 `models.id`，删除模型时置空           |
 | `system_prompt`             | TEXT                           | Agent system prompt 正文                   |
 | `tools_preset`              | TEXT NOT NULL DEFAULT `coding` | `coding`、`readonly`、`none`               |

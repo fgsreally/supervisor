@@ -38,7 +38,11 @@ import {
   resolveAgentTools,
   skillsToResourceInfo,
 } from "../agent/resource-resolver.js";
-import { findPackagedAgentId, loadPackagedAgentPrompt } from "../agent/index.js";
+import {
+  ensurePackagedAgents,
+  findPackagedAgentId,
+  loadPackagedAgentPrompt,
+} from "../agent/index.js";
 import { attachHomeTaskSessionSync } from "./home-task-sync.js";
 import { listSessionTimers, type SessionTimer } from "./session-timers.js";
 import {
@@ -669,8 +673,14 @@ export class SessionManager {
     const options = { db: this.db, session, agent };
     if (agent.backendType === "codex") return CodexSessionRuntime.create(options);
     if (agent.backendType === "claude") return ClaudeSessionRuntime.create(options);
-    if (agent.backendType === "kimi") return AcpSessionRuntime.create(options);
-    if (agent.backendType === "acp") return AcpSessionRuntime.create(options);
+    if (
+      agent.backendType === "kimi" ||
+      agent.backendType === "cursor" ||
+      agent.backendType === "mimo" ||
+      agent.backendType === "acp"
+    ) {
+      return AcpSessionRuntime.create(options);
+    }
     throw new Error(`Unsupported external Agent backend: ${agent.backendType}`);
   }
 
@@ -1711,7 +1721,11 @@ export class SessionManager {
             ? "committed by codex"
             : backendType === "claude"
               ? "committed by cc"
-              : undefined;
+              : backendType === "cursor"
+                ? "committed by cursor"
+                : backendType === "mimo"
+                  ? "committed by mimo"
+                  : undefined;
         const commit = await commitSessionChanges(
           id,
           session.cwd,
@@ -1983,6 +1997,7 @@ export class SessionManager {
   // ============ Agent Methods ============
 
   listAgents(): AgentWithSystemMd[] {
+    ensurePackagedAgents(this.db);
     return this.db.listAgents().map((agent) => this.enrichAgentWithSystemMd(agent));
   }
 

@@ -201,7 +201,9 @@
           </MobilePrimaryTabPager>
           <SettingsPanel
             v-else-if="mainTab === 'settings'"
+            :key="settingsPanelMode"
             :show-back="true"
+            :mode="settingsPanelMode === 'all' ? 'services' : settingsPanelMode"
             @back="navigateMobilePath('/settings')"
           />
           <template v-else-if="mobilePage === 'list'">
@@ -872,6 +874,12 @@ const mobileShowPrimaryNav = computed(
     mobilePage.value === "list" &&
     PRIMARY_MOBILE_PATHS.has(route.path.split("/").slice(0, 2).join("/") || route.path),
 );
+
+const settingsPanelMode = computed<"all" | "services" | "diagnostics">(() => {
+  if (route.path.startsWith("/settings/diagnostics")) return "diagnostics";
+  if (route.path.startsWith("/settings/services")) return "services";
+  return "all";
+});
 
 function mobileRootPathToTabKey(path: "/chat" | "/todo" | "/contacts" | "/settings"): MobilePrimaryTabKey {
   if (path === "/chat") return "chat";

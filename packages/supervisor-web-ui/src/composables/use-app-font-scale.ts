@@ -1,13 +1,22 @@
 import { readonly, ref } from "vue";
 
-export type AppFontScale = "compact" | "standard" | "large";
+export type AppFontScale = "small" | "standard" | "large";
 
-export const APP_FONT_SCALE_STORAGE_KEY = "pi-supervisor-ui-font-scale";
+export const APP_FONT_SCALE_STORAGE_KEY = "pi-supervisor-ui-font-scale-v2";
+const LEGACY_FONT_SCALE_STORAGE_KEY = "pi-supervisor-ui-font-scale";
+
 const fontScale = ref<AppFontScale>("standard");
 
 export function parseAppFontScale(value: unknown): AppFontScale {
-  if (value === "compact" || value === "large") return value;
+  if (value === "small" || value === "large") return value;
   return "standard";
+}
+
+/** Map pre-v2 storage values: compact→small, standard→small, large→standard. */
+function migrateLegacyFontScale(value: string | null): AppFontScale | null {
+  if (value === "compact" || value === "standard") return "small";
+  if (value === "large") return "standard";
+  return null;
 }
 
 export function setAppFontScale(next: AppFontScale): void {
@@ -17,10 +26,16 @@ export function setAppFontScale(next: AppFontScale): void {
 }
 
 export function initAppFontScale(): void {
-  const initial =
-    typeof localStorage === "undefined"
-      ? "standard"
-      : parseAppFontScale(localStorage.getItem(APP_FONT_SCALE_STORAGE_KEY));
+  let initial: AppFontScale = "standard";
+  if (typeof localStorage !== "undefined") {
+    const stored = localStorage.getItem(APP_FONT_SCALE_STORAGE_KEY);
+    if (stored !== null) {
+      initial = parseAppFontScale(stored);
+    } else {
+      const migrated = migrateLegacyFontScale(localStorage.getItem(LEGACY_FONT_SCALE_STORAGE_KEY));
+      if (migrated) initial = migrated;
+    }
+  }
   setAppFontScale(initial);
 }
 

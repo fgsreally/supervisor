@@ -20,7 +20,8 @@
 
     <div class="plan-confirm__body custom-scrollbar">
       <p class="plan-confirm__hint">
-        检查依赖（串行门禁 / 可并行）、项目、Agent 与子 Agent。确认后将进入任务面板并按依赖开始执行。
+        检查依赖（串行门禁 / 可并行）、项目、Agent 与子
+        Agent。确认后将进入任务面板并按依赖开始执行。
       </p>
 
       <article v-for="(item, index) in drafts" :key="item.id" class="plan-item">
@@ -79,7 +80,11 @@
                 type="checkbox"
                 :checked="item.subagentIds.includes(Number(agent.id))"
                 @change="
-                  toggleSubagent(item, Number(agent.id), ($event.target as HTMLInputElement).checked)
+                  toggleSubagent(
+                    item,
+                    Number(agent.id),
+                    ($event.target as HTMLInputElement).checked,
+                  )
                 "
               />
               <span>{{ agent.name }}</span>
@@ -94,13 +99,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import {
-  confirmHomeTask,
-  updateHomeTask,
-  type Agent,
-  type HomeTask,
-  type Project,
-} from "@/api";
+import { confirmHomeTask, updateHomeTask, type Agent, type HomeTask, type Project } from "@/api";
 import UiActionButton from "@/components/UiActionButton.vue";
 import { showUiMessage } from "@/composables/use-ui-message";
 

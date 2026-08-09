@@ -197,7 +197,17 @@ async function detectAgents() {
 
 .agent-picker__row--disabled {
   cursor: not-allowed;
-  opacity: 0.55;
+}
+
+.agent-picker__row--disabled .agent-picker__avatar-comp {
+  filter: grayscale(1);
+  opacity: 0.62;
+}
+
+.agent-picker__row--disabled .agent-picker__name {
+  opacity: 0.62;
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }
 
 .agent-picker__avatar-comp {

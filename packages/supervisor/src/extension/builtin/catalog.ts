@@ -58,6 +58,17 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
     description: "Attaches session media assets to messages",
   },
   {
+    slug: "project-services",
+    name: "Project services",
+    description: "Register and manage dev server lifecycle for coding sessions",
+    requiresMainSession: true,
+  },
+  {
+    slug: "session-git-worktree",
+    name: "Session git worktree",
+    description: "Per-session git worktree for coding agents",
+  },
+  {
     slug: "subagent",
     name: "Subagent",
     description: "Spawn and manage child agent sessions",

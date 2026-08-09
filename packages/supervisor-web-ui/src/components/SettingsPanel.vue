@@ -109,7 +109,7 @@
           <label class="settings-field">
             <span>当前服务</span>
             <select v-model="form.speechRecognitionMode">
-              <option value="browser">浏览器识别</option>
+              <option value="local">本地模型识别</option>
               <option value="qwen">Qwen3 ASR 实时识别</option>
               <option value="doubao">豆包流式语音识别 2.0</option>
             </select>
@@ -210,47 +210,94 @@
           <header>
             <div>
               <h2>{{ activeMeta.name }}</h2>
-              <p>{{ activeMeta.description }}</p>
+              <p v-if="activeService !== 'local' && activeMeta.description">
+                {{ activeMeta.description }}
+              </p>
             </div>
             <button type="button" class="icon-button" title="关闭" @click="closeService">
               <X class="h-5 w-5" />
             </button>
           </header>
-          <div class="dialog-body">
-            <template v-if="activeService === 'browser'">
-              <label>
-                <span>语言提示（可选）</span>
-                <select v-model="form.speechRecognitionLanguage">
-                  <option value="">跟随浏览器</option>
-                  <option value="zh-CN">中文（普通话）</option>
-                  <option value="zh-HK">中文（粤语）</option>
-                  <option value="en-US">English</option>
-                  <option value="ja-JP">日本語</option>
-                  <option value="ko-KR">한국어</option>
-                </select>
-              </label>
-              <p class="dialog-note">仅作为浏览器识别提示，不影响云端服务。</p>
+          <div class="dialog-body" :class="{ 'dialog-body--list': activeService === 'local' }">
+            <template v-if="activeService === 'local'">
+              <ul class="local-model-list">
+                <li v-for="model in localSpeechModels" :key="model.id">
+                  <button
+                    type="button"
+                    class="local-model-item"
+                    :class="{
+                      'local-model-item--selected':
+                        model.installed && draftLocalSpeechModelId === model.id,
+                      'local-model-item--busy': model.installing,
+                    }"
+                    :disabled="model.installing"
+                    @click="onLocalModelRowClick(model)"
+                  >
+                    <span class="local-model-item__copy">
+                      <span class="local-model-item__title-row">
+                        <strong class="local-model-item__title">{{ model.name }}</strong>
+                        <span class="local-model-item__meta">
+                          <span class="local-model-item__size">{{ model.sizeLabel }}</span>
+                          <span v-if="model.installing" class="local-model-item__progress"
+                            >{{ model.progress }}%</span
+                          >
+                          <span
+                            v-else-if="model.error"
+                            class="local-model-item__error"
+                            :title="model.error"
+                            >失败</span
+                          >
+                        </span>
+                      </span>
+                      <small class="local-model-item__desc">{{ model.description }}</small>
+                    </span>
+                    <UiListStatus
+                      :status="localModelStatus(model)"
+                      :title="localModelStatusTitle(model)"
+                    />
+                  </button>
+                </li>
+              </ul>
             </template>
             <template v-else-if="activeService === 'doubao'">
               <label>
-                <span>APP ID</span>
+                <span>服务版本</span>
+                <select v-model="draftDoubaoSpeechPreset">
+                  <option value="2.0-duration">2.0 小时版（推荐）</option>
+                  <option value="2.0-concurrent">2.0 并发版</option>
+                  <option value="1.0-duration">1.0 小时版</option>
+                  <option value="1.0-concurrent">1.0 并发版</option>
+                </select>
+              </label>
+              <label>
+                <span>APP ID（旧版控制台）</span>
                 <input
                   v-model.trim="draftDoubaoAppId"
                   autocomplete="off"
-                  :placeholder="activeMeta.configured ? '已配置，留空则保持不变' : '输入 APP ID'"
+                  :placeholder="
+                    activeMeta.configured ? '已配置，留空则保持不变' : '旧版控制台填写 APP ID'
+                  "
                 />
               </label>
               <label>
-                <span>Access Token</span>
+                <span>Access Token / API Key</span>
                 <input
                   v-model.trim="draftDoubaoAccessToken"
                   type="password"
                   autocomplete="new-password"
                   :placeholder="
-                    activeMeta.configured ? '已配置，留空则保持不变' : '输入 Access Token'
+                    activeMeta.configured
+                      ? '已配置，留空则保持不变'
+                      : '旧版填 Access Token；新版控制台可只填 API Key'
                   "
                 />
               </label>
+              <p class="dialog-note">
+                旧版控制台需同时填写 APP ID 与 Access Token；新版控制台只需填写 API Key（填在上方
+                Access Token
+                字段即可）。「服务版本」须与火山控制台已开通的流式识别版本一致，可在控制台服务页查看
+                Resource ID（bigasr=1.0，seedasr=2.0）。
+              </p>
             </template>
             <template v-else>
               <label>
@@ -275,7 +322,7 @@
               {{ dialogMessage }}
             </p>
           </div>
-          <footer>
+          <footer v-if="activeService !== 'local'">
             <a
               v-if="activeMeta.consoleUrl"
               class="console-link"
@@ -286,7 +333,6 @@
               <ExternalLink class="h-4 w-4" />创建 API Key
             </a>
             <button
-              v-if="activeService !== 'browser'"
               class="secondary-button"
               type="button"
               :disabled="testingKey === activeService"
@@ -295,7 +341,7 @@
               {{ testingKey === activeService ? "测试中..." : "测试" }}
             </button>
             <button
-              v-if="activeService !== 'browser' && activeMeta.configured"
+              v-if="activeMeta.configured"
               class="danger-button"
               type="button"
               @click="clearActiveKey"
@@ -314,26 +360,54 @@
 
 <script setup lang="ts">
 import { Check, ChevronLeft, ExternalLink, ScrollText, Settings2, X } from "lucide-vue-next";
-import { computed, onMounted, reactive, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import ModelTreeSelect, { type ModelTreeGroup } from "./ModelTreeSelect.vue";
+import UiListStatus, { type UiListStatusKind } from "./UiListStatus.vue";
 import WatsonIcon from "./WatsonIcon.vue";
 import { resolveProviderIcon } from "@/constants/providers";
+import { showUiMessage } from "@/composables/use-ui-message";
 import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
 import {
   getSystemLogs,
   getSupervisorSettings,
   getWatsonLogs,
+  installLocalSpeechModel,
+  listLocalSpeechModels,
   listProviders,
   listProviderModels,
   testSettingsApiKey,
   updateSupervisorSettings,
   type FeatureModelRef,
+  type LocalSpeechModelId,
+  type LocalSpeechModelStatus,
   type SupervisorSettings,
   type UtilityFeature,
 } from "../api/api";
 
-type ServiceId = "browser" | "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl";
-type RemoteServiceId = Exclude<ServiceId, "browser">;
+/** 与后端 LOCAL_SPEECH_MODELS 对齐；接口失败时仍展示可选列表 */
+const DEFAULT_LOCAL_SPEECH_MODELS: LocalSpeechModelStatus[] = [
+  {
+    id: "zh-en-bilingual",
+    name: "sherpa-onnx 中英双语",
+    description: "流式 Zipformer，中英文实时识别",
+    sizeLabel: "约 250MB",
+    installed: false,
+    installing: false,
+    progress: 0,
+  },
+  {
+    id: "zh-int8",
+    name: "sherpa-onnx 中文 Int8",
+    description: "量化中文流式模型，体积更小",
+    sizeLabel: "约 160MB",
+    installed: false,
+    installing: false,
+    progress: 0,
+  },
+];
+
+type ServiceId = "local" | "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl";
+type RemoteServiceId = Exclude<ServiceId, "local">;
 
 const props = withDefaults(
   defineProps<{
@@ -390,7 +464,7 @@ const form = reactive({
   browserMode: "headless" as "headless" | "headed",
   webSearchProvider: "duckduckgo" as NonNullable<SupervisorSettings["webSearchProvider"]>,
   webFetchProvider: "native" as NonNullable<SupervisorSettings["webFetchProvider"]>,
-  speechRecognitionMode: "browser" as NonNullable<SupervisorSettings["speechRecognitionMode"]>,
+  speechRecognitionMode: "local" as "local" | "qwen" | "doubao",
   speechRecognitionLanguage: "",
 });
 const featureModelKeys = reactive<Record<UtilityFeature, string>>({
@@ -403,7 +477,8 @@ const envNames = reactive<Record<"tavily" | "brave" | "serper" | "firecrawl", st
   serper: "SERPER_API_KEY",
   firecrawl: "FIRECRAWL_API_KEY",
 });
-const configured = reactive<Record<RemoteServiceId, boolean>>({
+const configured = reactive<Record<ServiceId, boolean>>({
+  local: false,
   qwen: false,
   doubao: false,
   tavily: false,
@@ -412,7 +487,10 @@ const configured = reactive<Record<RemoteServiceId, boolean>>({
   firecrawl: false,
 });
 const serviceMeta: Record<ServiceId, { name: string; description: string; consoleUrl?: string }> = {
-  browser: { name: "浏览器识别", description: "使用浏览器提供的语音识别能力" },
+  local: {
+    name: "本地模型识别",
+    description: "sherpa-onnx",
+  },
   qwen: {
     name: "Qwen3 ASR",
     description: "阿里云百炼实时语音识别",
@@ -445,7 +523,7 @@ const serviceMeta: Record<ServiceId, { name: string; description: string; consol
   },
 };
 
-const speechServices = computed(() => (["browser", "qwen", "doubao"] as const).map(serviceView));
+const speechServices = computed(() => (["local", "qwen", "doubao"] as const).map(serviceView));
 const webServices = computed(() =>
   (["tavily", "brave", "serper", "firecrawl"] as const).map(serviceView),
 );
@@ -453,6 +531,64 @@ const activeService = ref<ServiceId | null>(null);
 const draftApiKey = ref("");
 const draftDoubaoAppId = ref("");
 const draftDoubaoAccessToken = ref("");
+const draftDoubaoSpeechPreset =
+  ref<NonNullable<SupervisorSettings["doubaoSpeechPreset"]>>("2.0-duration");
+const draftLocalSpeechModelId = ref<LocalSpeechModelId>("zh-en-bilingual");
+const localSpeechModels = ref<LocalSpeechModelStatus[]>(
+  DEFAULT_LOCAL_SPEECH_MODELS.map((model) => ({ ...model })),
+);
+let localModelPollTimer: ReturnType<typeof setInterval> | null = null;
+
+function mergeLocalSpeechModels(remote: LocalSpeechModelStatus[] | undefined): void {
+  const byId = new Map((remote ?? []).map((model) => [model.id, model]));
+  localSpeechModels.value = DEFAULT_LOCAL_SPEECH_MODELS.map((fallback) => {
+    const hit = byId.get(fallback.id);
+    return hit ? { ...fallback, ...hit } : { ...fallback };
+  });
+  syncLocalConfigured();
+}
+
+function syncLocalConfigured() {
+  configured.local = localSpeechModels.value.some(
+    (model) => model.id === draftLocalSpeechModelId.value && model.installed,
+  );
+}
+
+function localModelStatus(model: LocalSpeechModelStatus): UiListStatusKind {
+  if (model.installing) return "loading";
+  if (model.error) return "error";
+  if (model.installed) return "success";
+  return "idle";
+}
+
+function localModelStatusTitle(model: LocalSpeechModelStatus): string | undefined {
+  if (model.installing) return `安装中 ${model.progress}%`;
+  if (model.error) return model.error;
+  if (model.installed) return "已安装";
+  return "点击安装";
+}
+
+async function onLocalModelRowClick(model: LocalSpeechModelStatus) {
+  if (model.installing) return;
+  if (!model.installed) {
+    await installLocalModel(model.id);
+    return;
+  }
+  if (draftLocalSpeechModelId.value === model.id && configured.local) return;
+  draftLocalSpeechModelId.value = model.id;
+  syncLocalConfigured();
+  form.speechRecognitionMode = "local";
+  try {
+    apply(
+      await updateSupervisorSettings({
+        speechRecognitionMode: "local",
+        localSpeechModelId: model.id,
+      }),
+    );
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "保存选用模型失败", "error");
+  }
+}
 const draftEnvName = ref("");
 const clearRequested = ref(false);
 const testingKey = ref("");
@@ -463,8 +599,8 @@ const dialogMessage = ref("");
 const dialogFailed = ref(false);
 
 const activeMeta = computed(() => {
-  const id = activeService.value ?? "browser";
-  return { ...serviceMeta[id], configured: id === "browser" ? true : configured[id] };
+  const id = activeService.value ?? "local";
+  return { ...serviceMeta[id], configured: configured[id] };
 });
 const isWebService = computed(() =>
   activeService.value
@@ -473,7 +609,7 @@ const isWebService = computed(() =>
 );
 
 function serviceView(id: ServiceId) {
-  return { id, ...serviceMeta[id], configured: id === "browser" ? false : configured[id] };
+  return { id, ...serviceMeta[id], configured: configured[id] };
 }
 
 function featureKey(ref: FeatureModelRef): string {
@@ -500,19 +636,96 @@ function apply(settings: SupervisorSettings) {
   form.browserMode = settings.browserMode ?? "headless";
   form.webSearchProvider = settings.webSearchProvider ?? "duckduckgo";
   form.webFetchProvider = settings.webFetchProvider ?? "native";
-  form.speechRecognitionMode = settings.speechRecognitionMode ?? "browser";
+  const mode =
+    settings.speechRecognitionMode === "browser"
+      ? "local"
+      : (settings.speechRecognitionMode ?? "local");
+  form.speechRecognitionMode = mode === "qwen" || mode === "doubao" ? mode : "local";
   form.speechRecognitionLanguage = settings.speechRecognitionLanguage ?? "";
   envNames.tavily = settings.tavilyApiKeyEnv ?? "TAVILY_API_KEY";
   envNames.brave = settings.braveApiKeyEnv ?? "BRAVE_API_KEY";
   envNames.serper = settings.serperApiKeyEnv ?? "SERPER_API_KEY";
   envNames.firecrawl = settings.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY";
+  configured.local = settings.localSpeechConfigured ?? false;
   configured.qwen = settings.speechApiKeyConfigured ?? false;
   configured.doubao = settings.doubaoSpeechConfigured ?? false;
   configured.tavily = settings.tavilyApiKeyConfigured ?? false;
   configured.brave = settings.braveApiKeyConfigured ?? false;
   configured.serper = settings.serperApiKeyConfigured ?? false;
   configured.firecrawl = settings.firecrawlApiKeyConfigured ?? false;
+  draftDoubaoSpeechPreset.value = settings.doubaoSpeechPreset ?? "2.0-duration";
+  draftLocalSpeechModelId.value = settings.localSpeechModelId ?? "zh-en-bilingual";
+  mergeLocalSpeechModels(settings.localSpeechModels);
+  // 后端若未返回 models 字段，仍用 settings 里的配置态兜底
+  if (settings.localSpeechConfigured && !configured.local) {
+    configured.local = true;
+  }
   applyFeatureModels(settings);
+}
+
+function stopLocalModelPolling() {
+  if (localModelPollTimer) {
+    clearInterval(localModelPollTimer);
+    localModelPollTimer = null;
+  }
+}
+
+function startLocalModelPolling() {
+  stopLocalModelPolling();
+  localModelPollTimer = setInterval(() => {
+    void refreshLocalSpeechModels();
+    if (!localSpeechModels.value.some((model) => model.installing)) {
+      stopLocalModelPolling();
+      // 安装完成后自动选中该项并打勾
+      const justReady = localSpeechModels.value.find(
+        (model) => model.id === draftLocalSpeechModelId.value && model.installed,
+      );
+      if (justReady) syncLocalConfigured();
+    }
+  }, 1000);
+}
+
+async function refreshLocalSpeechModels() {
+  try {
+    const result = await listLocalSpeechModels();
+    mergeLocalSpeechModels(result.models);
+  } catch {
+    // 接口不可用时保留本地目录列表，避免弹窗空白
+    if (!localSpeechModels.value.length) {
+      mergeLocalSpeechModels(undefined);
+    }
+  }
+}
+
+async function installLocalModel(id: LocalSpeechModelId) {
+  draftLocalSpeechModelId.value = id;
+  dialogMessage.value = "";
+  dialogFailed.value = false;
+  // 立刻进入 loading，避免接口慢时看起来没反应
+  localSpeechModels.value = localSpeechModels.value.map((model) =>
+    model.id === id
+      ? { ...model, installing: true, progress: Math.max(model.progress, 1), error: undefined }
+      : model,
+  );
+  try {
+    const result = await installLocalSpeechModel(id);
+    mergeLocalSpeechModels(result.models);
+    startLocalModelPolling();
+    showUiMessage("开始安装本地语音模型", "success");
+  } catch (error) {
+    localSpeechModels.value = localSpeechModels.value.map((model) =>
+      model.id === id
+        ? {
+            ...model,
+            installing: false,
+            error: error instanceof Error ? error.message : "安装失败",
+          }
+        : model,
+    );
+    dialogFailed.value = true;
+    dialogMessage.value = error instanceof Error ? error.message : "安装失败";
+    showUiMessage(dialogMessage.value, "error");
+  }
 }
 
 function openService(id: ServiceId) {
@@ -523,14 +736,22 @@ function openService(id: ServiceId) {
   draftEnvName.value = id in envNames ? envNames[id as keyof typeof envNames] : "";
   clearRequested.value = false;
   dialogMessage.value = "";
+  dialogFailed.value = false;
+  if (id === "local") {
+    if (!localSpeechModels.value.length) mergeLocalSpeechModels(undefined);
+    void refreshLocalSpeechModels().then(() => {
+      if (localSpeechModels.value.some((model) => model.installing)) startLocalModelPolling();
+    });
+  }
 }
 
 function closeService() {
   activeService.value = null;
+  stopLocalModelPolling();
 }
 
 function clearActiveKey() {
-  if (!activeService.value || activeService.value === "browser") return;
+  if (!activeService.value || activeService.value === "local") return;
   draftApiKey.value = "";
   draftDoubaoAppId.value = "";
   draftDoubaoAccessToken.value = "";
@@ -540,7 +761,7 @@ function clearActiveKey() {
 }
 
 async function testActiveKey() {
-  if (!activeService.value || activeService.value === "browser") return;
+  if (!activeService.value || activeService.value === "local") return;
   testingKey.value = activeService.value;
   dialogMessage.value = "";
   try {
@@ -548,6 +769,7 @@ async function testActiveKey() {
       await testSettingsApiKey("doubao", undefined, {
         appId: draftDoubaoAppId.value || undefined,
         accessToken: draftDoubaoAccessToken.value || undefined,
+        preset: draftDoubaoSpeechPreset.value,
       });
     } else {
       await testSettingsApiKey(activeService.value, draftApiKey.value || undefined);
@@ -576,6 +798,7 @@ function mainPatch(): Partial<SupervisorSettings> {
     webFetchProvider: form.webFetchProvider,
     speechRecognitionMode: form.speechRecognitionMode,
     speechRecognitionLanguage: form.speechRecognitionLanguage,
+    localSpeechModelId: draftLocalSpeechModelId.value,
     tavilyApiKeyEnv: envNames.tavily,
     braveApiKeyEnv: envNames.brave,
     serperApiKeyEnv: envNames.serper,
@@ -592,54 +815,78 @@ async function saveService() {
   try {
     const patch = mainPatch();
     const id = activeService.value;
-    if (id !== "browser") {
-      if (id === "doubao") {
-        const nextAppId = draftDoubaoAppId.value.trim();
-        const nextToken = draftDoubaoAccessToken.value.trim();
-        if (!clearRequested.value && !configured.doubao && (!nextAppId || !nextToken)) {
-          dialogFailed.value = true;
-          dialogMessage.value = "请同时填写 APP ID 与 Access Token";
-          return;
-        }
-        if (draftDoubaoAppId.value || clearRequested.value) {
-          Object.assign(patch, {
-            doubaoSpeechAppId: clearRequested.value ? "" : nextAppId,
-          });
-        }
-        if (draftDoubaoAccessToken.value || clearRequested.value) {
-          Object.assign(patch, {
-            doubaoSpeechAccessToken: clearRequested.value ? "" : nextToken,
-          });
-        }
-        patch.speechRecognitionMode = "doubao";
-        form.speechRecognitionMode = "doubao";
-      } else if (id === "qwen") {
-        patch.speechRecognitionMode = "qwen";
-        form.speechRecognitionMode = "qwen";
-      } else {
-        const keyFields: Record<Exclude<RemoteServiceId, "doubao">, keyof SupervisorSettings> = {
-          qwen: "speechApiKey",
-          tavily: "tavilyApiKey",
-          brave: "braveApiKey",
-          serper: "serperApiKey",
-          firecrawl: "firecrawlApiKey",
-        };
-        if (draftApiKey.value || clearRequested.value) {
-          Object.assign(patch, { [keyFields[id]]: clearRequested.value ? "" : draftApiKey.value });
-        }
+    if (id === "local") {
+      const selected = localSpeechModels.value.find(
+        (model) => model.id === draftLocalSpeechModelId.value,
+      );
+      if (!selected?.installed) {
+        dialogFailed.value = true;
+        dialogMessage.value = "请先安装所选本地模型";
+        return;
       }
-      if (id in envNames) {
-        envNames[id as keyof typeof envNames] = draftEnvName.value;
-        Object.assign(patch, { [`${id}ApiKeyEnv`]: draftEnvName.value });
+      patch.speechRecognitionMode = "local";
+      patch.localSpeechModelId = draftLocalSpeechModelId.value;
+      form.speechRecognitionMode = "local";
+    } else if (id === "doubao") {
+      const nextAppId = draftDoubaoAppId.value.trim();
+      const nextToken = draftDoubaoAccessToken.value.trim();
+      if (!clearRequested.value && !configured.doubao && !nextAppId && !nextToken) {
+        dialogFailed.value = true;
+        dialogMessage.value = "请填写 Access Token 或 API Key（旧版控制台需同时填写 APP ID）";
+        return;
       }
+      if (!clearRequested.value && !configured.doubao && nextAppId && !nextToken) {
+        dialogFailed.value = true;
+        dialogMessage.value = "填写 APP ID 时需同时填写 Access Token";
+        return;
+      }
+      if (draftDoubaoAppId.value || clearRequested.value) {
+        Object.assign(patch, {
+          doubaoSpeechAppId: clearRequested.value ? "" : nextAppId,
+        });
+      }
+      if (draftDoubaoAccessToken.value || clearRequested.value) {
+        Object.assign(patch, {
+          doubaoSpeechAccessToken: clearRequested.value ? "" : nextToken,
+        });
+      }
+      patch.doubaoSpeechPreset = draftDoubaoSpeechPreset.value;
+      patch.speechRecognitionMode = "doubao";
+      form.speechRecognitionMode = "doubao";
+    } else if (id === "qwen") {
+      patch.speechRecognitionMode = "qwen";
+      form.speechRecognitionMode = "qwen";
+      if (draftApiKey.value || clearRequested.value) {
+        Object.assign(patch, { speechApiKey: clearRequested.value ? "" : draftApiKey.value });
+      }
+    } else {
+      const keyFields: Record<
+        Exclude<RemoteServiceId, "doubao" | "qwen">,
+        keyof SupervisorSettings
+      > = {
+        tavily: "tavilyApiKey",
+        brave: "braveApiKey",
+        serper: "serperApiKey",
+        firecrawl: "firecrawlApiKey",
+      };
+      if (draftApiKey.value || clearRequested.value) {
+        Object.assign(patch, { [keyFields[id]]: clearRequested.value ? "" : draftApiKey.value });
+      }
+    }
+    if (id in envNames) {
+      envNames[id as keyof typeof envNames] = draftEnvName.value;
+      Object.assign(patch, { [`${id}ApiKeyEnv`]: draftEnvName.value });
     }
     apply(await updateSupervisorSettings(patch));
     closeService();
     failed.value = false;
     message.value = "已保存";
+    showUiMessage("设置已保存", "success");
   } catch (error) {
     dialogFailed.value = true;
-    dialogMessage.value = error instanceof Error ? error.message : "保存失败";
+    const text = error instanceof Error ? error.message : "保存失败";
+    dialogMessage.value = text;
+    showUiMessage(text, "error");
   } finally {
     saving.value = false;
   }
@@ -652,9 +899,12 @@ async function saveMain() {
     apply(await updateSupervisorSettings(mainPatch()));
     failed.value = false;
     message.value = "已保存";
+    showUiMessage("设置已保存", "success");
   } catch (error) {
     failed.value = true;
-    message.value = error instanceof Error ? error.message : "保存失败";
+    const text = error instanceof Error ? error.message : "保存失败";
+    message.value = text;
+    showUiMessage(text, "error");
   } finally {
     saving.value = false;
   }
@@ -686,6 +936,10 @@ onMounted(async () => {
     failed.value = true;
     message.value = error instanceof Error ? error.message : "读取设置失败";
   }
+});
+
+onBeforeUnmount(() => {
+  stopLocalModelPolling();
 });
 </script>
 
@@ -988,6 +1242,9 @@ input:focus {
   overflow-y: auto;
   padding: 18px 20px;
 }
+.dialog-body--list {
+  padding: 0;
+}
 .dialog-body label {
   display: block;
   margin-bottom: 16px;
@@ -998,10 +1255,91 @@ input:focus {
   font-size: 13px;
   color: var(--app-text-secondary);
 }
-.dialog-note {
-  font-size: 12px;
-  line-height: 1.6;
+.local-model-list {
+  margin: 0;
+}
+.local-model-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--app-border-subtle);
+  cursor: pointer;
+}
+.local-model-list li:last-child .local-model-item {
+  border-bottom: none;
+}
+.local-model-item:hover:not(:disabled) {
+  background: var(--app-popup-hover, var(--app-hover));
+}
+.local-model-item:hover:not(:disabled) .local-model-item__title {
+  color: var(--app-accent);
+}
+.local-model-item--selected .local-model-item__title,
+.local-model-item--selected:hover:not(:disabled) .local-model-item__title {
+  color: #07c160;
+}
+.local-model-item--busy {
+  cursor: default;
+  pointer-events: none;
+}
+.local-model-item__copy {
+  flex: 1;
+  min-width: 0;
+}
+.local-model-item__title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.local-model-item__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.35;
+  color: var(--app-text-secondary);
+  transition: color 0.12s ease;
+}
+.local-model-item__meta {
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  line-height: 1.25;
+}
+.local-model-item__size {
+  font-size: 11px;
   color: var(--app-text-muted);
+}
+.local-model-item__desc {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--app-text-muted);
+}
+.local-model-item__progress,
+.local-model-item__error {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.local-model-item__progress {
+  color: var(--app-accent);
+}
+.local-model-item__error {
+  color: #fa5151;
 }
 .dialog-message {
   margin-top: 12px;
@@ -1168,8 +1506,10 @@ input:focus {
     padding-inline: 10px;
     border-bottom: 1px solid var(--app-header-divider, var(--app-border-subtle));
     background: var(--m-header-bg, var(--app-list-header-bg));
-    grid-template-columns:
-      var(--m-action-hit-size, 40px) minmax(0, 1fr) var(--m-action-hit-size, 40px);
+    grid-template-columns: var(--m-action-hit-size, 40px) minmax(0, 1fr) var(
+        --m-action-hit-size,
+        40px
+      );
     align-items: center;
   }
   .settings-header .m-mobile-header__title {

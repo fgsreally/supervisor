@@ -44,11 +44,9 @@ export async function setAppStyle(next: AppStyle = "wechat"): Promise<void> {
   try {
     await new Promise<void>((resolve, reject) => {
       link.addEventListener("load", () => resolve(), { once: true });
-      link.addEventListener(
-        "error",
-        () => reject(new Error(`Failed to load ${next} app style`)),
-        { once: true },
-      );
+      link.addEventListener("error", () => reject(new Error(`Failed to load ${next} app style`)), {
+        once: true,
+      });
       document.head.append(link);
     });
   } catch {

@@ -4,6 +4,7 @@ export type AppRouteTab =
   | "chat"
   | "todo"
   | "dashboard"
+  | "active-ui"
   | "contacts"
   | "providers"
   | "resources"
@@ -14,6 +15,7 @@ export function tabFromRoute(route: Pick<RouteLocationNormalized, "path">): AppR
   if (
     seg === "todo" ||
     seg === "dashboard" ||
+    seg === "active-ui" ||
     seg === "contacts" ||
     seg === "providers" ||
     seg === "resources" ||
@@ -45,6 +47,7 @@ const router = createRouter({
     { path: "/home", redirect: "/dashboard" },
     { path: "/todo", name: "todo", component: { template: "<div />" } },
     { path: "/dashboard", name: "dashboard", component: { template: "<div />" } },
+    { path: "/active-ui", name: "active-ui", component: { template: "<div />" } },
     { path: "/chat/:sessionId?", name: "chat", component: { template: "<div />" } },
     { path: "/contacts/new", name: "contact-new", component: { template: "<div />" } },
     { path: "/contacts/:agentId?", name: "contacts", component: { template: "<div />" } },

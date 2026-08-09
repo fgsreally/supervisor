@@ -28,7 +28,7 @@ import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
 import { BUILTIN_EXTENSION_SLUGS } from "../extension/builtin/catalog.js";
 import { listEnabledBuiltinExtensionSlugs } from "../extension/builtin/ensure.js";
 import { evaluateAgentPermission, type AgentPermissionRules } from "./agent-permissions.js";
-import type { ApprovalRequest, ApprovalResult } from "../extension/index.js";
+import type { ApprovalRequest, ApprovalResult, ExtensionEvent } from "../extension/index.js";
 
 interface HarnessSessionTree {
   buildContext(): Promise<{ messages: AgentMessage[] }>;
@@ -185,19 +185,32 @@ export class SessionRuntime implements ManagedSessionRuntime {
     const enabledBuiltins = listEnabledBuiltinExtensionSlugs(db, agentId, { isMainSession });
     await extension.initialize(enabledBuiltins);
 
-    await extension.emit({
-      type: "session.prepare",
+    const agent = db.getAgent(agentId);
+    const toolsPreset = agent?.toolsPreset ?? "coding";
+    const spawnType = currentSession?.spawnType ?? null;
+    const createEvent = {
+      type: "session.create",
       sessionId: this.id,
       parentSessionId: currentSession?.parentId ? String(currentSession.parentId) : undefined,
       cwd,
-      toolsPreset: "coding",
+      toolsPreset,
+      spawnType,
       agentDisplayName: agentName,
-    } as any);
+    } as ExtensionEvent;
 
-    // User-installed extensions only (builtins load via initialize).
+    await extension.emit(createEvent);
+    await extension.emit({ ...createEvent, type: "session.prepare" } as ExtensionEvent);
+
+    this.syncWorkingDirectory(this.getSession()?.cwd ?? cwd);
+
+    // User-installed extensions only (builtins load via initialize). Bound = active.
     const extensionSlugs = db
-      .listAgentResourceSlugs(agentId, "extension")
-      .filter((slug) => !BUILTIN_EXTENSION_SLUGS.has(slug));
+      .listAgentResourceBindings(agentId, { kind: "extension", enabledOnly: false })
+      .flatMap((binding) => {
+        const slug = binding.resource?.slug;
+        if (!slug || BUILTIN_EXTENSION_SLUGS.has(slug)) return [];
+        return [slug];
+      });
     const moduleErrors = await extension.loadModules(
       manager.getExtensionRegistry().getMany(extensionSlugs),
     );
@@ -220,7 +233,31 @@ export class SessionRuntime implements ManagedSessionRuntime {
       type: "session.start",
       reason: "startup",
       sessionId: this.id,
-    } as any);
+    } as ExtensionEvent);
+  }
+
+  /** Keep harness permission cwd in sync after extensions change session cwd (e.g. worktree). */
+  syncWorkingDirectory(cwd: string): void {
+    if (this.permissionConfig) this.permissionConfig.cwd = cwd;
+    const harnessEnv = (this.harness as { env?: { cwd?: string } }).env;
+    if (harnessEnv && typeof harnessEnv.cwd === "string") {
+      harnessEnv.cwd = cwd;
+    }
+  }
+
+  /** Tear down and reload extension modules for the current Agent binding set. */
+  async reloadExtensions(
+    agentId: number,
+    agentName: string,
+    cwd: string,
+    db: SupervisorDb,
+    manager: SessionManager,
+  ): Promise<void> {
+    if (this._extension) {
+      await this._extension.clear();
+      this._extension = null;
+    }
+    await this.initExtensions(agentId, agentName, cwd, db, manager);
   }
 
   /**

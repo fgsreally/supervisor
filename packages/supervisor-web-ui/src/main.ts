@@ -7,7 +7,8 @@ import "./style.css";
 import { initAppTheme } from "./composables/use-app-theme";
 import { initAppStyle } from "./composables/use-app-style";
 import { initAppFontScale } from "./composables/use-app-font-scale";
-import { requestNotificationPermission } from "./composables/use-push-notifications";
+import { requestNotificationPermission } from "./composables/use-notifications";
+import { initNativeShell } from "./native/bootstrap";
 
 initAppTheme();
 void initAppStyle();
@@ -32,6 +33,8 @@ const app = createApp(App);
 app.use(createPinia());
 app.use(router);
 app.mount("#app");
+
+void initNativeShell();
 
 window.addEventListener(
   "click",

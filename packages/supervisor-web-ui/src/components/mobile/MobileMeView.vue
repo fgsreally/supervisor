@@ -12,9 +12,7 @@
 
     <div class="mobile-me__scroll flex-1 overflow-y-auto custom-scrollbar">
       <template v-for="group in groups" :key="group.title">
-        <div
-          class="list-section-label px-4 py-1.5 font-semibold tracking-wide sticky top-0 z-10"
-        >
+        <div class="list-section-label px-4 py-1.5 font-semibold tracking-wide sticky top-0 z-10">
           {{ group.title }}
         </div>
         <button
@@ -35,24 +33,28 @@
         </button>
       </template>
     </div>
+    <MobileServerConfigSheet v-model:open="serverSheetOpen" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import {
   BookOpenCheck,
   Boxes,
   Cloud,
   FileSearch,
   MoonStar,
+  Server,
   Settings,
   Sparkles,
   Sun,
 } from "lucide-vue-next";
 import { useAppTheme } from "@/composables/use-app-theme";
 import { useAppFontScale, type AppFontScale } from "@/composables/use-app-font-scale";
+import { isNativeApp } from "@/composables/use-native-app";
 import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
+import MobileServerConfigSheet from "./MobileServerConfigSheet.vue";
 
 type ItemId =
   | "providers"
@@ -60,9 +62,13 @@ type ItemId =
   | "appearance"
   | "fontScale"
   | "advancedAnimations"
+  | "server"
   | "settings"
   | "tutorial"
   | "diagnostics";
+
+const serverSheetOpen = ref(false);
+const showNativeServer = computed(() => isNativeApp());
 
 const emit = defineEmits<{
   navigate: [route: string];
@@ -87,79 +93,93 @@ const advancedAnimationsDescription = computed(() =>
 );
 const AppearanceIcon = computed(() => (isDark.value ? MoonStar : Sun));
 
-const groups = computed(() => [
-  {
-    title: "能力管理",
-    items: [
-      {
-        id: "providers" as const,
-        label: "模型供应商",
-        description: "管理可供智能代理使用的模型",
-        icon: Cloud,
-        color: "#576b95",
-      },
-      {
-        id: "resources" as const,
-        label: "资源中心",
-        description: "管理能力、扩展、模板与连接",
-        icon: Boxes,
-        color: "#07c160",
-      },
-    ],
-  },
-  {
-    title: "使用偏好",
-    items: [
-      {
-        id: "appearance" as const,
-        label: "外观",
-        description: appearanceDescription.value,
-        icon: AppearanceIcon.value,
-        color: "#7b61c9",
-      },
-      {
-        id: "fontScale" as const,
-        label: "字号",
-        description: fontScaleDescription.value,
-        icon: BookOpenCheck,
-        color: "#0ea5e9",
-      },
-      {
-        id: "advancedAnimations" as const,
-        label: "高级动画",
-        description: advancedAnimationsDescription.value,
-        icon: Sparkles,
-        color: "#f59e0b",
-      },
-      {
-        id: "settings" as const,
-        label: "服务设置",
-        description: "助手模型、语音与网页服务",
-        icon: Settings,
-        color: "#3b82f6",
-      },
-    ],
-  },
-  {
-    title: "帮助与诊断",
-    items: [
-      {
-        id: "tutorial" as const,
-        label: "使用教程",
-        description: "了解聊天、任务和智能代理",
-        icon: BookOpenCheck,
-        color: "#d97706",
-      },
-      {
-        id: "diagnostics" as const,
-        label: "高级与诊断",
-        description: "运行状态、日志和技术配置",
-        icon: FileSearch,
-        color: "#8b8b8b",
-      },
-    ],
-  },
-]);
+const groups = computed(() => {
+  const preferenceItems = [
+    {
+      id: "appearance" as const,
+      label: "外观",
+      description: appearanceDescription.value,
+      icon: AppearanceIcon.value,
+      color: "#7b61c9",
+    },
+    {
+      id: "fontScale" as const,
+      label: "字号",
+      description: fontScaleDescription.value,
+      icon: BookOpenCheck,
+      color: "#0ea5e9",
+    },
+    {
+      id: "advancedAnimations" as const,
+      label: "高级动画",
+      description: advancedAnimationsDescription.value,
+      icon: Sparkles,
+      color: "#f59e0b",
+    },
+    ...(showNativeServer.value
+      ? [
+          {
+            id: "server" as const,
+            label: "服务器连接",
+            description: "Supervisor 地址与 PIN、后台连接",
+            icon: Server,
+            color: "#576b95",
+          },
+        ]
+      : []),
+    {
+      id: "settings" as const,
+      label: "服务设置",
+      description: "助手模型、语音与网页服务",
+      icon: Settings,
+      color: "#3b82f6",
+    },
+  ];
+  return [
+    {
+      title: "能力管理",
+      items: [
+        {
+          id: "providers" as const,
+          label: "模型供应商",
+          description: "管理可供智能代理使用的模型",
+          icon: Cloud,
+          color: "#576b95",
+        },
+        {
+          id: "resources" as const,
+          label: "资源中心",
+          description: "管理能力、扩展、模板与连接",
+          icon: Boxes,
+          color: "#07c160",
+        },
+      ],
+    },
+    {
+      title: "使用偏好",
+      items: preferenceItems,
+    },
+    {
+      title: "帮助与诊断",
+      items: [
+        {
+          id: "tutorial" as const,
+          label: "使用教程",
+          description: "了解聊天、任务和智能代理",
+          icon: BookOpenCheck,
+          color: "#d97706",
+        },
+        {
+          id: "diagnostics" as const,
+          label: "高级与诊断",
+          description: "运行状态、日志和技术配置",
+          icon: FileSearch,
+          color: "#8b8b8b",
+        },
+      ],
+    },
+  ];
+});
 
 function cycleFontScale() {
   const order: AppFontScale[] = ["small", "standard", "large"];
@@ -176,6 +196,7 @@ function open(id: ItemId) {
     viewPreferences.advancedAnimations = !viewPreferences.advancedAnimations;
     saveViewPreferences();
   } else if (id === "settings") emit("navigate", "/settings/services");
+  else if (id === "server") serverSheetOpen.value = true;
   else if (id === "diagnostics") emit("navigate", "/settings/diagnostics");
   else emit("tutorial");
 }

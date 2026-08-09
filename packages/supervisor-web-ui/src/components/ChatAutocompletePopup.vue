@@ -6,13 +6,13 @@
       :style="popupStyle"
       role="listbox"
     >
-      <ul class="max-h-52 overflow-y-auto custom-scrollbar py-1">
+      <ul class="autocomplete-list overflow-y-auto custom-scrollbar py-1">
         <li
           v-for="(item, index) in items"
           :key="`${item.trigger}-${item.kind ?? 'x'}-${item.value}-${index}`"
           role="option"
           :aria-selected="index === selectedIndex"
-          class="px-3 py-2 cursor-pointer flex items-start gap-2 min-w-0 autocomplete-item"
+          class="px-2.5 py-1.5 md:px-3 md:py-2 cursor-pointer flex items-center gap-2 min-w-0 autocomplete-item"
           :class="{ 'autocomplete-item--selected': index === selectedIndex }"
           @mousedown.prevent
           @click="emit('select', item)"
@@ -128,6 +128,16 @@ function displayLabel(item: ChatAutocompleteItem): string {
 </script>
 
 <style scoped>
+.autocomplete-list {
+  max-height: min(46vh, 320px);
+}
+
+@media (min-width: 768px) {
+  .autocomplete-list {
+    max-height: min(58vh, 520px);
+  }
+}
+
 .chat-autocomplete-popup {
   background: var(--app-popup-bg);
   border-color: var(--app-popup-border);

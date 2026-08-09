@@ -55,6 +55,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "pi-supervisor-native-bridge": path.resolve(
+        __dirname,
+        "../pi-supervisor-native-bridge/dist/esm/index.js",
+      ),
     },
   },
   define: {
@@ -127,6 +131,10 @@ export default defineConfig({
         changeOrigin: true,
       },
       "/uploaded-icons": {
+        target: "http://localhost:3030",
+        changeOrigin: true,
+      },
+      "/devices": {
         target: "http://localhost:3030",
         changeOrigin: true,
       },

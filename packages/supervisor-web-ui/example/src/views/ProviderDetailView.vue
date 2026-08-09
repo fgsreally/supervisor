@@ -119,11 +119,7 @@ import { computed } from "vue";
 import { ChevronLeft, ChevronRight } from "lucide-vue-next";
 import ProviderModelTable from "../components/ProviderModelTable.vue";
 import type { MockProvider } from "../mock/providers";
-import {
-  WIRE_PROTOCOLS,
-  getAgentsUsingProvider,
-  setProviderActiveModel,
-} from "../mock/providers";
+import { WIRE_PROTOCOLS, getAgentsUsingProvider, setProviderActiveModel } from "../mock/providers";
 import { agentAvatarClass, providerAvatarClass } from "../utils/avatar-class";
 
 const props = defineProps<{

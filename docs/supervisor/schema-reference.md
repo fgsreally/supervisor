@@ -1,7 +1,13 @@
 # 数据库结构
 
 本文记录当前运行时实际创建的 SQLite 结构。权威实现位于
-`packages/supervisor/src/db/db.ts`、`core/project-scripts.ts` 与 `core/jobs.ts`；修改表结构时应同步本文。
+`packages/supervisor/src/db/sql/schema.sql`（新库基线）与
+`packages/supervisor/src/db/migrations/`（版本化增量迁移）；修改表结构时应同步本文。
+
+启动时先执行 `schema.sql`，再按文件名前缀数字顺序应用 `migrations/` 下尚未记录的
+`.sql` 文件（记录在 `_schema_migrations` 表）。Fork 或部署定制可在同目录追加
+`008_*.sql` 等文件，或通过环境变量 `SUPERVISOR_MIGRATIONS_DIRS`（逗号分隔路径）
+挂载额外迁移目录。
 
 时间字段均为 Unix 毫秒。SQLite 中的布尔值使用 `INTEGER`（0/1），JSON 使用 `TEXT` 保存。
 
@@ -11,7 +17,7 @@
 | ------------------------------- | --------------------------------------- |
 | `providers` / `models`          | 模型供应商与模型目录                    |
 | `agents`                        | 可选择的 Agent 配置                     |
-| `projects` / `project_scripts`  | 项目及 install/start/destroy 脚本       |
+| `projects`                      | 项目及描述                              |
 | `sessions`                      | 会话、派生关系和运行状态                |
 | `messages` / `messages_fts`     | 消息树与全文索引                        |
 | `session_input_queue`           | 会话输入队列                            |
@@ -38,20 +44,20 @@
 
 ### `agents`
 
-| 列                          | 类型/默认值                    | 说明                                       |
-| --------------------------- | ------------------------------ | ------------------------------------------ |
-| `id`                        | INTEGER PK                     | Agent ID                                   |
-| `name`                      | TEXT NOT NULL                  | 显示名                                     |
-| `description` / `avatar`    | TEXT                           | 展示字段                                   |
+| 列                          | 类型/默认值                    | 说明                                                         |
+| --------------------------- | ------------------------------ | ------------------------------------------------------------ |
+| `id`                        | INTEGER PK                     | Agent ID                                                     |
+| `name`                      | TEXT NOT NULL                  | 显示名                                                       |
+| `description` / `avatar`    | TEXT                           | 展示字段                                                     |
 | `backend_type`              | TEXT NOT NULL DEFAULT `native` | `native`、`codex`、`claude`、`kimi`、`cursor`、`mimo`、`acp` |
-| `model_id`                  | INTEGER FK                     | 指向 `models.id`，删除模型时置空           |
-| `system_prompt`             | TEXT                           | Agent system prompt 正文                   |
-| `tools_preset`              | TEXT NOT NULL DEFAULT `coding` | `coding`、`readonly`、`none`               |
-| `home_dir`                  | TEXT                           | Agent 专属目录                             |
-| `is_builtin`                | INTEGER DEFAULT 0              | 内置标志                                   |
-| `external_config`           | TEXT                           | 外部 Agent 配置 JSON                       |
-| `meta`                      | TEXT DEFAULT `{}`              | 扩展命名空间数据及旧配置兼容读取           |
-| `created_at` / `updated_at` | INTEGER                        | 时间                                       |
+| `model_id`                  | INTEGER FK                     | 指向 `models.id`，删除模型时置空                             |
+| `system_prompt`             | TEXT                           | Agent system prompt 正文                                     |
+| `tools_preset`              | TEXT NOT NULL DEFAULT `coding` | `coding`、`readonly`、`none`                                 |
+| `home_dir`                  | TEXT                           | Agent 专属目录                                               |
+| `is_builtin`                | INTEGER DEFAULT 0              | 内置标志                                                     |
+| `external_config`           | TEXT                           | 外部 Agent 配置 JSON                                         |
+| `meta`                      | TEXT DEFAULT `{}`              | 扩展命名空间数据及旧配置兼容读取                             |
+| `created_at` / `updated_at` | INTEGER                        | 时间                                                         |
 
 `external_config` 的当前形状为 `{ command, args?, env?, permissionPolicy? }`。模型只通过
 `model_id -> models -> providers` 解析。华生使用内部 runner 与 `featureModels.assistant`，不创建用户 Session。
@@ -62,12 +68,6 @@
 `home_dir TEXT NOT NULL`、`created_at`、`updated_at`。
 
 `cwd` 是源码目录；`home_dir` 是 Supervisor 管理的 Project 专属目录。当前物理表没有 `meta` 列。
-
-### `project_scripts`
-
-`id INTEGER PK`、`project_id INTEGER NOT NULL`（级联删除）、`kind TEXT NOT NULL`、
-`name TEXT NOT NULL`、`command TEXT NOT NULL`、`created_at`、`updated_at`。
-`kind` 当前使用 `install`、`start`、`destroy`。
 
 ## Session 与消息
 
@@ -99,19 +99,19 @@
 
 核心身份与 UI 字段必须写专用列。当前核心/内置扩展识别以下键：
 
-| 键              | 形状/归属                                                                             |
-| --------------- | ------------------------------------------------------------------------------------- |
-| `tasks`         | `{ id, path, kind, title, status, createdAt, updatedAt }[]`                           |
-| `currentTask`   | 当前 task path 或 `null`                                                              |
-| `todos`         | `{ id, title, status, sortOrder }[]`                                                  |
-| `subagentIds`   | 当前 Session 可委派的 Agent ID 白名单                                                 |
-| `git`           | `{ worktreePath, branch, lastCommit, mergeError }`；有 `worktreePath` 即启用 worktree |
-| `services`      | Project scripts 启动后的 Session 服务实例、端口与状态                                 |
-| `shadow`        | Shadow 输出，例如 `suggestedQuestions`                                                |
-| `timers`        | Timer 定义；触发执行记录写 `jobs`                                                     |
-| `compaction`    | rolling compaction 配置/快照                                                          |
-| `toolLoopGuard` | 工具循环守卫状态                                                                      |
-| `changedFiles`  | turn 文件变更跟踪                                                                     |
+| 键              | 形状/归属                                                                                                                                                                                                                                                                                                                                                                 |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tasks`         | `{ id, path, kind, title, status, createdAt, updatedAt }[]`                                                                                                                                                                                                                                                                                                               |
+| `currentTask`   | 当前 task path 或 `null`                                                                                                                                                                                                                                                                                                                                                  |
+| `todos`         | `{ id, title, status, sortOrder }[]`                                                                                                                                                                                                                                                                                                                                      |
+| `subagentIds`   | 当前 Session 可委派的 Agent ID 白名单                                                                                                                                                                                                                                                                                                                                     |
+| `git`           | `{ worktreePath, branch, lastCommit, mergeError, pendingUpdate? }`；有 `worktreePath` 即启用 worktree；`pendingUpdate` 在其它会话 achieve 合并进项目分支后写入，提示本会话需同步                                                                                                                                                                                          |
+| `services`      | 项目 dev server 生命周期（`meta.services`）：`status` 为 `unregistered` / `idle` / `active` / `starting` / `running` / `error`；`entries[]` 含 `startCommand`、`stopCommand`、`uninstallCommand`（兼容 `destroyCommand`）、`installCommand`、`uiPorts[{ envVar }]`；`portEnv` 为运行时分配的端口；`sleepAt` = `lastActiveAt` + 24h；`lastActiveAt` 用于 SV 重启 reconcile |
+| `shadow`        | Shadow 输出，例如 `suggestedQuestions`                                                                                                                                                                                                                                                                                                                                    |
+| `timers`        | Timer 定义；触发执行记录写 `jobs`                                                                                                                                                                                                                                                                                                                                         |
+| `compaction`    | rolling compaction 配置/快照                                                                                                                                                                                                                                                                                                                                              |
+| `toolLoopGuard` | 工具循环守卫状态                                                                                                                                                                                                                                                                                                                                                          |
+| `changedFiles`  | turn 文件变更跟踪                                                                                                                                                                                                                                                                                                                                                         |
 
 用户扩展键应带命名空间，例如 `strictSdd.status` 或 `myExt.*`。不要把仅因工具 `cwd`
 产生的产物写进项目目录；按 Session > Agent/Project 的最具体归属选择专属目录。
@@ -173,7 +173,6 @@ erDiagram
   models ||--o{ agents : selected_by
   agents ||--o{ agent_resources : binds
   resources ||--o{ agent_resources : binds
-  projects ||--o{ project_scripts : has
   projects ||--o{ sessions : has
   agents ||--o{ sessions : runs
   sessions ||--o{ sessions : spawns

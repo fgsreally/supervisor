@@ -53,8 +53,11 @@ export interface SupervisorSettings {
   braveApiKey?: string;
   serperApiKey?: string;
   firecrawlApiKey?: string;
-  speechRecognitionMode?: "browser" | "qwen" | "doubao";
+  speechRecognitionMode?: "local" | "qwen" | "doubao" | "browser";
   speechRecognitionLanguage?: string;
+  localSpeechModelId?: "zh-en-bilingual" | "zh-int8";
+  localSpeechConfigured?: boolean;
+  localSpeechModels?: LocalSpeechModelStatus[];
   speechApiKeyConfigured?: boolean;
   speechApiKey?: string;
   doubaoSpeechAppIdConfigured?: boolean;
@@ -62,6 +65,20 @@ export interface SupervisorSettings {
   doubaoSpeechConfigured?: boolean;
   doubaoSpeechAppId?: string;
   doubaoSpeechAccessToken?: string;
+  doubaoSpeechPreset?: "2.0-duration" | "2.0-concurrent" | "1.0-duration" | "1.0-concurrent";
+}
+
+export type LocalSpeechModelId = "zh-en-bilingual" | "zh-int8";
+
+export interface LocalSpeechModelStatus {
+  id: LocalSpeechModelId;
+  name: string;
+  description: string;
+  sizeLabel: string;
+  installed: boolean;
+  installing: boolean;
+  progress: number;
+  error?: string;
 }
 export type SessionBranchType = "subagent" | "fork" | "clone" | "btw";
 export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork" | "clone";
@@ -89,6 +106,29 @@ export interface SessionAvatar {
   text?: string;
   color?: string;
   icon?: string | null;
+}
+
+export type GitChangedFileStatus = "added" | "modified" | "deleted";
+
+export interface SessionGitChangedFile {
+  path: string;
+  status: GitChangedFileStatus;
+}
+
+export interface SessionGitPendingUpdate {
+  sourceSessionId: number;
+  sourceTitle?: string | null;
+  branch: string;
+  files: SessionGitChangedFile[];
+  markedAt: number;
+}
+
+export interface SessionGitMeta {
+  worktreePath?: string;
+  branch?: string;
+  lastCommit?: { hash: string; message: string };
+  mergeError?: string;
+  pendingUpdate?: SessionGitPendingUpdate;
 }
 
 /** Session with UI-specific fields */
@@ -187,6 +227,8 @@ export interface Agent {
     args?: string[];
     env?: Record<string, string>;
     permissionPolicy?: "allow_once" | "reject_once";
+    detectArgs?: string[];
+    installCommand?: string;
   } | null;
   permissionRules: AgentPermissionRules;
   meta: Record<string, unknown>;
@@ -195,6 +237,7 @@ export interface Agent {
   unavailableReason: string | null;
   detectedVersion: string | null;
   compatibility: "compatible" | "unknown" | "unavailable";
+  installCommand: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -462,6 +505,12 @@ export interface ShadowSuggestionsEvent {
   timestamp: number;
 }
 
+export interface ShadowRunningEvent {
+  type: "shadow_running";
+  running: boolean;
+  timestamp: number;
+}
+
 /** Operational toast from backend (not an LLM error card). */
 export interface UiNotifyEvent {
   type: "ui_notify";
@@ -490,6 +539,7 @@ export interface ApprovalPendingEvent {
 export type SessionStreamEvent =
   | AgentEvent
   | ShadowSuggestionsEvent
+  | ShadowRunningEvent
   | UiNotifyEvent
   | SessionStatusEvent
   | ApprovalPendingEvent;
@@ -649,7 +699,13 @@ export interface FileContentResponse {
 
 // ============ Configuration ============
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? "";
+import { getMobileServerPin, getMobileServerUrl } from "../utils/mobile-server-config";
+
+function getApiBase(): string {
+  const mobileUrl = getMobileServerUrl();
+  if (mobileUrl) return mobileUrl;
+  return import.meta.env.VITE_API_BASE ?? "";
+}
 
 interface RawProvider {
   id: number;
@@ -755,19 +811,28 @@ function isAbortError(error: unknown): boolean {
 }
 
 async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, withAuth(options));
+  const res = await fetch(`${getApiBase()}${path}`, withAuth(options));
   if (!res.ok) {
     const err = await res.text().catch(() => "Unknown error");
+    const trimmed = err.trim();
+    if (trimmed === "NOT_FOUND" || res.status === 404) {
+      throw new Error("接口不存在，请重启后端服务后再试");
+    }
     try {
       const parsed = JSON.parse(err) as { error?: string; message?: string };
       const message = parsed.error ?? parsed.message;
-      if (message) throw new Error(message);
-    } catch (error) {
-      if (error instanceof Error && error.message !== err && !error.message.startsWith("HTTP ")) {
-        throw error;
+      if (typeof message === "string" && message.trim()) {
+        const lower = message.trim().toLowerCase();
+        if (lower === "not found" || lower === "not_found") {
+          throw new Error("接口不存在，请重启后端服务后再试");
+        }
+        throw new Error(message);
       }
+    } catch (error) {
+      // 仅重新抛出业务 Error，忽略 JSON.parse 的 SyntaxError
+      if (error instanceof Error && !(error instanceof SyntaxError)) throw error;
     }
-    throw new Error(`HTTP ${res.status}: ${err}`);
+    throw new Error(trimmed ? `HTTP ${res.status}: ${trimmed}` : `HTTP ${res.status}`);
   }
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
@@ -781,8 +846,7 @@ const WEB_PASSWORD_KEY = "pi-supervisor-web-password";
 let tunnelQuickCached: boolean | null = null;
 
 function withAuth(options: RequestInit = {}): RequestInit {
-  const password =
-    typeof localStorage === "undefined" ? "" : localStorage.getItem(WEB_PASSWORD_KEY);
+  const password = readStoredPassword();
   if (!password) return options;
   const headers = new Headers(options.headers);
   headers.set("x-supervisor-password", password);
@@ -791,6 +855,8 @@ function withAuth(options: RequestInit = {}): RequestInit {
 
 function readStoredPassword(): string {
   if (typeof localStorage === "undefined") return "";
+  const mobilePin = getMobileServerPin();
+  if (mobilePin) return mobilePin;
   return localStorage.getItem(WEB_PASSWORD_KEY) ?? "";
 }
 
@@ -807,7 +873,7 @@ export async function shouldUseSessionWebSocket(): Promise<boolean> {
     return true;
   }
   try {
-    const response = await fetch(`${API_BASE}/healthz`);
+    const response = await fetch(`${getApiBase()}/healthz`);
     if (response.ok) {
       const body = (await response.json()) as { tunnelQuick?: boolean };
       tunnelQuickCached = Boolean(body.tunnelQuick);
@@ -821,7 +887,7 @@ export async function shouldUseSessionWebSocket(): Promise<boolean> {
 }
 
 function sessionWebSocketUrl(): string {
-  const base = new URL(API_BASE || window.location.origin);
+  const base = new URL(getApiBase() || window.location.origin);
   base.protocol = base.protocol === "https:" ? "wss:" : "ws:";
   base.pathname = `${base.pathname.replace(/\/$/, "")}/ws`;
   const password = readStoredPassword();
@@ -860,7 +926,7 @@ export async function getAuthStatus(): Promise<{
   authenticated: boolean;
   tunnelQuick?: boolean;
 }> {
-  const response = await fetch(`${API_BASE}/auth/status`, withAuth());
+  const response = await fetch(`${getApiBase()}/auth/status`, withAuth());
   // Backward compatibility while the web UI and Supervisor process are being
   // upgraded independently: an older server has no auth endpoint and therefore
   // must be treated as password protection disabled.
@@ -917,10 +983,28 @@ export function updateSupervisorSettings(
   return patchJson<SupervisorSettings>("/settings", patch);
 }
 
+export function listLocalSpeechModels(): Promise<{
+  selectedId: LocalSpeechModelId;
+  models: LocalSpeechModelStatus[];
+}> {
+  return fetchJson("/settings/local-speech/models");
+}
+
+export function installLocalSpeechModel(id: LocalSpeechModelId): Promise<{
+  selectedId: LocalSpeechModelId;
+  models: LocalSpeechModelStatus[];
+}> {
+  return postJson("/settings/local-speech/install", { id });
+}
+
 export function testSettingsApiKey(
   provider: "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl",
   apiKey?: string,
-  options?: { appId?: string; accessToken?: string },
+  options?: {
+    appId?: string;
+    accessToken?: string;
+    preset?: SupervisorSettings["doubaoSpeechPreset"];
+  },
 ): Promise<{ ok: true }> {
   return postJson<{ ok: true }>("/settings/test-api-key", { provider, apiKey, ...options });
 }
@@ -1002,37 +1086,21 @@ export async function pickDirectory(
   });
 }
 
-export interface ProjectScript {
-  id: number;
-  projectId: number;
-  kind: "install" | "start" | "destroy";
-  name: string;
-  command: string;
-  sortOrder: number;
-}
-
-export async function listProjectScripts(id: string): Promise<ProjectScript[]> {
-  return fetchJson<ProjectScript[]>(`/projects/${id}/scripts`);
-}
-
 export async function parseProject(id: string): Promise<{
   description: string | null;
   status: "ready" | "skipped" | "error";
   error?: string;
   project: Project;
-  scripts: ProjectScript[];
 }> {
   const result = await postJson<{
     description: string | null;
     status: "ready" | "skipped" | "error";
     error?: string;
     project: RawProject;
-    scripts?: ProjectScript[];
   }>(`/projects/${id}/parse`, {});
   return {
     ...result,
     project: mapProject(result.project),
-    scripts: result.scripts ?? [],
   };
 }
 
@@ -1291,6 +1359,43 @@ export async function syncSession(id: string): Promise<Session> {
   return mapSession(session);
 }
 
+export interface SessionServicesSnapshot {
+  status: "starting" | "running" | "stopped" | "error" | "unregistered" | "none";
+  sleepAt?: number;
+  installedAt?: string;
+  uiPorts: Array<{
+    scriptName: string;
+    envVar: string;
+    label?: string;
+    path?: string;
+  }>;
+  previews: Array<{
+    scriptName: string;
+    envVar: string;
+    label?: string;
+    path?: string;
+    previewUrl: string;
+  }>;
+  error?: string;
+}
+
+export async function getSessionServices(id: string): Promise<SessionServicesSnapshot> {
+  return fetchJson<SessionServicesSnapshot>(`/sessions/${id}/services`);
+}
+
+export async function wakeSessionServices(id: string): Promise<SessionServicesSnapshot> {
+  return postJson<SessionServicesSnapshot>(`/sessions/${id}/services/wake`, {});
+}
+
+export function buildSessionPreviewUrl(sessionId: string, scriptName: string, path = "/"): string {
+  const base = getApiBase();
+  const normalized = path.startsWith("/") ? path.slice(1) : path;
+  const encoded = encodeURIComponent(scriptName);
+  return normalized
+    ? `${base}/sessions/${sessionId}/preview/${encoded}/${normalized}`
+    : `${base}/sessions/${sessionId}/preview/${encoded}/`;
+}
+
 export interface SessionCheckpoint {
   id: string;
   entryId: string;
@@ -1420,7 +1525,7 @@ export function promptSession(
       }
 
       const res = await fetch(
-        `${API_BASE}/sessions/${id}/prompt`,
+        `${getApiBase()}/sessions/${id}/prompt`,
         withAuth({
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1955,7 +2060,7 @@ export function subscribeSessionEvents(
       }
 
       const res = await fetch(
-        `${API_BASE}/sessions/${sessionId}/events`,
+        `${getApiBase()}/sessions/${sessionId}/events`,
         withAuth({
           signal: abortController.signal,
         }),
@@ -2036,6 +2141,26 @@ export async function listAgents(): Promise<Agent[]> {
 
 export async function detectExternalAgents(): Promise<Agent[]> {
   return (await postJson<RawAgent[]>("/agents/detect", {})).map(mapAgent);
+}
+
+/** Install an external agent via its packaged install command. */
+export async function installExternalAgent(id: string): Promise<Agent> {
+  return mapAgent(await postJson<RawAgent>(`/agents/${id}/install`, {}));
+}
+
+/** Ask Watson to repair an unavailable external agent. */
+export async function repairExternalAgent(
+  id: string,
+): Promise<{ agent: Agent; summary: string; fixed: boolean }> {
+  const raw = await postJson<{ agent: RawAgent; summary: string; fixed: boolean }>(
+    `/agents/${id}/repair`,
+    {},
+  );
+  return {
+    agent: mapAgent(raw.agent),
+    summary: raw.summary,
+    fixed: raw.fixed,
+  };
 }
 
 /** Get a single agent by ID. */
@@ -2157,17 +2282,27 @@ export interface LogEntry {
   meta?: Record<string, unknown>;
 }
 
-/** Get session log entries with optional filtering by level and tags. */
+/** Get session log entries with optional filtering and pagination. */
 export async function getSessionLog(
   id: string,
-  options?: { level?: string; tags?: string[] },
-): Promise<LogEntry[]> {
+  options?: {
+    level?: string;
+    tags?: string[];
+    limit?: number;
+    before?: number;
+    after?: number;
+  },
+): Promise<{ entries: LogEntry[]; hasMore: boolean }> {
   const params = new URLSearchParams();
   if (options?.level) params.set("level", options.level);
   if (options?.tags?.length) params.set("tags", options.tags.join(","));
+  if (options?.limit != null) params.set("limit", String(options.limit));
+  if (options?.before != null) params.set("before", String(options.before));
+  if (options?.after != null) params.set("after", String(options.after));
   const qs = params.toString();
-  const body = await fetchJson<{ entries: LogEntry[] }>(`/sessions/${id}/log${qs ? `?${qs}` : ""}`);
-  return body.entries;
+  return fetchJson<{ entries: LogEntry[]; hasMore: boolean }>(
+    `/sessions/${id}/log${qs ? `?${qs}` : ""}`,
+  );
 }
 
 // ============ Session Files API ============
@@ -2201,6 +2336,28 @@ export async function getSessionFiles(
 export async function getSessionFileContent(id: string, path: string): Promise<SessionFileContent> {
   const params = new URLSearchParams({ path });
   return fetchJson<SessionFileContent>(`/sessions/${id}/files/content?${params}`);
+}
+
+export interface SessionFileDiffLine {
+  type: "context" | "add" | "del";
+  content: string;
+  oldLineNo?: number;
+  newLineNo?: number;
+}
+
+export type SessionFileDiffStatus = "added" | "modified" | "deleted" | "unchanged" | "binary";
+
+export interface SessionFileDiff {
+  path: string;
+  status: SessionFileDiffStatus;
+  lines: SessionFileDiffLine[];
+  truncated?: boolean;
+}
+
+/** Inline diff vs git HEAD for a session workspace file. */
+export async function getSessionFileDiff(id: string, path: string): Promise<SessionFileDiff> {
+  const params = new URLSearchParams({ path });
+  return fetchJson<SessionFileDiff>(`/sessions/${id}/files/diff?${params}`);
 }
 
 // ============ Resource API ============
@@ -2488,7 +2645,7 @@ export async function uploadSessionMedia(sessionId: string, file: File): Promise
   const body = new FormData();
   body.append("file", file, file.name || "image.png");
   const res = await fetch(
-    `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/media`,
+    `${getApiBase()}/sessions/${encodeURIComponent(sessionId)}/media`,
     withAuth({
       method: "POST",
       body,
@@ -2507,7 +2664,7 @@ export async function uploadSessionMedia(sessionId: string, file: File): Promise
 }
 
 export function sessionMediaUrl(sessionId: string, mediaId: string): string {
-  const base = `${API_BASE}/sessions/${encodeURIComponent(sessionId)}/media/${encodeURIComponent(mediaId)}`;
+  const base = `${getApiBase()}/sessions/${encodeURIComponent(sessionId)}/media/${encodeURIComponent(mediaId)}`;
   const password = localStorage.getItem(WEB_PASSWORD_KEY);
   return password ? `${base}?password=${encodeURIComponent(password)}` : base;
 }
@@ -2517,4 +2674,26 @@ export function sessionMediaUrl(sessionId: string, mediaId: string): string {
 /** Health check. */
 export async function healthCheck(): Promise<{ ok: boolean }> {
   return fetchJson<{ ok: boolean }>("/healthz");
+}
+
+export interface PushDeviceRegistration {
+  deviceId: string;
+  platform: "ios" | "android" | "web";
+  pushToken: string;
+  manufacturerPushToken?: string;
+  manufacturer?: string;
+  model?: string;
+  appVersion?: string;
+}
+
+export async function registerPushDevice(input: PushDeviceRegistration): Promise<void> {
+  await fetchJson("/devices", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function unregisterPushDevice(deviceId: string): Promise<void> {
+  await fetchJson(`/devices/${encodeURIComponent(deviceId)}`, { method: "DELETE" });
 }

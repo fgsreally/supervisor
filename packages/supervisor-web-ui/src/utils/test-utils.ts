@@ -50,6 +50,7 @@ export function createMockAgent(overrides: Partial<Agent> = {}): Agent {
     unavailableReason: null,
     detectedVersion: null,
     compatibility: "compatible",
+    installCommand: null,
     externalConfig: null,
     permissionRules: {},
     createdAt: new Date().toISOString(),

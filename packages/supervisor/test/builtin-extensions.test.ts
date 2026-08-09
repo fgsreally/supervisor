@@ -34,7 +34,7 @@ afterEach(() => {
 });
 
 describe("builtin extension catalog bindings", () => {
-  it("registers builtin resources and agent bindings without resetting enabled", () => {
+  it("registers builtin resources and keeps builtin slugs active regardless of enabled flag", () => {
     const modelId = db.listModels()[0]!.id;
     ensureBuiltinExtensionResources(db);
     for (const spec of BUILTIN_EXTENSIONS) {
@@ -59,7 +59,7 @@ describe("builtin extension catalog bindings", () => {
     expect(db.getAgentResourceBinding(agent.id, mcp.id)?.enabled).toBe(false);
 
     const enabled = listEnabledBuiltinExtensionSlugs(db, agent.id, { isMainSession: true });
-    expect(enabled.has("mcp")).toBe(false);
+    expect(enabled.has("mcp")).toBe(true);
     expect(enabled.has("skill")).toBe(true);
 
     const assistant = db.insertAgent({

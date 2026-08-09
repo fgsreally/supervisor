@@ -33,8 +33,17 @@ import {
   isUtilityFeature,
   readSupervisorSettings,
   isDoubaoSpeechConfigured,
+  isDoubaoSpeechPresetId,
+  resolveSpeechRecognitionMode,
   writeSupervisorSettings,
 } from "../utils/supervisor-settings.js";
+import {
+  installLocalSpeechModel,
+  isLocalSpeechModelId,
+  isLocalSpeechReady,
+  listLocalSpeechModelStatuses,
+  resolveLocalSpeechModel,
+} from "../speech/local-asr.js";
 import { ensureSupervisorPublicDir } from "../utils/supervisor-home.js";
 import {
   SupervisorElysiaBuilder,
@@ -71,8 +80,14 @@ import {
   type SessionStatus,
 } from "../types.js";
 import { listWorkspaceFiles } from "./workspace-files.js";
+import { readSessionWorkspaceFileDiff } from "./session-file-diff.js";
 import { listSessionWorkspaceFiles, readSessionWorkspaceFile } from "./session-workspace-files.js";
 import { readSessionLog } from "../utils/session-log.js";
+import {
+  buildSessionServicesDto,
+  proxySessionPreviewRequest,
+  resolveSessionPreviewTarget,
+} from "../core/session-preview-proxy.js";
 import { pickDirectory } from "../utils/pick-directory.js";
 import { sessionTimersToScheduleDto } from "../core/session-timers.js";
 
@@ -164,6 +179,7 @@ const API_PATH_PREFIXES = [
   "/extensions",
   "/resources",
   "/settings",
+  "/devices",
   "/jobs",
   "/uploaded-icons",
   "/approvals",
@@ -209,12 +225,7 @@ function emitSessionExtensionEvent(
   sessionId: number,
   event: ExtensionEvent,
 ): void {
-  try {
-    const runtime = manager.getRuntime(sessionId);
-    void runtime.extension?.emit(event).catch(() => {});
-  } catch {
-    // session may not be loaded yet
-  }
+  void manager.emitSessionExtensionEvent(sessionId, event).catch(() => {});
 }
 
 function parseIntegerId(value: string): number | null {
@@ -574,8 +585,12 @@ export function createHttpServer(
       doubaoSpeechAccessTokenEncrypted,
       ...safeSettings
     } = settings;
+    const speechRecognitionMode = resolveSpeechRecognitionMode(settings);
+    const localSpeechModelId = resolveLocalSpeechModel(settings.localSpeechModelId).id;
     return c.json({
       ...safeSettings,
+      speechRecognitionMode,
+      localSpeechModelId,
       tavilyApiKeyConfigured: Boolean(
         _tavily || process.env[safeSettings.tavilyApiKeyEnv ?? "TAVILY_API_KEY"],
       ),
@@ -592,7 +607,90 @@ export function createHttpServer(
       doubaoSpeechAppIdConfigured: Boolean(safeSettings.doubaoSpeechAppId?.trim()),
       doubaoSpeechAccessTokenConfigured: Boolean(doubaoSpeechAccessTokenEncrypted),
       doubaoSpeechConfigured: isDoubaoSpeechConfigured(settings),
+      localSpeechConfigured: isLocalSpeechReady(localSpeechModelId),
+      localSpeechModels: listLocalSpeechModelStatuses(),
+      pushFcmConfigured: Boolean(settings.pushFcmServiceAccountEncrypted),
+      pushApnsConfigured: Boolean(
+        settings.pushApnsKeyEncrypted &&
+        settings.pushApnsKeyId &&
+        settings.pushApnsTeamId &&
+        settings.pushApnsBundleId,
+      ),
     });
+  });
+
+  app.get("/settings/local-speech/models", (c) => {
+    return c.json({
+      selectedId: resolveLocalSpeechModel(readSupervisorSettings().localSpeechModelId).id,
+      models: listLocalSpeechModelStatuses(),
+    });
+  });
+
+  app.post("/settings/local-speech/install", async (c) => {
+    const body = await c.req.json<{ id?: string }>().catch(() => null);
+    const id = typeof body?.id === "string" ? body.id : "";
+    if (!isLocalSpeechModelId(id)) return jsonError(c, 400, "invalid local speech model id");
+    // 后台下载，前端轮询 models 状态
+    void installLocalSpeechModel(id).catch(() => {
+      // 错误写入 installState，由 GET 暴露
+    });
+    return c.json({
+      selectedId: resolveLocalSpeechModel(readSupervisorSettings().localSpeechModelId).id,
+      models: listLocalSpeechModelStatuses(),
+    });
+  });
+
+  // ============ Push devices (mobile app) ============
+
+  app.get("/devices", (c) => {
+    const devices = manager.listPushDevices().map((row) => ({
+      id: row.id,
+      deviceId: row.device_id,
+      platform: row.platform,
+      manufacturer: row.manufacturer,
+      model: row.model,
+      appVersion: row.app_version,
+      lastSeen: row.last_seen,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+    return c.json({ devices });
+  });
+
+  app.post("/devices", async (c) => {
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
+    const deviceId = typeof body.deviceId === "string" ? body.deviceId.trim() : "";
+    const platform = typeof body.platform === "string" ? body.platform.trim() : "";
+    const pushToken = typeof body.pushToken === "string" ? body.pushToken.trim() : "";
+    if (!deviceId || !pushToken) return jsonError(c, 400, "deviceId and pushToken are required");
+    if (platform !== "ios" && platform !== "android" && platform !== "web") {
+      return jsonError(c, 400, "platform must be ios, android, or web");
+    }
+    const row = manager.upsertPushDevice({
+      deviceId,
+      platform,
+      pushToken,
+      manufacturerPushToken:
+        typeof body.manufacturerPushToken === "string" ? body.manufacturerPushToken.trim() : null,
+      manufacturer: typeof body.manufacturer === "string" ? body.manufacturer : null,
+      model: typeof body.model === "string" ? body.model : null,
+      appVersion: typeof body.appVersion === "string" ? body.appVersion : null,
+    });
+    return c.json({
+      id: row.id,
+      deviceId: row.device_id,
+      platform: row.platform,
+      lastSeen: row.last_seen,
+    });
+  });
+
+  app.delete("/devices/:deviceId", (c) => {
+    const deviceId = c.req.param("deviceId")?.trim();
+    if (!deviceId) return jsonError(c, 400, "deviceId is required");
+    const removed = manager.deletePushDevice(deviceId);
+    if (!removed) return jsonError(c, 404, "device not found");
+    return c.json({ ok: true });
   });
 
   app.patch("/settings", async (c) => {
@@ -708,11 +806,20 @@ export function createHttpServer(
     if (body.speechRecognitionMode !== undefined) {
       if (
         typeof body.speechRecognitionMode !== "string" ||
-        !["browser", "qwen", "doubao"].includes(body.speechRecognitionMode)
+        !["local", "qwen", "doubao"].includes(body.speechRecognitionMode)
       ) {
         return jsonError(c, 400, "invalid speechRecognitionMode");
       }
-      patch.speechRecognitionMode = body.speechRecognitionMode;
+      patch.speechRecognitionMode = body.speechRecognitionMode as "local" | "qwen" | "doubao";
+    }
+    if (body.localSpeechModelId !== undefined) {
+      if (
+        typeof body.localSpeechModelId !== "string" ||
+        !isLocalSpeechModelId(body.localSpeechModelId)
+      ) {
+        return jsonError(c, 400, "invalid localSpeechModelId");
+      }
+      patch.localSpeechModelId = body.localSpeechModelId;
     }
     if (body.speechRecognitionLanguage !== undefined) {
       if (
@@ -745,6 +852,15 @@ export function createHttpServer(
         ? encryptApiKey(body.doubaoSpeechAccessToken)
         : undefined;
     }
+    if (body.doubaoSpeechPreset !== undefined) {
+      if (
+        typeof body.doubaoSpeechPreset !== "string" ||
+        !isDoubaoSpeechPresetId(body.doubaoSpeechPreset)
+      ) {
+        return jsonError(c, 400, "invalid doubaoSpeechPreset");
+      }
+      patch.doubaoSpeechPreset = body.doubaoSpeechPreset;
+    }
     const saved = writeSupervisorSettings(patch);
     const {
       tavilyApiKeyEncrypted,
@@ -755,8 +871,12 @@ export function createHttpServer(
       doubaoSpeechAccessTokenEncrypted,
       ...safeSaved
     } = saved;
+    const speechRecognitionMode = resolveSpeechRecognitionMode(saved);
+    const localSpeechModelId = resolveLocalSpeechModel(saved.localSpeechModelId).id;
     return c.json({
       ...safeSaved,
+      speechRecognitionMode,
+      localSpeechModelId,
       tavilyApiKeyConfigured: Boolean(
         tavilyApiKeyEncrypted || process.env[safeSaved.tavilyApiKeyEnv ?? "TAVILY_API_KEY"],
       ),
@@ -774,6 +894,8 @@ export function createHttpServer(
       doubaoSpeechAppIdConfigured: Boolean(safeSaved.doubaoSpeechAppId?.trim()),
       doubaoSpeechAccessTokenConfigured: Boolean(doubaoSpeechAccessTokenEncrypted),
       doubaoSpeechConfigured: isDoubaoSpeechConfigured(saved),
+      localSpeechConfigured: isLocalSpeechReady(localSpeechModelId),
+      localSpeechModels: listLocalSpeechModelStatuses(),
     });
   });
 
@@ -803,10 +925,14 @@ export function createHttpServer(
         if (!accessToken && settings.doubaoSpeechAccessTokenEncrypted) {
           accessToken = decryptApiKey(settings.doubaoSpeechAccessTokenEncrypted);
         }
-        if (!appId || !accessToken) {
+        if (!appId && !accessToken) {
           return jsonError(c, 409, "App ID or Access Token is not configured");
         }
-        await testApiKey(providerName, { appId, accessToken });
+        const preset =
+          typeof body.preset === "string" && isDoubaoSpeechPresetId(body.preset)
+            ? body.preset
+            : settings.doubaoSpeechPreset;
+        await testApiKey(providerName, { appId, accessToken, preset });
         return c.json({ ok: true });
       }
 
@@ -845,6 +971,40 @@ export function createHttpServer(
   });
 
   app.post("/agents/detect", (c) => c.json(manager.detectExternalAgents()));
+
+  // POST /agents/:id/install — run packaged install command for an external agent
+  app.post("/agents/:id/install", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid agent id");
+    try {
+      return c.json(await manager.installExternalAgent(id));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message.includes("not found")
+        ? 404
+        : message.includes("无需安装") || message.includes("未配置")
+          ? 409
+          : 500;
+      return jsonError(c, status, message);
+    }
+  });
+
+  // POST /agents/:id/repair — Watson helps fix unavailable external agents
+  app.post("/agents/:id/repair", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid agent id");
+    try {
+      return c.json(await manager.repairExternalAgent(id));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const status = message.includes("not found")
+        ? 404
+        : message.includes("无需修复") || message.includes("未配置")
+          ? 409
+          : 500;
+      return jsonError(c, status, message);
+    }
+  });
 
   // POST /system/pick-directory — native folder dialog on the supervisor host
   app.post("/system/pick-directory", async (c) => {
@@ -952,8 +1112,7 @@ export function createHttpServer(
           typeof body.description === "string" || body.description === null
             ? body.description
             : undefined,
-        avatar:
-          typeof body.avatar === "string" || body.avatar === null ? body.avatar : undefined,
+        avatar: typeof body.avatar === "string" || body.avatar === null ? body.avatar : undefined,
         model_id:
           typeof body.modelId === "number" || body.modelId === null ? body.modelId : undefined,
         tools_preset:
@@ -1332,7 +1491,7 @@ export function createHttpServer(
     if (!body || typeof body !== "object" || body.name !== project.name) {
       return jsonError(c, 400, "请输入正确的项目名以确认删除");
     }
-    manager.deleteProject(id);
+    await manager.deleteProject(id);
     return c.json({ ok: true });
   });
 
@@ -1345,7 +1504,6 @@ export function createHttpServer(
       return c.json({
         ...result,
         project: manager.getProject(id),
-        scripts: manager.database.listProjectScripts(id),
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1355,13 +1513,6 @@ export function createHttpServer(
         message,
       );
     }
-  });
-
-  app.get("/projects/:id/scripts", (c) => {
-    const id = parseIntegerId(c.req.param("id"));
-    if (id === null) return jsonError(c, 400, "invalid project id");
-    if (!manager.getProject(id)) return jsonError(c, 404, "not found");
-    return c.json(manager.database.listProjectScripts(id));
   });
 
   app.post("/projects/:id/git/pull", async (c) => {
@@ -1483,10 +1634,16 @@ export function createHttpServer(
           .map((t) => t.trim())
           .filter(Boolean)
       : undefined;
+    const limitRaw = Number(c.req.query("limit"));
+    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    const beforeRaw = Number(c.req.query("before"));
+    const before = Number.isFinite(beforeRaw) ? beforeRaw : undefined;
+    const afterRaw = Number(c.req.query("after"));
+    const after = Number.isFinite(afterRaw) ? afterRaw : undefined;
     try {
-      return c.json({
-        entries: readSessionLog(session.projectId, session.id, { level, tags }),
-      });
+      return c.json(
+        readSessionLog(session.projectId, session.id, { level, tags, limit, before, after }),
+      );
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 500, message);
@@ -1523,6 +1680,24 @@ export function createHttpServer(
       const message = e instanceof Error ? e.message : String(e);
       if (/outside|invalid path/i.test(message)) return jsonError(c, 403, message);
       if (/not found|not a file/i.test(message)) return jsonError(c, 404, message);
+      return jsonError(c, 500, message);
+    }
+  });
+
+  // GET /sessions/:id/files/diff?path= — inline diff vs git HEAD (uncommitted)
+  app.get("/sessions/:id/files/diff", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "not found");
+    if (!session.cwd) return jsonError(c, 400, "session has no cwd");
+    const path = c.req.query("path");
+    if (!path) return jsonError(c, 400, "path is required");
+    try {
+      return c.json(readSessionWorkspaceFileDiff(session.cwd, path));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      if (/outside|invalid path/i.test(message)) return jsonError(c, 403, message);
       return jsonError(c, 500, message);
     }
   });
@@ -1874,6 +2049,58 @@ export function createHttpServer(
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       return jsonError(c, 409, message);
+    }
+  });
+
+  // GET /sessions/:id/services — project service stack status and preview URLs
+  app.get("/sessions/:id/services", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "not found");
+    const origin = new URL(c.req.raw.url).origin;
+    return c.json(buildSessionServicesDto(session, origin));
+  });
+
+  // POST /sessions/:id/services/wake — manually wake stopped project services
+  app.post("/sessions/:id/services/wake", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "not found");
+    try {
+      await manager.emitSessionExtensionEvent(id, {
+        type: "session.services_wake",
+        sessionId: id,
+      });
+      const refreshed = manager.get(id)!;
+      const origin = new URL(c.req.raw.url).origin;
+      return c.json(buildSessionServicesDto(refreshed, origin));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 409, message);
+    }
+  });
+
+  // Proxy UI preview for session project services (supports remote/tunnel access)
+  app.all("/sessions/:id/preview/:scriptName/*", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "not found");
+    const scriptName = decodeURIComponent(c.req.param("scriptName"));
+    const requestUrl = new URL(c.req.raw.url);
+    const target = resolveSessionPreviewTarget({
+      session,
+      scriptName,
+      requestPath: requestUrl.pathname,
+    });
+    if (!target) return jsonError(c, 404, "preview not available");
+    try {
+      return await proxySessionPreviewRequest(c.req.raw, target);
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 502, message);
     }
   });
 
@@ -2693,11 +2920,11 @@ export function createHttpServer(
   });
 
   // DELETE /sessions/:id  — delete DB record only, does NOT kill the process
-  app.delete("/sessions/:id", (c) => {
+  app.delete("/sessions/:id", async (c) => {
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
-      manager.delete(id);
+      await manager.delete(id);
       return c.json({ ok: true });
     } catch (e: unknown) {
       return jsonError(c, 409, e instanceof Error ? e.message : String(e));
@@ -2895,12 +3122,7 @@ export function createHttpServer(
     ) {
       return jsonError(c, 400, "invalid interaction action");
     }
-    const normalizedAction = action as
-      | "approve"
-      | "approve_session"
-      | "deny"
-      | "cancel"
-      | "answer";
+    const normalizedAction = action as "approve" | "approve_session" | "deny" | "cancel" | "answer";
     const answers = body.answers;
     if (
       answers !== undefined &&
@@ -3137,10 +3359,15 @@ export function createHttpServer(
       if (agentId === null) return jsonError(c, 400, "invalid agent id");
       const mutationError = getAgentMutationError(manager, agentId);
       if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
-      const binding = manager.resources.bindResource(
-        parseBindResourceBody(agentId, body as Record<string, unknown>),
-      );
-      manager.reloadNativeSessionResources(agentId);
+      const bindInput = parseBindResourceBody(agentId, body as Record<string, unknown>);
+      const binding = manager.resources.bindResource(bindInput);
+      const kind =
+        "kind" in bindInput ? bindInput.kind : manager.getResource(binding.resourceId)?.kind;
+      if (kind === "extension") {
+        await manager.reloadNativeAgentExtensions(agentId);
+      } else {
+        manager.reloadNativeSessionResources(agentId);
+      }
       return c.json({ ok: true, binding });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -3158,8 +3385,13 @@ export function createHttpServer(
       }
       const mutationError = getAgentMutationError(manager, agentId);
       if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
+      const resource = manager.getResource(resourceId);
       await manager.resources.unbindResource({ agentId, resourceId });
-      manager.reloadNativeSessionResources(agentId);
+      if (resource?.kind === "extension") {
+        await manager.reloadNativeAgentExtensions(agentId);
+      } else {
+        manager.reloadNativeSessionResources(agentId);
+      }
       return c.json({ ok: true });
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);

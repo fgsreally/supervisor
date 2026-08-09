@@ -13,6 +13,7 @@
         @send="emit('send')"
       />
       <ChatInputToolbar
+        :voice="voice"
         :disabled="disabled"
         :can-send="!!text.trim() && !disabled"
         @action="onToolbarAction"
@@ -25,6 +26,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useResizableHeight } from "../composables/use-resizable-height";
+import { useVoiceRecognition } from "../composables/use-voice-recognition";
 import ChatComposer from "./ChatComposer.vue";
 import ChatInputToolbar, { type ChatToolbarAction } from "./ChatInputToolbar.vue";
 import ResizeHandle from "./ResizeHandle.vue";
@@ -58,6 +60,7 @@ const { height: panelHeight, startResize } = useResizableHeight({
 const editorHeight = computed(() => Math.max(40, panelHeight.value - TOOLBAR_HEIGHT));
 
 const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null);
+const voice = useVoiceRecognition();
 
 function onToolbarAction(action: ChatToolbarAction) {
   switch (action) {

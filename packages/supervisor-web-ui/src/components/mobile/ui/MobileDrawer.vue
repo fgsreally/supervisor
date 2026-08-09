@@ -1,12 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition :name="overlayTransition">
-      <div
-        v-if="open"
-        class="m-overlay"
-        :class="overlayClass"
-        @mousedown.self="onBackdropClick"
-      >
+      <div v-if="open" class="m-overlay" :class="overlayClass" @mousedown.self="onBackdropClick">
         <section
           ref="panelRef"
           class="m-drawer"
@@ -121,13 +116,11 @@ const canResize = computed(() => {
 /** Sheet 模式始终展示把手（对齐会话工具菜单）；仅可调整高度时响应拖拽。 */
 const showHandle = computed(() => sheetMode.value);
 
-const showHeader = computed(
-  () => Boolean(slots.header || props.title || (!sheetMode.value && props.showClose)),
+const showHeader = computed(() =>
+  Boolean(slots.header || props.title || (!sheetMode.value && props.showClose)),
 );
 
-const overlayClass = computed(() =>
-  sheetMode.value ? "m-overlay--sheet" : "m-overlay--modal",
-);
+const overlayClass = computed(() => (sheetMode.value ? "m-overlay--sheet" : "m-overlay--modal"));
 
 const overlayTransition = computed(() => (sheetMode.value ? "m-overlay" : "m-overlay"));
 

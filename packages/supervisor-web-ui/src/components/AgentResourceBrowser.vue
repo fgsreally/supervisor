@@ -11,10 +11,10 @@
       <!-- Skills and Extensions with files: skill list + file tree -->
       <template v-if="kind === 'skills' || kind === 'extensions'">
         <div
-          class="resource-browser-sidebar shrink-0 border-r overflow-y-auto custom-scrollbar flex flex-col min-h-0 relative"
+          class="resource-browser-sidebar shrink-0 border-r overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col min-h-0 min-w-0 relative"
           :style="{ width: `${sidebarWidth}px` }"
         >
-          <div class="flex-1 min-h-0 overflow-y-auto">
+          <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
             <div
               v-for="item in skillOrExtItems"
               :key="item.id"
@@ -40,7 +40,7 @@
             </div>
           </div>
           <GlobalResourceBindBar
-            v-if="unlinkedGlobal.length"
+            v-if="showGlobalBindBar"
             :items="unlinkedGlobal"
             :kind="props.kind"
             :binding-item-id="bindingItemId"
@@ -127,7 +127,7 @@
             v-else
             class="resource-browser-empty h-full flex items-center justify-center text-[13px]"
           >
-            选择 {{ kind === "skills" ? "Skill" : "Extension" }} 与文件
+            选择文件
           </div>
         </div>
       </template>
@@ -135,10 +135,10 @@
       <!-- Prompts / MCP: flat file list -->
       <template v-else>
         <div
-          class="resource-browser-sidebar shrink-0 border-r overflow-y-auto custom-scrollbar flex flex-col min-h-0 relative"
+          class="resource-browser-sidebar shrink-0 border-r overflow-y-auto overflow-x-hidden custom-scrollbar flex flex-col min-h-0 min-w-0 relative"
           :style="{ width: `${sidebarWidth}px` }"
         >
-          <div class="flex-1 min-h-0 overflow-y-auto">
+          <div class="flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden">
             <div
               v-for="item in fileItems"
               :key="item.id"
@@ -161,7 +161,7 @@
             </div>
           </div>
           <GlobalResourceBindBar
-            v-if="unlinkedGlobal.length || props.kind === 'prompts' || props.kind === 'mcp'"
+            v-if="showGlobalBindBar"
             :items="unlinkedGlobal"
             :kind="props.kind"
             :binding-item-id="bindingItemId"
@@ -305,6 +305,15 @@ const unlinkedGlobal = computed(() => {
     return path && !linked.has(path);
   });
 });
+
+const showGlobalBindBar = computed(
+  () =>
+    unlinkedGlobal.value.length > 0 ||
+    props.kind === "skills" ||
+    props.kind === "extensions" ||
+    props.kind === "prompts" ||
+    props.kind === "mcp",
+);
 
 async function reloadAgentItems(id: string) {
   loading.value = true;

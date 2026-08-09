@@ -370,6 +370,53 @@ export async function commitGitSnapshot(
   return { hash: hash.slice(0, 12), message: marked };
 }
 
+export async function getHeadHash(cwd: string): Promise<string> {
+  const { stdout } = await runGit(cwd, ["rev-parse", "HEAD"]);
+  return stdout.trim();
+}
+
+export type GitChangedFileStatus = "added" | "modified" | "deleted";
+
+export interface GitChangedFile {
+  path: string;
+  status: GitChangedFileStatus;
+}
+
+function mapGitNameStatus(code: string): GitChangedFileStatus {
+  if (code.startsWith("A")) return "added";
+  if (code.startsWith("D")) return "deleted";
+  return "modified";
+}
+
+/** List file changes between two refs at the repo root. */
+export async function listChangedFilesBetween(
+  repoRoot: string,
+  fromRef: string,
+  toRef: string,
+): Promise<GitChangedFile[]> {
+  const { stdout } = await runGit(repoRoot, [
+    "diff",
+    "--name-status",
+    `${fromRef}..${toRef}`,
+  ]).catch(() => ({ stdout: "", stderr: "" }));
+  const files: GitChangedFile[] = [];
+  for (const line of stdout.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const parts = trimmed.split(/\s+/u);
+    const code = parts[0] ?? "";
+    if (code.startsWith("R") || code.startsWith("C")) {
+      const path = parts[2] ?? parts[1];
+      if (path) files.push({ path, status: "modified" });
+      continue;
+    }
+    const path = parts[1];
+    if (!path) continue;
+    files.push({ path, status: mapGitNameStatus(code) });
+  }
+  return files;
+}
+
 export async function mergeSessionBranch(
   repoRoot: string,
   branch: string,

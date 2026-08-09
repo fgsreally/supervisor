@@ -130,26 +130,26 @@ const emit = defineEmits<{ select: [] }>();
   min-width: 0;
   flex: 1;
   color: var(--app-text-primary);
-  font-size: 12px;
+  font-size: 0.875rem;
   line-height: 1.4;
 }
 .task-card-ui p {
   display: -webkit-box;
   margin: 4px 0 8px;
   overflow: hidden;
-  color: var(--app-text-muted);
-  font-size: 11px;
+  color: var(--app-text-body);
+  font-size: 0.8125rem;
   line-height: 1.5;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
 .task-card-ui__status {
   flex: none;
-  padding: 3px 7px;
+  padding: 3px 8px;
   border-radius: 999px;
   color: var(--app-text-muted);
   background: var(--app-hover);
-  font-size: 9px;
+  font-size: 0.6875rem;
   font-weight: 650;
 }
 .task-card-ui__status[data-status="running"],
@@ -185,7 +185,7 @@ const emit = defineEmits<{ select: [] }>();
   align-items: center;
   gap: 4px;
   color: var(--app-text-secondary);
-  font-size: 9px;
+  font-size: 0.75rem;
 }
 .task-card-ui__project {
   padding: 3px 6px;
@@ -208,12 +208,12 @@ const emit = defineEmits<{ select: [] }>();
   border-radius: 8px;
 }
 .task-card-ui--compact .task-card-ui__heading strong {
-  font-size: 11px;
+  font-size: 0.8125rem;
 }
 .task-card-ui--compact p {
   margin-bottom: 6px;
-  font-size: 10px;
-  -webkit-line-clamp: 1;
+  font-size: 0.75rem;
+  -webkit-line-clamp: 2;
 }
 @media (max-width: 720px) {
   .task-card-ui {

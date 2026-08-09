@@ -23,7 +23,7 @@
 - `sessions`：`title`、`system_prompt`、状态、Agent/Project 关联、`error_msg`、`stage`、`shadow_enabled` 等会话核心字段。
 - `projects`：项目身份、cwd 和核心 UI 字段。
 - `resources`：Skill、Prompt、MCP、Extension catalog；`agent_resources`：Agent 与资源绑定及启用状态。
-- `providers` / `models`：模型服务与模型；`jobs`：执行记录；`project_scripts`：项目启动脚本。
+- `providers` / `models`：模型服务与模型；`jobs`：执行记录。
 - Git/worktree 状态写 `sessions.meta.git = { worktreePath, branch, lastCommit, mergeError }`。
 - Session 扩展状态可写 `sessions.meta`，例如 tasks、todos、subagentIds、timers；自定义键必须带命名空间。
 - 核心 UI/身份字段必须写列，不得塞入 `meta`。不确定 schema 时先执行 `PRAGMA table_info(...)`。

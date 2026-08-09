@@ -1,0 +1,21 @@
+{
+  "appId": "com.supervisor.app",
+  "appName": "Supervisor",
+  "webDir": "../supervisor-web-ui/dist",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": true,
+      "backgroundColor": "#07c160"
+    },
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

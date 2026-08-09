@@ -16,8 +16,7 @@ const visible = ref(false);
 function isStandalone(): boolean {
   return (
     window.matchMedia("(display-mode: standalone)").matches ||
-    ("standalone" in navigator &&
-      Boolean((navigator as { standalone?: boolean }).standalone))
+    ("standalone" in navigator && Boolean((navigator as { standalone?: boolean }).standalone))
   );
 }
 
@@ -28,8 +27,7 @@ function dismiss() {
 
 onMounted(() => {
   const mobile = window.matchMedia("(max-width: 767px) and (pointer: coarse)").matches;
-  visible.value =
-    mobile && !isStandalone() && localStorage.getItem(STORAGE_KEY) !== "1";
+  visible.value = mobile && !isStandalone() && localStorage.getItem(STORAGE_KEY) !== "1";
 });
 </script>
 

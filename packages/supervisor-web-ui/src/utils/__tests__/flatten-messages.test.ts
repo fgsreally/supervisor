@@ -124,9 +124,9 @@ describe("buildDisplayGroups", () => {
     ] as import("@/types/chat-entry").ChatEntry[]);
     const assistantGroups = groups.filter((g) => g.type === "grouped_assistant");
     expect(assistantGroups).toHaveLength(1);
-    expect(assistantGroups[0] && "pieces" in assistantGroups[0] ? assistantGroups[0].pieces : []).toEqual([
-      { kind: "text", text: "第一段\n\n第二段" },
-    ]);
+    expect(
+      assistantGroups[0] && "pieces" in assistantGroups[0] ? assistantGroups[0].pieces : [],
+    ).toEqual([{ kind: "text", text: "第一段\n\n第二段" }]);
   });
 
   it("splits consecutive assistant messages when splitAssistantMessages is enabled", () => {

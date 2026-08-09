@@ -1,0 +1,45 @@
+{
+  "name": "pi-supervisor-native-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capacitor native bridge: foreground service, live status, live activity",
+  "license": "MIT",
+  "author": "",
+  "files": [
+    "android/src/main/",
+    "android/build.gradle",
+    "dist/",
+    "ios/Sources/",
+    "SupervisorNative.podspec"
+  ],
+  "type": "module",
+  "main": "dist/plugin.cjs.js",
+  "module": "dist/esm/index.js",
+  "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
+  "scripts": {
+    "build": "tsdown",
+    "check": "tsc --noEmit",
+    "clean": "shx rm -rf dist",
+    "watch": "tsdown --watch"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/ios": "^6.2.0",
+    "shx": "^0.4.0",
+    "tsdown": "^0.22.3",
+    "typescript": "^5.7.3"
+  },
+  "peerDependencies": {
+    "@capacitor/core": "^6.0.0"
+  },
+  "capacitor": {
+    "ios": {
+      "src": "ios"
+    },
+    "android": {
+      "src": "android"
+    }
+  }
+}

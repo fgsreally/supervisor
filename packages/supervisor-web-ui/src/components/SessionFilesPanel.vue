@@ -109,15 +109,27 @@
                 <button
                   type="button"
                   class="flex items-center gap-1.5 min-w-0 flex-1 text-left py-0.5"
-                  :class="node.filePath ? 'cursor-pointer' : 'cursor-default'"
-                  @click="onNodeClick(node)"
+                  :class="
+                    node.filePath || node.children?.length ? 'cursor-pointer' : 'cursor-default'
+                  "
+                  @click="onNodeClick(node, stat)"
                 >
                   <Folder
                     v-if="node.children?.length"
                     class="w-3.5 h-3.5 shrink-0 text-amber-500/80"
                   />
                   <FileText v-else class="w-3.5 h-3.5 shrink-0 text-sky-500/80" />
-                  <span class="truncate font-mono text-[12px]">{{ node.text }}</span>
+                  <span
+                    class="truncate font-mono text-[12px]"
+                    :class="nodeChangeStatus(node) === 'deleted' ? 'line-through opacity-70' : ''"
+                    >{{ node.text }}</span
+                  >
+                  <small
+                    v-if="node.filePath && nodeChangeStatus(node)"
+                    class="file-tree-status shrink-0"
+                    :class="`file-tree-status--${nodeChangeStatus(node)}`"
+                    >{{ statusLabel(nodeChangeStatus(node)!) }}</small
+                  >
                 </button>
               </div>
             </template>
@@ -202,6 +214,32 @@
             <span v-if="preview" class="text-[11px] shrink-0" style="color: var(--app-text-muted)">
               {{ formatSize(preview.size) }}<template v-if="preview.truncated"> · 已截断</template>
             </span>
+            <div v-if="canShowDiff" class="preview-mode-toggle shrink-0">
+              <button
+                type="button"
+                class="preview-mode-toggle__btn"
+                :class="{ 'preview-mode-toggle__btn--active': previewMode === 'diff' }"
+                @click="previewMode = 'diff'"
+              >
+                Diff
+              </button>
+              <button
+                type="button"
+                class="preview-mode-toggle__btn"
+                :class="{ 'preview-mode-toggle__btn--active': previewMode === 'content' }"
+                :disabled="!canShowContent"
+                @click="previewMode = 'content'"
+              >
+                内容
+              </button>
+            </div>
+          </div>
+          <div
+            v-if="committedHint"
+            class="px-3 md:px-4 py-1.5 text-[11px] shrink-0"
+            style="color: var(--app-text-muted); border-bottom: 1px solid var(--app-border-subtle)"
+          >
+            变更已提交，当前无未提交 diff
           </div>
           <div
             class="session-files-panel__preview-scroll flex-1 min-h-0 overflow-auto custom-scrollbar"
@@ -214,11 +252,30 @@
               读取中…
             </div>
             <div
-              v-else-if="previewError"
+              v-else-if="previewError && !showDiffPanel"
               class="py-12 text-center text-[13px] px-4"
               style="color: var(--app-danger, #ef4444)"
             >
               {{ previewError }}
+            </div>
+            <InlineFileDiffView
+              v-else-if="showDiffPanel && fileDiff"
+              :lines="fileDiff.lines"
+              :truncated="fileDiff.truncated"
+            />
+            <div
+              v-else-if="diffOnlyNoContent"
+              class="py-12 text-center text-[13px] px-4"
+              style="color: var(--app-text-muted)"
+            >
+              文件已删除，请查看 Diff
+            </div>
+            <div
+              v-else-if="fileDiff?.status === 'binary' && !preview"
+              class="py-12 text-center text-[13px] px-4"
+              style="color: var(--app-text-muted)"
+            >
+              二进制文件，暂不支持 diff 预览
             </div>
             <template v-else-if="preview">
               <img
@@ -269,10 +326,14 @@ import {
 } from "lucide-vue-next";
 import {
   getSessionFileContent,
+  getSessionFileDiff,
   getSessionFiles,
   type SessionFileContent,
+  type SessionFileDiff,
   type SessionWorkspaceFileEntry,
 } from "@/api";
+import type { SessionChangedFileView } from "./chat/SessionChangesPopover.vue";
+import InlineFileDiffView from "./InlineFileDiffView.vue";
 import MarkdownContent from "./MarkdownContent.vue";
 
 interface FileTreeNode {
@@ -286,6 +347,7 @@ const props = defineProps<{
   sessionId: string;
   initialPath?: string | null;
   mobile?: boolean;
+  changedFiles?: SessionChangedFileView[];
 }>();
 
 defineEmits<{ close: [] }>();
@@ -299,9 +361,48 @@ const loading = ref(false);
 const listError = ref<string | null>(null);
 const selectedPath = ref<string | null>(null);
 const preview = ref<SessionFileContent | null>(null);
+const fileDiff = ref<SessionFileDiff | null>(null);
+const previewMode = ref<"diff" | "content">("diff");
 const previewLoading = ref(false);
 const previewError = ref<string | null>(null);
 const imageUrl = ref<string | null>(null);
+
+const changeStatusMap = computed(() => {
+  const map = new Map<string, SessionChangedFileView["status"]>();
+  for (const file of props.changedFiles ?? []) {
+    if (file?.path) map.set(file.path.replace(/\\/g, "/"), file.status);
+  }
+  return map;
+});
+
+const canShowDiff = computed(() => {
+  if (!fileDiff.value) return false;
+  if (fileDiff.value.status === "binary" || fileDiff.value.status === "unchanged") return false;
+  if (
+    preview.value &&
+    (preview.value.kind === "image" ||
+      preview.value.kind === "pdf" ||
+      preview.value.kind === "binary")
+  ) {
+    return false;
+  }
+  return fileDiff.value.lines.length > 0;
+});
+
+const canShowContent = computed(() => Boolean(preview.value));
+
+const showDiffPanel = computed(() => canShowDiff.value && previewMode.value === "diff");
+
+const committedHint = computed(() => {
+  if (!selectedPath.value) return false;
+  if (!changeStatusMap.value.has(selectedPath.value)) return false;
+  return fileDiff.value?.status === "unchanged";
+});
+
+const diffOnlyNoContent = computed(() => {
+  if (previewLoading.value || showDiffPanel.value || preview.value) return false;
+  return changeStatusMap.value.get(selectedPath.value ?? "") === "deleted";
+});
 
 const fileCount = computed(() => files.value.filter((f) => !f.isDirectory).length);
 const breadcrumbSegments = computed(() => selectedPath.value?.split("/").filter(Boolean) ?? []);
@@ -370,7 +471,13 @@ function formatTextContent(file: SessionFileContent): string {
 
 function buildTree(entries: SessionWorkspaceFileEntry[]): FileTreeNode[] {
   const root: FileTreeNode[] = [];
-  const fileEntries = entries.filter((e) => !e.isDirectory);
+  const paths = new Set(
+    entries.filter((entry) => !entry.isDirectory).map((entry) => entry.path.replace(/\\/g, "/")),
+  );
+  for (const [path, status] of changeStatusMap.value) {
+    if (status === "deleted") paths.add(path);
+  }
+  const fileEntries = [...paths].map((path) => ({ path, isDirectory: false }));
 
   for (const file of fileEntries) {
     const segments = file.path.replace(/\\/g, "/").split("/").filter(Boolean);
@@ -440,16 +547,49 @@ async function loadPreview(path: string) {
   previewLoading.value = true;
   previewError.value = null;
   preview.value = null;
+  fileDiff.value = null;
+  previewMode.value = "diff";
   revokeImageUrl();
+
+  const isDeleted = changeStatusMap.value.get(path) === "deleted";
+
   try {
-    const file = await getSessionFileContent(props.sessionId, path);
-    preview.value = file;
-    setBinaryPreview(file);
+    const diffPromise = getSessionFileDiff(props.sessionId, path);
+    const contentPromise = isDeleted
+      ? Promise.reject(new Error("file deleted"))
+      : getSessionFileContent(props.sessionId, path);
+
+    const [diffResult, contentResult] = await Promise.allSettled([diffPromise, contentPromise]);
+
+    if (diffResult.status === "fulfilled") {
+      fileDiff.value = diffResult.value;
+    }
+
+    if (contentResult.status === "fulfilled") {
+      preview.value = contentResult.value;
+      setBinaryPreview(contentResult.value);
+    } else if (!isDeleted) {
+      previewError.value =
+        contentResult.reason instanceof Error
+          ? contentResult.reason.message
+          : String(contentResult.reason);
+    }
   } catch (e: unknown) {
     previewError.value = e instanceof Error ? e.message : String(e);
   } finally {
     previewLoading.value = false;
   }
+}
+
+function nodeChangeStatus(node: FileTreeNode): SessionChangedFileView["status"] | undefined {
+  if (!node.filePath) return undefined;
+  return changeStatusMap.value.get(node.filePath.replace(/\\/g, "/"));
+}
+
+function statusLabel(status: SessionChangedFileView["status"]): string {
+  if (status === "added") return "A";
+  if (status === "deleted") return "D";
+  return "M";
 }
 
 function normalizeRequestedPath(rawPath: string): string | null {
@@ -467,6 +607,9 @@ function normalizeRequestedPath(rawPath: string): string | null {
   const paths = files.value
     .filter((file) => !file.isDirectory)
     .map((file) => file.path.replace(/\\/g, "/"));
+  for (const [path, status] of changeStatusMap.value) {
+    if (status === "deleted") paths.push(path);
+  }
   const exact = paths.find((path) => path.toLowerCase() === value.toLowerCase());
   if (exact) return exact;
   const suffix = paths
@@ -501,7 +644,11 @@ function syncMobileTreeDrawer() {
   }
 }
 
-function onNodeClick(node: FileTreeNode) {
+function onNodeClick(node: FileTreeNode, stat: { open: boolean }) {
+  if (node.children?.length) {
+    stat.open = !stat.open;
+    return;
+  }
   if (!node.filePath) return;
   selectedPath.value = node.filePath;
   void loadPreview(node.filePath);
@@ -524,7 +671,12 @@ async function refresh() {
     cwd.value = result.cwd;
     files.value = result.files;
     treeNodes.value = buildTree(result.files);
-    if (props.initialPath) openRequestedPath(props.initialPath);
+    const current = selectedPath.value;
+    if (current) {
+      void loadPreview(current);
+    } else if (props.initialPath) {
+      openRequestedPath(props.initialPath);
+    }
   } catch (e: unknown) {
     files.value = [];
     treeNodes.value = [];
@@ -536,10 +688,21 @@ async function refresh() {
 }
 
 watch(
+  () => props.changedFiles,
+  () => {
+    if (files.value.length > 0 || (props.changedFiles?.length ?? 0) > 0) {
+      treeNodes.value = buildTree(files.value);
+    }
+  },
+  { deep: true },
+);
+
+watch(
   () => props.sessionId,
   (id) => {
     selectedPath.value = null;
     preview.value = null;
+    fileDiff.value = null;
     previewError.value = null;
     treeDrawerOpen.value = false;
     revokeImageUrl();
@@ -725,5 +888,52 @@ onBeforeUnmount(() => {
 
 .file-tree-row--selected .text-sky-500\/80 {
   color: var(--app-accent);
+}
+
+.file-tree-status {
+  width: 18px;
+  font-size: 10px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.file-tree-status--added {
+  color: #07a65a;
+}
+
+.file-tree-status--modified {
+  color: #d69e2e;
+}
+
+.file-tree-status--deleted {
+  color: #e05a67;
+}
+
+.preview-mode-toggle {
+  display: flex;
+  overflow: hidden;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 6px;
+}
+
+.preview-mode-toggle__btn {
+  padding: 3px 8px;
+  color: var(--app-text-muted);
+  font-size: 11px;
+}
+
+.preview-mode-toggle__btn:hover:not(:disabled) {
+  background: var(--app-hover);
+  color: var(--app-text-primary);
+}
+
+.preview-mode-toggle__btn--active {
+  background: color-mix(in srgb, var(--app-accent) 20%, var(--app-settings-bg));
+  color: var(--app-text-primary);
+}
+
+.preview-mode-toggle__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 </style>

@@ -6,6 +6,7 @@ import pc from "picocolors";
 import qrcodeTerminal from "qrcode-terminal";
 import { platform } from "node:os";
 import { getLanIPv4 } from "./cloudflare-tunnel.js";
+import type { AgentWithSystemMd } from "../types.js";
 
 export interface StartupBannerOptions {
   port: number;
@@ -65,17 +66,8 @@ function firewallHint(ports: number[]): string | null {
 }
 
 export function printStartupBanner(options: StartupBannerOptions): void {
-  const {
-    port,
-    pin,
-    pinGenerated,
-    home,
-    database,
-    devMode,
-    publicUrl,
-    tunnelUrl,
-    uiDistMissing,
-  } = options;
+  const { port, pin, pinGenerated, home, database, devMode, publicUrl, tunnelUrl, uiDistMissing } =
+    options;
 
   const uiPort = Number(process.env.PI_SUPERVISOR_UI_PORT || "5163");
   const desktopUrl = devMode ? `http://127.0.0.1:${uiPort}` : `http://127.0.0.1:${port}`;
@@ -157,6 +149,23 @@ export function printTunnelStarting(): void {
 
 export function printTunnelError(message: string): void {
   console.error(`  ${pc.red("×")} ${pc.red(message)}`);
+}
+
+export function printExternalAgentAvailability(agents: AgentWithSystemMd[]): void {
+  const external = agents.filter((agent) => agent.backendType !== "native");
+  if (external.length === 0) return;
+
+  console.log(`  ${pc.bold("External agents")}`);
+  for (const agent of external) {
+    const status = agent.available ? pc.green("ready") : pc.yellow("missing");
+    const detail = agent.available
+      ? agent.detectedVersion
+        ? pc.dim(` (${agent.detectedVersion})`)
+        : ""
+      : pc.dim(` — ${agent.unavailableReason ?? "不可用"}`);
+    console.log(`    ${pc.dim("·")} ${agent.name}: ${status}${detail}`);
+  }
+  console.log("");
 }
 
 export function warnMissingUiDistStyled(): void {

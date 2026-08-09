@@ -156,6 +156,7 @@
 
   --app-text-primary: #191919;
   --app-text-secondary: #888888;
+  --app-text-body: #555555;
   --app-text-muted: #b2b2b2;
   --app-text-link: #576b95;
   --app-toolbar-icon: #555555;
@@ -299,6 +300,7 @@
 
   --app-text-primary: #e8e8e8;
   --app-text-secondary: #9a9a9a;
+  --app-text-body: #aaaaaa;
   --app-text-muted: #7a7a7a;
   --app-text-link: #7d9ec7;
 

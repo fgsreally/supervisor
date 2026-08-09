@@ -1,5 +1,5 @@
 <template>
-  <div class="global-resource-bind-bar shrink-0 px-2 py-2">
+  <div class="global-resource-bind-bar shrink-0 min-w-0 overflow-x-hidden px-2 py-2">
     <div class="global-resource-bind-bar__label mb-1.5 text-[10px] font-medium">从全局添加</div>
     <div class="custom-scrollbar flex max-h-28 flex-col gap-0.5 overflow-y-auto">
       <div

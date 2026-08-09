@@ -373,25 +373,25 @@ describe("supervisor: SessionManager", () => {
     const sessionDir = getSessionDir(inst.projectId!, inst.id);
     expect(existsSync(sessionDir)).toBe(true);
 
-    manager.delete(inst.id);
+    await manager.delete(inst.id);
 
     expect(existsSync(sessionDir)).toBe(false);
   });
 
-  it("does not delete builtin assistant sessions directly", () => {
+  it("does not delete builtin assistant sessions directly", async () => {
     const session = manager.create({ isBuiltin: true });
 
-    expect(() => manager.delete(session.id)).toThrow("Pi 助手不能删除");
+    await expect(manager.delete(session.id)).rejects.toThrow("Pi 助手不能删除");
     expect(manager.get(session.id)).toBeDefined();
   });
 
-  it("deleteProject() deletes its sessions and owned directory", () => {
+  it("deleteProject() deletes its sessions and owned directory", async () => {
     const project = manager.createProject({ cwd: join(tmpDir, "workspace") });
     const parent = manager.create({ projectId: project.id, cwd: project.cwd });
     manager.create({ projectId: project.id, cwd: project.cwd, parentId: parent.id });
     expect(existsSync(getProjectDir(project.id))).toBe(true);
 
-    manager.deleteProject(project.id);
+    await manager.deleteProject(project.id);
 
     expect(manager.getProject(project.id)).toBeUndefined();
     expect(db.list({ projectId: project.id })).toHaveLength(0);

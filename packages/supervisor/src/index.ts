@@ -3,6 +3,7 @@ import { resolveDbPath } from "./config/resolve-db-path.js";
 import { SupervisorDb } from "./db/db.js";
 import { createHttpServer } from "./http/http-server.js";
 import { SessionManager } from "./core/session-manager.js";
+import { attachPushDispatcher } from "./core/push-dispatcher.js";
 import { startDailyWorkScheduler } from "./core/daily-work.js";
 import { registerWebSocketRoutes } from "./websocket/server.js";
 
@@ -20,6 +21,7 @@ export function startSupervisor(options: SupervisorOptions = {}): {
   if (options.cwd) setDefaultCwd(resolveWorkspacePath(options.cwd));
   const db = new SupervisorDb(resolveDbPath(options.dbPath));
   const manager = new SessionManager(db);
+  attachPushDispatcher(db, (listener) => manager.onAnySessionOutput(listener));
   manager.createProject({ cwd: getDefaultCwd() });
   const app = createHttpServer(manager);
   const port = options.port ?? 3030;

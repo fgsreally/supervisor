@@ -37,4 +37,3 @@ export function warnMissingUiDist(): void {
     "[ui] Web UI dist not found. Run `pnpm run build:all` (or build pi-supervisor-ui) so phones can load the UI from this port.",
   );
 }
-

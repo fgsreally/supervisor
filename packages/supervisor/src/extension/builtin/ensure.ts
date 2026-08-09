@@ -41,7 +41,7 @@ export function ensureAgentBuiltinExtensionBindings(db: SupervisorDb, agentId: n
   }
 }
 
-/** Slugs of builtin extensions that are enabled for this agent (and session type). */
+/** Slugs of builtin extensions active for this agent (and session type). Bindings are always on. */
 export function listEnabledBuiltinExtensionSlugs(
   db: SupervisorDb,
   agentId: number,
@@ -53,10 +53,7 @@ export function listEnabledBuiltinExtensionSlugs(
   for (const spec of BUILTIN_EXTENSIONS) {
     if (spec.agentNames && (!agent || !spec.agentNames.includes(agent.name))) continue;
     if (spec.requiresMainSession && options?.isMainSession === false) continue;
-    const resource = db.getResourceByKindSlug("extension", spec.slug);
-    if (!resource) continue;
-    const binding = db.getAgentResourceBinding(agentId, resource.id);
-    if (binding?.enabled) enabled.add(spec.slug);
+    enabled.add(spec.slug);
   }
   return enabled;
 }

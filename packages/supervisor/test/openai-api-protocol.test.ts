@@ -88,7 +88,9 @@ describe("OpenAI fetch protocol selection", () => {
     const stream =
       kind === "responses"
         ? streamOpenAIResponses(model("openai-responses", baseUrl), context, { apiKey: "test-key" })
-        : streamOpenAICompletions(model("openai-completions", baseUrl), context, { apiKey: "test-key" });
+        : streamOpenAICompletions(model("openai-completions", baseUrl), context, {
+            apiKey: "test-key",
+          });
     for await (const _event of stream) {
       // Consume the stream so the client finishes parsing the mocked SSE response.
     }

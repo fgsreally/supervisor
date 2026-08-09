@@ -1,0 +1,40 @@
+{
+  "name": "pi-supervisor-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Capacitor shell for Pi Supervisor (iOS / Android)",
+  "type": "module",
+  "scripts": {
+    "build:web": "pnpm --filter pi-supervisor-ui run build",
+    "build:native-plugin": "pnpm --filter pi-supervisor-native-bridge run build",
+    "sync": "pnpm run build:web && pnpm run build:native-plugin && cap sync",
+    "sync:android": "cap sync android",
+    "sync:ios": "cap sync ios",
+    "open:android": "cap open android",
+    "open:ios": "cap open ios",
+    "dev:android": "pnpm run build:native-plugin && pnpm --filter pi-supervisor-ui run build && pnpm exec cap sync android && concurrently -k -p none -n web,sync,run -c magenta,yellow,green \"pnpm --filter pi-supervisor-ui run build:watch\" \"node scripts/watch-and-sync.mjs android\" \"pnpm exec cap run android\"",
+    "dev:ios": "pnpm run build:native-plugin && pnpm --filter pi-supervisor-ui run build && pnpm exec cap sync ios && concurrently -k -p none -n web,sync,run -c magenta,yellow,blue \"pnpm --filter pi-supervisor-ui run build:watch\" \"node scripts/watch-and-sync.mjs ios\" \"pnpm exec cap run ios\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/app": "^6.0.2",
+    "@capacitor/camera": "^6.1.2",
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/ios": "^6.2.0",
+    "@capacitor/push-notifications": "^6.0.4",
+    "@capacitor/splash-screen": "^6.0.3",
+    "pi-supervisor-native-bridge": "workspace:*"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.2.0",
+    "concurrently": "^9.2.1",
+    "typescript": "^5.7.3"
+  },
+  "capacitor": {
+    "platforms": [
+      "android",
+      "ios"
+    ]
+  }
+}

@@ -1,31 +1,46 @@
 <template>
   <div class="changes-wrap">
-    <button type="button" class="changes-summary" :aria-expanded="open" @click="open = !open">
-      <span class="changes-summary__label"><Files />文件变更</span>
-      <span class="changes-summary__actions">
-        <span>{{ files.length }} files</span>
-        <ChevronRight class="changes-summary__chevron" :class="{ 'is-open': open }" />
-      </span>
-    </button>
-    <div class="changes-collapse" :class="{ 'is-open': open }">
-      <section class="changes-list">
-        <ul>
-          <li v-for="file in files" :key="file.path">
-            <button type="button" :title="file.path" @click="openFile(file.path)">
-              <FileTypeIcon :path="file.path" />
-              <span>{{ file.path }}</span>
-              <small :class="`status-${file.status}`">{{ statusLabel(file.status) }}</small>
-            </button>
-          </li>
-        </ul>
-      </section>
+    <div class="changes-header">
+      <button
+        type="button"
+        class="changes-header__toggle"
+        :aria-expanded="open"
+        @click="open = !open"
+      >
+        <ChevronDown class="changes-header__chevron" :class="{ 'is-open': open }" />
+        <span>{{ files.length }} 个文件</span>
+      </button>
+    </div>
+    <div class="changes-body" :class="{ 'is-open': open }">
+      <div class="changes-body__inner">
+        <div v-for="file in files" :key="file.path" class="changes-file-row">
+          <button
+            type="button"
+            class="changes-file"
+            :title="file.path"
+            @click="openFile(file.path)"
+          >
+            <FileTypeIcon :path="file.path" />
+            <span class="changes-file__name">{{ fileName(file.path) }}</span>
+            <span v-if="file.status === 'added'" class="changes-file__stat changes-file__stat--add"
+              >+</span
+            >
+            <span
+              v-else-if="file.status === 'deleted'"
+              class="changes-file__stat changes-file__stat--del"
+              >−</span
+            >
+            <span v-else class="changes-file__stat changes-file__stat--mod">~</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import { ChevronRight, Files } from "lucide-vue-next";
+import { ref, watch } from "vue";
+import { ChevronDown } from "lucide-vue-next";
 import FileTypeIcon from "../FileTypeIcon.vue";
 
 export interface SessionChangedFileView {
@@ -34,11 +49,21 @@ export interface SessionChangedFileView {
   lastTurn?: number;
 }
 
-defineProps<{ files: SessionChangedFileView[] }>();
-const open = ref(false);
+const props = defineProps<{ files: SessionChangedFileView[] }>();
+const open = ref(true);
 
-function statusLabel(status: SessionChangedFileView["status"]) {
-  return status === "added" ? "A" : status === "deleted" ? "D" : "M";
+watch(
+  () => props.files.length,
+  (count) => {
+    open.value = count > 0 && count <= 5;
+  },
+  { immediate: true },
+);
+
+function fileName(path: string) {
+  const normalized = path.replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || path;
 }
 
 function openFile(path: string) {
@@ -48,109 +73,112 @@ function openFile(path: string) {
 
 <style scoped>
 .changes-wrap {
-  overflow: hidden;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
-  background: var(--app-popup-bg);
+  background: transparent;
 }
-.changes-summary {
+
+.changes-header {
   display: flex;
-  width: 100%;
-  min-height: 32px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 5px 8px;
-  color: var(--app-text-primary);
-  font-size: 12px;
-  text-align: left;
+  gap: 10px;
+  padding: 8px 12px 6px;
 }
-.changes-summary:hover {
-  background: var(--app-popup-hover);
-}
-.changes-summary__label,
-.changes-summary__actions {
-  display: flex;
+
+.changes-header__toggle {
+  display: inline-flex;
   min-width: 0;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  color: var(--app-text-secondary);
+  font-size: 13px;
+  text-align: left;
 }
-.changes-summary__label svg {
-  width: 16px;
-  height: 16px;
-  flex: none;
-  color: var(--app-text-muted);
+
+.changes-header__toggle:hover {
+  color: var(--app-text-primary);
 }
-.changes-summary__actions {
-  flex: none;
-  color: var(--app-text-muted);
-}
-.changes-summary__chevron {
+
+.changes-header__chevron {
   width: 14px;
   height: 14px;
-  transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
+  flex: none;
+  transition: transform 200ms ease;
 }
-.changes-summary__chevron.is-open {
-  transform: rotate(90deg);
+
+.changes-header__chevron.is-open {
+  transform: rotate(0deg);
 }
-.changes-collapse {
+
+.changes-header__chevron:not(.is-open) {
+  transform: rotate(-90deg);
+}
+
+.changes-body {
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
   transition:
-    grid-template-rows 260ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 180ms ease;
+    grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
 }
-.changes-collapse.is-open {
+
+.changes-body.is-open {
   grid-template-rows: 1fr;
   opacity: 1;
 }
-.changes-list {
+
+.changes-body__inner {
   min-height: 0;
   overflow: hidden;
-  border-top: 1px solid var(--app-border);
 }
-ul {
-  max-height: 240px;
-  overflow: auto;
-  padding: 3px;
-}
-li {
-  list-style: none;
-}
-li button {
+
+.changes-file-row {
   display: flex;
-  width: 100%;
   align-items: center;
-  gap: 6px;
-  padding: 5px 6px;
-  border-radius: 4px;
+  gap: 10px;
+  padding: 2px 12px 8px;
+}
+
+.changes-file {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
   color: var(--app-text-primary);
   font-size: 13px;
+  text-align: left;
 }
-li button:hover {
-  background: var(--app-popup-hover);
+
+.changes-file:hover .changes-file__name {
+  color: var(--app-text-link);
 }
-li button > span:nth-child(2) {
-  flex: 1;
+
+.changes-file__name {
   min-width: 0;
   overflow: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
-li small {
-  width: 18px;
-  text-align: center;
+
+.changes-file__stat {
+  flex: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
   font-weight: 600;
 }
-.status-added {
-  color: #07a65a;
+
+.changes-file__stat--add {
+  color: #3fb950;
 }
-.status-modified {
-  color: #d69e2e;
+
+.changes-file__stat--del {
+  color: #f85149;
 }
-.status-deleted {
-  color: #e05a67;
+
+.changes-file__stat--mod {
+  color: #d29922;
 }
 </style>

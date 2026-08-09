@@ -244,9 +244,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
         await appendLlmErrorMessage(this.storage, detail).catch(() => {});
         await this.emit({
           type: "agent_end",
-          messages: [
-            createExternalAssistantMessage("", "error", detail),
-          ],
+          messages: [createExternalAssistantMessage("", "error", detail)],
         });
         throw error;
       }

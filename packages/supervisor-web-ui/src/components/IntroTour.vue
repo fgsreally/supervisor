@@ -50,12 +50,7 @@
         </div>
 
         <footer v-if="current.kind !== 'nav'">
-          <button
-            v-if="mode === 'chapter'"
-            type="button"
-            class="intro-skip"
-            @click="returnToMenu"
-          >
+          <button v-if="mode === 'chapter'" type="button" class="intro-skip" @click="returnToMenu">
             返回章节
           </button>
           <button
@@ -114,8 +109,7 @@ const desktopStages: Stage[] = [
     selector: "[data-tour-sidebar]",
     eyebrow: "欢迎使用 Supervisor",
     title: "先认识你的工作区",
-    content:
-      "左侧是全局导航。你可以按顺序走完整教程，也可以点下方章节，只看感兴趣的部分。",
+    content: "左侧是全局导航。你可以按顺序走完整教程，也可以点下方章节，只看感兴趣的部分。",
     nextLabel: "按顺序开始",
   },
   {

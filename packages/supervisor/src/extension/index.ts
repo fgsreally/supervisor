@@ -7,6 +7,8 @@ export {
   mcpExtension,
   messageAssetsExtension,
   persistentBashExtension,
+  projectServicesExtension,
+  sessionGitWorktreeExtension,
   shadowExtension,
   subagentExtension,
   supervisorAdminExtension,

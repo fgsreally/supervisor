@@ -249,6 +249,55 @@ describe("extension runtime events", () => {
     expect(seen).toBe(11);
   });
 
+  it("runs sync handlers by priority desc and does not await async handlers", async () => {
+    const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
+    const order: string[] = [];
+
+    await runtime.load(
+      defineExtension({
+        name: "priority-test",
+        setup(ctx) {
+          ctx.on(
+            "session.before_complete",
+            async () => {
+              order.push("stop");
+            },
+            { priority: 300, mode: "sync" },
+          );
+          ctx.on(
+            "session.before_complete",
+            async () => {
+              order.push("uninstall");
+            },
+            { priority: 200, mode: "sync" },
+          );
+          ctx.on(
+            "session.before_complete",
+            async () => {
+              order.push("worktree");
+            },
+            { priority: 100, mode: "sync" },
+          );
+          ctx.on(
+            "session.before_complete",
+            async () => {
+              await new Promise((resolve) => setTimeout(resolve, 20));
+              order.push("async");
+            },
+            { mode: "async" },
+          );
+        },
+      }),
+      "/tmp/priority-test.ts",
+    );
+
+    await runtime.emit({ type: "session.before_complete", sessionId: 1 } as any);
+
+    expect(order.filter((step) => step !== "async")).toEqual(["stop", "uninstall", "worktree"]);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(order).toContain("async");
+  });
+
   it("exposes project-owned and session-owned directories to extensions", async () => {
     const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
     let seenDir = "";

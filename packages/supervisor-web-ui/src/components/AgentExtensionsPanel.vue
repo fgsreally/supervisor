@@ -15,14 +15,9 @@
         <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 py-3 space-y-5">
           <section>
             <div class="agent-ext-section-title">内置扩展</div>
-            <p class="agent-ext-hint">仅可启用/停用，不可删除</p>
+            <p class="agent-ext-hint">随 Agent 提供，不可移除</p>
             <div class="mt-2 space-y-1">
-              <div
-                v-for="item in builtinItems"
-                :key="item.resourceId"
-                class="agent-ext-row"
-                :class="{ 'agent-ext-row--disabled': !item.enabled }"
-              >
+              <div v-for="item in builtinItems" :key="item.resourceId" class="agent-ext-row">
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-1.5 min-w-0">
                     <span class="agent-ext-name truncate">{{ item.name }}</span>
@@ -31,20 +26,7 @@
                   <p v-if="item.description" class="agent-ext-desc truncate">
                     {{ item.description }}
                   </p>
-                  <p v-if="coreSlugs.has(item.slug) && !item.enabled" class="agent-ext-warn">
-                    停用后对应能力不可用
-                  </p>
                 </div>
-                <button
-                  type="button"
-                  class="agent-ext-switch"
-                  :class="item.enabled ? 'agent-ext-switch--on' : 'agent-ext-switch--off'"
-                  :disabled="togglingId === item.resourceId"
-                  :aria-pressed="item.enabled"
-                  @click="toggle(item)"
-                >
-                  <span class="agent-ext-switch-knob" />
-                </button>
               </div>
               <div v-if="builtinItems.length === 0" class="agent-ext-empty">暂无</div>
             </div>
@@ -94,7 +76,7 @@
       <div
         class="agent-ext-main flex-1 flex items-center justify-center text-[13px] px-6 text-center"
       >
-        内置扩展只能开关；用户扩展可从下方全局库添加或从列表移除。
+        从下方全局库添加扩展；添加后即可使用。
       </div>
     </template>
   </div>
@@ -119,7 +101,6 @@ const agentStore = useAgentStore();
 const resourceStore = useResourceStore();
 
 const extensions = ref<AgentExtensionInfo[]>([]);
-const togglingId = ref<number | null>(null);
 const removingId = ref<number | null>(null);
 const bindingItemId = ref<string | null>(null);
 const loading = ref(false);
@@ -129,8 +110,6 @@ const { width: sidebarWidth, startResize: startSidebarResize } = useResizableWid
   maxWidth: 560,
   storageKey: "agent-extensions-sidebar-width",
 });
-
-const coreSlugs = new Set(["skill", "mcp", "subagent"]);
 
 const builtinItems = computed(() => extensions.value.filter((item) => item.builtin));
 const userItems = computed(() => extensions.value.filter((item) => !item.builtin));
@@ -162,19 +141,6 @@ watch(
   },
   { immediate: true },
 );
-
-async function toggle(item: AgentExtensionInfo) {
-  togglingId.value = item.resourceId;
-  try {
-    await agentStore.setAgentExtensionEnabled(props.agentId, item.resourceId, !item.enabled);
-    item.enabled = !item.enabled;
-    showUiMessage(item.enabled ? `已启用 ${item.name}` : `已停用 ${item.name}`, "success");
-  } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "更新失败", "error");
-  } finally {
-    togglingId.value = null;
-  }
-}
 
 async function remove(item: AgentExtensionInfo) {
   if (item.builtin) return;
@@ -259,16 +225,6 @@ async function bindGlobalItem(item: UIResourceItem) {
   background: var(--app-resource-tree-bg, transparent);
 }
 
-.agent-ext-row--disabled {
-  opacity: 0.58;
-}
-
-.agent-ext-row--disabled .agent-ext-name {
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
-  text-decoration-color: color-mix(in srgb, var(--app-text-muted) 80%, transparent);
-}
-
 .agent-ext-name {
   font-size: 13px;
   font-weight: 500;
@@ -279,12 +235,6 @@ async function bindGlobalItem(item: UIResourceItem) {
   margin-top: 2px;
   font-size: 11px;
   color: var(--app-text-secondary);
-}
-
-.agent-ext-warn {
-  margin-top: 2px;
-  font-size: 10px;
-  color: var(--app-warning, #b45309);
 }
 
 .agent-ext-badge {
@@ -315,39 +265,5 @@ async function bindGlobalItem(item: UIResourceItem) {
 .agent-ext-remove:hover:not(:disabled) {
   border-color: var(--app-danger, #dc2626);
   color: var(--app-danger, #dc2626);
-}
-
-.agent-ext-switch {
-  position: relative;
-  width: 36px;
-  height: 20px;
-  border-radius: 999px;
-  border: none;
-  flex-shrink: 0;
-  padding: 0;
-  transition: background 0.15s ease;
-}
-
-.agent-ext-switch--on {
-  background: var(--app-accent, #2563eb);
-}
-
-.agent-ext-switch--off {
-  background: var(--app-border);
-}
-
-.agent-ext-switch-knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 999px;
-  background: #fff;
-  transition: transform 0.15s ease;
-}
-
-.agent-ext-switch--on .agent-ext-switch-knob {
-  transform: translateX(16px);
 }
 </style>

@@ -81,11 +81,11 @@ bun packages/supervisor/dist/cli.mjs extensions unbind <agent-id> <id>
 
 ## 通用选项
 
-| 选项                | 说明                    |
-| ------------------- | ----------------------- |
-| `-p, --port <port>` | HTTP 端口，默认 3030    |
+| 选项                | 说明                                                                        |
+| ------------------- | --------------------------------------------------------------------------- |
+| `-p, --port <port>` | HTTP 端口，默认 3030                                                        |
 | `--cwd <path>`      | Supervisor 全局根（db/public/global/agents/projects；默认 `~/.supervisor`） |
-| `-h, --help`        | 帮助                    |
+| `-h, --help`        | 帮助                                                                        |
 
 `--cwd` 决定全局根。数据库默认在 `<cwd>/supervisor.db`（或 `~/.supervisor/supervisor.db`）。也可用 `<home>/settings.json` 的 `dbPath` 覆盖。
 

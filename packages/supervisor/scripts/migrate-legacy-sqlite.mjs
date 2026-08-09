@@ -196,17 +196,6 @@ function createSchema(db) {
     CREATE INDEX idx_session_input_queue_session
       ON session_input_queue(session_id, level DESC, enqueued_at ASC);
 
-    CREATE TABLE project_scripts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-      kind TEXT NOT NULL,
-      name TEXT NOT NULL,
-      command TEXT NOT NULL,
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-    CREATE INDEX idx_project_scripts_project ON project_scripts(project_id, kind, id);
-
     CREATE TABLE todo_task (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
       title         TEXT NOT NULL,

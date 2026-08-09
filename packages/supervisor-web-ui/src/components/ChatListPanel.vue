@@ -184,116 +184,116 @@
         </template>
 
         <template v-if="workspaceGroups.length">
-        <DustTransitionGroup name="session-list" tag="div" content-class="chat-list-projects">
-          <div
-            v-for="group in workspaceGroups"
-            :key="group.workspace.id"
-            class="workspace-group"
-            :data-project-id="group.workspace.id"
-          >
+          <DustTransitionGroup name="session-list" tag="div" content-class="chat-list-projects">
             <div
-              class="list-section-header sticky top-0 z-10"
-              :ref="(element) => setProjectHeaderRef(group.workspace.id, element)"
-              draggable="true"
-              :class="{
-                'list-section-header--dragging': draggedProjectId === group.workspace.id,
-                'list-section-header--linked': highlightedProjectId === group.workspace.id,
-              }"
-              @dragstart="onProjectDragStart(group.workspace.id, $event)"
-              @dragover.prevent
-              @drop="onProjectDrop(group.workspace.id)"
-              @dragend="draggedProjectId = null"
-              @contextmenu.prevent.stop="openProjectContextMenu(group.workspace.id, $event)"
-            >
-              <button
-                type="button"
-                class="section-action-btn section-action-btn--chevron"
-                :title="isWorkspaceCollapsed(group.workspace.id) ? '展开' : '折叠'"
-                @click="toggleWorkspaceCollapse(group.workspace.id)"
-              >
-                <ChevronRight
-                  class="w-4 h-4 section-chevron"
-                  :class="{ 'section-chevron--open': !isWorkspaceCollapsed(group.workspace.id) }"
-                />
-              </button>
-              <button
-                type="button"
-                class="list-section-title flex-1 truncate text-left"
-                @click="toggleWorkspaceCollapse(group.workspace.id)"
-              >
-                {{ group.workspace.name }}
-              </button>
-              <button
-                type="button"
-                class="section-action-btn"
-                title="Git"
-                @click="openProjectGit(group.workspace.id, $event)"
-              >
-                <GitBranch class="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                class="section-action-btn"
-                title="项目设置"
-                @click="openProjectSettings(group.workspace.id)"
-              >
-                <Settings class="w-4 h-4" />
-              </button>
-              <button
-                type="button"
-                class="section-action-btn"
-                title="在此项目添加会话"
-                @click="openAgentPicker(group.workspace.id)"
-              >
-                <Plus class="w-4 h-4" />
-              </button>
-            </div>
-
-            <div
-              class="workspace-collapse"
-              :class="{ 'workspace-collapse--open': !isWorkspaceCollapsed(group.workspace.id) }"
+              v-for="group in workspaceGroups"
+              :key="group.workspace.id"
+              class="workspace-group"
+              :data-project-id="group.workspace.id"
             >
               <div
-                class="workspace-collapse__inner"
-                :class="{ 'workspace-collapse__inner--hold-leave': pinLeaveIds.size > 0 }"
+                class="list-section-header sticky top-0 z-10"
+                :ref="(element) => setProjectHeaderRef(group.workspace.id, element)"
+                draggable="true"
+                :class="{
+                  'list-section-header--dragging': draggedProjectId === group.workspace.id,
+                  'list-section-header--linked': highlightedProjectId === group.workspace.id,
+                }"
+                @dragstart="onProjectDragStart(group.workspace.id, $event)"
+                @dragover.prevent
+                @drop="onProjectDrop(group.workspace.id)"
+                @dragend="draggedProjectId = null"
+                @contextmenu.prevent.stop="openProjectContextMenu(group.workspace.id, $event)"
               >
-                <DustTransitionGroup
-                  name="session-list"
-                  tag="div"
-                  content-class="chat-list-roots"
-                  @after-leave="onRegularSessionAfterLeave"
+                <button
+                  type="button"
+                  class="section-action-btn section-action-btn--chevron"
+                  :title="isWorkspaceCollapsed(group.workspace.id) ? '展开' : '折叠'"
+                  @click="toggleWorkspaceCollapse(group.workspace.id)"
                 >
-                  <div
-                    v-for="root in group.sessions"
-                    :key="root.id"
-                    class="workspace-session-block"
-                    :data-session-id="root.id"
+                  <ChevronRight
+                    class="w-4 h-4 section-chevron"
+                    :class="{ 'section-chevron--open': !isWorkspaceCollapsed(group.workspace.id) }"
+                  />
+                </button>
+                <button
+                  type="button"
+                  class="list-section-title flex-1 truncate text-left"
+                  @click="toggleWorkspaceCollapse(group.workspace.id)"
+                >
+                  {{ group.workspace.name }}
+                </button>
+                <button
+                  type="button"
+                  class="section-action-btn"
+                  title="Git"
+                  @click="openProjectGit(group.workspace.id, $event)"
+                >
+                  <GitBranch class="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  class="section-action-btn"
+                  title="项目设置"
+                  @click="openProjectSettings(group.workspace.id)"
+                >
+                  <Settings class="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  class="section-action-btn"
+                  title="在此项目添加会话"
+                  @click="openAgentPicker(group.workspace.id)"
+                >
+                  <Plus class="w-4 h-4" />
+                </button>
+              </div>
+
+              <div
+                class="workspace-collapse"
+                :class="{ 'workspace-collapse--open': !isWorkspaceCollapsed(group.workspace.id) }"
+              >
+                <div
+                  class="workspace-collapse__inner"
+                  :class="{ 'workspace-collapse__inner--hold-leave': pinLeaveIds.size > 0 }"
+                >
+                  <DustTransitionGroup
+                    name="session-list"
+                    tag="div"
+                    content-class="chat-list-roots"
+                    @after-leave="onRegularSessionAfterLeave"
                   >
-                    <SessionListItem
-                      :session="root"
-                      :active="activeId === root.id"
-                      mode="chat"
-                      :depth="0"
-                      @select="$emit('select', $event)"
-                      @context-menu="openContextMenu(root.id, $event)"
-                    />
-                    <SessionListSubtree
-                      v-if="childrenOf(root.id).length"
-                      :parent-id="root.id"
-                      :depth="1"
-                      :active-id="activeId"
-                      :sessions="filtered"
-                      :ancestor-open-depths="[]"
-                      @select="$emit('select', $event)"
-                      @context-menu="openContextMenu($event.sessionId, $event)"
-                    />
-                  </div>
-                </DustTransitionGroup>
-                <div v-if="!group.sessions.length" class="workspace-empty">暂无会话</div>
+                    <div
+                      v-for="root in group.sessions"
+                      :key="root.id"
+                      class="workspace-session-block"
+                      :data-session-id="root.id"
+                    >
+                      <SessionListItem
+                        :session="root"
+                        :active="activeId === root.id"
+                        mode="chat"
+                        :depth="0"
+                        @select="$emit('select', $event)"
+                        @context-menu="openContextMenu(root.id, $event)"
+                      />
+                      <SessionListSubtree
+                        v-if="childrenOf(root.id).length"
+                        :parent-id="root.id"
+                        :depth="1"
+                        :active-id="activeId"
+                        :sessions="filtered"
+                        :ancestor-open-depths="[]"
+                        @select="$emit('select', $event)"
+                        @context-menu="openContextMenu($event.sessionId, $event)"
+                      />
+                    </div>
+                  </DustTransitionGroup>
+                  <div v-if="!group.sessions.length" class="workspace-empty">暂无会话</div>
+                </div>
               </div>
             </div>
-          </div>
-        </DustTransitionGroup>
+          </DustTransitionGroup>
         </template>
 
         <div
@@ -369,7 +369,6 @@
       :description="projectDescription"
       :parse-status="projectParseStatus"
       :parse-error="projectParseError"
-      :scripts="projectScripts"
       :busy="projectBusy"
       :parsing="projectParsing"
       @close="closeProjectSettings"
@@ -427,19 +426,15 @@ import {
   getProjectGitInfo,
   checkoutProjectGit,
   deleteProject as apiDeleteProject,
-  listProjectScripts,
   parseProject as apiParseProject,
   searchMessages,
-  type ProjectScript,
 } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { requestUiConfirm } from "@/composables/use-ui-confirm";
 import { withUiBusy } from "@/composables/use-ui-busy";
 import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
 import DustTransitionGroup from "./DustTransitionGroup.vue";
-import {
-  isAdvancedAnimationEnabled,
-} from "@/composables/use-dust-transition";
+import { isAdvancedAnimationEnabled } from "@/composables/use-dust-transition";
 import ProjectCreateDialog from "./ProjectCreateDialog.vue";
 import ProjectGitMenu from "./ProjectGitMenu.vue";
 import ProjectListContextMenu from "./ProjectListContextMenu.vue";
@@ -562,23 +557,6 @@ const projectDescription = computed(() => {
 });
 const projectParseStatus = ref<string | null>(null);
 const projectParseError = ref<string | null>(null);
-const projectScripts = ref<ProjectScript[]>([]);
-
-async function refreshProjectScripts(projectId: string | null) {
-  if (!projectId) {
-    projectScripts.value = [];
-    return;
-  }
-  try {
-    projectScripts.value = await listProjectScripts(projectId);
-  } catch {
-    projectScripts.value = [];
-  }
-}
-
-watch(projectSettingsId, (projectId) => {
-  if (projectId) void refreshProjectScripts(projectId);
-});
 
 const panelStyle = computed(() => {
   if (props.width == null) return undefined;
@@ -692,10 +670,7 @@ const pinnedRoots = computed(() =>
   }),
 );
 const showPinnedSection = computed(
-  () =>
-    pinnedRoots.value.length > 0 ||
-    unpinLeaveIds.value.size > 0 ||
-    pinLeaveIds.value.size > 0,
+  () => pinnedRoots.value.length > 0 || unpinLeaveIds.value.size > 0 || pinLeaveIds.value.size > 0,
 );
 const regularRoots = computed(() => rootsToShow.value.filter(isRegularListVisible));
 
@@ -920,7 +895,6 @@ async function parseCurrentProject() {
     const index = sessionStore.projects.findIndex((project) => project.id === result.project.id);
     if (index >= 0) sessionStore.projects[index] = result.project;
     else sessionStore.projects.unshift(result.project);
-    projectScripts.value = result.scripts ?? [];
     projectParseStatus.value = result.status;
     projectParseError.value = result.error ?? null;
     if (result.status === "ready") showUiMessage("项目解析完成", "success");
@@ -955,7 +929,9 @@ function closeContextMenu() {
 
 function sessionIdFromLeaveEl(el: Element): string | null {
   if (!(el instanceof HTMLElement)) return null;
-  return el.dataset.sessionId ?? el.closest("[data-session-id]")?.getAttribute("data-session-id") ?? null;
+  return (
+    el.dataset.sessionId ?? el.closest("[data-session-id]")?.getAttribute("data-session-id") ?? null
+  );
 }
 
 function completePinLeave(sessionId: string) {

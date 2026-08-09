@@ -44,11 +44,7 @@
           <ResourceLayerBadge :layer="skill.layer" />
         </div>
         <div class="px-2 py-2 max-h-48 overflow-y-auto custom-scrollbar">
-          <SkillFileTree
-            :files="skill.files"
-            :selected-file-id="null"
-            @select="() => undefined"
-          />
+          <SkillFileTree :files="skill.files" :selected-file-id="null" @select="() => undefined" />
         </div>
       </div>
       <div v-if="skillItems.length === 0" class="py-6 text-center text-[13px] text-gray-400">

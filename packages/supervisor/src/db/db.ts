@@ -44,14 +44,9 @@ import { normalizeAgentPermissionRules } from "../core/agent-permissions.js";
 import { parseSessionMeta } from "../core/session-fields.js";
 import { getProjectDir } from "../core/session-files.js";
 import type { SessionBranchType } from "../core/session-history.js";
-import {
-  listProjectScripts,
-  replaceProjectScripts,
-  type ProjectScriptInput,
-  type ProjectScriptKind,
-} from "../core/project-scripts.js";
 import { normalizeApiProtocol, requireApiProtocol } from "../config/api-protocol.js";
 import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.js";
+import { migrationDirsFromEnv, runMigrations } from "./run-migrations.js";
 import { execSqlFile } from "./sql-loader.js";
 
 function parseHomeTaskStatus(value: string): HomeTaskStatus {
@@ -259,6 +254,7 @@ export class SupervisorDb {
 
   private migrate() {
     execSqlFile(this.db, "schema.sql");
+    runMigrations(this.db, { extraDirs: migrationDirsFromEnv() });
     this.db.exec(`
       INSERT INTO timeline_events (type, entity_id, project_id, kind, status, data, created_at)
       SELECT 'session', id, project_id, 'created', status, '{}', created_at
@@ -268,7 +264,6 @@ export class SupervisorDb {
         WHERE target.type = 'session' AND target.entity_id = source.id
       );
     `);
-    this.ensureMessageFts();
     this.db.exec(`
       INSERT INTO timeline_events (type, entity_id, project_id, kind, status, data, created_at)
       SELECT 'todo_task', id, project_id, 'created', status, '{}', created_at
@@ -278,14 +273,6 @@ export class SupervisorDb {
         WHERE target.type = 'todo_task' AND target.entity_id = source.id
       );
     `);
-  }
-
-  listProjectScripts(projectId: number, kind?: ProjectScriptKind) {
-    return listProjectScripts(this.db, projectId, kind);
-  }
-
-  replaceProjectScripts(projectId: number, scripts: ProjectScriptInput[]) {
-    return replaceProjectScripts(this.db, projectId, scripts);
   }
 
   private projectNameFromCwd(cwd: string): string {
@@ -1208,10 +1195,6 @@ export class SupervisorDb {
     }));
   }
 
-  private ensureMessageFts(): void {
-    execSqlFile(this.db, "messages-fts.sql");
-  }
-
   deleteAgent(id: number): void {
     this.db.prepare("DELETE FROM agents WHERE id = ?").run(id);
   }
@@ -1786,6 +1769,80 @@ export class SupervisorDb {
       binding.resource = this.getResource(row.resource_id);
     }
     return binding;
+  }
+
+  // ============ Push devices ============
+
+  upsertPushDevice(input: import("../core/push-device-types.js").PushDeviceInput) {
+    const now = Date.now();
+    const existing = this.db
+      .prepare("SELECT id FROM push_devices WHERE device_id = ?")
+      .get(input.deviceId) as { id: number } | undefined;
+    if (existing) {
+      this.db
+        .prepare(
+          `UPDATE push_devices
+           SET platform = ?, push_token = ?, manufacturer_push_token = ?, manufacturer = ?, model = ?, app_version = ?,
+               last_seen = ?, updated_at = ?
+           WHERE device_id = ?`,
+        )
+        .run(
+          input.platform,
+          input.pushToken,
+          input.manufacturerPushToken ?? null,
+          input.manufacturer ?? null,
+          input.model ?? null,
+          input.appVersion ?? null,
+          now,
+          now,
+          input.deviceId,
+        );
+      return this.getPushDevice(input.deviceId)!;
+    }
+    this.db
+      .prepare(
+        `INSERT INTO push_devices
+         (device_id, platform, push_token, manufacturer_push_token, manufacturer, model, app_version, last_seen, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.deviceId,
+        input.platform,
+        input.pushToken,
+        input.manufacturerPushToken ?? null,
+        input.manufacturer ?? null,
+        input.model ?? null,
+        input.appVersion ?? null,
+        now,
+        now,
+        now,
+      );
+    return this.getPushDevice(input.deviceId)!;
+  }
+
+  getPushDevice(deviceId: string) {
+    const row = this.db.prepare("SELECT * FROM push_devices WHERE device_id = ?").get(deviceId) as
+      | import("../core/push-device-types.js").PushDeviceRow
+      | undefined;
+    return row ?? null;
+  }
+
+  listPushDevices() {
+    return this.db
+      .prepare("SELECT * FROM push_devices ORDER BY last_seen DESC")
+      .all() as import("../core/push-device-types.js").PushDeviceRow[];
+  }
+
+  deletePushDevice(deviceId: string): boolean {
+    const result = this.db.prepare("DELETE FROM push_devices WHERE device_id = ?").run(deviceId);
+    return result.changes > 0;
+  }
+
+  touchPushDevice(deviceId: string) {
+    const now = Date.now();
+    this.db
+      .prepare("UPDATE push_devices SET last_seen = ?, updated_at = ? WHERE device_id = ?")
+      .run(now, now, deviceId);
   }
 }
 

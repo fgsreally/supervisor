@@ -24,6 +24,14 @@
       >
         <ImagePlus class="w-[19px] h-[19px] stroke-[1.5]" />
       </button>
+      <span
+        v-if="shadowRunning"
+        class="shadow-loading-indicator"
+        title="影子代理工作中"
+        aria-label="影子代理工作中"
+      >
+        <Loader2 class="w-[19px] h-[19px] animate-spin" />
+      </span>
     </div>
 
     <div class="toolbar-group flex items-center shrink-0">
@@ -37,14 +45,7 @@
       >
         <MessageCircleQuestion class="w-[19px] h-[19px] stroke-[1.5]" />
       </button>
-      <VoiceInputButton
-        :disabled="disabled"
-        @start="emit('voice-start')"
-        @end="emit('voice-end')"
-        @preview="emit('voice-preview', $event)"
-        @transcript="emit('transcript', $event)"
-        @error="emit('voice-error', $event)"
-      />
+      <VoiceInputButton :voice="voice" :disabled="disabled" :hold-recording="holdRecording" />
       <div class="toolbar-divider" />
       <button
         type="button"
@@ -67,26 +68,33 @@
 </template>
 
 <script setup lang="ts">
-import { FolderOpen, ImagePlus, MessageCircleQuestion, Smile, Sparkles, Square } from "lucide-vue-next";
+import {
+  FolderOpen,
+  ImagePlus,
+  Loader2,
+  MessageCircleQuestion,
+  Smile,
+  Sparkles,
+  Square,
+} from "lucide-vue-next";
 import VoiceInputButton from "./VoiceInputButton.vue";
+import type { VoiceRecognitionController } from "../composables/use-voice-recognition";
 
 export type ChatToolbarAction = "emoji" | "skill" | "attach" | "upload-image" | "voice" | "btw";
 
 const props = defineProps<{
+  voice: VoiceRecognitionController;
   disabled?: boolean;
   canSend?: boolean;
   interrupting?: boolean;
+  shadowRunning?: boolean;
+  holdRecording?: boolean;
 }>();
 
 const emit = defineEmits<{
   action: [action: ChatToolbarAction];
   send: [];
   interrupt: [];
-  "voice-start": [];
-  "voice-end": [];
-  "voice-preview": [text: string];
-  transcript: [text: string];
-  "voice-error": [message: string];
 }>();
 
 const leftButtons = [
@@ -125,6 +133,12 @@ function onPrimaryAction() {
 
 .toolbar-icon-btn:disabled {
   opacity: 0.4;
+}
+
+.shadow-loading-indicator {
+  display: inline-flex;
+  padding: 6px;
+  color: #07c160;
 }
 
 .btw-btn {

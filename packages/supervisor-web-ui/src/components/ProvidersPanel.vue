@@ -1,9 +1,19 @@
 <template>
   <div class="h-full w-full flex flex-col shrink-0 min-w-0 provider-panel">
-    <div v-if="!mobileSearchOpen" class="h-16 flex items-center px-4 shrink-0 border-b provider-panel__header m-centered-list-header">
+    <div
+      v-if="!mobileSearchOpen"
+      class="h-16 flex items-center px-4 shrink-0 border-b provider-panel__header m-centered-list-header"
+    >
       <h1 class="text-[16px] font-medium flex-1 max-md:flex-none">模型供应商</h1>
       <div class="m-centered-list-header__actions">
-        <button type="button" class="mobile-search-trigger" aria-label="搜索" @click="mobileSearchOpen = true"><Search /></button>
+        <button
+          type="button"
+          class="mobile-search-trigger"
+          aria-label="搜索"
+          @click="mobileSearchOpen = true"
+        >
+          <Search />
+        </button>
         <button
           type="button"
           class="list-header-btn"
@@ -16,7 +26,9 @@
     </div>
 
     <div v-else class="mobile-search-page provider-panel__header">
-      <button type="button" aria-label="返回" @click="mobileSearchOpen = false"><ArrowLeft /></button>
+      <button type="button" aria-label="返回" @click="mobileSearchOpen = false">
+        <ArrowLeft />
+      </button>
       <Search />
       <input v-model="query" type="search" placeholder="搜索模型供应商" autofocus />
     </div>

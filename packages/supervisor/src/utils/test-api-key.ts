@@ -1,6 +1,6 @@
 import { WebSocket } from "ws";
 import { formatUnknownError } from "./format-error.js";
-import { buildDoubaoSpeechWsHeaders } from "./supervisor-settings.js";
+import { buildDoubaoSpeechWsHeaders, resolveDoubaoSpeechPreset } from "./supervisor-settings.js";
 
 export type ApiKeyProvider = "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl";
 
@@ -37,9 +37,7 @@ function testWebSocket(url: string, headers: Record<string, string>, label: stri
         }
         finish(() =>
           reject(
-            new Error(
-              `${label}连接被拒绝 (HTTP ${res.statusCode})${detail ? `: ${detail}` : ""}`,
-            ),
+            new Error(`${label}连接被拒绝 (HTTP ${res.statusCode})${detail ? `: ${detail}` : ""}`),
           ),
         );
       });
@@ -51,7 +49,11 @@ function testWebSocket(url: string, headers: Record<string, string>, label: stri
   });
 }
 
-export type DoubaoSpeechCredentials = { appId: string; accessToken: string };
+export type DoubaoSpeechCredentials = {
+  appId: string;
+  accessToken: string;
+  preset?: string;
+};
 
 export async function testApiKey(
   provider: ApiKeyProvider,
@@ -70,12 +72,13 @@ export async function testApiKey(
     case "doubao": {
       const creds =
         typeof credential === "string" ? { appId: "", accessToken: credential } : credential;
-      if (!creds.appId.trim() || !creds.accessToken.trim()) {
-        throw new Error("App ID 与 Access Token 不能为空");
+      if (!creds.appId.trim() && !creds.accessToken.trim()) {
+        throw new Error("App ID 与 Access Token 不能同时为空");
       }
+      const preset = resolveDoubaoSpeechPreset(creds.preset);
       return testWebSocket(
-        "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
-        buildDoubaoSpeechWsHeaders(creds.appId, creds.accessToken),
+        preset.wsUrl,
+        buildDoubaoSpeechWsHeaders(creds.appId, creds.accessToken, preset.resourceId),
         "豆包语音",
       );
     }

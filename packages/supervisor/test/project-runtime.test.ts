@@ -6,28 +6,23 @@ import {
 } from "../src/core/project-runtime.js";
 
 describe("project runtime parsing", () => {
-  it("requires git, injectable ports, and an AGENTS.md initialization", () => {
+  it("requires git and AGENTS.md initialization only", () => {
     const prompt = buildProjectRuntimeInstructions({ name: "demo", cwd: "/tmp/demo" });
 
     expect(prompt).toContain("git init");
-    expect(prompt).toContain("命令行参数或环境变量");
     expect(prompt).toContain("AGENTS.md");
-    expect(prompt).toContain("逐字保留原内容");
-    expect(prompt).toContain("不要自行 commit");
+    expect(prompt).toContain("ProjectServiceRegister");
+    expect(prompt).not.toContain('"scripts"');
   });
 
-  it("normalizes structured descriptions and scripts", () => {
+  it("normalizes structured description", () => {
     expect(
       parseProjectRuntimeSpec({
         description: "  一个项目  ",
-        scripts: [
-          { kind: "start", name: "web", command: " PORT=${PORT} pnpm dev " },
-          { kind: "invalid", command: "ignored" },
-        ],
+        scripts: [{ kind: "start", name: "web", command: "ignored" }],
       }),
     ).toEqual({
       description: "一个项目",
-      scripts: [{ kind: "start", name: "web", command: "PORT=${PORT} pnpm dev" }],
     });
   });
 

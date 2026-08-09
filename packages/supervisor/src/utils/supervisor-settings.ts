@@ -54,34 +54,133 @@ export interface SupervisorSettings {
   braveApiKeyEncrypted?: string;
   serperApiKeyEncrypted?: string;
   firecrawlApiKeyEncrypted?: string;
-  speechRecognitionMode?: "browser" | "qwen" | "doubao";
+  /** `browser` 已废弃，读取时视为 `local` */
+  speechRecognitionMode?: "local" | "qwen" | "doubao" | "browser";
   speechRecognitionLanguage?: string;
+  /** 本地 sherpa-onnx 模型 id，见 LOCAL_SPEECH_MODELS */
+  localSpeechModelId?: string;
   speechApiKeyEncrypted?: string;
   /** Volcengine console App ID (not secret). */
   doubaoSpeechAppId?: string;
   doubaoSpeechAccessTokenEncrypted?: string;
+  /** Doubao streaming ASR billing preset (resource id + endpoint). */
+  doubaoSpeechPreset?: DoubaoSpeechPresetId;
+  /** Firebase Cloud Messaging service account JSON (encrypted). */
+  pushFcmServiceAccountEncrypted?: string;
+  /** Apple Push Notification auth key (.p8 PEM, encrypted). */
+  pushApnsKeyEncrypted?: string;
+  pushApnsKeyId?: string;
+  pushApnsTeamId?: string;
+  pushApnsBundleId?: string;
+  pushApnsProduction?: boolean;
+  /** OPPO Push / fluid cloud — app_key (or legacy client id). */
+  pushOppoAppKey?: string;
+  /** OPPO Push master_secret (encrypted). Falls back to pushOppoClientSecretEncrypted. */
+  pushOppoMasterSecretEncrypted?: string;
+  /** @deprecated Use pushOppoAppKey — kept for older configs. */
+  pushOppoClientId?: string;
+  /** @deprecated Use pushOppoMasterSecretEncrypted. */
+  pushOppoClientSecretEncrypted?: string;
+  /** Assigned by OPPO after fluid cloud review, e.g. Example.Progress */
+  pushOppoIntentName?: string;
+  pushOppoServiceIdLauncher?: string;
+  pushOppoServiceIdFluidCloud?: string;
+  /** OPPO Push intent_env: true = test (1), false = production (0). */
+  pushOppoTestEnv?: boolean;
 }
 
 /** Fixed resource id for Doubao streaming ASR 2.0 (hourly). */
 export const DOUBAO_SPEECH_RESOURCE_ID = "volc.seedasr.sauc.duration";
 
-/** WebSocket handshake headers for legacy console (APP ID + Access Token). */
+export type DoubaoSpeechPresetId =
+  | "2.0-duration"
+  | "2.0-concurrent"
+  | "1.0-duration"
+  | "1.0-concurrent";
+
+export const DOUBAO_SPEECH_PRESETS: Record<
+  DoubaoSpeechPresetId,
+  { resourceId: string; wsUrl: string; label: string }
+> = {
+  "2.0-duration": {
+    resourceId: "volc.seedasr.sauc.duration",
+    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
+    label: "2.0 小时版",
+  },
+  "2.0-concurrent": {
+    resourceId: "volc.seedasr.sauc.concurrent",
+    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
+    label: "2.0 并发版",
+  },
+  "1.0-duration": {
+    resourceId: "volc.bigasr.sauc.duration",
+    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
+    label: "1.0 小时版",
+  },
+  "1.0-concurrent": {
+    resourceId: "volc.bigasr.sauc.concurrent",
+    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
+    label: "1.0 并发版",
+  },
+};
+
+const DOUBAO_SPEECH_PRESET_IDS = Object.keys(DOUBAO_SPEECH_PRESETS) as DoubaoSpeechPresetId[];
+
+export function isDoubaoSpeechPresetId(value: string): value is DoubaoSpeechPresetId {
+  return (DOUBAO_SPEECH_PRESET_IDS as readonly string[]).includes(value);
+}
+
+export function resolveDoubaoSpeechPreset(
+  presetId?: string,
+): (typeof DOUBAO_SPEECH_PRESETS)[DoubaoSpeechPresetId] & { id: DoubaoSpeechPresetId } {
+  const id = presetId && isDoubaoSpeechPresetId(presetId) ? presetId : ("2.0-duration" as const);
+  return { id, ...DOUBAO_SPEECH_PRESETS[id] };
+}
+
+export function resolveDoubaoSpeechFromSettings(settings: SupervisorSettings) {
+  return resolveDoubaoSpeechPreset(settings.doubaoSpeechPreset);
+}
+
+/** WebSocket handshake headers (legacy APP ID + Access Token, or new-console X-Api-Key). */
 export function buildDoubaoSpeechWsHeaders(
   appId: string,
   accessToken: string,
+  resourceId: string = DOUBAO_SPEECH_RESOURCE_ID,
 ): Record<string, string> {
-  return {
-    "X-Api-App-Key": appId.trim(),
-    "X-Api-Access-Key": accessToken.trim(),
-    "X-Api-Resource-Id": DOUBAO_SPEECH_RESOURCE_ID,
+  const base = {
+    "X-Api-Resource-Id": resourceId,
     "X-Api-Connect-Id": randomUUID(),
     "X-Api-Request-Id": randomUUID(),
     "X-Api-Sequence": "-1",
   };
+  const trimmedAppId = appId.trim();
+  const trimmedToken = accessToken.trim();
+  if (trimmedAppId && trimmedToken) {
+    return {
+      ...base,
+      "X-Api-App-Key": trimmedAppId,
+      "X-Api-Access-Key": trimmedToken,
+    };
+  }
+  const apiKey = trimmedToken || trimmedAppId;
+  if (!apiKey) throw new Error("Doubao speech credentials are missing");
+  return { ...base, "X-Api-Key": apiKey };
 }
 
 export function isDoubaoSpeechConfigured(settings: SupervisorSettings): boolean {
-  return Boolean(settings.doubaoSpeechAppId?.trim() && settings.doubaoSpeechAccessTokenEncrypted);
+  const appId = settings.doubaoSpeechAppId?.trim();
+  const hasToken = Boolean(settings.doubaoSpeechAccessTokenEncrypted);
+  if (appId && hasToken) return true;
+  return hasToken && !appId;
+}
+
+export type SpeechRecognitionMode = "local" | "qwen" | "doubao";
+
+/** Normalize legacy `browser` to `local`. */
+export function resolveSpeechRecognitionMode(settings: SupervisorSettings): SpeechRecognitionMode {
+  const mode = settings.speechRecognitionMode;
+  if (mode === "qwen" || mode === "doubao" || mode === "local") return mode;
+  return "local";
 }
 
 const DEFAULT_SETTINGS: SupervisorSettings = {};

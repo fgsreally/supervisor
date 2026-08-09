@@ -14,6 +14,7 @@ import type {
   ExecResult,
   ExtensionDatabase,
   ExtensionEvent,
+  ExtensionEventHandlerOptions,
   ExtensionToolCallResult,
   ExtensionSqliteDatabase,
   ExtensionSqliteStatement,
@@ -76,7 +77,8 @@ export interface ContextSessionTools {
 
 interface ContextSessionOptions {
   id: number;
-  cwd: string;
+  getCwd: () => string;
+  setCwd: (path: string) => Promise<void>;
   dir: string;
   isMain: boolean;
   isChild: boolean;
@@ -197,6 +199,7 @@ interface ContextExtensionHost {
       event: Extract<ExtensionEvent, { type: K }>,
       ctx: EventHandlerContext,
     ) => void | Promise<void>,
+    options?: ExtensionEventHandlerOptions,
   ): () => void;
   registerTool<TParams extends TSchema, TResult>(
     extensionId: string,
@@ -311,9 +314,15 @@ export class Context {
       getActive: () => this.services.tools.getActiveToolNames(),
     };
 
+    const sessionState = { cwd: session.cwd };
+
     const sessionOptions: ContextSessionOptions = {
       id: session.id,
-      cwd: session.cwd,
+      getCwd: () => sessionState.cwd,
+      setCwd: async (path: string) => {
+        db.updateCwd(session.id, path);
+        sessionState.cwd = path;
+      },
       dir: getSessionDir(session.projectId, session.id),
       isMain: session.parentId == null,
       isChild: session.parentId != null,
@@ -541,8 +550,9 @@ export class Context {
       event: Extract<ExtensionEvent, { type: K }>,
       ctx: EventHandlerContext,
     ) => void | Promise<void>,
+    options?: ExtensionEventHandlerOptions,
   ): () => void {
-    return this.requireExtensionHost().on(this.requireActiveExtension(), event, handler);
+    return this.requireExtensionHost().on(this.requireActiveExtension(), event, handler, options);
   }
 
   log(
@@ -597,10 +607,13 @@ export class ContextSession {
     return this.options.id;
   }
   get cwd(): string {
-    return this.options.cwd;
+    return this.options.getCwd();
   }
   get dir(): string {
     return this.options.dir;
+  }
+  async setCwd(path: string): Promise<void> {
+    await this.options.setCwd(path);
   }
   get isMain(): boolean {
     return this.options.isMain;

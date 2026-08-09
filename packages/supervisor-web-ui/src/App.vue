@@ -22,6 +22,12 @@
             class="flex-1 min-w-0 h-full"
             @open-session="openSessionFromHome"
           />
+          <ActiveUiView
+            v-else-if="mainTab === 'active-ui'"
+            data-tour-page="active-ui"
+            class="flex-1 min-w-0 h-full"
+            @open-session="openSessionFromHome"
+          />
           <SettingsPanel
             v-else-if="mainTab === 'settings'"
             data-tour-page="settings"
@@ -193,10 +199,7 @@
               />
             </template>
             <template #me>
-              <MobileMeView
-                @navigate="navigateMobilePath"
-                @tutorial="introTour?.start()"
-              />
+              <MobileMeView @navigate="navigateMobilePath" @tutorial="introTour?.start()" />
             </template>
           </MobilePrimaryTabPager>
           <SettingsPanel
@@ -346,6 +349,7 @@ import ProviderEditDialog from "./components/ProviderEditDialog.vue";
 import ProviderModelEditor from "./components/ProviderModelEditor.vue";
 import ChatView from "./views/ChatView.vue";
 import HomeView from "./views/HomeView.vue";
+import ActiveUiView from "./views/ActiveUiView.vue";
 import TodoView from "./views/TodoView.vue";
 import SearchView from "./views/SearchView.vue";
 import AddToHomeScreenHint from "./components/AddToHomeScreenHint.vue";
@@ -426,7 +430,14 @@ function applyRoute() {
     activeModelId.value = modelIdFromRoute(route) ?? null;
     providerPage.value = "detail";
   } else if (tab === "resources") activeResourceId.value = id ?? activeResourceId.value;
-  if (id && tab !== "settings" && tab !== "todo" && tab !== "dashboard" && isMobile.value) {
+  if (
+    id &&
+    tab !== "settings" &&
+    tab !== "todo" &&
+    tab !== "dashboard" &&
+    tab !== "active-ui" &&
+    isMobile.value
+  ) {
     mobilePage.value = "detail";
   }
 }
@@ -439,6 +450,8 @@ function pushRoute() {
     void router.push("/todo");
   } else if (tab === "dashboard") {
     void router.push("/dashboard");
+  } else if (tab === "active-ui") {
+    void router.push("/active-ui");
   } else if (tab === "contacts") {
     void router.push(activeAgentId.value ? `/contacts/${activeAgentId.value}` : "/contacts");
   } else if (tab === "providers") {
@@ -476,7 +489,7 @@ async function loadAppData() {
   await Promise.all([
     sessionStore.fetchProjects(),
     sessionStore.fetchSessions(),
-    agentStore.fetchAgents(),
+    agentStore.detectExternalAgents(),
     providerStore.fetchProviders().then(() => {
       for (const p of providerStore.providers) {
         void providerStore.fetchModels(p.id);
@@ -514,7 +527,14 @@ onBeforeUnmount(() => {
 
 function onVisibilityChange() {
   if (document.hidden) return;
-  if (mainTab.value !== "chat" && mainTab.value !== "todo" && mainTab.value !== "dashboard") return;
+  if (
+    mainTab.value !== "chat" &&
+    mainTab.value !== "todo" &&
+    mainTab.value !== "dashboard" &&
+    mainTab.value !== "active-ui"
+  ) {
+    return;
+  }
   void sessionStore.fetchSessions();
 }
 
@@ -586,7 +606,8 @@ function selectSession(id: string) {
     isMobile.value &&
     mainTab.value !== "settings" &&
     mainTab.value !== "todo" &&
-    mainTab.value !== "dashboard"
+    mainTab.value !== "dashboard" &&
+    mainTab.value !== "active-ui"
   ) {
     mobilePage.value = "detail";
   }
@@ -839,13 +860,7 @@ function onTabChange(tab: MainTab) {
   pushRoute();
 }
 
-const PRIMARY_MOBILE_PATHS = new Set([
-  "/chat",
-  "/todo",
-  "/dashboard",
-  "/contacts",
-  "/settings",
-]);
+const PRIMARY_MOBILE_PATHS = new Set(["/chat", "/todo", "/dashboard", "/contacts", "/settings"]);
 
 const mobilePrimaryTabKey = computed<MobilePrimaryTabKey>(() => {
   if (mainTab.value === "todo" || mainTab.value === "dashboard") return "work";
@@ -854,7 +869,9 @@ const mobilePrimaryTabKey = computed<MobilePrimaryTabKey>(() => {
   return "chat";
 });
 
-function mobilePrimaryTabKeyToPath(tab: MobilePrimaryTabKey): "/chat" | "/todo" | "/contacts" | "/settings" {
+function mobilePrimaryTabKeyToPath(
+  tab: MobilePrimaryTabKey,
+): "/chat" | "/todo" | "/contacts" | "/settings" {
   if (tab === "chat") return "/chat";
   if (tab === "work") return "/todo";
   if (tab === "agents") return "/contacts";
@@ -881,7 +898,9 @@ const settingsPanelMode = computed<"all" | "services" | "diagnostics">(() => {
   return "all";
 });
 
-function mobileRootPathToTabKey(path: "/chat" | "/todo" | "/contacts" | "/settings"): MobilePrimaryTabKey {
+function mobileRootPathToTabKey(
+  path: "/chat" | "/todo" | "/contacts" | "/settings",
+): MobilePrimaryTabKey {
   if (path === "/chat") return "chat";
   if (path === "/todo") return "work";
   if (path === "/contacts") return "agents";

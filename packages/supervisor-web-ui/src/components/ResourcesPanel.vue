@@ -12,7 +12,12 @@
       class="px-4 py-3 border-b resources-panel__header"
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
-      <div class="resources-panel__title text-[17px] font-medium mb-3" style="color: var(--app-text-primary)">资源</div>
+      <div
+        class="resources-panel__title text-[17px] font-medium mb-3"
+        style="color: var(--app-text-primary)"
+      >
+        资源
+      </div>
       <div class="flex gap-1">
         <button
           v-for="k in kinds"

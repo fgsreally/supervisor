@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import type { SupervisorDb } from "../db/db.js";
-import { execSqlFile } from "../db/sql-loader.js";
 
 export type JobStatus =
   | "queued"
@@ -126,16 +125,11 @@ export class JobManager {
 
   constructor(db: SupervisorDb) {
     this.#db = db.db;
-    this.#migrate();
     this.#db
       .prepare(
         "UPDATE jobs SET status = 'interrupted', finished_at = ? WHERE status IN ('queued', 'running', 'waiting')",
       )
       .run(Date.now());
-  }
-
-  #migrate(): void {
-    execSqlFile(this.#db, "jobs.sql");
   }
 
   create(sessionId: number, input: CreateJobInput): JobRecord {

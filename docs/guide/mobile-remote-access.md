@@ -5,7 +5,8 @@
 ## 开发（同 WiFi）
 
 ```bash
-pnpm dev
+pnpm run dev:server   # API
+pnpm run dev:web      # 浏览器前端（另开终端）
 ```
 
 一条命令并行启动 API + Vite。开发脚本暂用 `--cwd playground`：
@@ -33,27 +34,31 @@ pnpm run serve:tunnel
 
 `--cwd <path>` = Supervisor **全局根**。指定后以下全部落在该目录下：
 
-| 内容 | 路径 |
-| --- | --- |
-| 数据库 | `<cwd>/supervisor.db` |
-| public | `<cwd>/public/` |
+| 内容        | 路径                                       |
+| ----------- | ------------------------------------------ |
+| 数据库      | `<cwd>/supervisor.db`                      |
+| public      | `<cwd>/public/`                            |
 | global 资源 | `<cwd>/global/{skills,extensions,prompts}` |
-| agents | `<cwd>/agents/{id}/` |
-| projects | `<cwd>/projects/{id}/` |
-| media | `<cwd>/media/` |
-| settings | `<cwd>/settings.json` |
+| agents      | `<cwd>/agents/{id}/`                       |
+| projects    | `<cwd>/projects/{id}/`                     |
+| media       | `<cwd>/media/`                             |
+| settings    | `<cwd>/settings.json`                      |
 
 不传 `--cwd` 时默认全局根为 `~/.supervisor`。
 
 ## 说明
 
-| 项 | 说明 |
-| --- | --- |
-| 费用 | 免费 Quick Tunnel |
-| URL | 每次重启 supervisor 会变化，需重新扫码 |
+| 项    | 说明                                                |
+| ----- | --------------------------------------------------- |
+| 费用  | 免费 Quick Tunnel                                   |
+| URL   | 每次重启 supervisor 会变化，需重新扫码              |
 | HTTPS | 自动，满足添主屏 / Service Worker 的 secure context |
 
 不传 `--tunnel` 且已构建 UI 时，扫码为 `http://{lan}:3030`。
+
+## 原生 App（Capacitor）
+
+Android / iOS 壳见 `packages/supervisor-mobile`。Android 16 Live Updates 见 [Android Live Updates 接入指南](./android-live-updates.md)。
 
 ## 安全
 

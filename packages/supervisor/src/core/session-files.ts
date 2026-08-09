@@ -50,15 +50,16 @@ export function removeSessionDirSync(projectId: string | number, sessionId: stri
 }
 
 export function listProjectDirs(): string[] {
-  if (!existsSync(PROJECTS_ROOT)) return [];
-  return readdirSync(PROJECTS_ROOT, { withFileTypes: true })
+  const root = getSupervisorProjectsRoot();
+  if (!existsSync(root)) return [];
+  return readdirSync(root, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
-    .map((entry) => join(PROJECTS_ROOT, entry.name));
+    .map((entry) => join(root, entry.name));
 }
 
 /** @deprecated use getSupervisorProjectsRoot. */
 export function getSupervisorSessionsRoot(): string {
-  return PROJECTS_ROOT;
+  return getSupervisorProjectsRoot();
 }
 
 /** @deprecated project ownership is required for new callers. */

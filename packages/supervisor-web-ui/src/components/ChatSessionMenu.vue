@@ -115,89 +115,6 @@
               </div>
             </section>
 
-            <section
-              v-if="!externalAgent"
-              class="px-5 py-4 border-b chat-session-menu__section session-agent-settings"
-            >
-              <div class="flex items-center justify-between">
-                <span class="session-agent-settings__label">影子代理</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label="启用影子代理"
-                  :aria-checked="shadowEnabled"
-                  class="relative w-11 h-6 rounded-full transition-colors"
-                  :class="shadowEnabled ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
-                  @click="emit('update:shadowEnabled', !shadowEnabled)"
-                >
-                  <span
-                    class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
-                    :class="shadowEnabled ? 'translate-x-5' : 'translate-x-0'"
-                  />
-                </button>
-              </div>
-              <span class="session-agent-settings__label session-agent-settings__label--spaced"
-                >可用子代理</span
-              >
-              <div class="session-agent-grid">
-                <button
-                  v-for="agent in selectedSpawnAgents"
-                  :key="`spawn-${agent.id}`"
-                  type="button"
-                  class="session-agent-card session-agent-card--selected"
-                  :title="`移除 ${agent.name}`"
-                  @click="toggleSpawned(agent.id)"
-                >
-                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
-                  <small>{{ agent.name }}</small>
-                  <span class="session-agent-card__remove"><X /></span>
-                </button>
-                <button
-                  v-if="availableSpawnAgents.length"
-                  type="button"
-                  class="session-agent-card session-agent-card--add"
-                  title="添加子代理"
-                  aria-label="添加子代理"
-                  @click="spawnAgentPickerOpen = !spawnAgentPickerOpen"
-                >
-                  <span class="session-agent-card__add"><Plus /></span>
-                </button>
-              </div>
-              <div v-if="spawnAgentPickerOpen" class="session-agent-picker">
-                <button
-                  v-for="agent in availableSpawnAgents"
-                  :key="`available-${agent.id}`"
-                  type="button"
-                  @click="addSpawned(agent.id)"
-                >
-                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
-                  <span>{{ agent.name }}</span>
-                  <Plus />
-                </button>
-              </div>
-            </section>
-
-            <section
-              v-if="childSessions.length"
-              class="border-b chat-session-menu__section session-children"
-            >
-              <div class="session-children__title">子会话</div>
-              <button
-                v-for="child in childSessions"
-                :key="child.id"
-                type="button"
-                class="chat-session-menu__child-row"
-                @click="emit('navigate', child.id)"
-              >
-                <span class="session-children__avatar">子</span>
-                <span class="session-children__copy">
-                  <strong>{{ childSessionName(child) }}</strong>
-                  <small>{{ child.status === "finish" ? "已完成" : "进行中" }}</small>
-                </span>
-                <ChevronRight class="chat-session-menu__chevron" />
-              </button>
-            </section>
-
             <button
               type="button"
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
@@ -341,6 +258,87 @@
                 />
               </button>
             </div>
+
+            <section
+              v-if="!externalAgent"
+              class="px-5 py-4 border-b chat-session-menu__section session-agent-settings"
+            >
+              <div class="flex items-center justify-between gap-4">
+                <span class="text-[15px]">影子代理</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="启用影子代理"
+                  :aria-checked="shadowEnabled"
+                  class="relative w-11 h-6 rounded-full transition-colors"
+                  :class="shadowEnabled ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
+                  @click="emit('update:shadowEnabled', !shadowEnabled)"
+                >
+                  <span
+                    class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                    :class="shadowEnabled ? 'translate-x-5' : 'translate-x-0'"
+                  />
+                </button>
+              </div>
+              <div class="text-[15px] mt-4 mb-3">可用子代理</div>
+              <div class="session-agent-grid">
+                <button
+                  v-for="agent in selectedSpawnAgents"
+                  :key="`spawn-${agent.id}`"
+                  type="button"
+                  class="session-agent-card session-agent-card--selected"
+                  :title="`移除 ${agent.name}`"
+                  @click="toggleSpawned(agent.id)"
+                >
+                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
+                  <small>{{ agent.name }}</small>
+                  <span class="session-agent-card__remove"><X /></span>
+                </button>
+                <button
+                  v-if="availableSpawnAgents.length"
+                  type="button"
+                  class="session-agent-card session-agent-card--add"
+                  title="添加子代理"
+                  aria-label="添加子代理"
+                  @click="spawnAgentPickerOpen = !spawnAgentPickerOpen"
+                >
+                  <span class="session-agent-card__add"><Plus /></span>
+                </button>
+              </div>
+              <div v-if="spawnAgentPickerOpen" class="session-agent-picker">
+                <button
+                  v-for="agent in availableSpawnAgents"
+                  :key="`available-${agent.id}`"
+                  type="button"
+                  @click="addSpawned(agent.id)"
+                >
+                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
+                  <span>{{ agent.name }}</span>
+                  <Plus />
+                </button>
+              </div>
+            </section>
+
+            <section
+              v-if="childSessions.length"
+              class="border-b chat-session-menu__section session-children"
+            >
+              <div class="session-children__title text-[15px]">子会话</div>
+              <button
+                v-for="child in childSessions"
+                :key="child.id"
+                type="button"
+                class="chat-session-menu__child-row"
+                @click="emit('navigate', child.id)"
+              >
+                <span class="session-children__avatar">子</span>
+                <span class="session-children__copy">
+                  <strong>{{ childSessionName(child) }}</strong>
+                  <small>{{ child.status === "finish" ? "已完成" : "进行中" }}</small>
+                </span>
+                <ChevronRight class="chat-session-menu__chevron" />
+              </button>
+            </section>
           </div>
         </aside>
       </div>
@@ -534,9 +532,8 @@ function childSessionName(child: Pick<Session, "id" | "title">): string {
 }
 
 .session-children__title {
-  padding: 12px 20px 6px;
-  color: var(--app-text-muted);
-  font-size: 12px;
+  padding: 16px 20px 12px;
+  color: var(--app-text-primary);
 }
 .chat-session-menu__child-row {
   display: grid;
@@ -614,15 +611,6 @@ function childSessionName(child: Pick<Session, "id" | "title">): string {
   border: 1px solid rgb(91 78 180 / 28%);
 }
 
-.session-agent-settings__label {
-  display: block;
-  margin-bottom: 10px;
-  color: var(--app-text-secondary);
-  font-size: 12px;
-}
-.session-agent-settings__label--spaced {
-  margin-top: 18px;
-}
 .session-agent-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

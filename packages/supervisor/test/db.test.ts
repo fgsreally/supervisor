@@ -305,15 +305,6 @@ describe("supervisor: SupervisorDb", () => {
       "created_at",
       "updated_at",
     ]);
-    expect(names("project_scripts")).toEqual([
-      "id",
-      "project_id",
-      "kind",
-      "name",
-      "command",
-      "created_at",
-      "updated_at",
-    ]);
     expect(names("sessions")).toEqual([
       "id",
       "project_id",
@@ -329,6 +320,9 @@ describe("supervisor: SupervisorDb", () => {
       "system_prompt",
       "avatar",
       "is_builtin",
+      "pinned",
+      "muted",
+      "unread",
       "external_session_id",
       "error_msg",
       "stage",

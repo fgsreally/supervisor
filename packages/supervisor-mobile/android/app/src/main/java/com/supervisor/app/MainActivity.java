@@ -1,0 +1,5 @@
+package com.supervisor.app;
+
+import com.getcapacitor.BridgeActivity;
+
+public class MainActivity extends BridgeActivity {}

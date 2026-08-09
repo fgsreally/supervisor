@@ -25,8 +25,8 @@
           <button
             type="button"
             class="flex items-center gap-1.5 min-w-0 flex-1 text-left py-0.5"
-            :class="node.fileId ? 'cursor-pointer' : 'cursor-default'"
-            @click="onNodeClick(node)"
+            :class="node.fileId || node.children?.length ? 'cursor-pointer' : 'cursor-default'"
+            @click="onNodeClick(node, stat)"
           >
             <Folder v-if="node.children?.length" class="w-3.5 h-3.5 shrink-0 text-amber-500/80" />
             <FileText v-else class="w-3.5 h-3.5 shrink-0 text-sky-500/80" />
@@ -65,7 +65,11 @@ watch(
   { immediate: true },
 );
 
-function onNodeClick(node: SkillTreeNode) {
+function onNodeClick(node: SkillTreeNode, stat: { open: boolean }) {
+  if (node.children?.length) {
+    stat.open = !stat.open;
+    return;
+  }
   if (node.fileId) emit("select", node.fileId);
 }
 </script>

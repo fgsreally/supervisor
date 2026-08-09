@@ -1,0 +1,45 @@
+import { defineConfig } from "tsdown";
+
+export default defineConfig([
+  {
+    entry: ["src/index.ts", "src/web.ts"],
+    format: "esm",
+    outDir: "dist/esm",
+    unbundle: true,
+    platform: "browser",
+    target: "es2022",
+    fixedExtension: false,
+    outExtensions: () => ({ js: ".js" }),
+    dts: { transformer: "oxc" },
+    sourcemap: true,
+    clean: true,
+    deps: { neverBundle: ["@capacitor/core"] },
+  },
+  {
+    entry: { plugin: "src/index.ts" },
+    format: "cjs",
+    outDir: "dist",
+    platform: "browser",
+    target: "es2022",
+    sourcemap: true,
+    fixedExtension: false,
+    outExtensions: () => ({ js: ".cjs.js" }),
+    deps: { neverBundle: ["@capacitor/core"] },
+  },
+  {
+    entry: { plugin: "src/index.ts" },
+    format: "iife",
+    globalName: "capacitorSupervisorNative",
+    outDir: "dist",
+    platform: "browser",
+    target: "es2022",
+    sourcemap: true,
+    fixedExtension: false,
+    outExtensions: () => ({ js: ".js" }),
+    deps: { neverBundle: ["@capacitor/core"] },
+    outputOptions: {
+      globals: { "@capacitor/core": "capacitorExports" },
+      entryFileNames: "plugin.js",
+    },
+  },
+]);

@@ -54,7 +54,8 @@ function createProbeContext(
     db: new ContextDb(undefined),
     session: new ContextSession({
       id: 0,
-      cwd: process.cwd(),
+      getCwd: () => process.cwd(),
+      setCwd: noopAsync,
       dir: process.cwd(),
       isMain: true,
       isChild: false,

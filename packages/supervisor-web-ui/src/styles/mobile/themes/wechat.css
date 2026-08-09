@@ -1,6 +1,7 @@
 html[data-app-style="wechat"] {
-  --app-font-family: system-ui, -apple-system, "Helvetica Neue", "PingFang SC",
-    "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --app-font-family:
+    system-ui, -apple-system, "Helvetica Neue", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
   --font-sans: var(--app-font-family);
 }
 
@@ -177,6 +178,7 @@ html[data-app-style="wechat"][data-theme="dark"] {
     --m-header-bg: var(--app-list-header-bg);
     --m-text-primary: rgb(0 0 0 / 90%);
     --m-text-secondary: rgb(0 0 0 / 55%);
+    --m-text-body: rgb(0 0 0 / 70%);
     --m-text-muted: rgb(0 0 0 / 30%);
     --m-drawer-handle: rgb(0 0 0 / 28%);
     --m-drawer-handle-track: rgb(0 0 0 / 6%);
@@ -216,6 +218,7 @@ html[data-app-style="wechat"][data-theme="dark"] {
     --m-header-bg: var(--app-list-header-bg);
     --m-text-primary: rgb(255 255 255 / 80%);
     --m-text-secondary: rgb(255 255 255 / 50%);
+    --m-text-body: rgb(255 255 255 / 65%);
     --m-text-muted: rgb(255 255 255 / 30%);
     --m-drawer-handle: rgb(255 255 255 / 58%);
     --m-drawer-handle-track: rgb(255 255 255 / 12%);

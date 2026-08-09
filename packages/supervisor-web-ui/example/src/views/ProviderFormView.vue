@@ -136,12 +136,7 @@ import { computed, ref, watch } from "vue";
 import { ChevronLeft } from "lucide-vue-next";
 import ProviderModelTable from "../components/ProviderModelTable.vue";
 import type { MockProvider, MockProviderModel } from "../mock/providers";
-import {
-  WIRE_PROTOCOLS,
-  addProvider,
-  getProviderById,
-  updateProvider,
-} from "../mock/providers";
+import { WIRE_PROTOCOLS, addProvider, getProviderById, updateProvider } from "../mock/providers";
 
 const props = defineProps<{
   providerId?: string | null;

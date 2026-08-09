@@ -13,36 +13,61 @@
       </div>
       <ResizeHandle orientation="horizontal" label="调整输入区高度" @start="startResize" />
       <ChatPendingImages :images="pendingImages" @remove="removePendingImage" />
-      <ChatComposer
-        ref="composerRef"
-        v-model="text"
-        class="chat-input-editor flex-1 min-h-0"
-        :editor-height="editorHeight"
-        :workspace-files="workspaceFiles"
-        :projects="projectOptions"
-        :workspace-cwd="workspaceId"
-        :current-project-id="currentProjectId"
-        :skills="skills"
-        :prompts="prompts"
-        :commands="autocompleteCommands"
-        :skill-trigger="skillTrigger"
-        :disabled="disabled"
-        :placeholder="placeholder"
-        @send="emit('send', { text, images: pendingImages })"
-        @paste-image="addPendingImage"
-      />
+      <div
+        ref="composerHoldZoneRef"
+        class="chat-input-editor-wrap flex-1 min-h-0 relative"
+        :class="{ 'chat-input-editor-wrap--holding': holdRecording }"
+        @pointerdown="onHoldPointerDown"
+        @pointermove="onHoldPointerMove"
+        @pointerup="onHoldPointerUp"
+        @pointercancel="onHoldPointerCancel"
+      >
+        <ChatComposer
+          ref="composerRef"
+          v-model="text"
+          class="chat-input-editor flex-1 min-h-0"
+          :class="{ 'chat-input-editor--voice-overlay': holdRecording }"
+          :editor-height="editorHeight"
+          :workspace-files="workspaceFiles"
+          :projects="projectOptions"
+          :workspace-cwd="workspaceId"
+          :current-project-id="currentProjectId"
+          :skills="skills"
+          :prompts="prompts"
+          :commands="autocompleteCommands"
+          :skill-trigger="skillTrigger"
+          :disabled="disabled || holdRecording"
+          :placeholder="composerPlaceholder"
+          @send="emit('send', { text, images: pendingImages })"
+          @paste-image="addPendingImage"
+        />
+        <div
+          v-if="holdRecording"
+          class="hold-voice-overlay"
+          :class="{ 'hold-voice-overlay--cancel': willCancel }"
+          aria-live="polite"
+        >
+          <span class="hold-voice-overlay__bars" aria-hidden="true">
+            <span
+              v-for="(level, index) in voice.waveformBars.value"
+              :key="index"
+              class="hold-voice-overlay__bar"
+              :style="{ height: `${level * 2}px` }"
+            />
+          </span>
+          <span class="hold-voice-overlay__hint">{{ willCancel ? "松手取消" : "松开发送" }}</span>
+        </div>
+      </div>
       <ChatInputToolbar
+        :voice="voice"
         :disabled="disabled"
         :can-send="canSend"
         :interrupting="interrupting"
+        :shadow-running="shadowRunning"
+        :hold-recording="holdRecording"
         @action="onToolbarAction"
         @send="emit('send', { text, images: pendingImages })"
         @interrupt="emit('interrupt')"
-        @voice-start="onVoiceStart"
-        @voice-end="onVoiceEnd"
-        @voice-preview="onVoicePreview"
-        @transcript="appendTranscript"
-        @voice-error="onVoiceError"
       />
       <input
         ref="imageInputRef"
@@ -58,12 +83,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Bot } from "lucide-vue-next";
 import * as api from "@/api";
 import { useAgentStore, useSessionStore } from "@/store";
 import { useResizableHeight } from "../composables/use-resizable-height";
 import { showUiMessage } from "../composables/use-ui-message";
+import { isNativeApp } from "../composables/use-native-app";
+import { pickChatImage } from "../composables/use-native-camera";
+import { useVoiceRecognition } from "../composables/use-voice-recognition";
 import type { ChatSendPayload, PendingChatImage } from "@/types/chat-compose";
 import {
   promptsFromAgentResources,
@@ -79,6 +107,7 @@ import ChatPendingImages from "./ChatPendingImages.vue";
 import ResizeHandle from "./ResizeHandle.vue";
 
 const TOOLBAR_HEIGHT = 40;
+const HOLD_LONG_PRESS_MS = 300;
 
 const props = defineProps<{
   modelValue: string;
@@ -87,6 +116,7 @@ const props = defineProps<{
   agentId?: string;
   disabled?: boolean;
   interrupting?: boolean;
+  shadowRunning?: boolean;
   placeholder?: string;
   emptyStateTitle?: string;
   emptyStateDescription?: string;
@@ -152,17 +182,184 @@ const canSend = computed(
 );
 
 const isNarrow = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
+const isMobile = ref(isNarrow);
+const viewportHeight = typeof window !== "undefined" ? window.innerHeight : 800;
 const { height: panelHeight, startResize } = useResizableHeight({
-  defaultHeight: isNarrow ? 80 : 96,
+  // PC 默认约占视口 1/5；移动端保持紧凑高度
+  defaultHeight: isNarrow ? 80 : Math.round(viewportHeight * 0.2),
   minHeight: isNarrow ? 72 : 80,
-  maxHeight: 320,
-  storageKey: "pi-supervisor-chat-input-height-v2",
+  maxHeight: isNarrow ? 320 : Math.max(320, Math.round(viewportHeight * 0.5)),
+  storageKey: "pi-supervisor-chat-input-height-v3",
 });
 
 const editorHeight = computed(() => Math.max(40, panelHeight.value - TOOLBAR_HEIGHT));
 
 const composerRef = ref<InstanceType<typeof ChatComposer> | null>(null);
+const composerHoldZoneRef = ref<HTMLElement | null>(null);
 const voiceBaseText = ref("");
+const holdRecording = ref(false);
+const willCancel = ref(false);
+const toolbarVoiceActive = ref(false);
+
+let holdPointerId: number | null = null;
+let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+let mobileMediaQuery: MediaQueryList | null = null;
+let onMobileMediaChange: (() => void) | null = null;
+
+const composerPlaceholder = computed(() => {
+  if (isMobile.value) return "按住说话";
+  return props.placeholder ?? "输入消息";
+});
+
+const voice = useVoiceRecognition({
+  onStart: () => {
+    if (!holdRecording.value) {
+      toolbarVoiceActive.value = true;
+      voiceBaseText.value = text.value;
+      void nextTick(() => composerRef.value?.focus());
+    }
+  },
+  onEnd: () => {
+    if (holdRecording.value) return;
+    toolbarVoiceActive.value = false;
+    voiceBaseText.value = text.value;
+  },
+  onPreview: (preview) => {
+    if (holdRecording.value) return;
+    applyVoicePreview(preview);
+  },
+  onTranscript: (transcript) => {
+    if (holdRecording.value) return;
+    appendTranscript(transcript);
+  },
+  onError: (message) => {
+    if (holdRecording.value) {
+      holdRecording.value = false;
+      willCancel.value = false;
+      text.value = voiceBaseText.value;
+    } else {
+      toolbarVoiceActive.value = false;
+      voiceBaseText.value = text.value;
+    }
+    showUiMessage(message, "error");
+  },
+});
+
+function clearLongPressTimer() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+
+function releaseHoldPointerCapture() {
+  if (holdPointerId == null || !composerHoldZoneRef.value) return;
+  try {
+    composerHoldZoneRef.value.releasePointerCapture(holdPointerId);
+  } catch {
+    // pointer may already be released
+  }
+}
+
+function isInsideHoldZone(clientX: number, clientY: number): boolean {
+  const rect = composerHoldZoneRef.value?.getBoundingClientRect();
+  if (!rect) return true;
+  return (
+    clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom
+  );
+}
+
+function onHoldPointerDown(event: PointerEvent) {
+  if (!isMobile.value || props.disabled || holdRecording.value || voice.recording.value) return;
+  if (event.pointerType === "mouse") return;
+
+  event.preventDefault();
+  holdPointerId = event.pointerId;
+  composerHoldZoneRef.value?.setPointerCapture(event.pointerId);
+
+  clearLongPressTimer();
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null;
+    if (holdPointerId !== event.pointerId) return;
+    composerRef.value?.blur();
+    voiceBaseText.value = text.value;
+    holdRecording.value = true;
+    willCancel.value = false;
+    void voice.start();
+  }, HOLD_LONG_PRESS_MS);
+}
+
+function onHoldPointerMove(event: PointerEvent) {
+  if (holdPointerId !== event.pointerId) return;
+  if (!holdRecording.value) return;
+  willCancel.value = !isInsideHoldZone(event.clientX, event.clientY);
+}
+
+async function finishHoldAndSend() {
+  const transcript = await voice.stop();
+  holdRecording.value = false;
+  willCancel.value = false;
+  releaseHoldPointerCapture();
+  holdPointerId = null;
+
+  const chunk = transcript.trim();
+  if (!chunk) {
+    text.value = voiceBaseText.value;
+    return;
+  }
+  const sep = voiceBaseText.value && !/\s$/.test(voiceBaseText.value) ? " " : "";
+  const finalText = voiceBaseText.value + sep + chunk;
+  emit("send", { text: finalText, images: pendingImages.value });
+}
+
+function cancelHoldRecording() {
+  voice.abort();
+  holdRecording.value = false;
+  willCancel.value = false;
+  text.value = voiceBaseText.value;
+  releaseHoldPointerCapture();
+  holdPointerId = null;
+}
+
+function onHoldPointerUp(event: PointerEvent) {
+  if (holdPointerId !== event.pointerId) return;
+
+  clearLongPressTimer();
+
+  if (holdRecording.value) {
+    if (willCancel.value) {
+      cancelHoldRecording();
+    } else {
+      void finishHoldAndSend();
+    }
+    return;
+  }
+
+  releaseHoldPointerCapture();
+  holdPointerId = null;
+  composerRef.value?.focus();
+}
+
+function onHoldPointerCancel(event: PointerEvent) {
+  if (holdPointerId !== event.pointerId) return;
+  clearLongPressTimer();
+  if (holdRecording.value) {
+    cancelHoldRecording();
+    return;
+  }
+  releaseHoldPointerCapture();
+  holdPointerId = null;
+}
+
+onMounted(() => {
+  if (typeof window === "undefined") return;
+  mobileMediaQuery = window.matchMedia("(max-width: 767px)");
+  onMobileMediaChange = () => {
+    isMobile.value = mobileMediaQuery?.matches ?? false;
+  };
+  onMobileMediaChange();
+  mobileMediaQuery.addEventListener("change", onMobileMediaChange);
+});
 
 async function loadAutocompleteData() {
   const cwd = props.workspaceId.trim();
@@ -256,6 +453,10 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  clearLongPressTimer();
+  if (mobileMediaQuery && onMobileMediaChange) {
+    mobileMediaQuery.removeEventListener("change", onMobileMediaChange);
+  }
   if (commandRetryTimer) clearTimeout(commandRetryTimer);
 });
 
@@ -280,20 +481,22 @@ function onToolbarAction(action: ChatToolbarAction) {
       composerRef.value?.focus();
       break;
     case "upload-image":
-      imageInputRef.value?.click();
+      if (isNativeApp()) {
+        void pickChatImage()
+          .then((file) => {
+            if (file) addPendingImage(file);
+          })
+          .catch((error: unknown) => {
+            showUiMessage(error instanceof Error ? error.message : "无法打开相机", "error");
+          });
+      } else {
+        imageInputRef.value?.click();
+      }
       break;
     case "btw":
       emit("btw");
       break;
   }
-}
-
-function onVoiceStart() {
-  voiceBaseText.value = text.value;
-}
-
-function onVoiceEnd() {
-  voiceBaseText.value = text.value;
 }
 
 function applyVoicePreview(preview: string) {
@@ -306,18 +509,9 @@ function applyVoicePreview(preview: string) {
   text.value = voiceBaseText.value + sep + chunk;
 }
 
-function onVoicePreview(preview: string) {
-  applyVoicePreview(preview);
-}
-
 function appendTranscript(transcript: string) {
   applyVoicePreview(transcript);
   void nextTick(() => composerRef.value?.focus());
-}
-
-function onVoiceError(message: string) {
-  onVoiceEnd();
-  showUiMessage(message, "error");
 }
 
 function addPendingImage(file: File) {
@@ -401,6 +595,60 @@ defineExpose({ focus, clearAfterSend });
 .chat-input-editor {
   min-height: 40px;
   min-width: 0;
+}
+
+.chat-input-editor-wrap {
+  touch-action: manipulation;
+}
+
+.chat-input-editor-wrap--holding {
+  touch-action: none;
+}
+
+.chat-input-editor--voice-overlay :deep(.cm-editor) {
+  pointer-events: none;
+}
+
+.hold-voice-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 8px;
+  background: var(--app-accent, #07c160);
+  color: #fff;
+  user-select: none;
+  touch-action: none;
+}
+
+.hold-voice-overlay--cancel {
+  background: #fa5151;
+}
+
+.hold-voice-overlay__bars {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+}
+
+.hold-voice-overlay__bar {
+  width: 3px;
+  min-height: 8px;
+  border-radius: 999px;
+  background: currentColor;
+  will-change: height;
+}
+
+.hold-voice-overlay__hint {
+  font-size: 12px;
+  line-height: 1.2;
+  opacity: 0.92;
 }
 
 .chat-input-empty-state {

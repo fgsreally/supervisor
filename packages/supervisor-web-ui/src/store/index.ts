@@ -565,6 +565,40 @@ export const useAgentStore = defineStore("agent", () => {
     }
   }
 
+  async function installExternalAgent(id: string) {
+    root.clearError();
+    try {
+      const agent = await api.installExternalAgent(id);
+      const index = agents.value.findIndex((a) => a.id === id);
+      if (index >= 0) {
+        agents.value[index] = agent;
+      } else {
+        agents.value.push(agent);
+      }
+      return agent;
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to install external agent");
+      throw err;
+    }
+  }
+
+  async function repairExternalAgent(id: string) {
+    root.clearError();
+    try {
+      const result = await api.repairExternalAgent(id);
+      const index = agents.value.findIndex((a) => a.id === id);
+      if (index >= 0) {
+        agents.value[index] = result.agent;
+      } else {
+        agents.value.push(result.agent);
+      }
+      return result;
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to repair external agent");
+      throw err;
+    }
+  }
+
   async function fetchAgent(id: string) {
     root.clearError();
     try {
@@ -715,6 +749,8 @@ export const useAgentStore = defineStore("agent", () => {
     getAgentsByCategory,
     fetchAgents,
     detectExternalAgents,
+    installExternalAgent,
+    repairExternalAgent,
     fetchAgent,
     createAgent,
     updateAgent,

@@ -1,8 +1,36 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-pwa/client" />
 
-declare module "*.vue" {
-  import type { DefineComponent } from "vue";
-  const component: DefineComponent<Record<string, never>, Record<string, never>, unknown>;
-  export default component;
+declare module "*.css?url" {
+  const url: string;
+  export default url;
+}
+
+declare module "pi-supervisor-native-bridge" {
+  export type LiveStatusPhase = "connecting" | "thinking" | "tool" | "waiting" | "idle";
+
+  export interface LiveStatusPayload {
+    sessionId: string;
+    title: string;
+    subtitle?: string;
+    phase?: LiveStatusPhase;
+  }
+
+  export interface SupervisorNativePlugin {
+    getPushToken(): Promise<{ token: string | null; platform: "ios" | "android" | "web" }>;
+    startBackgroundConnection(options: { title: string; body: string }): Promise<void>;
+    stopBackgroundConnection(): Promise<void>;
+    updateBackgroundConnection(options: { title: string; body: string }): Promise<void>;
+    startLiveStatus(payload: LiveStatusPayload): Promise<void>;
+    updateLiveStatus(payload: LiveStatusPayload): Promise<void>;
+    endLiveStatus(options: { sessionId: string }): Promise<void>;
+    isAndroidLiveUpdatesAvailable(): Promise<{
+      available: boolean;
+      promoted?: boolean;
+      reason?: string;
+    }>;
+    isOppoLiveUpdatesAvailable(): Promise<{ available: boolean; reason?: string }>;
+  }
+
+  export const SupervisorNative: SupervisorNativePlugin;
 }

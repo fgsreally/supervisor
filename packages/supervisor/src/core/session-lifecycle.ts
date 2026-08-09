@@ -4,18 +4,18 @@ import { hasPendingAsks } from "../tools/ask/tool.js";
 import type { SupervisorDb } from "../db/db.js";
 // SupervisorDb used by Watson cleanup retry path
 import {
-  createSessionWorktree,
   commitAll,
-  ensureProjectGitRootSync,
   getGitDiffStat,
   getGitStatusPorcelain,
+  getHeadHash,
+  listChangedFilesBetween,
   mergeSessionBranch,
   removeSessionWorktree,
   resolveMergeTargetBranch,
   resolveSessionGitContext,
+  type GitChangedFile,
 } from "../utils/git.js";
 import { sessionLog } from "../utils/session-log.js";
-import { timedSessionStep } from "../utils/session-timing.js";
 import { maybeRunRollingCompaction } from "./compaction/rolling.js";
 import type { SessionRuntime } from "./session-runtime.js";
 import type {
@@ -26,17 +26,14 @@ import type {
   SpawnSessionOptions,
 } from "../types.js";
 import type { JobManager } from "./jobs.js";
-import {
-  parseSessionServicesMeta,
-  startSessionProjectServices,
-  stopSessionProjectServices,
-} from "./session-services.js";
+import { parseSessionServicesMeta, stopSessionProjectServices } from "./session-services.js";
 import { runWatson } from "./watson.js";
 import { mapRowToSession, parseSessionMeta } from "./session-fields.js";
 
 export type SessionLifecycleDb = Pick<
   SupervisorDb,
   | "get"
+  | "list"
   | "updateMeta"
   | "updateStatus"
   | "updateCwd"
@@ -46,8 +43,20 @@ export type SessionLifecycleDb = Pick<
   | "getProvider"
   | "getModel"
   | "getProject"
-  | "listProjectScripts"
 >;
+
+export type SessionGitPendingUpdate = {
+  sourceSessionId: number;
+  sourceTitle?: string | null;
+  branch: string;
+  files: GitChangedFile[];
+  markedAt: number;
+};
+
+export type AchieveMergeResult = {
+  branch: string;
+  files: GitChangedFile[];
+};
 
 /** Convert a SessionRow to the Session type expected by callers. */
 function rowToSession(row: SessionRow, _db?: unknown): Session {
@@ -203,7 +212,7 @@ export async function prepareSessionLifecycleSpawn(
   session: Session,
   options: SpawnSessionOptions,
   agentDisplayName?: string,
-  jobs?: JobManager,
+  _jobs?: JobManager,
 ): Promise<Session> {
   const initialName =
     options.title ??
@@ -213,97 +222,22 @@ export async function prepareSessionLifecycleSpawn(
   const isBuiltin = options.isBuiltin === true || session.isBuiltin;
 
   const needsOwnWorktree = options.spawnType === "fork" || options.spawnType === "clone";
-  // Child sessions (except fork/clone) and builtin sessions do not get a worktree.
   if ((options?.parentId && !needsOwnWorktree) || isBuiltin) {
     if (initialName) {
       db.updateSessionFields(session.id, { title: initialName, isBuiltin });
       return rowToSession(db.get(session.id)!, db);
     }
-    return session;
-  }
-
-  // Always treat the selected project cwd as the git root (nested init if the
-  // project sits inside a parent monorepo). Worktrees then live under
-  // <project>/.pi/supervisor/worktrees/<sessionId> — same project tree.
-  try {
-    sessionLog(session.id, "info", "Creating session worktree", ["system", "git", "worktree"], {
-      cwd: session.cwd,
-    });
-    const repoRoot = await timedSessionStep(session.id, "ensureProjectGitRoot", async () =>
-      ensureProjectGitRootSync(session.cwd),
-    );
-    sessionLog(session.id, "info", `Git root ready: ${repoRoot}`, ["system", "git"], { repoRoot });
-    const gitMeta = await timedSessionStep(session.id, "createSessionWorktree", () =>
-      createSessionWorktree(repoRoot, String(session.id)),
-    );
-    db.updateCwd(session.id, gitMeta.worktreePath);
-    db.updateSessionFields(session.id, { title: initialName ?? "New chat" });
-    sessionLog(
-      session.id,
-      "info",
-      `Worktree ready: ${gitMeta.worktreePath} (branch ${gitMeta.branch}, from ${gitMeta.startBranch})`,
-      ["system", "git", "worktree"],
-      {
-        worktreePath: gitMeta.worktreePath,
-        branch: gitMeta.branch,
-        startBranch: gitMeta.startBranch,
-      },
-    );
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error(`session lifecycle worktree create failed [${session.id}]:`, message);
-    sessionLog(
-      session.id,
-      "error",
-      `Worktree create failed: ${message}`,
-      ["system", "git", "worktree"],
-      { error: message },
-    );
-    if (initialName) {
-      db.updateSessionFields(session.id, { title: initialName });
-      return rowToSession(db.get(session.id)!, db);
+    if (isBuiltin !== session.isBuiltin) {
+      db.updateSessionFields(session.id, { isBuiltin });
     }
     return session;
   }
 
-  let ready = rowToSession(db.get(session.id)!, db);
-  if (ready.cwd !== session.cwd && session.projectId != null && jobs) {
-    const project = db.getProject(session.projectId);
-    if (project) {
-      try {
-        const scripts = db.listProjectScripts(project.id);
-        const services = await timedSessionStep(session.id, "startProjectServices", () =>
-          startSessionProjectServices({
-            sessionId: session.id,
-            cwd: ready.cwd,
-            project,
-            scripts,
-            jobs,
-          }),
-        );
-        if (services) {
-          db.updateMeta(session.id, { services });
-          ready = rowToSession(db.get(session.id)!, db);
-          sessionLog(session.id, "info", "Project services started", ["system", "services"], {
-            portEnv: services.portEnv,
-            scripts: services.scripts.map((s) => s.name),
-          });
-        }
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        db.updateMeta(session.id, {
-          services: {
-            status: "error",
-            error: message,
-            portEnv: {},
-            scripts: [],
-          },
-        });
-        throw new Error(`项目服务启动失败: ${message}`);
-      }
-    }
-  }
-  return ready;
+  db.updateSessionFields(session.id, {
+    title: initialName ?? "New chat",
+    isBuiltin,
+  });
+  return rowToSession(db.get(session.id)!, db);
 }
 
 export function handleSessionLifecycleAgentEnd(
@@ -318,7 +252,13 @@ export function handleSessionLifecycleAgentEnd(
   if (hasPendingAsks(String(sessionId))) return;
 
   void (async () => {
-    await maybeRunRollingCompaction(String(sessionId), runtime, event, parseSessionMeta(session.meta), db);
+    await maybeRunRollingCompaction(
+      String(sessionId),
+      runtime,
+      event,
+      parseSessionMeta(session.meta),
+      db,
+    );
     await maybeAutoNameSession(sessionId, event, db);
   })().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
@@ -326,30 +266,70 @@ export function handleSessionLifecycleAgentEnd(
   });
 }
 
+export function markSiblingSessionsPendingUpdate(
+  db: Pick<SupervisorDb, "list" | "updateMeta" | "getProject">,
+  achievedSession: Session,
+  mergeResult: AchieveMergeResult,
+  onNotify?: (sessionId: number) => void,
+): void {
+  if (achievedSession.projectId == null) return;
+  const project = db.getProject(achievedSession.projectId);
+  if (!project) return;
+
+  const pendingUpdate: SessionGitPendingUpdate = {
+    sourceSessionId: achievedSession.id,
+    sourceTitle: achievedSession.title ?? null,
+    branch: mergeResult.branch,
+    files: mergeResult.files,
+    markedAt: Date.now(),
+  };
+
+  for (const row of db.list({ projectId: achievedSession.projectId })) {
+    if (row.id === achievedSession.id) continue;
+    if (row.status === "finish" || row.status === "finished") continue;
+
+    const git = resolveSessionGitContext({
+      sessionId: row.id,
+      cwd: row.cwd,
+      projectCwd: project.cwd,
+    });
+    if (!git) continue;
+
+    const meta = parseSessionMeta(row.meta);
+    const existingGit =
+      meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)
+        ? (meta.git as Record<string, unknown>)
+        : {};
+
+    db.updateMeta(row.id, {
+      git: { ...existingGit, pendingUpdate },
+    });
+    onNotify?.(row.id);
+  }
+}
+
 export async function finalizeSessionLifecycleGit(
   db: SupervisorDb,
   session: Session,
   jobs?: JobManager,
-): Promise<void> {
+): Promise<AchieveMergeResult | null> {
   const row = db.get(session.id);
-  if (!row) return;
+  if (!row) return null;
   const projectCwd = session.projectId != null ? db.getProject(session.projectId)?.cwd : undefined;
   const git = resolveSessionGitContext({
     sessionId: session.id,
     cwd: session.cwd,
     projectCwd,
   });
-  if (!git) return;
+  if (!git) return null;
 
   const services = parseSessionServicesMeta(session.meta);
-  const destroyScripts =
-    session.projectId != null ? db.listProjectScripts(session.projectId, "destroy") : [];
   await stopSessionProjectServices({
     sessionId: session.id,
     cwd: session.cwd,
     services,
-    destroyScripts,
     jobs,
+    mode: "destroy",
   });
   if (services) {
     db.updateMeta(session.id, {
@@ -363,7 +343,12 @@ export async function finalizeSessionLifecycleGit(
       "Uncommitted changes in worktree. Commit with POST /sessions/:id/commit before completing.",
     );
   }
-  await mergeSessionBranch(git.repoRoot, git.branch, await resolveMergeTargetBranch(git.repoRoot));
+  const oldHead = await getHeadHash(git.repoRoot);
+  const targetBranch = await resolveMergeTargetBranch(git.repoRoot);
+  await mergeSessionBranch(git.repoRoot, git.branch, targetBranch);
+  const branch = targetBranch;
+  const newHead = await getHeadHash(git.repoRoot);
+  const files = await listChangedFilesBetween(git.repoRoot, oldHead, newHead);
   try {
     await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch);
   } catch (error: unknown) {
@@ -401,4 +386,19 @@ export async function finalizeSessionLifecycleGit(
     { worktreePath: git.worktreePath, branch: git.branch },
   );
   db.updateCwd(session.id, git.repoRoot);
+  return { branch, files };
+}
+
+export function clearSessionGitPendingUpdate(
+  db: Pick<SupervisorDb, "get" | "updateMeta">,
+  sessionId: number,
+): void {
+  const row = db.get(sessionId);
+  if (!row) return;
+  const meta = parseSessionMeta(row.meta);
+  if (!meta.git || typeof meta.git !== "object" || Array.isArray(meta.git)) return;
+  const existingGit = { ...(meta.git as Record<string, unknown>) };
+  if (!Object.hasOwn(existingGit, "pendingUpdate")) return;
+  delete existingGit.pendingUpdate;
+  db.updateMeta(sessionId, { git: existingGit });
 }

@@ -62,7 +62,7 @@
               <div class="project-settings-modal__desc-head">
                 <div>
                   <div class="project-settings-modal__parse-title">解析</div>
-                  <div class="project-settings-modal__muted">初始化 Git、运行参数和 AGENTS.md</div>
+                  <div class="project-settings-modal__muted">初始化 Git 与 AGENTS.md</div>
                 </div>
                 <button
                   type="button"
@@ -106,24 +106,6 @@
                     <span class="project-settings-modal__muted">暂无解析结果</span>
                   </template>
                 </div>
-                <div v-if="scripts?.length" class="project-settings-modal__scripts">
-                  <div
-                    v-for="script in scripts"
-                    :key="`${script.kind}-${script.id}`"
-                    class="project-settings-modal__script"
-                  >
-                    <span class="project-settings-modal__script-kind">{{ script.kind }}</span>
-                    <span class="project-settings-modal__script-name">{{ script.name }}</span>
-                    <code class="project-settings-modal__script-cmd">{{ script.command }}</code>
-                  </div>
-                </div>
-                <div
-                  v-else-if="!parsing && parseStatus === 'ready'"
-                  class="project-settings-modal__muted"
-                  style="margin-top: 8px"
-                >
-                  无需安装/启动/销毁脚本
-                </div>
               </div>
             </div>
           </div>
@@ -145,7 +127,6 @@ const props = defineProps<{
   description?: string | null;
   parseStatus?: string | null;
   parseError?: string | null;
-  scripts?: Array<{ id: number; kind: string; name: string; command: string }>;
   busy?: boolean;
   parsing?: boolean;
 }>();
@@ -333,42 +314,6 @@ async function saveName() {
 
 .project-settings-modal__error {
   color: #e54d42;
-}
-
-.project-settings-modal__scripts {
-  margin-top: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.project-settings-modal__script {
-  display: grid;
-  grid-template-columns: auto auto 1fr;
-  gap: 6px 8px;
-  align-items: baseline;
-  padding: 8px 10px;
-  border-radius: 6px;
-  background: var(--app-chat-bg);
-  font-size: 12px;
-}
-
-.project-settings-modal__script-kind {
-  color: var(--app-accent);
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
-.project-settings-modal__script-name {
-  color: var(--app-text-muted);
-}
-
-.project-settings-modal__script-cmd {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--app-text-primary);
 }
 
 .project-settings-enter-active,

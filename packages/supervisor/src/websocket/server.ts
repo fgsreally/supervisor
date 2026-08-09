@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { gunzipSync, gzipSync } from "node:zlib";
 import { WebSocket, type RawData } from "ws";
 import type { SessionManager } from "../core/session-manager.js";
 import type { SessionPromptImage } from "../core/session-media.js";
@@ -8,13 +9,19 @@ import {
   buildDoubaoSpeechWsHeaders,
   readSupervisorSettings,
   isDoubaoSpeechConfigured,
+  resolveDoubaoSpeechFromSettings,
+  resolveSpeechRecognitionMode,
 } from "../utils/supervisor-settings.js";
+import {
+  isLocalSpeechReady,
+  LocalAsrSession,
+  resolveLocalSpeechModel,
+} from "../speech/local-asr.js";
 
 const MAX_AUDIO_FRAME_BYTES = 256 * 1024;
 const QWEN_REALTIME_URL =
   "wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=qwen3-asr-flash-realtime";
-const DOUBAO_REALTIME_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
-type SpeechProvider = "qwen" | "doubao";
+type SpeechProvider = "local" | "qwen" | "doubao";
 
 interface ClientMessage {
   id?: string;
@@ -81,56 +88,96 @@ function doubaoPacket(
   payload: Buffer,
   sequence?: number,
 ): Buffer {
-  const sequenceBytes = sequence === undefined ? 0 : 4;
-  const packet = Buffer.alloc(8 + sequenceBytes + payload.byteLength);
+  const serialMethod = messageType === 1 ? 0x01 : 0x00;
+  const compressionType = 0x01;
+  const compressed = gzipSync(payload);
+  const hasSequence = (flags & 0x01) !== 0 || flags === 0x03;
+  const sequenceBytes = hasSequence && sequence !== undefined ? 4 : 0;
+  const packet = Buffer.alloc(4 + sequenceBytes + 4 + compressed.length);
   packet[0] = 0x11;
-  packet[1] = (messageType << 4) | flags;
-  packet[2] = messageType === 1 ? 0x10 : 0;
-  if (sequence !== undefined) packet.writeInt32BE(sequence, 4);
-  packet.writeUInt32BE(payload.byteLength, 4 + sequenceBytes);
-  payload.copy(packet, 8 + sequenceBytes);
+  packet[1] = (messageType << 4) | (flags & 0x0f);
+  packet[2] = (serialMethod << 4) | compressionType;
+  packet[3] = 0x00;
+  let offset = 4;
+  if (sequenceBytes) {
+    packet.writeInt32BE(sequence!, offset);
+    offset += 4;
+  }
+  packet.writeUInt32BE(compressed.length, offset);
+  offset += 4;
+  compressed.copy(packet, offset);
   return packet;
 }
 
 function parseDoubaoEvent(data: RawData): DoubaoEvent {
   const packet = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-  const messageType = packet[1] ? packet[1] >> 4 : 0;
-  const flags = packet[1] ? packet[1] & 0x0f : 0;
-  if (messageType === 15) {
+  if (packet.length < 8) throw new Error("Doubao speech: response too short");
+  const messageType = packet[1]! >> 4;
+  const flags = packet[1]! & 0x0f;
+  const compression = packet[2]! & 0x0f;
+  if (messageType === 0x0f) {
     const messageSize = packet.readUInt32BE(8);
     throw new Error(packet.subarray(12, 12 + messageSize).toString() || "Doubao speech error");
   }
-  const offset = flags & 1 ? 8 : 4;
+  let offset = 4;
+  if (flags & 0x01) offset += 4;
   const payloadSize = packet.readUInt32BE(offset);
-  return JSON.parse(
-    packet.subarray(offset + 4, offset + 4 + payloadSize).toString(),
-  ) as DoubaoEvent;
+  offset += 4;
+  let payload = packet.subarray(offset, offset + payloadSize);
+  if (compression === 0x01) payload = gunzipSync(payload);
+  return JSON.parse(payload.toString("utf8")) as DoubaoEvent;
 }
 
 class SpeechConnection {
   private upstream: WebSocket | null = null;
+  private localSession: LocalAsrSession | null = null;
   private stopping = false;
-  private provider: SpeechProvider = "qwen";
-  private sequence = 0;
+  private provider: SpeechProvider = "local";
   private doubaoText = "";
+  private localText = "";
 
   constructor(private readonly client: ClientSocket) {}
 
   async start(language: unknown): Promise<void> {
-    if (this.upstream) throw new Error("speech session is already active");
+    if (this.upstream || this.localSession) throw new Error("speech session is already active");
     const settings = readSupervisorSettings();
-    this.provider = settings.speechRecognitionMode === "doubao" ? "doubao" : "qwen";
+    this.provider = resolveSpeechRecognitionMode(settings);
+    this.localText = "";
+    this.doubaoText = "";
+
+    if (this.provider === "local") {
+      const model = resolveLocalSpeechModel(settings.localSpeechModelId);
+      if (!isLocalSpeechReady(model.id)) {
+        throw new Error(`本地语音模型「${model.name}」尚未安装，请先在设置中安装`);
+      }
+      this.localSession = new LocalAsrSession(model.id, (text) => {
+        this.localText = text;
+        sendJson(this.client, {
+          channel: "speech",
+          type: "speech.partial",
+          payload: { text },
+        });
+      });
+      sendJson(this.client, { channel: "speech", type: "speech.ready" });
+      return;
+    }
+
     let doubaoAppId = "";
     let doubaoAccessToken = "";
+    let doubaoWsUrl = "";
+    let doubaoResourceId = "";
     let qwenApiKey = "";
     if (this.provider === "doubao") {
       if (!isDoubaoSpeechConfigured(settings)) {
         throw new Error("doubao speech App ID or Access Token is not configured");
       }
+      const preset = resolveDoubaoSpeechFromSettings(settings);
+      doubaoWsUrl = preset.wsUrl;
+      doubaoResourceId = preset.resourceId;
       doubaoAppId = settings.doubaoSpeechAppId?.trim() ?? "";
       doubaoAccessToken = decryptApiKey(settings.doubaoSpeechAccessTokenEncrypted!);
-      if (!doubaoAppId || !doubaoAccessToken) {
-        throw new Error("doubao speech App ID or Access Token is not configured");
+      if (!doubaoAccessToken && !doubaoAppId) {
+        throw new Error("doubao speech credentials are not configured");
       }
     } else {
       if (!settings.speechApiKeyEncrypted) throw new Error("qwen speech API key is not configured");
@@ -138,19 +185,18 @@ class SpeechConnection {
     }
 
     await new Promise<void>((resolve, reject) => {
-      const upstream = new WebSocket(
-        this.provider === "doubao" ? DOUBAO_REALTIME_URL : QWEN_REALTIME_URL,
-        {
-          headers:
-            this.provider === "doubao"
-              ? buildDoubaoSpeechWsHeaders(doubaoAppId, doubaoAccessToken)
-              : { Authorization: `Bearer ${qwenApiKey}`, "User-Agent": "pi-supervisor" },
-          handshakeTimeout: 15_000,
-        },
-      );
+      const upstream = new WebSocket(this.provider === "doubao" ? doubaoWsUrl : QWEN_REALTIME_URL, {
+        headers:
+          this.provider === "doubao"
+            ? buildDoubaoSpeechWsHeaders(doubaoAppId, doubaoAccessToken, doubaoResourceId)
+            : { Authorization: `Bearer ${qwenApiKey}`, "User-Agent": "pi-supervisor" },
+        handshakeTimeout: 15_000,
+      });
       this.upstream = upstream;
+      let doubaoReady = false;
       upstream.once("open", () => {
         if (this.provider === "doubao") {
+          // 双向流式不传 language（文档注明仅 nostream 支持）；并开启首字加速
           const payload = Buffer.from(
             JSON.stringify({
               user: { uid: randomUUID() },
@@ -160,7 +206,6 @@ class SpeechConnection {
                 rate: 16000,
                 bits: 16,
                 channel: 1,
-                ...(typeof language === "string" && language ? { language } : {}),
               },
               request: {
                 model_name: "bigmodel",
@@ -169,12 +214,13 @@ class SpeechConnection {
                 enable_punc: true,
                 show_utterances: true,
                 result_type: "full",
+                enable_accelerate_text: true,
+                accelerate_score: 15,
+                end_window_size: 400,
               },
             }),
           );
           upstream.send(doubaoPacket(1, 0, payload));
-          sendJson(this.client, { channel: "speech", type: "speech.ready" });
-          resolve();
         } else {
           upstream.send(
             JSON.stringify({
@@ -194,6 +240,11 @@ class SpeechConnection {
         if (this.provider === "doubao") {
           try {
             const event = parseDoubaoEvent(data);
+            if (!doubaoReady) {
+              doubaoReady = true;
+              sendJson(this.client, { channel: "speech", type: "speech.ready" });
+              resolve();
+            }
             const text = event.result?.text ?? "";
             if (text) this.doubaoText = text;
             sendJson(this.client, {
@@ -202,7 +253,9 @@ class SpeechConnection {
               payload: { text },
             });
           } catch (error) {
-            this.fail(formatUnknownError(error, "豆包语音识别失败"));
+            const message = formatUnknownError(error, "豆包语音识别失败");
+            if (!doubaoReady) reject(new Error(message));
+            this.fail(message);
           }
           return;
         }
@@ -228,13 +281,17 @@ class SpeechConnection {
               detail = raw.slice(0, 240);
             }
           }
-          const message = `${this.provider === "doubao" ? "豆包语音" : "DashScope 语音"}连接被拒绝 (HTTP ${res.statusCode})${detail ? `: ${detail}` : ""}`;
+          const message = `${this.provider === "doubao" ? "豆包语音" : "DashScope 语音"}连接被拒绝 (HTTP ${res.statusCode})${detail ? `: ${detail}` : ""}${this.provider === "doubao" ? "。请确认 App ID / Access Token 正确，且设置中的「服务版本」与火山控制台已开通的版本（1.0 或 2.0）一致" : ""}`;
           if (upstream.readyState !== WebSocket.OPEN) reject(new Error(message));
           this.fail(message);
         });
       });
       upstream.on("error", (error) => {
-        const message = formatUnknownError(error, "语音服务连接失败");
+        let message = formatUnknownError(error, "语音服务连接失败");
+        if (this.provider === "doubao" && /101|unexpected server response/i.test(message)) {
+          message =
+            "豆包语音 WebSocket 握手失败，请检查 App ID / Access Token，并在设置中选择与火山控制台开通版本一致的「服务版本」（1.0 或 2.0）";
+        }
         if (upstream.readyState !== WebSocket.OPEN) reject(new Error(message));
         this.fail(message);
       });
@@ -246,13 +303,19 @@ class SpeechConnection {
   }
 
   append(data: RawData): void {
+    const audio = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
+    if (audio.byteLength > MAX_AUDIO_FRAME_BYTES) throw new Error("audio frame is too large");
+    if (this.provider === "local") {
+      if (!this.localSession) throw new Error("speech session is not ready");
+      this.localSession.append(audio);
+      return;
+    }
     if (!this.upstream || this.upstream.readyState !== WebSocket.OPEN) {
       throw new Error("speech session is not ready");
     }
-    const audio = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-    if (audio.byteLength > MAX_AUDIO_FRAME_BYTES) throw new Error("audio frame is too large");
     if (this.provider === "doubao") {
-      this.upstream.send(doubaoPacket(2, 1, audio, ++this.sequence));
+      // 大模型流式 ASR：flags=0，由服务端自增 sequence；勿混用 flags=1 客户端序号
+      this.upstream.send(doubaoPacket(2, 0, audio));
     } else {
       this.upstream.send(
         JSON.stringify({
@@ -265,10 +328,24 @@ class SpeechConnection {
   }
 
   stop(): void {
-    if (!this.upstream || this.upstream.readyState !== WebSocket.OPEN) return;
     this.stopping = true;
+    if (this.provider === "local") {
+      const text = this.localSession?.finish() ?? this.localText;
+      this.localSession = null;
+      if (text) {
+        sendJson(this.client, {
+          channel: "speech",
+          type: "speech.final",
+          payload: { text },
+        });
+      }
+      sendJson(this.client, { channel: "speech", type: "speech.stopped" });
+      return;
+    }
+    if (!this.upstream || this.upstream.readyState !== WebSocket.OPEN) return;
     if (this.provider === "doubao") {
-      this.upstream.send(doubaoPacket(2, 3, Buffer.alloc(0), -++this.sequence));
+      // flags=0x02：最后一包，不带客户端 sequence（与官方 message flow 一致）
+      this.upstream.send(doubaoPacket(2, 0x02, Buffer.alloc(0)));
       setTimeout(() => {
         if (this.doubaoText) {
           sendJson(this.client, {
@@ -290,6 +367,7 @@ class SpeechConnection {
 
   close(): void {
     this.stopping = true;
+    this.localSession = null;
     this.upstream?.close();
     this.upstream = null;
   }

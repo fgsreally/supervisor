@@ -242,6 +242,10 @@ export interface AgentExternalConfig {
   args?: string[];
   env?: Record<string, string>;
   permissionPolicy?: "allow_once" | "reject_once";
+  /** Args passed to command for availability probe (default: ["--version"]). */
+  detectArgs?: string[];
+  /** Shell command to install the CLI (shown in UI). */
+  installCommand?: string;
 }
 
 export interface AgentRow {
@@ -292,6 +296,7 @@ export interface AgentWithSystemMd extends Agent {
   unavailableReason: string | null;
   detectedVersion: string | null;
   compatibility: "compatible" | "unknown" | "unavailable";
+  installCommand: string | null;
 }
 
 export interface CreateAgentOptions {

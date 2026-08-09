@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 import {
   type AgentEvent,
@@ -53,13 +54,12 @@ import {
 } from "./home-task-plan.js";
 import { scheduleReadyHomeTasks } from "./home-task-scheduler.js";
 import { isFeatureModelRef, readSupervisorSettings } from "../utils/supervisor-settings.js";
-import { applyProjectRuntimeParse, runProjectRuntimeParse } from "./project-runtime.js";
 import {
-  parseSessionServicesMeta,
-  startSessionProjectServices,
-  stopSessionProjectServices,
-} from "./session-services.js";
-import { syncSessionWorktree } from "../utils/git.js";
+  applyProjectRuntimeParse,
+  runProjectRuntimeParse,
+  type SessionServicesMeta,
+} from "./project-runtime.js";
+import { parseSessionServicesMeta } from "./session-services.js";
 import { runWatson } from "./watson.js";
 import type { CreateHomeTaskOptions, HomeTask, UpdateHomeTaskOptions } from "../types.js";
 import {
@@ -67,7 +67,7 @@ import {
   submitApprovalResolution,
   UiApprovalService,
 } from "../extension/runtime/index.js";
-import type { ApprovalRequest, ApprovalResult } from "../extension/index.js";
+import type { ApprovalRequest, ApprovalResult, ExtensionEvent } from "../extension/index.js";
 import { normalizeSessionStage } from "./session-workflow.js";
 import {
   type AskAnswer,
@@ -76,7 +76,6 @@ import {
   submitAskAnswer,
 } from "../tools/ask/tool.js";
 import {
-  finalizeSessionLifecycleGit,
   handleSessionLifecycleAgentEnd,
   prepareSessionLifecycleSpawn,
 } from "./session-lifecycle.js";
@@ -87,9 +86,7 @@ import {
   commitAll,
   commitGitSnapshot,
   ensureGitRepositorySync,
-  getGitStatusPorcelain,
   resolveSessionGitContext,
-  removeSessionWorktree,
 } from "../utils/git.js";
 import { configureSessionLogProjectResolver, sessionLog } from "../utils/session-log.js";
 import { beginSessionTiming, timedSessionStep } from "../utils/session-timing.js";
@@ -102,18 +99,21 @@ import {
   rewindSessionToCheckpoint,
 } from "./session-history.js";
 import { commitSessionChanges } from "./session-lifecycle.js";
-import {
-  harnessAgentController,
-  SessionRuntime,
-  type SessionState,
-} from "./session-runtime.js";
+import { harnessAgentController, SessionRuntime, type SessionState } from "./session-runtime.js";
 import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
 import type {
   ExternalInteractionRequest,
   ExternalInteractionResponse,
 } from "./managed-session-runtime.js";
 import { AcpSessionRuntime } from "./external/acp-session-runtime.js";
-import { externalAgentAvailability } from "./external/external-agent-config.js";
+import {
+  externalAgentAvailability,
+  getExternalAgentConfig,
+  getExternalAgentInstallCommand,
+  resolveExternalAgentInstallShellCommand,
+} from "./external/external-agent-config.js";
+import { runExternalAgentRepair } from "./external/external-agent-repair.js";
+import { runShellCommand } from "./session-service-runtime.js";
 import { CodexSessionRuntime } from "./external/codex-session-runtime.js";
 import { ClaudeSessionRuntime } from "./external/claude-session-runtime.js";
 import {
@@ -200,6 +200,12 @@ export type ShadowSuggestionsEvent = {
   timestamp: number;
 };
 
+export type ShadowRunningEvent = {
+  type: "shadow_running";
+  running: boolean;
+  timestamp: number;
+};
+
 /** Operational notify for the Web UI (toast). Does not change session status. */
 export type UiNotifyEvent = {
   type: "ui_notify";
@@ -218,6 +224,7 @@ export type SessionStatusEvent = {
 export type SessionOutputEvent =
   | AgentHarnessEvent
   | ShadowSuggestionsEvent
+  | ShadowRunningEvent
   | UiNotifyEvent
   | SessionStatusEvent
   | { type: "approval.pending"; [key: string]: unknown };
@@ -318,6 +325,7 @@ export class SessionManager {
   private runtimes = new Map<number, ManagedSessionRuntime>();
   private turnTrackers = new Map<number, TurnFileTracker>();
   private outputListeners = new Map<number, Set<SessionOutputListener>>();
+  private globalOutputListeners = new Set<SessionOutputListener>();
   private sessionToolConfigs = new Map<number, SessionToolConfig>();
   private readonly sessionInputQueues = new SessionInputQueue();
   private readonly drainingSessionInputs = new Set<number>();
@@ -544,11 +552,7 @@ export class SessionManager {
         const overflowRecovery =
           !!llmError &&
           runtime instanceof SessionRuntime &&
-          willAttemptOverflowRecovery(
-            sessionId,
-            llmError,
-            runtime.harness.getModel() as never,
-          );
+          willAttemptOverflowRecovery(sessionId, llmError, runtime.harness.getModel() as never);
 
         if (llmError && !overflowRecovery && !hasPendingAsks(sessionId)) {
           this.db.updateStatus(sessionId, "error");
@@ -615,6 +619,7 @@ export class SessionManager {
       if (listeners) {
         for (const fn of listeners) fn(sessionId, event);
       }
+      for (const fn of this.globalOutputListeners) fn(sessionId, event);
     });
   }
 
@@ -714,10 +719,7 @@ export class SessionManager {
       if (!agent?.modelId) {
         throw new Error(`Agent ${agent?.id ?? session.agentId} has no model configured`);
       }
-      const toolsPreset = this.resolveToolsPresetForSession(
-        session,
-        agent.toolsPreset ?? "coding",
-      );
+      const toolsPreset = this.resolveToolsPresetForSession(session, agent.toolsPreset ?? "coding");
       const llm = resolveLLMConfig(agent.modelId);
 
       await this.ensureResourceCatalog();
@@ -776,9 +778,13 @@ export class SessionManager {
         this.db,
         this,
       );
+      const refreshedAfterExtensions = this.get(session.id)!;
+      runtime.syncWorkingDirectory(refreshedAfterExtensions.cwd);
       if (agent?.backendType === "native") {
-        runtime.configureAgentPermissions(agent.permissionRules, session.cwd, (request) =>
-          this.requestSessionApproval(session.id, request),
+        runtime.configureAgentPermissions(
+          agent.permissionRules,
+          refreshedAfterExtensions.cwd,
+          (request) => this.requestSessionApproval(session.id, request),
         );
       }
       const extensionTools = runtime.collectExtensionTools();
@@ -934,7 +940,7 @@ export class SessionManager {
         backendType: agentInDb?.backendType,
         skipRuntime: !!options.skipRuntime,
       });
-      const activeSession = await timedSessionStep(session.id, "prepareLifecycle/worktree", () =>
+      const activeSession = await timedSessionStep(session.id, "prepareLifecycle", () =>
         prepareSessionLifecycleSpawn(this.db, session, options, agentInDb?.name, this.jobs),
       );
       await timedSessionStep(session.id, "ensureSessionDir", async () => {
@@ -1071,9 +1077,13 @@ export class SessionManager {
         this.db,
         this,
       );
+      const refreshedAfterExtensions = this.get(activeSession.id)!;
+      runtime.syncWorkingDirectory(refreshedAfterExtensions.cwd);
       if (agentInDb?.backendType === "native") {
-        runtime.configureAgentPermissions(agentInDb.permissionRules, activeSession.cwd, (request) =>
-          this.requestSessionApproval(activeSession.id, request),
+        runtime.configureAgentPermissions(
+          agentInDb.permissionRules,
+          refreshedAfterExtensions.cwd,
+          (request) => this.requestSessionApproval(activeSession.id, request),
         );
       }
       const extensionTools = runtime.collectExtensionTools();
@@ -1124,6 +1134,26 @@ export class SessionManager {
     };
   }
 
+  /** Subscribe to agent/runtime events for every session (e.g. mobile push). */
+  onAnySessionOutput(listener: SessionOutputListener): () => void {
+    this.globalOutputListeners.add(listener);
+    return () => {
+      this.globalOutputListeners.delete(listener);
+    };
+  }
+
+  upsertPushDevice(input: import("./push-device-types.js").PushDeviceInput) {
+    return this.db.upsertPushDevice(input);
+  }
+
+  listPushDevices() {
+    return this.db.listPushDevices();
+  }
+
+  deletePushDevice(deviceId: string) {
+    return this.db.deletePushDevice(deviceId);
+  }
+
   publishSessionEvent(sessionId: number, event: SessionOutputEvent): void {
     for (const listener of this.outputListeners.get(sessionId) ?? []) listener(sessionId, event);
   }
@@ -1135,6 +1165,37 @@ export class SessionManager {
       if (agentId !== undefined && session?.agent_id !== agentId) continue;
       runtime.reloadResources();
     }
+  }
+
+  /** Rebuild extension modules and tool wiring for active native sessions of an agent. */
+  async reloadNativeAgentExtensions(agentId: number): Promise<void> {
+    const agent = this.db.getAgent(agentId);
+    if (!agent || agent.backendType !== "native") return;
+
+    for (const [sessionId, runtime] of this.runtimes) {
+      if (!(runtime instanceof SessionRuntime)) continue;
+      const session = this._getSession(sessionId);
+      if (!session || session.agentId !== agentId) continue;
+
+      await runtime.harness.waitForIdle().catch(() => {});
+      await runtime.reloadExtensions(agentId, agent.name, session.cwd, this.db, this);
+      await this.refreshRuntimeTools(sessionId, runtime, session, agent);
+    }
+  }
+
+  private async refreshRuntimeTools(
+    sessionId: number,
+    runtime: SessionRuntime,
+    session: Session,
+    agent: Agent,
+  ): Promise<void> {
+    const toolsPreset = this.resolveToolsPresetForSession(session, agent.toolsPreset ?? "coding");
+    const toolConfig = this.sessionToolConfigs.get(sessionId);
+    const baseTools = toolConfig?.overrideTools ?? createDefaultTools(session.cwd, toolsPreset);
+    const merged = new Map<string, AgentTool>();
+    for (const tool of baseTools) merged.set(tool.name, tool);
+    for (const tool of runtime.collectExtensionTools()) merged.set(tool.name, tool);
+    await runtime.setTools([...merged.values()]);
   }
 
   private async requestSessionApproval(
@@ -1166,6 +1227,17 @@ export class SessionManager {
     const event: ShadowSuggestionsEvent = {
       type: "shadow_suggestions",
       questions,
+      timestamp: Date.now(),
+    };
+    for (const listener of this.outputListeners.get(sessionId) ?? []) {
+      listener(sessionId, event);
+    }
+  }
+
+  publishShadowRunning(sessionId: number, running: boolean): void {
+    const event: ShadowRunningEvent = {
+      type: "shadow_running",
+      running,
       timestamp: Date.now(),
     };
     for (const listener of this.outputListeners.get(sessionId) ?? []) {
@@ -1702,13 +1774,13 @@ export class SessionManager {
       return session;
     }
 
-    // Emit session.before_complete
+    // Emit session.before_complete (extensions: stop → uninstall → worktree on achieve)
     const runtime = this.runtimes.get(id);
     if (runtime?.extension) {
-      void runtime.extension.emit({
+      await runtime.extension.emit({
         type: "session.before_complete",
         sessionId: id,
-      } as any);
+      } as ExtensionEvent);
     }
 
     const isSpawnedSubagent = session.creationMethod === "spawn_agent" && session.parentId != null;
@@ -1741,7 +1813,12 @@ export class SessionManager {
           );
         }
         session = rowToSession(this.db.get(id)!, this.db);
-        await finalizeSessionLifecycleGit(this.db, session, this.jobs);
+        if (runtime?.extension) {
+          await runtime.extension.emit({
+            type: "session.achieve",
+            sessionId: id,
+          } as ExtensionEvent);
+        }
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
@@ -1763,6 +1840,40 @@ export class SessionManager {
     return rowToSession(this.db.get(id)!, this.db);
   }
 
+  async emitSessionExtensionEvent(sessionId: number, event: ExtensionEvent): Promise<void> {
+    let runtime = this.runtimes.get(sessionId);
+    if (!runtime?.extension) {
+      try {
+        runtime = await this.getOrRestoreRuntime(sessionId);
+      } catch {
+        return;
+      }
+    }
+    await runtime.extension?.emit(event);
+  }
+
+  /** Notify UI subscribers that a session row may have changed (meta/status). */
+  notifySessionUpdated(sessionId: number): void {
+    this.publishSessionStatus(sessionId);
+  }
+
+  private publishServicesChange(sessionId: number): void {
+    const session = this.db.get(sessionId);
+    if (!session) return;
+    const services = parseSessionServicesMeta(parseSessionMeta(session.meta));
+    const event = {
+      type: "session_services",
+      services,
+      timestamp: Date.now(),
+    } as unknown as AgentEvent;
+    for (const listener of this.outputListeners.get(sessionId) ?? []) {
+      listener(sessionId, event);
+    }
+    for (const listener of this.globalOutputListeners) {
+      listener(sessionId, event);
+    }
+  }
+
   async syncSession(id: number): Promise<Session> {
     const session = this.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
@@ -1775,42 +1886,39 @@ export class SessionManager {
       projectCwd: project.cwd,
     });
     if (!git) throw new Error("当前会话未启用独立 worktree，无需同步");
-    if ((await getGitStatusPorcelain(session.cwd)).trim()) {
-      throw new Error("同步前请先提交或清理当前会话中的修改");
-    }
 
-    const scripts = this.db.listProjectScripts(project.id);
-    const services = parseSessionServicesMeta(session.meta);
-    await stopSessionProjectServices({
-      sessionId: session.id,
-      cwd: session.cwd,
-      services,
-      destroyScripts: scripts.filter((script) => script.kind === "destroy"),
-      jobs: this.jobs,
-    });
+    const runtime = await this.ensureRuntime(id);
+    if (!runtime.extension) throw new Error("Session extensions are not loaded");
+
     try {
-      const branch = await syncSessionWorktree(project.cwd, session.cwd);
-      const nextServices = await startSessionProjectServices({
-        sessionId: session.id,
-        cwd: session.cwd,
-        project,
-        scripts,
-        jobs: this.jobs,
-      });
-      this.db.updateMeta(session.id, {
-        services: nextServices ?? { status: "stopped", portEnv: {}, scripts: [] },
-      });
-      sessionLog(session.id, "info", `Session synchronized from ${branch}`, [
+      await runtime.extension.emit({
+        type: "session.before_sync",
+        sessionId: id,
+      } as ExtensionEvent);
+      await runtime.extension.emit({
+        type: "session.after_sync",
+        sessionId: id,
+      } as ExtensionEvent);
+      sessionLog(session.id, "info", "Session synchronized from project branch", [
         "system",
         "git",
         "services",
       ]);
+      this.publishServicesChange(session.id);
       return this.get(id)!;
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      this.db.updateMeta(session.id, {
-        services: { status: "error", error: message, portEnv: {}, scripts: [] },
-      });
+      const services = parseSessionServicesMeta(session.meta);
+      if (services?.entries?.length) {
+        this.db.updateMeta(session.id, {
+          services: {
+            ...services,
+            status: "error",
+            error: message,
+          },
+        });
+        this.publishServicesChange(session.id);
+      }
       throw error;
     }
   }
@@ -1856,7 +1964,7 @@ export class SessionManager {
   }
 
   /**
-   * 解析并初始化项目：写 AGENTS.md、project_scripts 和描述。
+   * 解析并初始化项目：写 AGENTS.md 和描述。
    */
   async parseProject(projectId: number): Promise<{
     description: string | null;
@@ -1923,7 +2031,7 @@ export class SessionManager {
       if (!options.replace) {
         throw new Error(`该外部对话已导入为会话 #${existing.id}，不可重复引入`);
       }
-      this.delete(existing.id);
+      await this.delete(existing.id);
     }
 
     const imported = await loadExternalSession(options.backend, options.externalSessionId);
@@ -1986,9 +2094,9 @@ export class SessionManager {
     return rowToSession(this.db.get(session.id)!, this.db);
   }
 
-  deleteProject(id: number): void {
+  async deleteProject(id: number): Promise<void> {
     for (const session of this.db.list({ projectId: id })) {
-      if (this.db.get(session.id)) this.delete(session.id, { allowBuiltin: true });
+      if (this.db.get(session.id)) await this.delete(session.id, { allowBuiltin: true });
     }
     this.db.deleteProject(id);
     removeProjectDirSync(id);
@@ -2020,6 +2128,78 @@ export class SessionManager {
     return this.listAgents();
   }
 
+  async installExternalAgent(id: number): Promise<AgentWithSystemMd> {
+    const agent = this.db.getAgent(id);
+    if (!agent) throw new Error(`Agent ${id} not found`);
+    if (agent.backendType === "native") throw new Error("原生 Agent 无需安装");
+    const installCommand = getExternalAgentInstallCommand(agent);
+    if (!installCommand) throw new Error("未配置安装命令");
+    const shellCommand = resolveExternalAgentInstallShellCommand(installCommand);
+    const result = await runShellCommand(shellCommand, homedir(), process.env, {
+      timeoutMs: 20 * 60 * 1000,
+    });
+    if (result.code !== 0) {
+      const detail =
+        result.stderr.trim() || result.stdout.trim() || `安装失败 (code ${result.code})`;
+      throw new Error(detail);
+    }
+    return this.enrichAgentWithSystemMd(agent);
+  }
+
+  async repairExternalAgent(
+    id: number,
+  ): Promise<{ agent: AgentWithSystemMd; summary: string; fixed: boolean }> {
+    const agent = this.db.getAgent(id);
+    if (!agent) throw new Error(`Agent ${id} not found`);
+    if (agent.backendType === "native") throw new Error("原生 Agent 无需修复");
+
+    const before = externalAgentAvailability(agent);
+    if (before.available) {
+      return {
+        agent: this.enrichAgentWithSystemMd(agent),
+        summary: "已可用，无需修复",
+        fixed: true,
+      };
+    }
+
+    const repair = await runExternalAgentRepair(agent);
+    const currentConfig = getExternalAgentConfig(agent);
+    const nextCommand = repair.command?.trim() || currentConfig.command;
+    const nextArgs = repair.args ?? currentConfig.args;
+    const changed =
+      nextCommand !== currentConfig.command ||
+      JSON.stringify(nextArgs) !== JSON.stringify(currentConfig.args);
+
+    if (changed) {
+      this.db.updateAgent(id, {
+        external_config: JSON.stringify({
+          ...(agent.externalConfig ?? {}),
+          command: nextCommand,
+          args: nextArgs,
+          env: currentConfig.env,
+          ...(currentConfig.permissionPolicy
+            ? { permissionPolicy: currentConfig.permissionPolicy }
+            : {}),
+          ...(agent.externalConfig?.detectArgs
+            ? { detectArgs: agent.externalConfig.detectArgs }
+            : {}),
+          ...(agent.externalConfig?.installCommand
+            ? { installCommand: agent.externalConfig.installCommand }
+            : {}),
+        }),
+      });
+    }
+
+    const updated = this.db.getAgent(id);
+    if (!updated) throw new Error(`Agent ${id} not found`);
+    const after = externalAgentAvailability(updated);
+    return {
+      agent: this.enrichAgentWithSystemMd(updated),
+      summary: repair.summary,
+      fixed: after.available || repair.fixed,
+    };
+  }
+
   insertAgent(
     row: Parameters<SupervisorDb["insertAgent"]>[0],
     options?: { systemMd?: string },
@@ -2031,6 +2211,10 @@ export class SessionManager {
     ensureBuiltinExtensionResources(this.db);
     ensureAgentBuiltinExtensionBindings(this.db, agent.id);
     return this.enrichAgentWithSystemMd(agent);
+  }
+
+  getResource(resourceId: number) {
+    return this.db.getResource(resourceId);
   }
 
   /** Unified extension list for Agent management UI (builtins + user bindings). */
@@ -2070,7 +2254,7 @@ export class SessionManager {
         name: spec.name,
         description: spec.description,
         builtin: true,
-        enabled: binding.enabled,
+        enabled: true,
         resourceId: binding.resourceId,
         bindingId: binding.id,
       });
@@ -2085,7 +2269,7 @@ export class SessionManager {
         name: resource.name ?? resource.slug,
         description: resource.description,
         builtin: false,
-        enabled: binding.enabled,
+        enabled: true,
         resourceId: binding.resourceId,
         bindingId: binding.id,
       });
@@ -2265,7 +2449,7 @@ export class SessionManager {
     this.db.setMessageMeta(sessionId, messageId, meta);
   }
 
-  delete(id: number, options: { allowBuiltin?: boolean } = {}): void {
+  async delete(id: number, options: { allowBuiltin?: boolean } = {}): Promise<void> {
     const row = this.db.get(id);
     const session = row ? rowToSession(row, this.db) : undefined;
     if (session?.isBuiltin && !options.allowBuiltin) {
@@ -2273,122 +2457,55 @@ export class SessionManager {
     }
     for (const child of this.children(id)) {
       if (child.spawnType === "subagent" || child.spawnType === "btw") {
-        this.delete(child.id, options);
+        await this.delete(child.id, options);
       }
     }
-    const runtime = this.runtimes.get(id);
+
+    let runtime = this.runtimes.get(id);
+    let restoredForDelete = false;
+    if (
+      !runtime?.extension &&
+      session &&
+      session.status !== "finish" &&
+      session.status !== "finished" &&
+      session.status !== "stopped"
+    ) {
+      try {
+        runtime = await this.getOrRestoreRuntime(id);
+        restoredForDelete = true;
+      } catch {
+        runtime = undefined;
+      }
+    }
+
+    if (runtime?.extension) {
+      await runtime.extension.emit({
+        type: "session.before_delete",
+        sessionId: id,
+      } as ExtensionEvent);
+    }
+
     if (runtime) {
       this.runtimes.delete(id);
       this.turnTrackers.delete(id);
       this.sessionToolConfigs.delete(id);
     }
-    const meta = session?.meta;
-    const projectCwd =
-      session?.projectId != null ? this.db.getProject(session.projectId)?.cwd : undefined;
-    const gitCleanup =
-      row && session
-        ? resolveSessionGitContext({
-            sessionId: id,
-            cwd: session.cwd,
-            projectCwd,
-          })
-        : null;
-    const services = meta ? parseSessionServicesMeta(meta) : null;
-    const cwd = session?.cwd;
+
     const projectId = session?.projectId ?? null;
     this.db.delete(id);
     if (session?.projectId != null) removeSessionDirSync(session.projectId, id);
     removeSessionMediaDirSync(id);
-    // Stop services + external agent first; otherwise Windows keeps the worktree
-    // cwd locked (vite/codex/etc.) and `git worktree remove` fails.
-    void this.cleanupDeletedSessionResources(id, runtime, gitCleanup, {
-      cwd,
-      services,
-      projectId,
-    });
-  }
 
-  private async cleanupDeletedSessionResources(
-    id: number,
-    runtime: ManagedSessionRuntime | undefined,
-    gitCleanup: ReturnType<typeof resolveSessionGitContext>,
-    serviceCleanup?: {
-      cwd?: string;
-      services: ReturnType<typeof parseSessionServicesMeta>;
-      projectId?: number | null;
-    },
-  ): Promise<void> {
-    if (serviceCleanup?.cwd) {
-      const destroyScripts =
-        serviceCleanup.projectId != null
-          ? this.db.listProjectScripts(serviceCleanup.projectId, "destroy")
-          : [];
-      await stopSessionProjectServices({
-        sessionId: id,
-        cwd: serviceCleanup.cwd,
-        services: serviceCleanup.services,
-        destroyScripts,
-        jobs: this.jobs,
-      }).catch((error: unknown) => {
-        const detail = error instanceof Error ? error.message : String(error);
-        console.error(`stopSessionProjectServices on delete failed [${id}]:`, detail);
-      });
-    }
     if (runtime) {
       await runtime.clear().catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
         console.error(`runtime.clear on delete failed [${id}]:`, detail);
       });
-      // Give Windows a moment to release directory handles.
-      await new Promise((resolve) => setTimeout(resolve, 400));
-    }
-    if (!gitCleanup) return;
-    const tryRemove = () =>
-      removeSessionWorktree(gitCleanup.repoRoot, gitCleanup.worktreePath, gitCleanup.branch, {
-        forceBranch: true,
-      });
-    try {
-      await tryRemove();
-      sessionLog(
-        id,
-        "info",
-        `Worktree removed on session delete: ${gitCleanup.worktreePath}`,
-        ["system", "git", "worktree"],
-        {
-          worktreePath: gitCleanup.worktreePath,
-          branch: gitCleanup.branch,
-        },
-      );
-    } catch (error: unknown) {
-      const detail = error instanceof Error ? error.message : String(error);
-      console.error(`removeSessionWorktree on delete failed [${id}]:`, detail);
-      try {
-        await runWatson({
-          mode: "agent",
-          cwd: gitCleanup.repoRoot,
-          kind: "worktree-cleanup",
-          prompt: [
-            "`git worktree remove` 失败，请诊断并尽量安全修复。",
-            "优先结束占用该目录的进程；不要 rm -rf 整个仓库。",
-            "",
-            `worktreePath: ${gitCleanup.worktreePath}`,
-            `branch: ${gitCleanup.branch}`,
-            `error: ${detail}`,
-          ].join("\n"),
-        });
-        await tryRemove();
-        sessionLog(id, "info", "Worktree removed after Watson cleanup", [
-          "system",
-          "git",
-          "worktree",
-          "watson",
-        ]);
-      } catch (watsonError: unknown) {
-        const watsonDetail =
-          watsonError instanceof Error ? watsonError.message : String(watsonError);
-        console.error(`Watson worktree cleanup failed [${id}]:`, watsonDetail);
+      if (restoredForDelete) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
       }
     }
+    void projectId;
   }
 
   // ============ Session Tree Methods ============
@@ -2501,6 +2618,7 @@ export class SessionManager {
     this.runtimes.clear();
     this.turnTrackers.clear();
     this.outputListeners.clear();
+    this.globalOutputListeners.clear();
     this.sessionToolConfigs.clear();
     this.db.close();
   }

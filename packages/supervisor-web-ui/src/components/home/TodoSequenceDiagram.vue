@@ -28,7 +28,7 @@
             :agent-id="agentInfo(data.agent)?.id ?? data.agent"
             :agent-name="data.agent"
             :agent-avatar="agentInfo(data.agent)?.avatar"
-            density="compact"
+            density="default"
           />
           <Handle type="source" :position="Position.Right" />
         </div>
@@ -172,19 +172,19 @@ function agentInfo(name: string): Agent | undefined {
   border-bottom: 1px solid var(--app-border-subtle);
 }
 .sequence > header strong {
-  font-size: 12px;
+  font-size: 0.8125rem;
 }
 .sequence > header span {
-  color: var(--app-text-muted);
-  font-size: 9px;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
 }
 .sequence-flow {
-  height: 390px;
+  height: 420px;
   background: var(--app-settings-card);
 }
 .task-node-wrap {
   position: relative;
-  width: 230px;
+  width: 260px;
   box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
 }
 :deep(.vue-flow__handle) {

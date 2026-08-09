@@ -51,11 +51,7 @@
             <span class="goal-summary__hint">点击修改并重新规划</span>
           </button>
           <template v-else>
-            <textarea
-              v-model="goal"
-              rows="5"
-              placeholder="描述你想完成的事情，输入 @ 关联项目"
-            />
+            <textarea v-model="goal" rows="5" placeholder="描述你想完成的事情，输入 @ 关联项目" />
             <div class="goal-box__footer">
               <span class="project-pill"><FolderGit2 />supervisor-web-ui</span>
               <button class="primary" :disabled="planning" @click="mockPlan">
@@ -78,11 +74,7 @@
             <strong>当前任务</strong><span>{{ drafts.length }}</span>
           </div>
         </div>
-        <TodoSequenceDiagram
-          class="plan-desktop-only"
-          :agents="agents"
-          @select="selectDraft"
-        />
+        <TodoSequenceDiagram class="plan-desktop-only" :agents="agents" @select="selectDraft" />
 
         <div v-if="drafts.length" class="mobile-plan-list" aria-label="规划任务列表">
           <div class="mobile-plan-section-label">待确认任务 · {{ drafts.length }}</div>
@@ -100,8 +92,8 @@
                 <p>{{ task.description }}</p>
                 <small
                   >{{ task.project }} · {{ task.agent
-                  }}<template v-if="task.dependencies.length"
-                    > · 依赖 {{ task.dependencies.length }} 项</template
+                  }}<template v-if="task.dependencies.length">
+                    · 依赖 {{ task.dependencies.length }} 项</template
                   ></small
                 >
               </div>
@@ -434,17 +426,11 @@ const visibleTasks = computed(() =>
 );
 const runningCount = computed(() => execution.value.filter((t) => t.status === "running").length);
 const showGoalSummary = computed(
-  () =>
-    isNarrowUi.value &&
-    drafts.value.length > 0 &&
-    !goalComposerOpen.value &&
-    !planning.value,
+  () => isNarrowUi.value && drafts.value.length > 0 && !goalComposerOpen.value && !planning.value,
 );
 const planMobileTitle = computed(() => (drafts.value.length ? "确认规划" : "新建规划"));
 const planMobileSubtitle = computed(() =>
-  drafts.value.length
-    ? `${drafts.value.length} 个任务待确认`
-    : "写清目标，华生会拆成可执行任务",
+  drafts.value.length ? `${drafts.value.length} 个任务待确认` : "写清目标，华生会拆成可执行任务",
 );
 function count(id: string) {
   return id === "all"
@@ -553,7 +539,7 @@ onMounted(async () => {
   border-bottom: 1px solid var(--app-border);
 }
 .todo-head h1 {
-  font-size: 17px;
+  font-size: 1.0625rem;
   font-weight: 680;
 }
 .todo-stage {
@@ -585,13 +571,13 @@ onMounted(async () => {
   margin-bottom: 14px;
 }
 .pane-title h2 {
-  font-size: 15px;
+  font-size: 1rem;
   font-weight: 650;
 }
 .pane-title span,
 .draft-head span {
-  color: var(--app-text-muted);
-  font-size: 11px;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
 }
 .quiet,
 .primary,
@@ -601,7 +587,7 @@ onMounted(async () => {
   gap: 5px;
   border-radius: 7px;
   padding: 7px 10px;
-  font-size: 11px;
+  font-size: 0.8125rem;
 }
 .quiet {
   color: var(--app-text-secondary);
@@ -633,7 +619,7 @@ button svg,
   width: 100%;
   resize: none;
   background: transparent;
-  font-size: 13px;
+  font-size: 0.875rem;
   line-height: 1.6;
   outline: none;
 }
@@ -645,7 +631,7 @@ button svg,
   align-items: center;
   gap: 4px;
   color: #078f49;
-  font-size: 10px;
+  font-size: 0.75rem;
 }
 .draft-head {
   margin: 18px 0 8px;
@@ -653,6 +639,10 @@ button svg,
 .draft-head > div {
   display: flex;
   gap: 7px;
+  align-items: baseline;
+}
+.draft-head strong {
+  font-size: 0.875rem;
 }
 .dependency-list,
 .run-list {
@@ -740,7 +730,7 @@ button svg,
 }
 .task-main p {
   margin: 3px 0 7px;
-  color: var(--app-text-muted);
+  color: var(--app-text-body);
   font-size: 11px;
   white-space: nowrap;
   overflow: hidden;
@@ -884,7 +874,7 @@ button svg,
   border-radius: 7px;
   color: var(--app-text-secondary);
   background: var(--app-hover);
-  font-size: 11px;
+  font-size: 0.8125rem;
 }
 .plan-actions__main {
   min-width: 108px;
@@ -929,7 +919,7 @@ button svg,
   padding: 5px 9px;
   border-radius: 5px;
   color: var(--app-text-muted);
-  font-size: 10px;
+  font-size: 0.75rem;
 }
 .view-switch button.active {
   background: var(--app-settings-card);
@@ -953,11 +943,11 @@ button svg,
   text-align: right;
 }
 .execution-timeline .time strong {
-  font-size: 10px;
+  font-size: 0.75rem;
 }
 .execution-timeline .time span {
-  color: var(--app-text-muted);
-  font-size: 8px;
+  color: var(--app-text-secondary);
+  font-size: 0.6875rem;
 }
 .execution-timeline .rail {
   position: relative;
@@ -1013,8 +1003,8 @@ button svg,
   font-size: 12px;
 }
 .execution-timeline .event > p {
-  color: var(--app-text-muted);
-  font-size: 10px;
+  color: var(--app-text-body);
+  font-size: 0.8125rem;
 }
 .execution-timeline footer {
   display: flex;
@@ -1029,10 +1019,10 @@ button svg,
 }
 .filters button {
   flex: none;
-  padding: 5px 9px;
+  padding: 6px 10px;
   border-radius: 6px;
-  color: var(--app-text-muted);
-  font-size: 10px;
+  color: var(--app-text-secondary);
+  font-size: 0.8125rem;
 }
 .filters button.active {
   color: #078f49;
@@ -1069,6 +1059,9 @@ button svg,
   font-size: 9px;
   color: var(--app-text-muted);
 }
+.run-card :deep(.task-card-ui__meta > span) {
+  font-size: 0.75rem;
+}
 .run-card > svg {
   align-self: center;
   width: 15px;
@@ -1092,7 +1085,7 @@ button svg,
   font-size: 16px;
 }
 .task-detail p {
-  color: var(--app-text-secondary);
+  color: var(--app-text-body);
   font-size: 12px;
   line-height: 1.6;
 }
@@ -1359,7 +1352,7 @@ button svg,
     display: -webkit-box;
     margin: 4px 0 0;
     overflow: hidden;
-    color: var(--m-text-secondary, var(--app-text-secondary));
+    color: var(--m-text-body, var(--app-text-body));
     font-size: 13px;
     line-height: 1.4;
     -webkit-box-orient: vertical;

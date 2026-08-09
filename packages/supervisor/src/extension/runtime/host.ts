@@ -12,6 +12,7 @@ import type {
   EventHandlerContext,
   ExtensionDefinition,
   ExtensionEvent,
+  ExtensionEventHandlerOptions,
   ToolDefinition,
   ToolExecutionContext,
   ToolInfo,
@@ -104,8 +105,9 @@ export class SessionExtensionHost {
       event: Extract<ExtensionEvent, { type: K }>,
       context: EventHandlerContext,
     ) => void | Promise<void>,
+    options?: ExtensionEventHandlerOptions,
   ): () => void {
-    return this.runtime.on("$runtime", type, handler);
+    return this.runtime.on("$runtime", type, handler, options);
   }
 
   /** 向当前 Agent 的所有扩展分发一个 Supervisor 扩展事件。 */
@@ -356,9 +358,7 @@ export class SessionExtensionHost {
         });
         return {
           content: result.content.map((part) =>
-            part.type === "text"
-              ? part
-              : { type: "text" as const, text: `[Image: ${part.url}]` },
+            part.type === "text" ? part : { type: "text" as const, text: `[Image: ${part.url}]` },
           ),
           details: result.details ?? {},
           ...(result.isError ? { isError: true } : {}),

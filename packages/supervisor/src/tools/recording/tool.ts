@@ -103,10 +103,7 @@ export function createDesktopRecordingTool(storageDir: string): {
       },
       required: ["action"],
     },
-    async execute(
-      _id,
-      input: unknown,
-    ): Promise<AgentToolResult<unknown> & { isError?: boolean }> {
+    async execute(_id, input: unknown): Promise<AgentToolResult<unknown> & { isError?: boolean }> {
       const params = input as RecordingParams;
       if (params.action === "status") {
         return {

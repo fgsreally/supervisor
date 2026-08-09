@@ -139,6 +139,13 @@ export class SupervisorElysiaBuilder {
     return this.route("delete", path, handler, hooks);
   }
 
+  all(path: string, handler: RouteHandler, hooks?: RouteHooks): this {
+    for (const method of ["get", "post", "put", "patch", "delete"] as const) {
+      this.route(method, path, handler, hooks);
+    }
+    return this;
+  }
+
   ws(path: string, hooks: WebSocketHooks): this {
     (this.app.ws as any)(path, hooks);
     return this;

@@ -1,0 +1,299 @@
+<template>
+  <div class="active-ui-view">
+    <aside class="active-ui-view__list">
+      <header class="active-ui-view__header">
+        <div>
+          <h1 class="active-ui-view__title">活跃应用</h1>
+          <p class="active-ui-view__meta">{{ entries.length }} 个入口</p>
+        </div>
+      </header>
+
+      <div v-if="entries.length === 0" class="active-ui-view__empty">当前没有运行中的 UI 服务</div>
+      <template v-else>
+        <div class="active-ui-view__pager">
+          <button type="button" :disabled="page <= 1" @click="page -= 1">上一页</button>
+          <span>{{ page }} / {{ totalPages }}</span>
+          <button type="button" :disabled="page >= totalPages" @click="page += 1">下一页</button>
+        </div>
+
+        <div class="active-ui-view__items custom-scrollbar">
+          <button
+            v-for="entry in pageItems"
+            :key="entry.key"
+            type="button"
+            class="active-ui-view__item"
+            :class="{ 'active-ui-view__item--active': selectedKey === entry.key }"
+            @click="selectEntry(entry)"
+          >
+            <strong>{{ entry.sessionTitle }}</strong>
+            <span>{{ entry.label ?? entry.scriptName }}</span>
+            <small>{{ entry.status === "starting" ? "启动中" : "运行中" }}</small>
+          </button>
+        </div>
+      </template>
+    </aside>
+
+    <section class="active-ui-view__preview">
+      <div v-if="entries.length === 0" class="active-ui-view__preview-empty">
+        启动带 UI 端口的会话服务后，可在此预览
+      </div>
+      <template v-else-if="selectedEntry">
+        <header class="active-ui-view__preview-header">
+          <div class="active-ui-view__preview-copy">
+            <strong>{{ selectedEntry.sessionTitle }}</strong>
+            <span>{{ selectedEntry.label ?? selectedEntry.scriptName }}</span>
+          </div>
+          <button type="button" class="active-ui-view__open-session" @click="openSelectedSession">
+            打开会话
+          </button>
+        </header>
+        <div v-if="previewLoading" class="active-ui-view__loading">正在唤醒服务...</div>
+        <iframe
+          v-else
+          class="active-ui-view__frame"
+          :src="selectedEntry.previewUrl"
+          :title="`${selectedEntry.sessionTitle} · ${selectedEntry.label ?? selectedEntry.scriptName}`"
+        />
+      </template>
+    </section>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import {
+  collectActiveUiEntries,
+  paginateActiveUiEntries,
+  type ActiveUiEntry,
+} from "@/utils/active-ui-entries";
+import { parseSessionServicesFromMeta } from "@/utils/session-services";
+import { wakeSessionServices } from "@/api";
+import { showUiMessage } from "@/composables/use-ui-message";
+import { toUISession } from "@/utils/ui-session";
+import { useSessionStore } from "@/store";
+
+const emit = defineEmits<{
+  "open-session": [sessionId: string];
+}>();
+
+const PAGE_SIZE = 20;
+const page = ref(1);
+const selectedKey = ref<string | null>(null);
+const previewLoading = ref(false);
+const sessionStore = useSessionStore();
+
+const sessions = computed(() => sessionStore.sessions.map(toUISession));
+const entries = computed(() => collectActiveUiEntries(sessions.value));
+const pagination = computed(() => paginateActiveUiEntries(entries.value, page.value, PAGE_SIZE));
+const pageItems = computed(() => pagination.value.items);
+const totalPages = computed(() => pagination.value.totalPages);
+
+const selectedEntry = computed(
+  () => entries.value.find((entry) => entry.key === selectedKey.value) ?? null,
+);
+
+watch(
+  entries,
+  (next) => {
+    if (next.length === 0) {
+      selectedKey.value = null;
+      return;
+    }
+    if (!next.some((entry) => entry.key === selectedKey.value)) {
+      selectedKey.value = next[0]?.key ?? null;
+    }
+    if (page.value > paginateActiveUiEntries(next, page.value, PAGE_SIZE).totalPages) {
+      page.value = 1;
+    }
+  },
+  { immediate: true },
+);
+
+async function selectEntry(entry: ActiveUiEntry) {
+  selectedKey.value = entry.key;
+  const session = sessions.value.find((item) => item.id === entry.sessionId);
+  const services = session ? parseSessionServicesFromMeta(session.meta) : null;
+  if (services?.status === "stopped") {
+    previewLoading.value = true;
+    try {
+      await wakeSessionServices(entry.sessionId);
+      await sessionStore.fetchSession(entry.sessionId);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      showUiMessage(`唤醒服务失败：${message}`, "error");
+    } finally {
+      previewLoading.value = false;
+    }
+  }
+}
+
+function openSelectedSession() {
+  if (!selectedEntry.value) return;
+  emit("open-session", selectedEntry.value.sessionId);
+}
+</script>
+
+<style scoped>
+.active-ui-view {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--app-shell-bg);
+}
+
+.active-ui-view__list {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  min-width: 240px;
+  max-width: 360px;
+  border-right: 1px solid var(--app-border-subtle);
+  background: var(--app-list-section-bg);
+}
+
+.active-ui-view__header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--app-border-subtle);
+  background: var(--app-list-header-bg);
+}
+
+.active-ui-view__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--app-text-primary);
+}
+
+.active-ui-view__meta {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--app-text-muted);
+}
+
+.active-ui-view__pager {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.active-ui-view__pager button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.active-ui-view__items {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  overflow-y: auto;
+}
+
+.active-ui-view__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  text-align: left;
+  background: var(--app-chat-bg);
+}
+
+.active-ui-view__item strong {
+  font-size: 13px;
+  color: var(--app-text-primary);
+}
+
+.active-ui-view__item span {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+}
+
+.active-ui-view__item small {
+  font-size: 11px;
+  color: var(--app-text-muted);
+}
+
+.active-ui-view__item--active {
+  outline: 1px solid color-mix(in srgb, var(--app-accent) 45%, transparent);
+  background: var(--app-list-item-active);
+}
+
+.active-ui-view__empty,
+.active-ui-view__loading,
+.active-ui-view__preview-empty {
+  padding: 24px 16px;
+  font-size: 13px;
+  color: var(--app-text-secondary);
+}
+
+.active-ui-view__preview {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--app-chat-bg);
+}
+
+.active-ui-view__preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--app-border-subtle);
+  background: var(--app-list-header-bg);
+}
+
+.active-ui-view__preview-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.active-ui-view__preview-copy strong {
+  font-size: 14px;
+  color: var(--app-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-ui-view__preview-copy span {
+  font-size: 12px;
+  color: var(--app-text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.active-ui-view__open-session {
+  flex-shrink: 0;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--app-text-primary);
+  background: var(--app-hover);
+}
+
+.active-ui-view__open-session:hover {
+  background: var(--app-list-item-active);
+}
+
+.active-ui-view__frame {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  background: #fff;
+}
+</style>

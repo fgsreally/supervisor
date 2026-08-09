@@ -5,6 +5,7 @@ import {
   DEFAULT_PARENT_MESSAGE_LEVEL,
   SESSION_INPUT_INTERRUPT_LEVEL,
 } from "../../../core/session-input-queue.js";
+import { parseSessionMeta } from "../../../core/session-fields.js";
 import { runWatson } from "../../../core/watson.js";
 import type { SupervisorDb } from "../../../db/db.js";
 import type { Session, SessionCheckpoint } from "../../../types.js";
@@ -50,6 +51,23 @@ function resolveShadowAgentId(db: SupervisorDb): number | null {
   return findPackagedAgentId(db, "shadow") ?? null;
 }
 
+function setShadowRunning(
+  manager: SessionManager,
+  db: SupervisorDb,
+  sessionId: number,
+  running: boolean,
+): void {
+  const row = db.get(sessionId);
+  if (!row) return;
+  const meta = parseSessionMeta(row.meta);
+  const shadow =
+    meta.shadow && typeof meta.shadow === "object" && !Array.isArray(meta.shadow)
+      ? { ...(meta.shadow as Record<string, unknown>) }
+      : {};
+  db.updateMeta(sessionId, { shadow: { ...shadow, running } });
+  manager.publishShadowRunning(sessionId, running);
+}
+
 export async function runShadow(
   manager: SessionManager,
   db: SupervisorDb,
@@ -68,6 +86,8 @@ export async function runShadow(
   const shadowAgentId = resolveShadowAgentId(db);
   const shadowMemory = readShadowMemory(session.projectId, session.id);
 
+  setShadowRunning(manager, db, session.id, true);
+
   let result: ShadowProtocolResult;
   try {
     const run = await runWatson({
@@ -82,12 +102,14 @@ export async function runShadow(
     const normalized = normalizeShadowSubmitResult(run.result);
     if (!normalized) {
       console.error(`shadow submit_result invalid [session=${session.id}]`);
+      setShadowRunning(manager, db, session.id, false);
       return;
     }
     result = normalized;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     console.error(`shadow completion failed [session=${session.id}]:`, message);
+    setShadowRunning(manager, db, session.id, false);
     return;
   }
 
@@ -106,8 +128,10 @@ export async function runShadow(
       memory: result.shadowMemory,
       memoryUpdated: Boolean(result.shadowMemory),
       lastRunAt: Date.now(),
+      running: false,
     },
   });
+  manager.publishShadowRunning(session.id, false);
   manager.publishShadowSuggestions(session.id, suggestedQuestions);
 
   const title = result.title?.replace(/\s+/g, " ").trim().slice(0, 80);

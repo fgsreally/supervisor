@@ -190,6 +190,8 @@ export interface ExtensionSession {
     getActive(): string[] | null;
   };
   getDir(): Promise<string>;
+  /** Update session working directory (e.g. after worktree create). */
+  setCwd(path: string): Promise<void>;
   isIdle(): boolean;
   isStreaming(): boolean;
   abort(): void;
@@ -348,6 +350,7 @@ export interface ExtensionContext {
       event: Extract<ExtensionEvent, { type: K }>,
       ctx: EventHandlerContext,
     ) => void | Promise<void>,
+    options?: ExtensionEventHandlerOptions,
   ): () => void;
 
   /** 写日志 */
@@ -615,6 +618,15 @@ export interface ExtensionSqliteDatabase {
 // Events
 // ============================================================================
 
+export type ExtensionEventHandlerMode = "sync" | "async";
+
+export interface ExtensionEventHandlerOptions {
+  /** Higher runs first. Default 0. */
+  priority?: number;
+  /** sync (default): await before pipeline continues; async: fire-and-forget. */
+  mode?: ExtensionEventHandlerMode;
+}
+
 export type ExtensionEvent =
   // ==================== 会话生命周期 ====================
   | {
@@ -624,7 +636,18 @@ export type ExtensionEvent =
       parentSessionId?: string;
     }
   | {
-      /** Fired after session DB row exists, before harness spawn (worktree setup). */
+      /** Fired after session DB row exists, before harness bind (worktree setup). */
+      type: "session.create";
+      sessionId: number;
+      parentSessionId?: string;
+      cwd: string;
+      toolsPreset: "coding" | "readonly" | "none";
+      agentDisplayName?: string;
+      spawnType?: string | null;
+      meta?: Record<string, unknown>;
+    }
+  | {
+      /** @deprecated Alias of session.create */
       type: "session.prepare";
       sessionId: number;
       parentSessionId?: string;
@@ -634,8 +657,30 @@ export type ExtensionEvent =
       meta?: Record<string, unknown>;
     }
   | {
-      /** Fired before merge/cleanup on POST /sessions/:id/complete. */
+      /** Service teardown before achieve (stop / uninstall). */
       type: "session.before_complete";
+      sessionId: number;
+    }
+  | {
+      /** Git merge + worktree cleanup after commit on achieve. */
+      type: "session.achieve";
+      sessionId: number;
+    }
+  | {
+      /** Teardown before session row is deleted. */
+      type: "session.before_delete";
+      sessionId: number;
+    }
+  | {
+      type: "session.before_sync";
+      sessionId: number;
+    }
+  | {
+      type: "session.after_sync";
+      sessionId: number;
+    }
+  | {
+      type: "session.services_wake";
       sessionId: number;
     }
   | {

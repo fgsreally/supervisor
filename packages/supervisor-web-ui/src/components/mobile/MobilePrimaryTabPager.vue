@@ -147,7 +147,9 @@ function animateTranslateTo(targetPx: number, commit = false) {
 
 function isSwipeBlocked(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return true;
-  return !!target.closest("input, textarea, select, button, a, [contenteditable='true'], [data-no-tab-swipe]");
+  return !!target.closest(
+    "input, textarea, select, button, a, [contenteditable='true'], [data-no-tab-swipe]",
+  );
 }
 
 function onTouchStart(event: TouchEvent) {

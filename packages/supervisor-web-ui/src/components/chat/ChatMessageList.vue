@@ -185,7 +185,8 @@ const LOAD_OLDER_THRESHOLD_PX = 80;
 
 function onScroll() {
   const el = containerRef.value;
-  if (!el || !props.scrollReady || !props.hasOlder || props.loadingOlder || props.searchOpen) return;
+  if (!el || !props.scrollReady || !props.hasOlder || props.loadingOlder || props.searchOpen)
+    return;
   if (el.scrollTop <= LOAD_OLDER_THRESHOLD_PX) emit("load-older");
 }
 

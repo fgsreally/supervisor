@@ -458,7 +458,14 @@ function insertTrigger(trigger: "@" | "@@" | "/") {
   insertAtCursor(trigger);
 }
 
-defineExpose({ focus, insertTrigger });
+function blur() {
+  clearBlurTimer();
+  autocompleteDismissed.value = true;
+  viewRef.value?.contentDOM.blur();
+  isFocused.value = false;
+}
+
+defineExpose({ focus, blur, insertTrigger });
 </script>
 
 <style scoped>

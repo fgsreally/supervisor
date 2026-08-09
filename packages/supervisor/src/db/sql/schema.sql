@@ -29,9 +29,9 @@ CREATE TABLE IF NOT EXISTS agents (
   description TEXT,
   avatar TEXT,
   backend_type TEXT NOT NULL DEFAULT 'native',
+  model_id INTEGER REFERENCES models(id) ON DELETE SET NULL,
   system_prompt TEXT,
   tools_preset TEXT NOT NULL DEFAULT 'coding',
-  model_id INTEGER REFERENCES models(id) ON DELETE SET NULL,
   home_dir TEXT,
   is_builtin INTEGER NOT NULL DEFAULT 0,
   external_config TEXT,
@@ -50,19 +50,6 @@ CREATE TABLE IF NOT EXISTS projects (
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS project_scripts (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-  kind TEXT NOT NULL,
-  name TEXT NOT NULL,
-  command TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_project_scripts_project
-  ON project_scripts(project_id, kind, id);
 
 CREATE TABLE IF NOT EXISTS sessions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -198,3 +185,20 @@ CREATE TABLE IF NOT EXISTS agent_resources (
 
 CREATE INDEX IF NOT EXISTS idx_agent_resources_agent ON agent_resources(agent_id);
 CREATE INDEX IF NOT EXISTS idx_agent_resources_resource ON agent_resources(resource_id);
+
+CREATE TABLE IF NOT EXISTS push_devices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL UNIQUE,
+  platform TEXT NOT NULL,
+  push_token TEXT NOT NULL,
+  manufacturer_push_token TEXT,
+  manufacturer TEXT,
+  model TEXT,
+  app_version TEXT,
+  last_seen INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_devices_platform ON push_devices(platform);
+CREATE INDEX IF NOT EXISTS idx_push_devices_last_seen ON push_devices(last_seen);

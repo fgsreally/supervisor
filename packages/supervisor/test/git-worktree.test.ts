@@ -11,12 +11,12 @@ describe("supervisor: git-worktree helpers", () => {
     expect(sessionBranchName("abcdef12-0000-0000-0000-000000000000")).toBe("pi/session-abcdef12");
   });
 
-  it("sessionWorktreePath is under .pi/supervisor/worktrees", () => {
+  it("sessionWorktreePath is under .supervisor/worktrees", () => {
     const path = sessionWorktreePath("/repo", "sess-1").replace(/\\/g, "/");
-    expect(path).toBe("/repo/.pi/supervisor/worktrees/sess-1");
+    expect(path).toBe("/repo/.supervisor/worktrees/sess-1");
   });
 
-  it("resolveSessionGitContext uses meta.git.worktreePath and project cwd", () => {
+  it("resolveSessionGitContext uses cwd under project worktree", () => {
     const repoRoot = "/repo";
     const sessionId = 42;
     const worktreePath = sessionWorktreePath(repoRoot, String(sessionId));
@@ -24,7 +24,6 @@ describe("supervisor: git-worktree helpers", () => {
       sessionId,
       cwd: worktreePath,
       projectCwd: repoRoot,
-      meta: { git: { worktreePath, branch: "pi/session-42" } },
     });
     expect(ctx?.branch).toBe("pi/session-42");
     expect(ctx?.worktreeEnabled).toBe(true);
@@ -34,8 +33,7 @@ describe("supervisor: git-worktree helpers", () => {
     expect(
       resolveSessionGitContext({
         sessionId: 1,
-        cwd: "/repo/.pi/supervisor/worktrees/1",
-        meta: { git: { worktreePath: "/repo/.pi/supervisor/worktrees/1" } },
+        cwd: "/repo/.supervisor/worktrees/1",
       }),
     ).toBeNull();
   });

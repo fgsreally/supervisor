@@ -48,8 +48,8 @@
       </button>
     </div>
 
-    <div class="flex-1 overflow-y-auto custom-scrollbar">
-      <div class="provider-detail-content max-w-5xl">
+    <div class="flex-1 overflow-y-auto custom-scrollbar flex justify-center">
+      <div class="provider-detail-content w-full max-w-[1040px]">
         <section class="provider-detail-section">
           <div class="provider-detail-config-heading">
             <div class="text-[14px] font-medium provider-detail-title">配置</div>
@@ -359,6 +359,12 @@ function removeModel(modelId: string) {
 
 .provider-detail-row:hover {
   background: var(--app-hover);
+}
+
+@media (min-width: 768px) {
+  .provider-detail-content {
+    padding: 26px 28px 48px;
+  }
 }
 
 @media (max-width: 767px) {

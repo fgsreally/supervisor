@@ -51,12 +51,12 @@ pnpm docs:build
 
 ### 反馈形态
 
-| 场景 | Loading | 成功 / 失败 |
-| --- | --- | --- |
-| 通过按钮触发的创建 / 保存 | 按钮自身 loading（`UiActionButton`） | `showUiMessage` |
-| 非按钮触发（快捷键、拖放、自动提交等） | 全屏 busy（`withUiBusy` / `UiBusyHost`） | `showUiMessage` |
-| 列表项上的逐条操作（如外部引入某一项） | 该项右侧 loading 图标（`UiListStatus`） | 列表项勾 / 叉 + `showUiMessage` |
-| 删除 | 先 `requestUiConfirm`（非原生 confirm） | `showUiMessage` |
+| 场景                                   | Loading                                  | 成功 / 失败                     |
+| -------------------------------------- | ---------------------------------------- | ------------------------------- |
+| 通过按钮触发的创建 / 保存              | 按钮自身 loading（`UiActionButton`）     | `showUiMessage`                 |
+| 非按钮触发（快捷键、拖放、自动提交等） | 全屏 busy（`withUiBusy` / `UiBusyHost`） | `showUiMessage`                 |
+| 列表项上的逐条操作（如外部引入某一项） | 该项右侧 loading 图标（`UiListStatus`）  | 列表项勾 / 叉 + `showUiMessage` |
+| 删除                                   | 先 `requestUiConfirm`（非原生 confirm）  | `showUiMessage`                 |
 
 ### 对应封装（优先复用）
 
@@ -113,5 +113,5 @@ pnpm docs:build
 - **华生**是内部 runner（`spawn_type: watson`）：`AgentHarness` + 简单工具（`createDefaultTools`）+ 助手模型；**不**再走 `pi-coding-agent` 的 `createAgentSession`（避免两套 agent 系统）。
 - 不创建用户 session；任务提示词临时注入；结构化结果只用终止型 `submit_result` tool（pi 官方方式，无文本托底）。
 - 入口：`SessionManager.runWatson` / 扩展 `ctx.watson.run(...)`；日志在 agent home `logs/`，Agent 详情 Logs 可见。
-- 项目脚本在 `project_scripts` 表；session 创建时起 bash Job 并注入启动提示。
+- Session 内 coding agent 通过 `project-services` 扩展注册 start/stop/destroy 到 `sessions.meta.services.entries`；按需启动并注入启动提示。
 - Session 可委派子 Agent 白名单：`sessions.meta.subagentIds`（不再使用 `members` 表）。

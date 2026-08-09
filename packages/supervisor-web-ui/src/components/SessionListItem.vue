@@ -88,6 +88,7 @@ import type { UISession } from "@/types/ui";
 import { branchDotColor } from "../utils/session-branch";
 import { formatListTime } from "../utils/format-time";
 import { parseSessionStage } from "../utils/workflow";
+import { parseSessionServicesFromMeta, sessionHasProjectServices } from "../utils/session-services";
 import WorkflowStageTag from "./WorkflowStageTag.vue";
 import SessionAvatar from "./SessionAvatar.vue";
 import { useAgentStore } from "@/store";
@@ -218,6 +219,25 @@ const preview = computed(() =>
 );
 
 const statusDotClass = computed(() => {
+  const services = parseSessionServicesFromMeta(props.session.meta);
+  const agentRunning = props.session.status === "running";
+  const agentBlocked = props.session.status === "blocked";
+  const agentInitializing = props.session.status === "initializing";
+
+  if (sessionHasProjectServices(props.session.meta) && services) {
+    let serviceClass = "session-status-dot session-status-dot--stopped";
+    if (services.status === "running" || services.status === "active")
+      serviceClass = "session-status-dot session-status-dot--idle";
+    else if (services.status === "starting")
+      serviceClass = "session-status-dot session-status-dot--initializing";
+    else if (services.status === "error")
+      serviceClass = "session-status-dot session-status-dot--error";
+    if (agentRunning) return `${serviceClass} session-status-dot--agent-running`;
+    if (agentBlocked) return `${serviceClass} session-status-dot--agent-blocked`;
+    if (agentInitializing) return `${serviceClass} session-status-dot--agent-initializing`;
+    return serviceClass;
+  }
+
   switch (props.session.status) {
     case "initializing":
       return "session-status-dot session-status-dot--initializing";
@@ -276,6 +296,18 @@ const statusDotClass = computed(() => {
 
 .session-status-dot--finish {
   background: color-mix(in srgb, var(--app-text-muted) 70%, transparent);
+}
+
+.session-status-dot--agent-running {
+  box-shadow: 0 0 0 2px var(--app-status-running);
+}
+
+.session-status-dot--agent-blocked {
+  box-shadow: 0 0 0 2px var(--app-status-waiting-user);
+}
+
+.session-status-dot--agent-initializing {
+  box-shadow: 0 0 0 2px var(--app-status-initializing);
 }
 
 .session-row {

@@ -12,6 +12,7 @@ import { getDefaultCwd, resolveWorkspacePath, setDefaultCwd } from "./config/def
 import { resolveDbPath } from "./config/resolve-db-path.js";
 import { createHttpServer } from "./http/http-server.js";
 import { SessionManager } from "./core/session-manager.js";
+import { attachPushDispatcher } from "./core/push-dispatcher.js";
 import { startDailyWorkScheduler } from "./core/daily-work.js";
 import type { Provider } from "./types.js";
 import { encryptApiKey } from "./utils/encrypt.js";
@@ -23,6 +24,7 @@ import { resolveWebPin } from "./utils/web-password.js";
 import { getSupervisorHome, setSupervisorHome } from "./utils/supervisor-home.js";
 import {
   buildDevPublicUrl,
+  printExternalAgentAvailability,
   printStartupBanner,
   printTunnelError,
   printTunnelStarting,
@@ -116,6 +118,7 @@ async function run() {
   const db = new SupervisorDb(resolveDbPath());
   dedupeBuiltinAssistantSessions(db);
   const manager = new SessionManager(db);
+  attachPushDispatcher(db, (listener) => manager.onAnySessionOutput(listener));
   const command = cli.matchedCommandName ?? "serve";
   const cmdArgs = [...parsed.args];
 
@@ -169,6 +172,7 @@ async function run() {
         uiDistMissing,
         devMode,
       });
+      printExternalAgentAvailability(manager.detectExternalAgents());
       break;
     }
 

@@ -22,6 +22,14 @@ export interface AppendSessionLogInput {
 export interface ReadSessionLogOptions {
   level?: SessionLogLevel;
   tags?: string[];
+  limit?: number;
+  before?: number;
+  after?: number;
+}
+
+export interface ReadSessionLogResult {
+  entries: SessionLogEntry[];
+  hasMore: boolean;
 }
 
 type ProjectIdResolver = (sessionId: number) => number | null | undefined;
@@ -178,8 +186,9 @@ export function readSessionLog(
   projectId: string | number,
   sessionId: string | number,
   options?: ReadSessionLogOptions,
-): SessionLogEntry[] {
+): ReadSessionLogResult {
   const entries: SessionLogEntry[] = [];
+  const limit = Math.min(Math.max(options?.limit ?? 100, 1), 500);
 
   const jsonl = sessionLogPath(projectId, sessionId);
   if (existsSync(jsonl)) {
@@ -216,5 +225,27 @@ export function readSessionLog(
   }
 
   entries.sort((a, b) => a.t - b.t);
-  return entries;
+
+  if (options?.after != null && Number.isFinite(options.after)) {
+    const newer = entries.filter((entry) => entry.t > options.after!);
+    return {
+      entries: newer.slice(0, limit),
+      hasMore: newer.length > limit,
+    };
+  }
+
+  if (options?.before != null && Number.isFinite(options.before)) {
+    const older = entries.filter((entry) => entry.t < options.before!);
+    const slice = older.slice(-limit);
+    return {
+      entries: slice,
+      hasMore: older.length > limit,
+    };
+  }
+
+  const slice = entries.slice(-limit);
+  return {
+    entries: slice,
+    hasMore: entries.length > limit,
+  };
 }

@@ -177,9 +177,17 @@ function ensureExternalAgent(
     description: string;
     command: string;
     args?: string[];
+    detectArgs?: string[];
+    installCommand?: string;
     avatar: string;
   },
 ): void {
+  const externalConfig = {
+    command: spec.command,
+    ...(spec.args ? { args: spec.args } : {}),
+    detectArgs: spec.detectArgs ?? ["--version"],
+    ...(spec.installCommand ? { installCommand: spec.installCommand } : {}),
+  };
   const existing = db.listAgents().find((agent) => agent.backendType === spec.kind);
   if (existing) {
     // Upgrade stale Cursor packaging to the bundled official avatar.
@@ -191,6 +199,32 @@ function ensureExternalAgent(
     ) {
       db.updateAgent(existing.id, { avatar: spec.avatar });
     }
+    // Cursor CLI 官方二进制名为 cursor-agent；旧配置误写为 agent。
+    if (spec.kind === "cursor") {
+      const config = existing.externalConfig;
+      if (config?.command === "agent") {
+        db.updateAgent(existing.id, {
+          external_config: JSON.stringify({
+            ...config,
+            command: spec.command,
+            args: config.args?.length ? config.args : (spec.args ?? []),
+            detectArgs: config.detectArgs ?? externalConfig.detectArgs,
+            installCommand: config.installCommand ?? externalConfig.installCommand,
+          }),
+        });
+      }
+    }
+    // Backfill detect/install fields for agents seeded before this feature.
+    const config = existing.externalConfig;
+    if (config && (!config.detectArgs?.length || !config.installCommand)) {
+      db.updateAgent(existing.id, {
+        external_config: JSON.stringify({
+          ...config,
+          detectArgs: config.detectArgs?.length ? config.detectArgs : externalConfig.detectArgs,
+          installCommand: config.installCommand ?? externalConfig.installCommand,
+        }),
+      });
+    }
     return;
   }
   db.insertAgent({
@@ -200,10 +234,7 @@ function ensureExternalAgent(
     backend_type: spec.kind,
     tools_preset: "coding",
     is_builtin: true,
-    external_config: JSON.stringify({
-      command: spec.command,
-      ...(spec.args ? { args: spec.args } : {}),
-    }),
+    external_config: JSON.stringify(externalConfig),
     meta: {},
   });
 }
@@ -215,6 +246,8 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
     name: "Codex",
     description: "OpenAI Codex CLI connected through app-server",
     command: "codex",
+    detectArgs: ["--version"],
+    installCommand: "npm install -g @openai/codex",
     avatar: "/icons/openai.svg",
   });
   ensureExternalAgent(db, {
@@ -222,6 +255,8 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
     name: "Claude Code",
     description: "Claude Code CLI connected through stream-json",
     command: "claude",
+    detectArgs: ["--version"],
+    installCommand: "npm install -g @anthropic-ai/claude-code",
     avatar: "/icons/anthropic.svg",
   });
   ensureExternalAgent(db, {
@@ -230,14 +265,21 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
     description: "Kimi Code CLI connected through Agent Client Protocol",
     command: "kimi",
     args: ["acp"],
+    detectArgs: ["--version"],
+    installCommand: "npm install -g @moonshot-ai/kimi-code",
     avatar: "https://avatars.githubusercontent.com/u/129152888?s=48&v=4",
   });
   ensureExternalAgent(db, {
     kind: "cursor",
     name: "Cursor",
     description: "Cursor CLI connected through Agent Client Protocol",
-    command: "agent",
+    command: "cursor-agent",
     args: ["acp"],
+    detectArgs: ["--version"],
+    installCommand:
+      process.platform === "win32"
+        ? "powershell -ep Bypass -c \"irm 'https://cursor.com/install?win32=true' | iex\""
+        : "curl https://cursor.com/install -fsS | bash",
     avatar: "/icons/cursor.png",
   });
   ensureExternalAgent(db, {
@@ -246,6 +288,11 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
     description: "MiMoCode CLI connected through Agent Client Protocol",
     command: "mimo",
     args: ["acp"],
+    detectArgs: ["--version"],
+    installCommand:
+      process.platform === "win32"
+        ? 'powershell -ep Bypass -c "irm https://mimo.xiaomi.com/install.ps1 | iex"'
+        : "curl -fsSL https://mimo.xiaomi.com/install | bash",
     avatar: "/icons/mimo.png",
   });
   for (const kind of ACTIVE_PACKAGED_AGENT_KINDS) {

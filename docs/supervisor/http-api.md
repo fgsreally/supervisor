@@ -39,6 +39,8 @@
 | GET    | `/agents`                            | 列出                               |
 | POST   | `/agents`                            | 创建                               |
 | POST   | `/agents/detect`                     | 探测本机外部 Agent                 |
+| POST   | `/agents/:id/install`                | 执行外部 Agent 安装命令            |
+| POST   | `/agents/:id/repair`                 | 华生修复外部 Agent 可用性          |
 | GET    | `/agents/:id`                        | 获取                               |
 | PATCH  | `/agents/:id`                        | 更新                               |
 | DELETE | `/agents/:id`                        | 删除                               |

@@ -6,12 +6,34 @@
     <div
       v-if="!mobileSearchOpen"
       class="h-16 flex items-center px-4 shrink-0 border-b m-centered-list-header"
-      style="background: var(--app-list-header-bg); border-color: var(--app-header-divider, var(--app-border-subtle))"
+      style="
+        background: var(--app-list-header-bg);
+        border-color: var(--app-header-divider, var(--app-border-subtle));
+      "
     >
-      <h1 class="text-[16px] font-medium flex-1 max-md:flex-none" style="color: var(--app-text-primary)">智能代理</h1>
+      <h1
+        class="text-[16px] font-medium flex-1 max-md:flex-none"
+        style="color: var(--app-text-primary)"
+      >
+        智能代理
+      </h1>
       <div class="m-centered-list-header__actions">
-        <button type="button" class="mobile-search-trigger" aria-label="搜索" @click="mobileSearchOpen = true">
+        <button
+          type="button"
+          class="mobile-search-trigger"
+          aria-label="搜索"
+          @click="mobileSearchOpen = true"
+        >
           <Search />
+        </button>
+        <button
+          type="button"
+          class="list-header-btn"
+          title="重新检测外部 Agent"
+          :disabled="detecting"
+          @click="refreshAvailability"
+        >
+          <RefreshCw class="w-5 h-5" :class="{ 'animate-spin': detecting }" />
         </button>
         <button type="button" class="list-header-btn" title="添加智能代理" @click="$emit('add')">
           <UserPlus class="w-5 h-5" />
@@ -20,7 +42,9 @@
     </div>
 
     <div v-else class="mobile-search-page">
-      <button type="button" aria-label="返回" @click="mobileSearchOpen = false"><ArrowLeft /></button>
+      <button type="button" aria-label="返回" @click="mobileSearchOpen = false">
+        <ArrowLeft />
+      </button>
       <Search />
       <input v-model="query" type="search" placeholder="搜索智能代理" autofocus />
     </div>
@@ -94,14 +118,15 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { ArrowLeft, Search, UserPlus } from "lucide-vue-next";
+import { computed, onMounted, ref } from "vue";
+import { ArrowLeft, RefreshCw, Search, UserPlus } from "lucide-vue-next";
 import type { Agent } from "@/api";
 import { useAgentStore } from "@/store";
 import AgentListItem from "./AgentListItem.vue";
 import DustTransitionGroup from "./DustTransitionGroup.vue";
 import { requestUiConfirm } from "@/composables/use-ui-confirm";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { refreshExternalAgents } from "@/composables/use-external-agent-actions";
 
 const props = defineProps<{
   activeId: string;
@@ -118,7 +143,23 @@ const emit = defineEmits<{ select: [id: string]; add: [] }>();
 
 const agentStore = useAgentStore();
 const query = ref("");
+const detecting = ref(false);
 const contextMenu = ref<{ agent: Agent; x: number; y: number } | null>(null);
+
+onMounted(() => {
+  void refreshAvailability();
+});
+
+async function refreshAvailability() {
+  detecting.value = true;
+  try {
+    await refreshExternalAgents();
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "检测外部 Agent 失败", "error");
+  } finally {
+    detecting.value = false;
+  }
+}
 
 function openContextMenu(event: MouseEvent, agent: Agent) {
   if (agent.isBuiltin || agent.backendType !== "native") return;
@@ -178,6 +219,11 @@ const filteredGroups = computed(() => {
 
 .list-header-btn:hover {
   background: var(--app-hover);
+}
+
+.list-header-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .list-search-input {

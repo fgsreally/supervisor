@@ -23,6 +23,16 @@
 
 端口通过环境变量注入。若 Supervisor 已在本 session 启动项目服务，环境中会带有分配好的 `PORT` / `API_PORT` 等；自行再起服务时请复用这些变量（如 `PORT=$PORT npm run dev`），不要硬编码端口。
 
+### 新项目首会话
+
+coding 会话首次处理需要 dev server 的项目时：
+
+1. 探查依赖并在需要时执行 install。
+2. 调用 **ProjectServiceSetup** 登记启动命令、端口占位符（如 `${PORT}`）、关闭命令与卸载命令。
+3. 完成 install 后调用 **ProjectServiceStart** 启动；不要重复手动起长期服务。
+
+登记完成后 Setup 工具会自动隐藏；后续对话会自动尝试唤醒已注册服务。
+
 ## 边界
 
 - 未经用户明确要求，不要 `git commit` / `push` / `reset` / `rebase` 等会改写共享历史或远程状态的操作。

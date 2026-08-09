@@ -42,9 +42,6 @@
             <FolderTree />
           </ChatHeaderAction>
           <SessionCommitPopover :session-id="session.id" />
-          <ChatHeaderAction v-if="canSyncSession" title="同步项目修改" @click="onSyncSession">
-            <RefreshCw />
-          </ChatHeaderAction>
           <ChatHeaderAction
             v-if="taskCount"
             :title="`Todo · ${taskTypeSummary}`"
@@ -92,7 +89,7 @@
     />
 
     <div class="chat-workspace">
-      <div class="chat-workspace__conversation">
+      <div ref="conversationHostRef" class="chat-workspace__conversation">
         <div
           v-if="!chatViewportReady && !searchOpen"
           class="session-loading session-loading--overlay"
@@ -154,31 +151,84 @@
           @delete="deleteQueuedInput"
         />
 
-        <SessionChangesPopover
-          v-if="sessionChangedFiles.length"
-          class="chat-composer-changes"
-          :files="sessionChangedFiles"
-        />
+        <div
+          class="chat-composer-stack"
+          :class="{ 'chat-composer-stack--has-changes': composerStackActive }"
+        >
+          <SessionPendingSyncBanner
+            v-if="showPendingSyncBanner && sessionGitPendingUpdate"
+            :pending="sessionGitPendingUpdate"
+            :sync-disabled="!canCheckpointActions || isStreaming"
+            @sync="onSyncSession"
+            @dismiss="dismissPendingSync"
+          />
+          <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
 
-        <ChatInputPanel
-          ref="inputPanelRef"
-          v-model="inputText"
-          :session-id="session.id"
-          :workspace-id="workspaceId"
-          :agent-id="agentId"
-          :disabled="inputDisabled"
-          :interrupting="canInterrupt"
-          :placeholder="inputPlaceholder"
-          :empty-state-title="modelMissing ? '需要先配置模型' : undefined"
-          :empty-state-description="modelMissing ? '选择模型后即可继续这段对话' : undefined"
-          :empty-state-action="modelMissing ? '选择模型' : undefined"
-          @send="sendMessage"
-          @interrupt="interruptCurrentTurn"
-          @slash="executeCustomSlash"
-          @empty-action="openModelPicker"
-          @btw="onCreateBtw"
+          <ChatInputPanel
+            ref="inputPanelRef"
+            v-model="inputText"
+            :session-id="session.id"
+            :workspace-id="workspaceId"
+            :agent-id="agentId"
+            :disabled="inputDisabled"
+            :interrupting="canInterrupt"
+            :shadow-running="shadowRunning"
+            :placeholder="inputPlaceholder"
+            :empty-state-title="modelMissing ? '需要先配置模型' : undefined"
+            :empty-state-description="modelMissing ? '选择模型后即可继续这段对话' : undefined"
+            :empty-state-action="modelMissing ? '选择模型' : undefined"
+            @send="sendMessage"
+            @interrupt="interruptCurrentTurn"
+            @slash="executeCustomSlash"
+            @empty-action="openModelPicker"
+            @btw="onCreateBtw"
+          />
+        </div>
+
+        <FloatingPreviewOrb
+          :visible="hasServicePreviews"
+          :active="servicesRunning"
+          :open="previewSplitOpen"
+          :container-ref="conversationHostRef"
+          :storage-key="`supervisor:preview-orb:${session.id}`"
+          @toggle="togglePreviewSplit"
         />
       </div>
+
+      <MobileDrawer
+        :open="isMobileViewport && previewSplitOpen"
+        ariaLabel="项目页面预览"
+        size="tall"
+        :resizable="true"
+        @close="previewSplitOpen = false"
+      >
+        <SessionPreviewPanel
+          :previews="servicePreviews"
+          :loading="previewLoading"
+          show-close
+          @close="previewSplitOpen = false"
+        />
+      </MobileDrawer>
+      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
+        <div
+          v-if="!isMobileViewport && previewSplitOpen"
+          class="chat-panel-host"
+          :style="sidePanelStyle"
+        >
+          <ResizeHandle
+            orientation="vertical"
+            label="调整预览分屏宽度"
+            @start="startSidePanelResize"
+          />
+          <SessionPreviewPanel
+            class="chat-panel-host__body"
+            :previews="servicePreviews"
+            :loading="previewLoading"
+            show-close
+            @close="previewSplitOpen = false"
+          />
+        </div>
+      </Transition>
 
       <MobileDrawer
         :open="isMobileViewport && Boolean(taskPaneOpen && taskCount)"
@@ -234,7 +284,11 @@
         />
       </MobileDrawer>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="!isMobileViewport && btwPanelOpen" class="chat-panel-host" :style="sidePanelStyle">
+        <div
+          v-if="!isMobileViewport && btwPanelOpen"
+          class="chat-panel-host"
+          :style="sidePanelStyle"
+        >
           <ResizeHandle
             orientation="vertical"
             label="调整会话分屏宽度"
@@ -264,7 +318,11 @@
         />
       </MobileDrawer>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="!isMobileViewport && showLogPanel" class="chat-panel-host" :style="sidePanelStyle">
+        <div
+          v-if="!isMobileViewport && showLogPanel"
+          class="chat-panel-host"
+          :style="sidePanelStyle"
+        >
           <ResizeHandle
             orientation="vertical"
             label="调整会话分屏宽度"
@@ -290,11 +348,16 @@
           class="chat-panel-host__body chat-workspace__side-panel"
           :session-id="session.id"
           :initial-path="requestedFilePath"
+          :changed-files="sessionChangedFiles"
           @close="showFilesPanel = false"
         />
       </MobileDrawer>
       <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="!isMobileViewport && showFilesPanel" class="chat-panel-host" :style="sidePanelStyle">
+        <div
+          v-if="!isMobileViewport && showFilesPanel"
+          class="chat-panel-host"
+          :style="sidePanelStyle"
+        >
           <ResizeHandle
             orientation="vertical"
             label="调整会话分屏宽度"
@@ -304,6 +367,7 @@
             class="chat-panel-host__body chat-workspace__side-panel"
             :session-id="session.id"
             :initial-path="requestedFilePath"
+            :changed-files="sessionChangedFiles"
             @close="showFilesPanel = false"
           />
         </div>
@@ -473,7 +537,6 @@ import {
   ClipboardList,
   FolderTree,
   Loader2,
-  RefreshCw,
   SlidersHorizontal,
   ScrollText,
   Search,
@@ -525,7 +588,11 @@ import ChatSessionToolsSheet from "../components/chat/ChatSessionToolsSheet.vue"
 import SessionChangesPopover, {
   type SessionChangedFileView,
 } from "../components/chat/SessionChangesPopover.vue";
+import SessionPendingSyncBanner from "../components/chat/SessionPendingSyncBanner.vue";
+import type { SessionGitMeta, SessionGitPendingUpdate } from "@/api";
 import SessionCommitPopover from "../components/chat/SessionCommitPopover.vue";
+import SessionPreviewPanel from "../components/SessionPreviewPanel.vue";
+import FloatingPreviewOrb from "../components/FloatingPreviewOrb.vue";
 import ToolApprovalDialog from "../components/ToolApprovalDialog.vue";
 import { MobileDrawer } from "../components/mobile/ui";
 import type { ChatSendPayload } from "@/types/chat-compose";
@@ -536,9 +603,14 @@ import {
   setSplitAssistantMessages,
 } from "../composables/use-chat-session-prefs";
 import { useChatFontSize } from "../composables/use-chat-font-size";
-import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-push-notifications";
+import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-notifications";
+import { endLiveStatus, syncAgentLiveStatus } from "../composables/use-live-status";
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
 import { parseSessionStage } from "../utils/workflow";
+import {
+  parseSessionServicesFromMeta,
+  type SessionServicesPreview,
+} from "../utils/session-services";
 import { sessionAvatar, type SessionAvatarValue } from "../utils/session-avatar";
 
 const props = defineProps<{
@@ -553,7 +625,7 @@ const props = defineProps<{
     stage?: string | null;
     meta?: {
       subagentIds?: number[];
-      shadow?: { suggestedQuestions?: string[]; status?: string };
+      shadow?: { suggestedQuestions?: string[]; status?: string; running?: boolean };
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
       workflow?: { stage: string; status: string };
       changedFiles?: SessionChangedFileView[];
@@ -577,6 +649,24 @@ const emit = defineEmits<{
 }>();
 
 const stage = computed(() => parseSessionStage(props.session));
+
+function parseSessionGitPendingUpdate(
+  meta: Record<string, unknown>,
+): SessionGitPendingUpdate | null {
+  const git = meta.git;
+  if (!git || typeof git !== "object" || Array.isArray(git)) return null;
+  const pending = (git as SessionGitMeta).pendingUpdate;
+  if (!pending || typeof pending !== "object") return null;
+  if (!Array.isArray(pending.files)) return null;
+  return pending;
+}
+
+const sessionGitPendingUpdate = computed(() => {
+  const meta = props.session.meta;
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  return parseSessionGitPendingUpdate(meta as Record<string, unknown>);
+});
+
 const sessionChangedFiles = computed<SessionChangedFileView[]>(() => {
   if (Array.isArray(props.session.meta?.changedFiles)) return props.session.meta.changedFiles;
   const files = new Map<string, SessionChangedFileView>();
@@ -636,6 +726,7 @@ const modelMissing = computed(() => {
 });
 const inputText = ref("");
 const suggestedQuestions = ref<string[]>([]);
+const shadowRunning = ref(false);
 const pendingApprovals = ref<api.ApprovalPendingEvent[]>([]);
 const pendingApproval = computed(() => pendingApprovals.value[0] ?? null);
 const rewindableEntryIds = ref<string[]>([]);
@@ -670,6 +761,34 @@ function openJobDetail(request: JobDetailRequest): void {
   toolModal.value = { title: request.title, sections: request.sections };
 }
 const isStreaming = ref(false);
+
+watch(
+  () =>
+    [isStreaming.value, props.session?.status, props.session?.title, props.session?.id] as const,
+  ([streaming, status, title, sessionId]) => {
+    if (!sessionId) return;
+    const running =
+      Boolean(streaming) ||
+      status === "running" ||
+      status === "blocked" ||
+      status === "initializing";
+    void syncAgentLiveStatus({
+      sessionId,
+      title: title?.trim() || "Supervisor",
+      subtitle:
+        status === "blocked"
+          ? "等待你确认"
+          : streaming
+            ? "思考中"
+            : status === "running"
+              ? "运行中"
+              : "连接中",
+      phase: status === "blocked" ? "waiting" : streaming ? "thinking" : "connecting",
+      running,
+    });
+  },
+  { immediate: true },
+);
 const streamingAssistantId = ref<string | null>(null);
 const activeTurn = ref<{
   userEntryId: string;
@@ -684,6 +803,9 @@ const modelPickerLoading = ref(false);
 const modelPickerSaving = ref(false);
 const modelSearch = ref("");
 const sessionActionsOpen = ref(false);
+const previewSplitOpen = ref(false);
+const previewLoading = ref(false);
+const conversationHostRef = ref<HTMLElement | null>(null);
 const showLogPanel = ref(false);
 const showFilesPanel = ref(false);
 const requestedFilePath = ref<string | null>(null);
@@ -695,11 +817,13 @@ function closeAllSidePanels() {
   btwPanelOpen.value = false;
   showLogPanel.value = false;
   showFilesPanel.value = false;
+  previewSplitOpen.value = false;
   toolPanel.value = null;
 }
 
 function openSidePanel(kind: SidePanelKind) {
   if (isMobileViewport.value) closeAllSidePanels();
+  previewSplitOpen.value = false;
   switch (kind) {
     case "task":
       taskPaneOpen.value = true;
@@ -720,6 +844,7 @@ function openSidePanel(kind: SidePanelKind) {
 
 function setToolPanel(panel: NonNullable<typeof toolPanel.value>) {
   if (isMobileViewport.value) closeAllSidePanels();
+  previewSplitOpen.value = false;
   toolPanel.value = panel;
 }
 
@@ -983,6 +1108,12 @@ const canCheckpointActions = computed(() => {
 const canSyncSession = computed(
   () => !props.session.isBuiltin && props.session.status !== "finish" && !isStreaming.value,
 );
+const showPendingSyncBanner = computed(
+  () => !!sessionGitPendingUpdate.value && canSyncSession.value,
+);
+const composerStackActive = computed(
+  () => sessionChangedFiles.value.length > 0 || showPendingSyncBanner.value,
+);
 
 watch(
   () => props.session.title,
@@ -1138,6 +1269,13 @@ async function loadSessionMessages(sessionId: string) {
           typeof question === "string" && question.trim().length > 0,
       )
     : [];
+  const shadowMeta = props.session.meta?.shadow;
+  shadowRunning.value = !!(
+    shadowMeta &&
+    typeof shadowMeta === "object" &&
+    !Array.isArray(shadowMeta) &&
+    (shadowMeta as { running?: boolean }).running === true
+  );
   await maybeResumeRunningSession(sessionId);
 }
 
@@ -1224,7 +1362,12 @@ function subscribeShadowSuggestions(sessionId: string) {
         void sessionStore.fetchSession(sessionId);
         return;
       }
+      if (payload.event.type === "shadow_running") {
+        shadowRunning.value = payload.event.running;
+        return;
+      }
       if (payload.event.type !== "shadow_suggestions") return;
+      shadowRunning.value = false;
       suggestedQuestions.value = payload.event.questions;
     },
     (error) => {
@@ -1393,6 +1536,18 @@ async function onSyncSession() {
   }
 }
 
+async function dismissPendingSync() {
+  const git = props.session.meta?.git;
+  if (!git || typeof git !== "object" || Array.isArray(git)) return;
+  const nextGit = { ...(git as Record<string, unknown>) };
+  delete nextGit.pendingUpdate;
+  try {
+    await sessionStore.updateSessionMeta(props.session.id, { git: nextGit });
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "操作失败", "error");
+  }
+}
+
 async function onCreateCheckpoint() {
   sessionMenuOpen.value = false;
   if (!canCheckpointActions.value) return;
@@ -1514,6 +1669,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  if (props.session?.id) void endLiveStatus(props.session.id);
   window.removeEventListener("supervisor:open-file", onOpenFileEvent);
   window.removeEventListener("resize", syncMobileViewport);
   stopStreaming();
@@ -1555,6 +1711,48 @@ const headerStatusKey = computed(() => {
   if (props.session.status === "blocked" || pendingAsk.value) return "blocked";
   return props.session.status;
 });
+
+const sessionServices = computed(() => parseSessionServicesFromMeta(props.session.meta));
+const servicesRunning = computed(() => sessionServices.value?.status === "running");
+const servicePreviews = computed<SessionServicesPreview[]>(() => {
+  const services = sessionServices.value;
+  if (!services?.uiPorts?.length) return [];
+  return services.uiPorts.map((port) => ({
+    ...port,
+    previewUrl: api.buildSessionPreviewUrl(props.session.id, port.scriptName, port.path ?? "/"),
+  }));
+});
+const hasServicePreviews = computed(() => servicePreviews.value.length > 0);
+
+async function togglePreviewSplit() {
+  if (!hasServicePreviews.value) return;
+  if (previewSplitOpen.value) {
+    previewSplitOpen.value = false;
+    return;
+  }
+  if (isMobileViewport.value) closeAllSidePanels();
+  else {
+    taskPaneOpen.value = false;
+    btwPanelOpen.value = false;
+    showLogPanel.value = false;
+    showFilesPanel.value = false;
+    toolPanel.value = null;
+  }
+  if (sessionServices.value?.status === "stopped") {
+    previewLoading.value = true;
+    try {
+      await api.wakeSessionServices(props.session.id);
+      await sessionStore.fetchSession(props.session.id);
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      showUiMessage(`唤醒服务失败：${message}`, "error");
+      return;
+    } finally {
+      previewLoading.value = false;
+    }
+  }
+  previewSplitOpen.value = true;
+}
 
 const lastNotifiedAskId = ref<string | null>(null);
 
@@ -2012,13 +2210,35 @@ async function executeCustomSlash(name: string) {
 }
 
 @media (min-width: 768px) {
+  /* PC 聊天：白底 + 灰气泡，消息区居中（与移动端微信风格区分） */
   .chat-view {
     --app-chat-input-island-border: var(--app-border);
+    --app-chat-bg: #ffffff;
+    --app-chat-header-bg: #ffffff;
+    --app-chat-message-bg: #ffffff;
+    --app-chat-message-inherited: #fafafa;
+    --app-bubble-assistant: #ededf0;
+    --app-chat-input-island-bg: #ffffff;
+    --chat-conversation-max-width: 880px;
+  }
+
+  html[data-theme="dark"] .chat-view {
+    --app-chat-bg: #1a1a1a;
+    --app-chat-header-bg: #1a1a1a;
+    --app-chat-message-bg: #1a1a1a;
+    --app-chat-message-inherited: #202020;
+    --app-bubble-assistant: #2c2c2c;
+    --app-chat-input-island-bg: #1a1a1a;
   }
 
   .chat-view :deep(.chat-view-header) {
     height: 52px;
     padding-inline: 16px;
+  }
+
+  .chat-view .chat-message-list-host :deep(.chat-message-list) {
+    box-sizing: border-box;
+    padding-inline: max(12px, calc((100% - var(--chat-conversation-max-width)) / 2));
   }
 }
 
@@ -2067,8 +2287,34 @@ async function executeCustomSlash(name: string) {
   transform: translateX(-50%);
 }
 
-.chat-composer-changes {
-  margin: 0 8px 6px;
+.chat-composer-stack {
+  margin: 0 8px 8px;
+}
+
+.chat-composer-stack--has-changes {
+  overflow: hidden;
+  border: 1px solid var(--app-chat-input-island-border);
+  border-radius: 12px;
+  background: var(--app-chat-input-island-bg, var(--app-chat-bg));
+}
+
+.chat-composer-stack--has-changes :deep(.chat-input-shell) {
+  padding: 0 8px 8px;
+  background: transparent;
+}
+
+.chat-composer-stack--has-changes :deep(.chat-input-island) {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.chat-composer-stack--has-changes :deep(.changes-wrap) {
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.chat-composer-stack--has-changes :deep(.pending-sync-wrap) {
+  border-bottom: 1px solid var(--app-border-subtle);
 }
 
 .chat-panel-host :deep(.tool-detail-panel),

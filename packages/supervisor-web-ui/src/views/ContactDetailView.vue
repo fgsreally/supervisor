@@ -161,8 +161,12 @@
         <AgentResourceBrowser v-else class="flex-1 min-h-0" :agent-id="agentId" :kind="rightTab" />
       </div>
 
-      <div v-else class="flex-1 overflow-y-auto custom-scrollbar p-6 contact-detail-content">
-        <ExternalAgentDetails :agent="agent" @saved="onAgentSaved" />
+      <div v-else class="flex-1 flex min-h-0 overflow-hidden">
+        <div
+          class="flex flex-1 justify-center overflow-auto min-h-0 contact-detail-content contact-detail-config-content"
+        >
+          <ExternalAgentDetails :agent="agent" @saved="onAgentSaved" />
+        </div>
       </div>
     </div>
 

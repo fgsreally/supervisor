@@ -68,9 +68,7 @@ const fitOptions = computed(() => ({
   includeHiddenNodes: false,
 }));
 
-const hintText = computed(() =>
-  narrow.value ? "拖拽平移 · 双指缩放" : "拖拽平移 · 滚轮缩放",
-);
+const hintText = computed(() => (narrow.value ? "拖拽平移 · 双指缩放" : "拖拽平移 · 滚轮缩放"));
 
 const layout = computed(() => {
   if (narrow.value) {

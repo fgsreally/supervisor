@@ -104,10 +104,7 @@ export default {
         "normal queues the message and urgent interrupts the child's current turn." +
         (configuredNames ? ` Available agentName values: ${configuredNames}.` : ""),
       parameters: spawnAgentSchema,
-      async execute(
-        params: SpawnAgentParams,
-        _context,
-      ): Promise<ExtensionToolCallResult> {
+      async execute(params: SpawnAgentParams, _context): Promise<ExtensionToolCallResult> {
         const instructions = (params.prompt ?? params.instructions ?? "").trim();
         if (!instructions) {
           throw new Error("spawn_agent requires prompt or instructions");

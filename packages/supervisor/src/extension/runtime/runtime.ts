@@ -13,6 +13,8 @@ import {
   mcpExtension,
   messageAssetsExtension,
   persistentBashExtension,
+  projectServicesExtension,
+  sessionGitWorktreeExtension,
   subagentExtension,
   supervisorAdminExtension,
   taskManagementExtension,
@@ -23,6 +25,8 @@ import {
   type ExtensionCommandDefinition,
   type ExtensionCommandInfo,
   type ExtensionEvent,
+  type ExtensionEventHandlerMode,
+  type ExtensionEventHandlerOptions,
   type ToolDefinition,
   type ToolExecutionContext,
   type ToolInfo,
@@ -45,12 +49,20 @@ interface ExtensionRegistry {
   getAllTools(): ToolInfo[];
 }
 
+interface RegisteredEventHandler {
+  handler: (event: unknown, ctx: EventHandlerContext) => unknown;
+  priority: number;
+  mode: ExtensionEventHandlerMode;
+  order: number;
+}
+
 /**
  * 扩展运行时
  */
 export class SessionExtensionRuntime {
-  private handlers = new Map<string, Set<(event: unknown, ctx: EventHandlerContext) => unknown>>();
+  private handlers = new Map<string, RegisteredEventHandler[]>();
   private handlerOwners = new WeakMap<Function, string>();
+  private handlerRegistrationOrder = 0;
   private extensions: LoadedExtension[] = [];
   private registry: ExtensionRegistry;
   private readonly context: Context;
@@ -96,6 +108,12 @@ export class SessionExtensionRuntime {
     if (allow("persistent-bash")) {
       await this.loadExtension(persistentBashExtension, "builtin:persistent-bash");
     }
+    if (allow("project-services")) {
+      await this.loadExtension(projectServicesExtension, "builtin:project-services");
+    }
+    if (allow("session-git-worktree")) {
+      await this.loadExtension(sessionGitWorktreeExtension, "builtin:session-git-worktree");
+    }
     if (allow("skill")) {
       await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");
     }
@@ -118,33 +136,58 @@ export class SessionExtensionRuntime {
       event: Extract<ExtensionEvent, { type: K }>,
       ctx: EventHandlerContext,
     ) => void | Promise<void>,
+    options?: ExtensionEventHandlerOptions,
   ): () => void {
-    const handlers = this.handlers.get(event) ?? new Set();
-    handlers.add(handler as (event: unknown, ctx: EventHandlerContext) => unknown);
+    const list = this.handlers.get(event) ?? [];
+    const wrapped: RegisteredEventHandler = {
+      handler: handler as (event: unknown, ctx: EventHandlerContext) => unknown,
+      priority: options?.priority ?? 0,
+      mode: options?.mode ?? "sync",
+      order: this.handlerRegistrationOrder++,
+    };
+    list.push(wrapped);
+    this.handlers.set(event, list);
     this.handlerOwners.set(handler, extensionId);
-    this.handlers.set(event, handlers);
 
     return () => {
-      handlers.delete(handler as (event: unknown, ctx: EventHandlerContext) => unknown);
+      const current = this.handlers.get(event);
+      if (!current) return;
+      const index = current.indexOf(wrapped);
+      if (index >= 0) current.splice(index, 1);
       this.handlerOwners.delete(handler);
     };
   }
 
   /**
-   * 触发事件
+   * 触发事件：先并行启动 async handlers，再按 priority 降序 await sync handlers。
    */
   async emit<T extends ExtensionEvent>(event: T): Promise<void> {
     const handlers = this.handlers.get(event.type);
-    if (!handlers || handlers.size === 0) return;
+    if (!handlers || handlers.length === 0) return;
 
     const eventCtx: EventHandlerContext = {
       sessionId: this.context.session.id,
       timestamp: Date.now(),
     };
 
-    for (const handler of handlers) {
+    const sorted = [...handlers].sort((left, right) => {
+      if (right.priority !== left.priority) return right.priority - left.priority;
+      return left.order - right.order;
+    });
+
+    for (const entry of sorted) {
+      if (entry.mode !== "async") continue;
+      void Promise.resolve(entry.handler(event, eventCtx)).catch((err: unknown) => {
+        this.context.log("error", `Async event handler failed for ${event.type}`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
+
+    for (const entry of sorted) {
+      if (entry.mode === "async") continue;
       try {
-        await handler(event, eventCtx);
+        await entry.handler(event, eventCtx);
       } catch (err) {
         this.context.log("error", `Event handler failed for ${event.type}`, {
           error: err instanceof Error ? err.message : String(err),
@@ -337,8 +380,11 @@ export class SessionExtensionRuntime {
       if (command.extensionName === extensionId) this.registry.commands.delete(name);
     }
     for (const handlers of this.handlers.values()) {
-      for (const handler of handlers) {
-        if (this.handlerOwners.get(handler) === extensionId) handlers.delete(handler);
+      for (let index = handlers.length - 1; index >= 0; index--) {
+        const entry = handlers[index];
+        if (this.handlerOwners.get(entry.handler) === extensionId) {
+          handlers.splice(index, 1);
+        }
       }
     }
   }
@@ -451,9 +497,14 @@ export class SessionExtensionRuntime {
         sessionId: this.context.session.id,
         timestamp: Date.now(),
       };
-      for (const handler of handlers) {
+      const sorted = [...handlers].sort((left, right) => {
+        if (right.priority !== left.priority) return right.priority - left.priority;
+        return left.order - right.order;
+      });
+      for (const entry of sorted) {
+        if (entry.mode === "async") continue;
         try {
-          await handler(event, eventCtx);
+          await entry.handler(event, eventCtx);
         } catch (err) {
           this.context.log("error", "tool.before_call handler failed", {
             error: err instanceof Error ? err.message : String(err),

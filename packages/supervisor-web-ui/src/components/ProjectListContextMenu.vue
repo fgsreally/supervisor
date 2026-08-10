@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div
-      v-if="open"
+      v-if="open && !isMobile"
       class="fixed inset-0 z-[150]"
       @mousedown="emit('close')"
       @contextmenu.prevent="emit('close')"
@@ -20,12 +20,30 @@
         </button>
       </div>
     </div>
+
+    <MobileDrawer
+      :open="open && isMobile"
+      ariaLabel="项目操作"
+      size="auto"
+      show-footer
+      @close="emit('close')"
+    >
+      <div class="project-list-sheet">
+        <button type="button" class="project-list-sheet__danger" @click="emit('delete')">
+          删除项目
+        </button>
+      </div>
+    </MobileDrawer>
   </Teleport>
 </template>
 
 <script setup lang="ts">
+import { MobileDrawer } from "@/components/mobile/ui";
+import { useMobileViewport } from "@/composables/use-mobile-viewport";
+
 defineProps<{ open: boolean; x: number; y: number }>();
 const emit = defineEmits<{ close: []; delete: [] }>();
+const isMobile = useMobileViewport();
 </script>
 
 <style scoped>
@@ -40,5 +58,23 @@ const emit = defineEmits<{ close: []; delete: [] }>();
 
 .project-list-menu__delete:hover {
   background: var(--app-popup-hover);
+}
+
+.project-list-sheet {
+  display: flex;
+  flex-direction: column;
+  margin: -14px -10px;
+}
+
+.project-list-sheet__danger {
+  width: 100%;
+  padding: 14px 16px;
+  color: #fa5151;
+  font-size: 15px;
+  text-align: center;
+}
+
+.project-list-sheet__danger:active {
+  background: var(--m-pressed, var(--app-hover));
 }
 </style>

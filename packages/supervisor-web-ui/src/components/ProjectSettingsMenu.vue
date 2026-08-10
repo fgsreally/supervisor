@@ -1,123 +1,100 @@
 <template>
-  <Teleport to="body">
-    <Transition name="project-settings">
-      <div
-        v-if="open"
-        class="fixed inset-0 z-[210] flex items-center justify-center p-4"
-        @mousedown.self="onBackdrop"
-      >
-        <div class="absolute inset-0 bg-black/40" />
-        <div
-          class="project-settings-modal relative w-full max-w-[420px] overflow-hidden rounded-lg border shadow-xl"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="project-settings-title"
-          @mousedown.stop
-        >
-          <header
-            class="project-settings-modal__header flex shrink-0 items-center gap-3 border-b px-4 py-3"
+  <MobileDrawer
+    :open="open"
+    ariaLabel="项目设置"
+    variant="adaptive"
+    size="auto"
+    :show-close="!(busy || parsing)"
+    :dismiss-on-backdrop="!(busy || parsing)"
+    :modal-breakpoint="767"
+    panel-class="project-settings-drawer"
+    @close="onClose"
+  >
+    <div class="project-settings">
+      <div>
+        <label class="project-settings__label">项目名</label>
+        <div class="project-settings__row">
+          <input
+            v-model="draftName"
+            type="text"
+            class="project-settings__input"
+            :disabled="busy || saving || parsing"
+            @keydown.enter.prevent="saveName"
+          />
+          <button
+            type="button"
+            class="project-settings__save"
+            :disabled="busy || saving || parsing || !nameDirty"
+            @click="saveName"
           >
-            <h2 id="project-settings-title" class="min-w-0 flex-1 text-[15px] font-medium">
-              项目设置
-            </h2>
-            <button
-              type="button"
-              class="project-settings-modal__icon"
-              :disabled="busy || saving || parsing"
-              title="关闭"
-              @click="emit('close')"
-            >
-              <X class="h-5 w-5" />
-            </button>
-          </header>
+            {{ saving ? "..." : "保存" }}
+          </button>
+        </div>
+      </div>
 
-          <div class="space-y-4 p-4">
-            <div>
-              <label class="project-settings-modal__label">项目名</label>
-              <div class="project-settings-modal__row">
-                <input
-                  v-model="draftName"
-                  type="text"
-                  class="project-settings-modal__input"
-                  :disabled="busy || saving || parsing"
-                  @keydown.enter.prevent="saveName"
-                />
-                <button
-                  type="button"
-                  class="project-settings-modal__save"
-                  :disabled="busy || saving || parsing || !nameDirty"
-                  @click="saveName"
-                >
-                  {{ saving ? "..." : "保存" }}
-                </button>
-              </div>
-            </div>
+      <div>
+        <label class="project-settings__label">路径</label>
+        <div class="project-settings__path" :title="cwd">{{ cwd || "—" }}</div>
+      </div>
 
-            <div>
-              <label class="project-settings-modal__label">路径</label>
-              <div class="project-settings-modal__path" :title="cwd">{{ cwd || "—" }}</div>
-            </div>
-
-            <div class="project-settings-modal__parse">
-              <div class="project-settings-modal__desc-head">
-                <div>
-                  <div class="project-settings-modal__parse-title">解析</div>
-                  <div class="project-settings-modal__muted">初始化 Git 与 AGENTS.md</div>
-                </div>
-                <button
-                  type="button"
-                  class="project-settings-modal__refresh"
-                  title="解析并初始化项目"
-                  :disabled="busy || parsing"
-                  @click="emit('parse')"
-                >
-                  <WatsonIcon class="h-3.5 w-3.5" />
-                  {{ parsing ? "解析中..." : "解析" }}
-                </button>
-              </div>
-              <button
-                type="button"
-                class="project-settings-modal__details-toggle"
-                :aria-expanded="detailsOpen"
-                @click="detailsOpen = !detailsOpen"
-              >
-                <ChevronRight class="h-4 w-4" :class="{ 'rotate-90': detailsOpen }" />
-                解析详情
-              </button>
-              <div v-if="detailsOpen" class="project-settings-modal__details">
-                <div class="project-settings-modal__desc">
-                  <template v-if="parsing || parseStatus === 'pending'">
-                    <span class="project-settings-modal__muted">正在解析项目…</span>
-                  </template>
-                  <template v-else-if="description">
-                    {{ description }}
-                  </template>
-                  <template v-else-if="parseStatus === 'skipped'">
-                    <span class="project-settings-modal__muted">
-                      {{ parseError || "未配置「助手模型」" }}
-                    </span>
-                  </template>
-                  <template v-else-if="parseStatus === 'error'">
-                    <span class="project-settings-modal__error">
-                      {{ parseError || "解析失败" }}
-                    </span>
-                  </template>
-                  <template v-else>
-                    <span class="project-settings-modal__muted">暂无解析结果</span>
-                  </template>
-                </div>
-              </div>
-            </div>
+      <div class="project-settings__parse">
+        <div class="project-settings__desc-head">
+          <div>
+            <div class="project-settings__parse-title">解析</div>
+            <div class="project-settings__muted">初始化 Git 与 AGENTS.md</div>
+          </div>
+          <button
+            type="button"
+            class="project-settings__refresh"
+            title="解析并初始化项目"
+            :disabled="busy || parsing"
+            @click="emit('parse')"
+          >
+            <WatsonIcon class="h-3.5 w-3.5" />
+            {{ parsing ? "解析中..." : "解析" }}
+          </button>
+        </div>
+        <button
+          type="button"
+          class="project-settings__details-toggle"
+          :aria-expanded="detailsOpen"
+          @click="detailsOpen = !detailsOpen"
+        >
+          <ChevronRight class="h-4 w-4" :class="{ 'rotate-90': detailsOpen }" />
+          解析详情
+        </button>
+        <div v-if="detailsOpen" class="project-settings__details">
+          <div class="project-settings__desc">
+            <template v-if="parsing || parseStatus === 'pending'">
+              <span class="project-settings__muted">正在解析项目…</span>
+            </template>
+            <template v-else-if="description">
+              {{ description }}
+            </template>
+            <template v-else-if="parseStatus === 'skipped'">
+              <span class="project-settings__muted">
+                {{ parseError || "未配置「助手模型」" }}
+              </span>
+            </template>
+            <template v-else-if="parseStatus === 'error'">
+              <span class="project-settings__error">
+                {{ parseError || "解析失败" }}
+              </span>
+            </template>
+            <template v-else>
+              <span class="project-settings__muted">暂无解析结果</span>
+            </template>
           </div>
         </div>
       </div>
-    </Transition>
-  </Teleport>
+    </div>
+  </MobileDrawer>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronRight, X } from "lucide-vue-next";
+import { ChevronRight } from "lucide-vue-next";
+import { MobileDrawer } from "@/components/mobile/ui";
 import WatsonIcon from "./WatsonIcon.vue";
 
 const props = defineProps<{
@@ -156,7 +133,7 @@ watch(
   },
 );
 
-function onBackdrop() {
+function onClose() {
   if (props.busy || props.parsing) return;
   emit("close");
 }
@@ -173,29 +150,25 @@ async function saveName() {
 </script>
 
 <style scoped>
-.project-settings-modal {
-  background: var(--app-popup-bg);
-  border-color: var(--app-popup-border);
-  color: var(--app-text-primary);
+.project-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.project-settings-modal__header {
-  border-color: var(--app-border-subtle);
-}
-
-.project-settings-modal__label {
+.project-settings__label {
   display: block;
   margin-bottom: 6px;
   font-size: 12px;
   color: var(--app-text-secondary);
 }
 
-.project-settings-modal__row {
+.project-settings__row {
   display: flex;
   gap: 8px;
 }
 
-.project-settings-modal__input {
+.project-settings__input {
   flex: 1;
   min-width: 0;
   height: 34px;
@@ -207,8 +180,8 @@ async function saveName() {
   font-size: 13px;
 }
 
-.project-settings-modal__save,
-.project-settings-modal__refresh {
+.project-settings__save,
+.project-settings__refresh {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -222,13 +195,13 @@ async function saveName() {
   white-space: nowrap;
 }
 
-.project-settings-modal__save:disabled,
-.project-settings-modal__refresh:disabled {
+.project-settings__save:disabled,
+.project-settings__refresh:disabled {
   opacity: 0.45;
   cursor: not-allowed;
 }
 
-.project-settings-modal__refresh {
+.project-settings__refresh {
   height: 28px;
   padding: 0 10px;
   background: transparent;
@@ -236,23 +209,12 @@ async function saveName() {
   color: var(--app-btn-secondary-text);
 }
 
-.project-settings-modal__refresh:hover:not(:disabled) {
+.project-settings__refresh:hover:not(:disabled) {
   background: var(--app-btn-secondary-hover-bg);
 }
 
-.project-settings-modal__icon {
-  padding: 4px;
-  border-radius: 6px;
-  color: var(--app-text-muted);
-}
-
-.project-settings-modal__icon:hover:not(:disabled) {
-  background: var(--app-hover);
-  color: var(--app-text-primary);
-}
-
-.project-settings-modal__path,
-.project-settings-modal__desc {
+.project-settings__path,
+.project-settings__desc {
   padding: 10px 12px;
   border-radius: 8px;
   background: var(--app-chat-bg);
@@ -262,7 +224,7 @@ async function saveName() {
   word-break: break-all;
 }
 
-.project-settings-modal__desc {
+.project-settings__desc {
   min-height: 72px;
   max-height: 220px;
   overflow-y: auto;
@@ -270,7 +232,7 @@ async function saveName() {
   word-break: break-word;
 }
 
-.project-settings-modal__desc-head {
+.project-settings__desc-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -278,20 +240,12 @@ async function saveName() {
   margin-bottom: 6px;
 }
 
-.project-settings-modal__desc-head .project-settings-modal__label {
-  margin-bottom: 0;
-}
-
-.project-settings-modal__parse {
-  padding-top: 2px;
-}
-
-.project-settings-modal__parse-title {
+.project-settings__parse-title {
   font-size: 13px;
   font-weight: 600;
 }
 
-.project-settings-modal__details-toggle {
+.project-settings__details-toggle {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -300,42 +254,40 @@ async function saveName() {
   font-size: 12px;
 }
 
-.project-settings-modal__details-toggle svg {
+.project-settings__details-toggle svg {
   transition: transform 0.15s ease;
 }
 
-.project-settings-modal__details {
+.project-settings__details {
   margin-top: 8px;
 }
 
-.project-settings-modal__muted {
+.project-settings__muted {
   color: var(--app-text-muted);
 }
 
-.project-settings-modal__error {
+.project-settings__error {
   color: #e54d42;
 }
 
-.project-settings-enter-active,
-.project-settings-leave-active {
-  transition: opacity 0.18s ease;
-}
+@media (max-width: 767px) {
+  .project-settings__input,
+  .project-settings__save {
+    height: 40px;
+    font-size: 15px;
+  }
 
-.project-settings-enter-active .project-settings-modal,
-.project-settings-leave-active .project-settings-modal {
-  transition:
-    transform 0.2s ease,
-    opacity 0.18s ease;
+  .project-settings__path,
+  .project-settings__desc,
+  .project-settings__parse-title {
+    font-size: 14px;
+  }
 }
+</style>
 
-.project-settings-enter-from,
-.project-settings-leave-to {
-  opacity: 0;
-}
-
-.project-settings-enter-from .project-settings-modal,
-.project-settings-leave-to .project-settings-modal {
-  transform: scale(0.96);
-  opacity: 0;
+<style>
+.project-settings-drawer.m-drawer--modal {
+  width: min(420px, calc(100vw - 24px));
+  max-width: 420px;
 }
 </style>

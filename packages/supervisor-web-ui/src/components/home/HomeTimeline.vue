@@ -1,73 +1,94 @@
 <template>
   <div class="home-timeline">
     <header class="home-timeline__header">
-      <h2>工作分析</h2>
+      <div>
+        <h2>近日产出</h2>
+        <p>按日期回看分析与提交明细</p>
+      </div>
       <button
         type="button"
         class="home-timeline__refresh"
         :disabled="loading"
+        aria-label="刷新近日产出"
         @click="emit('refresh')"
       >
-        <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': loading }" />
-        刷新
+        <RefreshCw :class="{ spin: loading }" />
       </button>
     </header>
 
     <div v-if="!records.length && !loading" class="home-timeline__empty">
-      暂无每日分析记录。配置「当日工作分析」模型后，会自动汇总前一天的 sv commit。
+      暂无每日分析记录。配置「当日工作分析」模型后，会自动汇总前一天的提交。
     </div>
 
-    <div v-else class="home-timeline__rail-wrap custom-scrollbar">
-      <ol class="home-timeline__rail">
-        <li
-          v-for="record in records"
-          :key="record.dayKey"
-          class="home-timeline__card"
-          :class="{ 'home-timeline__card--active': openDay === record.dayKey }"
-        >
-          <button type="button" class="home-timeline__card-head" @click="toggle(record.dayKey)">
-            <span class="home-timeline__dot" />
-            <span class="home-timeline__day">{{ record.dayKey }}</span>
-            <span class="home-timeline__meta">
-              {{ commitCount(record) }} commits
+    <ol v-else class="home-timeline__list">
+      <li
+        v-for="record in recentRecords"
+        :key="record.dayKey"
+        class="home-timeline__item"
+        :class="{ 'home-timeline__item--open': openDay === record.dayKey }"
+      >
+        <button type="button" class="home-timeline__row" @click="toggle(record.dayKey)">
+          <span class="home-timeline__dot" />
+          <span class="home-timeline__main">
+            <strong>{{ formatDay(record.dayKey) }}</strong>
+            <small>
+              {{ commitCount(record) }} 个提交
               <template v-if="record.usedModel"> · AI</template>
-            </span>
-          </button>
-          <div v-if="openDay === record.dayKey" class="home-timeline__card-body">
-            <p class="home-timeline__summary">{{ record.summary }}</p>
-            <div
-              v-for="section in record.sections"
-              :key="section.projectId"
-              class="home-timeline__section"
-            >
-              <strong>{{ section.projectName }}</strong>
-              <ul>
-                <li v-for="commit in section.commits.slice(0, 4)" :key="commit.hash">
-                  <code>{{ commit.shortHash }}</code>
-                  {{ commit.subject }}
-                </li>
-              </ul>
-            </div>
+            </small>
+          </span>
+          <span class="home-timeline__preview" v-if="openDay !== record.dayKey">{{
+            record.summary
+          }}</span>
+          <ChevronDown class="home-timeline__chevron" aria-hidden="true" />
+        </button>
+        <div v-if="openDay === record.dayKey" class="home-timeline__body">
+          <p class="home-timeline__summary">{{ record.summary }}</p>
+          <div
+            v-for="section in record.sections"
+            :key="section.projectId"
+            class="home-timeline__section"
+          >
+            <strong>{{ section.projectName }}</strong>
+            <ul>
+              <li v-for="commit in section.commits.slice(0, 6)" :key="commit.hash">
+                <code>{{ commit.shortHash }}</code>
+                {{ commit.subject }}
+              </li>
+            </ul>
           </div>
-          <p v-else class="home-timeline__preview">{{ record.summary }}</p>
-        </li>
-      </ol>
-    </div>
+        </div>
+      </li>
+    </ol>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
-import { RefreshCw } from "lucide-vue-next";
+import { computed, ref, watch } from "vue";
+import { ChevronDown, RefreshCw } from "lucide-vue-next";
 import type { DailyWorkRecord } from "@/api";
 
-defineProps<{
+const props = defineProps<{
   records: DailyWorkRecord[];
   loading?: boolean;
 }>();
 
 const emit = defineEmits<{ refresh: [] }>();
 const openDay = ref<string | null>(null);
+const recentRecords = computed(() => props.records.slice(0, 7));
+
+watch(
+  recentRecords,
+  (rows) => {
+    if (!rows.length) {
+      openDay.value = null;
+      return;
+    }
+    if (!openDay.value || !rows.some((row) => row.dayKey === openDay.value)) {
+      openDay.value = rows[0]!.dayKey;
+    }
+  },
+  { immediate: true },
+);
 
 function toggle(dayKey: string) {
   openDay.value = openDay.value === dayKey ? null : dayKey;
@@ -76,116 +97,154 @@ function toggle(dayKey: string) {
 function commitCount(record: DailyWorkRecord): number {
   return record.sections.reduce((sum, section) => sum + section.commits.length, 0);
 }
+
+function formatDay(dayKey: string) {
+  const date = new Date(`${dayKey}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return dayKey;
+  return new Intl.DateTimeFormat("zh-CN", {
+    month: "numeric",
+    day: "numeric",
+    weekday: "short",
+  }).format(date);
+}
 </script>
 
 <style scoped>
 .home-timeline {
-  padding: 8px 10px 10px;
+  padding: 4px 0 8px;
 }
 .home-timeline__header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 6px;
+  gap: 12px;
+  padding: 12px 16px 8px;
 }
 .home-timeline__header h2 {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 650;
   color: var(--app-text-primary);
 }
+.home-timeline__header p {
+  margin-top: 3px;
+  color: var(--app-text-muted);
+  font-size: 12px;
+}
 .home-timeline__refresh {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 3px 7px;
-  border-radius: 6px;
-  font-size: 11px;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
+  border-radius: 8px;
   color: var(--app-text-secondary);
+}
+.home-timeline__refresh:hover:not(:disabled) {
   background: var(--app-hover);
 }
+.home-timeline__refresh:disabled {
+  opacity: 0.55;
+}
+.home-timeline__refresh svg {
+  width: 15px;
+  height: 15px;
+}
 .home-timeline__empty {
-  padding: 10px 2px 4px;
-  font-size: 12px;
+  padding: 8px 16px 16px;
+  font-size: 13px;
   line-height: 1.5;
   color: var(--app-text-muted);
 }
-.home-timeline__rail-wrap {
-  overflow-x: auto;
-  overflow-y: hidden;
-}
-.home-timeline__rail {
-  display: flex;
-  gap: 8px;
+.home-timeline__list {
   margin: 0;
-  padding: 0 0 2px;
+  padding: 0;
   list-style: none;
-  min-width: max-content;
 }
-.home-timeline__card {
-  width: min(240px, 72vw);
-  flex: none;
-  border-radius: 6px;
-  border: 1px solid var(--app-border-subtle);
-  background: var(--app-hover);
-  padding: 7px 8px;
+.home-timeline__item {
+  border-top: 1px solid var(--app-border-subtle);
 }
-.home-timeline__card--active {
-  border-color: color-mix(in srgb, #07c160 40%, var(--app-border));
-  background: color-mix(in srgb, #07c160 6%, var(--app-hover));
+.home-timeline__item--open {
+  background: color-mix(in srgb, var(--app-accent) 4%, transparent);
 }
-.home-timeline__card-head {
+.home-timeline__row {
   display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto;
-  column-gap: 6px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "dot main chevron"
+    "dot preview chevron";
+  column-gap: 10px;
   width: 100%;
+  min-height: 56px;
+  align-items: center;
+  padding: 10px 16px;
   text-align: left;
 }
 .home-timeline__dot {
-  grid-row: 1 / span 2;
-  width: 6px;
-  height: 6px;
-  margin-top: 5px;
-  border-radius: 999px;
-  background: #07c160;
+  grid-area: dot;
+  width: 7px;
+  height: 7px;
+  margin-top: 2px;
+  align-self: start;
+  border-radius: 50%;
+  background: var(--app-accent);
 }
-.home-timeline__day {
-  font-size: 12px;
+.home-timeline__main {
+  grid-area: main;
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+}
+.home-timeline__main strong {
+  font-size: 14px;
   font-weight: 600;
-  color: var(--app-text-primary);
 }
-.home-timeline__meta,
-.home-timeline__preview {
-  font-size: 11px;
+.home-timeline__main small {
   color: var(--app-text-muted);
+  font-size: 12px;
 }
 .home-timeline__preview {
-  margin: 5px 0 0;
-  display: -webkit-box;
+  grid-area: preview;
+  margin: 2px 0 0;
   overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  color: var(--app-text-muted);
+  font-size: 12px;
   line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.home-timeline__card-body {
-  margin-top: 6px;
-  max-height: 120px;
-  overflow: auto;
+.home-timeline__item--open .home-timeline__preview {
+  display: none;
+}
+.home-timeline__chevron {
+  grid-area: chevron;
+  width: 16px;
+  height: 16px;
+  color: var(--app-text-muted);
+  transition: transform 0.15s ease;
+}
+.home-timeline__item--open .home-timeline__chevron {
+  transform: rotate(180deg);
+}
+.home-timeline__body {
+  padding: 0 16px 14px 33px;
 }
 .home-timeline__summary {
-  margin: 0 0 6px;
-  font-size: 11px;
-  line-height: 1.45;
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
   white-space: pre-wrap;
   color: var(--app-text-primary);
 }
 .home-timeline__section + .home-timeline__section {
-  margin-top: 6px;
+  margin-top: 10px;
 }
 .home-timeline__section strong {
   display: block;
-  margin-bottom: 2px;
-  font-size: 11px;
+  margin-bottom: 4px;
+  font-size: 12px;
+  font-weight: 600;
   color: var(--app-text-secondary);
 }
 .home-timeline__section ul {
@@ -194,12 +253,38 @@ function commitCount(record: DailyWorkRecord): number {
   list-style: none;
 }
 .home-timeline__section li {
-  font-size: 11px;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 1.45;
   color: var(--app-text-muted);
 }
 .home-timeline__section code {
-  margin-right: 4px;
-  color: var(--app-text-secondary);
+  margin-right: 5px;
+  color: #576b95;
+}
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 767px) {
+  .home-timeline__header,
+  .home-timeline__empty,
+  .home-timeline__row {
+    padding-left: var(--m-page-inline, 16px);
+    padding-right: var(--m-page-inline, 16px);
+  }
+  .home-timeline__body {
+    padding-left: calc(var(--m-page-inline, 16px) + 17px);
+    padding-right: var(--m-page-inline, 16px);
+  }
+  .home-timeline__row {
+    min-height: 64px;
+  }
+  .home-timeline__main strong {
+    font-size: 15px;
+  }
 }
 </style>

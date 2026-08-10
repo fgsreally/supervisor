@@ -8,6 +8,7 @@
           :class="panelClasses"
           role="dialog"
           aria-modal="true"
+          tabindex="-1"
           :aria-label="ariaLabel"
           :style="panelStyle"
         >
@@ -194,9 +195,12 @@ watch(
       previousFocus = document.activeElement as HTMLElement | null;
       document.addEventListener("keydown", onKeydown);
       await nextTick();
-      panelRef.value
-        ?.querySelector<HTMLElement>("button, input, textarea, select, [tabindex]")
-        ?.focus();
+      // Prefer a text field when present; otherwise focus the panel (not the first
+      // button) so action sheets don't show a focus ring on「置顶」etc.
+      const field = panelRef.value?.querySelector<HTMLElement>(
+        "input:not([type='hidden']):not([disabled]), textarea:not([disabled]), select:not([disabled]), [contenteditable='true']",
+      );
+      (field ?? panelRef.value)?.focus({ preventScroll: true });
     } else {
       document.removeEventListener("keydown", onKeydown);
       previousFocus?.focus();

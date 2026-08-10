@@ -334,19 +334,6 @@
     display: inline-flex;
   }
 
-  .m-popover {
-    position: fixed;
-    z-index: 180;
-    max-height: min(360px, calc(100dvh - 24px));
-    overflow: auto;
-    padding: var(--m-space-2);
-    border: 1px solid var(--m-border);
-    border-radius: var(--m-card-radius);
-    color: var(--m-text-primary);
-    background: var(--m-surface);
-    box-shadow: 0 8px 28px rgb(0 0 0 / 18%);
-  }
-
   @keyframes m-spin {
     to {
       transform: rotate(360deg);
@@ -418,6 +405,10 @@ body.m-overlay-open {
   padding: 0 0 calc(env(safe-area-inset-bottom));
   border-radius: 16px 16px 0 0;
   background: var(--app-settings-bg, var(--m-surface, var(--app-settings-card)));
+}
+
+.m-drawer:focus {
+  outline: none;
 }
 
 /* Sheet：对齐会话工具菜单（page-bg 外壳 + surface 内容卡） */
@@ -529,8 +520,13 @@ body.m-overlay-open {
 .m-drawer__title {
   min-width: 0;
   flex: 1;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.m-overlay--sheet .m-drawer__title {
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .m-drawer__close {
@@ -640,9 +636,7 @@ body.m-overlay-open {
 }
 
 .m-overlay-enter-active,
-.m-overlay-leave-active,
-.m-popover-enter-active,
-.m-popover-leave-active {
+.m-overlay-leave-active {
   transition: opacity 180ms ease;
 }
 
@@ -661,9 +655,7 @@ body.m-overlay-open {
 }
 
 .m-overlay-enter-from,
-.m-overlay-leave-to,
-.m-popover-enter-from,
-.m-popover-leave-to {
+.m-overlay-leave-to {
   opacity: 0;
 }
 

@@ -88,7 +88,8 @@ const emit = defineEmits<{ navigate: [route: "/todo" | "/dashboard"] }>();
 }
 
 .mobile-work__body :deep(.todo-view__header),
-.mobile-work__body :deep(.home-view__header) {
+.mobile-work__body :deep(.home-view__header),
+.mobile-work__body :deep(.dashboard__header) {
   display: none;
 }
 

@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div
-      v-if="open"
+      v-if="open && !isMobile"
       class="fixed inset-0 z-[150]"
       @mousedown="emit('close')"
       @contextmenu.prevent="emit('close')"
@@ -18,7 +18,7 @@
         <template v-else>
           <div class="project-git-menu__current">
             <GitBranch class="h-3.5 w-3.5 shrink-0" />
-            <span class="truncate">branch</span>
+            <span class="truncate">{{ currentBranch || "—" }}</span>
           </div>
           <div v-if="branches?.length" class="project-git-menu__branches">
             <button
@@ -58,11 +58,69 @@
         </button>
       </div>
     </div>
+
+    <MobileDrawer
+      :open="open && isMobile"
+      ariaLabel="Git"
+      size="auto"
+      show-footer
+      @close="emit('close')"
+    >
+      <div class="project-git-sheet">
+        <div v-if="loading" class="project-git-menu__hint">读取分支…</div>
+        <div v-else-if="error" class="project-git-menu__hint project-git-menu__hint--error">
+          {{ error }}
+        </div>
+        <template v-else>
+          <div class="project-git-menu__current project-git-menu__current--sheet">
+            <GitBranch class="h-4 w-4 shrink-0" />
+            <span class="truncate">{{ currentBranch || "—" }}</span>
+          </div>
+          <div v-if="branches?.length" class="project-git-menu__branches project-git-menu__branches--sheet">
+            <button
+              v-for="branch in branches ?? []"
+              :key="`m-${branch}`"
+              type="button"
+              class="project-git-menu__branch project-git-menu__branch--sheet"
+              :class="{ 'project-git-menu__branch--active': branch === currentBranch }"
+              :disabled="busy || branch === currentBranch"
+              @click="emit('checkout', branch)"
+            >
+              <Check v-if="branch === currentBranch" class="h-4 w-4 shrink-0" />
+              <span v-else class="w-4 shrink-0" aria-hidden="true" />
+              <span class="truncate">{{ branch }}</span>
+            </button>
+          </div>
+          <div v-else class="project-git-menu__hint">暂无本地分支</div>
+        </template>
+        <hr class="project-git-menu__divider" />
+        <button
+          type="button"
+          class="project-git-menu__item project-git-menu__item--sheet"
+          :disabled="busy || loading"
+          @click="emit('pull')"
+        >
+          <ArrowDownToLine class="h-4 w-4 shrink-0" />
+          Git Pull
+        </button>
+        <button
+          type="button"
+          class="project-git-menu__item project-git-menu__item--sheet"
+          :disabled="busy || loading"
+          @click="emit('push')"
+        >
+          <ArrowUpFromLine class="h-4 w-4 shrink-0" />
+          Git Push
+        </button>
+      </div>
+    </MobileDrawer>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { ArrowDownToLine, ArrowUpFromLine, Check, GitBranch } from "lucide-vue-next";
+import { MobileDrawer } from "@/components/mobile/ui";
+import { useMobileViewport } from "@/composables/use-mobile-viewport";
 
 defineProps<{
   open: boolean;
@@ -81,6 +139,8 @@ const emit = defineEmits<{
   push: [];
   checkout: [branch: string];
 }>();
+
+const isMobile = useMobileViewport();
 </script>
 
 <style scoped>
@@ -100,10 +160,19 @@ const emit = defineEmits<{
   color: var(--app-text-secondary);
 }
 
+.project-git-menu__current--sheet {
+  padding: 4px 4px 10px;
+  font-size: 14px;
+}
+
 .project-git-menu__branches {
   max-height: 180px;
   overflow-y: auto;
   margin-bottom: 2px;
+}
+
+.project-git-menu__branches--sheet {
+  max-height: min(40vh, 280px);
 }
 
 .project-git-menu__branch {
@@ -117,6 +186,11 @@ const emit = defineEmits<{
   font-size: 13px;
   color: var(--app-text-primary);
   transition: background-color 0.15s;
+}
+
+.project-git-menu__branch--sheet {
+  padding: 12px 8px;
+  font-size: 15px;
 }
 
 .project-git-menu__branch:hover:not(:disabled) {
@@ -159,6 +233,11 @@ const emit = defineEmits<{
   font-size: 13px;
   color: var(--app-text-primary);
   transition: background-color 0.15s;
+}
+
+.project-git-menu__item--sheet {
+  padding: 14px 8px;
+  font-size: 15px;
 }
 
 .project-git-menu__item:hover:not(:disabled) {

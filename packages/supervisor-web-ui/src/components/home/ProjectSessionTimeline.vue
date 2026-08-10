@@ -3,6 +3,7 @@
     <header>
       <div>
         <h2>项目时间轴</h2>
+        <p v-if="filterHint">{{ filterHint }}</p>
       </div>
       <div class="filters">
         <button
@@ -34,6 +35,7 @@
             <header>
               <i :style="{ background: projectColor(project.id) }" />
               <strong>{{ project.name }}</strong>
+              <span>{{ laneEvents(project.id).length }}</span>
             </header>
             <button
               v-for="event in laneEvents(project.id)"
@@ -101,6 +103,7 @@
                     >
                   </template>
                   <span v-else class="empty">暂无独立提交</span>
+                  <span class="popover__action">打开会话</span>
                 </span>
               </button>
             </div>
@@ -116,12 +119,16 @@ import { computed, ref, watch } from "vue";
 import { GitCommitHorizontal, Loader2 } from "lucide-vue-next";
 import type { Project, Session, TimelineEvent, WorktreeCommit } from "@/api";
 import UiEmptyState from "@/components/ui/UiEmptyState.vue";
+
+type StatusFilter = "running" | "attention" | "finish" | "commits" | null;
+
 const props = defineProps<{
   projects: Project[];
   sessions: Session[];
   events: TimelineEvent[];
   commits: Record<string, WorktreeCommit[]>;
   loading?: boolean;
+  statusFilter?: StatusFilter;
 }>();
 const emit = defineEmits<{ "open-session": [id: string] }>();
 const visibleIds = ref(new Set<string>());
@@ -134,13 +141,41 @@ watch(
 );
 const visibleProjects = computed(() => props.projects.filter((p) => visibleIds.value.has(p.id)));
 const sessionMap = computed(() => new Map(props.sessions.map((s) => [s.id, s])));
+const filterHint = computed(() => {
+  switch (props.statusFilter) {
+    case "running":
+      return "已筛选：进行中";
+    case "attention":
+      return "已筛选：需处理 / 异常";
+    case "finish":
+      return "已筛选：已合并";
+    case "commits":
+      return "已筛选：有提交的会话";
+    default:
+      return "";
+  }
+});
+
+function matchesStatusFilter(event: TimelineEvent) {
+  const filter = props.statusFilter ?? null;
+  if (!filter) return true;
+  const session = sessionMap.value.get(event.entityId);
+  const status = event.status || session?.status || "idle";
+  if (filter === "running") return status === "running";
+  if (filter === "attention") return status === "blocked" || status === "error";
+  if (filter === "finish") return status === "finish" || status === "finished";
+  if (filter === "commits") return (props.commits[event.entityId]?.length ?? 0) > 0;
+  return true;
+}
+
 const visibleEvents = computed(() =>
   props.events.filter(
     (e) =>
       e.projectId &&
       visibleIds.value.has(e.projectId) &&
       e.type === "session" &&
-      sessionMap.value.get(e.entityId)?.showInSessionList !== false,
+      sessionMap.value.get(e.entityId)?.showInSessionList !== false &&
+      matchesStatusFilter(e),
   ),
 );
 const range = computed(() => {
@@ -189,7 +224,7 @@ function eventX(event: TimelineEvent) {
   );
 }
 function sessionColor(id: string) {
-  const colors = ["#5e6ad2", "#f2994a", "#27ae60", "#2d9cdb", "#bb6bd9", "#eb5757", "#f2c94c"];
+  const colors = ["#07c160", "#576b95", "#f2994a", "#2d9cdb", "#bb6bd9", "#eb5757", "#27ae60"];
   let hash = 0;
   for (const c of id) hash = (hash * 31 + c.charCodeAt(0)) | 0;
   return colors[Math.abs(hash) % colors.length]!;
@@ -200,7 +235,7 @@ function projectColor(id: string) {
 function pointStyle(event: TimelineEvent) {
   const stacked = stackIndex(event);
   return {
-    left: `calc(${eventX(event)}% + ${Math.min(stacked, 7) * 6}px)`,
+    left: `calc(${eventX(event)}% + ${Math.min(stacked, 7) * 8}px)`,
     zIndex: 3 + stacked,
     background: sessionColor(event.entityId),
   };
@@ -214,11 +249,13 @@ function statusLabel(status: TimelineEvent["status"]) {
     (
       {
         finish: "已合并",
+        finished: "已合并",
         running: "进行中",
         blocked: "需处理",
         error: "异常",
         idle: "待命",
         initializing: "准备中",
+        stopped: "已停止",
       } as Record<string, string>
     )[status || "idle"] ||
     status ||
@@ -243,12 +280,12 @@ function formatTime(value: string) {
   z-index: 1;
   overflow: visible;
   border: 1px solid var(--app-border-subtle);
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--app-settings-card);
 }
 .timeline__loading {
   display: flex;
-  min-height: 180px;
+  min-height: 220px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -283,67 +320,68 @@ h2 {
   font-weight: 650;
 }
 header p {
-  margin-top: 3px;
-  color: var(--app-text-muted);
-  font-size: 10px;
+  margin-top: 4px;
+  color: var(--app-accent);
+  font-size: 12px;
 }
 .filters {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 5px;
+  gap: 6px;
 }
 .filters button {
   display: flex;
   align-items: center;
-  gap: 5px;
-  padding: 4px 7px;
-  border-radius: 6px;
+  gap: 6px;
+  padding: 5px 9px;
+  border-radius: 999px;
   background: var(--app-hover);
   color: var(--app-text-muted);
-  font-size: 9px;
-  opacity: 0.5;
+  font-size: 12px;
+  opacity: 0.55;
 }
 .filters button.active {
   opacity: 1;
   color: var(--app-text-primary);
+  background: color-mix(in srgb, var(--app-accent) 10%, var(--app-hover));
 }
 .filters i {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
 }
 .scroll {
-  overflow: visible;
+  overflow: auto;
 }
 .canvas {
   display: grid;
-  grid-template-columns: 135px minmax(700px, 1fr);
+  grid-template-columns: 148px minmax(700px, 1fr);
   position: relative;
-  min-width: 850px;
+  min-width: 860px;
 }
 .axis-label {
-  padding: 10px 14px;
+  padding: 12px 14px;
   border-right: 1px solid var(--app-border-subtle);
   color: var(--app-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .axis {
   position: relative;
-  height: 34px;
+  height: 36px;
 }
 .axis span {
   position: absolute;
   top: 0;
   height: 100%;
-  border-left: 1px solid var(--app-border-subtle);
+  border-left: 1px solid color-mix(in srgb, var(--app-border-subtle) 70%, transparent);
 }
 .axis b {
   position: absolute;
-  top: 9px;
-  left: 6px;
+  top: 10px;
+  left: 8px;
   color: var(--app-text-muted);
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 400;
   white-space: nowrap;
 }
@@ -353,8 +391,8 @@ header p {
 .lane aside {
   display: flex;
   align-items: center;
-  gap: 8px;
-  height: 54px;
+  gap: 10px;
+  height: 60px;
   padding: 0 14px;
   border-top: 1px solid var(--app-border-subtle);
   border-right: 1px solid var(--app-border-subtle);
@@ -362,64 +400,66 @@ header p {
 .lane aside > i {
   width: 8px;
   height: 8px;
-  border-radius: 3px;
+  border-radius: 50%;
 }
 .lane aside strong,
 .lane aside small {
   display: block;
-  max-width: 95px;
+  max-width: 104px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .lane aside strong {
-  font-size: 10px;
+  font-size: 12px;
+  font-weight: 600;
 }
 .lane aside small {
   margin-top: 2px;
   color: var(--app-text-muted);
-  font-size: 8px;
+  font-size: 11px;
 }
 .track {
   position: relative;
-  height: 54px;
+  height: 60px;
   border-top: 1px solid var(--app-border-subtle);
 }
 .grid {
   position: absolute;
   inset-block: 0;
-  border-left: 1px solid var(--app-border-subtle);
-  opacity: 0.65;
+  border-left: 1px solid color-mix(in srgb, var(--app-border-subtle) 55%, transparent);
 }
 .baseline {
   position: absolute;
   left: 0;
   right: 0;
-  top: 26px;
+  top: 29px;
   height: 1px;
-  background: var(--app-border);
+  background: color-mix(in srgb, var(--app-border) 70%, transparent);
 }
 .point {
   position: absolute;
   z-index: 2;
-  top: 19px;
-  width: 14px;
-  height: 14px;
+  top: 21px;
+  width: 16px;
+  height: 16px;
   border: 2px solid #9aa0aa;
   border-radius: 50%;
+  box-shadow: 0 0 0 2px var(--app-settings-card);
   transform: translateX(-50%);
   transition: transform 0.15s ease;
 }
 .point:hover,
 .point:focus-visible {
   z-index: 30;
-  transform: translateX(-50%) scale(1.18);
+  transform: translateX(-50%) scale(1.16);
   outline: none;
 }
 .point[data-status="running"] {
-  border-color: #2f80ed;
+  border-color: #576b95;
 }
-.point[data-status="finish"] {
+.point[data-status="finish"],
+.point[data-status="finished"] {
   border-color: #07c160;
 }
 .point[data-status="blocked"],
@@ -431,103 +471,127 @@ header p {
 }
 .popover {
   position: absolute;
-  left: 8px;
-  bottom: 22px;
+  left: 10px;
+  bottom: 24px;
   z-index: 40;
   display: none;
-  width: 230px;
-  padding: 11px;
+  width: 236px;
+  padding: 12px;
   border: 1px solid var(--app-border);
-  border-radius: 9px;
+  border-radius: 8px;
   text-align: left;
   background: var(--app-popup-bg);
-  box-shadow: 0 10px 30px rgb(0 0 0/0.18);
-  transform: scale(0.77);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.14);
   transform-origin: left bottom;
 }
 .point:hover .popover,
 .point:focus-visible .popover {
   display: grid;
-  gap: 5px;
+  gap: 6px;
 }
 .popover.right {
-  right: 8px;
+  right: 10px;
   left: auto;
   transform-origin: right bottom;
 }
 .popover small,
 .popover .empty {
   color: var(--app-text-muted);
-  font-size: 9px;
+  font-size: 11px;
 }
 .popover strong {
   overflow: hidden;
-  font-size: 11px;
+  font-size: 13px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .popover em {
   width: max-content;
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 999px;
   background: var(--app-hover);
   color: var(--app-text-secondary);
-  font-size: 8px;
+  font-size: 11px;
   font-style: normal;
+}
+.popover__action {
+  margin-top: 2px;
+  color: var(--app-accent);
+  font-size: 12px;
+  font-weight: 600;
 }
 .commit {
   overflow: hidden;
   color: var(--app-text-secondary);
-  font-size: 9px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .commit code {
   margin-right: 5px;
-  color: #5e6ad2;
+  color: #576b95;
 }
 .mobile-events {
   display: none;
 }
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .timeline {
     overflow: hidden;
-    border-radius: 12px;
+    border-radius: 8px;
   }
   header {
     display: grid;
     gap: 10px;
-    padding: 12px;
+    padding: 12px var(--m-page-inline, 16px);
+  }
+  h2 {
+    font-size: 15px;
   }
   .mobile-events {
     display: grid;
   }
   .mobile-events__project > header {
     display: flex;
-    min-height: 38px;
+    min-height: 44px;
     align-items: center;
-    gap: 7px;
-    padding: 8px 12px;
+    gap: 8px;
+    padding: 8px var(--m-page-inline, 16px);
     border-top: 1px solid var(--app-border-subtle);
     border-bottom: 0;
+    background: color-mix(in srgb, var(--app-hover) 55%, transparent);
   }
   .mobile-events__project > header i {
     width: 8px;
     height: 8px;
-    border-radius: 3px;
+    border-radius: 50%;
   }
   .mobile-events__project > header strong {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
     font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .mobile-events__project > header span {
+    color: var(--app-text-muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
   }
   .mobile-events__project > button {
     display: flex;
     width: 100%;
     min-width: 0;
+    min-height: 56px;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
+    gap: 12px;
+    padding: 12px var(--m-page-inline, 16px);
     border-top: 1px solid var(--app-border-subtle);
     text-align: left;
+  }
+  .mobile-events__project > button:active {
+    background: var(--m-pressed, var(--app-hover));
   }
   .mobile-events__dot {
     width: 10px;
@@ -537,9 +601,10 @@ header p {
     background: #9ca3af;
   }
   .mobile-events__dot[data-status="running"] {
-    background: #3b82f6;
+    background: #576b95;
   }
-  .mobile-events__dot[data-status="finish"] {
+  .mobile-events__dot[data-status="finish"],
+  .mobile-events__dot[data-status="finished"] {
     background: #07c160;
   }
   .mobile-events__dot[data-status="blocked"],
@@ -554,85 +619,35 @@ header p {
   }
   .mobile-events__body strong {
     overflow: hidden;
-    font-size: 14px;
+    font-size: 15px;
+    font-weight: 600;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
   .mobile-events__body small {
     color: var(--app-text-muted);
-    font-size: 11px;
+    font-size: 12px;
   }
   .mobile-events__project > button em {
     flex: none;
     color: var(--app-text-secondary);
-    font-size: 11px;
+    font-size: 12px;
     font-style: normal;
-  }
-  .mobile-events__empty {
-    padding: 28px 12px;
-    color: var(--app-text-muted);
-    text-align: center;
-    font-size: 13px;
   }
   .scroll {
     display: none;
   }
   .filters {
     justify-content: flex-start;
-    overflow: hidden;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    -webkit-overflow-scrolling: touch;
   }
   .filters button {
-    max-width: 100%;
-    min-width: 0;
-  }
-  .canvas {
-    display: block;
-    min-width: 0;
-  }
-  .axis-label,
-  .axis,
-  .grid,
-  .baseline {
-    display: none;
-  }
-  .lane {
-    display: block;
-    border-top: 1px solid var(--app-border-subtle);
-  }
-  .lane aside {
-    height: auto;
-    min-height: 44px;
-    border: 0;
-    padding: 10px 12px 4px;
-  }
-  .lane aside strong,
-  .lane aside small {
+    flex: none;
     max-width: none;
-  }
-  .track {
-    display: flex;
-    min-height: 46px;
-    height: auto;
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 4px 12px 12px 28px;
-    border: 0;
-  }
-  .point {
-    position: relative;
-    left: auto !important;
-    top: auto;
-    width: 18px;
-    height: 18px;
-    flex: 0 0 auto;
-    transform: none;
-  }
-  .point:hover,
-  .point:focus-visible {
-    transform: scale(1.08);
-  }
-  .popover {
-    display: none !important;
+    white-space: nowrap;
   }
 }
 </style>

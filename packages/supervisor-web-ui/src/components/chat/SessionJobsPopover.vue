@@ -1,16 +1,24 @@
 <template>
-  <div v-if="totalCount" ref="root" class="jobs-popover-wrap">
-    <ChatHeaderAction
-      :title="summaryTitle"
-      :active="open"
-      :count="totalCount"
-      @click="open = !open"
-    >
-      <Activity />
-    </ChatHeaderAction>
+  <ResponsivePopover
+    v-if="totalCount"
+    v-model:open="open"
+    title="Jobs"
+    panel-class="jobs-popover"
+    :dismiss-on-outside="dismissOnOutside"
+  >
+    <template #trigger>
+      <ChatHeaderAction
+        :title="summaryTitle"
+        :active="open"
+        :count="totalCount"
+        @click="open = !open"
+      >
+        <Activity />
+      </ChatHeaderAction>
+    </template>
 
-    <section v-if="open" class="jobs-popover" aria-label="Jobs">
-      <header>
+    <template #default="{ mobile }">
+      <header v-if="!mobile">
         <div>
           <strong>Jobs</strong>
           <span v-if="activeCount">{{ activeCount }} 个进行中</span>
@@ -19,6 +27,13 @@
           <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': loading }" />
         </button>
       </header>
+      <div v-else class="jobs-sheet-toolbar">
+        <span v-if="activeCount">{{ activeCount }} 个进行中</span>
+        <span v-else>运行记录</span>
+        <button type="button" title="刷新" @click="refresh">
+          <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" />
+        </button>
+      </div>
 
       <div v-if="schedules.length" class="jobs-section">
         <div class="jobs-section__title">计划</div>
@@ -79,14 +94,13 @@
           </div>
         </div>
       </div>
-    </section>
-  </div>
+    </template>
+  </ResponsivePopover>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import { Activity, ChevronRight, Clock3, RefreshCw } from "lucide-vue-next";
-import { useOutsideDismiss } from "@/composables/use-outside-dismiss";
 import {
   cancelSessionJob,
   getSessionJobs,
@@ -95,6 +109,7 @@ import {
   type SessionJob,
   type SessionJobSchedule,
 } from "@/api";
+import ResponsivePopover from "@/components/ui/ResponsivePopover.vue";
 import ChatHeaderAction from "./ChatHeaderAction.vue";
 
 export interface JobDetailRequest {
@@ -111,12 +126,6 @@ const emit = defineEmits<{ detail: [request: JobDetailRequest] }>();
 const jobs = ref<SessionJob[]>([]);
 const schedules = ref<SessionJobSchedule[]>([]);
 const open = ref(false);
-const root = ref<HTMLElement | null>(null);
-useOutsideDismiss(
-  root,
-  () => (open.value = false),
-  () => open.value && props.dismissOnOutside,
-);
 const loading = ref(false);
 const expandedId = ref<string>();
 const inputs = reactive<Record<string, string>>({});
@@ -272,10 +281,27 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.jobs-popover-wrap {
-  position: relative;
+.jobs-sheet-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: -4px 0 8px;
+  color: var(--app-text-muted);
+  font-size: 13px;
 }
-.jobs-popover {
+
+.jobs-sheet-toolbar button {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--app-text-secondary);
+}
+
+:deep(.jobs-popover) {
   position: absolute;
   z-index: 30;
   top: 34px;
@@ -289,40 +315,48 @@ onBeforeUnmount(() => {
   background: var(--app-popup-bg);
   box-shadow: 0 10px 30px rgb(0 0 0 / 16%);
 }
-.jobs-popover header {
+
+:deep(.jobs-popover) > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 7px 8px;
 }
-.jobs-popover header div {
+
+:deep(.jobs-popover) > header div {
   display: flex;
   align-items: baseline;
   gap: 8px;
 }
-.jobs-popover header strong {
+
+:deep(.jobs-popover) > header strong {
   color: var(--app-text-primary);
   font-size: 12px;
 }
-.jobs-popover header span,
-.jobs-popover header button {
+
+:deep(.jobs-popover) > header span,
+:deep(.jobs-popover) > header button {
   color: var(--app-text-muted);
   font-size: 10px;
 }
+
 .jobs-section + .jobs-section {
   margin-top: 5px;
   padding-top: 5px;
   border-top: 1px solid var(--app-border-subtle);
 }
+
 .jobs-section__title {
   padding: 4px 8px;
   color: var(--app-text-muted);
   font-size: 10px;
   text-transform: uppercase;
 }
+
 .job-row + .job-row {
   border-top: 1px solid var(--app-border-subtle);
 }
+
 .job-item {
   display: flex;
   width: 100%;
@@ -332,13 +366,16 @@ onBeforeUnmount(() => {
   border-radius: 7px;
   text-align: left;
 }
+
 .job-item:hover {
   background: var(--app-hover);
 }
+
 .job-item__icon {
   flex: none;
   color: var(--app-accent);
 }
+
 .job-item__main {
   display: flex;
   min-width: 0;
@@ -346,6 +383,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   gap: 2px;
 }
+
 .job-item__label {
   overflow: hidden;
   color: var(--app-text-primary);
@@ -353,10 +391,12 @@ onBeforeUnmount(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
 .job-item__meta {
   color: var(--app-text-muted);
   font-size: 10px;
 }
+
 .job-status {
   width: 7px;
   height: 7px;
@@ -364,24 +404,30 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: var(--app-text-muted);
 }
+
 .job-status--running,
 .job-status--waiting,
 .job-status--queued {
   background: var(--app-accent);
 }
+
 .job-status--failed {
   background: #ef4444;
 }
+
 .job-status--succeeded {
   background: #22c55e;
 }
+
 .job-status--cancelled,
 .job-status--interrupted {
   background: #f59e0b;
 }
+
 .job-inline-detail {
   padding: 0 8px 9px;
 }
+
 .job-inline-detail pre {
   max-height: 180px;
   overflow: auto;
@@ -393,11 +439,13 @@ onBeforeUnmount(() => {
   font-size: 11px;
   white-space: pre-wrap;
 }
+
 .job-inline-detail form {
   display: flex;
   gap: 6px;
   margin-top: 7px;
 }
+
 .job-inline-detail input {
   min-width: 0;
   flex: 1;
@@ -410,6 +458,7 @@ onBeforeUnmount(() => {
   font-size: 11px;
   outline: none;
 }
+
 .job-inline-detail form button,
 .job-cancel {
   padding: 5px 9px;
@@ -418,20 +467,24 @@ onBeforeUnmount(() => {
   color: var(--app-text-secondary);
   font-size: 11px;
 }
+
 .job-cancel {
   margin-top: 7px;
   color: #dc2626;
 }
+
 @media (max-width: 767px) {
-  .jobs-popover {
-    position: fixed;
-    z-index: 90;
-    top: auto;
-    right: 10px;
-    bottom: calc(74px + env(safe-area-inset-bottom));
-    left: 10px;
-    width: auto;
-    max-height: min(62vh, 520px);
+  .job-item {
+    padding: 12px 8px;
+  }
+
+  .job-item__label {
+    font-size: 14px;
+  }
+
+  .job-item__meta,
+  .jobs-section__title {
+    font-size: 12px;
   }
 }
 </style>

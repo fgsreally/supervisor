@@ -1,42 +1,53 @@
 <template>
-  <div ref="root" class="commit-wrap">
-    <ChatHeaderAction title="Commit 记录" :active="open" @click="toggle">
-      <GitCommitHorizontal />
-    </ChatHeaderAction>
-    <section v-if="open" class="commit-popover">
-      <header><strong>Commit 记录</strong><Loader2 v-if="loading" class="commit-loading" /></header>
+  <ResponsivePopover
+    v-model:open="open"
+    title="Commit 记录"
+    panel-class="commit-popover"
+    :dismiss-on-outside="dismissOnOutside"
+  >
+    <template #trigger>
+      <ChatHeaderAction title="Commit 记录" :active="open" @click="toggle">
+        <GitCommitHorizontal />
+      </ChatHeaderAction>
+    </template>
+
+    <template #default="{ mobile }">
+      <header v-if="!mobile">
+        <strong>Commit 记录</strong>
+        <Loader2 v-if="loading" class="commit-loading" />
+      </header>
+      <div v-else-if="loading" class="commit-drawer-loading">
+        <Loader2 class="commit-loading" />
+        <span>加载中…</span>
+      </div>
       <ul v-if="commits.length">
         <li v-for="commit in commits" :key="commit.hash">
           <code>{{ commit.shortHash }}</code>
           <div>
-            <span>{{ commit.subject }}</span
-            ><small>{{ commit.author }} · {{ formatTime(commit.timestamp) }}</small>
+            <span>{{ commit.subject }}</span>
+            <small>{{ commit.author }} · {{ formatTime(commit.timestamp) }}</small>
           </div>
         </li>
       </ul>
       <p v-else-if="!loading">当前 worktree 暂无提交</p>
-    </section>
-  </div>
+    </template>
+  </ResponsivePopover>
 </template>
+
 <script setup lang="ts">
 import { ref } from "vue";
 import { GitCommitHorizontal, Loader2 } from "lucide-vue-next";
 import { getSessionCommits, type WorktreeCommit } from "@/api";
+import ResponsivePopover from "@/components/ui/ResponsivePopover.vue";
 import ChatHeaderAction from "./ChatHeaderAction.vue";
-import { useOutsideDismiss } from "@/composables/use-outside-dismiss";
 
 const props = withDefaults(defineProps<{ sessionId: string; dismissOnOutside?: boolean }>(), {
   dismissOnOutside: true,
 });
-const open = ref(false),
-  loading = ref(false),
-  commits = ref<WorktreeCommit[]>([]);
-const root = ref<HTMLElement | null>(null);
-useOutsideDismiss(
-  root,
-  () => (open.value = false),
-  () => open.value && props.dismissOnOutside,
-);
+const open = ref(false);
+const loading = ref(false);
+const commits = ref<WorktreeCommit[]>([]);
+
 async function toggle() {
   open.value = !open.value;
   if (!open.value) return;
@@ -47,6 +58,7 @@ async function toggle() {
     loading.value = false;
   }
 }
+
 function formatTime(value: number) {
   return new Date(value).toLocaleString([], {
     month: "2-digit",
@@ -56,11 +68,9 @@ function formatTime(value: number) {
   });
 }
 </script>
+
 <style scoped>
-.commit-wrap {
-  position: relative;
-}
-.commit-popover {
+:deep(.commit-popover) {
   position: absolute;
   z-index: 30;
   top: 36px;
@@ -74,7 +84,8 @@ function formatTime(value: number) {
   background: var(--app-popup-bg);
   box-shadow: 0 10px 30px rgb(0 0 0 / 16%);
 }
-.commit-popover header {
+
+:deep(.commit-popover) > header {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -83,58 +94,94 @@ function formatTime(value: number) {
   color: var(--app-text-primary);
   font-size: 13px;
 }
+
 .commit-loading {
   width: 15px;
   height: 15px;
   color: var(--app-accent);
   animation: commit-spin 0.8s linear infinite;
 }
+
+.commit-drawer-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px 8px;
+  color: var(--app-text-muted);
+  font-size: 13px;
+}
+
 @keyframes commit-spin {
   to {
     transform: rotate(360deg);
   }
 }
-.commit-popover ul {
+
+ul {
   margin: 0;
   padding: 0;
   list-style: none;
 }
-.commit-popover li {
+
+li {
   display: flex;
   gap: 10px;
   padding: 8px;
   border-radius: 8px;
 }
-.commit-popover li:hover {
+
+li:hover {
   background: var(--app-popup-hover);
 }
-.commit-popover code {
+
+code {
   flex-shrink: 0;
   color: var(--app-accent);
   font-size: 12px;
 }
-.commit-popover div {
+
+li > div {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.commit-popover span {
+
+li span {
   color: var(--app-text-primary);
   font-size: 13px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.commit-popover small {
+
+li small {
   color: var(--app-text-muted);
   font-size: 11px;
 }
-.commit-popover p {
+
+p {
   margin: 0;
   padding: 16px 8px;
   color: var(--app-text-muted);
   font-size: 13px;
   text-align: center;
+}
+
+@media (max-width: 767px) {
+  li {
+    padding: 12px 4px;
+  }
+
+  li span {
+    font-size: 14px;
+    white-space: normal;
+  }
+
+  li small,
+  code {
+    font-size: 12px;
+  }
 }
 </style>

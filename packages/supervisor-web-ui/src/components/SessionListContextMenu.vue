@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <div
-      v-if="open"
+      v-if="open && !isMobile"
       class="fixed inset-0 z-[150]"
       @mousedown="emit('close')"
       @contextmenu.prevent="emit('close')"
@@ -14,52 +14,46 @@
         @selectstart.prevent
       >
         <button
-          v-if="!protectedSession"
+          v-for="action in actions"
+          :key="action.id"
           type="button"
           class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
-          @click="emit('pin')"
+          :class="{ 'session-context-menu__item--danger': action.danger }"
+          @click="runAction(action.id)"
         >
-          {{ pinned ? "取消置顶" : "置顶" }}
-        </button>
-        <button
-          v-if="!protectedSession && status !== 'finish'"
-          type="button"
-          class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
-          @click="emit('sync')"
-        >
-          同步项目修改
-        </button>
-        <button
-          v-if="!protectedSession && status !== 'finish'"
-          type="button"
-          class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
-          @click="emit('achieve')"
-        >
-          完成并归档
-        </button>
-        <button
-          v-else-if="!protectedSession"
-          type="button"
-          class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
-          @click="emit('fork')"
-        >
-          Fork 后继续
-        </button>
-        <button
-          v-if="!protectedSession"
-          type="button"
-          class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
-          @click="emit('delete')"
-        >
-          删除
+          {{ action.label }}
         </button>
       </div>
     </div>
+
+    <MobileDrawer
+      :open="open && isMobile"
+      ariaLabel="会话操作"
+      size="auto"
+      show-footer
+      @close="emit('close')"
+    >
+      <div class="session-sheet__actions">
+        <button
+          v-for="action in actions"
+          :key="`sheet-${action.id}`"
+          type="button"
+          :class="{ 'session-sheet__actions--danger': action.danger }"
+          @click="runAction(action.id)"
+        >
+          {{ action.label }}
+        </button>
+      </div>
+    </MobileDrawer>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { computed } from "vue";
+import { MobileDrawer } from "@/components/mobile/ui";
+import { useMobileViewport } from "@/composables/use-mobile-viewport";
+
+const props = defineProps<{
   open: boolean;
   x: number;
   y: number;
@@ -76,6 +70,28 @@ const emit = defineEmits<{
   pin: [];
   sync: [];
 }>();
+
+const isMobile = useMobileViewport();
+
+type ActionId = "pin" | "sync" | "achieve" | "fork" | "delete";
+
+const actions = computed(() => {
+  if (props.protectedSession) return [];
+  const items: Array<{ id: ActionId; label: string; danger?: boolean }> = [
+    { id: "pin", label: props.pinned ? "取消置顶" : "置顶" },
+  ];
+  if (props.status !== "finish") {
+    items.push({ id: "sync", label: "同步项目修改" }, { id: "achieve", label: "完成并归档" });
+  } else {
+    items.push({ id: "fork", label: "Fork 后继续" });
+  }
+  items.push({ id: "delete", label: "删除", danger: true });
+  return items;
+});
+
+function runAction(id: ActionId) {
+  emit(id);
+}
 </script>
 
 <style scoped>
@@ -95,11 +111,37 @@ const emit = defineEmits<{
   -webkit-user-select: none;
 }
 
-.session-context-menu__item:last-child {
+.session-context-menu__item--danger {
   color: #fa5151;
 }
 
 .session-context-menu__item:hover {
   background: var(--app-popup-hover);
+}
+
+.session-sheet__actions {
+  display: flex;
+  flex-direction: column;
+  margin: -14px -10px;
+}
+
+.session-sheet__actions > button {
+  width: 100%;
+  padding: 14px 16px;
+  color: var(--m-text-primary, var(--app-text-primary));
+  font-size: 15px;
+  text-align: center;
+}
+
+.session-sheet__actions > button + button {
+  border-top: 1px solid var(--m-divider, var(--app-border-subtle));
+}
+
+.session-sheet__actions--danger {
+  color: #fa5151 !important;
+}
+
+.session-sheet__actions > button:active {
+  background: var(--m-pressed, var(--app-hover));
 }
 </style>

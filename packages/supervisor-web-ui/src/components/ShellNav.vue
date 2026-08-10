@@ -97,7 +97,7 @@ const navItems = [
   { id: "chat" as const, icon: MessageSquare, title: "聊天" },
   { id: "active-ui" as const, icon: AppWindow, title: "活跃应用" },
   { id: "todo" as const, icon: ListTodo, title: "Todo / 计划" },
-  { id: "dashboard" as const, icon: LayoutDashboard, title: "Dashboard" },
+  { id: "dashboard" as const, icon: LayoutDashboard, title: "工作概览" },
   { id: "contacts" as const, icon: Users, title: "智能代理" },
   { id: "providers" as const, icon: Cloud, title: "模型" },
   { id: "resources" as const, icon: FolderOpen, title: "资源" },

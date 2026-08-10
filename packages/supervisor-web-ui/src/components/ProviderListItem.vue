@@ -17,13 +17,11 @@
 
     <div class="flex-1 min-w-0">
       <div class="flex items-center gap-2">
-        <span class="text-[13px] font-medium truncate provider-list-item__name">{{
-          provider.name
-        }}</span>
+        <span class="truncate provider-list-item__name">{{ provider.name }}</span>
         <span v-if="provider.slug" class="provider-list-item__builtin-badge">内置</span>
         <span v-if="!provider.isEnabled" class="provider-list-item__disabled-badge">已禁用</span>
       </div>
-      <div class="text-[11px] truncate mt-0.5 provider-list-item__meta">
+      <div class="truncate mt-0.5 provider-list-item__meta">
         {{ provider.models.length }} 个模型
       </div>
     </div>
@@ -53,10 +51,13 @@ defineEmits<{ select: [id: string]; contextmenu: [event: MouseEvent] }>();
 
 .provider-list-item__name {
   color: var(--app-text-primary);
+  font-size: var(--app-font-control);
+  font-weight: var(--app-font-weight-medium);
 }
 
 .provider-list-item__meta {
   color: var(--app-text-secondary);
+  font-size: var(--app-font-micro);
 }
 
 .provider-list-item--disabled .provider-avatar {
@@ -77,7 +78,7 @@ defineEmits<{ select: [id: string]; contextmenu: [event: MouseEvent] }>();
   border-radius: 4px;
   background: var(--app-hover);
   color: var(--app-text-secondary);
-  font-size: 10px;
+  font-size: var(--app-font-micro);
 }
 
 .provider-list-item__builtin-badge {

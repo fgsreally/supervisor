@@ -1,0 +1,14 @@
+:root {
+  --app-font-page-title: 1.0625rem;
+  --app-font-title: 1rem;
+  --app-font-body-strong: 0.9375rem;
+  --app-font-body: 0.875rem;
+  --app-font-control: 0.8125rem;
+  --app-font-caption: 0.75rem;
+  --app-font-micro: 0.6875rem;
+
+  --app-font-weight-regular: 400;
+  --app-font-weight-medium: 500;
+  --app-font-weight-semibold: 600;
+  --app-font-weight-bold: 700;
+}

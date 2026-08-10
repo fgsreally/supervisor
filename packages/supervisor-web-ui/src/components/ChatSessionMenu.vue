@@ -89,32 +89,6 @@
               </p>
             </section>
 
-            <section class="px-5 py-4 border-b chat-session-menu__section">
-              <div class="flex items-center justify-between gap-4">
-                <span class="text-[15px]">仅显示结论</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label="外部执行仅显示结论"
-                  :aria-checked="viewPreferences.collapseExternalAgentDetails"
-                  class="relative w-11 h-6 rounded-full transition-colors shrink-0"
-                  :class="
-                    viewPreferences.collapseExternalAgentDetails ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'
-                  "
-                  @click="toggleExternalDetails"
-                >
-                  <span
-                    class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
-                    :class="
-                      viewPreferences.collapseExternalAgentDetails
-                        ? 'translate-x-5'
-                        : 'translate-x-0'
-                    "
-                  />
-                </button>
-              </div>
-            </section>
-
             <button
               type="button"
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
@@ -235,6 +209,30 @@
                 <span
                   class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
                   :class="showThinking ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </button>
+            </div>
+
+            <div
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
+              <span class="text-[15px]">仅显示结论</span>
+              <button
+                type="button"
+                role="switch"
+                aria-label="外部执行仅显示结论"
+                :aria-checked="viewPreferences.collapseExternalAgentDetails"
+                class="relative w-11 h-6 rounded-full transition-colors shrink-0"
+                :class="
+                  viewPreferences.collapseExternalAgentDetails ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'
+                "
+                @click="toggleExternalDetails"
+              >
+                <span
+                  class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                  :class="
+                    viewPreferences.collapseExternalAgentDetails ? 'translate-x-5' : 'translate-x-0'
+                  "
                 />
               </button>
             </div>

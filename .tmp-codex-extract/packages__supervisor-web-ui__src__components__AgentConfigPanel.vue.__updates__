@@ -1,0 +1,8 @@
+\n\n===== UPDATE @ L2133 =====\n@@
+-          <div class="agent-config-row">
+-            <dt>工具集</dt>
+-            <dd>{{ agent.toolsPreset || "none" }}</dd>
+-          </div>
+@@
+-  return tool.source === "preset" ? "工具集" : "系统";
++  return tool.source === "preset" ? "预设" : "系统";

@@ -1,0 +1,49 @@
+\n\n===== UPDATE @ L1781 =====\n@@
+-    class="hidden md:flex w-16 flex-col items-center py-5 shrink-0 border-r"
++    class="hidden md:flex w-[52px] flex-col items-center py-3 shrink-0 border-r"
+@@
+-      class="w-9 h-9 bg-[#07c160] rounded-md flex items-center justify-center text-white font-bold text-base shadow-sm mb-6"
++      class="w-8 h-8 bg-[#07c160] rounded-md flex items-center justify-center text-white font-bold text-sm shadow-sm mb-4"
+@@
+-      class="p-2.5 rounded-lg transition-colors mb-2"
++      class="p-2 rounded-md transition-colors mb-1.5"
+@@
+-      <component :is="item.icon" class="w-[22px] h-[22px]" />
++      <component :is="item.icon" class="w-[18px] h-[18px]" />
+@@
+-        class="tutorial-nav-btn p-2.5 rounded-lg transition-colors mb-2"
++        class="tutorial-nav-btn p-2 rounded-md transition-colors mb-1.5"
+@@
+-        <BookOpenCheck class="w-[22px] h-[22px]" />
++        <BookOpenCheck class="w-[18px] h-[18px]" />
+@@
+-        class="p-2.5 rounded-lg transition-colors mb-2 nav-btn"
++        class="p-2 rounded-md transition-colors mb-1.5 nav-btn"
+@@
+-        <Sun v-if="isDark" class="w-[22px] h-[22px]" />
+-        <Moon v-else class="w-[22px] h-[22px]" />
++        <Sun v-if="isDark" class="w-[18px] h-[18px]" />
++        <Moon v-else class="w-[18px] h-[18px]" />
+@@
+-        class="p-2.5 rounded-lg transition-colors"
++        class="p-2 rounded-md transition-colors"
+@@
+-        <Settings class="w-[22px] h-[22px]" />
++        <Settings class="w-[18px] h-[18px]" />
+\n\n===== UPDATE @ L1854 =====\n@@
+-    class="hidden md:flex w-[52px] flex-col items-center py-3 shrink-0 border-r"
++    class="hidden md:flex w-16 flex-col items-center py-3 shrink-0 border-r"
+@@
+-      <component :is="item.icon" class="w-[18px] h-[18px]" />
++      <component :is="item.icon" class="w-[1.375rem] h-[1.375rem]" />
+@@
+-        <BookOpenCheck class="w-[18px] h-[18px]" />
++        <BookOpenCheck class="w-[1.375rem] h-[1.375rem]" />
+@@
+-        <Sun v-if="isDark" class="w-[18px] h-[18px]" />
+-        <Moon v-else class="w-[18px] h-[18px]" />
++        <Sun v-if="isDark" class="w-[1.375rem] h-[1.375rem]" />
++        <Moon v-else class="w-[1.375rem] h-[1.375rem]" />
+@@
+-        <Settings class="w-[18px] h-[18px]" />
++        <Settings class="w-[1.375rem] h-[1.375rem]" />

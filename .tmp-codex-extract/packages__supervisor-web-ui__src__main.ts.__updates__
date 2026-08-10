@@ -1,0 +1,9 @@
+\n\n===== UPDATE @ L1825 =====\n@@
+ import "./style.css";
++import "./styles/font-scale.css";
+@@
+ import { initAppTheme } from "./composables/use-app-theme";
++import { initAppFontScale } from "./composables/use-app-font-scale";
+@@
+ initAppTheme();
++initAppFontScale();

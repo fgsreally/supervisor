@@ -4,7 +4,7 @@
       v-if="!mobileSearchOpen"
       class="h-16 flex items-center px-4 shrink-0 border-b provider-panel__header m-centered-list-header"
     >
-      <h1 class="text-[16px] font-medium flex-1 max-md:flex-none">模型供应商</h1>
+      <h1 class="provider-panel__title flex-1 max-md:flex-none">模型供应商</h1>
       <div class="m-centered-list-header__actions">
         <button
           type="button"
@@ -40,7 +40,7 @@
           v-model="query"
           type="text"
           placeholder="搜索模型供应商"
-          class="list-search-input w-full rounded-md pl-8 pr-2 py-1.5 text-[13px] focus:outline-none"
+          class="list-search-input provider-panel__search w-full rounded-md pl-8 pr-2 py-1.5 focus:outline-none"
         />
       </div>
     </div>
@@ -128,6 +128,15 @@ function deleteSelected() {
 </script>
 
 <style scoped>
+.provider-panel__title {
+  font-size: var(--app-font-title);
+  font-weight: var(--app-font-weight-medium);
+}
+
+.provider-panel__search {
+  font-size: var(--app-font-control);
+}
+
 .provider-panel {
   background: var(--app-list-bg);
   color: var(--app-text-primary);
@@ -174,7 +183,7 @@ function deleteSelected() {
   width: 100%;
   padding: 8px 14px;
   text-align: left;
-  font-size: 13px;
+  font-size: var(--app-font-control);
   color: var(--app-text-primary);
 }
 

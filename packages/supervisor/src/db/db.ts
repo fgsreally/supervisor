@@ -1373,14 +1373,32 @@ export class SupervisorDb {
   }
 
   getLastMessagePreview(sessionId: number): string | null {
-    const row = this.db
+    return this.getLastMessagePreviews([sessionId]).get(sessionId) ?? null;
+  }
+
+  getLastMessagePreviews(sessionIds: number[]): Map<number, string> {
+    const unique = [...new Set(sessionIds.filter((id) => Number.isInteger(id) && id > 0))];
+    if (unique.length === 0) return new Map();
+    const placeholders = unique.map(() => "?").join(", ");
+    const rows = this.db
       .prepare(
-        `SELECT search_text FROM messages
-				 WHERE session_id = ? AND search_text IS NOT NULL AND search_text != ''
-				 ORDER BY created_at DESC LIMIT 1`,
+        `SELECT m.session_id, m.search_text
+         FROM messages m
+         INNER JOIN (
+           SELECT session_id, MAX(created_at) AS max_created
+           FROM messages
+           WHERE session_id IN (${placeholders})
+             AND search_text IS NOT NULL AND search_text != ''
+           GROUP BY session_id
+         ) latest ON m.session_id = latest.session_id AND m.created_at = latest.max_created
+         WHERE m.search_text IS NOT NULL AND m.search_text != ''`,
       )
-      .get(sessionId) as { search_text: string } | undefined;
-    return row?.search_text ?? null;
+      .all(...unique) as Array<{ session_id: number; search_text: string }>;
+    const out = new Map<number, string>();
+    for (const row of rows) {
+      if (!out.has(row.session_id)) out.set(row.session_id, row.search_text);
+    }
+    return out;
   }
 
   close(): void {

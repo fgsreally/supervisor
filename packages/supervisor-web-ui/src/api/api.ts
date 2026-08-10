@@ -1873,9 +1873,15 @@ export async function getSessionMessage(id: string, entryId: string): Promise<Se
   return fetchJson<SessionTreeEntry>(`/sessions/${id}/messages/${encodeURIComponent(entryId)}`);
 }
 
-/** Read the active Markdown task artifacts managed by the Agent. */
-export async function getSessionTasks(id: string): Promise<TaskArtifact[]> {
-  return fetchJson<TaskArtifact[]>(`/sessions/${id}/tasks`);
+/** Read task artifacts; default summary from session meta without disk reads. */
+export async function getSessionTasks(
+  id: string,
+  options?: { includeContent?: boolean },
+): Promise<TaskArtifact[]> {
+  const params = new URLSearchParams();
+  if (options?.includeContent) params.set("includeContent", "1");
+  const query = params.toString();
+  return fetchJson<TaskArtifact[]>(`/sessions/${id}/tasks${query ? `?${query}` : ""}`);
 }
 
 /** Read the structured todo state managed by the Agent. */

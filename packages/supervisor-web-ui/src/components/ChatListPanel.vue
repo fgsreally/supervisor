@@ -127,182 +127,207 @@
         <div v-if="!searching && !searchResults.length" class="chat-search-state">无匹配会话</div>
       </template>
       <template v-else>
-        <template v-if="showPinnedSection">
-          <div class="list-section-header list-section-header--pinned sticky top-0 z-10">
-            <button
-              type="button"
-              class="section-action-btn section-action-btn--chevron"
-              :title="pinnedSectionCollapsed ? '展开' : '折叠'"
-              @click="togglePinnedCollapse"
-            >
-              <ChevronRight
-                class="w-4 h-4 section-chevron"
-                :class="{ 'section-chevron--open': !pinnedSectionCollapsed }"
-              />
-            </button>
-            <button
-              type="button"
-              class="list-section-title flex-1 truncate text-left"
-              @click="togglePinnedCollapse"
-            >
-              置顶
-            </button>
-          </div>
-          <div
-            class="workspace-collapse"
-            :class="{ 'workspace-collapse--open': !pinnedSectionCollapsed }"
-          >
-            <div
-              class="workspace-collapse__inner"
-              :class="{ 'workspace-collapse__inner--hold-leave': unpinLeaveIds.size > 0 }"
-            >
-              <DustTransitionGroup
-                name="session-list"
-                tag="div"
-                content-class="chat-list-roots"
-                @after-leave="onPinnedSessionAfterLeave"
-              >
-                <div
-                  v-for="root in pinnedRoots"
-                  :key="root.id"
-                  class="chat-list-root"
-                  :data-session-id="root.id"
-                >
-                  <SessionListItem
-                    :session="root"
-                    :active="activeId === root.id"
-                    mode="chat"
-                    :depth="0"
-                    @select="$emit('select', $event)"
-                    @context-menu="openContextMenu(root.id, $event)"
-                    @hover-change="highlightPinnedProject(root, $event)"
-                  />
-                </div>
-              </DustTransitionGroup>
-            </div>
-          </div>
-        </template>
-
-        <template v-if="workspaceGroups.length">
-          <DustTransitionGroup name="session-list" tag="div" content-class="chat-list-projects">
-            <div
-              v-for="group in workspaceGroups"
-              :key="group.workspace.id"
-              class="workspace-group"
-              :data-project-id="group.workspace.id"
-            >
-              <div
-                class="list-section-header sticky top-0 z-10"
-                :ref="(element) => setProjectHeaderRef(group.workspace.id, element)"
-                draggable="true"
-                :class="{
-                  'list-section-header--dragging': draggedProjectId === group.workspace.id,
-                  'list-section-header--linked': highlightedProjectId === group.workspace.id,
-                }"
-                @dragstart="onProjectDragStart(group.workspace.id, $event)"
-                @dragover.prevent
-                @drop="onProjectDrop(group.workspace.id)"
-                @dragend="draggedProjectId = null"
-                @contextmenu.prevent.stop="openProjectContextMenu(group.workspace.id, $event)"
-              >
-                <button
-                  type="button"
-                  class="section-action-btn section-action-btn--chevron"
-                  :title="isWorkspaceCollapsed(group.workspace.id) ? '展开' : '折叠'"
-                  @click="toggleWorkspaceCollapse(group.workspace.id)"
-                >
-                  <ChevronRight
-                    class="w-4 h-4 section-chevron"
-                    :class="{ 'section-chevron--open': !isWorkspaceCollapsed(group.workspace.id) }"
-                  />
-                </button>
-                <button
-                  type="button"
-                  class="list-section-title flex-1 truncate text-left"
-                  @click="toggleWorkspaceCollapse(group.workspace.id)"
-                >
-                  {{ group.workspace.name }}
-                </button>
-                <button
-                  type="button"
-                  class="section-action-btn"
-                  title="Git"
-                  @click="openProjectGit(group.workspace.id, $event)"
-                >
-                  <GitBranch class="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  class="section-action-btn"
-                  title="项目设置"
-                  @click="openProjectSettings(group.workspace.id)"
-                >
-                  <Settings class="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  class="section-action-btn"
-                  title="在此项目添加会话"
-                  @click="openAgentPicker(group.workspace.id)"
-                >
-                  <Plus class="w-4 h-4" />
-                </button>
-              </div>
-
-              <div
-                class="workspace-collapse"
-                :class="{ 'workspace-collapse--open': !isWorkspaceCollapsed(group.workspace.id) }"
-              >
-                <div
-                  class="workspace-collapse__inner"
-                  :class="{ 'workspace-collapse__inner--hold-leave': pinLeaveIds.size > 0 }"
-                >
-                  <DustTransitionGroup
-                    name="session-list"
-                    tag="div"
-                    content-class="chat-list-roots"
-                    @after-leave="onRegularSessionAfterLeave"
-                  >
-                    <div
-                      v-for="root in group.sessions"
-                      :key="root.id"
-                      class="workspace-session-block"
-                      :data-session-id="root.id"
-                    >
-                      <SessionListItem
-                        :session="root"
-                        :active="activeId === root.id"
-                        mode="chat"
-                        :depth="0"
-                        @select="$emit('select', $event)"
-                        @context-menu="openContextMenu(root.id, $event)"
-                      />
-                      <SessionListSubtree
-                        v-if="childrenOf(root.id).length"
-                        :parent-id="root.id"
-                        :depth="1"
-                        :active-id="activeId"
-                        :sessions="filtered"
-                        :ancestor-open-depths="[]"
-                        @select="$emit('select', $event)"
-                        @context-menu="openContextMenu($event.sessionId, $event)"
-                      />
-                    </div>
-                  </DustTransitionGroup>
-                  <div v-if="!group.sessions.length" class="workspace-empty">暂无会话</div>
-                </div>
-              </div>
-            </div>
-          </DustTransitionGroup>
-        </template>
-
-        <div
-          v-if="!showPinnedSection && !workspaceGroups.length"
-          class="py-12 text-center text-sm"
-          style="color: var(--app-text-muted)"
-        >
-          暂无项目
+        <div v-if="sessionsLoading" class="chat-list-state">
+          <Loader2 class="chat-list-state__spin" aria-hidden="true" />
+          <span>加载会话...</span>
         </div>
+        <UiEmptyState
+          v-else-if="sessionsLoadError"
+          tone="error"
+          title="会话加载失败"
+          :description="sessionsLoadError"
+          action-label="重试"
+          @action="retryLoadSessions"
+        >
+          <template #icon><MessageSquareReply /></template>
+        </UiEmptyState>
+        <UiEmptyState
+          v-else-if="!sessionStore.projects.length && !showPinnedSection"
+          title="暂无项目"
+          description="创建项目后即可在此开始会话。"
+          action-label="创建项目"
+          @action="projectCreateOpen = true"
+        >
+          <template #icon><Plus /></template>
+        </UiEmptyState>
+        <template v-else>
+          <template v-if="showPinnedSection">
+            <div class="list-section-header list-section-header--pinned sticky top-0 z-10">
+              <button
+                type="button"
+                class="section-action-btn section-action-btn--chevron"
+                :title="pinnedSectionCollapsed ? '展开' : '折叠'"
+                @click="togglePinnedCollapse"
+              >
+                <ChevronRight
+                  class="w-4 h-4 section-chevron"
+                  :class="{ 'section-chevron--open': !pinnedSectionCollapsed }"
+                />
+              </button>
+              <button
+                type="button"
+                class="list-section-title flex-1 truncate text-left"
+                @click="togglePinnedCollapse"
+              >
+                置顶
+              </button>
+            </div>
+            <div
+              class="workspace-collapse"
+              :class="{ 'workspace-collapse--open': !pinnedSectionCollapsed }"
+            >
+              <div
+                class="workspace-collapse__inner"
+                :class="{ 'workspace-collapse__inner--hold-leave': unpinLeaveIds.size > 0 }"
+              >
+                <DustTransitionGroup
+                  name="session-list"
+                  tag="div"
+                  content-class="chat-list-roots"
+                  @after-leave="onPinnedSessionAfterLeave"
+                >
+                  <div
+                    v-for="root in pinnedRoots"
+                    :key="root.id"
+                    class="chat-list-root"
+                    :data-session-id="root.id"
+                  >
+                    <SessionListItem
+                      :session="root"
+                      :active="activeId === root.id"
+                      mode="chat"
+                      :depth="0"
+                      @select="$emit('select', $event)"
+                      @context-menu="openContextMenu(root.id, $event)"
+                      @hover-change="highlightPinnedProject(root, $event)"
+                    />
+                  </div>
+                </DustTransitionGroup>
+              </div>
+            </div>
+          </template>
+
+          <template v-if="workspaceGroups.length">
+            <DustTransitionGroup name="session-list" tag="div" content-class="chat-list-projects">
+              <div
+                v-for="group in workspaceGroups"
+                :key="group.workspace.id"
+                class="workspace-group"
+                :data-project-id="group.workspace.id"
+              >
+                <div
+                  class="list-section-header sticky top-0 z-10"
+                  :ref="(element) => setProjectHeaderRef(group.workspace.id, element)"
+                  draggable="true"
+                  :class="{
+                    'list-section-header--dragging': draggedProjectId === group.workspace.id,
+                    'list-section-header--linked': highlightedProjectId === group.workspace.id,
+                  }"
+                  @dragstart="onProjectDragStart(group.workspace.id, $event)"
+                  @dragover.prevent
+                  @drop="onProjectDrop(group.workspace.id)"
+                  @dragend="draggedProjectId = null"
+                  @contextmenu.prevent.stop="openProjectContextMenu(group.workspace.id, $event)"
+                >
+                  <button
+                    type="button"
+                    class="section-action-btn section-action-btn--chevron"
+                    :title="isWorkspaceCollapsed(group.workspace.id) ? '展开' : '折叠'"
+                    @click="toggleWorkspaceCollapse(group.workspace.id)"
+                  >
+                    <ChevronRight
+                      class="w-4 h-4 section-chevron"
+                      :class="{
+                        'section-chevron--open': !isWorkspaceCollapsed(group.workspace.id),
+                      }"
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    class="list-section-title flex-1 truncate text-left"
+                    @click="toggleWorkspaceCollapse(group.workspace.id)"
+                  >
+                    {{ group.workspace.name }}
+                  </button>
+                  <button
+                    type="button"
+                    class="section-action-btn"
+                    title="Git"
+                    @click="openProjectGit(group.workspace.id, $event)"
+                  >
+                    <GitBranch class="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    class="section-action-btn"
+                    title="项目设置"
+                    @click="openProjectSettings(group.workspace.id)"
+                  >
+                    <Settings class="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    class="section-action-btn"
+                    title="在此项目添加会话"
+                    @click="openAgentPicker(group.workspace.id)"
+                  >
+                    <Plus class="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div
+                  class="workspace-collapse"
+                  :class="{ 'workspace-collapse--open': !isWorkspaceCollapsed(group.workspace.id) }"
+                >
+                  <div
+                    class="workspace-collapse__inner"
+                    :class="{ 'workspace-collapse__inner--hold-leave': pinLeaveIds.size > 0 }"
+                  >
+                    <DustTransitionGroup
+                      name="session-list"
+                      tag="div"
+                      content-class="chat-list-roots"
+                      @after-leave="onRegularSessionAfterLeave"
+                    >
+                      <div
+                        v-for="root in group.sessions"
+                        :key="root.id"
+                        class="workspace-session-block"
+                        :data-session-id="root.id"
+                      >
+                        <SessionListItem
+                          :session="root"
+                          :active="activeId === root.id"
+                          mode="chat"
+                          :depth="0"
+                          @select="$emit('select', $event)"
+                          @context-menu="openContextMenu(root.id, $event)"
+                        />
+                        <SessionListSubtree
+                          v-if="childrenOf(root.id).length"
+                          :parent-id="root.id"
+                          :depth="1"
+                          :active-id="activeId"
+                          :sessions="filtered"
+                          :ancestor-open-depths="[]"
+                          @select="$emit('select', $event)"
+                          @context-menu="openContextMenu($event.sessionId, $event)"
+                        />
+                      </div>
+                    </DustTransitionGroup>
+                    <div v-if="!group.sessions.length" class="chat-list-project-empty">
+                      <MessageSquareReply
+                        class="chat-list-project-empty__icon"
+                        aria-hidden="true"
+                      />
+                      <p>暂无会话</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </DustTransitionGroup>
+          </template>
+        </template>
       </template>
     </div>
 
@@ -400,6 +425,7 @@ import {
   ChevronDown,
   ChevronRight,
   GitBranch,
+  Loader2,
   MessageSquareReply,
   Plus,
   Search,
@@ -413,7 +439,7 @@ import {
   viewPreferences,
 } from "@/utils/view-preferences";
 import type { UISession } from "@/types/ui";
-import { useAgentStore, useSessionStore } from "@/store";
+import { useAgentStore, useRootStore, useSessionStore } from "@/store";
 import {
   groupSessionsByWorkspace,
   toUISession,
@@ -444,6 +470,7 @@ import SessionListContextMenu from "./SessionListContextMenu.vue";
 import SessionListItem from "./SessionListItem.vue";
 import SessionListSubtree from "./SessionListSubtree.vue";
 import SessionAvatar from "./SessionAvatar.vue";
+import UiEmptyState from "./ui/UiEmptyState.vue";
 
 const props = defineProps<{
   activeId: string;
@@ -462,7 +489,20 @@ const emit = defineEmits<{
 }>();
 
 const sessionStore = useSessionStore();
+const rootStore = useRootStore();
 const agentStore = useAgentStore();
+
+const sessionsLoading = computed(() => rootStore.loading.sessions);
+const sessionsLoadError = computed(() =>
+  !sessionsLoading.value && rootStore.error ? rootStore.error : "",
+);
+
+async function retryLoadSessions() {
+  rootStore.clearError();
+  await Promise.all([sessionStore.fetchProjects(), sessionStore.fetchSessions()]).catch(
+    () => undefined,
+  );
+}
 
 const query = ref("");
 const mobileAddMenuOpen = ref(false);
@@ -1132,6 +1172,52 @@ async function onAgentPicked(agentId: string) {
 </script>
 
 <style scoped>
+.chat-search-state,
+.chat-list-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px 16px;
+  color: var(--app-text-muted);
+  font-size: var(--app-font-control, 0.8125rem);
+  text-align: center;
+}
+
+.chat-list-state__spin,
+.chat-search-state :deep(.chat-list-state__spin) {
+  width: 22px;
+  height: 22px;
+  animation: chat-list-spin 0.8s linear infinite;
+}
+
+.chat-list-project-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 28px 16px 32px;
+  color: var(--app-text-muted);
+  text-align: center;
+}
+
+.chat-list-project-empty__icon {
+  width: 28px;
+  height: 28px;
+  opacity: 0.55;
+}
+
+.chat-list-project-empty p {
+  font-size: var(--app-font-caption, 0.75rem);
+}
+
+@keyframes chat-list-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .chat-search-state {
   padding: 40px 16px;
   color: var(--app-text-muted);

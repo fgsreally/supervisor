@@ -1,0 +1,22 @@
+[
+  {
+    "line": 236,
+    "body": "@@\n     { path: \"/resources/:resourceId?\", name: \"resources\", component: { template: \"<div />\" } },\n     { path: \"/settings\", name: \"settings\", component: { template: \"<div />\" } },\n+    {\n+      path: \"/settings/services\",\n+      name: \"settings-services\",\n+      component: { template: \"<div />\" },\n+    },\n+    {\n+      path: \"/settings/diagnostics\",\n+      name: \"settings-diagnostics\",\n+      component: { template: \"<div />\" },\n+    },\n"
+  },
+  {
+    "line": 336,
+    "body": "@@\n     { path: \"/dashboard\", name: \"dashboard\", component: { template: \"<div />\" } },\n     { path: \"/chat/:sessionId?\", name: \"chat\", component: { template: \"<div />\" } },\n+    { path: \"/contacts/new\", name: \"contact-new\", component: { template: \"<div />\" } },\n     { path: \"/contacts/:agentId?\", name: \"contacts\", component: { template: \"<div />\" } },\n+    { path: \"/providers/new\", name: \"provider-new\", component: { template: \"<div />\" } },\n+    {\n+      path: \"/providers/:providerId/models/new\",\n+      name: \"provider-model-new\",\n+      component: { template: \"<div />\" },\n+    },\n"
+  },
+  {
+    "line": 416,
+    "body": "@@\n-import { createRouter, createWebHistory, type RouteLocationNormalized } from \"vue-router\";\n+import { createRouter, createWebHistory, type RouteLocationNormalized } from \"vue-router\";\n@@\n-export function tabFromRoute(route: RouteLocationNormalized): AppRouteTab {\n+export function tabFromRoute(route: Pick<RouteLocationNormalized, \"path\">): AppRouteTab {\n@@\n-export function idFromRoute(route: RouteLocationNormalized): string | undefined {\n+export function idFromRoute(route: Pick<RouteLocationNormalized, \"path\">): string | undefined {\n"
+  },
+  {
+    "line": 680,
+    "body": "@@\n-import { createRouter, createWebHistory, type RouteLocationNormalized } from \"vue-router\";\n+import { createRouter, createWebHistory, type RouteLocationNormalized } from \"vue-router\";\n+import { parseMobileStyle, setMobileStyle } from \"@/composables/use-mobile-style\";\n@@\n const router = createRouter({\n@@\n });\n+\n+router.beforeEach((to, from) => {\n+  const activeStyle = from.query.mobileStyle;\n+  if (to.query.mobileStyle !== undefined || activeStyle === undefined) return true;\n+  return {\n+    path: to.path,\n+    hash: to.hash,\n+    query: { ...to.query, mobileStyle: activeStyle },\n+    replace: true,\n+  };\n+});\n+\n+router.afterEach((to) => {\n+  void setMobileStyle(parseMobileStyle(to.query.mobileStyle));\n+});\n \n export default router;\n"
+  },
+  {
+    "line": 951,
+    "body": "@@\n-import { parseMobileStyle, setMobileStyle } from \"@/composables/use-mobile-style\";\n@@\n-router.beforeEach((to, from) => {\n-  const activeStyle = from.query.mobileStyle;\n-  if (to.query.mobileStyle !== undefined || activeStyle === undefined) return true;\n-  return {\n-    path: to.path,\n-    hash: to.hash,\n-    query: { ...to.query, mobileStyle: activeStyle },\n-    replace: true,\n-  };\n-});\n-\n-router.afterEach((to) => {\n-  void setMobileStyle(parseMobileStyle(to.query.mobileStyle));\n-});\n-\n export default router;\n"
+  }
+]

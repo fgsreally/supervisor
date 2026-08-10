@@ -15,94 +15,113 @@
         </button>
       </div>
     </header>
-    <div class="mobile-events">
-      <template v-for="project in visibleProjects" :key="`mobile-${project.id}`">
-        <section v-if="laneEvents(project.id).length" class="mobile-events__project">
-          <header>
-            <i :style="{ background: projectColor(project.id) }" />
-            <strong>{{ project.name }}</strong>
-          </header>
-          <button
-            v-for="event in laneEvents(project.id)"
-            :key="event.id"
-            type="button"
-            @click="emit('open-session', event.entityId)"
-          >
-            <span class="mobile-events__dot" :data-status="event.status || 'idle'" />
-            <span class="mobile-events__body">
-              <strong>{{ sessionTitle(event.entityId) }}</strong>
-              <small>{{ formatTime(event.createdAt) }} · {{ eventLabel(event) }}</small>
-            </span>
-            <em>{{ statusLabel(event.status) }}</em>
-          </button>
-        </section>
-      </template>
-      <p v-if="!visibleEvents.length" class="mobile-events__empty">暂无项目事件</p>
+    <div v-if="loading" class="timeline__loading">
+      <Loader2 class="timeline__spin" aria-hidden="true" />
+      <span>加载项目时间轴...</span>
     </div>
-    <div class="scroll custom-scrollbar">
-      <div class="canvas">
-        <div class="axis-label">项目</div>
-        <div class="axis">
-          <span v-for="tick in ticks" :key="`${tick.at}-${tick.x}`" :style="{ left: `${tick.x}%` }"
-            ><b>{{ tick.label }}</b></span
-          >
-        </div>
-        <div v-for="project in visibleProjects" :key="project.id" class="lane">
-          <aside>
-            <i :style="{ background: projectColor(project.id) }" />
-            <div>
-              <strong>{{ project.name }}</strong
-              ><small>{{ laneEvents(project.id).length }} 个事件</small>
-            </div>
-          </aside>
-          <div class="track">
-            <span
-              v-for="tick in ticks"
-              :key="`${tick.at}-${tick.x}`"
-              class="grid"
-              :style="{ left: `${tick.x}%` }"
-            />
-            <span class="baseline" />
+    <UiEmptyState
+      v-else-if="!visibleEvents.length"
+      class="timeline__empty"
+      title="暂无项目事件"
+      description="会话创建、合并或状态变化会显示在这里。"
+    >
+      <template #icon><GitCommitHorizontal /></template>
+    </UiEmptyState>
+    <template v-else>
+      <div class="mobile-events">
+        <template v-for="project in visibleProjects" :key="`mobile-${project.id}`">
+          <section v-if="laneEvents(project.id).length" class="mobile-events__project">
+            <header>
+              <i :style="{ background: projectColor(project.id) }" />
+              <strong>{{ project.name }}</strong>
+            </header>
             <button
               v-for="event in laneEvents(project.id)"
               :key="event.id"
-              class="point"
-              :style="pointStyle(event)"
-              :data-status="event.status || 'idle'"
-              :aria-label="sessionTitle(event.entityId)"
+              type="button"
               @click="emit('open-session', event.entityId)"
             >
-              <span class="popover" :class="{ right: eventX(event) > 70 }">
-                <small>{{ formatTime(event.createdAt) }} · {{ eventLabel(event) }}</small>
+              <span class="mobile-events__dot" :data-status="event.status || 'idle'" />
+              <span class="mobile-events__body">
                 <strong>{{ sessionTitle(event.entityId) }}</strong>
-                <em>{{ statusLabel(event.status) }}</em>
-                <template v-if="commits[event.entityId]?.length">
-                  <span
-                    v-for="commit in commits[event.entityId].slice(0, 3)"
-                    :key="commit.hash"
-                    class="commit"
-                    ><code>{{ commit.shortHash }}</code
-                    >{{ commit.subject }}</span
-                  >
-                </template>
-                <span v-else class="empty">暂无独立提交</span>
+                <small>{{ formatTime(event.createdAt) }} · {{ eventLabel(event) }}</small>
               </span>
+              <em>{{ statusLabel(event.status) }}</em>
             </button>
+          </section>
+        </template>
+      </div>
+      <div class="scroll custom-scrollbar">
+        <div class="canvas">
+          <div class="axis-label">项目</div>
+          <div class="axis">
+            <span
+              v-for="tick in ticks"
+              :key="`${tick.at}-${tick.x}`"
+              :style="{ left: `${tick.x}%` }"
+              ><b>{{ tick.label }}</b></span
+            >
+          </div>
+          <div v-for="project in visibleProjects" :key="project.id" class="lane">
+            <aside>
+              <i :style="{ background: projectColor(project.id) }" />
+              <div>
+                <strong>{{ project.name }}</strong
+                ><small>{{ laneEvents(project.id).length }} 个事件</small>
+              </div>
+            </aside>
+            <div class="track">
+              <span
+                v-for="tick in ticks"
+                :key="`${tick.at}-${tick.x}`"
+                class="grid"
+                :style="{ left: `${tick.x}%` }"
+              />
+              <span class="baseline" />
+              <button
+                v-for="event in laneEvents(project.id)"
+                :key="event.id"
+                class="point"
+                :style="pointStyle(event)"
+                :data-status="event.status || 'idle'"
+                :aria-label="sessionTitle(event.entityId)"
+                @click="emit('open-session', event.entityId)"
+              >
+                <span class="popover" :class="{ right: eventX(event) > 70 }">
+                  <small>{{ formatTime(event.createdAt) }} · {{ eventLabel(event) }}</small>
+                  <strong>{{ sessionTitle(event.entityId) }}</strong>
+                  <em>{{ statusLabel(event.status) }}</em>
+                  <template v-if="commits[event.entityId]?.length">
+                    <span
+                      v-for="commit in commits[event.entityId].slice(0, 3)"
+                      :key="commit.hash"
+                      class="commit"
+                      ><code>{{ commit.shortHash }}</code
+                      >{{ commit.subject }}</span
+                    >
+                  </template>
+                  <span v-else class="empty">暂无独立提交</span>
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </template>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { GitCommitHorizontal, Loader2 } from "lucide-vue-next";
 import type { Project, Session, TimelineEvent, WorktreeCommit } from "@/api";
+import UiEmptyState from "@/components/ui/UiEmptyState.vue";
 const props = defineProps<{
   projects: Project[];
   sessions: Session[];
   events: TimelineEvent[];
   commits: Record<string, WorktreeCommit[]>;
+  loading?: boolean;
 }>();
 const emit = defineEmits<{ "open-session": [id: string] }>();
 const visibleIds = ref(new Set<string>());
@@ -226,6 +245,30 @@ function formatTime(value: string) {
   border: 1px solid var(--app-border-subtle);
   border-radius: 12px;
   background: var(--app-settings-card);
+}
+.timeline__loading {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 16px;
+  color: var(--app-text-muted);
+  font-size: var(--app-font-control, 0.8125rem);
+}
+.timeline__spin {
+  width: 22px;
+  height: 22px;
+  animation: timeline-spin 0.8s linear infinite;
+}
+.timeline__empty {
+  padding: 24px 16px 32px;
+}
+@keyframes timeline-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 header {
   display: flex;

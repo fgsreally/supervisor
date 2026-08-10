@@ -186,6 +186,9 @@ function appendMessagePieces(
 export type BuildDisplayGroupsOptions = {
   /** When true, each assistant message entry is its own bubble (tool results stay with the call). */
   splitAssistantMessages?: boolean;
+  /** When true with splitAssistantMessages, hide execution bubbles and keep conclusion text split. */
+  collapseConclusionOnly?: boolean;
+  showThinkingBlocks?: boolean;
 };
 
 /** One assistant bubble per user turn by default; tool results inline with calls. */
@@ -282,7 +285,123 @@ export function buildDisplayGroups(
 
   flushAssistant();
   markLatestSubagentInteractions(groups);
+  if (options.collapseConclusionOnly && options.splitAssistantMessages) {
+    return applyConclusionOnlySplit(groups, options.showThinkingBlocks ?? false);
+  }
   return groups;
+}
+
+function isGroupedAssistant(
+  group: DisplayGroup,
+): group is Extract<DisplayGroup, { type: "grouped_assistant" }> {
+  return group.type === "grouped_assistant" && "pieces" in group;
+}
+
+function lastToolPieceIndex(pieces: RenderPiece[]): number {
+  return pieces.reduce(
+    (latest, piece, index) => (piece.kind === "bash" || piece.kind === "toolStep" ? index : latest),
+    -1,
+  );
+}
+
+function cloneAssistantGroup(
+  source: Extract<DisplayGroup, { type: "grouped_assistant" }>,
+  pieces: RenderPiece[],
+): Extract<DisplayGroup, { type: "grouped_assistant" }> {
+  const compacted = compactAssistantPieces([...pieces]);
+  return {
+    ...source,
+    pieces: compacted,
+    assets: [...source.assets],
+  };
+}
+
+function processTurnForConclusionSplit(
+  groups: Extract<DisplayGroup, { type: "grouped_assistant" }>[],
+  showThinkingBlocks: boolean,
+): DisplayGroup[] {
+  if (groups.length === 0) return [];
+
+  let lastExecGroupIdx = -1;
+  for (let i = 0; i < groups.length; i++) {
+    if (groups[i].pieces.some((piece) => piece.kind === "bash" || piece.kind === "toolStep")) {
+      lastExecGroupIdx = i;
+    }
+  }
+
+  if (lastExecGroupIdx < 0) return groups;
+
+  const keepThinking = (piece: RenderPiece) =>
+    piece.kind === "text" || (piece.kind === "thinking" && showThinkingBlocks);
+
+  const execPieces: RenderPiece[] = [];
+  for (let i = 0; i <= lastExecGroupIdx; i++) {
+    for (const piece of groups[i].pieces) {
+      if (piece.kind === "bash" || piece.kind === "toolStep") {
+        execPieces.push(piece);
+      } else if (keepThinking(piece)) {
+        execPieces.push(piece);
+      }
+    }
+  }
+
+  const lastExecGroup = groups[lastExecGroupIdx];
+  const lastToolIdx = lastToolPieceIndex(lastExecGroup.pieces);
+  const trailingFromExecGroup = lastExecGroup.pieces.filter(
+    (piece, index) => index > lastToolIdx && keepThinking(piece),
+  );
+
+  const conclusionGroups: Extract<DisplayGroup, { type: "grouped_assistant" }>[] = [];
+  if (trailingFromExecGroup.length > 0) {
+    conclusionGroups.push(cloneAssistantGroup(lastExecGroup, trailingFromExecGroup));
+  }
+
+  for (let i = lastExecGroupIdx + 1; i < groups.length; i++) {
+    const textPieces = groups[i].pieces.filter((piece) => keepThinking(piece));
+    if (textPieces.length > 0) {
+      conclusionGroups.push(cloneAssistantGroup(groups[i], textPieces));
+    }
+  }
+
+  if (conclusionGroups.length === 0) {
+    const base = groups[lastExecGroupIdx];
+    return [cloneAssistantGroup(base, execPieces.length > 0 ? execPieces : base.pieces)];
+  }
+
+  const first = conclusionGroups[0];
+  first.pieces = compactAssistantPieces([...execPieces, ...first.pieces]);
+  return conclusionGroups;
+}
+
+/** Merge execution bubbles when split + conclusion-only are both enabled. */
+export function applyConclusionOnlySplit(
+  groups: DisplayGroup[],
+  showThinkingBlocks = false,
+): DisplayGroup[] {
+  const result: DisplayGroup[] = [];
+  let turnAssistantGroups: Extract<DisplayGroup, { type: "grouped_assistant" }>[] = [];
+
+  const flushTurn = () => {
+    if (turnAssistantGroups.length === 0) return;
+    result.push(...processTurnForConclusionSplit(turnAssistantGroups, showThinkingBlocks));
+    turnAssistantGroups = [];
+  };
+
+  for (const group of groups) {
+    if (group.type === "message" && group.message.role === "user") {
+      flushTurn();
+      result.push(group);
+      continue;
+    }
+    if (isGroupedAssistant(group)) {
+      turnAssistantGroups.push(group);
+      continue;
+    }
+    flushTurn();
+    result.push(group);
+  }
+  flushTurn();
+  return result;
 }
 
 function markLatestSubagentInteractions(groups: DisplayGroup[]): void {

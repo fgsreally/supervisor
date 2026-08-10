@@ -4,11 +4,24 @@
       <header class="active-ui-view__header">
         <div>
           <h1 class="active-ui-view__title">活跃应用</h1>
-          <p class="active-ui-view__meta">{{ entries.length }} 个入口</p>
+          <p class="active-ui-view__meta">
+            {{ sessionsLoading ? "加载中..." : `${entries.length} 个入口` }}
+          </p>
         </div>
       </header>
 
-      <div v-if="entries.length === 0" class="active-ui-view__empty">当前没有运行中的 UI 服务</div>
+      <div v-if="sessionsLoading" class="active-ui-view__state">
+        <Loader2 class="active-ui-view__spin" aria-hidden="true" />
+        <span>加载活跃应用...</span>
+      </div>
+      <UiEmptyState
+        v-else-if="entries.length === 0"
+        class="active-ui-view__empty-state"
+        title="暂无活跃应用"
+        description="启动带 UI 端口的会话服务后，可在此预览。"
+      >
+        <template #icon><AppWindow /></template>
+      </UiEmptyState>
       <template v-else>
         <div class="active-ui-view__pager">
           <button type="button" :disabled="page <= 1" @click="page -= 1">上一页</button>
@@ -34,9 +47,18 @@
     </aside>
 
     <section class="active-ui-view__preview">
-      <div v-if="entries.length === 0" class="active-ui-view__preview-empty">
-        启动带 UI 端口的会话服务后，可在此预览
+      <div v-if="sessionsLoading" class="active-ui-view__state active-ui-view__state--preview">
+        <Loader2 class="active-ui-view__spin" aria-hidden="true" />
+        <span>加载预览...</span>
       </div>
+      <UiEmptyState
+        v-else-if="entries.length === 0"
+        class="active-ui-view__empty-state active-ui-view__empty-state--preview"
+        title="暂无预览"
+        description="左侧列表为空时，这里也不会显示预览内容。"
+      >
+        <template #icon><AppWindow /></template>
+      </UiEmptyState>
       <template v-else-if="selectedEntry">
         <header class="active-ui-view__preview-header">
           <div class="active-ui-view__preview-copy">
@@ -47,7 +69,10 @@
             打开会话
           </button>
         </header>
-        <div v-if="previewLoading" class="active-ui-view__loading">正在唤醒服务...</div>
+        <div v-if="previewLoading" class="active-ui-view__state active-ui-view__state--preview">
+          <Loader2 class="active-ui-view__spin" aria-hidden="true" />
+          <span>正在唤醒服务...</span>
+        </div>
         <iframe
           v-else
           class="active-ui-view__frame"
@@ -61,6 +86,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { AppWindow, Loader2 } from "lucide-vue-next";
 import {
   collectActiveUiEntries,
   paginateActiveUiEntries,
@@ -70,7 +96,8 @@ import { parseSessionServicesFromMeta } from "@/utils/session-services";
 import { wakeSessionServices } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { toUISession } from "@/utils/ui-session";
-import { useSessionStore } from "@/store";
+import { useRootStore, useSessionStore } from "@/store";
+import UiEmptyState from "@/components/ui/UiEmptyState.vue";
 
 const emit = defineEmits<{
   "open-session": [sessionId: string];
@@ -81,7 +108,9 @@ const page = ref(1);
 const selectedKey = ref<string | null>(null);
 const previewLoading = ref(false);
 const sessionStore = useSessionStore();
+const rootStore = useRootStore();
 
+const sessionsLoading = computed(() => rootStore.loading.sessions);
 const sessions = computed(() => sessionStore.sessions.map(toUISession));
 const entries = computed(() => collectActiveUiEntries(sessions.value));
 const pagination = computed(() => paginateActiveUiEntries(entries.value, page.value, PAGE_SIZE));
@@ -159,15 +188,47 @@ function openSelectedSession() {
 }
 
 .active-ui-view__title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--app-font-title, 1rem);
+  font-weight: var(--app-font-weight-semibold, 600);
   color: var(--app-text-primary);
 }
 
 .active-ui-view__meta {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--app-font-caption, 0.75rem);
   color: var(--app-text-muted);
+}
+
+.active-ui-view__state {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px 16px;
+  color: var(--app-text-secondary);
+  font-size: var(--app-font-control, 0.8125rem);
+}
+
+.active-ui-view__state--preview {
+  flex: 1;
+}
+
+.active-ui-view__spin {
+  width: 22px;
+  height: 22px;
+  animation: active-ui-spin 0.8s linear infinite;
+}
+
+.active-ui-view__empty-state {
+  flex: 1;
+  width: 100%;
+  margin-inline: auto;
+}
+
+.active-ui-view__empty-state--preview {
+  align-self: center;
 }
 
 .active-ui-view__pager {
@@ -176,7 +237,7 @@ function openSelectedSession() {
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
-  font-size: 12px;
+  font-size: var(--app-font-caption, 0.75rem);
   color: var(--app-text-secondary);
   border-bottom: 1px solid var(--app-border-subtle);
 }
@@ -207,31 +268,23 @@ function openSelectedSession() {
 }
 
 .active-ui-view__item strong {
-  font-size: 13px;
+  font-size: var(--app-font-control, 0.8125rem);
   color: var(--app-text-primary);
 }
 
 .active-ui-view__item span {
-  font-size: 12px;
+  font-size: var(--app-font-caption, 0.75rem);
   color: var(--app-text-secondary);
 }
 
 .active-ui-view__item small {
-  font-size: 11px;
+  font-size: var(--app-font-micro, 0.6875rem);
   color: var(--app-text-muted);
 }
 
 .active-ui-view__item--active {
   outline: 1px solid color-mix(in srgb, var(--app-accent) 45%, transparent);
   background: var(--app-list-item-active);
-}
-
-.active-ui-view__empty,
-.active-ui-view__loading,
-.active-ui-view__preview-empty {
-  padding: 24px 16px;
-  font-size: 13px;
-  color: var(--app-text-secondary);
 }
 
 .active-ui-view__preview {
@@ -261,7 +314,7 @@ function openSelectedSession() {
 }
 
 .active-ui-view__preview-copy strong {
-  font-size: 14px;
+  font-size: var(--app-font-body, 0.875rem);
   color: var(--app-text-primary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -269,7 +322,7 @@ function openSelectedSession() {
 }
 
 .active-ui-view__preview-copy span {
-  font-size: 12px;
+  font-size: var(--app-font-caption, 0.75rem);
   color: var(--app-text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -280,7 +333,7 @@ function openSelectedSession() {
   flex-shrink: 0;
   padding: 6px 12px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: var(--app-font-caption, 0.75rem);
   color: var(--app-text-primary);
   background: var(--app-hover);
 }
@@ -295,5 +348,11 @@ function openSelectedSession() {
   min-height: 0;
   border: 0;
   background: #fff;
+}
+
+@keyframes active-ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

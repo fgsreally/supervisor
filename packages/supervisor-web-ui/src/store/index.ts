@@ -147,16 +147,26 @@ export const useSessionStore = defineStore("session", () => {
     status?: api.SessionStatus;
     parentId?: string | null;
     projectId?: string;
+    /** Refresh without list loading UI (e.g. tab visibility regain). */
+    silent?: boolean;
   }) {
-    root.loading.sessions = true;
-    root.clearError();
+    const { silent, ...query } = params ?? {};
+    const hasQuery = Object.keys(query).length > 0;
+    if (!silent) {
+      root.loading.sessions = true;
+      root.clearError();
+    }
     try {
-      sessions.value = await api.listSessions(params);
+      sessions.value = await api.listSessions(hasQuery ? query : undefined);
     } catch (err) {
-      root.setError(err instanceof Error ? err.message : "Failed to fetch sessions");
+      if (!silent) {
+        root.setError(err instanceof Error ? err.message : "Failed to fetch sessions");
+      }
       throw err;
     } finally {
-      root.loading.sessions = false;
+      if (!silent) {
+        root.loading.sessions = false;
+      }
     }
   }
 

@@ -51,11 +51,7 @@
         </div>
       </div>
       <div class="mobile-tabs">
-        <button
-          type="button"
-          :class="{ active: activeTab === 'plan' }"
-          @click="activeTab = 'plan'"
-        >
+        <button type="button" :class="{ active: activeTab === 'plan' }" @click="activeTab = 'plan'">
           规划
         </button>
         <button type="button" :class="{ active: activeTab === 'run' }" @click="activeTab = 'run'">
@@ -686,9 +682,7 @@ const runRailGroups = computed(() => {
 });
 const headStatus = computed(() => {
   if (activeTab.value === "plan") {
-    return drafts.value.length
-      ? `${drafts.value.length} 个任务待确认`
-      : "把想法整理成可执行的任务";
+    return drafts.value.length ? `${drafts.value.length} 个任务待确认` : "把想法整理成可执行的任务";
   }
   return runningCount.value ? `${runningCount.value} 个任务正在进行` : "暂无进行中的任务";
 });
@@ -829,15 +823,15 @@ onMounted(async () => {
 }
 
 .todo-head__brand h1 {
-  font-size: 1.0625rem;
-  font-weight: 680;
+  font-size: var(--app-font-page-title);
+  font-weight: var(--app-font-weight-semibold);
   letter-spacing: 0.01em;
 }
 
 .todo-head__brand span {
   overflow: hidden;
   color: var(--app-text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--app-font-control);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -854,7 +848,7 @@ onMounted(async () => {
   padding: 6px 14px;
   border-radius: 7px;
   color: var(--app-text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--app-font-control);
   font-weight: 500;
 }
 
@@ -919,7 +913,7 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 8px;
   color: var(--app-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -933,7 +927,7 @@ onMounted(async () => {
 .rail-empty {
   margin: 8px 2px 0;
   color: var(--app-text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--app-font-control);
   line-height: 1.5;
 }
 
@@ -945,7 +939,7 @@ onMounted(async () => {
   gap: 5px;
   border-radius: 8px;
   padding: 7px 12px;
-  font-size: 0.8125rem;
+  font-size: var(--app-font-control);
 }
 
 .quiet {
@@ -979,7 +973,7 @@ button svg {
   min-height: 110px;
   resize: none;
   background: transparent;
-  font-size: 0.875rem;
+  font-size: var(--app-font-body);
   line-height: 1.6;
   outline: none;
 }
@@ -998,7 +992,7 @@ button svg {
   align-items: center;
   gap: 4px;
   color: #078f49;
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
 }
 
 .desktop-plan-list {
@@ -1042,7 +1036,7 @@ button svg {
   border-radius: 8px;
   background: color-mix(in srgb, #07c160 14%, transparent);
   color: #07c160;
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
   font-weight: 650;
 }
 
@@ -1055,7 +1049,7 @@ button svg {
   display: block;
   overflow: hidden;
   color: var(--app-text-primary);
-  font-size: 0.875rem;
+  font-size: var(--app-font-body);
   font-weight: 560;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -1067,7 +1061,7 @@ button svg {
   margin-top: 3px;
   overflow: hidden;
   color: var(--app-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1103,7 +1097,7 @@ button svg {
   border-radius: 8px;
   color: var(--app-text-secondary);
   background: var(--app-hover);
-  font-size: 0.8125rem;
+  font-size: var(--app-font-control);
 }
 
 .plan-actions__main {
@@ -1122,7 +1116,7 @@ button svg {
   padding: 6px 10px;
   border-radius: 999px;
   color: var(--app-text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--app-font-control);
 }
 
 .filters button.active {
@@ -1160,7 +1154,7 @@ button svg {
 .run-summary__top strong {
   display: block;
   color: var(--app-text-primary);
-  font-size: 0.9375rem;
+  font-size: var(--app-font-body-strong);
   font-weight: 600;
 }
 
@@ -1168,7 +1162,7 @@ button svg {
   margin-top: 4px;
   overflow: hidden;
   color: var(--app-text-secondary);
-  font-size: 0.8125rem;
+  font-size: var(--app-font-control);
   line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1178,7 +1172,7 @@ button svg {
   flex: none;
   color: #07c160;
   font-size: 1.125rem;
-  font-weight: 700;
+  font-weight: var(--app-font-weight-bold);
   line-height: 1.1;
 }
 
@@ -1203,7 +1197,7 @@ button svg {
   gap: 8px 12px;
   margin-top: 12px;
   color: var(--app-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
 }
 
 .run-summary__stats span {
@@ -1252,7 +1246,7 @@ button svg {
   gap: 3px;
   padding: 9px 4px;
   color: var(--app-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
 }
 
 .run-filter-bar button + button {
@@ -1278,7 +1272,7 @@ button svg {
 .run-section__label {
   padding: 2px 4px;
   color: var(--app-text-muted);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
 }
 
 .run-section__list {
@@ -1339,7 +1333,7 @@ button svg {
   display: block;
   overflow: hidden;
   color: var(--app-text-primary);
-  font-size: 0.9375rem;
+  font-size: var(--app-font-body-strong);
   font-weight: 500;
   line-height: 1.35;
   text-overflow: ellipsis;
@@ -1351,14 +1345,14 @@ button svg {
   margin-top: 3px;
   overflow: hidden;
   color: var(--app-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .run-cell__status {
   color: var(--app-text-muted);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
 }
 
 .run-cell[data-status="running"] .run-cell__status {
@@ -1421,12 +1415,12 @@ button svg {
 }
 
 .canvas-timeline__head strong {
-  font-size: 0.875rem;
+  font-size: var(--app-font-body);
 }
 
 .canvas-timeline__head span {
   color: var(--app-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
 }
 
 .canvas-timeline .execution-timeline {
@@ -1452,12 +1446,12 @@ button svg {
 }
 
 .execution-timeline .time strong {
-  font-size: 0.8125rem;
+  font-size: var(--app-font-control);
 }
 
 .execution-timeline .time span {
   color: var(--app-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
 }
 
 .execution-timeline .rail {
@@ -1532,13 +1526,13 @@ button svg {
 }
 
 .pane-title h2 {
-  font-size: 1rem;
+  font-size: var(--app-font-title);
   font-weight: 650;
 }
 
 .pane-title span {
   color: var(--app-text-secondary);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
 }
 
 .task-detail {
@@ -1552,12 +1546,12 @@ button svg {
 .task-detail h3 {
   margin: 0 0 8px;
   color: var(--app-text-primary);
-  font-size: 1.0625rem;
+  font-size: var(--app-font-page-title);
 }
 
 .task-detail p {
   color: var(--app-text-body);
-  font-size: 0.875rem;
+  font-size: var(--app-font-body);
   line-height: 1.6;
 }
 
@@ -1570,7 +1564,7 @@ button svg {
   grid-template-columns: 60px minmax(0, 1fr);
   padding: 8px 0;
   border-top: 1px solid var(--app-border-subtle);
-  font-size: 0.8125rem;
+  font-size: var(--app-font-control);
 }
 
 .task-detail dt {
@@ -1588,7 +1582,7 @@ button svg {
 
 :global(.m-drawer.todo-task-dialog .m-drawer__title) {
   color: var(--app-text-muted);
-  font-size: 0.8125rem;
+  font-size: var(--app-font-control);
   font-weight: 500;
 }
 
@@ -1612,11 +1606,11 @@ button svg {
 
 .goal-history time {
   color: var(--app-text-muted);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
 }
 
 .goal-history strong {
-  font-size: 0.875rem;
+  font-size: var(--app-font-body);
   line-height: 1.45;
 }
 
@@ -1624,7 +1618,7 @@ button svg {
   padding: 18px 0;
   color: var(--app-text-muted);
   text-align: center;
-  font-size: 0.875rem;
+  font-size: var(--app-font-body);
 }
 
 .wide {

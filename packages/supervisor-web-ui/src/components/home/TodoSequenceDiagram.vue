@@ -167,10 +167,8 @@ const layout = computed(() => {
       return 0;
     }
     const next =
-      Math.max(
-        0,
-        ...task.dependencies.filter((dep) => byId.has(dep)).map((dep) => getDepth(dep)),
-      ) + 1;
+      Math.max(0, ...task.dependencies.filter((dep) => byId.has(dep)).map((dep) => getDepth(dep))) +
+      1;
     depth.set(id, next);
     return next;
   }
@@ -273,18 +271,13 @@ const nodes = computed(() =>
 
 const edges = computed(() =>
   edgePairs.value.map((edge) => {
-    const active =
-      edge.source === activeNodeId.value || edge.target === activeNodeId.value;
+    const active = edge.source === activeNodeId.value || edge.target === activeNodeId.value;
     return {
       ...edge,
       type: "bezier",
       interactive: false,
       markerEnd: MarkerType.ArrowClosed,
-      class: active
-        ? "sequence-edge--active"
-        : activeNodeId.value
-          ? "sequence-edge--dim"
-          : "",
+      class: active ? "sequence-edge--active" : activeNodeId.value ? "sequence-edge--dim" : "",
       style: {
         stroke: active ? "#07c160" : "var(--app-text-muted)",
         strokeWidth: active ? 2.6 : 1.8,

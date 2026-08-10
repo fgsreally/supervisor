@@ -21,10 +21,12 @@
       />
       <div class="flex flex-1 min-w-0 items-center gap-3">
         <div class="min-w-0">
-          <div class="min-w-0 truncate text-[16px] font-medium provider-detail-title">
+          <div
+            class="min-w-0 truncate font-medium provider-detail-title provider-detail-title--page"
+          >
             {{ provider.name }}
           </div>
-          <div class="text-[12px] truncate font-mono mt-0.5 provider-detail-subtitle">
+          <div class="truncate font-mono mt-0.5 provider-detail-subtitle">
             {{ provider.models.length }} 个模型
           </div>
         </div>
@@ -41,7 +43,7 @@
       </div>
       <button
         type="button"
-        class="provider-detail-btn shrink-0 px-3 py-1.5 rounded-md border text-[13px]"
+        class="provider-detail-btn provider-detail-btn--control shrink-0 px-3 py-1.5 rounded-md border"
         @click="emit('edit')"
       >
         编辑
@@ -52,9 +54,9 @@
       <div class="provider-detail-content w-full max-w-[1040px]">
         <section class="provider-detail-section">
           <div class="provider-detail-config-heading">
-            <div class="text-[14px] font-medium provider-detail-title">配置</div>
+            <div class="font-medium provider-detail-title provider-detail-title--section">配置</div>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-[13px]">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 provider-detail-body">
             <div>
               <div class="provider-detail-subtitle mb-1">Wire Protocol</div>
               <div class="provider-detail-title font-mono">{{ protocolLabel }}</div>
@@ -70,9 +72,9 @@
 
         <section class="provider-detail-section">
           <div class="pb-4 border-b provider-detail-divider flex items-center gap-3">
-            <div class="text-[14px] font-medium provider-detail-title flex-1">
+            <div class="font-medium provider-detail-title provider-detail-title--section flex-1">
               模型
-              <span class="ml-2 text-[12px] font-normal provider-detail-subtitle">
+              <span class="ml-2 font-normal provider-detail-subtitle">
                 {{ provider.models.length }}
               </span>
             </div>
@@ -90,11 +92,13 @@
                   class="flex-1 min-w-0 text-left"
                   @click="emit('select-model', model.id)"
                 >
-                  <div class="text-[14px] font-medium provider-detail-title truncate">
+                  <div
+                    class="font-medium provider-detail-title provider-detail-title--section truncate"
+                  >
                     {{ model.name || model.id }}
                   </div>
                 </button>
-                <div class="text-[12px] provider-detail-subtitle font-mono shrink-0">
+                <div class="provider-detail-subtitle font-mono shrink-0">
                   {{ formatTokenCount(model.contextWindow) }} context
                 </div>
                 <button
@@ -118,19 +122,17 @@
           </ul>
           <div v-else class="provider-detail-empty-models">
             <Cpu class="w-8 h-8" />
-            <div class="provider-detail-title text-[14px]">暂无模型</div>
-            <div class="text-[12px]">添加模型后才能绑定到智能代理</div>
+            <div class="provider-detail-title provider-detail-title--section">暂无模型</div>
+            <div class="provider-detail-subtitle">添加模型后才能绑定到智能代理</div>
           </div>
         </section>
 
         <section class="provider-detail-section">
           <div
-            class="pb-4 border-b provider-detail-divider text-[14px] font-medium provider-detail-title"
+            class="pb-4 border-b provider-detail-divider font-medium provider-detail-title provider-detail-title--section"
           >
             使用此模型供应商的智能代理
-            <span class="ml-2 text-[12px] font-normal provider-detail-subtitle">{{
-              linkedAgents.length
-            }}</span>
+            <span class="ml-2 font-normal provider-detail-subtitle">{{ linkedAgents.length }}</span>
           </div>
           <ul v-if="linkedAgents.length" class="divide-y provider-detail-divider">
             <li v-for="agent in linkedAgents" :key="agent.id">
@@ -146,10 +148,12 @@
                   {{ agent.name.substring(0, 1).toUpperCase() }}
                 </div>
                 <div class="flex-1 min-w-0">
-                  <div class="text-[14px] font-medium provider-detail-title truncate">
+                  <div
+                    class="font-medium provider-detail-title provider-detail-title--section truncate"
+                  >
                     {{ agent.name }}
                   </div>
-                  <div class="text-[12px] provider-detail-subtitle truncate mt-0.5">
+                  <div class="provider-detail-subtitle truncate mt-0.5">
                     {{ agent.description }}
                   </div>
                 </div>
@@ -157,7 +161,7 @@
               </button>
             </li>
           </ul>
-          <div v-else class="py-8 text-[13px] provider-detail-subtitle text-center">
+          <div v-else class="py-8 provider-detail-subtitle provider-detail-body text-center">
             暂无 Agent 绑定
           </div>
         </section>
@@ -234,12 +238,29 @@ function removeModel(modelId: string) {
   color: var(--app-text-primary);
 }
 
-.provider-detail-title {
-  color: var(--app-text-primary);
+.provider-detail-title--page {
+  font-size: var(--app-font-title);
+}
+
+.provider-detail-title--section {
+  font-size: var(--app-font-body);
+}
+
+.provider-detail-body {
+  font-size: var(--app-font-control);
 }
 
 .provider-detail-subtitle {
   color: var(--app-text-secondary);
+  font-size: var(--app-font-caption);
+}
+
+.provider-detail-btn--control {
+  font-size: var(--app-font-control);
+}
+
+.provider-detail-title {
+  color: var(--app-text-primary);
 }
 
 .provider-detail-btn {
@@ -273,7 +294,7 @@ function removeModel(modelId: string) {
   align-items: center;
   gap: 7px;
   color: var(--app-text-secondary);
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   cursor: pointer;
 }
 .provider-detail-config-heading {

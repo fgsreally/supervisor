@@ -1595,10 +1595,11 @@ export function createHttpServer(
       ...(parentId !== undefined ? { parentId } : {}),
       ...(projectId !== undefined && projectId !== null ? { projectId } : {}),
     });
+    const previews = manager.getLastMessagePreviews(sessions.map((s) => s.id));
     return c.json(
       sessions.map((s) => ({
         ...s,
-        lastMessagePreview: manager.getLastMessagePreview(s.id),
+        lastMessagePreview: previews.get(s.id) ?? null,
       })),
     );
   });
@@ -1813,6 +1814,19 @@ export function createHttpServer(
     const session = manager.get(id);
     if (!session || session.projectId == null) return jsonError(c, 404, "session not found");
     const tasks = manager.listSessionTasks(id);
+    const includeContent =
+      c.req.query("includeContent") === "1" || c.req.query("includeContent") === "true";
+    if (!includeContent) {
+      return c.json(
+        tasks.map((task) => ({
+          path: task.path,
+          type: task.kind,
+          title: task.title ?? task.path.split("/").pop()?.replace(/\.md$/, "") ?? task.path,
+          status: task.status ?? "active",
+          content: "",
+        })),
+      );
+    }
     const artifacts = await Promise.all(
       tasks.map((task) =>
         readTaskArtifact(getSessionDir(session.projectId!, session.id), task.path),

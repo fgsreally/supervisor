@@ -50,20 +50,24 @@ const statusLabel = computed(() =>
   props.isError ? "失败" : livePending.value ? "执行中" : "已完成",
 );
 
-function updatePreview(entries: api.SessionTreeEntry[]) {
-  const latest = [...entries]
+function updatePreviewFromPage(messages: api.SessionTreeEntry[]) {
+  const latest = [...messages]
     .reverse()
     .find((entry) => entry.type === "message" && entry.message?.role === "assistant");
   const text = latest?.message ? messageTextContent(latest.message.content) : "";
   if (text.trim()) preview.value = text.trim();
 }
 
+async function loadPreviewPage(id: string) {
+  const page = await api.getSessionMessagesPage(id, { limit: 24, view: "lite" });
+  updatePreviewFromPage(page.messages);
+}
+
 async function connect(id: string) {
   cleanup?.();
   cleanup = null;
   try {
-    const entries = await api.getSessionMessages(id);
-    updatePreview(entries);
+    await loadPreviewPage(id);
   } catch {
     // The child may still be starting; the event stream will reconcile it.
   }
@@ -76,17 +80,10 @@ async function connect(id: string) {
     } else if (event.type === "session_status") {
       streamActive.value = event.status === "running";
       void store.fetchSession(id);
-      if (!streamActive.value)
-        void api
-          .getSessionMessages(id)
-          .then(updatePreview)
-          .catch(() => {});
+      if (!streamActive.value) void loadPreviewPage(id).catch(() => {});
     } else if (event.type === "agent_end") {
       streamActive.value = false;
-      void api
-        .getSessionMessages(id)
-        .then(updatePreview)
-        .catch(() => {});
+      void loadPreviewPage(id).catch(() => {});
     }
   });
 }

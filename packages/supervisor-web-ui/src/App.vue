@@ -376,6 +376,7 @@ import "./styles/mobile/components.css";
 import "./styles/mobile/chat-density.css";
 import "./styles/mobile/typography.css";
 import "./styles/font-scale.css";
+import "./styles/type-scale.css";
 
 const { width: chatListWidth, startResize: startListResize } = useResizableWidth({
   // 导航栏(64px) + 聊天列表合计约 1/4 屏宽
@@ -535,7 +536,7 @@ function onVisibilityChange() {
   ) {
     return;
   }
-  void sessionStore.fetchSessions();
+  void sessionStore.fetchSessions({ silent: true });
 }
 
 const activeSession = computed(() => {

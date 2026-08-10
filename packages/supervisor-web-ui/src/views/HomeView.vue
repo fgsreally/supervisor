@@ -10,43 +10,58 @@
       </button>
     </header>
     <main class="custom-scrollbar">
-      <section class="overview">
-        <article>
-          <span>活跃项目</span><strong>{{ projects.length }}</strong
-          ><small>{{ activeProjectCount }} 个正在推进</small>
-        </article>
-        <article>
-          <span>进行中的 Session</span><strong>{{ runningCount }}</strong
-          ><small>跨 {{ activeProjectCount }} 个项目</small>
-        </article>
-        <article>
-          <span>已合并 Session</span><strong>{{ mergedCount }}</strong
-          ><small>{{ totalCommits }} 个相关提交</small>
-        </article>
-      </section>
+      <div v-if="loading && !dashboardReady" class="dashboard__loading">
+        <Loader2 class="dashboard__spin" aria-hidden="true" />
+        <span>加载 Dashboard...</span>
+      </div>
+      <UiEmptyState
+        v-else-if="dashboardReady && !projects.length && !visibleSessions.length"
+        class="dashboard__empty"
+        title="暂无数据"
+        description="创建项目并开始会话后，这里会汇总项目推进与提交记录。"
+      >
+        <template #icon><LayoutDashboard /></template>
+      </UiEmptyState>
+      <template v-else>
+        <section class="overview">
+          <article>
+            <span>活跃项目</span><strong>{{ projects.length }}</strong
+            ><small>{{ activeProjectCount }} 个正在推进</small>
+          </article>
+          <article>
+            <span>进行中的 Session</span><strong>{{ runningCount }}</strong
+            ><small>跨 {{ activeProjectCount }} 个项目</small>
+          </article>
+          <article>
+            <span>已合并 Session</span><strong>{{ mergedCount }}</strong
+            ><small>{{ totalCommits }} 个相关提交</small>
+          </article>
+        </section>
 
-      <ProjectSessionTimeline
-        :projects="projects"
-        :sessions="sessions"
-        :commits="commits"
-        :events="events"
-        @open-session="emit('open-session', $event)"
-      />
+        <ProjectSessionTimeline
+          :projects="projects"
+          :sessions="sessions"
+          :commits="commits"
+          :events="events"
+          :loading="loading"
+          @open-session="emit('open-session', $event)"
+        />
 
-      <section class="daily-analysis">
-        <div class="daily-analysis__copy">
-          <h2>每日分析</h2>
-          <p>保留历史分析与 commit 明细，按日期回看项目产出</p>
-        </div>
-        <HomeTimeline :records="dailyRecords" :loading="dailyLoading" @refresh="refreshDaily" />
-      </section>
+        <section class="daily-analysis">
+          <div class="daily-analysis__copy">
+            <h2>每日分析</h2>
+            <p>保留历史分析与 commit 明细，按日期回看项目产出</p>
+          </div>
+          <HomeTimeline :records="dailyRecords" :loading="dailyLoading" @refresh="refreshDaily" />
+        </section>
+      </template>
     </main>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { RefreshCw } from "lucide-vue-next";
+import { LayoutDashboard, Loader2, RefreshCw } from "lucide-vue-next";
 import {
   getSessionCommits,
   listDailyWork,
@@ -62,6 +77,7 @@ import {
 } from "@/api";
 import HomeTimeline from "@/components/home/HomeTimeline.vue";
 import ProjectSessionTimeline from "@/components/home/ProjectSessionTimeline.vue";
+import UiEmptyState from "@/components/ui/UiEmptyState.vue";
 import { showUiMessage } from "@/composables/use-ui-message";
 
 const emit = defineEmits<{ "open-session": [sessionId: string] }>();
@@ -72,6 +88,7 @@ const events = ref<TimelineEvent[]>([]);
 const dailyRecords = ref<DailyWorkRecord[]>([]);
 const loading = ref(false);
 const dailyLoading = ref(false);
+const dashboardReady = ref(false);
 const visibleSessions = computed(() =>
   sessions.value.filter((session) => session.showInSessionList !== false),
 );
@@ -121,6 +138,7 @@ async function loadDashboard() {
     showUiMessage(error instanceof Error ? error.message : "Dashboard 加载失败", "error");
   } finally {
     loading.value = false;
+    dashboardReady.value = true;
   }
 }
 async function refreshDaily() {
@@ -177,6 +195,24 @@ onMounted(loadDashboard);
   width: 13px;
   height: 13px;
 }
+.dashboard__loading {
+  display: flex;
+  min-height: 240px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--app-text-muted);
+  font-size: var(--app-font-control, 0.8125rem);
+}
+.dashboard__spin {
+  width: 22px;
+  height: 22px;
+  animation: dashboard-spin 0.8s linear infinite;
+}
+.dashboard__empty {
+  margin: 48px auto;
+}
 .spin {
   animation: spin 0.8s linear infinite;
 }
@@ -230,6 +266,11 @@ main {
   font-size: 11px;
 }
 @keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes dashboard-spin {
   to {
     transform: rotate(360deg);
   }

@@ -144,6 +144,7 @@
         </div>
 
         <QueuedInputsBar
+          v-if="chatComposerReady"
           :inputs="queuedInputs"
           :busy-id="queuedActionBusyId"
           @edit="editQueuedInput"
@@ -152,6 +153,7 @@
         />
 
         <div
+          v-if="chatComposerReady"
           class="chat-composer-stack"
           :class="{ 'chat-composer-stack--has-changes': composerStackActive }"
         >
@@ -545,6 +547,7 @@ import { useSessionStore, useAgentStore, useProviderStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { requestUiConfirm } from "@/composables/use-ui-confirm";
 import { withUiBusy } from "@/composables/use-ui-busy";
+import { viewPreferences } from "@/utils/view-preferences";
 import { formatMessageClock } from "@/utils/format-time";
 import * as api from "@/api";
 import type { ChatCompactionEntry, ChatEntry } from "@/types/chat-entry";
@@ -738,6 +741,7 @@ const sessionTitle = ref("");
 const chatEntries = ref<ChatEntry[]>([]);
 const sessionLoading = ref(false);
 const chatViewportReady = ref(false);
+const chatComposerReady = computed(() => chatViewportReady.value || searchOpen.value);
 const historyHasMore = ref(false);
 const loadingOlder = ref(false);
 const toolModal = ref<{ title: string; sections: { label: string; content: string }[] } | null>(
@@ -853,7 +857,9 @@ function toggleTaskPane() {
     taskPaneOpen.value = false;
     return;
   }
-  openSidePanel("task");
+  void loadFullSessionTasks().finally(() => {
+    if (props.session.id) openSidePanel("task");
+  });
 }
 
 function onOpenFileEvent(event: Event) {
@@ -1043,6 +1049,7 @@ async function submitQueuedInputNow(input: api.QueuedSessionInput) {
 
 const inputDisabled = computed(
   () =>
+    !chatComposerReady.value ||
     modelMissing.value ||
     providerDisabled.value ||
     isInitializing.value ||
@@ -1053,6 +1060,7 @@ const inputDisabled = computed(
 const canInterrupt = computed(() => isStreaming.value && !isInitializing.value);
 
 const inputPlaceholder = computed(() => {
+  if (!chatComposerReady.value) return "";
   if (modelMissing.value) return "请先为 Agent 配置模型";
   if (providerDisabled.value) return "模型供应商已禁用，无法发送消息";
   if (isInitializing.value) return "正在初始化工作区，请稍候，马上就能开始对话…";
@@ -1183,19 +1191,28 @@ async function interruptCurrentTurn() {
 }
 
 async function reloadMessagesFromServer(sessionId: string, localSnapshot = chatEntries.value) {
-  const [, nextQueued, nextTasks, nextTodos, checkpoints] = await Promise.all([
-    sessionStore.fetchSessionMessages(sessionId),
-    api.getQueuedSessionInputs(sessionId).catch(() => []),
-    api.getSessionTasks(sessionId).catch(() => []),
-    api.getSessionTodos(sessionId).catch(() => []),
-    api.listCheckpoints(sessionId).catch(() => []),
-  ]);
+  await applySessionMessages(sessionId, localSnapshot);
+  void refreshSessionSideData(sessionId);
+}
+
+async function applySessionMessages(sessionId: string, localSnapshot = chatEntries.value) {
+  await sessionStore.fetchSessionMessages(sessionId);
   historyHasMore.value = sessionStore.messageCursors[sessionId]?.hasMore ?? false;
   const entries = sessionStore.messages[sessionId] ?? [];
   chatEntries.value = mergeStreamingToolsIntoPersistedEntries(
     sessionTreeToChatEntries(entries),
     localSnapshot,
   );
+}
+
+function applySessionSideData(
+  sessionId: string,
+  nextQueued: api.QueuedSessionInput[],
+  nextTasks: api.TaskArtifact[],
+  nextTodos: api.TodoItem[],
+  checkpoints: api.SessionCheckpoint[],
+) {
+  if (sessionId !== props.session.id) return;
   queuedInputs.value = nextQueued;
   rewindableEntryIds.value = checkpoints.map((checkpoint) => checkpoint.entryId);
   tasks.value = nextTasks;
@@ -1213,6 +1230,34 @@ async function reloadMessagesFromServer(sessionId: string, localSnapshot = chatE
           (hasTodos ? "$todo" : (nextTasks[0]?.path ?? null)));
   }
   if (nextTasks.length === 0 && !hasTodos) taskPaneOpen.value = false;
+}
+
+let sessionSideDataGeneration = 0;
+
+async function refreshSessionSideData(sessionId: string) {
+  const generation = ++sessionSideDataGeneration;
+  const includeTaskContent = tasksDetailLoaded.value;
+  const [nextQueued, nextTasks, nextTodos, checkpoints] = await Promise.all([
+    api.getQueuedSessionInputs(sessionId).catch(() => []),
+    api
+      .getSessionTasks(sessionId, { includeContent: includeTaskContent })
+      .catch(() => [] as api.TaskArtifact[]),
+    api.getSessionTodos(sessionId).catch(() => []),
+    api.listCheckpoints(sessionId).catch(() => []),
+  ]);
+  if (generation !== sessionSideDataGeneration || sessionId !== props.session.id) return;
+  applySessionSideData(sessionId, nextQueued, nextTasks, nextTodos, checkpoints);
+}
+
+const tasksDetailLoaded = ref(false);
+
+async function loadFullSessionTasks(): Promise<void> {
+  if (tasksDetailLoaded.value) return;
+  const sessionId = props.session.id;
+  const full = await api.getSessionTasks(sessionId, { includeContent: true }).catch(() => null);
+  if (!full || sessionId !== props.session.id) return;
+  tasks.value = full;
+  tasksDetailLoaded.value = true;
 }
 
 async function loadOlderMessages() {
@@ -1249,15 +1294,19 @@ async function loadOlderMessages() {
 async function loadSessionMessages(sessionId: string) {
   stopStreaming();
   historyHasMore.value = false;
+  tasksDetailLoaded.value = false;
+  tasks.value = [];
+  todos.value = [];
   const cached = sessionStore.messages[sessionId];
   if (cached?.length) chatEntries.value = sessionTreeToChatEntries(cached);
   else chatEntries.value = [];
   sessionLoading.value = true;
   try {
-    await reloadMessagesFromServer(sessionId);
+    await applySessionMessages(sessionId);
   } finally {
     sessionLoading.value = false;
   }
+  void refreshSessionSideData(sessionId);
   sessionTitle.value = props.session.title ?? `Session ${sessionId.substring(0, 8)}`;
   toolModal.value = null;
   searchOpen.value = false;
@@ -1276,7 +1325,7 @@ async function loadSessionMessages(sessionId: string) {
     !Array.isArray(shadowMeta) &&
     (shadowMeta as { running?: boolean }).running === true
   );
-  await maybeResumeRunningSession(sessionId);
+  void maybeResumeRunningSession(sessionId);
 }
 
 /** After refresh/open: if the turn is still running, restore the thinking UI + SSE. */
@@ -1322,9 +1371,7 @@ function resolvePendingApproval() {
 }
 
 async function openPendingPlan() {
-  if (!tasks.value.some((task) => task.type === "plan")) {
-    tasks.value = await api.getSessionTasks(props.session.id).catch(() => tasks.value);
-  }
+  await loadFullSessionTasks().catch(() => undefined);
   const plan =
     tasks.value.find((task) => task.type === "plan" && task.status === "planning") ??
     tasks.value.find((task) => task.type === "plan");
@@ -1688,6 +1735,8 @@ onBeforeUnmount(() => {
 const displayGroups = computed(() =>
   buildDisplayGroups(chatEntries.value, {
     splitAssistantMessages: splitAssistantMessages.value,
+    collapseConclusionOnly: viewPreferences.collapseExternalAgentDetails,
+    showThinkingBlocks: showThinking.value,
   }),
 );
 const hasEvalActivity = computed(

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildDisplayGroups, compactAssistantPieces } from "../flatten-messages";
+import {
+  applyConclusionOnlySplit,
+  buildDisplayGroups,
+  compactAssistantPieces,
+} from "../flatten-messages";
 
 describe("compactAssistantPieces", () => {
   it("coalesces adjacent text pieces from split assistant messages", () => {
@@ -175,5 +179,54 @@ describe("buildDisplayGroups", () => {
     expect(
       assistantGroups[1]?.type === "grouped_assistant" ? assistantGroups[1].pieces : [],
     ).toEqual([{ kind: "text", text: "第二段" }]);
+  });
+
+  it("hides intermediate text bubbles when split and conclusion-only are both enabled", () => {
+    const groups = buildDisplayGroups(
+      [
+        {
+          id: "u1",
+          type: "message",
+          message: { role: "user", content: "hi" },
+        },
+        {
+          id: "a1",
+          type: "message",
+          message: { role: "assistant", content: "中间过程" },
+        },
+        {
+          id: "a2",
+          type: "message",
+          message: {
+            role: "assistant",
+            content: [{ type: "toolCall", id: "t1", name: "read", arguments: { path: "a.md" } }],
+          },
+        },
+        {
+          id: "r1",
+          type: "toolResult",
+          toolCallId: "t1",
+          toolName: "read",
+          content: [{ type: "text", text: "file body" }],
+        },
+        {
+          id: "a3",
+          type: "message",
+          message: { role: "assistant", content: "最终结论" },
+        },
+      ] as import("@/types/chat-entry").ChatEntry[],
+      {
+        splitAssistantMessages: true,
+        collapseConclusionOnly: true,
+      },
+    );
+    const assistantGroups = groups.filter((g) => g.type === "grouped_assistant");
+    expect(assistantGroups).toHaveLength(1);
+    const pieces =
+      assistantGroups[0] && "pieces" in assistantGroups[0] ? assistantGroups[0].pieces : [];
+    expect(pieces.some((piece) => piece.kind === "text" && piece.text.includes("最终结论"))).toBe(
+      true,
+    );
+    expect(pieces.some((piece) => piece.kind === "toolStep")).toBe(true);
   });
 });

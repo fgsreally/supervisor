@@ -160,7 +160,7 @@ async function toggle() {
   width: 28px;
   height: 28px;
   flex: none;
-  font-size: 9px;
+  font-size: var(--app-font-micro);
 }
 .model-tree-select__selection {
   display: flex;
@@ -173,11 +173,11 @@ async function toggle() {
 }
 .model-tree-select__selection small {
   color: var(--app-text-muted);
-  font-size: 10px;
+  font-size: var(--app-font-micro);
 }
 .model-tree-select__selection strong {
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   font-weight: 550;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -185,8 +185,8 @@ async function toggle() {
 .model-tree-select__placeholder {
   flex: 1;
   color: var(--app-text-muted);
-  font-size: 12px;
-  font-weight: 400;
+  font-size: var(--app-font-caption);
+  font-weight: var(--app-font-weight-regular);
 }
 .model-tree-select__chevron {
   width: 15px;
@@ -216,7 +216,7 @@ async function toggle() {
 .model-tree-select__caption {
   padding: 3px 6px 8px;
   color: var(--app-text-muted);
-  font-size: 10px;
+  font-size: var(--app-font-micro);
 }
 .model-tree-select__model {
   width: 100%;
@@ -244,8 +244,8 @@ async function toggle() {
   gap: 7px;
   padding: 4px 5px 6px;
   color: var(--app-text-secondary);
-  font-size: 11px;
-  font-weight: 600;
+  font-size: var(--app-font-micro);
+  font-weight: var(--app-font-weight-semibold);
 }
 .model-tree-select__model {
   display: flex;
@@ -254,7 +254,7 @@ async function toggle() {
   min-height: 34px;
   padding: 6px 8px 6px 40px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: var(--app-font-caption);
 }
 .model-tree-select__model svg {
   width: 14px;
@@ -268,7 +268,7 @@ async function toggle() {
 .model-tree-select__none {
   padding: 18px;
   color: var(--app-text-muted);
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   text-align: center;
 }
 </style>

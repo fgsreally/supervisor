@@ -1,0 +1,168 @@
+\n\n===== UPDATE @ L715 =====\n@@
+-      class="h-16 flex items-center px-4 shrink-0 border-b"
++      class="chat-list-header h-16 flex items-center px-4 shrink-0 border-b"
+@@
+-        <Import class="h-[18px] w-[18px]" />
++        <ExternalImportIcon />
+@@
+-  Import,
+@@
+ import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
++import ExternalImportIcon from "./mobile/icons/ExternalImportIcon.vue";
+@@
+ .chat-list-import-icon {
+@@
+ }
+@@
+ .chat-list-import-icon svg {
+-  transform: translateY(2px);
++  display: block;
++  width: 20px;
++  height: 20px;
+ }
+@@
+ .section-action-btn:hover {
+@@
+ }
++
++@media (max-width: 767px) {
++  .chat-list-header {
++    height: calc(56px + env(safe-area-inset-top));
++    padding: env(safe-area-inset-top) var(--m-page-inline) 0;
++  }
++
++  .chat-list-import-icon,
++  .section-action-btn {
++    width: var(--m-action-hit-size);
++    height: var(--m-action-hit-size);
++    flex: 0 0 var(--m-action-hit-size);
++    margin: 0;
++    padding: 0;
++    border-radius: var(--m-icon-button-radius);
++  }
++
++  .chat-list-import-icon svg,
++  .section-action-btn svg {
++    display: block;
++    width: var(--m-action-icon-size);
++    height: var(--m-action-icon-size);
++  }
++
++  .list-section-header {
++    min-height: var(--m-action-hit-size);
++    padding: 0 var(--m-page-inline) 0 8px;
++  }
++}
+\n\n===== UPDATE @ L785 =====\n@@
+-        <ExternalImportIcon />
++        <MessageSquareReply />
+@@
+   GitBranch,
++  MessageSquareReply,
+@@
+-import ExternalImportIcon from "./mobile/icons/ExternalImportIcon.vue";
+\n\n===== UPDATE @ L1781 =====\n@@
+-      class="chat-list-header h-16 flex items-center px-4 shrink-0 border-b"
++      class="chat-list-header h-16 md:h-[52px] flex items-center px-4 md:px-3 shrink-0 border-b"
+@@
+-      <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">聊天</h1>
++      <h1 class="text-[16px] md:text-[15px] font-medium flex-1" style="color: var(--app-text-primary)">聊天</h1>
+@@
+-      class="px-3 py-2 shrink-0 border-b"
++      class="px-3 py-2 md:px-2.5 md:py-1.5 shrink-0 border-b"
+@@
+-        <Search class="w-4 h-4 absolute left-2.5 top-2" style="color: var(--app-text-muted)" />
++        <Search class="w-4 h-4 md:w-3.5 md:h-3.5 absolute left-2.5 top-2 md:top-1.5" style="color: var(--app-text-muted)" />
+@@
+-          class="list-search-input w-full rounded-md pl-8 pr-2 py-1.5 text-[13px] focus:outline-none transition-colors"
++          class="list-search-input w-full rounded-md pl-8 pr-2 py-1.5 md:py-1 text-[13px] md:text-[12px] focus:outline-none transition-colors"
+\n\n===== UPDATE @ L1859 =====\n@@
+-      class="chat-list-header h-16 md:h-[52px] flex items-center px-4 md:px-3 shrink-0 border-b"
++      class="chat-list-header h-16 md:h-16 flex items-center px-4 md:px-3 shrink-0 border-b"
+@@
+-        class="text-[16px] md:text-[15px] font-medium flex-1"
++        class="text-base md:text-[1.154rem] font-medium flex-1"
+@@
+-          class="list-search-input w-full rounded-md pl-8 pr-2 py-1.5 md:py-1 text-[13px] md:text-[12px] focus:outline-none transition-colors"
++          class="list-search-input w-full rounded-md pl-8 pr-2 py-1.5 md:py-1 text-[0.8125rem] md:text-[0.923rem] focus:outline-none transition-colors"
+\n\n===== UPDATE @ L2193 =====\n@@
+       <h1
+-        class="text-base md:text-[1.154rem] font-medium flex-1"
++        class="chat-list-title text-base md:text-[1.154rem] font-medium flex-1"
+@@
+       </h1>
++      <button
++        type="button"
++        class="chat-list-search-icon md:hidden"
++        title="搜索"
++        aria-label="搜索"
++        @click="mobileSearchOpen = !mobileSearchOpen"
++      >
++        <Search />
++      </button>
+       <button
+@@
+-      class="px-3 py-2 md:px-2.5 md:py-1.5 shrink-0 border-b"
++      class="chat-list-search px-3 py-2 md:px-2.5 md:py-1.5 shrink-0 border-b"
++      :class="{ 'chat-list-search--open': mobileSearchOpen }"
+@@
+ const query = ref("");
++const mobileSearchOpen = ref(false);
+\n\n===== UPDATE @ L2193 =====\n@@
+ @media (max-width: 767px) {
+   .chat-list-header {
+     height: calc(56px + env(safe-area-inset-top));
+     padding: env(safe-area-inset-top) var(--m-page-inline) 0;
++    position: relative;
++    background: var(--m-header-bg) !important;
++  }
++
++  .chat-list-title {
++    position: absolute;
++    right: 7rem;
++    left: 7rem;
++    text-align: center;
++    font-size: 1.0625rem;
++    font-weight: 600;
+   }
+ 
+   .chat-list-import-icon,
++  .chat-list-search-icon,
+   .section-action-btn {
+@@
+   }
+ 
+   .chat-list-import-icon svg,
++  .chat-list-search-icon svg,
+   .section-action-btn svg {
+@@
+   }
++
++  .chat-list-search-icon {
++    display: inline-flex;
++    align-items: center;
++    justify-content: center;
++    margin-left: auto;
++    color: var(--m-text-primary);
++  }
++
++  .chat-list-import-icon {
++    color: var(--m-text-primary);
++  }
++
++  .chat-list-search {
++    display: none;
++    padding: 0.5rem var(--m-page-inline);
++    background: var(--m-header-bg) !important;
++  }
++
++  .chat-list-search--open {
++    display: block;
++  }
+ 
+   .list-section-header {
+-    min-height: var(--m-action-hit-size);
++    min-height: 2rem;
+     padding: 0 var(--m-page-inline) 0 8px;
+   }
+ }

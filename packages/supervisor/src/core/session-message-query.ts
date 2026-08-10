@@ -36,17 +36,15 @@ export function querySessionMessagesPage(
 
   if (rows.length > 0) {
     let oldest = rows[rows.length - 1]!;
-    let expanded = 0;
-    while (!isTurnBoundary(oldest) && expanded < MAX_TURN_EXPAND) {
-      const more = db.getMessageRowsPage(sessionId, {
+    if (!isTurnBoundary(oldest)) {
+      const extra = db.getMessageRowsPage(sessionId, {
         beforeId: oldest.id,
-        limit: 1,
+        limit: MAX_TURN_EXPAND,
       });
-      if (more.length === 0) break;
-      rows = [...rows, ...more];
-      oldest = more[0]!;
-      expanded += 1;
-      if (isTurnBoundary(oldest)) break;
+      for (const row of extra) {
+        rows.push(row);
+        if (isTurnBoundary(row)) break;
+      }
     }
   }
 

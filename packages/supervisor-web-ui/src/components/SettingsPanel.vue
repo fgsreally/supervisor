@@ -90,6 +90,23 @@
                 <span class="settings-switch__thumb" />
               </button>
             </div>
+            <div class="service-row service-row--font-scale">
+              <div class="service-copy">
+                <strong>字号</strong>
+                <span>调整界面文字大小</span>
+              </div>
+              <div class="font-scale-segment" role="group" aria-label="字号">
+                <button
+                  v-for="option in fontScaleOptions"
+                  :key="option.value"
+                  type="button"
+                  :class="{ active: fontScale === option.value }"
+                  @click="setFontScale(option.value)"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -366,6 +383,7 @@ import UiListStatus, { type UiListStatusKind } from "./UiListStatus.vue";
 import WatsonIcon from "./WatsonIcon.vue";
 import { resolveProviderIcon } from "@/constants/providers";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useAppFontScale, type AppFontScale } from "@/composables/use-app-font-scale";
 import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
 import {
   getSystemLogs,
@@ -459,6 +477,14 @@ function toggleAdvancedAnimations() {
   viewPreferences.advancedAnimations = !viewPreferences.advancedAnimations;
   saveViewPreferences();
 }
+
+const { fontScale, setFontScale } = useAppFontScale();
+
+const fontScaleOptions: { value: AppFontScale; label: string }[] = [
+  { value: "small", label: "小" },
+  { value: "standard", label: "标准" },
+  { value: "large", label: "大" },
+];
 
 const form = reactive({
   browserMode: "headless" as "headless" | "headed",
@@ -953,8 +979,8 @@ onBeforeUnmount(() => {
 
 .settings-card-title-row small {
   color: var(--app-text-muted);
-  font-size: 12px;
-  font-weight: 400;
+  font-size: var(--app-font-caption);
+  font-weight: var(--app-font-weight-regular);
   text-align: left;
 }
 .settings-watson-title,
@@ -1034,13 +1060,13 @@ onBeforeUnmount(() => {
   margin: 0 -20px;
   padding: 14px 20px 11px;
   border-bottom: 1px solid var(--app-border-subtle);
-  font-size: 15px;
-  font-weight: 600;
+  font-size: var(--app-font-body-strong);
+  font-weight: var(--app-font-weight-semibold);
   color: var(--app-text-primary);
 }
 .settings-card__hint {
   margin: 12px 0 0;
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   line-height: 1.5;
   color: var(--app-text-muted);
 }
@@ -1051,7 +1077,7 @@ onBeforeUnmount(() => {
   gap: 12px;
   min-height: 50px;
   border-bottom: 1px solid var(--app-border-subtle);
-  font-size: 14px;
+  font-size: var(--app-font-body);
   color: var(--app-text-primary);
 }
 .settings-field :deep(.model-tree-select) {
@@ -1064,7 +1090,7 @@ onBeforeUnmount(() => {
   gap: 2px;
 }
 .settings-field__hint {
-  font-size: 11px;
+  font-size: var(--app-font-micro);
   color: var(--app-text-muted);
 }
 select,
@@ -1099,6 +1125,29 @@ input:focus {
 }
 .service-row--switch {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+.service-row--font-scale {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.font-scale-segment {
+  display: inline-flex;
+  flex: none;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--app-hover);
+}
+.font-scale-segment button {
+  min-width: 44px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  color: var(--app-text-muted);
+  font-size: var(--app-font-control);
+  font-weight: var(--app-font-weight-medium);
+}
+.font-scale-segment button.active {
+  background: var(--app-settings-card);
+  color: var(--app-text-primary);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
 }
 .settings-switch {
   position: relative;
@@ -1140,12 +1189,12 @@ input:focus {
   gap: 2px;
 }
 .service-copy strong {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--app-font-body);
+  font-weight: var(--app-font-weight-medium);
   color: var(--app-text-primary);
 }
 .service-copy span {
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   color: var(--app-text-muted);
 }
 .configuration-state {
@@ -1161,7 +1210,7 @@ input:focus {
   gap: 5px;
   padding: 0 10px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   color: var(--app-text-secondary);
   background: var(--app-hover);
 }
@@ -1229,13 +1278,13 @@ input:focus {
   flex: 1;
 }
 .service-dialog h2 {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: var(--app-font-title);
+  font-weight: var(--app-font-weight-semibold);
   color: var(--app-text-primary);
 }
 .service-dialog header p {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   color: var(--app-text-muted);
 }
 .dialog-body {
@@ -1252,7 +1301,7 @@ input:focus {
 .dialog-body label span {
   display: block;
   margin-bottom: 6px;
-  font-size: 13px;
+  font-size: var(--app-font-control);
   color: var(--app-text-secondary);
 }
 .local-model-list {
@@ -1302,8 +1351,8 @@ input:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 14px;
-  font-weight: 400;
+  font-size: var(--app-font-body);
+  font-weight: var(--app-font-weight-regular);
   line-height: 1.35;
   color: var(--app-text-secondary);
   transition: color 0.12s ease;
@@ -1317,7 +1366,7 @@ input:focus {
   line-height: 1.25;
 }
 .local-model-item__size {
-  font-size: 11px;
+  font-size: var(--app-font-micro);
   color: var(--app-text-muted);
 }
 .local-model-item__desc {
@@ -1326,13 +1375,13 @@ input:focus {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   line-height: 1.35;
   color: var(--app-text-muted);
 }
 .local-model-item__progress,
 .local-model-item__error {
-  font-size: 11px;
+  font-size: var(--app-font-micro);
   font-variant-numeric: tabular-nums;
 }
 .local-model-item__progress {
@@ -1343,7 +1392,7 @@ input:focus {
 }
 .dialog-message {
   margin-top: 12px;
-  font-size: 13px;
+  font-size: var(--app-font-control);
 }
 .dialog-message.passed {
   color: #07a65a;
@@ -1364,7 +1413,7 @@ input:focus {
   margin-right: auto;
   align-items: center;
   gap: 5px;
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   color: var(--app-accent);
 }
 .secondary-button,
@@ -1372,7 +1421,7 @@ input:focus {
   height: 34px;
   padding: 0 12px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: var(--app-font-control);
   background: var(--app-hover);
   color: var(--app-text-secondary);
 }
@@ -1408,16 +1457,16 @@ input:focus {
     border: 0;
     background: var(--m-page-bg, var(--app-settings-bg));
     color: var(--m-text-secondary, var(--app-text-secondary));
-    font-size: 13px;
-    font-weight: 400;
+    font-size: var(--app-font-control);
+    font-weight: var(--app-font-weight-regular);
   }
   .settings-card-title-row small {
     display: none;
   }
   .settings-watson-title {
     gap: 6px;
-    font-size: 13px;
-    font-weight: 400;
+    font-size: var(--app-font-control);
+    font-weight: var(--app-font-weight-regular);
   }
   .settings-watson-title svg {
     width: 16px;
@@ -1434,14 +1483,14 @@ input:focus {
     justify-self: stretch;
   }
   .settings-field > span {
-    font-size: 15px;
+    font-size: var(--app-font-body-strong);
   }
   select,
   input {
     min-height: 44px;
     padding: 10px 12px;
     border-radius: 8px;
-    font-size: 15px;
+    font-size: var(--app-font-body-strong);
     background: var(--m-control-bg, var(--app-settings-bg));
   }
   .service-list {
@@ -1454,17 +1503,17 @@ input:focus {
     padding: 12px 0;
   }
   .service-copy strong {
-    font-size: 16px;
-    font-weight: 400;
+    font-size: var(--app-font-title);
+    font-weight: var(--app-font-weight-regular);
   }
   .service-copy span {
-    font-size: 13px;
+    font-size: var(--app-font-control);
   }
   .configure-button {
     height: 36px;
     padding: 0 12px;
     border-radius: 8px;
-    font-size: 14px;
+    font-size: var(--app-font-body);
   }
   .settings-save-bar {
     position: sticky;
@@ -1480,8 +1529,8 @@ input:focus {
     width: 100%;
     min-height: 44px;
     border-radius: 10px;
-    font-size: 16px;
-    font-weight: 500;
+    font-size: var(--app-font-title);
+    font-weight: var(--app-font-weight-medium);
   }
   .service-overlay {
     align-items: flex-end;

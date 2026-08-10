@@ -70,9 +70,24 @@ pnpm docs:build
 
 ### 字号
 
-- 全局字号由「我」页设置，写入 `html[data-font-scale]`；根字号见 `styles/font-scale.css`，移动端语义变量见 `styles/mobile/typography.css`（`--m-font-*` / `--chat-*-font-size`）。
-- **新增或改动 UI 文本必须跟随字号设置**：优先用 `rem` 或 `var(--m-font-*)`，避免写死 `px`；移动端若必须写死字号，须同步纳入 `typography.css` 白名单覆盖。
-- 「工作」页（`MobileWorkView` / `TodoView` / `TaskCard` / 依赖图等）纳入同一套字号体系，不得单独固定字号而忽略设置。
+全站 UI 文本使用封闭字号阶梯（`packages/supervisor-web-ui/src/styles/type-scale.css`），以 **rem** 定义语义 token，随根字号三档自动缩放。
+
+| Token                    | 字号        | 字重  | 用途                         |
+| ------------------------ | ----------- | ----- | ---------------------------- |
+| `--app-font-page-title`  | `1.0625rem` | `600` | 页头主标题（如 Todo 品牌行） |
+| `--app-font-title`       | `1rem`      | `600` | 区块标题                     |
+| `--app-font-body-strong` | `0.9375rem` | `500` | 列表主文、摘要强调           |
+| `--app-font-body`        | `0.875rem`  | `400` | 正文、输入、说明             |
+| `--app-font-control`     | `0.8125rem` | `500` | 按钮、分段控件、表单项       |
+| `--app-font-caption`     | `0.75rem`   | `400` | 次要 meta、分区标签          |
+| `--app-font-micro`       | `0.6875rem` | `500` | 角标、极次要标记             |
+
+字重只允许 `400` / `500` / `600` / `700`（`--app-font-weight-regular|medium|semibold|bold`）。
+
+- **禁止**业务 UI 写约定外的 `px` / `text-[Npx]` 字号或字重；须用 `var(--app-font-*)`。
+- 移动端列表 / 聊天等仍可用 `styles/mobile/typography.css` 的 `--m-font-*` 白名单；新增移动覆盖须与上表语义对齐。
+- 全局档位：`html[data-font-scale=small|standard|large]`，根 rem 见 `styles/font-scale.css`（桌面 ≥768px：13/16/18px；移动：16/18/20px）。
+- 入口：移动「我」页、PC「设置 → 界面」。
 
 ## Git 约定
 

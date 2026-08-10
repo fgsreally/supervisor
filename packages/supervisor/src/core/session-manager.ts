@@ -2994,6 +2994,10 @@ export class SessionManager {
     return this.db.getLastMessagePreview(sessionId);
   }
 
+  getLastMessagePreviews(sessionIds: number[]): Map<number, string> {
+    return this.db.getLastMessagePreviews(sessionIds);
+  }
+
   getRuntime(id: number): ManagedSessionRuntime {
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);

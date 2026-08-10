@@ -115,6 +115,8 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id, id);
+CREATE INDEX IF NOT EXISTS idx_messages_session_created ON messages(session_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, role);
 CREATE INDEX IF NOT EXISTS idx_messages_search_text
   ON messages(search_text) WHERE search_text IS NOT NULL;

@@ -1,28 +1,240 @@
 ﻿<template>
   <div class="todo-shell">
     <header class="todo-head">
-      <h1>Todo</h1>
+      <div class="todo-head__brand plan-desktop-only">
+        <h1>Todo</h1>
+        <span>{{ headStatus }}</span>
+      </div>
+      <div class="todo-mode-switch plan-desktop-only" role="tablist" aria-label="Todo 模式">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'plan'"
+          :class="{ active: activeTab === 'plan' }"
+          @click="activeTab = 'plan'"
+        >
+          规划
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === 'run'"
+          :class="{ active: activeTab === 'run' }"
+          @click="activeTab = 'run'"
+        >
+          执行
+        </button>
+      </div>
+      <div class="todo-head__actions plan-desktop-only">
+        <button v-if="activeTab === 'plan'" type="button" class="quiet" @click="openGoalHistory">
+          <History />历史
+        </button>
+        <div v-else class="view-switch" aria-label="执行视图">
+          <button
+            type="button"
+            :class="{ active: runView === 'graph' }"
+            title="关系图"
+            aria-label="关系图"
+            @click="runView = 'graph'"
+          >
+            <Waypoints />
+          </button>
+          <button
+            type="button"
+            :class="{ active: runView === 'timeline' }"
+            title="时间轴"
+            aria-label="时间轴"
+            @click="runView = 'timeline'"
+          >
+            <GanttChart />
+          </button>
+        </div>
+      </div>
       <div class="mobile-tabs">
-        <button :class="{ active: mobileTab === 'plan' }" @click="mobileTab = 'plan'">规划</button
-        ><button :class="{ active: mobileTab === 'run' }" @click="mobileTab = 'run'">执行</button>
+        <button
+          type="button"
+          :class="{ active: activeTab === 'plan' }"
+          @click="activeTab = 'plan'"
+        >
+          规划
+        </button>
+        <button type="button" :class="{ active: activeTab === 'run' }" @click="activeTab = 'run'">
+          执行
+        </button>
       </div>
     </header>
-    <main class="todo-stage">
+
+    <!-- PC：左轨 + 右舞台 -->
+    <main class="todo-studio plan-desktop-only">
+      <aside v-show="activeTab === 'plan'" class="todo-rail">
+        <div class="todo-rail__scroll">
+          <div class="rail-label">目标</div>
+          <div class="goal-box">
+            <textarea v-model="goal" rows="5" placeholder="描述你想完成的事情，输入 @ 关联项目" />
+            <div class="goal-box__footer">
+              <span class="project-pill"><FolderGit2 />supervisor-web-ui</span>
+              <button type="button" class="primary" :disabled="planning" @click="mockPlan">
+                <Sparkles />{{ planning ? "正在整理…" : "开始规划" }}
+              </button>
+            </div>
+          </div>
+
+          <div class="rail-label">
+            <span>待确认任务</span>
+            <em>{{ drafts.length }}</em>
+          </div>
+          <div v-if="drafts.length" class="desktop-plan-list">
+            <button
+              v-for="(task, index) in drafts"
+              :key="task.id"
+              type="button"
+              class="desktop-plan-row"
+              :class="{ active: focusId === task.id }"
+              @click="focusDraft(task)"
+              @dblclick="openTask(task)"
+            >
+              <span class="desktop-plan-row__index">{{ index + 1 }}</span>
+              <div class="desktop-plan-row__body">
+                <strong>{{ task.title }}</strong>
+                <small>{{ task.project }} · {{ task.agent }}</small>
+              </div>
+            </button>
+          </div>
+          <p v-else class="rail-empty">规划后，任务会出现在这里</p>
+        </div>
+        <div v-if="drafts.length" class="plan-actions plan-actions--rail">
+          <button type="button" class="plan-actions__secondary">仅加入待办</button>
+          <button type="button" class="primary plan-actions__main" @click="startPlanExecution">
+            开始执行
+          </button>
+        </div>
+      </aside>
+
+      <aside v-show="activeTab === 'run'" class="todo-rail todo-rail--run">
+        <div class="todo-rail__scroll">
+          <section class="run-summary" aria-label="执行概览">
+            <div class="run-summary__top">
+              <div>
+                <strong>{{ runPulseTitle }}</strong>
+                <p>{{ runPulseSubtitle }}</p>
+              </div>
+              <span class="run-summary__pct">{{ runProgress }}%</span>
+            </div>
+            <div class="run-summary__bar" aria-hidden="true">
+              <i :style="{ width: `${runProgress}%` }" />
+            </div>
+            <div class="run-summary__stats">
+              <span><i data-tone="running" />{{ count("running") }} 进行</span>
+              <span><i data-tone="blocked" />{{ count("blocked") }} 阻塞</span>
+              <span><i data-tone="pending" />{{ count("pending") }} 排队</span>
+              <span><i data-tone="done" />{{ count("done") }} 完成</span>
+            </div>
+          </section>
+
+          <nav class="run-filter-bar" aria-label="任务状态筛选">
+            <button
+              v-for="filter in runChipFilters"
+              :key="filter.id"
+              type="button"
+              :class="{ active: activeFilter === filter.id }"
+              @click="activeFilter = filter.id"
+            >
+              {{ filter.label }}
+              <em>{{ count(filter.id) }}</em>
+            </button>
+          </nav>
+
+          <template v-for="group in runRailGroups" :key="group.id">
+            <section v-if="group.tasks.length" class="run-section">
+              <div class="run-section__label">{{ group.label }} · {{ group.tasks.length }}</div>
+              <div class="run-section__list">
+                <button
+                  v-for="task in group.tasks"
+                  :key="task.id"
+                  type="button"
+                  class="run-cell"
+                  :class="{ active: focusId === task.id }"
+                  :data-status="task.status"
+                  @click="openTask(task)"
+                >
+                  <span class="run-cell__dot" aria-hidden="true" />
+                  <div class="run-cell__main">
+                    <strong>{{ task.title }}</strong>
+                    <small>{{ task.agent }} · {{ task.project }}</small>
+                  </div>
+                  <span class="run-cell__status">{{ statusLabel(task.status) }}</span>
+                  <ChevronRight class="run-cell__arrow" aria-hidden="true" />
+                </button>
+              </div>
+            </section>
+          </template>
+          <p v-if="!visibleTasks.length" class="rail-empty">这个状态下暂时没有任务</p>
+        </div>
+      </aside>
+
+      <section class="todo-canvas">
+        <TodoSequenceDiagram
+          v-if="activeTab === 'plan'"
+          bare
+          fill
+          title="顺序图"
+          :tasks="drafts"
+          :selected-id="focusId"
+          :agents="agents"
+          empty-text="写好目标并开始规划后，顺序关系会显示在这里"
+          @select="selectDraft"
+        />
+        <TodoSequenceDiagram
+          v-else-if="runView === 'graph'"
+          bare
+          fill
+          title="执行关系"
+          :tasks="execution"
+          :selected-id="focusId"
+          :agents="agents"
+          empty-text="暂无执行中的任务"
+          @select="selectExecution"
+        />
+        <div v-else class="canvas-timeline">
+          <header class="canvas-timeline__head">
+            <strong>时间轴</strong>
+            <span>{{ execution.length }} 个任务</span>
+          </header>
+          <div class="execution-timeline">
+            <article v-for="(task, index) in execution" :key="task.id" @click="openTask(task)">
+              <div class="time">
+                <strong>{{ taskEventTime(task.id, index) }}</strong>
+                <span>今天</span>
+              </div>
+              <div class="rail"><i :data-status="task.status" /></div>
+              <div class="event">
+                <TaskCard
+                  :title="task.title"
+                  :description="task.description"
+                  :project-name="task.project"
+                  :agent-id="agentInfo(task.agent)?.id ?? task.agent"
+                  :agent-name="task.agent"
+                  :agent-avatar="agentInfo(task.agent)?.avatar"
+                  :status="task.status"
+                  :status-label="statusLabel(task.status)"
+                  density="compact"
+                />
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- 移动端：保持原有结构 -->
+    <main class="todo-stage plan-mobile-only">
       <section
         class="plan-pane"
         :class="{
-          'mobile-hidden': mobileTab !== 'plan',
+          'mobile-hidden': activeTab !== 'plan',
           'plan-pane--ready': drafts.length > 0,
         }"
       >
-        <div class="pane-title plan-desktop-only">
-          <div>
-            <h2>规划</h2>
-            <span>把想法整理成可执行的任务</span>
-          </div>
-          <button class="quiet" @click="openGoalHistory"><History />历史</button>
-        </div>
-
         <div class="plan-mobile-toolbar">
           <div>
             <strong>{{ planMobileTitle }}</strong>
@@ -44,37 +256,35 @@
             v-if="showGoalSummary"
             type="button"
             class="goal-summary"
+            aria-label="修改并重新规划"
             @click="goalComposerOpen = true"
           >
-            <span class="goal-summary__label">当前目标</span>
-            <strong>{{ goal }}</strong>
-            <span class="goal-summary__hint">点击修改并重新规划</span>
+            <div class="goal-summary__main">
+              <span class="goal-summary__label">当前目标</span>
+              <strong>{{ goal }}</strong>
+            </div>
+            <span class="goal-summary__edit" aria-hidden="true">
+              <Pencil />
+            </span>
           </button>
           <template v-else>
             <textarea v-model="goal" rows="5" placeholder="描述你想完成的事情，输入 @ 关联项目" />
             <div class="goal-box__footer">
               <span class="project-pill"><FolderGit2 />supervisor-web-ui</span>
-              <button class="primary" :disabled="planning" @click="mockPlan">
+              <button type="button" class="primary" :disabled="planning" @click="mockPlan">
                 <Sparkles />{{ planning ? "正在整理…" : "开始规划" }}
               </button>
             </div>
             <button
               v-if="drafts.length"
               type="button"
-              class="goal-box__collapse plan-mobile-only"
+              class="goal-box__collapse"
               @click="goalComposerOpen = false"
             >
               收起
             </button>
           </template>
         </div>
-
-        <div class="draft-head plan-desktop-only">
-          <div>
-            <strong>当前任务</strong><span>{{ drafts.length }}</span>
-          </div>
-        </div>
-        <TodoSequenceDiagram class="plan-desktop-only" :agents="agents" @select="selectDraft" />
 
         <div v-if="drafts.length" class="mobile-plan-list" aria-label="规划任务列表">
           <div class="mobile-plan-section-label">待确认任务 · {{ drafts.length }}</div>
@@ -84,18 +294,13 @@
               :key="task.id"
               type="button"
               class="mobile-plan-row"
-              @click="selected = task"
+              @click="openTask(task)"
             >
               <span class="mobile-plan-row__index">{{ index + 1 }}</span>
               <div class="mobile-plan-row__body">
                 <strong>{{ task.title }}</strong>
                 <p>{{ task.description }}</p>
-                <small
-                  >{{ task.project }} · {{ task.agent
-                  }}<template v-if="task.dependencies.length">
-                    · 依赖 {{ task.dependencies.length }} 项</template
-                  ></small
-                >
+                <small>{{ task.project }} · {{ task.agent }}</small>
               </div>
               <ChevronRight class="mobile-plan-row__arrow" />
             </button>
@@ -109,7 +314,8 @@
           </button>
         </div>
       </section>
-      <section class="run-pane" :class="{ 'mobile-hidden': mobileTab !== 'run' }">
+
+      <section class="run-pane" :class="{ 'mobile-hidden': activeTab !== 'run' }">
         <div class="pane-title">
           <div>
             <h2>执行</h2>
@@ -117,28 +323,31 @@
           </div>
           <div class="view-switch" aria-label="执行视图">
             <button
-              :class="{ active: runView === 'list' }"
+              type="button"
+              :class="{ active: mobileRunView === 'list' }"
               title="列表"
               aria-label="列表"
-              @click="runView = 'list'"
+              @click="mobileRunView = 'list'"
             >
               <List />
             </button>
             <button
-              :class="{ active: runView === 'timeline' }"
+              type="button"
+              :class="{ active: mobileRunView === 'timeline' }"
               title="时间轴"
               aria-label="时间轴"
-              @click="runView = 'timeline'"
+              @click="mobileRunView = 'timeline'"
             >
               <GanttChart />
             </button>
           </div>
         </div>
         <div class="run-controls">
-          <nav v-if="runView === 'list'" class="filters" aria-label="任务状态筛选">
+          <nav v-if="mobileRunView === 'list'" class="filters" aria-label="任务状态筛选">
             <button
               v-for="filter in filters"
               :key="filter.id"
+              type="button"
               :class="{ active: activeFilter === filter.id }"
               @click="activeFilter = filter.id"
             >
@@ -146,12 +355,11 @@
             </button>
           </nav>
         </div>
-        <div v-if="runView === 'list'" class="run-list">
+        <div v-if="mobileRunView === 'list'" class="run-list">
           <TaskCard
             v-for="task in visibleTasks"
             :key="task.id"
             class="run-card"
-            :class="`status-${task.status}`"
             :title="task.title"
             :description="task.description"
             :project-name="task.project"
@@ -172,8 +380,8 @@
         <div v-else class="execution-timeline">
           <article v-for="(task, index) in execution" :key="task.id" @click="openTask(task)">
             <div class="time">
-              <strong>{{ taskEventTime(task.id, index) }}</strong
-              ><span>今天</span>
+              <strong>{{ taskEventTime(task.id, index) }}</strong>
+              <span>今天</span>
             </div>
             <div class="rail"><i :data-status="task.status" /></div>
             <div class="event">
@@ -193,9 +401,14 @@
         </div>
       </section>
     </main>
-    <ResponsiveDialog :open="selected != null" @close="selected = null">
+
+    <ResponsiveDialog
+      :open="selected != null"
+      :title="selected ? `Task ${selected.id}` : '任务详情'"
+      panel-class="todo-task-dialog"
+      @close="selected = null"
+    >
       <div v-if="selected" class="task-detail">
-        <small>Task {{ selected.id }}</small>
         <h3>{{ selected.title }}</h3>
         <p>{{ selected.description }}</p>
         <dl>
@@ -208,19 +421,13 @@
             <dd>{{ selected.agent }}</dd>
           </div>
         </dl>
-        <TaskDependencyGraph
-          :key="selected.id"
-          :current="selected"
-          :dependencies="selectedDependencies"
-          :dependents="selectedDependents"
-          @select="selectTask"
-        />
         <button
           v-if="selected.sessionId"
+          type="button"
           class="primary wide"
           @click="viewSession(selected.sessionId)"
         >
-          <Eye />查看
+          <Eye />查看会话
         </button>
       </div>
     </ResponsiveDialog>
@@ -235,6 +442,7 @@
     </ResponsiveDialog>
   </div>
 </template>
+
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import {
@@ -245,11 +453,12 @@ import {
   History,
   Link2,
   List,
+  Pencil,
   Sparkles,
+  Waypoints,
 } from "lucide-vue-next";
 import TodoSequenceDiagram from "@/components/home/TodoSequenceDiagram.vue";
 import TaskCard from "@/components/task/TaskCard.vue";
-import TaskDependencyGraph from "@/components/task/TaskDependencyGraph.vue";
 import ResponsiveDialog from "@/components/ui/ResponsiveDialog.vue";
 import {
   listAgents,
@@ -258,6 +467,7 @@ import {
   type Agent,
   type TimelineEvent,
 } from "@/api";
+
 type Status = "pending" | "running" | "blocked" | "done";
 interface MockTask {
   id: number;
@@ -269,19 +479,23 @@ interface MockTask {
   status: Status;
   sessionId?: string;
 }
+
 const emit = defineEmits<{ "open-session": [sessionId: string] }>();
 const goal = ref("优化 Supervisor 的 Todo，让规划、依赖和执行状态更清晰");
 const planning = ref(false);
 const goalComposerOpen = ref(false);
 const isNarrowUi = ref(false);
-const mobileTab = ref<"plan" | "run">("plan");
+const activeTab = ref<"plan" | "run">("plan");
+const focusId = ref<number | null>(null);
 const selected = ref<MockTask | null>(null);
 const activeFilter = ref("all");
-const runView = ref<"list" | "timeline">("list");
+const runView = ref<"graph" | "timeline">("graph");
+const mobileRunView = ref<"list" | "timeline">("list");
 const agents = ref<Agent[]>([]);
 const taskEvents = ref<TimelineEvent[]>([]);
 const goalEvents = ref<TimelineEvent[]>([]);
 const goalHistoryOpen = ref(false);
+
 const drafts = ref<MockTask[]>([
   {
     id: 1,
@@ -329,6 +543,7 @@ const drafts = ref<MockTask[]>([
     status: "pending",
   },
 ]);
+
 const execution = ref<MockTask[]>([
   {
     id: 11,
@@ -406,12 +621,7 @@ const execution = ref<MockTask[]>([
     status: "pending",
   },
 ]);
-const selectedDependencies = computed(() =>
-  selected.value ? allTasks().filter((task) => selected.value?.dependencies.includes(task.id)) : [],
-);
-const selectedDependents = computed(() =>
-  selected.value ? allTasks().filter((task) => task.dependencies.includes(selected.value!.id)) : [],
-);
+
 const filters = [
   { id: "all", label: "全部" },
   { id: "pending", label: "待办" },
@@ -425,6 +635,63 @@ const visibleTasks = computed(() =>
     : execution.value.filter((t) => t.status === activeFilter.value),
 );
 const runningCount = computed(() => execution.value.filter((t) => t.status === "running").length);
+const runProgress = computed(() => {
+  const total = execution.value.length;
+  if (!total) return 0;
+  return Math.round((execution.value.filter((t) => t.status === "done").length / total) * 100);
+});
+const runPulseTitle = computed(() => {
+  if (runningCount.value) return "进行中";
+  if (execution.value.some((t) => t.status === "blocked")) return "有阻塞";
+  if (execution.value.some((t) => t.status === "pending")) return "待启动";
+  return "已完成";
+});
+const runPulseSubtitle = computed(() => {
+  const focus =
+    execution.value.find((t) => t.id === focusId.value) ??
+    execution.value.find((t) => t.status === "running") ??
+    execution.value.find((t) => t.status === "blocked");
+  if (focus) return focus.title;
+  return `共 ${execution.value.length} 个任务`;
+});
+const runChipFilters = [
+  { id: "all", label: "全部" },
+  { id: "running", label: "进行" },
+  { id: "blocked", label: "阻塞" },
+  { id: "pending", label: "排队" },
+  { id: "done", label: "完成" },
+];
+const runRailGroups = computed(() => {
+  const tasks = visibleTasks.value;
+  if (activeFilter.value !== "all") {
+    return [{ id: "filtered", label: "任务", tasks }];
+  }
+  return [
+    {
+      id: "now",
+      label: "此刻",
+      tasks: tasks.filter((t) => t.status === "running" || t.status === "blocked"),
+    },
+    {
+      id: "queue",
+      label: "队列",
+      tasks: tasks.filter((t) => t.status === "pending"),
+    },
+    {
+      id: "done",
+      label: "已完成",
+      tasks: tasks.filter((t) => t.status === "done"),
+    },
+  ];
+});
+const headStatus = computed(() => {
+  if (activeTab.value === "plan") {
+    return drafts.value.length
+      ? `${drafts.value.length} 个任务待确认`
+      : "把想法整理成可执行的任务";
+  }
+  return runningCount.value ? `${runningCount.value} 个任务正在进行` : "暂无进行中的任务";
+});
 const showGoalSummary = computed(
   () => isNarrowUi.value && drafts.value.length > 0 && !goalComposerOpen.value && !planning.value,
 );
@@ -432,6 +699,7 @@ const planMobileTitle = computed(() => (drafts.value.length ? "确认规划" : "
 const planMobileSubtitle = computed(() =>
   drafts.value.length ? `${drafts.value.length} 个任务待确认` : "写清目标，华生会拆成可执行任务",
 );
+
 function count(id: string) {
   return id === "all"
     ? execution.value.length
@@ -454,17 +722,22 @@ function agentInfo(name: string): Agent | undefined {
 function statusLabel(s: Status) {
   return { pending: "待办", running: "进行中", blocked: "阻塞", done: "已完成" }[s];
 }
-function allTasks() {
-  return [...drafts.value, ...execution.value];
+function focusDraft(task: MockTask) {
+  focusId.value = task.id;
 }
-function openTask(t: MockTask) {
-  selected.value = t;
+function openTask(task: MockTask) {
+  focusId.value = task.id;
+  selected.value = task;
 }
 function selectDraft(id: number) {
-  selected.value = drafts.value.find((task) => task.id === id) ?? null;
+  const task = drafts.value.find((item) => item.id === id) ?? null;
+  focusId.value = id;
+  selected.value = task;
 }
-function selectTask(id: number) {
-  selected.value = allTasks().find((task) => task.id === id) ?? selected.value;
+function selectExecution(id: number) {
+  const task = execution.value.find((item) => item.id === id) ?? null;
+  focusId.value = id;
+  selected.value = task;
 }
 function viewSession(sessionId: string) {
   selected.value = null;
@@ -487,7 +760,8 @@ async function mockPlan() {
 }
 function startPlanExecution() {
   if (!drafts.value.length) return;
-  mobileTab.value = "run";
+  activeTab.value = "run";
+  focusId.value = execution.value[0]?.id ?? null;
 }
 async function openGoalHistory() {
   goalEvents.value = await listTimelineEvents({ type: "goal" }).catch(() => []);
@@ -504,6 +778,7 @@ function formatGoalTime(value: string) {
     minute: "2-digit",
   }).format(new Date(value));
 }
+
 onMounted(async () => {
   const media = window.matchMedia("(max-width: 720px)");
   const syncNarrow = () => {
@@ -520,421 +795,654 @@ onMounted(async () => {
   agents.value = nextAgents;
   taskEvents.value = nextEvents;
   goalEvents.value = nextGoalEvents;
+  if (!focusId.value && drafts.value.length) focusId.value = drafts.value[0]!.id;
 });
 </script>
+
 <style scoped>
 .todo-shell {
-  height: 100%;
   display: flex;
+  height: 100%;
   flex-direction: column;
-  background: var(--app-settings-bg);
+  background: var(--app-list-section-bg, var(--app-shell-bg));
   color: var(--app-text-primary);
 }
+
 .todo-head {
-  height: 54px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 18px;
-  border-bottom: 1px solid var(--app-border);
-}
-.todo-head h1 {
-  font-size: 1.0625rem;
-  font-weight: 680;
-}
-.todo-stage {
-  min-height: 0;
-  flex: 1;
+  z-index: 2;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.plan-pane,
-.run-pane {
-  min-width: 0;
-  overflow: auto;
-  padding: 18px;
-}
-.plan-pane {
-  border-right: 1px solid var(--app-border);
-}
-.pane-title,
-.draft-head,
-.goal-box__footer,
-.plan-actions,
-.task-line {
-  display: flex;
+  height: 56px;
+  flex: none;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
-  justify-content: space-between;
+  gap: 16px;
+  padding: 0 20px;
+  border-bottom: 1px solid var(--app-border-subtle);
+  background: var(--app-list-header-bg, var(--app-list-section-bg, var(--app-shell-bg)));
+}
+
+.todo-head__brand {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
   gap: 10px;
 }
-.pane-title {
-  margin-bottom: 14px;
+
+.todo-head__brand h1 {
+  font-size: 1.0625rem;
+  font-weight: 680;
+  letter-spacing: 0.01em;
 }
-.pane-title h2 {
-  font-size: 1rem;
-  font-weight: 650;
+
+.todo-head__brand span {
+  overflow: hidden;
+  color: var(--app-text-secondary);
+  font-size: 0.8125rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.pane-title span,
-.draft-head span {
+
+.todo-mode-switch {
+  display: inline-flex;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--app-hover);
+}
+
+.todo-mode-switch button {
+  min-width: 72px;
+  padding: 6px 14px;
+  border-radius: 7px;
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.todo-mode-switch button.active {
+  background: var(--app-settings-card);
+  color: var(--app-text-primary);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+.todo-head__actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+}
+
+.todo-studio {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: 360px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.todo-rail {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--app-border-subtle);
+  background: transparent;
+}
+
+.todo-rail__scroll {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+  padding: 18px 16px 16px;
+}
+
+.todo-canvas {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  background: transparent;
+}
+
+.todo-canvas > * {
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+}
+
+.rail-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   color: var(--app-text-secondary);
   font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
+
+.rail-label em {
+  color: var(--app-text-muted);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.rail-empty {
+  margin: 8px 2px 0;
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
 .quiet,
 .primary,
 .secondary {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  border-radius: 7px;
-  padding: 7px 10px;
+  border-radius: 8px;
+  padding: 7px 12px;
   font-size: 0.8125rem;
 }
+
 .quiet {
   color: var(--app-text-secondary);
-  background: var(--app-hover);
+  background: var(--app-settings-card);
 }
+
 .primary {
   color: #fff;
   background: #07c160;
 }
+
 .primary:disabled {
   opacity: 0.55;
 }
-.secondary {
-  color: var(--app-text-primary);
-  background: var(--app-hover);
+
+button svg {
+  width: 14px;
+  height: 14px;
 }
-button svg,
-.task-meta svg {
-  width: 13px;
-  height: 13px;
-}
+
 .goal-box {
-  padding: 12px;
-  border: 1px solid var(--app-border);
-  border-radius: 11px;
+  padding: 14px;
+  border: 0;
+  border-radius: 10px;
   background: var(--app-settings-card);
 }
+
 .goal-box textarea {
   width: 100%;
+  min-height: 110px;
   resize: none;
   background: transparent;
   font-size: 0.875rem;
   line-height: 1.6;
   outline: none;
 }
+
 .goal-box__footer {
-  margin-top: 8px;
-}
-.project-pill {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.project-pill {
+  display: inline-flex;
+  min-width: 0;
   align-items: center;
   gap: 4px;
   color: #078f49;
   font-size: 0.75rem;
 }
-.draft-head {
-  margin: 18px 0 8px;
-}
-.draft-head > div {
-  display: flex;
-  gap: 7px;
-  align-items: baseline;
-}
-.draft-head strong {
-  font-size: 0.875rem;
-}
-.dependency-list,
-.run-list {
-  position: relative;
+
+.desktop-plan-list {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-}
-.run-dependency {
-  position: absolute;
-  z-index: 2;
-  left: 8px;
-  top: 64px;
-  width: 18px;
-  height: 205px;
-  pointer-events: none;
-}
-.run-dependency i {
-  position: absolute;
-  inset: 0 6px 8px 0;
-  border-left: 1.5px solid #8290a3;
-  border-bottom: 1.5px solid #8290a3;
-  border-radius: 0 0 0 8px;
-}
-.run-dependency span {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  display: grid;
-  width: 15px;
-  height: 15px;
-  place-items: center;
-  border-radius: 50%;
-  background: var(--app-settings-bg);
-  color: #8290a3;
-  font-size: 12px;
-  line-height: 1;
-}
-.run-list .task-card {
-  position: relative;
-  z-index: 1;
-}
-.task-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  padding: 11px;
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 9px;
+  overflow: hidden;
+  border-radius: 10px;
   background: var(--app-settings-card);
-  transition: 0.16s;
-  cursor: pointer;
 }
-.task-card:hover,
-.is-current {
-  border-color: #07c160;
-  box-shadow: 0 3px 12px rgb(0 0 0/7%);
+
+.desktop-plan-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border-top: 1px solid var(--app-border-subtle);
+  color: var(--app-text-primary);
+  text-align: left;
+  transition: background 0.14s ease;
 }
-.is-dependency {
-  border-color: #3b82f6;
-  background: color-mix(in srgb, #3b82f6 7%, var(--app-settings-card));
+
+.desktop-plan-row:first-child {
+  border-top: 0;
 }
-.is-dependent {
-  border-color: #10b981;
-  background: color-mix(in srgb, #10b981 7%, var(--app-settings-card));
-}
-.is-dim {
-  opacity: 0.4;
-}
-.step {
-  display: grid;
-  width: 22px;
-  height: 22px;
-  place-items: center;
-  border-radius: 50%;
+
+.desktop-plan-row:hover {
   background: var(--app-hover);
-  font-size: 10px;
 }
-.task-main {
+
+.desktop-plan-row.active {
+  background: color-mix(in srgb, #07c160 10%, var(--app-settings-card));
+}
+
+.desktop-plan-row__index {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  place-items: center;
+  border-radius: 8px;
+  background: color-mix(in srgb, #07c160 14%, transparent);
+  color: #07c160;
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.desktop-plan-row__body {
   min-width: 0;
   flex: 1;
 }
-.task-main strong {
-  font-size: 12px;
-}
-.task-main p {
-  margin: 3px 0 7px;
-  color: var(--app-text-body);
-  font-size: 11px;
-  white-space: nowrap;
+
+.desktop-plan-row__body strong {
+  display: block;
   overflow: hidden;
+  color: var(--app-text-primary);
+  font-size: 0.875rem;
+  font-weight: 560;
+  line-height: 1.35;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.task-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
+
+.desktop-plan-row__body small {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.task-meta span {
+
+.plan-actions {
   display: flex;
   align-items: center;
-  gap: 3px;
-  color: var(--app-text-secondary);
-  font-size: 9px;
-}
-.project-badge {
-  padding: 3px 6px;
-  border-radius: 5px;
-  background: color-mix(in srgb, #3b82f6 10%, transparent);
-  color: #2870bd !important;
-}
-.agent-badge i {
-  display: grid;
-  width: 17px;
-  height: 17px;
-  place-items: center;
-  border-radius: 50%;
-  background: #24292f;
-  color: white;
-  font-size: 8px;
-  font-style: normal;
-  font-weight: 700;
-}
-.status-pill {
-  padding: 4px 8px;
-  border-radius: 999px;
-  font-size: 10px !important;
-  font-weight: 650;
-  background: var(--app-hover);
-}
-.status-pill[data-status="running"] {
-  color: #1769aa !important;
-  background: #e7f2ff;
-}
-.status-pill[data-status="blocked"] {
-  color: #b42318 !important;
-  background: #feeceb;
-}
-.status-pill[data-status="done"] {
-  color: #078548 !important;
-  background: #e5f7ed;
-}
-.status-pill[data-status="pending"] {
-  color: #765b14 !important;
-  background: #fff5d8;
-}
-.todo-timeline {
-  margin-top: 14px;
-  padding: 11px;
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 9px;
-  background: var(--app-settings-card);
-}
-.todo-timeline header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 9px;
-}
-.todo-timeline header strong {
-  font-size: 11px;
-}
-.todo-timeline header span {
-  color: var(--app-text-muted);
-  font-size: 9px;
-}
-.timeline-grid {
-  display: flex;
-  gap: 18px;
-  overflow-x: auto;
-  padding: 2px 0 5px;
-}
-.timeline-level {
-  position: relative;
-  display: flex;
-  min-width: 120px;
-  flex-direction: column;
-  gap: 5px;
-}
-.timeline-level > b {
-  color: var(--app-text-muted);
-  font-size: 9px;
-  font-weight: 500;
-}
-.timeline-level button {
-  display: grid;
-  gap: 2px;
-  padding: 7px 8px;
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 6px;
-  text-align: left;
-  background: var(--app-settings-bg);
-}
-.timeline-level button span {
-  font-size: 10px;
-  color: var(--app-text-primary);
-}
-.timeline-level button small {
-  font-size: 8px;
-  color: var(--app-text-muted);
-}
-.timeline-arrow {
-  position: absolute;
-  right: -17px;
-  top: 50%;
-  width: 14px;
-  color: var(--app-text-muted);
-}
-.icon-btn {
-  color: var(--app-text-muted);
-}
-.plan-actions {
-  position: sticky;
-  bottom: -18px;
   justify-content: flex-end;
   gap: 8px;
-  margin: 16px -18px -18px;
-  padding: 12px 18px;
-  border-top: 1px solid var(--app-border);
-  background: color-mix(in srgb, var(--app-settings-bg) 92%, transparent);
-  backdrop-filter: blur(10px);
 }
+
+.plan-actions--rail {
+  flex: none;
+  justify-content: stretch;
+  gap: 10px;
+  margin: 0;
+  padding: 12px 16px 16px;
+  border-top: 1px solid var(--app-border-subtle);
+  background: var(--app-list-section-bg, var(--app-shell-bg));
+}
+
+.plan-actions--rail .plan-actions__secondary,
+.plan-actions--rail .plan-actions__main {
+  flex: 1;
+}
+
 .plan-actions__secondary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
+  min-height: 36px;
   padding: 7px 12px;
-  border-radius: 7px;
+  border-radius: 8px;
   color: var(--app-text-secondary);
   background: var(--app-hover);
   font-size: 0.8125rem;
 }
+
 .plan-actions__main {
-  min-width: 108px;
+  min-height: 36px;
   justify-content: center;
 }
-.plan-mobile-toolbar,
-.plan-mobile-only,
-.goal-summary,
-.goal-box__collapse {
-  display: none;
-}
+
 .filters {
   display: flex;
-  gap: 4px;
-  margin-bottom: 10px;
-  padding-bottom: 8px;
-  overflow: auto;
+  flex-wrap: wrap;
+  gap: 6px;
 }
+
+.filters button {
+  flex: none;
+  padding: 6px 10px;
+  border-radius: 999px;
+  color: var(--app-text-secondary);
+  font-size: 0.8125rem;
+}
+
+.filters button.active {
+  color: #078f49;
+  background: color-mix(in srgb, #07c160 12%, transparent);
+}
+
+.filters span {
+  margin-left: 3px;
+}
+
+.run-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.todo-rail--run .todo-rail__scroll {
+  gap: 12px;
+}
+
+.run-summary {
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--app-settings-card);
+}
+
+.run-summary__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.run-summary__top strong {
+  display: block;
+  color: var(--app-text-primary);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.run-summary__top p {
+  margin-top: 4px;
+  overflow: hidden;
+  color: var(--app-text-secondary);
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-summary__pct {
+  flex: none;
+  color: #07c160;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.run-summary__bar {
+  height: 4px;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--app-hover);
+}
+
+.run-summary__bar i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #07c160;
+}
+
+.run-summary__stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin-top: 12px;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+}
+
+.run-summary__stats span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.run-summary__stats i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #b2b2b2;
+}
+
+.run-summary__stats i[data-tone="running"] {
+  background: #10aeff;
+}
+
+.run-summary__stats i[data-tone="blocked"] {
+  background: #fa5151;
+}
+
+.run-summary__stats i[data-tone="pending"] {
+  background: #ffc300;
+}
+
+.run-summary__stats i[data-tone="done"] {
+  background: #07c160;
+}
+
+.run-filter-bar {
+  display: flex;
+  gap: 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--app-settings-card);
+}
+
+.run-filter-bar button {
+  display: inline-flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 9px 4px;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+}
+
+.run-filter-bar button + button {
+  border-left: 1px solid var(--app-border-subtle);
+}
+
+.run-filter-bar button.active {
+  color: #07c160;
+  font-weight: 600;
+  background: color-mix(in srgb, #07c160 12%, var(--app-settings-card));
+}
+
+.run-filter-bar em {
+  font-style: normal;
+  font-weight: 600;
+}
+
+.run-section {
+  display: grid;
+  gap: 6px;
+}
+
+.run-section__label {
+  padding: 2px 4px;
+  color: var(--app-text-muted);
+  font-size: 0.75rem;
+}
+
+.run-section__list {
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--app-settings-card);
+}
+
+.run-cell {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto 14px;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 12px 12px 12px 14px;
+  border-top: 1px solid var(--app-border-subtle);
+  color: var(--app-text-primary);
+  text-align: left;
+}
+
+.run-cell:first-child {
+  border-top: 0;
+}
+
+.run-cell:active,
+.run-cell.active {
+  background: var(--app-hover);
+}
+
+.run-cell__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #b2b2b2;
+}
+
+.run-cell[data-status="running"] .run-cell__dot {
+  background: #10aeff;
+}
+
+.run-cell[data-status="blocked"] .run-cell__dot {
+  background: #fa5151;
+}
+
+.run-cell[data-status="pending"] .run-cell__dot {
+  background: #ffc300;
+}
+
+.run-cell[data-status="done"] .run-cell__dot {
+  background: #07c160;
+}
+
+.run-cell__main {
+  min-width: 0;
+}
+
+.run-cell__main strong {
+  display: block;
+  overflow: hidden;
+  color: var(--app-text-primary);
+  font-size: 0.9375rem;
+  font-weight: 500;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-cell__main small {
+  display: block;
+  margin-top: 3px;
+  overflow: hidden;
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-cell__status {
+  color: var(--app-text-muted);
+  font-size: 0.75rem;
+}
+
+.run-cell[data-status="running"] .run-cell__status {
+  color: #10aeff;
+}
+
+.run-cell[data-status="blocked"] .run-cell__status {
+  color: #fa5151;
+}
+
+.run-cell__arrow {
+  width: 14px;
+  height: 14px;
+  color: var(--app-text-muted);
+}
+
 .view-switch {
   display: flex;
   gap: 3px;
   width: max-content;
-  margin: 0 0 9px auto;
   padding: 3px;
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--app-hover);
 }
-.run-toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 7px;
-  margin-bottom: 9px;
-}
-.run-toolbar .view-switch {
-  margin: 0;
-}
-.run-toolbar .quiet {
-  padding: 6px 9px;
-}
+
 .view-switch button {
-  padding: 5px 9px;
-  border-radius: 5px;
+  display: grid;
+  width: 32px;
+  height: 30px;
+  place-items: center;
+  border-radius: 6px;
   color: var(--app-text-muted);
-  font-size: 0.75rem;
 }
+
 .view-switch button.active {
   background: var(--app-settings-card);
   color: var(--app-text-primary);
-  box-shadow: 0 1px 3px rgb(0 0 0/8%);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
 }
-.execution-timeline {
-  padding: 4px 4px 20px;
+
+.view-switch button svg {
+  width: 15px;
+  height: 15px;
 }
+
+.canvas-timeline {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.canvas-timeline__head {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: 8px;
+  padding: 14px 18px 10px;
+}
+
+.canvas-timeline__head strong {
+  font-size: 0.875rem;
+}
+
+.canvas-timeline__head span {
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+}
+
+.canvas-timeline .execution-timeline {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 4px 18px 24px;
+}
+
 .execution-timeline > article {
   display: grid;
-  grid-template-columns: 48px 24px minmax(0, 1fr);
+  grid-template-columns: 52px 24px minmax(0, 1fr);
   min-height: 105px;
   cursor: pointer;
 }
+
 .execution-timeline .time {
   display: grid;
   align-content: start;
@@ -942,16 +1450,20 @@ button svg,
   padding-top: 4px;
   text-align: right;
 }
+
 .execution-timeline .time strong {
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
 }
+
 .execution-timeline .time span {
   color: var(--app-text-secondary);
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
 }
+
 .execution-timeline .rail {
   position: relative;
 }
+
 .execution-timeline .rail:after {
   content: "";
   position: absolute;
@@ -961,9 +1473,11 @@ button svg,
   width: 1px;
   background: var(--app-border);
 }
+
 .execution-timeline > article:last-child .rail:after {
   display: none;
 }
+
 .execution-timeline .rail i {
   position: absolute;
   z-index: 1;
@@ -975,143 +1489,118 @@ button svg,
   border-radius: 50%;
   background: #9ca3af;
 }
+
 .execution-timeline .rail i[data-status="running"] {
   background: #3b82f6;
 }
+
 .execution-timeline .rail i[data-status="blocked"] {
   background: #ef4444;
 }
+
 .execution-timeline .rail i[data-status="done"] {
   background: #07c160;
 }
+
 .execution-timeline .event {
   min-width: 0;
   margin-left: 5px;
-  padding: 10px 11px;
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 8px;
-  background: var(--app-settings-card);
 }
-.execution-timeline .event :deep(.task-card-ui),
-.execution-timeline .event :deep(.task-card-ui__body),
-.execution-timeline .event :deep(.task-card-ui__heading) {
+
+.execution-timeline .event :deep(.task-card-ui) {
   width: 100%;
 }
-.execution-timeline .event > strong {
-  display: block;
-  margin: 7px 0 3px;
-  font-size: 12px;
-}
-.execution-timeline .event > p {
-  color: var(--app-text-body);
-  font-size: 0.8125rem;
-}
-.execution-timeline footer {
-  display: flex;
-  gap: 8px;
-  margin-top: 8px;
-}
-.execution-timeline footer span {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 8px;
-}
-.filters button {
-  flex: none;
-  padding: 6px 10px;
-  border-radius: 6px;
-  color: var(--app-text-secondary);
-  font-size: 0.8125rem;
-}
-.filters button.active {
-  color: #078f49;
-  background: color-mix(in srgb, #07c160 11%, transparent);
-}
-.filters span {
-  margin-left: 3px;
-}
-.status-mark {
-  width: 3px;
-  align-self: stretch;
-  border-radius: 4px;
-  background: #9ca3af;
-}
-.status-running .status-mark {
-  background: #3b82f6;
-}
-.status-running {
-  border-color: color-mix(in srgb, #3b82f6 30%, var(--app-border));
-}
-.status-blocked .status-mark {
-  background: #ef4444;
-}
-.status-blocked {
-  border-color: color-mix(in srgb, #ef4444 32%, var(--app-border));
-}
-.status-done .status-mark {
-  background: #07c160;
-}
-.status-done {
-  border-color: color-mix(in srgb, #07c160 25%, var(--app-border));
-}
-.task-line > span {
-  font-size: 9px;
-  color: var(--app-text-muted);
-}
-.run-card :deep(.task-card-ui__meta > span) {
-  font-size: 0.75rem;
-}
-.run-card > svg {
-  align-self: center;
-  width: 15px;
-  color: var(--app-text-muted);
-}
-.mobile-tabs {
-  display: none;
-}
+
+.mobile-tabs,
+.plan-mobile-only,
+.goal-summary,
+.goal-box__collapse,
 .mobile-plan-list {
   display: none;
 }
+
+.todo-stage {
+  display: none;
+}
+
+.pane-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.pane-title h2 {
+  font-size: 1rem;
+  font-weight: 650;
+}
+
+.pane-title span {
+  color: var(--app-text-secondary);
+  font-size: 0.75rem;
+}
+
 .task-detail {
   display: flex;
   min-height: 0;
   flex-direction: column;
-  padding: 4px 4px 8px;
   gap: 2px;
+  padding: 2px 0 4px;
 }
+
 .task-detail h3 {
-  margin: 4px 0 8px;
-  font-size: 16px;
+  margin: 0 0 8px;
+  color: var(--app-text-primary);
+  font-size: 1.0625rem;
 }
+
 .task-detail p {
   color: var(--app-text-body);
-  font-size: 12px;
+  font-size: 0.875rem;
   line-height: 1.6;
 }
-.task-detail small {
-  color: var(--app-text-muted);
-}
+
 .task-detail dl {
   margin: 14px 0;
 }
+
 .task-detail dl div {
   display: grid;
   grid-template-columns: 60px minmax(0, 1fr);
-  padding: 6px 0;
+  padding: 8px 0;
   border-top: 1px solid var(--app-border-subtle);
-  font-size: 11px;
+  font-size: 0.8125rem;
 }
+
 .task-detail dt {
   color: var(--app-text-muted);
 }
-.task-detail :deep(.task-dependency-graph) {
-  margin: 4px 0 16px;
+
+:global(.m-drawer.todo-task-dialog.m-drawer--modal) {
+  width: min(420px, calc(100vw - 32px));
+  max-height: min(72dvh, 520px);
 }
+
+:global(.m-drawer.todo-task-dialog .m-drawer__header) {
+  padding: 10px 8px 10px 16px;
+}
+
+:global(.m-drawer.todo-task-dialog .m-drawer__title) {
+  color: var(--app-text-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+:global(.m-drawer.todo-task-dialog .m-drawer__body) {
+  padding: 0 16px 16px;
+}
+
 .goal-history {
   display: grid;
   gap: 8px;
 }
+
 .goal-history article {
   display: grid;
   gap: 5px;
@@ -1120,36 +1609,56 @@ button svg,
   border-radius: 10px;
   background: var(--app-settings-bg);
 }
+
 .goal-history time {
   color: var(--app-text-muted);
-  font-size: 11px;
+  font-size: 0.75rem;
 }
+
 .goal-history strong {
-  font-size: 13px;
+  font-size: 0.875rem;
   line-height: 1.45;
 }
+
 .goal-history__empty {
   padding: 18px 0;
   color: var(--app-text-muted);
   text-align: center;
-  font-size: 13px;
+  font-size: 0.875rem;
 }
+
 .wide {
-  justify-content: center;
   width: 100%;
+  justify-content: center;
 }
+
 @media (max-width: 720px) {
   .todo-shell {
     background: var(--m-page-bg, var(--app-settings-bg));
   }
+
   .todo-head {
+    display: flex;
     height: auto;
     padding: 8px 16px;
     background: var(--m-header-bg, var(--app-settings-bg));
   }
-  .todo-head h1 {
-    display: none;
+
+  .plan-desktop-only {
+    display: none !important;
   }
+
+  .plan-mobile-only,
+  .todo-stage {
+    display: block;
+  }
+
+  .todo-stage {
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+  }
+
   .mobile-tabs {
     display: grid;
     width: 100%;
@@ -1158,57 +1667,61 @@ button svg,
     border-radius: 9px;
     background: var(--m-pressed, var(--app-hover));
   }
+
   .mobile-tabs button {
     min-height: 36px;
     padding: 6px 12px;
     border-radius: 7px;
-    font-size: 14px;
     color: var(--app-text-muted);
+    font-size: var(--m-font-list-primary, 15px);
   }
+
   .mobile-tabs button.active {
     background: var(--app-settings-card);
     color: var(--app-text-primary);
-    box-shadow: 0 1px 3px rgb(0 0 0/8%);
+    box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
   }
-  .todo-stage {
-    display: block;
-  }
+
   .plan-pane,
   .run-pane {
     height: 100%;
+    overflow: auto;
     padding: 12px 16px 24px;
     border: 0;
     overscroll-behavior: contain;
   }
+
   .plan-pane {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
+
   .mobile-hidden {
     display: none;
   }
-  .plan-desktop-only {
-    display: none !important;
-  }
+
   .plan-mobile-toolbar {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 12px;
   }
+
   .plan-mobile-toolbar strong {
     display: block;
-    font-size: 17px;
+    font-size: var(--m-font-page-title, 18px);
     font-weight: 600;
     line-height: 1.3;
   }
+
   .plan-mobile-toolbar span {
     display: block;
     margin-top: 2px;
     color: var(--m-text-secondary, var(--app-text-secondary));
-    font-size: 12px;
+    font-size: var(--m-font-list-secondary, 13px);
   }
+
   .plan-icon-btn {
     display: grid;
     width: 44px;
@@ -1219,96 +1732,136 @@ button svg,
     border-radius: 999px;
     color: var(--m-text-secondary, var(--app-text-secondary));
   }
+
   .plan-icon-btn:active {
     background: var(--m-pressed, var(--app-hover));
   }
+
   .plan-icon-btn svg {
     width: 22px;
     height: 22px;
   }
+
   .goal-box {
     padding: 14px;
     border: 0;
     border-radius: 12px;
     background: var(--m-surface, var(--app-settings-card));
+    box-shadow: none;
   }
+
   .goal-box--summary {
     padding: 0;
     background: transparent;
   }
+
   .goal-box textarea {
     min-height: 104px;
-    font-size: 16px;
+    font-size: var(--m-font-list-primary, 15px);
     line-height: 1.5;
   }
+
   .goal-box__footer {
     align-items: flex-end;
     margin-top: 12px;
   }
+
   .goal-box__footer .primary {
     min-height: 40px;
     padding-inline: 14px;
-    font-size: 14px;
+    font-size: var(--m-font-list-primary, 15px);
   }
+
   .goal-box__collapse {
     display: block;
     width: 100%;
     margin-top: 10px;
     padding: 10px 0 2px;
     color: var(--m-link, #576b95);
-    font-size: 14px;
+    font-size: var(--m-font-list-primary, 15px);
     text-align: center;
   }
+
   .goal-summary {
-    display: grid;
-    gap: 4px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
     width: 100%;
-    padding: 14px 16px;
+    padding: 14px 12px 14px 16px;
     border-radius: 12px;
     background: var(--m-surface, var(--app-settings-card));
     text-align: left;
   }
+
   .goal-summary:active {
     background: var(--m-pressed, var(--app-hover));
   }
-  .goal-summary__label,
-  .goal-summary__hint {
-    color: var(--m-text-muted, var(--app-text-muted));
-    font-size: 12px;
+
+  .goal-summary__main {
+    display: grid;
+    min-width: 0;
+    flex: 1;
+    gap: 4px;
   }
+
+  .goal-summary__label {
+    color: var(--m-text-muted, var(--app-text-muted));
+    font-size: var(--m-font-section, 12px);
+  }
+
+  .goal-summary__edit {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    flex: none;
+    place-items: center;
+    border-radius: 999px;
+    color: var(--m-link, #576b95);
+  }
+
+  .goal-summary__edit svg {
+    width: 18px;
+    height: 18px;
+  }
+
   .goal-summary strong {
     display: -webkit-box;
     overflow: hidden;
     color: var(--m-text-primary, var(--app-text-primary));
-    font-size: 15px;
+    font-size: var(--m-font-list-primary, 15px);
     font-weight: 500;
     line-height: 1.45;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
   }
+
   .project-pill {
     max-width: 46%;
     overflow: hidden;
-    font-size: 12px;
+    font-size: var(--m-font-section, 12px);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
   .mobile-plan-list {
     display: grid;
     gap: 8px;
     margin-top: 4px;
   }
+
   .mobile-plan-section-label {
     padding: 0 4px;
     color: var(--m-text-secondary, var(--app-text-secondary));
-    font-size: 13px;
+    font-size: var(--m-font-list-secondary, 13px);
   }
+
   .mobile-plan-group {
     overflow: hidden;
     border-radius: 12px;
     background: var(--m-surface, var(--app-settings-card));
   }
+
   .mobile-plan-row {
     display: flex;
     width: 100%;
@@ -1320,12 +1873,15 @@ button svg,
     color: inherit;
     text-align: left;
   }
+
   .mobile-plan-row:first-child {
     border-top: 0;
   }
+
   .mobile-plan-row:active {
     background: var(--m-pressed, var(--app-hover));
   }
+
   .mobile-plan-row__index {
     display: grid;
     width: 28px;
@@ -1335,42 +1891,48 @@ button svg,
     border-radius: 8px;
     background: color-mix(in srgb, #07c160 16%, transparent);
     color: #07c160;
-    font-size: 13px;
+    font-size: var(--m-font-list-secondary, 13px);
     font-weight: 600;
   }
+
   .mobile-plan-row__body {
     min-width: 0;
     flex: 1;
   }
+
   .mobile-plan-row__body strong {
     display: block;
-    font-size: 16px;
+    font-size: var(--m-font-list-primary, 15px);
     font-weight: 500;
     line-height: 1.35;
   }
+
   .mobile-plan-row__body p {
     display: -webkit-box;
     margin: 4px 0 0;
     overflow: hidden;
     color: var(--m-text-body, var(--app-text-body));
-    font-size: 13px;
+    font-size: var(--m-font-list-secondary, 13px);
     line-height: 1.4;
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 2;
     line-clamp: 2;
   }
+
   .mobile-plan-row__body small {
     display: block;
     margin-top: 6px;
     color: var(--m-text-muted, var(--app-text-muted));
-    font-size: 12px;
+    font-size: var(--m-font-section, 12px);
   }
+
   .mobile-plan-row__arrow {
     width: 18px;
     height: 18px;
     flex: none;
     color: var(--m-text-muted, var(--app-text-muted));
   }
+
   .plan-actions {
     position: sticky;
     bottom: -24px;
@@ -1385,28 +1947,27 @@ button svg,
     background: color-mix(in srgb, var(--m-page-bg, var(--app-settings-bg)) 92%, transparent);
     backdrop-filter: blur(14px);
   }
+
   .plan-actions__secondary {
     min-height: 44px;
     padding: 0 12px;
     border: 0;
     background: transparent;
     color: var(--m-link, #576b95);
-    font-size: 15px;
+    font-size: var(--m-font-list-primary, 15px);
   }
+
   .plan-actions__main {
     min-height: 44px;
     border-radius: 10px;
-    font-size: 16px;
+    font-size: var(--m-font-list-primary, 15px);
     font-weight: 500;
   }
-  .run-toolbar .quiet {
-    min-height: 40px;
-    padding-inline: 12px;
-    font-size: 13px;
-  }
+
   .pane-title {
     margin-bottom: 10px;
   }
+
   .run-controls {
     position: sticky;
     z-index: 4;
@@ -1416,12 +1977,14 @@ button svg,
     background: color-mix(in srgb, var(--m-page-bg, var(--app-settings-bg)) 94%, transparent);
     backdrop-filter: blur(12px);
   }
+
   .view-switch {
     display: flex;
     width: auto;
     margin: 0;
     padding: 2px;
   }
+
   .view-switch button {
     display: grid;
     width: 36px;
@@ -1429,40 +1992,52 @@ button svg,
     padding: 0;
     place-items: center;
   }
+
   .view-switch button svg {
     width: 18px;
     height: 18px;
   }
+
   .filters {
     gap: 6px;
     margin: 0;
     padding: 0 0 9px;
+    overflow: auto;
     scrollbar-width: none;
   }
+
   .filters::-webkit-scrollbar {
     display: none;
   }
+
   .filters button {
     min-height: 34px;
     padding: 6px 11px;
-    font-size: 12px;
+    border-radius: 6px;
+    font-size: var(--m-font-section, 12px);
   }
+
   .run-list {
     gap: 9px;
   }
+
   .execution-timeline {
     padding-inline: 0;
   }
+
   .execution-timeline > article {
     grid-template-columns: 50px 18px minmax(0, 1fr);
     min-width: 0;
   }
+
   .execution-timeline .rail:after {
     left: 9px;
   }
+
   .execution-timeline .rail i {
     left: 4px;
   }
+
   .execution-timeline .event {
     min-width: 0;
     margin-left: 4px;
@@ -1470,66 +2045,42 @@ button svg,
     border: 0;
     background: transparent;
   }
+
   .execution-timeline .event :deep(.task-card-ui) {
     min-width: 0;
     min-height: 0;
   }
+
   .execution-timeline .event :deep(.task-card-ui__heading) {
     display: grid;
     min-width: 0;
     grid-template-columns: minmax(0, 1fr) auto;
   }
+
   .execution-timeline .event :deep(.task-card-ui__heading strong) {
     min-width: 0;
     overflow-wrap: anywhere;
   }
-  .task-card {
-    min-height: 92px;
-    padding: 13px 12px;
-    border-radius: 11px;
-  }
-  .task-main strong {
-    font-size: 14px;
-  }
-  .task-main p {
-    margin-block: 5px 9px;
-    font-size: 12px;
-    line-height: 1.45;
-  }
-  .task-meta span {
-    font-size: 10px;
-  }
-  .status-pill {
-    flex: none;
-    padding: 4px 7px;
-    font-size: 10px !important;
-  }
-  .run-dependency {
-    display: none;
-  }
-  .task-detail {
-    padding: 2px 16px 12px;
-  }
+
   .task-detail h3 {
-    padding-right: 32px;
-    font-size: 18px;
+    font-size: var(--m-font-page-title, 18px);
   }
+
   .task-detail p {
-    font-size: 14px;
+    font-size: var(--m-font-list-primary, 15px);
   }
+
   .task-detail dl {
     margin: 12px 0 10px;
   }
+
   .task-detail dl div {
     grid-template-columns: 70px minmax(0, 1fr);
     min-height: 40px;
     align-items: center;
-    font-size: 13px;
+    font-size: var(--m-font-list-secondary, 13px);
   }
-  .task-detail :deep(.task-dependency-graph) {
-    height: min(42dvh, 360px);
-    margin: 2px 0 12px;
-  }
+
   .task-detail .wide {
     position: sticky;
     z-index: 2;

@@ -68,6 +68,12 @@ pnpm docs:build
 
 新增写操作时，先套用以上组件与 composable，再考虑自定义 UI。
 
+### 字号
+
+- 全局字号由「我」页设置，写入 `html[data-font-scale]`；根字号见 `styles/font-scale.css`，移动端语义变量见 `styles/mobile/typography.css`（`--m-font-*` / `--chat-*-font-size`）。
+- **新增或改动 UI 文本必须跟随字号设置**：优先用 `rem` 或 `var(--m-font-*)`，避免写死 `px`；移动端若必须写死字号，须同步纳入 `typography.css` 白名单覆盖。
+- 「工作」页（`MobileWorkView` / `TodoView` / `TaskCard` / 依赖图等）纳入同一套字号体系，不得单独固定字号而忽略设置。
+
 ## Git 约定
 
 - 不修改上游 `CHANGELOG.md`

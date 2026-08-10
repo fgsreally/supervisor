@@ -5,7 +5,8 @@
     :title="title"
     variant="adaptive"
     size="tall"
-    show-close
+    :show-close="showClose"
+    :panel-class="panelClass"
     @close="emit('close')"
   >
     <template v-if="$slots.header" #header>
@@ -21,6 +22,17 @@
 <script setup lang="ts">
 import { MobileDrawer } from "@/components/mobile/ui";
 
-defineProps<{ open: boolean; title?: string }>();
+withDefaults(
+  defineProps<{
+    open: boolean;
+    title?: string;
+    showClose?: boolean;
+    panelClass?: string;
+  }>(),
+  {
+    showClose: true,
+    panelClass: undefined,
+  },
+);
 const emit = defineEmits<{ close: [] }>();
 </script>

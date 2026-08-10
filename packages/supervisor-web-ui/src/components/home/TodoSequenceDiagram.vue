@@ -1,235 +1,448 @@
 <template>
-  <section class="sequence">
-    <header><strong>顺序图</strong><span>5 个任务 · 拖拽平移 / 滚轮缩放</span></header>
-    <VueFlow
-      class="sequence-flow"
-      :nodes="nodes"
-      :edges="edges"
-      :nodes-draggable="false"
-      :nodes-connectable="false"
-      :elements-selectable="false"
-      :zoom-on-scroll="true"
-      :pan-on-drag="true"
-      fit-view-on-init
-      :fit-view-on-init-options="{ padding: 0.16 }"
-      @node-click="onNodeClick"
-    >
-      <template #node-task="{ data }">
-        <div
-          class="task-node-wrap"
-          @mouseenter="hoveredNodeId = data.nodeId"
-          @mouseleave="hoveredNodeId = null"
-        >
-          <Handle type="target" :position="Position.Left" />
-          <TaskCard
-            :title="data.title"
-            :description="data.description"
-            :project-name="data.project"
-            :agent-id="agentInfo(data.agent)?.id ?? data.agent"
-            :agent-name="data.agent"
-            :agent-avatar="agentInfo(data.agent)?.avatar"
-            density="default"
-          />
-          <Handle type="source" :position="Position.Right" />
-        </div>
-      </template>
-    </VueFlow>
+  <section class="sequence" :class="{ 'sequence--fill': fill, 'sequence--bare': bare }">
+    <header v-if="!bare">
+      <strong>{{ title }}</strong>
+      <span>{{ tasks.length }} 个任务 · 拖拽平移 / 滚轮缩放</span>
+    </header>
+    <div v-if="!tasks.length" class="sequence-empty">
+      <p>{{ emptyText }}</p>
+    </div>
+    <div v-else class="sequence-flow-wrap">
+      <VueFlow
+        :id="flowId"
+        class="sequence-flow"
+        :nodes="nodes"
+        :edges="edges"
+        :nodes-draggable="false"
+        :nodes-connectable="false"
+        :elements-selectable="false"
+        :select-nodes-on-drag="false"
+        :zoom-on-scroll="true"
+        :zoom-on-pinch="true"
+        :zoom-on-double-click="true"
+        :pan-on-drag="true"
+        :pan-on-scroll="false"
+        :prevent-scrolling="true"
+        :min-zoom="0.2"
+        :max-zoom="2"
+        :fit-view-on-init="false"
+        @pane-ready="onPaneReady"
+        @node-click="onNodeClick"
+      >
+        <template #node-task="{ data }">
+          <div
+            class="task-node-wrap"
+            :class="{ 'task-node-wrap--current': data.current }"
+            @mouseenter="hoveredNodeId = data.nodeId"
+            @mouseleave="hoveredNodeId = null"
+          >
+            <Handle type="target" :position="Position.Left" />
+            <TaskCard
+              :title="data.title"
+              :description="data.description"
+              :project-name="data.project"
+              :agent-id="data.agentId"
+              :agent-name="data.agent"
+              :agent-avatar="data.agentAvatar"
+              :status="data.status"
+              :status-label="data.statusLabel"
+              density="default"
+            />
+            <Handle type="source" :position="Position.Right" />
+          </div>
+        </template>
+      </VueFlow>
+    </div>
   </section>
 </template>
 
 <script setup lang="ts">
-import { Handle, MarkerType, Position, VueFlow, type NodeMouseEvent } from "@vue-flow/core";
-import { computed, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
+import {
+  Handle,
+  MarkerType,
+  Position,
+  VueFlow,
+  useVueFlow,
+  type NodeMouseEvent,
+} from "@vue-flow/core";
 import TaskCard from "@/components/task/TaskCard.vue";
 import type { Agent } from "@/api";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
 
+export interface SequenceTask {
+  id: number;
+  title: string;
+  description: string;
+  project: string;
+  agent: string;
+  dependencies: number[];
+  status?: string;
+}
+
 const emit = defineEmits<{ select: [id: number] }>();
-const props = withDefaults(defineProps<{ agents?: Agent[] }>(), { agents: () => [] });
+const props = withDefaults(
+  defineProps<{
+    agents?: Agent[];
+    tasks?: SequenceTask[];
+    selectedId?: number | null;
+    title?: string;
+    emptyText?: string;
+    fill?: boolean;
+    bare?: boolean;
+  }>(),
+  {
+    agents: () => [],
+    tasks: () => [],
+    selectedId: null,
+    title: "顺序图",
+    emptyText: "规划完成后，任务关系会显示在这里",
+    fill: false,
+    bare: false,
+  },
+);
+
+const flowId = `todo-seq-${Math.random().toString(36).slice(2, 9)}`;
 const hoveredNodeId = ref<string | null>(null);
-const taskData = [
-  {
-    id: "1",
-    letter: "A",
-    title: "梳理数据模型",
-    description: "确认任务字段、状态和迁移策略",
-    project: "supervisor",
-    agent: "Codex",
-    x: 20,
-    y: 35,
-  },
-  {
-    id: "2",
-    letter: "B",
-    title: "设计交互方案",
-    description: "统一 Task 卡片和详情信息结构",
-    project: "supervisor-web-ui",
-    agent: "Claude Code",
-    x: 20,
-    y: 205,
-  },
-  {
-    id: "3",
-    letter: "C",
-    title: "重构任务接口",
-    description: "实现规划确认、调度与手动启动",
-    project: "supervisor",
-    agent: "Codex",
-    x: 330,
-    y: 35,
-  },
-  {
-    id: "4",
-    letter: "D",
-    title: "实现 Todo 界面",
-    description: "完成桌面端与移动端任务体验",
-    project: "supervisor-web-ui",
-    agent: "Claude Code",
-    x: 330,
-    y: 205,
-  },
-  {
-    id: "5",
-    letter: "E",
-    title: "联调与验证",
-    description: "验证任务状态同步与执行顺序",
-    project: "supervisor-web-ui",
-    agent: "Codex",
-    x: 640,
-    y: 120,
-  },
-];
-const edge = (id: string, source: string, target: string) => ({
-  id,
-  source,
-  target,
-  type: "bezier",
-  markerEnd: MarkerType.ArrowClosed,
+const paneReady = ref(false);
+let lastFittedKey = "";
+
+const { fitView } = useVueFlow({
+  id: flowId,
+  nodesDraggable: false,
+  nodesConnectable: false,
+  elementsSelectable: false,
+  zoomOnScroll: true,
+  zoomOnPinch: true,
+  zoomOnDoubleClick: true,
+  panOnDrag: true,
+  panOnScroll: false,
+  preventScrolling: true,
+  minZoom: 0.2,
+  maxZoom: 2,
 });
-const edgeData = [
-  edge("a-c", "1", "3"),
-  edge("b-d", "2", "4"),
-  edge("c-e", "3", "5"),
-  edge("d-e", "4", "5"),
-];
+
+const statusLabels: Record<string, string> = {
+  pending: "待办",
+  running: "进行中",
+  blocked: "阻塞",
+  done: "已完成",
+};
+
+function agentInfo(name: string): Agent | undefined {
+  return props.agents.find((agent) => agent.name === name);
+}
+
+function tasksKey(tasks: SequenceTask[]) {
+  return tasks.map((task) => `${task.id}:${task.status ?? ""}`).join(",");
+}
+
+async function fitOnce(force = false) {
+  if (!paneReady.value || !props.tasks.length) return;
+  const key = tasksKey(props.tasks);
+  if (!force && key === lastFittedKey) return;
+  lastFittedKey = key;
+  await nextTick();
+  requestAnimationFrame(() => {
+    void fitView({ padding: 0.16, duration: 180 });
+  });
+}
+
+function onPaneReady() {
+  paneReady.value = true;
+  void fitOnce(true);
+}
+
+const layout = computed(() => {
+  const tasks = props.tasks;
+  const byId = new Map(tasks.map((task) => [task.id, task]));
+  const depth = new Map<number, number>();
+
+  function getDepth(id: number): number {
+    if (depth.has(id)) return depth.get(id)!;
+    const task = byId.get(id);
+    if (!task || !task.dependencies.length) {
+      depth.set(id, 0);
+      return 0;
+    }
+    const next =
+      Math.max(
+        0,
+        ...task.dependencies.filter((dep) => byId.has(dep)).map((dep) => getDepth(dep)),
+      ) + 1;
+    depth.set(id, next);
+    return next;
+  }
+
+  for (const task of tasks) getDepth(task.id);
+
+  const columns = new Map<number, SequenceTask[]>();
+  for (const task of tasks) {
+    const col = depth.get(task.id) ?? 0;
+    const list = columns.get(col) ?? [];
+    list.push(task);
+    columns.set(col, list);
+  }
+
+  const nodeWidth = 260;
+  const colGap = 300;
+  const rowGap = 170;
+  const positions = new Map<number, { x: number; y: number }>();
+
+  for (const [col, list] of columns) {
+    list.forEach((task, index) => {
+      positions.set(task.id, {
+        x: 24 + col * colGap,
+        y: 48 + index * rowGap,
+      });
+    });
+  }
+
+  return { positions, nodeWidth };
+});
+
+const edgePairs = computed(() => {
+  const ids = new Set(props.tasks.map((task) => task.id));
+  return props.tasks.flatMap((task) =>
+    task.dependencies
+      .filter((dep) => ids.has(dep))
+      .map((dep) => ({
+        id: `${dep}-${task.id}`,
+        source: String(dep),
+        target: String(task.id),
+      })),
+  );
+});
+
+const activeNodeId = computed(() => {
+  if (hoveredNodeId.value) return hoveredNodeId.value;
+  if (props.selectedId != null) return String(props.selectedId);
+  return null;
+});
+
 const connectedNodeIds = computed(() => {
-  const id = hoveredNodeId.value;
+  const id = activeNodeId.value;
   if (!id) return new Set<string>();
   return new Set(
-    edgeData
+    edgePairs.value
       .filter((edge) => edge.source === id || edge.target === id)
       .flatMap((edge) => [edge.source, edge.target]),
   );
 });
+
 const nodes = computed(() =>
-  taskData.map(({ id, x, y, ...data }) => ({
-    id,
-    type: "task",
-    position: { x, y },
-    data: { ...data, nodeId: id },
-    class:
-      !hoveredNodeId.value || connectedNodeIds.value.has(id)
-        ? id === hoveredNodeId.value
-          ? "sequence-node--current"
-          : "sequence-node--connected"
-        : "sequence-node--dim",
-  })),
+  props.tasks.map((task) => {
+    const id = String(task.id);
+    const pos = layout.value.positions.get(task.id) ?? { x: 0, y: 0 };
+    const active = activeNodeId.value;
+    const agent = agentInfo(task.agent);
+    const clazz = !active
+      ? id === String(props.selectedId)
+        ? "sequence-node--current"
+        : ""
+      : id === active
+        ? "sequence-node--current"
+        : connectedNodeIds.value.has(id)
+          ? "sequence-node--connected"
+          : "sequence-node--dim";
+    return {
+      id,
+      type: "task" as const,
+      position: pos,
+      draggable: false,
+      selectable: false,
+      connectable: false,
+      data: {
+        title: task.title,
+        description: task.description,
+        project: task.project,
+        agent: task.agent,
+        agentId: agent?.id ?? task.agent,
+        agentAvatar: agent?.avatar ?? null,
+        status: task.status,
+        statusLabel: task.status ? (statusLabels[task.status] ?? "") : "",
+        nodeId: id,
+        current: id === String(props.selectedId) || id === active,
+      },
+      style: { width: `${layout.value.nodeWidth}px` },
+      class: clazz,
+    };
+  }),
 );
+
 const edges = computed(() =>
-  edgeData.map((edge) => {
-    const active = edge.source === hoveredNodeId.value || edge.target === hoveredNodeId.value;
+  edgePairs.value.map((edge) => {
+    const active =
+      edge.source === activeNodeId.value || edge.target === activeNodeId.value;
     return {
       ...edge,
-      class: active ? "sequence-edge--active" : hoveredNodeId.value ? "sequence-edge--dim" : "",
+      type: "bezier",
+      interactive: false,
+      markerEnd: MarkerType.ArrowClosed,
+      class: active
+        ? "sequence-edge--active"
+        : activeNodeId.value
+          ? "sequence-edge--dim"
+          : "",
       style: {
-        stroke: active ? "#ff8a24" : "#8fa0b8",
-        strokeWidth: active ? 4 : 2.4,
+        stroke: active ? "#07c160" : "var(--app-text-muted)",
+        strokeWidth: active ? 2.6 : 1.8,
       },
     };
   }),
 );
+
 function onNodeClick(event: NodeMouseEvent) {
   emit("select", Number(event.node.id));
 }
-function agentInfo(name: string): Agent | undefined {
-  return props.agents.find((agent) => agent.name === name);
-}
+
+watch(
+  () => tasksKey(props.tasks),
+  () => {
+    lastFittedKey = "";
+    void fitOnce(true);
+  },
+);
 </script>
 
 <style scoped>
 .sequence {
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 11px;
-  background: var(--app-settings-card);
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
   overflow: hidden;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 12px;
+  background: var(--app-settings-card);
 }
+
+.sequence--bare {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.sequence--fill {
+  height: 100%;
+}
+
 .sequence > header {
   display: flex;
+  flex: none;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 12px 16px;
   border-bottom: 1px solid var(--app-border-subtle);
 }
+
 .sequence > header strong {
-  font-size: 0.8125rem;
+  color: var(--app-text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
+
 .sequence > header span {
   color: var(--app-text-secondary);
   font-size: 0.75rem;
 }
-.sequence-flow {
-  height: 420px;
-  background: var(--app-settings-card);
+
+.sequence-flow-wrap {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  flex: 1;
 }
+
+.sequence-flow {
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 320px;
+  background:
+    radial-gradient(
+        circle,
+        color-mix(in srgb, var(--app-text-muted) 35%, transparent) 1px,
+        transparent 1px
+      )
+      0 0 / 18px 18px,
+    var(--app-list-section-bg, var(--app-shell-bg));
+}
+
+.sequence-empty {
+  display: grid;
+  flex: 1;
+  min-height: 280px;
+  place-items: center;
+  padding: 32px;
+  color: var(--app-text-muted);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
 .task-node-wrap {
   position: relative;
-  width: 260px;
-  box-shadow: 0 4px 12px rgb(0 0 0 / 10%);
+  width: 100%;
 }
+
+.task-node-wrap :deep(.task-card-ui) {
+  border-color: var(--app-border-subtle);
+  background: var(--app-settings-card);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+  color: var(--app-text-primary);
+}
+
+.task-node-wrap--current :deep(.task-card-ui),
+:deep(.sequence-node--current .task-card-ui) {
+  border-color: #07c160;
+  box-shadow: 0 0 0 1px color-mix(in srgb, #07c160 35%, transparent);
+}
+
 :deep(.vue-flow__handle) {
   width: 7px;
   height: 7px;
   border: 0;
-  background: #8fa0b8;
-  opacity: 0;
+  background: transparent;
 }
+
 :deep(.vue-flow__edge-path) {
   stroke-linecap: round;
-  transition:
-    stroke 0.18s ease,
-    stroke-width 0.18s ease,
-    opacity 0.18s ease;
+  pointer-events: none;
 }
-:deep(.sequence-edge--active .vue-flow__edge-path) {
-  filter: drop-shadow(0 0 5px rgb(255 138 36 / 55%));
+
+:deep(.sequence-edge--dim) {
+  opacity: 0.35;
 }
-:deep(.sequence-edge--dim),
+
 :deep(.sequence-node--dim) {
-  opacity: 0.24;
+  opacity: 0.5;
 }
+
+:deep(.sequence-node--connected .task-card-ui) {
+  border-color: color-mix(in srgb, #07c160 40%, var(--app-border-subtle));
+}
+
 :deep(.vue-flow__node) {
-  transition:
-    opacity 0.18s ease,
-    transform 0.18s ease;
+  cursor: grab;
+  pointer-events: all;
 }
+
+:deep(.vue-flow__node:active),
+:deep(.vue-flow__pane:active) {
+  cursor: grabbing;
+}
+
 :deep(.sequence-node--current) {
   z-index: 4 !important;
-  filter: drop-shadow(0 8px 13px rgb(255 138 36 / 20%));
 }
-:deep(.sequence-node--current .task-card-ui) {
-  border-color: #ff8a24;
+
+:deep(.vue-flow__pane) {
+  cursor: grab;
 }
-:deep(.vue-flow__node) {
-  cursor: pointer;
-}
-@media (max-width: 640px) {
-  .sequence-flow {
-    min-width: 760px;
-    height: 340px;
-  }
-  .sequence {
-    overflow-x: auto;
-  }
+
+:deep(.vue-flow__attribution) {
+  display: none;
 }
 </style>

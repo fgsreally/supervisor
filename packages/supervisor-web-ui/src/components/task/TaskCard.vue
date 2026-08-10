@@ -222,16 +222,19 @@ const emit = defineEmits<{ select: [] }>();
     border-radius: 11px;
   }
   .task-card-ui__heading strong {
-    font-size: 14px;
+    font-size: var(--m-font-list-primary, 15px);
   }
   .task-card-ui p {
     margin-block: 5px 9px;
-    font-size: 12px;
+    font-size: var(--m-font-list-secondary, 13px);
   }
   .task-card-ui__meta > :deep(span),
   .task-card-ui__project,
   .task-card-ui__agent {
-    font-size: 10px;
+    font-size: var(--m-font-time, 11px);
+  }
+  .task-card-ui__status {
+    font-size: var(--m-font-time, 11px);
   }
 }
 </style>

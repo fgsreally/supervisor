@@ -78,4 +78,43 @@
   .mobile-app-shell .chat-input-editor .cm-line {
     font-size: var(--chat-input-font-size) !important;
   }
+
+  /* 工作页：跟随全局字号 */
+  .mobile-app-shell .mobile-work .plan-mobile-toolbar strong,
+  .mobile-app-shell .mobile-work .task-detail h3 {
+    font-size: var(--m-font-page-title) !important;
+  }
+
+  .mobile-app-shell .mobile-work .mobile-tabs button,
+  .mobile-app-shell .mobile-work .goal-summary strong,
+  .mobile-app-shell .mobile-work .mobile-plan-row__body strong,
+  .mobile-app-shell .mobile-work .plan-actions__main,
+  .mobile-app-shell .mobile-work .plan-actions__secondary,
+  .mobile-app-shell .mobile-work .goal-box textarea,
+  .mobile-app-shell .mobile-work .task-card-ui__heading strong {
+    font-size: var(--m-font-list-primary) !important;
+  }
+
+  .mobile-app-shell .mobile-work .plan-mobile-toolbar span,
+  .mobile-app-shell .mobile-work .mobile-plan-section-label,
+  .mobile-app-shell .mobile-work .mobile-plan-row__body p,
+  .mobile-app-shell .mobile-work .task-detail p,
+  .mobile-app-shell .mobile-work .task-detail dl div,
+  .mobile-app-shell .mobile-work .task-card-ui p {
+    font-size: var(--m-font-list-secondary) !important;
+  }
+
+  .mobile-app-shell .mobile-work .goal-summary__label,
+  .mobile-app-shell .mobile-work .mobile-plan-row__body small,
+  .mobile-app-shell .mobile-work .filters button,
+  .mobile-app-shell .mobile-work .project-pill {
+    font-size: var(--m-font-section) !important;
+  }
+
+  .mobile-app-shell .mobile-work .task-card-ui__meta > span,
+  .mobile-app-shell .mobile-work .task-card-ui__project,
+  .mobile-app-shell .mobile-work .task-card-ui__agent,
+  .mobile-app-shell .mobile-work .task-card-ui__status {
+    font-size: var(--m-font-time) !important;
+  }
 }

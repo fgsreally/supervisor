@@ -342,6 +342,7 @@ async function installInBackground() {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  width: fit-content;
   max-width: 100%;
 }
 
@@ -354,7 +355,6 @@ async function installInBackground() {
   display: grid;
   flex-shrink: 0;
   place-items: center;
-  margin-left: 10px;
   color: var(--app-accent);
   cursor: pointer;
 }
@@ -448,5 +448,20 @@ async function installInBackground() {
 .external-command-hint code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   color: var(--app-text-primary);
+}
+
+@media (max-width: 760px) {
+  .agent-config-list {
+    padding: 0 16px;
+  }
+
+  .agent-config-section__title {
+    padding-inline: 16px;
+  }
+
+  .agent-config-row {
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 10px;
+  }
 }
 </style>

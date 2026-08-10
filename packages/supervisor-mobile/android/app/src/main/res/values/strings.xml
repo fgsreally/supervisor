@@ -4,4 +4,11 @@
     <string name="title_activity_main">Supervisor</string>
     <string name="package_name">com.supervisor.app</string>
     <string name="custom_url_scheme">com.supervisor.app</string>
+    <string name="shell_scan_title">扫码连接</string>
+    <string name="shell_scan_hint">扫描电脑终端里的 Supervisor 二维码\n连接后在此显示网页界面</string>
+    <string name="shell_scan_button">开始扫码</string>
+    <string name="shell_scan_prompt">对准终端二维码</string>
+    <string name="shell_scan_cancelled">已取消扫码</string>
+    <string name="shell_scan_invalid">无法识别，请扫描 http(s) 地址二维码</string>
+    <string name="shell_rescan">重新扫码</string>
 </resources>

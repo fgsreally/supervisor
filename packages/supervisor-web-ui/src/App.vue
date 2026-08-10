@@ -1,6 +1,6 @@
 <template>
   <div
-    class="flex h-screen w-screen overflow-hidden font-sans"
+    class="app-root flex h-full w-full overflow-hidden font-sans"
     style="background: var(--app-shell-bg)"
   >
     <StartupGate v-if="!appReady" @ready="onStartupReady" />
@@ -155,7 +155,7 @@
         :show-nav="mobileShowPrimaryNav"
         @navigate="onMobileRootNavigate"
       >
-        <div class="flex-1 flex flex-col min-w-0">
+        <div class="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden">
           <SearchView v-if="route.path === '/search'" />
           <MobilePrimaryTabPager
             ref="mobileTabPagerRef"
@@ -429,18 +429,37 @@ function applyRoute() {
   else if (tab === "providers") {
     activeProviderId.value = id ?? activeProviderId.value;
     activeModelId.value = modelIdFromRoute(route) ?? null;
-    providerPage.value = "detail";
+    if (route.path.endsWith("/models/new")) providerPage.value = "model-add";
+    else if (route.path.includes("/models/")) providerPage.value = "detail";
+    else if (route.path === "/providers/new") providerPage.value = "add";
+    else providerPage.value = "detail";
   } else if (tab === "resources") activeResourceId.value = id ?? activeResourceId.value;
-  if (
-    id &&
-    tab !== "settings" &&
-    tab !== "todo" &&
-    tab !== "dashboard" &&
-    tab !== "active-ui" &&
-    isMobile.value
-  ) {
-    mobilePage.value = "detail";
+
+  if (!isMobile.value) return;
+
+  // Sync list/detail with the URL so Android shell history.back() actually leaves a session.
+  if (tab === "todo" || tab === "dashboard" || tab === "active-ui") {
+    mobilePage.value = "list";
+    return;
   }
+  if (tab === "settings") {
+    mobilePage.value = route.path === "/settings" ? "list" : "detail";
+    return;
+  }
+  if (route.path === "/contacts/new") {
+    agentPage.value = "add";
+    mobilePage.value = "detail";
+    return;
+  }
+  if (route.path === "/providers/new" || route.path.includes("/models/")) {
+    mobilePage.value = "detail";
+    return;
+  }
+  if (route.path === "/search") {
+    mobilePage.value = "detail";
+    return;
+  }
+  mobilePage.value = id ? "detail" : "list";
 }
 
 function pushRoute() {
@@ -988,6 +1007,7 @@ async function openChatFromContact(id: string) {
   }
   mainTab.value = "chat";
   if (isMobile.value) mobilePage.value = "detail";
+  pushRoute();
 }
 
 function backToMobileList() {

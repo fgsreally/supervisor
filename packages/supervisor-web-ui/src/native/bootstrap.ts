@@ -29,10 +29,20 @@ export async function initNativePushNotifications(): Promise<void> {
   if (!isNativeApp() || pushInitialized) return;
   if (!Capacitor.isPluginAvailable("PushNotifications")) return;
 
-  const permission = await PushNotifications.requestPermissions();
-  if (permission.receive !== "granted") return;
+  // Without google-services.json / Firebase, register() crashes the Android process.
+  // Push is optional (FCM); skip unless explicitly enabled.
+  if (Capacitor.getPlatform() === "android" && import.meta.env.VITE_FCM_ENABLED !== "1") {
+    return;
+  }
 
-  await PushNotifications.register();
+  try {
+    const permission = await PushNotifications.requestPermissions();
+    if (permission.receive !== "granted") return;
+    await PushNotifications.register();
+  } catch (error) {
+    console.debug("Push notifications unavailable", error);
+    return;
+  }
 
   PushNotifications.addListener("registration", (token) => {
     void registerPushDevice({

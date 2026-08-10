@@ -4,9 +4,9 @@ import { useAppFontScale, type AppFontScale } from "./use-app-font-scale";
 export type ChatFontSize = "small" | "medium" | "large";
 
 const SIZE_PX: Record<AppFontScale, string> = {
-  small: "12.5px",
-  standard: "14px",
-  large: "16px",
+  small: "11px",
+  standard: "12.5px",
+  large: "14px",
 };
 
 export function useChatFontSize() {

@@ -712,3 +712,23 @@ body.m-overlay-open {
     overflow: visible;
   }
 }
+
+/* Android shell WebView: nudge the whole mobile UI down a bit (all tabs / detail pages). */
+html.supervisor-shell .mobile-app-shell {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  box-sizing: border-box;
+}
+
+/* Teleported overlays escape .mobile-app-shell — pad their top chrome too. */
+html.supervisor-shell .chat-session-menu__header {
+  height: auto;
+  min-height: calc(3.5rem + max(12px, env(safe-area-inset-top, 0px)));
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  box-sizing: border-box;
+}
+
+html.supervisor-shell .m-overlay--sheet .m-drawer__header,
+html.supervisor-shell .m-overlay--modal .m-drawer__header {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  box-sizing: border-box;
+}

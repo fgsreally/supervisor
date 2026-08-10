@@ -80,8 +80,11 @@ final class AndroidLiveUpdateManager {
         String safeTitle = title == null || title.isEmpty() ? "Supervisor" : title;
         String safeSubtitle = subtitle == null ? "" : subtitle;
 
+        // androidx.core 1.17+ ProgressStyle: progress value + segment length (= max).
         NotificationCompat.ProgressStyle style = new NotificationCompat.ProgressStyle()
-            .setProgress(100, progress, progress <= 0);
+            .setProgressIndeterminate(progress <= 0)
+            .setProgress(Math.max(progress, 0))
+            .addProgressSegment(new NotificationCompat.ProgressStyle.Segment(100));
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
             .setContentTitle(safeTitle)

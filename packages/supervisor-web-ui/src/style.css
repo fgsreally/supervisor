@@ -475,6 +475,22 @@ body,
   color: var(--app-text-primary);
 }
 
+/* Mobile: pin the app to the visual viewport so the soft keyboard does not cover the composer. */
+@media (max-width: 767px) {
+  #app {
+    position: fixed;
+    top: var(--app-vv-offset-top, 0px);
+    left: 0;
+    width: 100%;
+    height: var(--app-vv-height, 100dvh);
+    overflow: hidden;
+  }
+
+  html.vv-keyboard-open .chat-input-shell {
+    padding-bottom: 5px;
+  }
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 6px;
   height: 6px;

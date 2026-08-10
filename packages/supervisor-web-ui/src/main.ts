@@ -7,12 +7,19 @@ import "./style.css";
 import { initAppTheme } from "./composables/use-app-theme";
 import { initAppStyle } from "./composables/use-app-style";
 import { initAppFontScale } from "./composables/use-app-font-scale";
+import { initVisualViewport } from "./composables/use-visual-viewport";
 import { requestNotificationPermission } from "./composables/use-notifications";
 import { initNativeShell } from "./native/bootstrap";
+
+// Android shell WebView: mark early so page headers can pad below the status bar.
+if (/\bSupervisorShell\//i.test(navigator.userAgent)) {
+  document.documentElement.classList.add("supervisor-shell");
+}
 
 initAppTheme();
 void initAppStyle();
 initAppFontScale();
+initVisualViewport();
 
 if (import.meta.env.DEV) {
   if ("serviceWorker" in navigator) {

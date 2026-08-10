@@ -147,9 +147,20 @@ function animateTranslateTo(targetPx: number, commit = false) {
 
 function isSwipeBlocked(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return true;
+  // Only block text editing / explicit opt-out. Large work-page rows are often
+  // <button>, and blocking them made horizontal tab swipes feel broken.
   return !!target.closest(
-    "input, textarea, select, button, a, [contenteditable='true'], [data-no-tab-swipe]",
+    "input, textarea, select, [contenteditable='true'], [data-no-tab-swipe]",
   );
+}
+
+function suppressClickAfterSwipe() {
+  const blockClick = (event: Event) => {
+    event.preventDefault();
+    event.stopPropagation();
+  };
+  document.addEventListener("click", blockClick, true);
+  window.setTimeout(() => document.removeEventListener("click", blockClick, true), 420);
 }
 
 function onTouchStart(event: TouchEvent) {
@@ -243,6 +254,10 @@ function onTouchEnd(event: TouchEvent) {
     trackTranslatePx.value = settledTranslate(visualIndex.value, gestureStageWidth);
     return;
   }
+
+  // Horizontal tab swipe started on a button/card — don't treat it as a tap.
+  event.preventDefault();
+  suppressClickAfterSwipe();
 
   const offset = trackTranslatePx.value - settledTranslate(visualIndex.value, gestureStageWidth);
 

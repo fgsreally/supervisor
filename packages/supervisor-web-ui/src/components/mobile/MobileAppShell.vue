@@ -66,7 +66,7 @@ function onTabClick(item: (typeof items)[number]) {
 .mobile-app-shell {
   display: flex;
   width: 100%;
-  height: 100dvh;
+  height: 100%;
   min-width: 0;
   flex-direction: column;
   overflow: hidden;

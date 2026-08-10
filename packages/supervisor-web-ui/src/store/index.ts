@@ -86,6 +86,8 @@ export const useSessionStore = defineStore("session", () => {
   const currentSessionId = ref<string | null>(null);
   const messages = ref<Record<string, SessionTreeEntry[]>>({});
   const messageCursors = ref<Record<string, { oldestRowId: number | null; hasMore: boolean }>>({});
+  /** Session list fetch error only — not shared with import / agent detect / chat ops. */
+  const sessionsListError = ref<string | null>(null);
 
   // Getters
   const getSessionById = computed(() => (id: string) => {
@@ -154,13 +156,17 @@ export const useSessionStore = defineStore("session", () => {
     const hasQuery = Object.keys(query).length > 0;
     if (!silent) {
       root.loading.sessions = true;
-      root.clearError();
+      sessionsListError.value = null;
     }
     try {
       sessions.value = await api.listSessions(hasQuery ? query : undefined);
+      if (!silent) {
+        sessionsListError.value = null;
+      }
     } catch (err) {
       if (!silent) {
-        root.setError(err instanceof Error ? err.message : "Failed to fetch sessions");
+        sessionsListError.value =
+          err instanceof Error ? err.message : "Failed to fetch sessions";
       }
       throw err;
     } finally {
@@ -210,8 +216,7 @@ export const useSessionStore = defineStore("session", () => {
       await Promise.all([fetchSessions(), fetchProjects()]);
       return getSessionById.value(session.id) ?? session;
     } catch (err) {
-      await fetchSessions().catch(() => undefined);
-      root.setError(err instanceof Error ? err.message : "Failed to import external session");
+      await fetchSessions({ silent: true }).catch(() => undefined);
       throw err;
     }
   }
@@ -470,6 +475,7 @@ export const useSessionStore = defineStore("session", () => {
   return {
     sessions,
     projects,
+    sessionsListError,
     currentSessionId,
     currentSession,
     currentMessages,

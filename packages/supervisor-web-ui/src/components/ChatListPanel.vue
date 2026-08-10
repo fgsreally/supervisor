@@ -132,10 +132,10 @@
           <span>加载会话...</span>
         </div>
         <UiEmptyState
-          v-else-if="sessionsLoadError"
+          v-else-if="showSessionsListFullError"
           tone="error"
           title="会话加载失败"
-          :description="sessionsLoadError"
+          :description="sessionsListError"
           action-label="重试"
           @action="retryLoadSessions"
         >
@@ -151,6 +151,12 @@
           <template #icon><Plus /></template>
         </UiEmptyState>
         <template v-else>
+          <div v-if="sessionsListError" class="chat-list-error-banner">
+            <span class="chat-list-error-banner__text">会话列表刷新失败：{{ sessionsListError }}</span>
+            <button type="button" class="chat-list-error-banner__retry" @click="retryLoadSessions">
+              重试
+            </button>
+          </div>
           <template v-if="showPinnedSection">
             <div class="list-section-header list-section-header--pinned sticky top-0 z-10">
               <button
@@ -493,12 +499,18 @@ const rootStore = useRootStore();
 const agentStore = useAgentStore();
 
 const sessionsLoading = computed(() => rootStore.loading.sessions);
-const sessionsLoadError = computed(() =>
-  !sessionsLoading.value && rootStore.error ? rootStore.error : "",
+const sessionsListError = computed(() => sessionStore.sessionsListError ?? "");
+const hasListContent = computed(
+  () =>
+    sessionStore.projects.length > 0 ||
+    sessionStore.sessions.some((session) => session.showInSessionList),
+);
+const showSessionsListFullError = computed(
+  () => !sessionsLoading.value && !!sessionsListError.value && !hasListContent.value,
 );
 
 async function retryLoadSessions() {
-  rootStore.clearError();
+  sessionStore.sessionsListError = null;
   await Promise.all([sessionStore.fetchProjects(), sessionStore.fetchSessions()]).catch(
     () => undefined,
   );
@@ -1172,6 +1184,41 @@ async function onAgentPicked(agentId: string) {
 </script>
 
 <style scoped>
+.chat-list-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 12px 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--app-danger, #ef4444) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-danger, #ef4444) 28%, transparent);
+  color: var(--app-text-primary);
+  font-size: var(--app-font-caption, 0.75rem);
+  line-height: 1.4;
+}
+
+.chat-list-error-banner__text {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.chat-list-error-banner__retry {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--app-accent);
+  font-size: var(--app-font-caption, 0.75rem);
+  font-weight: var(--app-font-weight-medium, 500);
+  cursor: pointer;
+  padding: 0;
+}
+
+.chat-list-error-banner__retry:hover {
+  text-decoration: underline;
+}
+
 .chat-search-state,
 .chat-list-state {
   display: flex;

@@ -60,7 +60,7 @@ describe("Session Store", () => {
     const store = useSessionStore();
     await expect(store.fetchSessions()).rejects.toThrow("Network error");
 
-    expect(rootStore.error).toBe("Network error");
+    expect(store.sessionsListError).toBe("Network error");
     expect(rootStore.loading.sessions).toBe(false);
   });
 

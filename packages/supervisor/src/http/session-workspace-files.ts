@@ -53,7 +53,6 @@ const TEXT_EXT = new Set([
   ".vue",
   ".svelte",
   ".astro",
-  ".svg",
   ".csv",
   ".tsv",
   ".log",
@@ -66,11 +65,46 @@ const TEXT_EXT = new Set([
   ".lock",
 ]);
 
-const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".avif"]);
+const IMAGE_EXT = new Set([
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".bmp",
+  ".ico",
+  ".avif",
+  ".svg",
+]);
 
 const PDF_EXT = new Set([".pdf"]);
 
-export type SessionFileKind = "text" | "markdown" | "json" | "code" | "image" | "pdf" | "binary";
+const OFFICE_MIME: Record<string, { kind: "docx" | "pptx" | "xlsx"; mimeType: string }> = {
+  ".docx": {
+    kind: "docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  },
+  ".pptx": {
+    kind: "pptx",
+    mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  },
+  ".xlsx": {
+    kind: "xlsx",
+    mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  },
+};
+
+export type SessionFileKind =
+  | "text"
+  | "markdown"
+  | "json"
+  | "code"
+  | "image"
+  | "pdf"
+  | "docx"
+  | "pptx"
+  | "xlsx"
+  | "binary";
 
 export interface SessionFileContent {
   path: string;
@@ -108,10 +142,14 @@ function detectKind(path: string): { kind: SessionFileKind; language?: string; m
         ? "image/jpeg"
         : ext === ".svg"
           ? "image/svg+xml"
-          : `image/${ext.slice(1)}`;
+          : ext === ".ico"
+            ? "image/x-icon"
+            : `image/${ext.slice(1)}`;
     return { kind: "image", mimeType: mime };
   }
   if (PDF_EXT.has(ext)) return { kind: "pdf", mimeType: "application/pdf" };
+  const office = OFFICE_MIME[ext];
+  if (office) return { kind: office.kind, mimeType: office.mimeType };
   if (ext === ".md" || ext === ".markdown") {
     return { kind: "markdown", language: "markdown", mimeType: "text/markdown" };
   }
@@ -170,7 +208,13 @@ export function readSessionWorkspaceFile(cwd: string, relPath: string): SessionF
   const detected = detectKind(path);
   const size = st.size;
 
-  if (detected.kind === "image" || detected.kind === "pdf") {
+  if (
+    detected.kind === "image" ||
+    detected.kind === "pdf" ||
+    detected.kind === "docx" ||
+    detected.kind === "pptx" ||
+    detected.kind === "xlsx"
+  ) {
     if (size > MAX_BINARY_BYTES) {
       return {
         path,

@@ -6,6 +6,17 @@ declare module "*.css?url" {
   export default url;
 }
 
+declare module "mammoth" {
+  interface MammothResult {
+    value: string;
+    messages: unknown[];
+  }
+  const mammoth: {
+    convertToHtml(input: { arrayBuffer: ArrayBuffer }): Promise<MammothResult>;
+  };
+  export default mammoth;
+}
+
 declare module "pi-supervisor-native-bridge" {
   export type LiveStatusPhase = "connecting" | "thinking" | "tool" | "waiting" | "idle";
 

@@ -2326,7 +2326,17 @@ export interface SessionWorkspaceFileEntry {
   isDirectory: boolean;
 }
 
-export type SessionFileKind = "text" | "markdown" | "json" | "code" | "image" | "pdf" | "binary";
+export type SessionFileKind =
+  | "text"
+  | "markdown"
+  | "json"
+  | "code"
+  | "image"
+  | "pdf"
+  | "docx"
+  | "pptx"
+  | "xlsx"
+  | "binary";
 
 export interface SessionFileContent {
   path: string;

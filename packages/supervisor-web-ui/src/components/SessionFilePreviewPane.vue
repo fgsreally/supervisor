@@ -108,22 +108,48 @@
         </div>
         <template v-else-if="preview">
           <img
-            v-if="preview.kind === 'image' && imageUrl"
-            :src="imageUrl"
+            v-if="preview.kind === 'image' && mediaUrl"
+            :src="mediaUrl"
             :alt="preview.path"
             class="max-w-full h-auto p-4 mx-auto"
           />
           <iframe
-            v-else-if="preview.kind === 'pdf' && imageUrl"
-            :src="imageUrl"
+            v-else-if="preview.kind === 'pdf' && mediaUrl"
+            :src="mediaUrl"
             class="w-full h-full min-h-[420px] border-0"
             title="PDF preview"
+          />
+          <div
+            v-else-if="officeLoading"
+            class="py-12 text-center text-[13px]"
+            style="color: var(--app-text-muted)"
+          >
+            正在解析办公文档…
+          </div>
+          <div
+            v-else-if="officeError"
+            class="py-12 text-center text-[13px] px-4"
+            style="color: var(--app-danger, #ef4444)"
+          >
+            {{ officeError }}
+          </div>
+          <div
+            v-else-if="officeHtml"
+            class="office-preview p-4"
+            v-html="officeHtml"
           />
           <div v-else-if="preview.kind === 'markdown' && preview.content != null" class="p-4">
             <MarkdownContent :content="preview.content" prose />
           </div>
-          <div v-else-if="preview.content != null" class="p-4 session-file-code">
+          <div v-else-if="preview.content != null && preview.encoding === 'utf8'" class="p-4 session-file-code">
             <MarkdownContent :content="highlightedPreviewMarkdown" variant="terminal" />
+          </div>
+          <div
+            v-else-if="isLegacyOffice"
+            class="py-12 text-center text-[13px] px-4"
+            style="color: var(--app-text-muted)"
+          >
+            暂不支持旧版 Office 格式（.doc / .ppt / .xls），请转换为 .docx / .pptx / .xlsx 后预览
           </div>
           <div
             v-else
@@ -150,6 +176,11 @@ import {
 import type { SessionChangedFileView } from "./chat/SessionChangesPopover.vue";
 import InlineFileDiffView from "./InlineFileDiffView.vue";
 import MarkdownContent from "./MarkdownContent.vue";
+import {
+  docxBase64ToHtml,
+  pptxBase64ToHtml,
+  xlsxBase64ToHtml,
+} from "@/utils/office-file-preview";
 
 const props = defineProps<{
   sessionId: string;
@@ -162,7 +193,10 @@ const fileDiff = ref<SessionFileDiff | null>(null);
 const previewMode = ref<"diff" | "content">("diff");
 const previewLoading = ref(false);
 const previewError = ref<string | null>(null);
-const imageUrl = ref<string | null>(null);
+const mediaUrl = ref<string | null>(null);
+const officeHtml = ref<string | null>(null);
+const officeLoading = ref(false);
+const officeError = ref<string | null>(null);
 
 const changeStatusMap = computed(() => {
   const map = new Map<string, SessionChangedFileView["status"]>();
@@ -172,17 +206,22 @@ const changeStatusMap = computed(() => {
   return map;
 });
 
+const isBinaryLikeKind = computed(() => {
+  const kind = preview.value?.kind;
+  return (
+    kind === "image" ||
+    kind === "pdf" ||
+    kind === "docx" ||
+    kind === "pptx" ||
+    kind === "xlsx" ||
+    kind === "binary"
+  );
+});
+
 const canShowDiff = computed(() => {
   if (!fileDiff.value) return false;
   if (fileDiff.value.status === "binary" || fileDiff.value.status === "unchanged") return false;
-  if (
-    preview.value &&
-    (preview.value.kind === "image" ||
-      preview.value.kind === "pdf" ||
-      preview.value.kind === "binary")
-  ) {
-    return false;
-  }
+  if (preview.value && isBinaryLikeKind.value) return false;
   return fileDiff.value.lines.length > 0;
 });
 
@@ -201,6 +240,10 @@ const breadcrumbSegments = computed(() => props.path?.split("/").filter(Boolean)
 const showFileAreaLoading = computed(
   () => previewLoading.value && !preview.value && !fileDiff.value && !previewError.value,
 );
+const isLegacyOffice = computed(() => {
+  const path = (preview.value?.path ?? props.path ?? "").toLowerCase();
+  return /\.(doc|ppt|xls)$/.test(path);
+});
 
 const highlightedPreviewMarkdown = computed(() => {
   if (!preview.value) return "";
@@ -226,15 +269,15 @@ function formatTextContent(file: SessionFileContent): string {
   return file.content;
 }
 
-function revokeImageUrl() {
-  if (imageUrl.value?.startsWith("blob:")) {
-    URL.revokeObjectURL(imageUrl.value);
+function revokeMediaUrl() {
+  if (mediaUrl.value?.startsWith("blob:")) {
+    URL.revokeObjectURL(mediaUrl.value);
   }
-  imageUrl.value = null;
+  mediaUrl.value = null;
 }
 
-function setBinaryPreview(file: SessionFileContent) {
-  revokeImageUrl();
+function setMediaPreview(file: SessionFileContent) {
+  revokeMediaUrl();
   if (
     (file.kind === "image" || file.kind === "pdf") &&
     file.encoding === "base64" &&
@@ -244,7 +287,36 @@ function setBinaryPreview(file: SessionFileContent) {
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
     const blob = new Blob([bytes], { type: file.mimeType });
-    imageUrl.value = URL.createObjectURL(blob);
+    mediaUrl.value = URL.createObjectURL(blob);
+  }
+}
+
+async function setOfficePreview(file: SessionFileContent) {
+  officeHtml.value = null;
+  officeError.value = null;
+  officeLoading.value = false;
+  if (
+    (file.kind !== "docx" && file.kind !== "pptx" && file.kind !== "xlsx") ||
+    file.encoding !== "base64" ||
+    !file.content
+  ) {
+    if (file.kind === "docx" || file.kind === "pptx" || file.kind === "xlsx") {
+      officeError.value = file.truncated
+        ? "文件过大，无法预览"
+        : "无法读取办公文档内容";
+    }
+    return;
+  }
+
+  officeLoading.value = true;
+  try {
+    if (file.kind === "docx") officeHtml.value = await docxBase64ToHtml(file.content);
+    else if (file.kind === "pptx") officeHtml.value = await pptxBase64ToHtml(file.content);
+    else officeHtml.value = await xlsxBase64ToHtml(file.content);
+  } catch (error: unknown) {
+    officeError.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    officeLoading.value = false;
   }
 }
 
@@ -254,7 +326,10 @@ async function loadPreview(path: string) {
   preview.value = null;
   fileDiff.value = null;
   previewMode.value = "diff";
-  revokeImageUrl();
+  revokeMediaUrl();
+  officeHtml.value = null;
+  officeError.value = null;
+  officeLoading.value = false;
 
   const isDeleted = changeStatusMap.value.get(path) === "deleted";
 
@@ -272,7 +347,17 @@ async function loadPreview(path: string) {
 
     if (contentResult.status === "fulfilled") {
       preview.value = contentResult.value;
-      setBinaryPreview(contentResult.value);
+      setMediaPreview(contentResult.value);
+      void setOfficePreview(contentResult.value);
+      if (
+        contentResult.value.kind === "image" ||
+        contentResult.value.kind === "pdf" ||
+        contentResult.value.kind === "docx" ||
+        contentResult.value.kind === "pptx" ||
+        contentResult.value.kind === "xlsx"
+      ) {
+        previewMode.value = "content";
+      }
     } else if (!isDeleted) {
       previewError.value =
         contentResult.reason instanceof Error
@@ -293,7 +378,9 @@ watch(
       preview.value = null;
       fileDiff.value = null;
       previewError.value = null;
-      revokeImageUrl();
+      revokeMediaUrl();
+      officeHtml.value = null;
+      officeError.value = null;
       return;
     }
     void loadPreview(path);
@@ -301,7 +388,7 @@ watch(
   { immediate: true },
 );
 
-onBeforeUnmount(revokeImageUrl);
+onBeforeUnmount(revokeMediaUrl);
 </script>
 
 <style scoped>
@@ -388,5 +475,46 @@ onBeforeUnmount(revokeImageUrl);
 .preview-mode-toggle__btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.office-preview {
+  color: var(--app-text-primary);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.office-preview :deep(h3) {
+  margin: 0 0 10px;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.office-preview :deep(p) {
+  margin: 0 0 8px;
+}
+
+.office-preview :deep(table) {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0 16px;
+  font-size: 12px;
+}
+
+.office-preview :deep(td),
+.office-preview :deep(th) {
+  border: 1px solid var(--app-border-subtle);
+  padding: 4px 8px;
+  vertical-align: top;
+}
+
+.office-preview :deep(.office-preview__slide),
+.office-preview :deep(.office-preview__sheet) {
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.office-preview :deep(.office-preview__muted) {
+  color: var(--app-text-muted);
 }
 </style>

@@ -560,21 +560,21 @@ body,
   opacity: 0;
 }
 
-.chat-overlay-enter-active .ui-confirm,
+.chat-overlay-enter-active .ui-dialog,
 .chat-overlay-enter-active .model-picker-sheet {
   transition:
     opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1),
     transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.chat-overlay-leave-active .ui-confirm,
+.chat-overlay-leave-active .ui-dialog,
 .chat-overlay-leave-active .model-picker-sheet {
   transition:
     opacity 0.14s ease,
     transform 0.14s ease;
 }
-.chat-overlay-enter-from .ui-confirm,
+.chat-overlay-enter-from .ui-dialog,
 .chat-overlay-enter-from .model-picker-sheet,
-.chat-overlay-leave-to .ui-confirm,
+.chat-overlay-leave-to .ui-dialog,
 .chat-overlay-leave-to .model-picker-sheet {
   opacity: 0;
   transform: scale(0.96) translateY(6px);

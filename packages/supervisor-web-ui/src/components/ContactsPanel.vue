@@ -124,7 +124,7 @@ import type { Agent } from "@/api";
 import { useAgentStore } from "@/store";
 import AgentListItem from "./AgentListItem.vue";
 import DustTransitionGroup from "./DustTransitionGroup.vue";
-import { requestUiConfirm } from "@/composables/use-ui-confirm";
+import { requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { refreshExternalAgents } from "@/composables/use-external-agent-actions";
 
@@ -174,11 +174,9 @@ async function deleteContextAgent() {
   const target = contextMenu.value?.agent;
   contextMenu.value = null;
   if (!target) return;
-  const confirmed = await requestUiConfirm({
+  const confirmed = await requestUiDeleteConfirm({
     title: "删除智能代理",
     message: `确定删除“${target.name}”吗？`,
-    confirmText: "删除",
-    danger: true,
   });
   if (!confirmed) return;
   try {

@@ -197,70 +197,33 @@
         />
       </div>
 
-      <MobileDrawer
-        :open="isMobileViewport && previewSplitOpen"
+      <ResponsiveSplitSurface
+        :open="previewSplitOpen"
         ariaLabel="项目页面预览"
-        size="tall"
-        :resizable="true"
+        :width="sidePanelWidth"
+        resize-label="调整预览分屏宽度"
         @close="previewSplitOpen = false"
+        @resize-start="startSidePanelResize"
       >
         <SessionPreviewPanel
+          class="chat-panel-host__body"
           :previews="servicePreviews"
           :loading="previewLoading"
           show-close
           @close="previewSplitOpen = false"
         />
-      </MobileDrawer>
-      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div
-          v-if="!isMobileViewport && previewSplitOpen"
-          class="chat-panel-host"
-          :style="sidePanelStyle"
-        >
-          <ResizeHandle
-            orientation="vertical"
-            label="调整预览分屏宽度"
-            @start="startSidePanelResize"
-          />
-          <SessionPreviewPanel
-            class="chat-panel-host__body"
-            :previews="servicePreviews"
-            :loading="previewLoading"
-            show-close
-            @close="previewSplitOpen = false"
-          />
-        </div>
-      </Transition>
+      </ResponsiveSplitSurface>
 
-      <MobileDrawer
-        :open="isMobileViewport && Boolean(taskPaneOpen && taskCount)"
+      <ResponsiveSplitSurface
+        :open="Boolean(taskPaneOpen && taskCount)"
         ariaLabel="任务"
-        size="tall"
-        :resizable="true"
+        :width="sidePanelWidth"
         @close="taskPaneOpen = false"
+        @resize-start="startSidePanelResize"
       >
-        <TaskWorkspacePanel
-          mobile
-          class="chat-panel-host__body"
-          :tasks="tasks"
-          :todos="todos"
-          :selected-path="selectedTaskPath"
-          @select="selectedTaskPath = $event"
-          @close="taskPaneOpen = false"
-        />
-      </MobileDrawer>
-      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div
-          v-if="!isMobileViewport && taskPaneOpen && taskCount"
-          class="chat-panel-host"
-          :style="sidePanelStyle"
-        >
-          <ResizeHandle
-            orientation="vertical"
-            label="调整会话分屏宽度"
-            @start="startSidePanelResize"
-          />
+        <template #default="{ mobile }">
           <TaskWorkspacePanel
+            :mobile="mobile"
             class="chat-panel-host__body"
             :tasks="tasks"
             :todos="todos"
@@ -268,138 +231,75 @@
             @select="selectedTaskPath = $event"
             @close="taskPaneOpen = false"
           />
-        </div>
-      </Transition>
-      <MobileDrawer
-        :open="isMobileViewport && btwPanelOpen"
+        </template>
+      </ResponsiveSplitSurface>
+
+      <ResponsiveSplitSurface
+        :open="btwPanelOpen"
         ariaLabel="顺便问一下"
-        size="tall"
-        :resizable="true"
+        :width="sidePanelWidth"
         @close="btwPanelOpen = false"
+        @resize-start="startSidePanelResize"
       >
-        <BtwSplitPanel
-          mobile
-          class="chat-panel-host__body"
-          :parent-id="session.id"
-          :sessions="btwSessions"
-          @close="btwPanelOpen = false"
-        />
-      </MobileDrawer>
-      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div
-          v-if="!isMobileViewport && btwPanelOpen"
-          class="chat-panel-host"
-          :style="sidePanelStyle"
-        >
-          <ResizeHandle
-            orientation="vertical"
-            label="调整会话分屏宽度"
-            @start="startSidePanelResize"
-          />
+        <template #default="{ mobile }">
           <BtwSplitPanel
+            :mobile="mobile"
             class="chat-panel-host__body"
             :parent-id="session.id"
             :sessions="btwSessions"
             @close="btwPanelOpen = false"
           />
-        </div>
-      </Transition>
-      <MobileDrawer
-        :open="isMobileViewport && showLogPanel"
+        </template>
+      </ResponsiveSplitSurface>
+
+      <ResponsiveSplitSurface
+        :open="showLogPanel"
         ariaLabel="会话日志"
-        size="tall"
-        :resizable="true"
+        :width="sidePanelWidth"
         @close="showLogPanel = false"
+        @resize-start="startSidePanelResize"
       >
-        <SessionLogPanel
-          mobile
-          :active="showLogPanel"
-          class="chat-panel-host__body chat-workspace__side-panel"
-          :session-id="session.id"
-          @close="showLogPanel = false"
-        />
-      </MobileDrawer>
-      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div
-          v-if="!isMobileViewport && showLogPanel"
-          class="chat-panel-host"
-          :style="sidePanelStyle"
-        >
-          <ResizeHandle
-            orientation="vertical"
-            label="调整会话分屏宽度"
-            @start="startSidePanelResize"
-          />
+        <template #default="{ mobile }">
           <SessionLogPanel
+            :mobile="mobile"
             :active="showLogPanel"
             class="chat-panel-host__body chat-workspace__side-panel"
             :session-id="session.id"
             @close="showLogPanel = false"
           />
-        </div>
-      </Transition>
-      <MobileDrawer
-        :open="isMobileViewport && showFilesPanel"
+        </template>
+      </ResponsiveSplitSurface>
+
+      <ResponsiveSplitSurface
+        :open="showFilesPanel"
         ariaLabel="工作区文件"
-        size="tall"
-        :resizable="true"
+        :width="sidePanelWidth"
         @close="showFilesPanel = false"
+        @resize-start="startSidePanelResize"
       >
-        <SessionFilesPanel
-          mobile
-          class="chat-panel-host__body chat-workspace__side-panel"
-          :session-id="session.id"
-          :initial-path="requestedFilePath"
-          :changed-files="sessionChangedFiles"
-          @close="showFilesPanel = false"
-        />
-      </MobileDrawer>
-      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div
-          v-if="!isMobileViewport && showFilesPanel"
-          class="chat-panel-host"
-          :style="sidePanelStyle"
-        >
-          <ResizeHandle
-            orientation="vertical"
-            label="调整会话分屏宽度"
-            @start="startSidePanelResize"
-          />
+        <template #default="{ mobile }">
           <SessionFilesPanel
+            :mobile="mobile"
             class="chat-panel-host__body chat-workspace__side-panel"
             :session-id="session.id"
             :initial-path="requestedFilePath"
             :changed-files="sessionChangedFiles"
             @close="showFilesPanel = false"
           />
-        </div>
-      </Transition>
-      <MobileDrawer
-        :open="isMobileViewport && Boolean(toolPanel)"
+        </template>
+      </ResponsiveSplitSurface>
+
+      <ResponsiveSplitSurface
+        :open="Boolean(toolPanel)"
         :ariaLabel="toolPanel?.title ?? '工具详情'"
-        size="tall"
-        :resizable="true"
+        :width="sidePanelWidth"
         @close="toolPanel = null"
+        @resize-start="startSidePanelResize"
       >
-        <ToolDetailPanel
-          v-if="toolPanel"
-          mobile
-          class="chat-panel-host__body chat-workspace__tool-panel"
-          :title="toolPanel.title"
-          :sections="toolPanel.sections"
-          :terminal="toolPanel.terminal"
-          :session-id="session.id"
-          @close="toolPanel = null"
-        />
-      </MobileDrawer>
-      <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
-        <div v-if="!isMobileViewport && toolPanel" class="chat-panel-host" :style="sidePanelStyle">
-          <ResizeHandle
-            orientation="vertical"
-            label="调整会话分屏宽度"
-            @start="startSidePanelResize"
-          />
+        <template #default="{ mobile }">
           <ToolDetailPanel
+            v-if="toolPanel"
+            :mobile="mobile"
             class="chat-panel-host__body chat-workspace__tool-panel"
             :title="toolPanel.title"
             :sections="toolPanel.sections"
@@ -407,8 +307,8 @@
             :session-id="session.id"
             @close="toolPanel = null"
           />
-        </div>
-      </Transition>
+        </template>
+      </ResponsiveSplitSurface>
     </div>
 
     <ExternalAgentCommandHost
@@ -545,7 +445,7 @@ import {
 } from "lucide-vue-next";
 import { useSessionStore, useAgentStore, useProviderStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
-import { requestUiConfirm } from "@/composables/use-ui-confirm";
+import { requestUiConfirm, requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
 import { withUiBusy } from "@/composables/use-ui-busy";
 import { viewPreferences } from "@/utils/view-preferences";
 import { formatMessageClock } from "@/utils/format-time";
@@ -576,7 +476,7 @@ import ExternalAgentCommandHost from "../components/external-agents/ExternalAgen
 import ChatSessionMenu from "../components/ChatSessionMenu.vue";
 import SessionLogPanel from "../components/SessionLogPanel.vue";
 import SessionFilesPanel from "../components/SessionFilesPanel.vue";
-import ResizeHandle from "../components/ResizeHandle.vue";
+import { ResponsiveSplitSurface } from "../components/ui";
 import { useResizableWidth } from "../composables/use-resizable-width";
 import ChatViewHeader from "../components/chat/ChatViewHeader.vue";
 import ChatSearchBar from "../components/chat/ChatSearchBar.vue";
@@ -597,7 +497,6 @@ import SessionCommitPopover from "../components/chat/SessionCommitPopover.vue";
 import SessionPreviewPanel from "../components/SessionPreviewPanel.vue";
 import FloatingPreviewOrb from "../components/FloatingPreviewOrb.vue";
 import ToolApprovalDialog from "../components/ToolApprovalDialog.vue";
-import { MobileDrawer } from "../components/mobile/ui";
 import type { ChatSendPayload } from "@/types/chat-compose";
 import {
   getShowThinking,
@@ -697,9 +596,6 @@ function syncMobileViewport() {
   isMobileViewport.value = window.matchMedia("(max-width: 767px)").matches;
 }
 
-const sidePanelStyle = computed(() =>
-  isMobileViewport.value ? undefined : { width: `${sidePanelWidth.value}px` },
-);
 const agentStore = useAgentStore();
 const providerStore = useProviderStore();
 
@@ -1512,11 +1408,10 @@ async function onAvatarChange(avatar: SessionAvatarValue) {
 }
 
 async function rewindToMessage(entryId: string) {
-  const confirmed = await requestUiConfirm({
+  const confirmed = await requestUiDeleteConfirm({
     title: "回到这条消息",
     message: "此后的代码修改和消息都会被移除，确定继续？",
     confirmText: "回到这里",
-    danger: true,
   });
   if (!confirmed) return;
   try {

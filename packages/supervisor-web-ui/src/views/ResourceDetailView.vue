@@ -129,7 +129,7 @@ import UiActionButton from "../components/UiActionButton.vue";
 import { uninstallCatalogResource, upsertResourceContent, type CatalogResourceKind } from "@/api";
 import { useResourceStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
-import { requestUiConfirm } from "@/composables/use-ui-confirm";
+import { requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
 import { getResourceById } from "@/utils/resources-ui";
 import {
   getSkillFileLanguage,
@@ -300,11 +300,9 @@ async function removeResource() {
   const r = resource.value;
   const kind = catalogKind();
   if (!r || !kind || (kind !== "prompt" && kind !== "mcp")) return;
-  const ok = await requestUiConfirm({
+  const ok = await requestUiDeleteConfirm({
     title: "删除资源",
     message: `确定删除 ${r.name}？`,
-    confirmText: "删除",
-    danger: true,
   });
   if (!ok) return;
   deleting.value = true;

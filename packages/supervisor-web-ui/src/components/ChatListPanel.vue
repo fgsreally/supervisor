@@ -462,7 +462,7 @@ import {
   searchMessages,
 } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
-import { requestUiConfirm } from "@/composables/use-ui-confirm";
+import { requestUiConfirm, requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
 import { withUiBusy } from "@/composables/use-ui-busy";
 import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
 import DustTransitionGroup from "./DustTransitionGroup.vue";
@@ -779,11 +779,10 @@ async function confirmDeleteProject() {
   if (!target) return;
   const project = sessionStore.projects.find((item) => item.id === target.projectId);
   if (!project) return;
-  const ok = await requestUiConfirm({
+  const ok = await requestUiDeleteConfirm({
     title: "删除项目",
     message: `这会删除项目下的所有会话和对应目录。请输入项目名“${project.name}”确认。`,
     confirmText: "删除项目",
-    danger: true,
     expectedText: project.name,
   });
   if (!ok) return;
@@ -1079,11 +1078,9 @@ async function confirmDeleteSession() {
   closeContextMenu();
   if (!target) return;
   if (sessionStore.sessions.find((session) => session.id === target.sessionId)?.isBuiltin) return;
-  const ok = await requestUiConfirm({
+  const ok = await requestUiDeleteConfirm({
     title: "删除会话",
     message: "确定删除该会话？子会话也会一并删除。",
-    confirmText: "删除",
-    danger: true,
   });
   if (!ok) return;
   try {

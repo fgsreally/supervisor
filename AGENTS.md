@@ -49,6 +49,17 @@ pnpm docs:build
 - **轻量操作**（少量字段、短输入）：用弹窗 / 浮层即可。
 - **重表单**（多项字段，或需要填写大段文本/长输入区）：使用独立路由页面或主内容区内容块，不要塞进小弹窗。
 
+### 覆盖层 / 分屏表面（优先复用）
+
+| 代号 | 场景 | PC | 移动端 | 封装 |
+| ---- | ---- | -- | ------ | ---- |
+| a | Session 内容区分屏（日志、文件树、工具详情、Todo、BTW、预览等） | 右侧分屏 | 自下而上抽屉 | `ResponsiveSplitSurface` |
+| b | 内容较多的弹层（多段表单、列表、长内容仍需 overlay） | 居中弹窗 | 自下而上抽屉 | `ResponsiveDialog` |
+| c | 内容较少的通知 / 确认 | 居中弹窗 | 居中弹窗 | `UiDialog` / `requestUiConfirm` |
+| d | 删除确认 | 居中弹窗 | 居中弹窗 + 确认时马达震动 | `requestUiDeleteConfirm` |
+
+删除确认禁止改用抽屉；统一走 `requestUiDeleteConfirm`（内部仍是 `UiConfirmHost` 居中弹窗，确认时调用 `hapticDelete`）。
+
 ### 反馈形态
 
 | 场景                                   | Loading                                  | 成功 / 失败                     |
@@ -56,12 +67,16 @@ pnpm docs:build
 | 通过按钮触发的创建 / 保存              | 按钮自身 loading（`UiActionButton`）     | `showUiMessage`                 |
 | 非按钮触发（快捷键、拖放、自动提交等） | 全屏 busy（`withUiBusy` / `UiBusyHost`） | `showUiMessage`                 |
 | 列表项上的逐条操作（如外部引入某一项） | 该项右侧 loading 图标（`UiListStatus`）  | 列表项勾 / 叉 + `showUiMessage` |
-| 删除                                   | 先 `requestUiConfirm`（非原生 confirm）  | `showUiMessage`                 |
+| 删除                                   | 先 `requestUiDeleteConfirm`（非原生 confirm） | `showUiMessage`            |
 
 ### 对应封装（优先复用）
 
 - `showUiMessage` / `UiMessageHost` — 顶部轻提示
-- `requestUiConfirm` / `UiConfirmHost` — 确认框
+- `requestUiConfirm` / `UiConfirmHost` — 轻量确认框（c）
+- `requestUiDeleteConfirm` — 删除确认（d，含 native 震动）
+- `ResponsiveSplitSurface` — Session 分屏 / 移动抽屉（a）
+- `ResponsiveDialog` — 重内容自适应弹层（b）
+- `UiDialog` — 轻量居中弹窗（c）
 - `withUiBusy` / `showUiBusy` / `UiBusyHost` — 全屏加载
 - `UiActionButton` — 带 loading 的操作按钮
 - `UiListStatus` — 列表项 loading / 成功勾 / 失败叉

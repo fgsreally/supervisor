@@ -30,6 +30,7 @@ import {
   sortByProjectPreference,
   viewPreferences,
 } from "@/utils/view-preferences";
+import { createMessageStorage } from "@/utils/message-storage";
 
 // ============ Types ============
 
@@ -163,6 +164,14 @@ export const useSessionStore = defineStore("session", () => {
       if (!silent) {
         sessionsListError.value = null;
       }
+      // Full list only: prune local message caches for sessions deleted elsewhere.
+      if (!hasQuery) {
+        void createMessageStorage()
+          .then((storage) => storage.pruneDeletedSessions(sessions.value.map((s) => s.id)))
+          .catch((error) => {
+            console.warn("[MessageStorage] pruneDeletedSessions failed", error);
+          });
+      }
     } catch (err) {
       if (!silent) {
         sessionsListError.value =
@@ -252,6 +261,15 @@ export const useSessionStore = defineStore("session", () => {
         delete messages.value[removedId];
         delete messageCursors.value[removedId];
       }
+      void createMessageStorage()
+        .then(async (storage) => {
+          for (const removedId of removedIds) {
+            await storage.deleteSession(removedId);
+          }
+        })
+        .catch((error) => {
+          console.warn("[MessageStorage] deleteSession cache cleanup failed", error);
+        });
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to delete session");
       throw err;

@@ -2,8 +2,8 @@ import type { JobManager } from "./jobs.js";
 import type { CreateJobInput, UpdateJobInput } from "./jobs.js";
 import {
   extractPortPlaceholders,
+  type SessionServiceApp,
   type SessionServicesMeta,
-  type SessionUiPort,
 } from "./project-runtime.js";
 import { computeServiceSleepAt } from "./session-service-sleep.js";
 import {
@@ -18,6 +18,7 @@ import { allocatePorts } from "../utils/ports.js";
 import { sessionLog } from "../utils/session-log.js";
 import { spawn, type ChildProcess } from "node:child_process";
 
+/** Legacy multi-entry shape kept only for parse migration. */
 export interface RegisteredServiceEntry {
   name: string;
   installCommand?: string;
@@ -31,46 +32,30 @@ export interface RegisteredServiceEntry {
   pid?: number | null;
 }
 
-export function flattenUiPorts(entries: RegisteredServiceEntry[]): SessionUiPort[] {
-  const result: SessionUiPort[] = [];
-  for (const entry of entries) {
-    for (const port of entry.uiPorts ?? []) {
-      const envVar = port.envVar.trim();
-      if (!envVar) continue;
-      result.push({
-        scriptName: entry.name,
-        envVar,
-        label: port.label ?? entry.name,
-        path: port.path ?? "/",
-      });
-    }
-  }
-  return result;
-}
+const MAIN_SERVICE_NAME = "main";
 
-export function parseRegisteredServiceEntries(
+export function hasRegisteredServices(
   services: SessionServicesMeta | null | undefined,
-): RegisteredServiceEntry[] {
-  if (!services?.entries?.length) return [];
-  return services.entries;
+): services is SessionServicesMeta {
+  return Boolean(services?.startCommand?.trim());
 }
 
-export function areRegisteredServicesAlive(
-  entries: RegisteredServiceEntry[],
-  portEnv: Record<string, string>,
-): boolean {
-  for (const entry of entries) {
-    if (entry.pid && isPidAlive(entry.pid)) return true;
-    for (const port of entry.uiPorts ?? []) {
-      const value = portEnv[port.envVar.trim()];
-      const portNum = value ? Number.parseInt(value, 10) : NaN;
-      if (Number.isFinite(portNum) && portNum > 0) {
-        // Best-effort: if we still have a pid map entry, treat as alive.
-        if (entry.pid) return isPidAlive(entry.pid);
-      }
-    }
+export function appsToPortEnv(apps: SessionServiceApp[] | undefined): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const app of apps ?? []) {
+    const upper = app.name.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase();
+    if (!upper) continue;
+    env[`${upper}_PORT`] = String(app.port);
+    env[upper] = String(app.port);
   }
-  return entries.some((entry) => entry.pid != null && isPidAlive(entry.pid));
+  if (apps?.[0]) env.PORT = String(apps[0].port);
+  return env;
+}
+
+/** Prefer `isSessionServiceProcessAlive(sessionId, services)` when sessionId is known. */
+export function areRegisteredServicesAlive(services: SessionServicesMeta | null | undefined): boolean {
+  if (!services?.pid) return false;
+  return isPidAlive(services.pid);
 }
 
 function isPidAlive(pid: number): boolean {
@@ -81,6 +66,17 @@ function isPidAlive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+export function isSessionServiceProcessAlive(
+  sessionId: number,
+  services: SessionServicesMeta | null | undefined,
+): boolean {
+  if (!services) return false;
+  const child = runningChildren.get(childKeyByName(sessionId, MAIN_SERVICE_NAME));
+  if (child?.pid && isPidAlive(child.pid)) return true;
+  if (services.pid && isPidAlive(services.pid)) return true;
+  return false;
 }
 
 export interface SessionServiceJobHost {
@@ -107,7 +103,47 @@ export function jobManagerAsHost(jobs: JobManager): SessionServiceJobHost {
   };
 }
 
-/** Start registered service commands from session meta. */
+async function resolvePortEnv(services: SessionServicesMeta): Promise<{
+  portEnv: Record<string, string>;
+  apps: SessionServiceApp[];
+}> {
+  const apps = [...(services.apps ?? [])];
+  const portEnv = appsToPortEnv(apps);
+  const commands = [
+    services.installCommand,
+    services.startCommand,
+    services.stopCommand,
+    services.destroyCommand ?? services.uninstallCommand,
+  ];
+  const needed = [
+    ...new Set(commands.flatMap((command) => extractPortPlaceholders(command))),
+  ].filter((name) => !portEnv[name]);
+
+  if (needed.length > 0) {
+    const allocated = await allocatePorts(needed);
+    Object.assign(portEnv, allocated);
+    for (const [name, value] of Object.entries(allocated)) {
+      const port = Number.parseInt(value, 10);
+      if (!Number.isFinite(port) || port <= 0) continue;
+      if (name === "PORT" && apps[0]) {
+        apps[0] = { ...apps[0], port };
+        continue;
+      }
+      const appName = name.endsWith("_PORT") ? name.slice(0, -5) : name;
+      const idx = apps.findIndex(
+        (app) => app.name.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase() === appName,
+      );
+      if (idx >= 0) apps[idx] = { ...apps[idx]!, port };
+      else if (name === "PORT" && apps.length === 0) {
+        apps.push({ name: "web", port, path: "/" });
+      }
+    }
+  }
+
+  return { portEnv, apps };
+}
+
+/** Start the session's single project runtime. */
 export async function startRegisteredSessionServices(options: {
   sessionId: number;
   cwd: string;
@@ -116,41 +152,34 @@ export async function startRegisteredSessionServices(options: {
   skipInstall?: boolean;
   lastActiveAtMs?: number;
 }): Promise<SessionServicesMeta> {
-  const entries = [...(options.services.entries ?? [])];
-  if (entries.length === 0) {
+  if (!hasRegisteredServices(options.services)) {
     throw new Error("尚未注册项目服务命令");
   }
 
-  const startCommands = entries.map((entry) => entry.startCommand);
-  const portNames = [
-    ...new Set(startCommands.flatMap((command) => extractPortPlaceholders(command))),
-  ];
-  const portEnv = portNames.length > 0 ? await allocatePorts(portNames) : {};
+  const { portEnv, apps } = await resolvePortEnv(options.services);
   const env: NodeJS.ProcessEnv = { ...process.env, ...portEnv };
 
   const meta: SessionServicesMeta = {
     ...options.services,
-    entries,
-    portEnv,
-    uiPorts: flattenUiPorts(entries),
+    apps,
     status: "starting",
     startedAt: new Date().toISOString(),
+    error: undefined,
   };
 
   try {
     if (!options.skipInstall) {
-      for (const entry of entries) {
-        const install = entry.installCommand?.trim();
-        if (!install) continue;
+      const install = meta.installCommand?.trim();
+      if (install) {
         const resolved = substitutePortPlaceholders(install, portEnv);
         const job = await options.jobs.create(options.sessionId, {
           kind: "project-service",
-          name: `install:${entry.name}`,
-          label: `install · ${entry.name}`,
+          name: "install:main",
+          label: "install · project",
           status: "running",
           executionMode: "inline",
           capabilities: ["read_output", "cancel"],
-          metadata: { serviceName: entry.name, command: install, resolvedCommand: resolved },
+          metadata: { command: install, resolvedCommand: resolved },
         });
         let output = "";
         const result = await runShellCommand(resolved, options.cwd, env, {
@@ -168,74 +197,64 @@ export async function startRegisteredSessionServices(options: {
         });
         if (result.code !== 0) {
           throw new Error(
-            `install "${entry.name}" failed (code ${result.code}): ${result.stderr.trim() || result.stdout.trim() || "no output"}`,
+            `install failed (code ${result.code}): ${result.stderr.trim() || result.stdout.trim() || "no output"}`,
           );
         }
+        meta.installedAt = new Date().toISOString();
       }
-      meta.installedAt = new Date().toISOString();
     }
 
-    for (const entry of entries) {
-      const resolved = substitutePortPlaceholders(entry.startCommand, portEnv);
-      const job = await options.jobs.create(options.sessionId, {
-        kind: "project-service",
-        name: `start:${entry.name}`,
-        label: `start · ${entry.name}`,
-        status: "running",
-        executionMode: "background",
-        capabilities: ["read_output", "cancel"],
-        metadata: {
-          serviceName: entry.name,
-          command: entry.startCommand,
-          resolvedCommand: resolved,
-          portEnv,
-        },
+    const resolved = substitutePortPlaceholders(meta.startCommand, portEnv);
+    const job = await options.jobs.create(options.sessionId, {
+      kind: "project-service",
+      name: "start:main",
+      label: "start · project",
+      status: "running",
+      executionMode: "background",
+      capabilities: ["read_output", "cancel"],
+      metadata: {
+        command: meta.startCommand,
+        resolvedCommand: resolved,
+        apps,
+      },
+    });
+    sessionLog(options.sessionId, "info", `Starting service: ${resolved}`, ["system", "services"], {
+      apps,
+    });
+    let output = "";
+    const child = spawn(resolved, {
+      cwd: options.cwd,
+      env,
+      shell: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      windowsHide: true,
+      detached: process.platform !== "win32",
+    });
+    const key = childKeyByName(options.sessionId, MAIN_SERVICE_NAME);
+    runningChildren.set(key, child);
+    const append = (chunk: Buffer | string) => {
+      output += chunk.toString();
+      if (output.length > 200_000) output = output.slice(-160_000);
+      void options.jobs.update(job.id, { output });
+    };
+    child.stdout?.on("data", append);
+    child.stderr?.on("data", append);
+    child.on("exit", (code) => {
+      runningChildren.delete(key);
+      void options.jobs.update(job.id, {
+        status: code === 0 ? "succeeded" : "failed",
+        output,
+        error: code === 0 ? undefined : { code },
       });
-      sessionLog(
-        options.sessionId,
-        "info",
-        `Starting service: ${resolved}`,
-        ["system", "services"],
-        {
-          portEnv,
-        },
-      );
-      let output = "";
-      const child = spawn(resolved, {
-        cwd: options.cwd,
-        env,
-        shell: true,
-        stdio: ["ignore", "pipe", "pipe"],
-        windowsHide: true,
-        detached: process.platform !== "win32",
-      });
-      const key = childKeyByName(options.sessionId, entry.name);
-      runningChildren.set(key, child);
-      const append = (chunk: Buffer | string) => {
-        output += chunk.toString();
-        if (output.length > 200_000) output = output.slice(-160_000);
-        void options.jobs.update(job.id, { output });
-      };
-      child.stdout?.on("data", append);
-      child.stderr?.on("data", append);
-      child.on("exit", (code) => {
-        runningChildren.delete(key);
-        void options.jobs.update(job.id, {
-          status: code === 0 ? "succeeded" : "failed",
-          output,
-          error: code === 0 ? undefined : { code },
-        });
-      });
-      options.jobs.setCancelHandler(job.id, () => {
-        if (child.pid) killProcessTree(child.pid);
-      });
-      if (process.platform !== "win32") child.unref();
-      entry.resolvedStartCommand = resolved;
-      entry.jobId = job.id;
-      entry.pid = child.pid ?? null;
-    }
+    });
+    options.jobs.setCancelHandler(job.id, () => {
+      if (child.pid) killProcessTree(child.pid);
+    });
+    if (process.platform !== "win32") child.unref();
 
-    meta.entries = entries;
+    meta.resolvedStartCommand = resolved;
+    meta.jobId = job.id;
+    meta.pid = child.pid ?? null;
     meta.status = "active";
     meta.lastActiveAt = options.lastActiveAtMs ?? Date.now();
     meta.sleepAt = computeServiceSleepAt(meta.lastActiveAt);
@@ -252,7 +271,7 @@ export async function startRegisteredSessionServices(options: {
   }
 }
 
-/** Stop or destroy registered services. */
+/** Stop or destroy the session project runtime. */
 export async function stopRegisteredSessionServices(options: {
   sessionId: number;
   cwd: string;
@@ -260,34 +279,28 @@ export async function stopRegisteredSessionServices(options: {
   jobs?: SessionServiceJobHost;
   mode?: "stop" | "destroy" | "uninstall";
 }): Promise<void> {
+  if (!hasRegisteredServices(options.services)) return;
   const services = options.services;
-  if (!services?.entries?.length) return;
-  const portEnv = services.portEnv ?? {};
+  const portEnv = appsToPortEnv(services.apps);
   const env: NodeJS.ProcessEnv = { ...process.env, ...portEnv };
   const mode = options.mode ?? "stop";
+  const destroy = services.destroyCommand?.trim() ?? services.uninstallCommand?.trim();
+  const command =
+    mode === "uninstall" || mode === "destroy" ? destroy : (services.stopCommand?.trim() ?? destroy);
 
-  for (const entry of services.entries) {
-    const uninstall = entry.uninstallCommand?.trim() ?? entry.destroyCommand?.trim();
-    const command =
-      mode === "uninstall" || mode === "destroy"
-        ? uninstall
-        : (entry.stopCommand?.trim() ?? uninstall);
-    if (!command) continue;
+  if (command) {
     const resolved = substitutePortPlaceholders(command, portEnv);
-    sessionLog(options.sessionId, "info", `Running ${mode} for ${entry.name}: ${resolved}`, [
-      "system",
-      "services",
-    ]);
+    sessionLog(options.sessionId, "info", `Running ${mode}: ${resolved}`, ["system", "services"]);
     let jobId: string | undefined;
     if (options.jobs) {
       const job = await options.jobs.create(options.sessionId, {
         kind: "project-service",
-        name: `${mode}:${entry.name}`,
-        label: `${mode} · ${entry.name}`,
+        name: `${mode}:main`,
+        label: `${mode} · project`,
         status: "running",
         executionMode: "inline",
         capabilities: ["read_output"],
-        metadata: { serviceName: entry.name, command, resolvedCommand: resolved },
+        metadata: { command, resolvedCommand: resolved },
       });
       jobId = job.id;
     }
@@ -318,24 +331,33 @@ export async function stopRegisteredSessionServices(options: {
     }
   }
 
-  for (const entry of services.entries) {
-    const key = childKeyByName(options.sessionId, entry.name);
-    const child = runningChildren.get(key);
-    const pid = child?.pid ?? entry.pid ?? null;
-    if (pid) {
-      sessionLog(options.sessionId, "info", `Killing service pid=${pid}`, ["system", "services"]);
-      killProcessTree(pid);
-    }
-    runningChildren.delete(key);
-    if (entry.jobId && options.jobs) {
-      const job = await options.jobs.get(entry.jobId);
-      if (job && (job.status === "running" || job.status === "waiting")) {
-        await options.jobs.update(entry.jobId, { status: "cancelled" });
-      }
+  const key = childKeyByName(options.sessionId, MAIN_SERVICE_NAME);
+  const child = runningChildren.get(key);
+  const pid = child?.pid ?? services.pid ?? null;
+  if (pid) {
+    sessionLog(options.sessionId, "info", `Killing service pid=${pid}`, ["system", "services"]);
+    killProcessTree(pid);
+  }
+  runningChildren.delete(key);
+  if (services.jobId && options.jobs) {
+    const job = await options.jobs.get(services.jobId);
+    if (job && (job.status === "running" || job.status === "waiting")) {
+      await options.jobs.update(services.jobId, { status: "cancelled" });
     }
   }
 
   await new Promise((resolve) => setTimeout(resolve, 500));
+}
+
+/** @deprecated no-op compatibility export */
+export function flattenUiPorts(_entries: RegisteredServiceEntry[]): never[] {
+  return [];
+}
+
+export function parseRegisteredServiceEntries(
+  _services: SessionServicesMeta | null | undefined,
+): RegisteredServiceEntry[] {
+  return [];
 }
 
 export type { RunningServiceKey, ChildProcess };

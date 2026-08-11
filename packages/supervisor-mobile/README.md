@@ -36,8 +36,9 @@ Capacitor `MainActivity` 已注册 `ACTION_SEND` / `SEND_MULTIPLE`（`image/*`�
 
 1. `pnpm --filter pi-supervisor-mobile run sync`
 2. `pnpm run dev:android`（或 Android Studio 运行 `MainActivity` 对应的 debug 包）
-3. App 内配置好服务器连接，并确保至少有一个非内置会话
+3. App 内配置好服务器连接，并确保至少有两个非内置会话
 4. 在相册选中图片 → 分享 → 选择 Supervisor
-5. App 打开后应进入最近会话，输入区出现图片附件预览（需手动点发送）
+5. App 弹出「选择会话」→ 点选目标会话 → 进入该会话，输入区出现图片附件预览（需手动点发送）
+6. 取消选择则不跳转、输入区无图；已在某会话时再分享仍会弹出选择器
 
-分享图片会复制到 app cache，经 `SupervisorNative.getPendingShare` 交给 web-ui；确认发送前不会自动上传以外的会话。
+分享图片会复制到 app cache，经 `SupervisorNative.getPendingShare` 交给 web-ui；选定会话并确认发送前不会自动发出。

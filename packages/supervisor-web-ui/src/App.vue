@@ -22,12 +22,6 @@
             class="flex-1 min-w-0 h-full"
             @open-session="openSessionFromHome"
           />
-          <ActiveUiView
-            v-else-if="mainTab === 'active-ui'"
-            data-tour-page="active-ui"
-            class="flex-1 min-w-0 h-full"
-            @open-session="openSessionFromHome"
-          />
           <SettingsPanel
             v-else-if="mainTab === 'settings'"
             data-tour-page="settings"
@@ -313,6 +307,7 @@
       @cancel="modelEditorOpen = false"
       @save="saveModelFromDialog"
     />
+    <ShareSessionPickerSheet />
     <UiMessageHost />
     <UiConfirmHost />
     <UiBusyHost />
@@ -349,11 +344,11 @@ import ProviderEditDialog from "./components/ProviderEditDialog.vue";
 import ProviderModelEditor from "./components/ProviderModelEditor.vue";
 import ChatView from "./views/ChatView.vue";
 import HomeView from "./views/HomeView.vue";
-import ActiveUiView from "./views/ActiveUiView.vue";
 import TodoView from "./views/TodoView.vue";
 import SearchView from "./views/SearchView.vue";
 import AddToHomeScreenHint from "./components/AddToHomeScreenHint.vue";
 import GlobalSearchModal from "./components/GlobalSearchModal.vue";
+import ShareSessionPickerSheet from "./components/ShareSessionPickerSheet.vue";
 import UiMessageHost from "./components/UiMessageHost.vue";
 import UiConfirmHost from "./components/UiConfirmHost.vue";
 import UiBusyHost from "./components/UiBusyHost.vue";
@@ -438,7 +433,7 @@ function applyRoute() {
   if (!isMobile.value) return;
 
   // Sync list/detail with the URL so Android shell history.back() actually leaves a session.
-  if (tab === "todo" || tab === "dashboard" || tab === "active-ui") {
+  if (tab === "todo" || tab === "dashboard") {
     mobilePage.value = "list";
     return;
   }
@@ -470,8 +465,6 @@ function pushRoute() {
     void router.push("/todo");
   } else if (tab === "dashboard") {
     void router.push("/dashboard");
-  } else if (tab === "active-ui") {
-    void router.push("/active-ui");
   } else if (tab === "contacts") {
     void router.push(activeAgentId.value ? `/contacts/${activeAgentId.value}` : "/contacts");
   } else if (tab === "providers") {
@@ -547,12 +540,7 @@ onBeforeUnmount(() => {
 
 function onVisibilityChange() {
   if (document.hidden) return;
-  if (
-    mainTab.value !== "chat" &&
-    mainTab.value !== "todo" &&
-    mainTab.value !== "dashboard" &&
-    mainTab.value !== "active-ui"
-  ) {
+  if (mainTab.value !== "chat" && mainTab.value !== "todo" && mainTab.value !== "dashboard") {
     return;
   }
   void sessionStore.fetchSessions({ silent: true });
@@ -626,8 +614,7 @@ function selectSession(id: string) {
     isMobile.value &&
     mainTab.value !== "settings" &&
     mainTab.value !== "todo" &&
-    mainTab.value !== "dashboard" &&
-    mainTab.value !== "active-ui"
+    mainTab.value !== "dashboard"
   ) {
     mobilePage.value = "detail";
   }

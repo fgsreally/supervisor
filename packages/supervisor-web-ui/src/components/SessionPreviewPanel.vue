@@ -1,6 +1,6 @@
 <template>
   <div class="session-preview-panel">
-    <header v-if="showHeader" class="session-preview-panel__header">
+    <header v-if="showHeader && !embedded" class="session-preview-panel__header">
       <div class="session-preview-panel__title">{{ title }}</div>
       <button
         v-if="showClose"
@@ -27,7 +27,7 @@
           :class="{ 'session-preview-panel__tab--active': activeKey === previewKey(preview) }"
           @click="selectPreview(preview)"
         >
-          {{ preview.label ?? preview.scriptName }}
+          {{ preview.label ?? preview.name }}
         </button>
       </div>
       <iframe
@@ -36,7 +36,7 @@
         :key="previewKey(preview)"
         class="session-preview-panel__frame"
         :src="preview.previewUrl"
-        :title="preview.label ?? preview.scriptName"
+        :title="preview.label ?? preview.name"
       />
     </template>
   </div>
@@ -54,6 +54,7 @@ const props = withDefaults(
     title?: string;
     showHeader?: boolean;
     showClose?: boolean;
+    embedded?: boolean;
     modelValue?: string;
   }>(),
   {
@@ -61,6 +62,7 @@ const props = withDefaults(
     title: "项目页面",
     showHeader: true,
     showClose: false,
+    embedded: false,
   },
 );
 
@@ -70,7 +72,7 @@ const emit = defineEmits<{
 }>();
 
 function previewKey(preview: SessionServicesPreview): string {
-  return `${preview.scriptName}:${preview.envVar}`;
+  return `${preview.name}:${preview.port}`;
 }
 
 const activeKey = ref(props.modelValue || (props.previews[0] ? previewKey(props.previews[0]) : ""));

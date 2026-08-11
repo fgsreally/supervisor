@@ -13,7 +13,7 @@
     </UiEmptyState>
     <div v-else-if="state === 'checking'" class="startup-checking">
       <Loader2 />
-      <span>正在启动 Supervisor…</span>
+      <span>{{ checkingLabel }}</span>
     </div>
 
     <section v-else-if="state === 'login'" class="startup-pin">
@@ -79,6 +79,7 @@ import { Loader2, LockKeyhole, RefreshCw, ServerOff } from "lucide-vue-next";
 import { getAuthStatus, listProviderModels, listProviders, saveWebPassword } from "@/api";
 import UiEmptyState from "@/components/ui/UiEmptyState.vue";
 import ProviderFormView from "@/views/ProviderFormView.vue";
+import { bootstrapMessageArchives } from "@/utils/message-storage";
 
 const PIN_LENGTH = 6;
 const digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] as const;
@@ -99,6 +100,7 @@ const keyPositions: Record<PinDigit, { x: number; y: number }> = {
 
 const emit = defineEmits<{ ready: [] }>();
 const state = ref<"checking" | "login" | "setup">("checking");
+const checkingLabel = ref("正在启动 Supervisor…");
 const password = ref("");
 const error = ref("");
 const submitting = ref(false);
@@ -184,9 +186,22 @@ async function hasUsableModel(): Promise<boolean> {
   return models.some((items) => items.length > 0);
 }
 
+async function runInitialMessageSync() {
+  checkingLabel.value = "正在同步会话消息…";
+  try {
+    await bootstrapMessageArchives((progress) => {
+      checkingLabel.value = progress.label || "正在同步会话消息…";
+    });
+  } catch (error) {
+    console.warn("[StartupGate] message archive bootstrap failed", error);
+    checkingLabel.value = "会话消息同步未完成，将稍后在后台继续";
+  }
+}
+
 async function continueStartup() {
   startupError.value = "";
   state.value = "checking";
+  checkingLabel.value = "正在启动 Supervisor…";
   const auth = await getAuthStatus();
   if (auth.required && !auth.authenticated) {
     password.value = "";
@@ -198,6 +213,9 @@ async function continueStartup() {
     state.value = "setup";
     return;
   }
+  // After password / auth OK: block on first archive sync while the loading screen is up.
+  await runInitialMessageSync();
+  checkingLabel.value = "正在进入…";
   emit("ready");
 }
 
@@ -253,7 +271,11 @@ function onKeyup(event: KeyboardEvent) {
 }
 
 async function finishSetup() {
-  if (await hasUsableModel()) emit("ready");
+  if (!(await hasUsableModel())) return;
+  state.value = "checking";
+  await runInitialMessageSync();
+  checkingLabel.value = "正在进入…";
+  emit("ready");
 }
 
 onMounted(() => {

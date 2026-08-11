@@ -11,7 +11,10 @@ import {
   isBackgroundConnectionEnabled,
 } from "../utils/mobile-server-config";
 import { isNativeApp, nativePlatform } from "../composables/use-native-app";
-import { startBackgroundConnection } from "../composables/use-live-status";
+import {
+  initLiveStatusSessionWatch,
+  startBackgroundConnection,
+} from "../composables/use-live-status";
 import { initPendingShare } from "../composables/use-pending-share";
 
 let pushInitialized = false;
@@ -22,6 +25,7 @@ export async function initNativeShell(): Promise<void> {
   await initNativePushNotifications();
   setupDeepLinks();
   await initPendingShare();
+  initLiveStatusSessionWatch();
   if (isBackgroundConnectionEnabled()) {
     await startBackgroundConnection("Supervisor", "后台保持连接");
   }

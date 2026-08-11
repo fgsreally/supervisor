@@ -14,6 +14,11 @@ declare module "pi-supervisor-native-bridge" {
     title: string;
     subtitle?: string;
     phase?: LiveStatusPhase;
+    chip?: string;
+    activeCount?: number;
+    completedCount?: number;
+    totalCount?: number;
+    allComplete?: boolean;
   }
 
   export interface SupervisorNativePlugin {

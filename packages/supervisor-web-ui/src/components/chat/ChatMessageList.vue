@@ -446,7 +446,21 @@ async function scrollToBottom() {
   });
 }
 
-defineExpose({ scrollToBottom, containerRef });
+function findGroupIndexByEntryId(entryId: string): number {
+  return props.groups.findIndex((group) => group.id === entryId);
+}
+
+/** Scroll the virtual list to a display group id (usually a user turn id). */
+async function scrollToEntryId(entryId: string): Promise<boolean> {
+  await nextTick();
+  const index = findGroupIndexByEntryId(entryId);
+  if (index < 0) return false;
+  rowVirtualizer.value.scrollToIndex(index, { align: "start" });
+  await nextTick();
+  return true;
+}
+
+defineExpose({ scrollToBottom, scrollToEntryId, findGroupIndexByEntryId, containerRef });
 </script>
 
 <style scoped>

@@ -1,7 +1,7 @@
 <template>
-  <aside class="tool-detail-panel">
-    <div v-if="!mobile" class="tool-detail-panel__grabber" />
-    <header v-if="!mobile">
+  <aside class="tool-detail-panel" :class="{ 'tool-detail-panel--embedded': embedded }">
+    <div v-if="!mobile && !embedded" class="tool-detail-panel__grabber" />
+    <header v-if="!mobile && !embedded">
       <span>{{ title }}</span>
       <button type="button" title="关闭" @click="$emit('close')"><X /></button>
     </header>
@@ -30,6 +30,8 @@ const props = defineProps<{
   terminal?: "bash" | "eval";
   sessionId?: string;
   mobile?: boolean;
+  /** PC tab host: hide standalone header/close chrome. */
+  embedded?: boolean;
 }>();
 defineEmits<{ close: [] }>();
 const evalState = ref<EvalRuntimeState>();
@@ -77,6 +79,11 @@ onBeforeUnmount(() => {
   min-height: 0;
   border-left: 1px solid var(--app-border-subtle);
   background: var(--app-chat-bg);
+}
+.tool-detail-panel--embedded {
+  width: 100%;
+  min-width: 0;
+  border-left: 0;
 }
 header {
   height: 48px;

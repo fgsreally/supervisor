@@ -15,8 +15,13 @@ interface PendingSharePayload {
   items: ShareItem[];
 }
 
+/** Files waiting for the user to pick a target session. */
+const stagingShareFiles = ref<File[]>([]);
+/** Files committed to a session; ChatView consumes these via revision. */
 const pendingShareFiles = ref<File[]>([]);
 const pendingShareRevision = ref(0);
+const pendingShareNeedsSession = ref(false);
+const pendingShareHighlightSessionId = ref<string | null>(null);
 let shareListenerRegistered = false;
 let supervisorNative: typeof import("pi-supervisor-native-bridge").SupervisorNative | null = null;
 
@@ -59,22 +64,24 @@ async function shareItemToFile(item: ShareItem): Promise<File | null> {
   }
 }
 
-async function navigateForShare(): Promise<void> {
-  const current = router.currentRoute.value.path;
-  if (/^\/chat\/[^/]+/.test(current)) return;
-
+async function openSessionPickerForShare(): Promise<void> {
   const sessionStore = useSessionStore();
   if (!sessionStore.sessions.length) {
     await sessionStore.fetchSessions().catch(() => undefined);
   }
 
-  const target = sessionStore.sessions.find((session) => !session.isBuiltin)?.id;
-  if (!target) {
+  const available = sessionStore.sessions.filter((session) => !session.isBuiltin);
+  if (!available.length) {
+    stagingShareFiles.value = [];
+    pendingShareNeedsSession.value = false;
+    pendingShareHighlightSessionId.value = null;
     showUiMessage("请先创建会话再接收分享图片", "error");
     return;
   }
 
-  await router.push(`/chat/${target}`);
+  const match = router.currentRoute.value.path.match(/^\/chat\/([^/]+)/);
+  pendingShareHighlightSessionId.value = match?.[1] ?? null;
+  pendingShareNeedsSession.value = true;
 }
 
 async function ingestPendingShare(payload?: PendingSharePayload | null): Promise<void> {
@@ -99,9 +106,8 @@ async function ingestPendingShare(payload?: PendingSharePayload | null): Promise
     return;
   }
 
-  pendingShareFiles.value.push(...files);
-  pendingShareRevision.value += 1;
-  await navigateForShare();
+  stagingShareFiles.value.push(...files);
+  await openSessionPickerForShare();
 }
 
 export function takePendingShareFiles(): File[] {
@@ -112,6 +118,38 @@ export function takePendingShareFiles(): File[] {
 
 export function usePendingShareRevision() {
   return pendingShareRevision;
+}
+
+export function usePendingShareNeedsSession() {
+  return pendingShareNeedsSession;
+}
+
+export function usePendingShareHighlightSessionId() {
+  return pendingShareHighlightSessionId;
+}
+
+export async function confirmPendingShareSession(sessionId: string): Promise<void> {
+  if (!sessionId || !stagingShareFiles.value.length) {
+    cancelPendingShareSession();
+    return;
+  }
+
+  pendingShareNeedsSession.value = false;
+  pendingShareHighlightSessionId.value = null;
+  pendingShareFiles.value.push(...stagingShareFiles.value);
+  stagingShareFiles.value = [];
+
+  const targetPath = `/chat/${sessionId}`;
+  if (router.currentRoute.value.path !== targetPath) {
+    await router.push(targetPath);
+  }
+  pendingShareRevision.value += 1;
+}
+
+export function cancelPendingShareSession(): void {
+  pendingShareNeedsSession.value = false;
+  pendingShareHighlightSessionId.value = null;
+  stagingShareFiles.value = [];
 }
 
 export async function initPendingShare(): Promise<void> {

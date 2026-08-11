@@ -60,7 +60,7 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
   {
     slug: "project-services",
     name: "Project services",
-    description: "Register and manage dev server lifecycle for coding sessions",
+    description: "Register one project runtime (commands + apps) per coding session",
     requiresMainSession: true,
   },
   {

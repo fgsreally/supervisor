@@ -7,29 +7,37 @@ export interface ActiveUiEntry {
   sessionId: string;
   sessionTitle: string;
   scriptName: string;
-  envVar: string;
-  label?: string;
+  name: string;
+  port: number;
   path?: string;
+  label?: string;
   previewUrl: string;
-  status: "starting" | "running" | "stopped" | "error";
+  status: "starting" | "running" | "active" | "stopped" | "error" | "idle";
+}
+
+function isActiveStatus(
+  status: string,
+): status is "starting" | "running" | "active" {
+  return status === "running" || status === "starting" || status === "active";
 }
 
 export function collectActiveUiEntries(sessions: UISession[]): ActiveUiEntry[] {
   const result: ActiveUiEntry[] = [];
   for (const session of sessions) {
     const services = parseSessionServicesFromMeta(session.meta);
-    if (!services?.uiPorts?.length) continue;
-    if (services.status !== "running" && services.status !== "starting") continue;
-    for (const port of services.uiPorts) {
+    if (!services?.apps?.length) continue;
+    if (!isActiveStatus(services.status)) continue;
+    for (const app of services.apps) {
       result.push({
-        key: `${session.id}:${port.scriptName}:${port.envVar}`,
+        key: `${session.id}:${app.name}:${app.port}`,
         sessionId: session.id,
         sessionTitle: session.title,
-        scriptName: port.scriptName,
-        envVar: port.envVar,
-        label: port.label,
-        path: port.path,
-        previewUrl: api.buildSessionPreviewUrl(session.id, port.scriptName, port.path ?? "/"),
+        scriptName: app.name,
+        name: app.name,
+        port: app.port,
+        path: app.path,
+        label: app.name,
+        previewUrl: api.buildSessionPreviewUrl(session.id, app.name, app.path ?? "/"),
         status: services.status,
       });
     }

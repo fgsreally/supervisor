@@ -5,37 +5,36 @@ import type {
   ExtensionJobFacade,
   ToolInfo,
 } from "../../types.js";
-import type { SessionServicesMeta } from "../../../core/project-runtime.js";
+import type { SessionServiceApp, SessionServicesMeta } from "../../../core/project-runtime.js";
 import {
-  areRegisteredServicesAlive,
+  hasRegisteredServices,
+  isSessionServiceProcessAlive,
   startRegisteredSessionServices,
   stopRegisteredSessionServices,
-  type RegisteredServiceEntry,
 } from "../../../core/session-registered-services.js";
 import {
   SESSION_SERVICE_SLEEP_MS,
   SESSION_SERVICE_SLEEP_TICK_MS,
   computeServiceSleepAt,
 } from "../../../core/session-service-sleep.js";
-import {
-  flattenUiPorts,
-  type SessionServiceJobHost,
-} from "../../../core/session-registered-services.js";
+import { parseSessionServicesMeta } from "../../../core/session-services.js";
+import type { SessionServiceJobHost } from "../../../core/session-registered-services.js";
 
 const SETUP_TOOL = "ProjectServiceSetup";
 const SERVICE_TOOL_NAMES = new Set([SETUP_TOOL, "ProjectServiceStart", "ProjectServiceList"]);
 
 const FIRST_SESSION_PROMPT = [
   "项目服务（首会话必做）：",
-  "1. 探查依赖并在需要时执行 install（bash/包管理器）。",
-  "2. 调用 ProjectServiceSetup 登记：启动命令、端口占位符（如 ${PORT}）、关闭命令、卸载命令。",
-  "3. 调用 ProjectServiceStart 启动 dev server；不要重复手动起长期服务。",
+  "1. 优先阅读项目根目录 AGENTS.md 的「本地开发服务」章节获取安装/启动/停止/销毁命令（不含入口 port/path）。",
+  "2. 按需执行 install，把项目跑起来，由你确认实际入口 name/port/path。",
+  "3. 调用 ProjectServiceSetup 一次性登记：命令来自 AGENTS.md；apps[{ name, port, path }] 填你确认的入口。",
+  "4. 调用 ProjectServiceStart 启动（若尚未在跑）；不要重复手动起长期服务。",
 ].join("\n");
 
 const RUNNING_PROMPT = [
   "项目服务：",
-  "- 继续对话前会自动尝试唤醒已注册服务；也可手动 ProjectServiceStart。",
-  "- 关闭/卸载由系统在闲置或归档时执行，无需手动调用。",
+  "- 命令与入口已登记；继续对话前会自动尝试唤醒。",
+  "- 也可手动 ProjectServiceStart；关闭/销毁由系统在闲置或归档时执行。",
 ].join("\n");
 
 function extensionJobsAsHost(jobs: ExtensionJobFacade): SessionServiceJobHost {
@@ -65,73 +64,17 @@ function isServiceIdle(status: SessionServicesMeta["status"] | undefined): boole
   );
 }
 
-function parseServices(meta: Record<string, unknown>): SessionServicesMeta | null {
-  const raw = meta.services;
-  if (!raw || typeof raw !== "object") return null;
-  const row = raw as Record<string, unknown>;
-  const portEnv =
-    row.portEnv && typeof row.portEnv === "object" && !Array.isArray(row.portEnv)
-      ? Object.fromEntries(
-          Object.entries(row.portEnv as Record<string, unknown>)
-            .filter(([, value]) => typeof value === "string" || typeof value === "number")
-            .map(([key, value]) => [key, String(value)]),
-        )
-      : {};
-  const status = row.status;
-  if (
-    status !== "starting" &&
-    status !== "running" &&
-    status !== "active" &&
-    status !== "stopped" &&
-    status !== "idle" &&
-    status !== "error" &&
-    status !== "unregistered"
-  ) {
-    return null;
-  }
-  const entries: RegisteredServiceEntry[] = [];
-  if (Array.isArray(row.entries)) {
-    for (const item of row.entries) {
-      if (!item || typeof item !== "object") continue;
-      const entry = item as Record<string, unknown>;
-      const name = typeof entry.name === "string" ? entry.name.trim() : "";
-      const startCommand = typeof entry.startCommand === "string" ? entry.startCommand.trim() : "";
-      if (!name || !startCommand) continue;
-      const uiPorts: RegisteredServiceEntry["uiPorts"] = [];
-      if (Array.isArray(entry.uiPorts)) {
-        for (const portItem of entry.uiPorts) {
-          if (!portItem || typeof portItem !== "object") continue;
-          const port = portItem as Record<string, unknown>;
-          const envVar = typeof port.envVar === "string" ? port.envVar.trim() : "";
-          if (!envVar) continue;
-          uiPorts.push({
-            envVar,
-            label: typeof port.label === "string" ? port.label : undefined,
-            path: typeof port.path === "string" ? port.path : undefined,
-          });
-        }
-      }
-      entries.push({
-        name,
-        startCommand,
-        installCommand: typeof entry.installCommand === "string" ? entry.installCommand : undefined,
-        stopCommand: typeof entry.stopCommand === "string" ? entry.stopCommand : undefined,
-        destroyCommand: typeof entry.destroyCommand === "string" ? entry.destroyCommand : undefined,
-        uninstallCommand:
-          typeof entry.uninstallCommand === "string" ? entry.uninstallCommand : undefined,
-        uiPorts: uiPorts.length > 0 ? uiPorts : undefined,
-      });
-    }
-  }
-  return {
-    entries: entries.length > 0 ? entries : undefined,
-    portEnv,
-    status,
-    sleepAt: typeof row.sleepAt === "number" ? row.sleepAt : undefined,
-    installedAt: typeof row.installedAt === "string" ? row.installedAt : undefined,
-    lastActiveAt: typeof row.lastActiveAt === "number" ? row.lastActiveAt : undefined,
-    uiPorts: entries.length > 0 ? flattenUiPorts(entries) : undefined,
-  };
+function parseAppsParam(
+  raw: Array<{ name: string; port: number; path?: string }> | undefined,
+): SessionServiceApp[] {
+  if (!raw?.length) return [];
+  return raw
+    .map((item) => ({
+      name: item.name.trim(),
+      port: item.port,
+      path: item.path?.trim() || "/",
+    }))
+    .filter((item) => item.name && Number.isFinite(item.port) && item.port > 0);
 }
 
 async function applyVisibleServiceTools(ctx: ExtensionContext, showSetup: boolean): Promise<void> {
@@ -158,9 +101,9 @@ function ensureGlobalSleepScheduler(ctx: ExtensionContext): void {
     );
     const now = Date.now();
     for (const row of rows) {
-      const meta = parseServices(JSON.parse(row.meta || "{}"));
-      if (!meta?.entries?.length || !isServiceActive(meta.status)) continue;
-      const sleepAt = meta.sleepAt;
+      const meta = parseSessionServicesMeta(JSON.parse(row.meta || "{}"));
+      if (!hasRegisteredServices(meta) || !isServiceActive(meta?.status)) continue;
+      const sleepAt = meta!.sleepAt;
       if (!sleepAt || sleepAt > now) continue;
       try {
         await stopRegisteredSessionServices({
@@ -174,7 +117,9 @@ function ensureGlobalSleepScheduler(ctx: ExtensionContext): void {
           services: {
             ...meta,
             status: "idle" as const,
-            portEnv: {},
+            pid: null,
+            jobId: undefined,
+            resolvedStartCommand: undefined,
           },
         };
         ctx.db.execute("UPDATE sessions SET meta = ? WHERE id = ?", [
@@ -209,7 +154,7 @@ const projectServicesExtension: ExtensionDefinition = {
 
     const readServices = async (): Promise<SessionServicesMeta | null> => {
       const meta = await ctx.session.meta.get();
-      return parseServices(meta);
+      return parseSessionServicesMeta(meta);
     };
 
     const writeServices = async (services: SessionServicesMeta): Promise<void> => {
@@ -217,7 +162,7 @@ const projectServicesExtension: ExtensionDefinition = {
     };
 
     const refreshInject = async (services: SessionServicesMeta | null) => {
-      const unregistered = !services?.entries?.length || services.status === "unregistered";
+      const unregistered = !hasRegisteredServices(services) || services?.status === "unregistered";
       ctx.inject.clear("project-services");
       ctx.inject.schedule({
         variant: "project-services",
@@ -229,14 +174,13 @@ const projectServicesExtension: ExtensionDefinition = {
 
     const wakeServices = async (): Promise<void> => {
       const current = await readServices();
-      if (!current?.entries?.length) return;
+      if (!hasRegisteredServices(current)) return;
       const now = Date.now();
 
-      if (isServiceActive(current.status)) {
-        const alive = areRegisteredServicesAlive(current.entries, current.portEnv ?? {});
-        if (alive) {
+      if (isServiceActive(current!.status)) {
+        if (isSessionServiceProcessAlive(sessionId, current)) {
           await writeServices({
-            ...current,
+            ...current!,
             lastActiveAt: now,
             sleepAt: computeServiceSleepAt(now),
           });
@@ -251,13 +195,13 @@ const projectServicesExtension: ExtensionDefinition = {
         });
       }
 
-      if (isServiceIdle(current.status) || isServiceActive(current.status)) {
+      if (isServiceIdle(current!.status) || isServiceActive(current!.status)) {
         const next = await startRegisteredSessionServices({
           sessionId,
           cwd: cwd(),
-          services: current,
+          services: current!,
           jobs,
-          skipInstall: !!current.installedAt,
+          skipInstall: !!current!.installedAt,
           lastActiveAtMs: now,
         });
         await writeServices(next);
@@ -272,7 +216,13 @@ const projectServicesExtension: ExtensionDefinition = {
       if (!current) return;
       const lastActive = current.lastActiveAt ?? Date.now();
       if (isServiceActive(current.status) && Date.now() - lastActive >= SESSION_SERVICE_SLEEP_MS) {
-        await writeServices({ ...current, status: "idle", portEnv: {} });
+        await writeServices({
+          ...current,
+          status: "idle",
+          pid: null,
+          jobId: undefined,
+          resolvedStartCommand: undefined,
+        });
       }
       await refreshInject(await readServices());
     });
@@ -289,7 +239,7 @@ const projectServicesExtension: ExtensionDefinition = {
       "session.before_sync",
       async () => {
         const current = await readServices();
-        if (!current?.entries?.length) return;
+        if (!hasRegisteredServices(current)) return;
         await stopRegisteredSessionServices({
           sessionId,
           cwd: cwd(),
@@ -297,7 +247,13 @@ const projectServicesExtension: ExtensionDefinition = {
           jobs,
           mode: "stop",
         });
-        await writeServices({ ...current, status: "idle", portEnv: {} });
+        await writeServices({
+          ...current!,
+          status: "idle",
+          pid: null,
+          jobId: undefined,
+          resolvedStartCommand: undefined,
+        });
       },
       { priority: 300, mode: "sync" },
     );
@@ -312,7 +268,7 @@ const projectServicesExtension: ExtensionDefinition = {
 
     const runTeardown = async (mode: "stop" | "uninstall") => {
       const current = await readServices();
-      if (!current?.entries?.length) return;
+      if (!hasRegisteredServices(current)) return;
       if (mode === "stop") {
         await stopRegisteredSessionServices({
           sessionId,
@@ -330,7 +286,13 @@ const projectServicesExtension: ExtensionDefinition = {
         jobs,
         mode: "uninstall",
       });
-      await writeServices({ ...current, status: "idle", portEnv: {} });
+      await writeServices({
+        ...current!,
+        status: "idle",
+        pid: null,
+        jobId: undefined,
+        resolvedStartCommand: undefined,
+      });
     };
 
     ctx.on("session.before_complete", async () => runTeardown("stop"), {
@@ -353,56 +315,38 @@ const projectServicesExtension: ExtensionDefinition = {
     ctx.agent.registerTool({
       name: SETUP_TOOL,
       description:
-        "登记本 session 的项目服务：install/start/stop/uninstall 命令与 UI 端口（${PORT} 等占位符）。首会话注册后此工具会隐藏。",
+        "登记本 session 的项目运行时：install/start/stop/destroy 命令（优先取自 AGENTS.md「本地开发服务」），以及你确认后的 apps[{ name, port, path }]。登记后此工具会隐藏。",
       parameters: Type.Object({
-        name: Type.String({ description: "服务名称，如 web" }),
         installCommand: Type.Optional(Type.String()),
         startCommand: Type.String({ description: "启动命令（长期运行）" }),
         stopCommand: Type.Optional(Type.String({ description: "关闭命令（闲置时）" })),
-        uninstallCommand: Type.Optional(Type.String({ description: "卸载命令（归档/删除时）" })),
-        uiPorts: Type.Optional(
-          Type.Array(
-            Type.Object({
-              envVar: Type.String(),
-              label: Type.Optional(Type.String()),
-              path: Type.Optional(Type.String()),
-            }),
-          ),
+        destroyCommand: Type.Optional(Type.String({ description: "销毁/卸载命令（归档删除时）" })),
+        apps: Type.Array(
+          Type.Object({
+            name: Type.String({ description: "入口名，如 web" }),
+            port: Type.Number({ description: "实际监听端口" }),
+            path: Type.Optional(Type.String({ description: "URL 路径，默认 /" })),
+          }),
+          { description: "可预览的应用入口" },
         ),
       }),
       execute: async (params) => {
-        const meta = await ctx.session.meta.get();
-        const current =
-          parseServices(meta) ??
-          ({
-            status: "unregistered",
-            portEnv: {},
-            entries: [],
-          } satisfies SessionServicesMeta);
-
-        const entry: RegisteredServiceEntry = {
-          name: params.name.trim(),
-          startCommand: params.startCommand.trim(),
-          installCommand: params.installCommand?.trim() || undefined,
-          stopCommand: params.stopCommand?.trim() || undefined,
-          uninstallCommand: params.uninstallCommand?.trim() || undefined,
-          uiPorts: params.uiPorts?.map((port) => ({
-            envVar: port.envVar.trim(),
-            label: port.label?.trim(),
-            path: port.path?.trim(),
-          })),
+        const current = (await readServices()) ?? {
+          status: "unregistered" as const,
+          startCommand: "",
         };
-
-        const entries = [
-          ...(current.entries ?? []).filter((item) => item.name !== entry.name),
-          entry,
-        ];
+        const apps = parseAppsParam(params.apps);
         const next: SessionServicesMeta = {
           ...current,
-          entries,
-          uiPorts: flattenUiPorts(entries),
+          installCommand: params.installCommand?.trim() || undefined,
+          startCommand: params.startCommand.trim(),
+          stopCommand: params.stopCommand?.trim() || undefined,
+          destroyCommand: params.destroyCommand?.trim() || undefined,
+          apps,
           status: "unregistered",
-          portEnv: current.portEnv ?? {},
+          pid: null,
+          jobId: undefined,
+          resolvedStartCommand: undefined,
         };
         await writeServices(next);
         await refreshInject(next);
@@ -410,7 +354,7 @@ const projectServicesExtension: ExtensionDefinition = {
           content: [
             {
               type: "text",
-              text: `已登记服务「${entry.name}」。请先完成 install（如需要），再调用 ProjectServiceStart 启动。`,
+              text: `已登记项目服务（${apps.length} 个入口）。请先完成 install（如需要），再调用 ProjectServiceStart 启动。`,
             },
           ],
         };
@@ -419,26 +363,23 @@ const projectServicesExtension: ExtensionDefinition = {
 
     ctx.agent.registerTool({
       name: "ProjectServiceStart",
-      description: "启动已登记的项目服务（分配端口并后台运行）。",
+      description: "启动已登记的项目服务（后台运行）。",
       parameters: Type.Object({
         skipInstall: Type.Optional(Type.Boolean()),
       }),
       execute: async (params) => {
         const current = await readServices();
-        if (!current?.entries?.length) {
+        if (!hasRegisteredServices(current)) {
           return {
             content: [{ type: "text", text: "尚未登记服务，请先调用 ProjectServiceSetup。" }],
           };
         }
-        if (
-          isServiceActive(current.status) &&
-          areRegisteredServicesAlive(current.entries, current.portEnv)
-        ) {
+        if (isServiceActive(current!.status) && isSessionServiceProcessAlive(sessionId, current)) {
           return {
             content: [
               {
                 type: "text",
-                text: `服务已在运行。端口：${JSON.stringify(current.portEnv)}`,
+                text: `服务已在运行。入口：${JSON.stringify(current!.apps ?? [])}`,
               },
             ],
           };
@@ -446,9 +387,9 @@ const projectServicesExtension: ExtensionDefinition = {
         const next = await startRegisteredSessionServices({
           sessionId,
           cwd: cwd(),
-          services: current,
+          services: current!,
           jobs,
-          skipInstall: params.skipInstall ?? !!current.installedAt,
+          skipInstall: params.skipInstall ?? !!current!.installedAt,
           lastActiveAtMs: Date.now(),
         });
         await writeServices(next);
@@ -456,7 +397,7 @@ const projectServicesExtension: ExtensionDefinition = {
           content: [
             {
               type: "text",
-              text: `服务已启动。端口：${JSON.stringify(next.portEnv)}`,
+              text: `服务已启动。入口：${JSON.stringify(next.apps ?? [])}`,
             },
           ],
         };

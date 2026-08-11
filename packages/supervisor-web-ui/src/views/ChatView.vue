@@ -22,21 +22,23 @@
       :status-key="headerStatusKey"
       :stage="stage"
       :show-back="showBack"
+      :show-preview="hasServicePreviews"
       @back="emit('back')"
       @view-agent="emit('view-agent', $event)"
       @open-menu="sessionMenuOpen = true"
+      @open-preview="openSessionPreview"
     >
       <template #actions>
         <div class="desktop-session-actions">
           <ChatHeaderAction title="搜索消息" :active="searchOpen" @click="toggleSearch">
             <Search />
           </ChatHeaderAction>
-          <ChatHeaderAction title="查看会话日志" :active="showLogPanel" @click="toggleLogPanel">
+          <ChatHeaderAction title="查看会话日志" :active="logActionActive" @click="toggleLogPanel">
             <ScrollText />
           </ChatHeaderAction>
           <ChatHeaderAction
             title="查看工作区文件"
-            :active="showFilesPanel"
+            :active="filesActionActive"
             @click="toggleFilesPanel"
           >
             <FolderTree />
@@ -56,7 +58,7 @@
         <ChatHeaderAction
           v-if="hasEvalActivity"
           title="查看 Eval"
-          :active="toolPanel?.terminal === 'eval'"
+          :active="evalActionActive"
           @click="toggleEvalPanel"
         >
           <Braces />
@@ -89,47 +91,59 @@
     />
 
     <div class="chat-workspace">
-      <div ref="conversationHostRef" class="chat-workspace__conversation">
+      <div
+        ref="conversationHostRef"
+        class="chat-workspace__conversation"
+        @touchstart.passive="onConversationTouchStart"
+        @touchend="onConversationTouchEnd"
+      >
         <div
           v-if="!chatViewportReady && !searchOpen"
           class="session-loading session-loading--overlay"
         >
           <Loader2 /><span>正在加载聊天记录...</span>
         </div>
-        <ChatMessageList
-          ref="messageListRef"
-          class="chat-message-list-host"
-          :class="{ 'chat-message-list-host--positioning': !chatViewportReady && !searchOpen }"
-          :session-id="session.id"
-          :groups="visibleGroups"
-          :show-thinking-blocks="showThinking"
-          :is-streaming="isStreaming"
-          :streaming-group-id="streamingAssistantId"
-          :show-streaming-placeholder="showStreamingPlaceholder"
-          :streaming-time-label="streamingTimeLabel"
-          :search-open="searchOpen"
-          :search-query="searchQuery"
-          :assistant-avatar-label="session.isBuiltin ? 'π' : sessionAvatarValue.text"
-          :assistant-avatar-color="sessionAvatarValue.color"
-          :assistant-avatar-icon="session.isBuiltin ? null : sessionAvatarValue.icon"
-          :assistant-avatar-agent-id="agentId ?? session.id"
-          :rewindable-entry-ids="rewindableEntryIds"
-          :retrying="retryingError"
-          :has-older="hasOlderMessages"
-          :loading-older="loadingOlder"
-          :scroll-ready="chatViewportReady || searchOpen"
-          :external-agent="isExternalAgent"
-          @load-older="loadOlderMessages"
-          @open-tool="openToolDetail"
-          @open-bash="openBashDetail"
-          @open-compaction="openCompactionDetail"
-          @navigate="navigateToSubagent"
-          @answered="onAskAnswered"
-          @open-external-detail="openExternalInteractionDetail"
-          @rewind="rewindToMessage"
-          @fork="forkFromMessage"
-          @retry-error="onRetryLlmError"
-        />
+        <div class="chat-main-row">
+          <MessageMinimap
+            v-if="showMessageMinimap"
+            :turns="minimapTurns"
+            @select="onMinimapSelect"
+          />
+          <ChatMessageList
+            ref="messageListRef"
+            class="chat-message-list-host"
+            :class="{ 'chat-message-list-host--positioning': !chatViewportReady && !searchOpen }"
+            :session-id="session.id"
+            :groups="visibleGroups"
+            :show-thinking-blocks="showThinking"
+            :is-streaming="isStreaming"
+            :streaming-group-id="streamingAssistantId"
+            :show-streaming-placeholder="showStreamingPlaceholder"
+            :streaming-time-label="streamingTimeLabel"
+            :search-open="searchOpen"
+            :search-query="searchQuery"
+            :assistant-avatar-label="session.isBuiltin ? 'π' : sessionAvatarValue.text"
+            :assistant-avatar-color="sessionAvatarValue.color"
+            :assistant-avatar-icon="session.isBuiltin ? null : sessionAvatarValue.icon"
+            :assistant-avatar-agent-id="agentId ?? session.id"
+            :rewindable-entry-ids="rewindableEntryIds"
+            :retrying="retryingError"
+            :has-older="hasOlderMessages"
+            :loading-older="loadingOlder"
+            :scroll-ready="chatViewportReady || searchOpen"
+            :external-agent="isExternalAgent"
+            @load-older="loadOlderMessages"
+            @open-tool="openToolDetail"
+            @open-bash="openBashDetail"
+            @open-compaction="openCompactionDetail"
+            @navigate="navigateToSubagent"
+            @answered="onAskAnswered"
+            @open-external-detail="openExternalInteractionDetail"
+            @rewind="rewindToMessage"
+            @fork="forkFromMessage"
+            @retry-error="onRetryLlmError"
+          />
+        </div>
 
         <div v-if="suggestedQuestions.length" class="suggested-questions">
           <span>你可能还想问</span>
@@ -188,31 +202,25 @@
         </div>
 
         <FloatingPreviewOrb
+          v-if="isMobileViewport"
           :visible="hasServicePreviews"
           :active="servicesRunning"
-          :open="previewSplitOpen"
+          :open="mobilePreviewOpen"
+          :count="servicePreviews.length"
           :container-ref="conversationHostRef"
           :storage-key="`supervisor:preview-orb:${session.id}`"
-          @toggle="togglePreviewSplit"
+          @toggle="toggleMobilePreview"
         />
-      </div>
 
-      <ResponsiveSplitSurface
-        :open="previewSplitOpen"
-        ariaLabel="项目页面预览"
-        :width="sidePanelWidth"
-        resize-label="调整预览分屏宽度"
-        @close="previewSplitOpen = false"
-        @resize-start="startSidePanelResize"
-      >
-        <SessionPreviewPanel
-          class="chat-panel-host__body"
+        <SessionAppPreviewBrowser
+          v-if="isMobileViewport"
+          :open="mobilePreviewOpen"
           :previews="servicePreviews"
           :loading="previewLoading"
-          show-close
-          @close="previewSplitOpen = false"
+          v-model="lastPreviewKey"
+          @close="mobilePreviewOpen = false"
         />
-      </ResponsiveSplitSurface>
+      </div>
 
       <ResponsiveSplitSurface
         :open="Boolean(taskPaneOpen && taskCount)"
@@ -252,8 +260,9 @@
         </template>
       </ResponsiveSplitSurface>
 
+      <!-- Mobile: exclusive drawers (unchanged) -->
       <ResponsiveSplitSurface
-        :open="showLogPanel"
+        :open="isMobileViewport && showLogPanel"
         ariaLabel="会话日志"
         :width="sidePanelWidth"
         @close="showLogPanel = false"
@@ -271,7 +280,7 @@
       </ResponsiveSplitSurface>
 
       <ResponsiveSplitSurface
-        :open="showFilesPanel"
+        :open="isMobileViewport && showFilesPanel"
         ariaLabel="工作区文件"
         :width="sidePanelWidth"
         @close="showFilesPanel = false"
@@ -290,7 +299,7 @@
       </ResponsiveSplitSurface>
 
       <ResponsiveSplitSurface
-        :open="Boolean(toolPanel)"
+        :open="isMobileViewport && Boolean(toolPanel)"
         :ariaLabel="toolPanel?.title ?? '工具详情'"
         :width="sidePanelWidth"
         @close="toolPanel = null"
@@ -309,6 +318,69 @@
           />
         </template>
       </ResponsiveSplitSurface>
+
+      <!-- PC: browser-like multi-tab content surface -->
+      <ResponsiveSplitSurface
+        :open="!isMobileViewport && contentPanelOpen"
+        ariaLabel="会话内容"
+        :width="sidePanelWidth"
+        :tabs="contentSplitTabs"
+        :active-tab-id="activeContentTabId"
+        @update:active-tab-id="activeContentTabId = $event"
+        @close-tab="closeContentTab"
+        @close="clearContentTabs"
+        @resize-start="startSidePanelResize"
+      >
+        <template v-for="tab in contentTabs" :key="tab.id">
+          <SessionLogPanel
+            v-if="tab.kind === 'log'"
+            v-show="activeContentTabId === tab.id"
+            embedded
+            :active="activeContentTabId === tab.id"
+            class="chat-panel-host__body"
+            :session-id="session.id"
+            @close="closeContentTab('log')"
+          />
+          <SessionFilePreviewPane
+            v-else-if="tab.kind === 'file'"
+            v-show="activeContentTabId === tab.id"
+            class="chat-panel-host__body"
+            :session-id="session.id"
+            :path="tab.path"
+            :changed-files="sessionChangedFiles"
+          />
+          <ToolDetailPanel
+            v-else-if="tab.kind === 'tool'"
+            v-show="activeContentTabId === tab.id"
+            embedded
+            class="chat-panel-host__body chat-workspace__tool-panel"
+            :title="tab.title"
+            :sections="tab.sections"
+            :terminal="tab.terminal"
+            :session-id="session.id"
+            @close="closeContentTab(tab.id)"
+          />
+          <SessionPreviewPanel
+            v-else-if="tab.kind === 'preview'"
+            v-show="activeContentTabId === tab.id"
+            embedded
+            class="chat-panel-host__body"
+            :previews="servicePreviews"
+            :loading="previewLoading"
+            v-model="lastPreviewKey"
+            @close="closeContentTab('preview')"
+          />
+        </template>
+      </ResponsiveSplitSurface>
+
+      <SessionFileTreeSidebar
+        v-if="!isMobileViewport && showFileTreeSidebar"
+        :session-id="session.id"
+        :selected-path="selectedFileTabPath"
+        :changed-files="sessionChangedFiles"
+        @select="openFileContentTab"
+        @close="showFileTreeSidebar = false"
+      />
     </div>
 
     <ExternalAgentCommandHost
@@ -476,12 +548,19 @@ import ExternalAgentCommandHost from "../components/external-agents/ExternalAgen
 import ChatSessionMenu from "../components/ChatSessionMenu.vue";
 import SessionLogPanel from "../components/SessionLogPanel.vue";
 import SessionFilesPanel from "../components/SessionFilesPanel.vue";
+import SessionFilePreviewPane from "../components/SessionFilePreviewPane.vue";
+import SessionFileTreeSidebar from "../components/SessionFileTreeSidebar.vue";
 import { ResponsiveSplitSurface } from "../components/ui";
+import { fileBasename } from "../utils/session-file-tree";
 import { useResizableWidth } from "../composables/use-resizable-width";
+import { useMobileViewport } from "../composables/use-mobile-viewport";
 import ChatViewHeader from "../components/chat/ChatViewHeader.vue";
 import ChatSearchBar from "../components/chat/ChatSearchBar.vue";
 import ChatMessageList from "../components/chat/ChatMessageList.vue";
+import MessageMinimap from "../components/chat/MessageMinimap.vue";
 import QueuedInputsBar from "../components/chat/QueuedInputsBar.vue";
+import { useSessionMessageSync } from "../composables/use-session-message-sync";
+import { chatEntriesToTurns } from "../utils/session-turns";
 import TaskWorkspacePanel from "../components/chat/TaskWorkspacePanel.vue";
 import SessionJobsPopover, {
   type JobDetailRequest,
@@ -495,6 +574,7 @@ import SessionPendingSyncBanner from "../components/chat/SessionPendingSyncBanne
 import type { SessionGitMeta, SessionGitPendingUpdate } from "@/api";
 import SessionCommitPopover from "../components/chat/SessionCommitPopover.vue";
 import SessionPreviewPanel from "../components/SessionPreviewPanel.vue";
+import SessionAppPreviewBrowser from "../components/SessionAppPreviewBrowser.vue";
 import FloatingPreviewOrb from "../components/FloatingPreviewOrb.vue";
 import ToolApprovalDialog from "../components/ToolApprovalDialog.vue";
 import type { ChatSendPayload } from "@/types/chat-compose";
@@ -507,7 +587,7 @@ import {
 import { useChatFontSize } from "../composables/use-chat-font-size";
 import { attachPendingShareToInput, usePendingShareRevision } from "../composables/use-pending-share";
 import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-notifications";
-import { endLiveStatus, syncAgentLiveStatus } from "../composables/use-live-status";
+import { syncAgentLiveStatus } from "../composables/use-live-status";
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
 import { parseSessionStage } from "../utils/workflow";
 import {
@@ -591,11 +671,7 @@ const { width: sidePanelWidth, startResize: startSidePanelResize } = useResizabl
   storageKey: "supervisor:chat-side-panel-width",
   direction: "rtl",
 });
-const isMobileViewport = ref(false);
-
-function syncMobileViewport() {
-  isMobileViewport.value = window.matchMedia("(max-width: 767px)").matches;
-}
+const isMobileViewport = useMobileViewport();
 
 const agentStore = useAgentStore();
 const providerStore = useProviderStore();
@@ -637,6 +713,23 @@ const messageListRef = ref<InstanceType<typeof ChatMessageList> | null>(null);
 const searchBarRef = ref<InstanceType<typeof ChatSearchBar> | null>(null);
 const sessionTitle = ref("");
 const chatEntries = ref<ChatEntry[]>([]);
+const sessionIdRef = computed(() => props.session.id);
+/** Web + mobile both sync into MessageStorage; minimap UI is PC-only. */
+const enableMessageArchiveCrawl = computed(() => true);
+const { turns: archivedTurns } = useSessionMessageSync({
+  sessionId: sessionIdRef,
+  chatEntries,
+  enableBackgroundCrawl: enableMessageArchiveCrawl,
+});
+const fallbackMinimapTurns = computed(() =>
+  chatEntriesToTurns(props.session.id, chatEntries.value),
+);
+const minimapTurns = computed(() =>
+  archivedTurns.value.length > 0 ? archivedTurns.value : fallbackMinimapTurns.value,
+);
+const showMessageMinimap = computed(
+  () => !isMobileViewport.value && minimapTurns.value.length > 0,
+);
 const sessionLoading = ref(false);
 const chatViewportReady = ref(false);
 const chatComposerReady = computed(() => chatViewportReady.value || searchOpen.value);
@@ -652,15 +745,12 @@ const toolPanel = ref<{
 } | null>(null);
 
 function openJobDetail(request: JobDetailRequest): void {
-  if (request.presentation === "panel" || isMobileViewport.value) {
-    setToolPanel({
-      title: request.title,
-      sections: request.sections,
-      terminal: request.terminal,
-    });
-    return;
-  }
-  toolModal.value = { title: request.title, sections: request.sections };
+  // Mobile: exclusive drawer; PC: content tab (both via setToolPanel)
+  setToolPanel({
+    title: request.title,
+    sections: request.sections,
+    terminal: request.terminal,
+  });
 }
 const isStreaming = ref(false);
 
@@ -705,8 +795,9 @@ const modelPickerLoading = ref(false);
 const modelPickerSaving = ref(false);
 const modelSearch = ref("");
 const sessionActionsOpen = ref(false);
-const previewSplitOpen = ref(false);
+const mobilePreviewOpen = ref(false);
 const previewLoading = ref(false);
+const lastPreviewKey = ref("");
 const conversationHostRef = ref<HTMLElement | null>(null);
 const showLogPanel = ref(false);
 const showFilesPanel = ref(false);
@@ -714,18 +805,106 @@ const requestedFilePath = ref<string | null>(null);
 
 type SidePanelKind = "task" | "btw" | "log" | "files";
 
+type ContentTab =
+  | { id: "log"; kind: "log"; title: string }
+  | { id: "preview"; kind: "preview"; title: string }
+  | { id: string; kind: "file"; path: string; title: string }
+  | {
+      id: string;
+      kind: "tool";
+      title: string;
+      sections: { label: string; content: string; markdown?: boolean }[];
+      terminal?: "bash" | "eval";
+    };
+
+const contentTabs = ref<ContentTab[]>([]);
+const activeContentTabId = ref<string | null>(null);
+const showFileTreeSidebar = ref(true);
+
+const contentPanelOpen = computed(() => contentTabs.value.length > 0);
+const contentSplitTabs = computed(() =>
+  contentTabs.value.map((tab) => ({ id: tab.id, title: tab.title })),
+);
+const activeContentTab = computed(
+  () => contentTabs.value.find((tab) => tab.id === activeContentTabId.value) ?? null,
+);
+const selectedFileTabPath = computed(() => {
+  const tab = activeContentTab.value;
+  return tab?.kind === "file" ? tab.path : null;
+});
+const hasLogTab = computed(() => contentTabs.value.some((tab) => tab.kind === "log"));
+const hasEvalTab = computed(() =>
+  contentTabs.value.some((tab) => tab.kind === "tool" && tab.terminal === "eval"),
+);
+const logActionActive = computed(() =>
+  isMobileViewport.value ? showLogPanel.value : hasLogTab.value,
+);
+const filesActionActive = computed(() =>
+  isMobileViewport.value ? showFilesPanel.value : showFileTreeSidebar.value,
+);
+const evalActionActive = computed(() =>
+  isMobileViewport.value ? toolPanel.value?.terminal === "eval" : hasEvalTab.value,
+);
+
+function toolTabId(panel: {
+  title: string;
+  terminal?: "bash" | "eval";
+}): string {
+  if (panel.terminal) return `tool:${panel.terminal}`;
+  return `tool:${panel.title}`;
+}
+
+function upsertContentTab(tab: ContentTab) {
+  const index = contentTabs.value.findIndex((item) => item.id === tab.id);
+  if (index >= 0) contentTabs.value[index] = tab;
+  else contentTabs.value.push(tab);
+  activeContentTabId.value = tab.id;
+}
+
+function closeContentTab(id: string) {
+  const index = contentTabs.value.findIndex((tab) => tab.id === id);
+  if (index < 0) return;
+  const removed = contentTabs.value[index];
+  contentTabs.value.splice(index, 1);
+  if (removed?.kind === "tool" && removed.terminal && toolPanel.value?.terminal === removed.terminal) {
+    toolPanel.value = null;
+  } else if (removed?.kind === "tool" && toolPanel.value?.title === removed.title) {
+    toolPanel.value = null;
+  }
+  if (activeContentTabId.value === id) {
+    const next = contentTabs.value[index] ?? contentTabs.value[index - 1] ?? null;
+    activeContentTabId.value = next?.id ?? null;
+  }
+}
+
+function clearContentTabs() {
+  contentTabs.value = [];
+  activeContentTabId.value = null;
+  toolPanel.value = null;
+}
+
+function openFileContentTab(path: string) {
+  const normalized = path.replace(/\\/g, "/");
+  upsertContentTab({
+    id: `file:${normalized}`,
+    kind: "file",
+    path: normalized,
+    title: fileBasename(normalized),
+  });
+}
+
 function closeAllSidePanels() {
   taskPaneOpen.value = false;
   btwPanelOpen.value = false;
   showLogPanel.value = false;
   showFilesPanel.value = false;
-  previewSplitOpen.value = false;
+  mobilePreviewOpen.value = false;
   toolPanel.value = null;
+  clearContentTabs();
 }
 
 function openSidePanel(kind: SidePanelKind) {
   if (isMobileViewport.value) closeAllSidePanels();
-  previewSplitOpen.value = false;
   switch (kind) {
     case "task":
       taskPaneOpen.value = true;
@@ -734,20 +913,36 @@ function openSidePanel(kind: SidePanelKind) {
       btwPanelOpen.value = true;
       break;
     case "log":
-      showLogPanel.value = true;
-      if (!isMobileViewport.value) showFilesPanel.value = false;
+      if (isMobileViewport.value) {
+        showLogPanel.value = true;
+      } else {
+        upsertContentTab({ id: "log", kind: "log", title: "会话日志" });
+      }
       break;
     case "files":
-      showFilesPanel.value = true;
-      if (!isMobileViewport.value) showLogPanel.value = false;
+      if (isMobileViewport.value) {
+        showFilesPanel.value = true;
+      } else {
+        showFileTreeSidebar.value = true;
+      }
       break;
   }
 }
 
 function setToolPanel(panel: NonNullable<typeof toolPanel.value>) {
-  if (isMobileViewport.value) closeAllSidePanels();
-  previewSplitOpen.value = false;
+  if (isMobileViewport.value) {
+    closeAllSidePanels();
+    toolPanel.value = panel;
+    return;
+  }
   toolPanel.value = panel;
+  upsertContentTab({
+    id: toolTabId(panel),
+    kind: "tool",
+    title: panel.title,
+    sections: panel.sections,
+    terminal: panel.terminal,
+  });
 }
 
 function toggleTaskPane() {
@@ -763,33 +958,48 @@ function toggleTaskPane() {
 function onOpenFileEvent(event: Event) {
   const path = (event as CustomEvent<{ path?: string }>).detail?.path;
   if (!path) return;
-  requestedFilePath.value = null;
-  openFilesPanel();
-  void nextTick(() => {
-    requestedFilePath.value = path;
-  });
+  if (isMobileViewport.value) {
+    requestedFilePath.value = null;
+    openFilesPanel();
+    void nextTick(() => {
+      requestedFilePath.value = path;
+    });
+    return;
+  }
+  showFileTreeSidebar.value = true;
+  openFileContentTab(path);
 }
 
 onMounted(() => {
-  syncMobileViewport();
-  window.addEventListener("resize", syncMobileViewport);
   window.addEventListener("supervisor:open-file", onOpenFileEvent);
 });
 
 function toggleLogPanel() {
-  if (showLogPanel.value) {
-    showLogPanel.value = false;
+  if (isMobileViewport.value) {
+    if (showLogPanel.value) {
+      showLogPanel.value = false;
+      return;
+    }
+    openSidePanel("log");
+    return;
+  }
+  if (hasLogTab.value && activeContentTabId.value === "log") {
+    closeContentTab("log");
     return;
   }
   openSidePanel("log");
 }
 
 function toggleFilesPanel() {
-  if (showFilesPanel.value) {
-    showFilesPanel.value = false;
+  if (isMobileViewport.value) {
+    if (showFilesPanel.value) {
+      showFilesPanel.value = false;
+      return;
+    }
+    openSidePanel("files");
     return;
   }
-  openSidePanel("files");
+  showFileTreeSidebar.value = !showFileTreeSidebar.value;
 }
 
 function openLogPanel() {
@@ -1189,6 +1399,21 @@ async function loadOlderMessages() {
   }
 }
 
+/** Minimap jump: scroll if loaded; otherwise page older until found (or history ends). */
+async function onMinimapSelect(userEntryId: string) {
+  const list = messageListRef.value;
+  if (!list) return;
+  if (await list.scrollToEntryId(userEntryId)) return;
+
+  let guard = 0;
+  while (historyHasMore.value && guard < 40) {
+    guard += 1;
+    await loadOlderMessages();
+    await nextTick();
+    if (await list.scrollToEntryId(userEntryId)) return;
+  }
+}
+
 async function loadSessionMessages(sessionId: string) {
   stopStreaming();
   historyHasMore.value = false;
@@ -1290,6 +1515,12 @@ watch(
   () => props.session.id,
   (sessionId) => {
     pendingApprovals.value = [];
+    clearContentTabs();
+    showFileTreeSidebar.value = true;
+    showLogPanel.value = false;
+    showFilesPanel.value = false;
+    mobilePreviewOpen.value = false;
+    lastPreviewKey.value = "";
     void restorePendingApprovals(sessionId);
   },
   { immediate: true },
@@ -1613,9 +1844,9 @@ watch(
 );
 
 onBeforeUnmount(() => {
-  if (props.session?.id) void endLiveStatus(props.session.id);
+  // Keep Live Update aggregate across session switches; completion is tracked via
+  // syncAgentLiveStatus / session-store watch, not view unmount.
   window.removeEventListener("supervisor:open-file", onOpenFileEvent);
-  window.removeEventListener("resize", syncMobileViewport);
   stopStreaming();
   shadowSuggestionCleanup?.();
   shadowSuggestionCleanup = null;
@@ -1659,46 +1890,124 @@ const headerStatusKey = computed(() => {
 });
 
 const sessionServices = computed(() => parseSessionServicesFromMeta(props.session.meta));
-const servicesRunning = computed(() => sessionServices.value?.status === "running");
+const servicesRunning = computed(() => {
+  const status = sessionServices.value?.status;
+  return status === "running" || status === "starting" || status === "active";
+});
 const servicePreviews = computed<SessionServicesPreview[]>(() => {
   const services = sessionServices.value;
-  if (!services?.uiPorts?.length) return [];
-  return services.uiPorts.map((port) => ({
-    ...port,
-    previewUrl: api.buildSessionPreviewUrl(props.session.id, port.scriptName, port.path ?? "/"),
+  if (!services?.apps?.length) return [];
+  return services.apps.map((app) => ({
+    name: app.name,
+    port: app.port,
+    path: app.path,
+    label: app.name,
+    scriptName: app.name,
+    previewUrl: api.buildSessionPreviewUrl(props.session.id, app.name, app.path ?? "/"),
   }));
 });
 const hasServicePreviews = computed(() => servicePreviews.value.length > 0);
+const hasPreviewTab = computed(() => contentTabs.value.some((tab) => tab.kind === "preview"));
 
-async function togglePreviewSplit() {
-  if (!hasServicePreviews.value) return;
-  if (previewSplitOpen.value) {
-    previewSplitOpen.value = false;
+function ensureLastPreviewKey() {
+  if (
+    lastPreviewKey.value &&
+    servicePreviews.value.some((item) => `${item.name}:${item.port}` === lastPreviewKey.value)
+  ) {
     return;
   }
-  if (isMobileViewport.value) closeAllSidePanels();
-  else {
+  const first = servicePreviews.value[0];
+  lastPreviewKey.value = first ? `${first.name}:${first.port}` : "";
+}
+
+async function wakePreviewServicesIfNeeded(): Promise<boolean> {
+  const status = sessionServices.value?.status;
+  if (status !== "stopped" && status !== "idle") return true;
+  previewLoading.value = true;
+  try {
+    await api.wakeSessionServices(props.session.id);
+    await sessionStore.fetchSession(props.session.id);
+    return true;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    showUiMessage(`唤醒服务失败：${message}`, "error");
+    return false;
+  } finally {
+    previewLoading.value = false;
+  }
+}
+
+async function openSessionPreview() {
+  if (!hasServicePreviews.value) return;
+  ensureLastPreviewKey();
+  const woke = await wakePreviewServicesIfNeeded();
+  if (!woke) return;
+
+  if (isMobileViewport.value) {
     taskPaneOpen.value = false;
     btwPanelOpen.value = false;
     showLogPanel.value = false;
     showFilesPanel.value = false;
     toolPanel.value = null;
+    mobilePreviewOpen.value = true;
+    return;
   }
-  if (sessionServices.value?.status === "stopped") {
-    previewLoading.value = true;
-    try {
-      await api.wakeSessionServices(props.session.id);
-      await sessionStore.fetchSession(props.session.id);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      showUiMessage(`唤醒服务失败：${message}`, "error");
-      return;
-    } finally {
-      previewLoading.value = false;
-    }
-  }
-  previewSplitOpen.value = true;
+
+  taskPaneOpen.value = false;
+  btwPanelOpen.value = false;
+  upsertContentTab({ id: "preview", kind: "preview", title: "应用" });
 }
+
+async function toggleMobilePreview() {
+  if (!hasServicePreviews.value) return;
+  if (mobilePreviewOpen.value) {
+    mobilePreviewOpen.value = false;
+    return;
+  }
+  await openSessionPreview();
+}
+
+type ConversationTouch = { x: number; y: number; edge: boolean };
+const conversationTouch = ref<ConversationTouch | null>(null);
+const CONVERSATION_EDGE_PX = 24;
+const CONVERSATION_SWIPE_MIN = 56;
+const CONVERSATION_AXIS_RATIO = 1.35;
+
+function onConversationTouchStart(event: TouchEvent) {
+  if (!isMobileViewport.value || !hasServicePreviews.value || mobilePreviewOpen.value) return;
+  const t = event.touches[0];
+  const host = conversationHostRef.value;
+  if (!t || !host) return;
+  const rect = host.getBoundingClientRect();
+  const fromRightEdge = t.clientX >= rect.right - CONVERSATION_EDGE_PX;
+  conversationTouch.value = { x: t.clientX, y: t.clientY, edge: fromRightEdge };
+}
+
+function onConversationTouchEnd(event: TouchEvent) {
+  const start = conversationTouch.value;
+  conversationTouch.value = null;
+  if (!start || !isMobileViewport.value || !hasServicePreviews.value || mobilePreviewOpen.value) {
+    return;
+  }
+  const t = event.changedTouches[0];
+  if (!t) return;
+  const dx = t.clientX - start.x;
+  const dy = t.clientY - start.y;
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  const horizontalDominant = absX >= CONVERSATION_SWIPE_MIN && absX > absY * CONVERSATION_AXIS_RATIO;
+  if (dx <= 0) return;
+  if (!start.edge && !horizontalDominant) return;
+  if (start.edge && absX < 28) return;
+  void openSessionPreview();
+}
+
+watch(hasServicePreviews, (has) => {
+  if (!has) {
+    mobilePreviewOpen.value = false;
+    if (hasPreviewTab.value) closeContentTab("preview");
+  }
+});
 
 const lastNotifiedAskId = ref<string | null>(null);
 
@@ -1812,9 +2121,8 @@ async function openToolDetail(
   const normalizedToolName = toolName.toLowerCase();
   const isEval = normalizedToolName.includes("eval");
   const isTerminal = isEval || normalizedToolName.includes("bash");
-  if (isTerminal || isMobileViewport.value) {
-    setToolPanel({ ...detail, ...(isTerminal ? { terminal: isEval ? "eval" : "bash" } : {}) });
-  } else toolModal.value = detail;
+  // PC: content tabs; mobile: exclusive tool drawer (both via setToolPanel)
+  setToolPanel({ ...detail, ...(isTerminal ? { terminal: isEval ? "eval" : "bash" } : {}) });
 }
 
 function openExternalInteractionDetail(
@@ -1833,8 +2141,19 @@ function openEvalPanel() {
 }
 
 function toggleEvalPanel() {
-  if (toolPanel.value?.terminal === "eval") {
-    toolPanel.value = null;
+  if (isMobileViewport.value) {
+    if (toolPanel.value?.terminal === "eval") {
+      toolPanel.value = null;
+      return;
+    }
+    openEvalPanel();
+    return;
+  }
+  const evalTab = contentTabs.value.find(
+    (tab) => tab.kind === "tool" && tab.terminal === "eval",
+  );
+  if (evalTab) {
+    closeContentTab(evalTab.id);
     return;
   }
   openEvalPanel();
@@ -1864,8 +2183,12 @@ async function openBashDetail(
   const output = content?.map((part) => part.text ?? "").join("\n") ?? "";
   const terminalPresentation =
     content === undefined || output.length > 1000 || output.split(/\r?\n/).length > 8;
-  if (terminalPresentation) setToolPanel({ ...detail, terminal: "bash" });
-  else toolModal.value = detail;
+  if (isMobileViewport.value) {
+    if (terminalPresentation) setToolPanel({ ...detail, terminal: "bash" });
+    else toolModal.value = detail;
+    return;
+  }
+  setToolPanel({ ...detail, terminal: "bash" });
 }
 
 function openCompactionDetail(entry: ChatCompactionEntry) {
@@ -2218,7 +2541,17 @@ async function executeCustomSlash(name: string) {
   overflow: hidden;
 }
 
+.chat-main-row {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: row;
+  align-items: stretch;
+}
+
 .chat-message-list-host {
+  min-width: 0;
   min-height: 0;
   flex: 1;
 }

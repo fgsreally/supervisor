@@ -58,7 +58,6 @@
 
 <script setup lang="ts">
 import {
-  AppWindow,
   Cloud,
   BookOpenCheck,
   FolderOpen,
@@ -78,7 +77,6 @@ export type MainTab =
   | "chat"
   | "todo"
   | "dashboard"
-  | "active-ui"
   | "contacts"
   | "providers"
   | "resources"
@@ -95,7 +93,6 @@ defineEmits<{
 
 const navItems = [
   { id: "chat" as const, icon: MessageSquare, title: "聊天" },
-  { id: "active-ui" as const, icon: AppWindow, title: "活跃应用" },
   { id: "todo" as const, icon: ListTodo, title: "Todo / 计划" },
   { id: "dashboard" as const, icon: LayoutDashboard, title: "工作概览" },
   { id: "contacts" as const, icon: Users, title: "智能代理" },

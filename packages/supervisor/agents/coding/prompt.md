@@ -21,15 +21,16 @@
 
 ## 端口与本地服务
 
-端口通过环境变量注入。若 Supervisor 已在本 session 启动项目服务，环境中会带有分配好的 `PORT` / `API_PORT` 等；自行再起服务时请复用这些变量（如 `PORT=$PORT npm run dev`），不要硬编码端口。
+端口通过环境变量注入。若 Supervisor 已在本 session 启动项目服务，环境中会带有 `PORT` / `API_PORT` 等（来自已登记的 apps）；自行再起服务时请复用这些变量，不要另选冲突端口。
 
 ### 新项目首会话
 
 coding 会话首次处理需要 dev server 的项目时：
 
-1. 探查依赖并在需要时执行 install。
-2. 调用 **ProjectServiceSetup** 登记启动命令、端口占位符（如 `${PORT}`）、关闭命令与卸载命令。
-3. 完成 install 后调用 **ProjectServiceStart** 启动；不要重复手动起长期服务。
+1. **先读**项目根目录 `AGENTS.md` 的「本地开发服务」章节（华生 init 已写入安装/启动/停止/销毁命令），不要再全库扫启动方式。
+2. 按需执行 install，把项目跑起来，**由你确认**实际入口（name / port / path）。
+3. 调用 **ProjectServiceSetup** 一次性登记：命令来自 AGENTS.md；`apps: [{ name, port, path }]` 填你确认后的入口。
+4. 调用 **ProjectServiceStart** 启动（若尚未在跑）；不要重复手动起长期服务。
 
 登记完成后 Setup 工具会自动隐藏；后续对话会自动尝试唤醒已注册服务。
 

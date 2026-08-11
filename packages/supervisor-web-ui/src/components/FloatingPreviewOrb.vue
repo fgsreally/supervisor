@@ -9,32 +9,46 @@
       'floating-preview-orb--open': open,
     }"
     :style="{ left: `${pointX}px`, top: `${pointY}px` }"
-    :title="open ? '关闭预览分屏' : '打开预览分屏'"
+    :title="open ? '关闭应用预览' : `打开应用预览（${count}）`"
+    :aria-label="open ? '关闭应用预览' : `打开应用预览，${count} 个应用`"
     @pointerdown="onPointerDown"
     @click="onClick"
   >
-    <span class="floating-preview-orb__dot" />
-    <span class="floating-preview-orb__dot" />
+    <span class="floating-preview-orb__pulse" aria-hidden="true" />
+    <span class="floating-preview-orb__icon" aria-hidden="true">
+      <span class="floating-preview-orb__dot" />
+      <span class="floating-preview-orb__dot" />
+    </span>
+    <span v-if="count > 0" class="floating-preview-orb__badge">{{ countLabel }}</span>
   </button>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, unref, watch, type Ref } from "vue";
+import { computed, onMounted, ref, unref, watch, type Ref } from "vue";
 import { useDraggablePoint } from "@/composables/use-draggable-point";
 
-const props = defineProps<{
-  visible: boolean;
-  active?: boolean;
-  open?: boolean;
-  containerRef?: HTMLElement | null | Ref<HTMLElement | null>;
-  storageKey?: string;
-}>();
+const props = withDefaults(
+  defineProps<{
+    visible: boolean;
+    active?: boolean;
+    open?: boolean;
+    count?: number;
+    containerRef?: HTMLElement | null | Ref<HTMLElement | null>;
+    storageKey?: string;
+  }>(),
+  {
+    active: false,
+    open: false,
+    count: 0,
+  },
+);
 
 const emit = defineEmits<{
   toggle: [];
 }>();
 
 const containerEl = ref<HTMLElement | null>(null);
+const countLabel = computed(() => (props.count > 99 ? "99+" : String(props.count)));
 
 const { pointX, pointY, dragging, startDrag, consumeClick, clampToContainer } = useDraggablePoint({
   containerRef: containerEl,
@@ -70,16 +84,15 @@ function onClick() {
 .floating-preview-orb {
   position: absolute;
   z-index: 40;
-  width: 44px;
-  height: 44px;
+  width: 48px;
+  height: 48px;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
   border: 1px solid var(--app-border-subtle);
-  background: color-mix(in srgb, var(--app-popup-bg) 92%, transparent);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: color-mix(in srgb, var(--app-popup-bg) 94%, transparent);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 14%);
   touch-action: none;
   cursor: grab;
 }
@@ -88,13 +101,33 @@ function onClick() {
   cursor: grabbing;
 }
 
-.floating-preview-orb--active .floating-preview-orb__dot {
-  background: var(--app-status-running);
-}
-
 .floating-preview-orb--open {
   border-color: var(--app-accent);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-accent) 25%, transparent);
+}
+
+.floating-preview-orb__pulse {
+  position: absolute;
+  inset: -2px;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--app-status-running, #07c160) 55%, transparent);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.floating-preview-orb--active .floating-preview-orb__pulse {
+  animation: preview-orb-pulse 1.8s ease-out infinite;
+}
+
+.floating-preview-orb--active {
+  animation: preview-orb-breathe 2.2s ease-in-out infinite;
+}
+
+.floating-preview-orb__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
 
 .floating-preview-orb__dot {
@@ -102,5 +135,60 @@ function onClick() {
   height: 7px;
   border-radius: 999px;
   background: var(--app-text-muted);
+}
+
+.floating-preview-orb--active .floating-preview-orb__dot {
+  background: var(--app-status-running, #07c160);
+}
+
+.floating-preview-orb__badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--app-accent, #07c160);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 650;
+  line-height: 1;
+  box-shadow: 0 2px 6px rgb(0 0 0 / 18%);
+}
+
+@keyframes preview-orb-pulse {
+  0% {
+    opacity: 0.7;
+    transform: scale(0.92);
+  }
+  70% {
+    opacity: 0;
+    transform: scale(1.28);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.28);
+  }
+}
+
+@keyframes preview-orb-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-preview-orb--active,
+  .floating-preview-orb--active .floating-preview-orb__pulse {
+    animation: none;
+  }
 }
 </style>

@@ -11,7 +11,9 @@ describe("project runtime parsing", () => {
 
     expect(prompt).toContain("git init");
     expect(prompt).toContain("AGENTS.md");
-    expect(prompt).toContain("ProjectServiceRegister");
+    expect(prompt).toContain("本地开发服务");
+    expect(prompt).toContain("start");
+    expect(prompt).not.toContain("ProjectServiceRegister");
     expect(prompt).not.toContain('"scripts"');
   });
 

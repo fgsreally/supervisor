@@ -1909,7 +1909,7 @@ export class SessionManager {
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
       const services = parseSessionServicesMeta(session.meta);
-      if (services?.entries?.length) {
+      if (services?.startCommand) {
         this.db.updateMeta(session.id, {
           services: {
             ...services,

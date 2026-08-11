@@ -123,6 +123,21 @@ public class SupervisorNativePlugin extends Plugin {
         String title = call.getString("title", "Supervisor");
         String subtitle = call.getString("subtitle", "");
         String phase = call.getString("phase", "thinking");
-        AndroidLiveUpdateManager.show(getContext(), title, subtitle, phase);
+        String chip = call.getString("chip");
+        Integer activeCount = call.getInt("activeCount");
+        Integer completedCount = call.getInt("completedCount");
+        Integer totalCount = call.getInt("totalCount");
+        Boolean allComplete = call.getBoolean("allComplete");
+        AndroidLiveUpdateManager.show(
+            getContext(),
+            title,
+            subtitle,
+            phase,
+            chip,
+            activeCount,
+            completedCount,
+            totalCount,
+            allComplete
+        );
     }
 }

@@ -1360,21 +1360,29 @@ export async function syncSession(id: string): Promise<Session> {
 }
 
 export interface SessionServicesSnapshot {
-  status: "starting" | "running" | "stopped" | "error" | "unregistered" | "none";
+  status:
+    | "starting"
+    | "running"
+    | "active"
+    | "idle"
+    | "stopped"
+    | "error"
+    | "unregistered"
+    | "none";
   sleepAt?: number;
   installedAt?: string;
-  uiPorts: Array<{
-    scriptName: string;
-    envVar: string;
-    label?: string;
+  apps: Array<{
+    name: string;
+    port: number;
     path?: string;
   }>;
   previews: Array<{
-    scriptName: string;
-    envVar: string;
-    label?: string;
+    name: string;
+    port: number;
     path?: string;
     previewUrl: string;
+    scriptName?: string;
+    label?: string;
   }>;
   error?: string;
 }

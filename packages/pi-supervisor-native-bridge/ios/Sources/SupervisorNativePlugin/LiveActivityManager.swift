@@ -55,6 +55,14 @@ final class LiveActivityManager {
     }
 
     func end(sessionId: String?) {
+        if sessionId == nil || sessionId == "aggregate" {
+            let ending = activities
+            activities.removeAll()
+            for (_, activity) in ending {
+                Task { await activity.end(nil, dismissalPolicy: .immediate) }
+            }
+            return
+        }
         guard let sessionId, let activity = activities.removeValue(forKey: sessionId) else { return }
         Task { await activity.end(nil, dismissalPolicy: .immediate) }
     }

@@ -1,10 +1,11 @@
 <template>
   <div
     class="session-log-panel flex flex-col h-full w-full overflow-hidden"
+    :class="{ 'session-log-panel--embedded': embedded }"
     style="background: var(--app-settings-bg)"
   >
     <div
-      v-if="!mobile"
+      v-if="!mobile && !embedded"
       class="h-14 md:h-16 border-b flex items-center px-4 shrink-0 gap-3"
       style="background: var(--app-settings-bg); border-color: var(--app-border)"
     >
@@ -123,8 +124,10 @@ const props = withDefaults(
     sessionId: string;
     mobile?: boolean;
     active?: boolean;
+    /** PC tab host: hide standalone header/close chrome. */
+    embedded?: boolean;
   }>(),
-  { active: false },
+  { active: false, embedded: false },
 );
 
 defineEmits<{ close: [] }>();
@@ -348,6 +351,11 @@ onBeforeUnmount(stopPolling);
   min-width: 22rem;
   background: var(--app-popup-bg);
   border-left: 1px solid var(--app-border-subtle);
+}
+
+.session-log-panel--embedded {
+  min-width: 0;
+  border-left: 0;
 }
 
 .log-load-more {

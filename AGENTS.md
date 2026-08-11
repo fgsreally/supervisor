@@ -149,5 +149,5 @@ pnpm docs:build
 - **华生**是内部 runner（`spawn_type: watson`）：`AgentHarness` + 简单工具（`createDefaultTools`）+ 助手模型；**不**再走 `pi-coding-agent` 的 `createAgentSession`（避免两套 agent 系统）。
 - 不创建用户 session；任务提示词临时注入；结构化结果只用终止型 `submit_result` tool（pi 官方方式，无文本托底）。
 - 入口：`SessionManager.runWatson` / 扩展 `ctx.watson.run(...)`；日志在 agent home `logs/`，Agent 详情 Logs 可见。
-- Session 内 coding agent 通过 `project-services` 扩展注册 start/stop/destroy 到 `sessions.meta.services.entries`；按需启动并注入启动提示。
+- 华生项目解析只把安装/启动/停止/销毁写进项目 `AGENTS.md`「本地开发服务」（不写入口 port/path）；Session 内 coding agent 确认实际入口后，通过 `ProjectServiceSetup` 登记到 `sessions.meta.services`（扁平 commands + `apps[{ name, port, path }]`），再按需启动/唤醒。
 - Session 可委派子 Agent 白名单：`sessions.meta.subagentIds`（不再使用 `members` 表）。

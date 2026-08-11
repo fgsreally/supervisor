@@ -1,5 +1,5 @@
 import type { Session } from "../types.js";
-import type { SessionServicesMeta, SessionUiPort } from "./project-runtime.js";
+import type { SessionServiceApp, SessionServicesMeta } from "./project-runtime.js";
 import { parseSessionServicesMeta } from "./session-services.js";
 
 export interface SessionPreviewTarget {
@@ -14,6 +14,10 @@ const FRAME_BLOCKING_HEADERS = [
   "content-security-policy",
   "content-security-policy-report-only",
 ];
+
+function isPreviewableStatus(status: SessionServicesMeta["status"] | undefined): boolean {
+  return status === "running" || status === "active" || status === "starting";
+}
 
 export function buildSessionPreviewPath(
   sessionId: number,
@@ -33,12 +37,9 @@ export function resolveSessionPreviewTarget(options: {
   requestPath: string;
 }): SessionPreviewTarget | null {
   const services = parseSessionServicesMeta(options.session.meta);
-  if (!services || services.status !== "running") return null;
-  const uiPort = findUiPort(services, options.scriptName);
-  if (!uiPort) return null;
-  const portRaw = services.portEnv[uiPort.envVar];
-  const port = portRaw ? Number.parseInt(portRaw, 10) : NaN;
-  if (!Number.isFinite(port) || port <= 0) return null;
+  if (!services || !isPreviewableStatus(services.status)) return null;
+  const app = findServiceApp(services, options.scriptName);
+  if (!app) return null;
   const prefix = `/sessions/${options.session.id}/preview/${encodeURIComponent(options.scriptName)}`;
   let subPath = options.requestPath.startsWith(prefix)
     ? options.requestPath.slice(prefix.length)
@@ -46,17 +47,24 @@ export function resolveSessionPreviewTarget(options: {
   if (!subPath.startsWith("/")) subPath = `/${subPath}`;
   return {
     scriptName: options.scriptName,
-    port,
-    basePath: uiPort.path ?? "/",
-    subPath: subPath === "/" ? (uiPort.path ?? "/") : subPath,
+    port: app.port,
+    basePath: app.path ?? "/",
+    subPath: subPath === "/" ? (app.path ?? "/") : subPath,
   };
 }
 
-export function findUiPort(
+export function findServiceApp(
   services: SessionServicesMeta,
-  scriptName: string,
-): SessionUiPort | undefined {
-  return services.uiPorts?.find((port) => port.scriptName === scriptName);
+  name: string,
+): SessionServiceApp | undefined {
+  return services.apps?.find((app) => app.name === name);
+}
+
+/** @deprecated use findServiceApp */
+export function findUiPort(services: SessionServicesMeta, scriptName: string) {
+  const app = findServiceApp(services, scriptName);
+  if (!app) return undefined;
+  return { scriptName: app.name, envVar: "PORT", label: app.name, path: app.path };
 }
 
 export function buildPreviewUpstreamUrl(target: SessionPreviewTarget, requestUrl: URL): URL {
@@ -117,11 +125,15 @@ export async function proxySessionPreviewRequest(
 }
 
 export interface SessionServicesPreviewDto {
-  scriptName: string;
-  envVar: string;
-  label?: string;
+  name: string;
+  port: number;
   path?: string;
   previewUrl: string;
+  /** @deprecated alias of name */
+  scriptName: string;
+  /** @deprecated unused */
+  envVar?: string;
+  label?: string;
 }
 
 export function buildSessionServicesDto(
@@ -131,24 +143,36 @@ export function buildSessionServicesDto(
   status: SessionServicesMeta["status"] | "none";
   sleepAt?: number;
   installedAt?: string;
-  uiPorts: SessionUiPort[];
+  apps: SessionServiceApp[];
+  /** @deprecated use apps */
+  uiPorts: Array<{ scriptName: string; envVar: string; label?: string; path?: string }>;
   previews: SessionServicesPreviewDto[];
   error?: string;
 } {
   const services = parseSessionServicesMeta(session.meta);
   if (!services) {
-    return { status: "none", uiPorts: [], previews: [] };
+    return { status: "none", apps: [], uiPorts: [], previews: [] };
   }
-  const uiPorts = services.uiPorts ?? [];
-  const previews = uiPorts.map((port) => ({
-    ...port,
-    previewUrl: `${origin}${buildSessionPreviewPath(session.id, port.scriptName, port.path ?? "/")}`,
+  const apps = services.apps ?? [];
+  const previews = apps.map((app) => ({
+    name: app.name,
+    port: app.port,
+    path: app.path,
+    scriptName: app.name,
+    label: app.name,
+    previewUrl: `${origin}${buildSessionPreviewPath(session.id, app.name, app.path ?? "/")}`,
   }));
   return {
     status: services.status,
     sleepAt: services.sleepAt,
     installedAt: services.installedAt,
-    uiPorts,
+    apps,
+    uiPorts: apps.map((app) => ({
+      scriptName: app.name,
+      envVar: "PORT",
+      label: app.name,
+      path: app.path,
+    })),
     previews,
     error: services.error,
   };

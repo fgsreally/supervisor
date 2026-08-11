@@ -5,6 +5,16 @@ export interface LiveStatusPayload {
   title: string;
   subtitle?: string;
   phase?: LiveStatusPhase;
+  /** Status-bar chip override (e.g. "1/2" or "完成"; keep ≤7 chars). */
+  chip?: string;
+  /** Currently executing session count. */
+  activeCount?: number;
+  /** Completed session count in the current activity wave. */
+  completedCount?: number;
+  /** active + completed in the current activity wave. */
+  totalCount?: number;
+  /** True when every tracked session in this wave has finished. */
+  allComplete?: boolean;
 }
 
 export interface ShareItem {

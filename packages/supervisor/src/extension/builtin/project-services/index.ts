@@ -24,11 +24,13 @@ const SETUP_TOOL = "ProjectServiceSetup";
 const SERVICE_TOOL_NAMES = new Set([SETUP_TOOL, "ProjectServiceStart", "ProjectServiceList"]);
 
 const FIRST_SESSION_PROMPT = [
-  "项目服务（首会话必做）：",
-  "1. 优先阅读项目根目录 AGENTS.md 的「本地开发服务」章节获取安装/启动/停止/销毁命令（不含入口 port/path）。",
-  "2. 按需执行 install，把项目跑起来，由你确认实际入口 name/port/path。",
-  "3. 调用 ProjectServiceSetup 一次性登记：命令来自 AGENTS.md；apps[{ name, port, path }] 填你确认的入口。",
-  "4. 调用 ProjectServiceStart 启动（若尚未在跑）；不要重复手动起长期服务。",
+  "项目服务（首会话硬性要求，未完成前不要只做讲解）：",
+  "1. 用「本地开发服务」的 install/start/stop/destroy；若章节缺失，再从 package.json scripts 推断。",
+  "2. 按需 install。",
+  "3. 先真正启动服务（不要只口述），确认 name/port/path（例如 Vite：web:5173:/）。",
+  "4. 再 ProjectServiceSetup 登记命令与已确认入口。",
+  "5. 需要系统托管时再 ProjectServiceStart（端口已通勿重复拉起）。",
+  "6. 完成 3→4 后才能回答用户；禁止只回复命令而不启动、不登记。",
 ].join("\n");
 
 const RUNNING_PROMPT = [
@@ -315,7 +317,7 @@ const projectServicesExtension: ExtensionDefinition = {
     ctx.agent.registerTool({
       name: SETUP_TOOL,
       description:
-        "登记本 session 的项目运行时：install/start/stop/destroy 命令（优先取自 AGENTS.md「本地开发服务」），以及你确认后的 apps[{ name, port, path }]。登记后此工具会隐藏。",
+        "在服务已启动并确认入口后，登记本 session 的运行时：install/start/stop/destroy 命令（用「本地开发服务」）以及已确认的 apps[{ name, port, path }]。登记后此工具会隐藏。",
       parameters: Type.Object({
         installCommand: Type.Optional(Type.String()),
         startCommand: Type.String({ description: "启动命令（长期运行）" }),
@@ -354,7 +356,7 @@ const projectServicesExtension: ExtensionDefinition = {
           content: [
             {
               type: "text",
-              text: `已登记项目服务（${apps.length} 个入口）。请先完成 install（如需要），再调用 ProjectServiceStart 启动。`,
+              text: `已登记项目服务（${apps.length} 个入口）。若尚未交给系统托管，可调用 ProjectServiceStart（端口已通时勿重复拉起）。`,
             },
           ],
         };

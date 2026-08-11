@@ -13,6 +13,8 @@ describe("project runtime parsing", () => {
     expect(prompt).toContain("AGENTS.md");
     expect(prompt).toContain("本地开发服务");
     expect(prompt).toContain("start");
+    expect(prompt).toContain("重构整份内容");
+    expect(prompt).not.toContain("逐字保留原内容");
     expect(prompt).not.toContain("ProjectServiceRegister");
     expect(prompt).not.toContain('"scripts"');
   });

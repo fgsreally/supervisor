@@ -269,6 +269,14 @@ const statusDotClass = computed(() => {
   border-color: var(--app-list-status-ring);
 }
 
+.session-row--active .session-status-ring {
+  border-color: var(--app-list-item-active);
+}
+
+.session-row--active:hover .session-status-ring {
+  border-color: color-mix(in srgb, var(--app-list-item-active) 86%, white);
+}
+
 .session-status-dot--initializing {
   background: var(--app-status-initializing);
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;

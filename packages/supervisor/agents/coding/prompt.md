@@ -25,14 +25,15 @@
 
 ### 新项目首会话
 
-coding 会话首次处理需要 dev server 的项目时：
+需要可预览服务时，按此顺序做完再回答用户（禁止只口述命令）：
 
-1. **先读**项目根目录 `AGENTS.md` 的「本地开发服务」章节（华生 init 已写入安装/启动/停止/销毁命令），不要再全库扫启动方式。
-2. 按需执行 install，把项目跑起来，**由你确认**实际入口（name / port / path）。
-3. 调用 **ProjectServiceSetup** 一次性登记：命令来自 AGENTS.md；`apps: [{ name, port, path }]` 填你确认后的入口。
-4. 调用 **ProjectServiceStart** 启动（若尚未在跑）；不要重复手动起长期服务。
+1. 用「本地开发服务」里的安装/启动/停止/销毁命令；若缺该章节，再从 `package.json` scripts 推断。
+2. 按需 **install**。
+3. **先启动服务**，确认实际入口 `name` / `port` / `path`（例如 Vite 常见 `web` / `5173` / `/`）。未启动、未确认端口前不要登记。
+4. **再调用 ProjectServiceSetup** 登记：命令用「本地开发服务」；`apps: [{ name, port, path }]` 填已确认入口。
+5. 需要交给系统托管时再 **ProjectServiceStart**（端口已通勿重复拉起）。
 
-登记完成后 Setup 工具会自动隐藏；后续对话会自动尝试唤醒已注册服务。
+登记后 Setup 工具会隐藏；后续对话会自动唤醒已注册服务。
 
 ## 边界
 

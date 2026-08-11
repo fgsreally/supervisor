@@ -3,7 +3,14 @@ export type DustEffectOptions = {
   step?: number;
   /** Collapse layout height while particles finish (leave). Default true. */
   collapse?: boolean;
+  /**
+   * When to start collapsing after the element is hidden, as a fraction of
+   * `duration` (0 = immediately). Default 0 so list rows don't leave a blank hole.
+   */
+  collapseAt?: number;
   onStart?: () => void;
+  /** Fires once layout collapse finishes (or is skipped). */
+  onCollapsed?: () => void;
 };
 
 type Particle = {
@@ -123,7 +130,8 @@ function drawParticle(
   }
 }
 
-function collapseElement(el: HTMLElement, duration: number): Promise<void> {
+/** Collapse an element out of document flow so list siblings reflow immediately. */
+export function collapseDustElement(el: HTMLElement, duration = 200): Promise<void> {
   const height = el.getBoundingClientRect().height;
   const styles = getComputedStyle(el);
   const marginBottom = Number.parseFloat(styles.marginBottom) || 0;
@@ -134,6 +142,19 @@ function collapseElement(el: HTMLElement, duration: number): Promise<void> {
   el.style.overflow = "hidden";
   el.style.boxSizing = "border-box";
   el.style.pointerEvents = "none";
+  el.style.flexGrow = "0";
+  el.style.flexShrink = "0";
+
+  if (height < 1) {
+    el.style.height = "0px";
+    el.style.marginTop = "0px";
+    el.style.marginBottom = "0px";
+    el.style.paddingTop = "0px";
+    el.style.paddingBottom = "0px";
+    el.style.borderWidth = "0";
+    el.style.minHeight = "0";
+    return Promise.resolve();
+  }
 
   return el
     .animate(
@@ -161,8 +182,24 @@ function collapseElement(el: HTMLElement, duration: number): Promise<void> {
         fill: "forwards",
       },
     )
-    .finished.then(() => undefined)
-    .catch(() => undefined);
+    .finished.then(() => {
+      // Pin collapsed layout even if WAAPI fill is cleared when the node is detached.
+      el.style.height = "0px";
+      el.style.minHeight = "0px";
+      el.style.marginTop = "0px";
+      el.style.marginBottom = "0px";
+      el.style.paddingTop = "0px";
+      el.style.paddingBottom = "0px";
+      el.style.borderWidth = "0";
+    })
+    .catch(() => {
+      el.style.height = "0px";
+      el.style.minHeight = "0px";
+    });
+}
+
+function collapseElement(el: HTMLElement, duration: number): Promise<void> {
+  return collapseDustElement(el, duration);
 }
 
 function expandElement(el: HTMLElement, duration: number): Promise<void> {
@@ -222,14 +259,31 @@ function expandElement(el: HTMLElement, duration: number): Promise<void> {
 
 /**
  * Dissolve a DOM node into canvas particles (leave / remove).
- * Element is hidden immediately; optional height collapse starts mid-flight.
+ * Element is hidden after snapshot; layout collapse starts immediately by default
+ * so TransitionGroup lists don't keep an empty slot.
  */
 export async function dustVanish(
   el: HTMLElement,
-  { duration = 1100, step = 3, collapse = true, onStart = () => {} }: DustEffectOptions = {},
+  {
+    duration = 1100,
+    step = 3,
+    collapse = true,
+    collapseAt = 0,
+    onStart = () => {},
+    onCollapsed = () => {},
+  }: DustEffectOptions = {},
 ): Promise<void> {
+  let collapsedNotified = false;
+  const notifyCollapsed = () => {
+    if (collapsedNotified) return;
+    collapsedNotified = true;
+    onCollapsed();
+  };
+
   if (typeof document === "undefined" || prefersReducedMotion()) {
     onStart();
+    if (collapse) await collapseElement(el, 160);
+    notifyCollapsed();
     return;
   }
 
@@ -237,15 +291,25 @@ export async function dustVanish(
   const rect = el.getBoundingClientRect();
   if (rect.width < 2 || rect.height < 2) {
     onStart();
+    if (collapse) await collapseElement(el, 120);
+    notifyCollapsed();
     return;
   }
 
   const scale = Math.min(window.devicePixelRatio || 1, 2);
   let shot: HTMLCanvasElement;
   try {
-    shot = await rasterizeDOM(el, scale);
+    shot = await Promise.race([
+      rasterizeDOM(el, scale),
+      new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error("dust rasterize timeout")), 1200);
+      }),
+    ]);
   } catch {
+    el.style.visibility = "hidden";
     onStart();
+    if (collapse) await collapseElement(el, Math.min(200, duration * 0.2));
+    notifyCollapsed();
     return;
   }
 
@@ -270,8 +334,16 @@ export async function dustVanish(
 
   const start = performance.now();
   const dissolveEnd = 0.64;
+  const collapseThreshold = Math.min(1, Math.max(0, collapseAt));
   let collapseStarted = false;
   let collapsePromise: Promise<void> = Promise.resolve();
+
+  if (!collapse) {
+    notifyCollapsed();
+  } else if (collapseThreshold === 0) {
+    collapseStarted = true;
+    collapsePromise = collapseElement(el, Math.min(200, duration * 0.2)).then(notifyCollapsed);
+  }
 
   await new Promise<void>((resolve) => {
     function frame(now: number) {
@@ -280,9 +352,9 @@ export async function dustVanish(
       const smooth = wave * wave * (3 - 2 * wave);
       const edge = W * (1 - smooth);
 
-      if (collapse && !collapseStarted && t >= 0.52) {
+      if (collapse && !collapseStarted && t >= collapseThreshold) {
         collapseStarted = true;
-        collapsePromise = collapseElement(el, duration * 0.3);
+        collapsePromise = collapseElement(el, Math.min(200, duration * 0.2)).then(notifyCollapsed);
       }
 
       ctx.clearRect(0, 0, layer.width, layer.height);
@@ -329,6 +401,7 @@ export async function dustVanish(
   });
 
   await collapsePromise;
+  notifyCollapsed();
   layer.remove();
 }
 

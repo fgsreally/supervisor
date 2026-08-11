@@ -94,7 +94,7 @@ function onAfterLeave(el: Element) {
   position: relative;
 }
 .chat-list-roots:has(> .session-list-leave-active) {
-  min-height: 68px;
+  /* Do NOT set min-height here — leave-active can stick and leave a permanent hole. */
   overflow: visible;
 }
 .chat-list-root,

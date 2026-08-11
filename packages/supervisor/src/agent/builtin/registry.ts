@@ -137,12 +137,14 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
   const label = PACKAGED_AGENT_LABELS[kind];
   if (existing !== undefined) {
     const agent = db.getAgent(existing);
+    const packagedPrompt = loadPackagedAgentPrompt(kind);
     const legacyIntroPrompt = agent?.systemPrompt?.trim() === LEGACY_INTRO_PROMPT;
+    // Packaged agents keep system_prompt in sync with agents/<kind>/prompt.md on boot.
     if (
-      kind === "intro" &&
-      (legacyIntroPrompt || agent?.systemPrompt !== loadPackagedAgentPrompt(kind))
+      agent?.systemPrompt !== packagedPrompt ||
+      (kind === "intro" && legacyIntroPrompt)
     ) {
-      db.updateAgent(existing, { system_prompt: loadPackagedAgentPrompt(kind) });
+      db.updateAgent(existing, { system_prompt: packagedPrompt });
     }
     ensureAgentHome(existing, getAgentHomeDir(existing));
     ensureBuiltinExtensionResources(db);

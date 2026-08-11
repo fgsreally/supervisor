@@ -825,14 +825,19 @@ export class SessionManager {
       ...options.meta,
     };
     const avatar = withDefaultSessionAvatar(options.avatar ?? null, agent);
+    const projectId = this.resolveProjectId(options);
+    const project = projectId != null ? this.db.getProject(projectId) : null;
+    // Prefer explicit cwd; otherwise seed from the bound project so extensions
+    // (worktree, file tree) never fall back to the supervisor playground root.
+    const initialCwd = options.cwd ?? project?.cwd ?? getDefaultCwd();
     const row = this.db.insert({
       parent_id: options.parentId ?? null,
-      project_id: this.resolveProjectId(options),
+      project_id: projectId,
       // DB-only create: idle until spawn/restore attaches a runtime.
       // `initializing` is reserved for in-flight spawn finalize.
       status: "idle",
       thinking_level: "none",
-      cwd: options.cwd ?? getDefaultCwd(),
+      cwd: initialCwd,
       agent_id: options.agentId ?? null,
       spawn_type: spawnType,
       created_by: creationMethod,

@@ -1,8 +1,10 @@
 import { execFile, execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
+
+const SUPERVISOR_GITIGNORE_ENTRY = ".supervisor/";
 
 const execGit = promisify(execFile);
 
@@ -22,6 +24,45 @@ function runGitSync(cwd: string, args: string[]): string {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
+}
+
+/** Keep session worktrees out of the project git tree and file listings. */
+function ensureSupervisorGitignored(repoRoot: string): void {
+  const gitignorePath = join(repoRoot, ".gitignore");
+  let content = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : "";
+  const lines = content.split(/\r?\n/);
+  const alreadyIgnored = lines.some((line) => {
+    const trimmed = line.trim();
+    return trimmed === SUPERVISOR_GITIGNORE_ENTRY || trimmed === ".supervisor";
+  });
+  if (!alreadyIgnored) {
+    const prefix = content && !content.endsWith("\n") ? `${content}\n` : content;
+    writeFileSync(gitignorePath, `${prefix}${SUPERVISOR_GITIGNORE_ENTRY}\n`, "utf8");
+  }
+
+  let tracked = "";
+  try {
+    tracked = runGitSync(repoRoot, ["ls-files", ".supervisor"]);
+  } catch {
+    tracked = "";
+  }
+  if (!tracked.trim()) return;
+
+  // Drop from the index so future worktrees don't check out nested session dirs.
+  try {
+    runGitSync(repoRoot, ["rm", "-r", "--cached", "-f", "--ignore-unmatch", ".supervisor"]);
+  } catch {
+    return;
+  }
+  try {
+    runGitSync(repoRoot, [
+      "commit",
+      "-m",
+      withSvCommitMarker("chore: stop tracking .supervisor worktrees"),
+    ]);
+  } catch {
+    // Nothing to commit (e.g. clean after rm) — ignore.
+  }
 }
 
 /**
@@ -59,6 +100,7 @@ export function ensureProjectGitRootSync(projectCwd: string): string {
   } catch {
     runGitSync(root, ["commit", "--allow-empty", "-m", withSvCommitMarker("sv: init project")]);
   }
+  ensureSupervisorGitignored(root);
   return root;
 }
 

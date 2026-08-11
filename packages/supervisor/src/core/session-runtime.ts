@@ -29,6 +29,14 @@ import { BUILTIN_EXTENSION_SLUGS } from "../extension/builtin/catalog.js";
 import { listEnabledBuiltinExtensionSlugs } from "../extension/builtin/ensure.js";
 import { evaluateAgentPermission, type AgentPermissionRules } from "./agent-permissions.js";
 import type { ApprovalRequest, ApprovalResult, ExtensionEvent } from "../extension/index.js";
+import { harnessAgentState, readHarnessTools } from "./harness-compat.js";
+
+export {
+  harnessAgentController,
+  harnessAgentState,
+  type HarnessAgentController,
+  type HarnessAgentState,
+} from "./harness-compat.js";
 
 interface HarnessSessionTree {
   buildContext(): Promise<{ messages: AgentMessage[] }>;
@@ -43,26 +51,6 @@ interface HarnessSessionTree {
 
 function harnessSession(harness: unknown): HarnessSessionTree {
   return (harness as { session: HarnessSessionTree }).session;
-}
-
-interface HarnessAgentState {
-  messages: AgentMessage[];
-  streamingMessage?: AgentMessage;
-}
-
-interface HarnessAgentController {
-  state: HarnessAgentState;
-  hasQueuedMessages?: () => boolean;
-  continue?: () => Promise<void>;
-}
-
-/** Compatibility boundary for transcript replacement, which has no public Harness setter. */
-export function harnessAgentState(harness: AgentHarness): HarnessAgentState {
-  return harnessAgentController(harness).state;
-}
-
-export function harnessAgentController(harness: AgentHarness): HarnessAgentController {
-  return (harness as unknown as { agent: HarnessAgentController }).agent;
 }
 
 export type SlashCommandSource = AgentResourceCommandSource | "extension" | string;
@@ -439,7 +427,14 @@ export class SessionRuntime implements ManagedSessionRuntime {
   }
 
   async setActiveTools(toolNames: string[]): Promise<void> {
-    await this.harness.setActiveTools(toolNames);
+    // Extensions may call setActive during setup before their tools are merged onto
+    // the harness. Keep the desired names in SessionExtensionServices; only sync
+    // names the harness already knows to avoid validateToolNames failures.
+    const known = new Set(readHarnessTools(this.harness).map((tool) => tool.name));
+    if (known.size === 0) return;
+    const filtered = toolNames.filter((name) => known.has(name));
+    if (filtered.length === 0 && toolNames.length > 0) return;
+    await this.harness.setActiveTools(filtered);
   }
 
   async setTools(tools: AgentTool[], activeToolNames?: string[]): Promise<void> {

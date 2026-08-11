@@ -9,6 +9,7 @@ export interface WorkspaceFileEntry {
 const IGNORE_DIRS = new Set([
   "node_modules",
   ".git",
+  ".supervisor",
   "dist",
   "build",
   ".pi",

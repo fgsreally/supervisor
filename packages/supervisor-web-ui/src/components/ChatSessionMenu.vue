@@ -63,7 +63,10 @@
                   @change="emit('update:title', ($event.target as HTMLInputElement).value)"
                 />
               </label>
-              <p v-if="gitBranch" class="mt-4 text-[12px] chat-session-menu__muted break-all">
+              <p v-if="cwd" class="mt-4 text-[12px] chat-session-menu__muted break-all">
+                工作目录：<code class="text-[11px]" :title="cwd">{{ cwd }}</code>
+              </p>
+              <p v-if="gitBranch" class="mt-2 text-[12px] chat-session-menu__muted break-all">
                 分支：<code class="text-[11px]">{{ gitBranch }}</code>
               </p>
               <div v-if="!externalAgent" class="session-usage">
@@ -257,28 +260,32 @@
               </button>
             </div>
 
+            <div
+              v-if="!externalAgent"
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
+              <span class="text-[15px]">影子代理</span>
+              <button
+                type="button"
+                role="switch"
+                aria-label="启用影子代理"
+                :aria-checked="shadowEnabled"
+                class="relative w-11 h-6 rounded-full transition-colors shrink-0"
+                :class="shadowEnabled ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
+                @click="emit('update:shadowEnabled', !shadowEnabled)"
+              >
+                <span
+                  class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                  :class="shadowEnabled ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </button>
+            </div>
+
             <section
               v-if="!externalAgent"
               class="px-5 py-4 border-b chat-session-menu__section session-agent-settings"
             >
-              <div class="flex items-center justify-between gap-4">
-                <span class="text-[15px]">影子代理</span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label="启用影子代理"
-                  :aria-checked="shadowEnabled"
-                  class="relative w-11 h-6 rounded-full transition-colors"
-                  :class="shadowEnabled ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
-                  @click="emit('update:shadowEnabled', !shadowEnabled)"
-                >
-                  <span
-                    class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
-                    :class="shadowEnabled ? 'translate-x-5' : 'translate-x-0'"
-                  />
-                </button>
-              </div>
-              <div class="text-[15px] mt-4 mb-3">可用子代理</div>
+              <div class="text-[15px] mb-3">可用子代理</div>
               <div class="session-agent-grid">
                 <button
                   v-for="agent in selectedSpawnAgents"
@@ -372,6 +379,8 @@ const props = defineProps<{
   showThinking: boolean;
   splitAssistantMessages: boolean;
   sessionStatus?: string;
+  /** Session working directory (project root or worktree). */
+  cwd?: string | null;
   gitBranch?: string | null;
   canComplete?: boolean;
   canCheckpoint?: boolean;

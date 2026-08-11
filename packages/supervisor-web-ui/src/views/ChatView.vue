@@ -413,6 +413,7 @@
       :show-thinking="showThinking"
       :split-assistant-messages="splitAssistantMessages"
       :session-status="session.status"
+      :cwd="session.cwd"
       :git-branch="gitBranch"
       :can-complete="canCompleteSession"
       :can-checkpoint="canCheckpointActions"
@@ -551,7 +552,7 @@ import SessionFilesPanel from "../components/SessionFilesPanel.vue";
 import SessionFilePreviewPane from "../components/SessionFilePreviewPane.vue";
 import SessionFileTreeSidebar from "../components/SessionFileTreeSidebar.vue";
 import { ResponsiveSplitSurface } from "../components/ui";
-import { fileBasename } from "../utils/session-file-tree";
+import { fileBasename, isSupervisorRuntimePath } from "../utils/session-file-tree";
 import { useResizableWidth } from "../composables/use-resizable-width";
 import { useMobileViewport } from "../composables/use-mobile-viewport";
 import ChatViewHeader from "../components/chat/ChatViewHeader.vue";
@@ -651,16 +652,25 @@ const sessionGitPendingUpdate = computed(() => {
 });
 
 const sessionChangedFiles = computed<SessionChangedFileView[]>(() => {
-  if (Array.isArray(props.session.meta?.changedFiles)) return props.session.meta.changedFiles;
-  const files = new Map<string, SessionChangedFileView>();
-  for (const turn of props.session.meta?.turns ?? []) {
-    for (const path of turn.files?.added ?? []) files.set(path, { path, status: "added" });
-    for (const path of turn.files?.modified ?? []) {
-      files.set(path, { path, status: files.get(path)?.status === "added" ? "added" : "modified" });
-    }
-    for (const path of turn.files?.deleted ?? []) files.set(path, { path, status: "deleted" });
-  }
-  return [...files.values()].sort((a, b) => a.path.localeCompare(b.path));
+  const raw: SessionChangedFileView[] = Array.isArray(props.session.meta?.changedFiles)
+    ? props.session.meta.changedFiles
+    : (() => {
+        const files = new Map<string, SessionChangedFileView>();
+        for (const turn of props.session.meta?.turns ?? []) {
+          for (const path of turn.files?.added ?? []) files.set(path, { path, status: "added" });
+          for (const path of turn.files?.modified ?? []) {
+            files.set(path, {
+              path,
+              status: files.get(path)?.status === "added" ? "added" : "modified",
+            });
+          }
+          for (const path of turn.files?.deleted ?? []) files.set(path, { path, status: "deleted" });
+        }
+        return [...files.values()];
+      })();
+  return raw
+    .filter((file) => file?.path && !isSupervisorRuntimePath(file.path))
+    .sort((a, b) => a.path.localeCompare(b.path));
 });
 
 const sessionStore = useSessionStore();

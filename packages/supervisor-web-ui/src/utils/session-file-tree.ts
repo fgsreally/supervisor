@@ -8,17 +8,31 @@ export interface SessionFileTreeNode {
   filePath?: string;
 }
 
+/** Supervisor runtime dirs must never appear in the session file tree / change list. */
+export function isSupervisorRuntimePath(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+  return (
+    normalized === ".supervisor" ||
+    normalized.startsWith(".supervisor/") ||
+    normalized.split("/").includes(".supervisor")
+  );
+}
+
 export function buildSessionFileTree(
   entries: SessionWorkspaceFileEntry[],
   changedFiles?: SessionChangedFileView[],
 ): SessionFileTreeNode[] {
   const root: SessionFileTreeNode[] = [];
   const paths = new Set(
-    entries.filter((entry) => !entry.isDirectory).map((entry) => entry.path.replace(/\\/g, "/")),
+    entries
+      .filter((entry) => !entry.isDirectory)
+      .map((entry) => entry.path.replace(/\\/g, "/"))
+      .filter((path) => !isSupervisorRuntimePath(path)),
   );
   for (const file of changedFiles ?? []) {
     if (file?.path && file.status === "deleted") {
-      paths.add(file.path.replace(/\\/g, "/"));
+      const path = file.path.replace(/\\/g, "/");
+      if (!isSupervisorRuntimePath(path)) paths.add(path);
     }
   }
   const fileEntries = [...paths].map((path) => ({ path, isDirectory: false }));

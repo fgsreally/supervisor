@@ -287,7 +287,11 @@
                 >
                   <div
                     class="workspace-collapse__inner"
-                    :class="{ 'workspace-collapse__inner--hold-leave': pinLeaveIds.size > 0 }"
+                    :class="{
+                      'workspace-collapse__inner--hold-leave': workspaceHoldsPinLeave(
+                        group.workspace.id,
+                      ),
+                    }"
                   >
                     <DustTransitionGroup
                       name="session-list"
@@ -397,9 +401,6 @@
       :open="projectSettingsId != null"
       :name="projectSettingsProject?.name"
       :cwd="projectSettingsProject?.cwd"
-      :description="projectDescription"
-      :parse-status="projectParseStatus"
-      :parse-error="projectParseError"
       :busy="projectBusy"
       :parsing="projectParsing"
       @close="closeProjectSettings"
@@ -466,7 +467,11 @@ import { requestUiConfirm, requestUiDeleteConfirm } from "@/composables/use-ui-c
 import { withUiBusy } from "@/composables/use-ui-busy";
 import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
 import DustTransitionGroup from "./DustTransitionGroup.vue";
-import { isAdvancedAnimationEnabled } from "@/composables/use-dust-transition";
+import {
+  isAdvancedAnimationEnabled,
+  queryDustTarget,
+  withDustRemove,
+} from "@/composables/use-dust-transition";
 import ProjectCreateDialog from "./ProjectCreateDialog.vue";
 import ProjectGitMenu from "./ProjectGitMenu.vue";
 import ProjectListContextMenu from "./ProjectListContextMenu.vue";
@@ -604,12 +609,6 @@ const projectSettingsProject = computed(() =>
     ? sessionStore.projects.find((project) => project.id === projectSettingsId.value)
     : undefined,
 );
-const projectDescription = computed(() => {
-  return projectSettingsProject.value?.description ?? null;
-});
-const projectParseStatus = ref<string | null>(null);
-const projectParseError = ref<string | null>(null);
-
 const panelStyle = computed(() => {
   if (props.width == null) return undefined;
   return { width: `${props.width}px` };
@@ -742,6 +741,17 @@ function isWorkspaceCollapsed(workspaceId: string): boolean {
   return collapsedWorkspaceIds.value.has(workspaceId);
 }
 
+/** Only hold leave space in the workspace that owns the pinning session. */
+function workspaceHoldsPinLeave(workspaceId: string): boolean {
+  if (pinLeaveIds.value.size === 0) return false;
+  for (const sessionId of pinLeaveIds.value) {
+    const raw = sessionStore.sessions.find((session) => session.id === sessionId);
+    if (!raw) continue;
+    if (toUISession(raw).workspaceId === workspaceId) return true;
+  }
+  return false;
+}
+
 function toggleWorkspaceCollapse(workspaceId: string) {
   setProjectCollapsed(workspaceId, !collapsedWorkspaceIds.value.has(workspaceId));
 }
@@ -757,11 +767,6 @@ function openAgentPicker(workspaceId: string) {
 function openProjectSettings(projectId: string) {
   closeProjectGit();
   projectSettingsId.value = projectId;
-  projectParseStatus.value = sessionStore.projects.find((project) => project.id === projectId)
-    ?.description
-    ? "ready"
-    : null;
-  projectParseError.value = null;
 }
 
 function openProjectContextMenu(projectId: string, event: MouseEvent) {
@@ -939,15 +944,11 @@ async function parseCurrentProject() {
   const projectId = projectSettingsId.value;
   if (!projectId || projectParsing.value) return;
   projectParsing.value = true;
-  projectParseStatus.value = "pending";
-  projectParseError.value = null;
   try {
     const result = await apiParseProject(projectId);
     const index = sessionStore.projects.findIndex((project) => project.id === result.project.id);
     if (index >= 0) sessionStore.projects[index] = result.project;
     else sessionStore.projects.unshift(result.project);
-    projectParseStatus.value = result.status;
-    projectParseError.value = result.error ?? null;
     if (result.status === "ready") showUiMessage("项目解析完成", "success");
     else if (result.status === "skipped") {
       showUiMessage(result.error || "未配置「助手模型」", "error");
@@ -956,8 +957,6 @@ async function parseCurrentProject() {
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "项目解析失败";
-    projectParseStatus.value = "error";
-    projectParseError.value = message;
     showUiMessage(message, "error");
     await sessionStore.fetchProjects().catch(() => undefined);
   } finally {
@@ -1084,7 +1083,20 @@ async function confirmDeleteSession() {
   });
   if (!ok) return;
   try {
-    await sessionStore.deleteSession(target.sessionId);
+    // Drop any pin-leave hold for this session so workspace groups don't keep a blank slot.
+    if (pinLeaveIds.value.has(target.sessionId)) {
+      const next = new Set(pinLeaveIds.value);
+      next.delete(target.sessionId);
+      pinLeaveIds.value = next;
+    }
+    if (unpinLeaveIds.value.has(target.sessionId)) {
+      const next = new Set(unpinLeaveIds.value);
+      next.delete(target.sessionId);
+      unpinLeaveIds.value = next;
+    }
+    // Advanced → dust then delete. Basic → delete and let TransitionGroup slide left.
+    const row = queryDustTarget(`[data-session-id="${CSS.escape(target.sessionId)}"]`);
+    await withDustRemove(row, () => sessionStore.deleteSession(target.sessionId));
     emit("delete", target.sessionId);
     showUiMessage("会话已删除", "success");
   } catch (error) {
@@ -1227,6 +1239,18 @@ async function onAgentPicked(agentId: string) {
   color: var(--app-text-muted);
   font-size: var(--app-font-control, 0.8125rem);
   text-align: center;
+}
+
+.chat-list-scroll:has(> .chat-list-state) {
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-list-state {
+  flex: 1;
+  width: 100%;
+  min-height: 100%;
+  box-sizing: border-box;
 }
 
 .chat-list-state__spin,
@@ -1381,9 +1405,13 @@ async function onAgentPicked(agentId: string) {
   transform: translateY(0);
   pointer-events: auto;
 }
-.workspace-collapse__inner--hold-leave,
-.workspace-collapse__inner:has(.session-list-leave-active) {
-  min-height: 68px;
+/* Let slide-left show during imperative delete + TransitionGroup leave. */
+.workspace-collapse__inner:has(.session-list-leave-active),
+.workspace-collapse__inner:has([data-dust-leave-done="1"]) {
+  overflow: visible;
+}
+/* Pin leave only: keep the source workspace open while the item animates out. */
+.workspace-collapse__inner--hold-leave {
   overflow: visible;
   opacity: 1;
   transform: none;

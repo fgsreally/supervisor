@@ -3,19 +3,33 @@
     :open="confirm.open"
     :title="confirm.title"
     :dismiss-on-backdrop="true"
+    :panel-class="isMobile ? undefined : 'ui-confirm-dialog--desktop'"
     @close="resolveUiConfirm(false)"
   >
-    <p>{{ confirm.message }}</p>
+    <p :class="{ 'ui-confirm__message--desktop': !isMobile }">{{ confirm.message }}</p>
     <input
       v-if="confirm.expectedText"
       v-model="confirmationText"
       class="ui-confirm__input"
+      :class="{ 'ui-confirm__input--desktop': !isMobile }"
       type="text"
       :placeholder="confirm.expectedText"
       @keydown.enter.prevent="confirmAction"
     />
     <template #footer>
-      <div class="ui-confirm__actions">
+      <!-- PC: right-aligned action buttons -->
+      <div v-if="!isMobile" class="ui-confirm__actions ui-confirm__actions--desktop">
+        <UiButton @click="resolveUiConfirm(false)">{{ confirm.cancelText }}</UiButton>
+        <UiActionButton
+          :variant="confirm.danger ? 'danger' : 'primary'"
+          :disabled="!!confirm.expectedText && confirmationText !== confirm.expectedText"
+          @click="confirmAction"
+        >
+          {{ confirm.confirmText }}
+        </UiActionButton>
+      </div>
+      <!-- Mobile: WeChat-style split footer -->
+      <div v-else class="ui-confirm__actions ui-confirm__actions--mobile">
         <button type="button" class="ui-confirm__cancel" @click="resolveUiConfirm(false)">
           {{ confirm.cancelText }}
         </button>
@@ -36,9 +50,13 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import UiDialog from "@/components/ui/UiDialog.vue";
+import { UiButton } from "@/components/ui";
+import UiActionButton from "@/components/UiActionButton.vue";
+import { useMobileViewport } from "@/composables/use-mobile-viewport";
 import { resolveUiConfirm, useUiConfirm } from "@/composables/use-ui-confirm";
 
 const { confirm } = useUiConfirm();
+const isMobile = useMobileViewport();
 const confirmationText = ref("");
 
 watch(
@@ -71,7 +89,24 @@ function confirmAction() {
   border-color: var(--app-accent);
 }
 
-.ui-confirm__actions {
+/* PC: fixed px type matching pre-type-scale confirm */
+.ui-confirm__message--desktop {
+  font-size: 13px;
+}
+
+.ui-confirm__input--desktop {
+  font-size: 13px;
+}
+
+.ui-confirm__actions--desktop {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+}
+
+.ui-confirm__actions--mobile {
   display: grid;
   grid-template-columns: 1fr 1fr;
 }
@@ -111,5 +146,17 @@ function confirmAction() {
 .ui-confirm__cancel:active,
 .ui-confirm__ok:active {
   background: var(--app-popup-selected);
+}
+</style>
+
+<style>
+/* Unscoped: panelClass lands on UiDialog root */
+.ui-dialog.ui-confirm-dialog--desktop .ui-dialog__title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.ui-dialog.ui-confirm-dialog--desktop .ui-dialog__body {
+  font-size: 13px;
 }
 </style>

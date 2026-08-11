@@ -49,6 +49,15 @@ export function normalizeFilePath(cwd: string, rawPath: string): string {
   return abs.replace(/\\/g, "/");
 }
 
+function isSupervisorRuntimePath(path: string): boolean {
+  const normalized = path.replace(/\\/g, "/").replace(/^\.\//, "");
+  return (
+    normalized === ".supervisor" ||
+    normalized.startsWith(".supervisor/") ||
+    normalized.split("/").includes(".supervisor")
+  );
+}
+
 function readGitWorktreeChanges(cwd: string): TurnFileChanges {
   const changes: TurnFileChanges = { added: [], modified: [], deleted: [] };
   try {
@@ -61,7 +70,7 @@ function readGitWorktreeChanges(cwd: string): TurnFileChanges {
       if (line.length < 4) continue;
       const code = line.slice(0, 2);
       const path = line.slice(3).split(" -> ").at(-1)?.replace(/^"|"$/g, "");
-      if (!path) continue;
+      if (!path || isSupervisorRuntimePath(path)) continue;
       if (code === "??" || code.includes("A")) changes.added.push(path);
       else if (code.includes("D")) changes.deleted.push(path);
       else changes.modified.push(path);
@@ -205,7 +214,9 @@ export function mergeTurnIntoMeta(
   const changed = new Map<string, SessionChangedFile>();
   if (Array.isArray(meta.changedFiles)) {
     for (const value of meta.changedFiles as SessionChangedFile[]) {
-      if (value && typeof value.path === "string") changed.set(value.path, value);
+      if (value && typeof value.path === "string" && !isSupervisorRuntimePath(value.path)) {
+        changed.set(value.path, value);
+      }
     }
   }
   for (const path of turn.files.added) {

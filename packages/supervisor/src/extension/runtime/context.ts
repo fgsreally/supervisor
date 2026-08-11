@@ -35,6 +35,7 @@ import type {
 import { getProjectDir, getSessionDir } from "../../core/session-files.js";
 import type { SessionManager } from "../../core/session-manager.js";
 import type { SessionRuntime } from "../../core/session-runtime.js";
+import { readHarnessSystemPrompt, readHarnessTools } from "../../core/harness-compat.js";
 import { runWatson } from "../../core/watson.js";
 import type {
   SessionTaskInfo,
@@ -258,18 +259,11 @@ export class Context {
     if (session.projectId == null) throw new Error(`Session ${session.id} has no project`);
 
     const agent = session.agentId == null ? undefined : sessionManager.getAgent(session.agentId);
-    const harnessState = (
-      sessionRuntime.harness as unknown as {
-        agent: {
-          state: {
-            model: { id: string };
-            systemPrompt?: string;
-            tools?: AgentTool[];
-          };
-        };
-      }
-    ).agent.state;
-    const model = harnessState.model;
+    const projectRow = db.getProject(session.projectId);
+    if (!projectRow) throw new Error(`Project ${session.projectId} not found`);
+    const model = sessionRuntime.harness.getModel();
+    const systemPrompt = readHarnessSystemPrompt(sessionRuntime.harness) ?? session.systemPrompt ?? undefined;
+    const listHarnessTools = () => readHarnessTools(sessionRuntime.harness);
     const extensionDb = createExtensionDatabase({
       sessionId: session.id,
       query: async <T>(sql: string, params: unknown[]) => db.db.prepare(sql).all(...params) as T[],
@@ -283,7 +277,7 @@ export class Context {
       db,
       sessionId: session.id,
       projectId: session.projectId,
-      listSessionTools: () => this.listSessionTools(harnessState.tools ?? []),
+      listSessionTools: () => this.listSessionTools(listHarnessTools()),
       emitExtensionEvent: (event) => this.extensionHost?.emit(event),
     });
 
@@ -392,7 +386,7 @@ export class Context {
       name: agent?.name ?? "Session",
       providerId: agent?.providerId ?? 0,
       modelId: model.id,
-      systemPrompt: harnessState.systemPrompt,
+      systemPrompt,
       getModel: deps.getModel,
       registerTool: (definition) =>
         this.requireExtensionHost().registerTool(this.requireActiveExtension(), definition),
@@ -406,9 +400,9 @@ export class Context {
         ),
       unregisterCommand: (name) =>
         this.requireExtensionHost().unregisterCommand(this.requireActiveExtension(), name),
-      listTools: () => this.listSessionTools(harnessState.tools ?? []),
+      listTools: () => this.listSessionTools(listHarnessTools()),
       getTool: (name) =>
-        this.listSessionTools(harnessState.tools ?? []).find((tool) => tool.name === name),
+        this.listSessionTools(listHarnessTools()).find((tool) => tool.name === name),
       findByTag: deps.getMemberAgentsByTag,
       findByRole: deps.getMemberAgentsByRole,
       setModel: deps.setModel,
@@ -469,8 +463,10 @@ export class Context {
       },
     };
     this.db = new ContextDb(db.db);
+    // Project cwd is the project root (e.g. D:\myproject\lizi), NOT the session
+    // worktree / default supervisor data dir. Worktree creation keys off this.
     this.project = {
-      cwd: session.cwd,
+      cwd: projectRow.cwd,
       dir: getProjectDir(session.projectId),
       getDir: deps.getProjectDir,
     };

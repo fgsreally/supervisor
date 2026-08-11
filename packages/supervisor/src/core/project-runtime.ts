@@ -51,7 +51,7 @@ export function buildProjectRuntimeInstructions(project: Pick<Project, "name" | 
     "请按顺序完成项目解析和初始化：",
     "1. 确认 git 已安装，且当前目录是 git 仓库；必要时执行 git init，但不要修改远程。",
     "2. 探查 README、包管理清单、CI、格式化/检查配置、现有 Agent 指令和项目结构。",
-    "3. 在项目根目录创建或补充 AGENTS.md，达到类似 Claude Code `/init` 的效果：",
+    "3. 在项目根目录创建或重写 AGENTS.md，达到类似 Claude Code `/init` 的效果：",
     "   - 写清项目用途、主要目录、测试/检查命令、代码约定、运行时注意事项和修改边界。",
     "   - 必须包含固定章节「## 本地开发服务」，便于后续 coding agent 直接读取，无需再扫仓库：",
     "     ```markdown",
@@ -62,8 +62,8 @@ export function buildProjectRuntimeInstructions(project: Pick<Project, "name" | 
     "     - 销毁: `<归档/删除时清理命令，可空>`",
     "     ```",
     "   - 不要在 AGENTS.md 里写入口 port/path；实际监听端口与预览路径由后续 coding agent 启动后自行确认并登记。",
-    "   - 使用简洁 Markdown，不写密钥，不猜测不存在的命令；新文件尽量不超过 200 行。",
-    "   - 如果 AGENTS.md 已存在，必须逐字保留原内容，只能在末尾补充缺失信息；若已有「本地开发服务」章节则更新该节而非重复添加。",
+    "   - 使用简洁 Markdown，不写密钥，不猜测不存在的命令；尽量不超过 200 行。",
+    "   - 若已有 AGENTS.md：可以按项目现状重构整份内容（合并重复、修正过时说明），但应保留仍有效的约定与边界；「本地开发服务」只保留一节。",
     "4. 不要自行 commit 或 push；Supervisor 会在解析成功后统一提交改动。",
     "5. 完成后必须调用工具 submit_result，参数 result 为下方 JSON 对象（任务以此结束）。",
     "结果对象格式：",
@@ -123,7 +123,6 @@ export async function runProjectRuntimeParse(options: {
   project: Project;
 }): Promise<ProjectRuntimeSpec> {
   const agentsPath = join(options.project.cwd, "AGENTS.md");
-  const originalAgents = existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : null;
   const run = await runWatson({
     mode: "agent",
     cwd: options.project.cwd,
@@ -131,7 +130,7 @@ export async function runProjectRuntimeParse(options: {
     resultSchema: ProjectRuntimeSpecSchema,
     prompt: buildProjectRuntimeInstructions(options.project),
     injectSystem:
-      "本任务必须创建或补充项目根目录 AGENTS.md（含「本地开发服务」四类命令，勿写入口 port/path），并调用 submit_result 提交 description。",
+      "本任务必须创建或重写项目根目录 AGENTS.md（含「本地开发服务」四类命令，勿写入口 port/path），并调用 submit_result 提交 description。",
   });
 
   if (run.result == null) {
@@ -139,9 +138,6 @@ export async function runProjectRuntimeParse(options: {
   }
   const agents = existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : "";
   if (!agents.trim()) throw new Error("项目解析未创建有效的 AGENTS.md");
-  if (originalAgents?.trim() && !agents.includes(originalAgents.trim())) {
-    throw new Error("项目解析修改了现有 AGENTS.md 内容；只允许追加缺失信息");
-  }
   return parseProjectRuntimeSpec(run.result);
 }
 

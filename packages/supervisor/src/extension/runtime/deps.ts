@@ -55,16 +55,16 @@ function toTodoInfo(row: SessionTodoRow): SessionTodoInfo {
   };
 }
 
-/** AgentHarness's public type omits `.agent`; bridge to the runtime instance state. */
+/** Read model / thinking level from AgentHarness public getters. */
 function getHarnessAgentState(runtime: SessionRuntime): {
   model: { provider: string; id: string };
   thinkingLevel: string;
 } {
-  return (
-    runtime.harness as unknown as {
-      agent: { state: { model: { provider: string; id: string }; thinkingLevel: string } };
-    }
-  ).agent.state;
+  const model = runtime.harness.getModel();
+  return {
+    model: { provider: String(model.provider), id: String(model.id) },
+    thinkingLevel: runtime.harness.getThinkingLevel(),
+  };
 }
 
 /**

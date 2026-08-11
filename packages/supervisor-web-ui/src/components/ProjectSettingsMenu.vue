@@ -54,38 +54,6 @@
             {{ parsing ? "解析中..." : "解析" }}
           </button>
         </div>
-        <button
-          type="button"
-          class="project-settings__details-toggle"
-          :aria-expanded="detailsOpen"
-          @click="detailsOpen = !detailsOpen"
-        >
-          <ChevronRight class="h-4 w-4" :class="{ 'rotate-90': detailsOpen }" />
-          解析详情
-        </button>
-        <div v-if="detailsOpen" class="project-settings__details">
-          <div class="project-settings__desc">
-            <template v-if="parsing || parseStatus === 'pending'">
-              <span class="project-settings__muted">正在解析项目…</span>
-            </template>
-            <template v-else-if="description">
-              {{ description }}
-            </template>
-            <template v-else-if="parseStatus === 'skipped'">
-              <span class="project-settings__muted">
-                {{ parseError || "未配置「助手模型」" }}
-              </span>
-            </template>
-            <template v-else-if="parseStatus === 'error'">
-              <span class="project-settings__error">
-                {{ parseError || "解析失败" }}
-              </span>
-            </template>
-            <template v-else>
-              <span class="project-settings__muted">暂无解析结果</span>
-            </template>
-          </div>
-        </div>
       </div>
     </div>
   </MobileDrawer>
@@ -93,7 +61,6 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronRight } from "lucide-vue-next";
 import { MobileDrawer } from "@/components/mobile/ui";
 import WatsonIcon from "./WatsonIcon.vue";
 
@@ -101,9 +68,6 @@ const props = defineProps<{
   open: boolean;
   name?: string;
   cwd?: string;
-  description?: string | null;
-  parseStatus?: string | null;
-  parseError?: string | null;
   busy?: boolean;
   parsing?: boolean;
 }>();
@@ -116,7 +80,6 @@ const emit = defineEmits<{
 
 const draftName = ref("");
 const saving = ref(false);
-const detailsOpen = ref(false);
 
 const nameDirty = computed(
   () => draftName.value.trim() !== "" && draftName.value.trim() !== (props.name ?? "").trim(),
@@ -128,7 +91,6 @@ watch(
     if (open) {
       draftName.value = name ?? "";
       saving.value = false;
-      detailsOpen.value = false;
     }
   },
 );
@@ -213,8 +175,7 @@ async function saveName() {
   background: var(--app-btn-secondary-hover-bg);
 }
 
-.project-settings__path,
-.project-settings__desc {
+.project-settings__path {
   padding: 10px 12px;
   border-radius: 8px;
   background: var(--app-chat-bg);
@@ -224,20 +185,11 @@ async function saveName() {
   word-break: break-all;
 }
 
-.project-settings__desc {
-  min-height: 72px;
-  max-height: 220px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-}
-
 .project-settings__desc-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 6px;
 }
 
 .project-settings__parse-title {
@@ -245,29 +197,8 @@ async function saveName() {
   font-weight: 600;
 }
 
-.project-settings__details-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  margin-top: 8px;
-  color: var(--app-text-secondary);
-  font-size: 12px;
-}
-
-.project-settings__details-toggle svg {
-  transition: transform 0.15s ease;
-}
-
-.project-settings__details {
-  margin-top: 8px;
-}
-
 .project-settings__muted {
   color: var(--app-text-muted);
-}
-
-.project-settings__error {
-  color: #e54d42;
 }
 
 @media (max-width: 767px) {
@@ -278,7 +209,6 @@ async function saveName() {
   }
 
   .project-settings__path,
-  .project-settings__desc,
   .project-settings__parse-title {
     font-size: 14px;
   }

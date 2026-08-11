@@ -1,6 +1,11 @@
 import type { RendererElement } from "vue";
 import { computed, nextTick } from "vue";
-import { canUseDustEffect, dustAssemble, dustVanish } from "@/utils/dust-effect";
+import {
+  canUseDustEffect,
+  collapseDustElement,
+  dustAssemble,
+  dustVanish,
+} from "@/utils/dust-effect";
 import { viewPreferences } from "@/utils/view-preferences";
 
 export function isAdvancedAnimationEnabled(): boolean {
@@ -18,25 +23,132 @@ function waitForLayout(): Promise<void> {
   );
 }
 
+/** Basic leave: slide left + fade, then collapse height so the slot frees cleanly. */
+function slideLeaveElement(el: HTMLElement, duration = 280): Promise<void> {
+  const height = el.getBoundingClientRect().height;
+  const styles = getComputedStyle(el);
+  const marginTop = Number.parseFloat(styles.marginTop) || 0;
+  const marginBottom = Number.parseFloat(styles.marginBottom) || 0;
+  const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+  const paddingBottom = Number.parseFloat(styles.paddingBottom) || 0;
+
+  el.style.overflow = "hidden";
+  el.style.pointerEvents = "none";
+  el.style.boxSizing = "border-box";
+  el.style.flexGrow = "0";
+  el.style.flexShrink = "0";
+
+  if (height < 1) {
+    el.style.height = "0px";
+    el.style.minHeight = "0px";
+    el.style.opacity = "0";
+    return Promise.resolve();
+  }
+
+  return el
+    .animate(
+      [
+        {
+          opacity: 1,
+          transform: "translateX(0)",
+          height: `${height}px`,
+          marginTop: `${marginTop}px`,
+          marginBottom: `${marginBottom}px`,
+          paddingTop: `${paddingTop}px`,
+          paddingBottom: `${paddingBottom}px`,
+        },
+        {
+          opacity: 0,
+          transform: "translateX(-32px)",
+          height: `${height}px`,
+          marginTop: `${marginTop}px`,
+          marginBottom: `${marginBottom}px`,
+          paddingTop: `${paddingTop}px`,
+          paddingBottom: `${paddingBottom}px`,
+          offset: 0.7,
+        },
+        {
+          opacity: 0,
+          transform: "translateX(-32px)",
+          height: "0px",
+          marginTop: "0px",
+          marginBottom: "0px",
+          paddingTop: "0px",
+          paddingBottom: "0px",
+        },
+      ],
+      {
+        duration,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+        fill: "forwards",
+      },
+    )
+    .finished.then(() => {
+      el.style.height = "0px";
+      el.style.minHeight = "0px";
+      el.style.opacity = "0";
+      el.style.marginTop = "0px";
+      el.style.marginBottom = "0px";
+      el.style.paddingTop = "0px";
+      el.style.paddingBottom = "0px";
+    })
+    .catch(() => {
+      el.style.height = "0px";
+      el.style.minHeight = "0px";
+      el.style.opacity = "0";
+    });
+}
+
+function forceCollapsed(el: HTMLElement) {
+  el.style.height = "0px";
+  el.style.minHeight = "0px";
+  el.style.overflow = "hidden";
+  el.style.margin = "0";
+  el.style.padding = "0";
+  el.style.opacity = "0";
+  el.style.borderWidth = "0";
+}
+
 /** JS hooks for Vue `<Transition>` / `<TransitionGroup>` when advanced animations are on. */
 export function useDustTransitionHooks(options?: { duration?: number; step?: number }) {
   const advanced = computed(() => isAdvancedAnimationEnabled());
 
   function onLeave(el: RendererElement, done: () => void) {
-    // CSS mode: never call done() here — an early done() ends the leave before
-    // translateX/opacity finish (that was why "向左渐出" disappeared).
-    if (!advanced.value) return;
     if (!(el instanceof HTMLElement)) {
       done();
       return;
     }
+
+    // Already animated by withDustRemove — must call done() or the node stays in the
+    // TransitionGroup forever (that was the blank "站着位置" hole).
+    if (el.dataset.dustLeaveDone === "1") {
+      forceCollapsed(el);
+      done();
+      return;
+    }
+
+    // CSS mode: never call done() here — let translateX/opacity CSS finish
+    // (used by pin/unpin moves that don't go through withDustRemove).
+    if (!advanced.value) return;
+
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(safetyTimer);
+      done();
+    };
+    const safetyTimer = window.setTimeout(finish, 700);
+
     void dustVanish(el, {
       duration: options?.duration,
       step: options?.step,
       collapse: true,
+      collapseAt: 0,
+      onCollapsed: finish,
     })
       .catch(() => undefined)
-      .finally(done);
+      .finally(finish);
   }
 
   function onEnter(el: RendererElement, done: () => void) {
@@ -47,7 +159,6 @@ export function useDustTransitionHooks(options?: { duration?: number; step?: num
     }
     void (async () => {
       try {
-        // Freshly inserted nodes often report 0×0 until layout settles.
         await waitForLayout();
         await dustAssemble(el, {
           duration: options?.duration,
@@ -71,19 +182,29 @@ export function useDustTransitionHooks(options?: { duration?: number; step?: num
   };
 }
 
-/** Imperative remove: play dust (if enabled) then run `action`. */
+/**
+ * Imperative remove for delete:
+ * 1) play leave animation while the row is still mounted
+ * 2) mark dustLeaveDone so TransitionGroup leave only calls done() (no second anim, no hole)
+ * 3) run action (store delete)
+ */
 export async function withDustRemove(
   el: HTMLElement | null | undefined,
   action: () => void | Promise<void>,
 ): Promise<void> {
-  if (!el || !isAdvancedAnimationEnabled()) {
+  if (!el) {
     await action();
     return;
   }
-  try {
-    await dustVanish(el, { collapse: true });
-  } catch {
-    // fall through to action
+  el.dataset.dustLeaveDone = "1";
+  if (isAdvancedAnimationEnabled()) {
+    try {
+      await dustVanish(el, { collapse: true, collapseAt: 0 });
+    } catch {
+      await collapseDustElement(el, 160).catch(() => undefined);
+    }
+  } else {
+    await slideLeaveElement(el, 280);
   }
   await action();
 }

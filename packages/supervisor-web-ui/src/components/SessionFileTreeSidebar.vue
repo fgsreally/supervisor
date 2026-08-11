@@ -11,24 +11,6 @@
       @pointerdown="startTreeResize"
     />
     <div class="session-file-tree-sidebar__header">
-      <div class="session-file-tree-sidebar__titles min-w-0 flex-1">
-        <div class="session-file-tree-sidebar__title">工作区文件</div>
-        <div
-          v-if="cwd"
-          class="session-file-tree-sidebar__cwd"
-          :title="cwd"
-        >
-          {{ cwd }}
-        </div>
-      </div>
-      <button
-        type="button"
-        class="session-file-tree-sidebar__icon-btn"
-        title="刷新"
-        @click="refresh"
-      >
-        <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
-      </button>
       <button
         type="button"
         class="session-file-tree-sidebar__icon-btn"
@@ -37,6 +19,15 @@
       >
         <PanelRightClose class="w-4 h-4" />
       </button>
+      <button
+        type="button"
+        class="session-file-tree-sidebar__icon-btn"
+        title="刷新"
+        @click="refresh"
+      >
+        <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
+      </button>
+      <div class="session-file-tree-sidebar__title min-w-0 flex-1">工作区文件</div>
     </div>
     <SessionFileTreePane
       class="session-file-tree-sidebar__tree"
@@ -45,6 +36,7 @@
       :loading="loading"
       :list-error="listError"
       :changed-files="changedFiles"
+      default-open
       @select="$emit('select', $event)"
       @refresh="refresh"
     />
@@ -70,7 +62,6 @@ defineEmits<{
   close: [];
 }>();
 
-const cwd = ref("");
 const files = ref<SessionWorkspaceFileEntry[]>([]);
 const treeNodes = ref<SessionFileTreeNode[]>([]);
 const loading = ref(false);
@@ -104,7 +95,6 @@ async function refresh() {
   listError.value = null;
   try {
     const result = await getSessionFiles(props.sessionId);
-    cwd.value = result.cwd;
     files.value = result.files;
     treeNodes.value = buildSessionFileTree(result.files, props.changedFiles);
   } catch (e: unknown) {
@@ -179,16 +169,10 @@ onBeforeUnmount(() => {
 }
 
 .session-file-tree-sidebar__title {
+  overflow: hidden;
   color: var(--app-text-primary);
   font-size: 13px;
   font-weight: 500;
-}
-
-.session-file-tree-sidebar__cwd {
-  overflow: hidden;
-  color: var(--app-text-muted);
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -219,7 +219,12 @@ const collapsedExecutionPieces = computed(() =>
   collapseExecution.value
     ? props.group.pieces
         .map((piece, index) => ({ piece, index }))
-        .filter(({ piece, index }) => index <= lastToolIndex.value || piece.kind !== "text")
+        .filter(
+          ({ piece, index }) =>
+            // Respect "显示思考过程": never leak thinking into the collapsed rail.
+            (props.showThinkingBlocks || piece.kind !== "thinking") &&
+            (index <= lastToolIndex.value || piece.kind !== "text"),
+        )
     : [],
 );
 

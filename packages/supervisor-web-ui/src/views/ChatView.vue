@@ -505,6 +505,7 @@ import {
   setSplitAssistantMessages,
 } from "../composables/use-chat-session-prefs";
 import { useChatFontSize } from "../composables/use-chat-font-size";
+import { attachPendingShareToInput, usePendingShareRevision } from "../composables/use-pending-share";
 import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-notifications";
 import { endLiveStatus, syncAgentLiveStatus } from "../composables/use-live-status";
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
@@ -630,6 +631,7 @@ const pendingApprovals = ref<api.ApprovalPendingEvent[]>([]);
 const pendingApproval = computed(() => pendingApprovals.value[0] ?? null);
 const rewindableEntryIds = ref<string[]>([]);
 const inputPanelRef = ref<InstanceType<typeof ChatInputPanel> | null>(null);
+const pendingShareRevision = usePendingShareRevision();
 const externalCommandHostRef = ref<InstanceType<typeof ExternalAgentCommandHost> | null>(null);
 const messageListRef = ref<InstanceType<typeof ChatMessageList> | null>(null);
 const searchBarRef = ref<InstanceType<typeof ChatSearchBar> | null>(null);
@@ -1699,6 +1701,19 @@ async function togglePreviewSplit() {
 }
 
 const lastNotifiedAskId = ref<string | null>(null);
+
+async function consumePendingShareImages() {
+  await nextTick();
+  await attachPendingShareToInput((file) => inputPanelRef.value?.addPendingImage(file));
+}
+
+watch(
+  [pendingShareRevision, () => props.session.id],
+  () => {
+    void consumePendingShareImages();
+  },
+  { immediate: true },
+);
 
 watch(pendingAsk, (ask, prev) => {
   if (!!ask !== !!prev) {

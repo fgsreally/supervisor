@@ -7,6 +7,8 @@ public class SupervisorNativePlugin: CAPPlugin, CAPBridgedPlugin {
     public let jsName = "SupervisorNative"
     public let pluginMethods: [CAPPluginMethod] = [
         CAPPluginMethod(name: "getPushToken", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "getPendingShare", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "clearPendingShare", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "startBackgroundConnection", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "stopBackgroundConnection", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "updateBackgroundConnection", returnType: CAPPluginReturnPromise),
@@ -22,6 +24,14 @@ public class SupervisorNativePlugin: CAPPlugin, CAPBridgedPlugin {
             "token": NSNull(),
             "platform": "ios",
         ])
+    }
+
+    @objc func getPendingShare(_ call: CAPPluginCall) {
+        call.resolve(NSNull())
+    }
+
+    @objc func clearPendingShare(_ call: CAPPluginCall) {
+        call.resolve()
     }
 
     @objc func startBackgroundConnection(_ call: CAPPluginCall) {

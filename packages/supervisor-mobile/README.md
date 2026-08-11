@@ -27,3 +27,17 @@ pnpm --filter pi-supervisor-mobile run open:ios
 ## Deep links
 
 - `supervisor://session/:id`
+
+## Android 分享（传送门）
+
+Capacitor `MainActivity` 已注册 `ACTION_SEND` / `SEND_MULTIPLE`（`image/*`）。相册、文件管理器等 App 分享图片时，可在系统分享面板选择 Supervisor。
+
+**验证步骤（Capacitor 路径，非扫码 ShellActivity）：**
+
+1. `pnpm --filter pi-supervisor-mobile run sync`
+2. `pnpm run dev:android`（或 Android Studio 运行 `MainActivity` 对应的 debug 包）
+3. App 内配置好服务器连接，并确保至少有一个非内置会话
+4. 在相册选中图片 → 分享 → 选择 Supervisor
+5. App 打开后应进入最近会话，输入区出现图片附件预览（需手动点发送）
+
+分享图片会复制到 app cache，经 `SupervisorNative.getPendingShare` 交给 web-ui；确认发送前不会自动上传以外的会话。

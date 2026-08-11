@@ -573,7 +573,7 @@ function clearAfterSend() {
   clearPendingImages();
 }
 
-defineExpose({ focus, clearAfterSend });
+defineExpose({ focus, clearAfterSend, addPendingImage });
 </script>
 
 <style scoped>

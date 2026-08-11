@@ -12,6 +12,34 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 @CapacitorPlugin(name = "SupervisorNative")
 public class SupervisorNativePlugin extends Plugin {
 
+    private static SupervisorNativePlugin instance;
+
+    @Override
+    public void load() {
+        super.load();
+        instance = this;
+    }
+
+    public static void notifyShareReceived() {
+        if (instance == null) return;
+        JSObject payload = ShareQueue.toJSObject();
+        if (payload != null) {
+            instance.notifyListeners("shareReceived", payload);
+        }
+    }
+
+    @PluginMethod
+    public void getPendingShare(PluginCall call) {
+        JSObject ret = ShareQueue.toJSObject();
+        call.resolve(ret != null ? ret : new JSObject());
+    }
+
+    @PluginMethod
+    public void clearPendingShare(PluginCall call) {
+        ShareQueue.clear();
+        call.resolve();
+    }
+
     @PluginMethod
     public void getPushToken(PluginCall call) {
         JSObject ret = new JSObject();

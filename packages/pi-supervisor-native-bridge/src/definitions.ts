@@ -7,9 +7,27 @@ export interface LiveStatusPayload {
   phase?: LiveStatusPhase;
 }
 
+export interface ShareItem {
+  uri: string;
+  mimeType: string;
+  name: string;
+}
+
+export interface PendingSharePayload {
+  items: ShareItem[];
+}
+
 export interface SupervisorNativePlugin {
   /** Register for remote push (token forwarded to Supervisor server by the app). */
   getPushToken(): Promise<{ token: string | null; platform: "ios" | "android" | "web" }>;
+
+  /** Android share target: images received via ACTION_SEND before web-ui consumes them. */
+  getPendingShare(): Promise<PendingSharePayload | null>;
+  clearPendingShare(): Promise<void>;
+  addListener(
+    eventName: "shareReceived",
+    listenerFunc: (payload: PendingSharePayload) => void,
+  ): Promise<{ remove: () => void }>;
 
   /** Android foreground service + ongoing notification; iOS no-op. */
   startBackgroundConnection(options: { title: string; body: string }): Promise<void>;

@@ -1,11 +1,17 @@
 import { WebPlugin } from "@capacitor/core";
 
-import type { LiveStatusPayload, SupervisorNativePlugin } from "./definitions.js";
+import type { LiveStatusPayload, PendingSharePayload, SupervisorNativePlugin } from "./definitions.js";
 
 export class SupervisorNativeWeb extends WebPlugin implements SupervisorNativePlugin {
   async getPushToken(): Promise<{ token: string | null; platform: "ios" | "android" | "web" }> {
     return { token: null, platform: "web" };
   }
+
+  async getPendingShare(): Promise<PendingSharePayload | null> {
+    return null;
+  }
+
+  async clearPendingShare(): Promise<void> {}
 
   async startBackgroundConnection(_options: { title: string; body: string }): Promise<void> {
     // Web/PWA has no foreground service.

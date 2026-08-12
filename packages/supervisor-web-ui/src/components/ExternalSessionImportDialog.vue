@@ -1,132 +1,100 @@
 <template>
-  <Teleport to="body">
-    <Transition name="external-import">
-      <div
-        v-if="open"
-        class="fixed inset-0 z-[210] flex items-center justify-center p-4"
-        @mousedown.self="onBackdrop"
-      >
-        <div class="absolute inset-0 bg-black/40" />
-        <div
-          class="external-import-modal relative flex max-h-[min(76vh,620px)] w-full max-w-[560px] flex-col overflow-hidden rounded-lg border shadow-xl"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="external-import-title"
-          @mousedown.stop
-        >
-          <header
-            class="external-import-modal__header flex shrink-0 items-center gap-3 border-b px-4 py-3"
-          >
-            <div class="min-w-0 flex-1">
-              <h2 id="external-import-title" class="text-[15px] font-medium">从外部引入</h2>
-              <p class="mt-0.5 text-[12px] external-import-modal__muted">
-                选择最近活跃的 Codex 或 Claude Code 对话
-              </p>
-            </div>
-            <button
-              type="button"
-              class="external-import-modal__icon"
-              :disabled="loading || !!importingKey"
-              @click="load"
-            >
-              <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" />
-            </button>
-            <button
-              type="button"
-              class="external-import-modal__icon"
-              :disabled="!!importingKey"
-              @click="emit('close')"
-            >
-              <X class="h-5 w-5" />
-            </button>
-          </header>
+  <ResponsiveDialog
+    :open="open"
+    title="从外部引入"
+    description="选择最近活跃的 Codex 或 Claude Code 对话"
+    width="md"
+    size="tall"
+    :dismiss-on-backdrop="!importingKey"
+    @close="onClose"
+  >
+    <template #header-actions>
+      <button type="button" title="刷新" :disabled="loading || !!importingKey" @click="load">
+        <RefreshCw :class="{ 'animate-spin': loading }" />
+      </button>
+    </template>
 
-          <div
-            v-if="sessions.length"
-            class="external-import-modal__toolbar shrink-0 border-b px-4 py-2"
+    <div class="external-import__body">
+      <div v-if="sessions.length" class="external-import__toolbar">
+        <div class="relative">
+          <Search
+            class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
+            style="color: var(--app-text-muted)"
+          />
+          <input
+            v-model="filterQuery"
+            type="search"
+            placeholder="筛选标题、路径或来源"
+            class="external-import__search w-full rounded-md py-1.5 pl-8 pr-2 text-[13px] focus:outline-none"
+          />
+        </div>
+        <div class="mt-2 flex flex-wrap gap-1.5">
+          <button
+            v-for="option in filterOptions"
+            :key="option.value"
+            type="button"
+            class="external-import__chip"
+            :class="{ 'external-import__chip--active': backendFilter === option.value }"
+            @click="backendFilter = option.value"
           >
-            <div class="relative">
-              <Search
-                class="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2"
-                style="color: var(--app-text-muted)"
-              />
-              <input
-                v-model="filterQuery"
-                type="search"
-                placeholder="筛选标题、路径或来源"
-                class="external-import-modal__search w-full rounded-md py-1.5 pl-8 pr-2 text-[13px] focus:outline-none"
-              />
-            </div>
-            <div class="mt-2 flex flex-wrap gap-1.5">
-              <button
-                v-for="option in filterOptions"
-                :key="option.value"
-                type="button"
-                class="external-import-modal__chip"
-                :class="{ 'external-import-modal__chip--active': backendFilter === option.value }"
-                @click="backendFilter = option.value"
-              >
-                {{ option.label }}
-              </button>
-            </div>
-          </div>
-
-          <div v-if="loading && !sessions.length" class="external-import-modal__state">
-            正在读取外部对话…
-          </div>
-          <div v-else-if="error" class="external-import-modal__state external-import-modal__error">
-            {{ error }}
-          </div>
-          <div v-else-if="!sessions.length" class="external-import-modal__state">
-            没有找到可引入的对话
-          </div>
-          <div v-else-if="!filteredSessions.length" class="external-import-modal__state">
-            没有匹配的对话
-          </div>
-          <ul v-else class="custom-scrollbar flex-1 overflow-y-auto">
-            <li v-for="session in filteredSessions" :key="sessionKey(session)">
-              <button
-                type="button"
-                class="external-import-modal__item flex w-full items-center gap-3 px-4 py-3 text-left"
-                :class="{
-                  'external-import-modal__item--imported': session.imported,
-                  'external-import-modal__item--busy': importingKey === sessionKey(session),
-                }"
-                :disabled="!!importingKey"
-                :title="session.imported ? '已引入，点击可重新导入（覆盖旧会话）' : undefined"
-                @click="onSelect(session)"
-              >
-                <span class="external-import-modal__badge shrink-0">{{
-                  session.backend === "codex" ? "Codex" : "CC"
-                }}</span>
-                <span class="min-w-0 flex-1">
-                  <span class="flex items-baseline gap-2">
-                    <strong class="external-import-modal__title min-w-0 flex-1 truncate">{{
-                      session.title
-                    }}</strong>
-                    <time class="external-import-modal__time shrink-0">{{
-                      formatDate(session.lastActiveAt)
-                    }}</time>
-                  </span>
-                  <small class="external-import-modal__cwd mt-0.5 block truncate">{{
-                    session.cwd
-                  }}</small>
-                </span>
-                <UiListStatus :status="rowStatus(session)" :title="rowStatusTitle(session)" />
-              </button>
-            </li>
-          </ul>
+            {{ option.label }}
+          </button>
         </div>
       </div>
-    </Transition>
-  </Teleport>
+
+      <div v-if="loading && !sessions.length" class="external-import__state">正在读取外部对话…</div>
+      <div v-else-if="error" class="external-import__state external-import__error">{{ error }}</div>
+      <div v-else-if="!sessions.length" class="external-import__state">没有找到可引入的对话</div>
+      <div v-else-if="!filteredSessions.length" class="external-import__state">没有匹配的对话</div>
+      <div v-else class="external-import__list-wrap">
+        <ul class="external-import__list custom-scrollbar">
+          <li v-for="session in filteredSessions" :key="sessionKey(session)">
+            <button
+              type="button"
+              class="external-import__item flex w-full items-center gap-3 text-left"
+              :class="{
+                'external-import__item--imported': session.imported,
+                'external-import__item--busy': importingKey === sessionKey(session),
+              }"
+              :disabled="!!importingKey"
+              :title="session.imported ? '已引入，点击可重新导入（覆盖旧会话）' : undefined"
+              @click="onSelect(session)"
+            >
+              <span class="external-import__badge shrink-0">{{
+                session.backend === "codex" ? "Codex" : "CC"
+              }}</span>
+              <span class="min-w-0 flex-1">
+                <span class="flex items-baseline gap-2">
+                  <strong class="external-import__title min-w-0 flex-1 truncate">{{
+                    session.title
+                  }}</strong>
+                  <time class="external-import__time shrink-0">{{
+                    formatDate(session.lastActiveAt)
+                  }}</time>
+                </span>
+                <small class="external-import__cwd mt-0.5 block truncate">{{ session.cwd }}</small>
+              </span>
+              <UiListStatus :status="rowStatus(session)" :title="rowStatusTitle(session)" />
+            </button>
+          </li>
+          <li v-if="hasMore" class="external-import__more">
+            <button type="button" :disabled="loadingMore" @click="loadMore">
+              {{ loadingMore ? "正在加载…" : "加载更早的对话" }}
+            </button>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </ResponsiveDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { RefreshCw, Search, X } from "lucide-vue-next";
+import { RefreshCw, Search } from "lucide-vue-next";
 import { listExternalSessions, type ExternalSessionCandidate } from "@/api";
+import { requestUiConfirm } from "@/composables/use-ui-confirm";
 import { showUiMessage } from "@/composables/use-ui-message";
+import ResponsiveDialog from "@/components/ui/ResponsiveDialog.vue";
 import { useSessionStore } from "@/store";
 import UiListStatus, { type UiListStatusKind } from "./UiListStatus.vue";
 
@@ -139,6 +107,9 @@ const emit = defineEmits<{
 const sessionStore = useSessionStore();
 const sessions = ref<ExternalSessionCandidate[]>([]);
 const loading = ref(false);
+const loadingMore = ref(false);
+const hasMore = ref(false);
+const nextOffset = ref(0);
 const error = ref("");
 const filterQuery = ref("");
 const backendFilter = ref<"all" | ExternalSessionCandidate["backend"]>("all");
@@ -188,11 +159,29 @@ async function load() {
   loading.value = true;
   error.value = "";
   try {
-    sessions.value = await listExternalSessions();
+    const page = await listExternalSessions();
+    sessions.value = page.items;
+    hasMore.value = page.hasMore;
+    nextOffset.value = page.nextOffset;
   } catch (value) {
     error.value = value instanceof Error ? value.message : "读取外部对话失败";
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadMore() {
+  if (loadingMore.value || !hasMore.value) return;
+  loadingMore.value = true;
+  try {
+    const page = await listExternalSessions({ offset: nextOffset.value });
+    sessions.value.push(...page.items);
+    hasMore.value = page.hasMore;
+    nextOffset.value = page.nextOffset;
+  } catch (value) {
+    showUiMessage(value instanceof Error ? value.message : "读取外部对话失败", "error");
+  } finally {
+    loadingMore.value = false;
   }
 }
 
@@ -217,7 +206,7 @@ function formatDate(value: string): string {
   }).format(date);
 }
 
-function onBackdrop() {
+function onClose() {
   if (importingKey.value) return;
   emit("close");
 }
@@ -225,9 +214,12 @@ function onBackdrop() {
 async function onSelect(session: ExternalSessionCandidate) {
   if (importingKey.value) return;
   if (session.imported) {
-    const ok = window.confirm(
-      `该对话已导入为会话 #${session.importedSessionId ?? "?"}。重新导入将删除旧会话并覆盖，是否继续？`,
-    );
+    const ok = await requestUiConfirm({
+      title: "重新导入外部对话",
+      message: `该对话已导入为会话 #${session.importedSessionId ?? "?"}。重新导入将删除旧会话并覆盖，是否继续？`,
+      confirmText: "重新导入",
+      danger: true,
+    });
     if (!ok) return;
   }
   const key = sessionKey(session);
@@ -273,39 +265,27 @@ watch(
 </script>
 
 <style scoped>
-.external-import-modal {
-  color: var(--app-text-primary);
-  background: var(--app-popup-bg);
-  border-color: var(--app-popup-border);
+.external-import__body {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 0;
 }
-.external-import-modal__header,
-.external-import-modal__toolbar {
-  border-color: var(--app-border-subtle);
+
+.external-import__toolbar {
+  flex: none;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--app-border-subtle);
+  background: var(--app-popup-bg, var(--app-settings-card));
 }
-.external-import-modal__muted,
-.external-import-modal__cwd,
-.external-import-modal__time {
-  color: var(--app-text-muted);
-}
-.external-import-modal__icon {
-  padding: 4px;
-  border: none;
-  background: transparent;
-  color: var(--app-text-muted);
-  cursor: pointer;
-}
-.external-import-modal__icon:hover:not(:disabled) {
-  color: var(--app-accent);
-}
-.external-import-modal__icon:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-.external-import-modal__search {
+
+.external-import__search {
   background: var(--app-list-search-bg);
   color: var(--app-text-primary);
 }
-.external-import-modal__chip {
+
+.external-import__chip {
   border: 1px solid var(--app-border-subtle);
   border-radius: 999px;
   padding: 2px 10px;
@@ -314,35 +294,71 @@ watch(
   background: transparent;
   cursor: pointer;
 }
-.external-import-modal__chip--active {
+
+.external-import__chip--active {
   border-color: color-mix(in srgb, var(--app-accent) 40%, transparent);
   color: var(--app-accent);
   background: color-mix(in srgb, var(--app-accent) 12%, transparent);
 }
-.external-import-modal__item {
+
+.external-import__list-wrap {
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.external-import__list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 10px;
+  background: var(--app-settings-card, var(--app-popup-bg));
+}
+
+.external-import__item {
+  padding: 12px 14px;
   border: none;
   border-bottom: 1px solid var(--app-border-subtle);
   background: transparent;
   cursor: pointer;
 }
-.external-import-modal__item:hover:not(:disabled) {
+
+.external-import__item:hover:not(:disabled) {
   background: var(--app-popup-hover);
 }
-.external-import-modal__item:hover:not(:disabled) .external-import-modal__title {
+
+.external-import__item:hover:not(:disabled) .external-import__title {
   color: var(--app-accent);
 }
-.external-import-modal__item--imported {
-  cursor: default;
+
+.external-import__item--imported {
   opacity: 0.72;
 }
-.external-import-modal__item--busy {
+
+.external-import__item--busy {
   cursor: default;
   pointer-events: none;
 }
-.external-import-modal__item:last-child {
+
+.external-import__item:last-child {
   border-bottom: none;
 }
-.external-import-modal__badge {
+
+.external-import__more {
+  padding: 10px;
+  text-align: center;
+}
+
+.external-import__more button {
+  color: var(--app-accent);
+  font-size: var(--app-font-control);
+}
+
+.external-import__badge {
   min-width: 36px;
   border-radius: 4px;
   padding: 3px 6px;
@@ -352,36 +368,56 @@ watch(
   color: var(--app-text-muted);
   background: color-mix(in srgb, var(--app-hover) 80%, transparent);
 }
-.external-import-modal__title {
+
+.external-import__title {
   color: var(--app-text-secondary);
-  font-size: 15px;
-  font-weight: 400;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1.35;
   transition: color 0.12s ease;
 }
-.external-import-modal__time {
+
+.external-import__time,
+.external-import__cwd {
+  color: var(--app-text-muted);
+}
+
+.external-import__time {
   font-size: 11px;
   line-height: 1.4;
 }
-.external-import-modal__cwd {
+
+.external-import__cwd {
   font-size: 12px;
   line-height: 1.4;
 }
-.external-import-modal__state {
-  padding: 36px 16px;
+
+.external-import__state {
+  padding: 48px 20px;
   text-align: center;
   font-size: 13px;
   color: var(--app-text-muted);
 }
-.external-import-modal__error {
+
+.external-import__error {
   color: var(--app-danger, #dc2626);
 }
-.external-import-enter-active,
-.external-import-leave-active {
-  transition: opacity 0.2s ease;
-}
-.external-import-enter-from,
-.external-import-leave-to {
-  opacity: 0;
+
+@media (min-width: 768px) {
+  .external-import__toolbar {
+    padding: 16px 20px;
+  }
+
+  .external-import__list-wrap {
+    padding: 16px 20px 20px;
+  }
+
+  .external-import__list {
+    border-radius: 12px;
+  }
+
+  .external-import__item {
+    padding: 13px 16px;
+  }
 }
 </style>

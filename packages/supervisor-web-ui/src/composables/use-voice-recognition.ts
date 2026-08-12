@@ -43,7 +43,6 @@ const DEFAULT_BAR_COUNT = 4;
 const DEFAULT_IDLE_HEIGHT = 4;
 const DEFAULT_MIN_HEIGHT = 4;
 const DEFAULT_MAX_HEIGHT = 15;
-const BAR_PHASES = [0, 1.45, 2.9, 4.35];
 const SILENCE_THRESHOLD = 0.025;
 /** 官方建议双向流式单包约 200ms（16kHz PCM16 mono = 6400 bytes） */
 const TARGET_PCM_BYTES = 6400;
@@ -392,7 +391,7 @@ export function useVoiceRecognition(
       const amplitude = volume * 0.92;
 
       waveformBars.value = Array.from({ length: barCount }, (_, index) => {
-        const wobble = Math.sin(now / 105 + (BAR_PHASES[index % BAR_PHASES.length] ?? 0));
+        const wobble = Math.sin(now / 105 + index * 0.45);
         const level = idleHeight + (0.5 + wobble * 0.5) * amplitude * (maxHeight - idleHeight);
         return Math.round(Math.max(minHeight, Math.min(maxHeight, level)));
       });

@@ -264,7 +264,7 @@ export async function startRegisteredSessionServices(options: {
       });
     });
     options.jobs.setCancelHandler(job.id, () => {
-      if (child.pid) killProcessTree(child.pid);
+      if (child.pid) return killProcessTree(child.pid);
     });
     if (process.platform !== "win32") child.unref();
 
@@ -354,7 +354,7 @@ export async function stopRegisteredSessionServices(options: {
   const pid = child?.pid ?? services.pid ?? null;
   if (pid) {
     sessionLog(options.sessionId, "info", `Killing service pid=${pid}`, ["system", "services"]);
-    killProcessTree(pid);
+    await killProcessTree(pid);
   }
   runningChildren.delete(key);
   if (services.jobId && options.jobs) {

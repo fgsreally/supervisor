@@ -1,6 +1,12 @@
 import { WebSocket } from "ws";
 import { formatUnknownError } from "./format-error.js";
-import { buildDoubaoSpeechWsHeaders, resolveDoubaoSpeechPreset } from "./supervisor-settings.js";
+import {
+  buildDoubaoSpeechWsHeaders,
+  doubaoSpeechPresetsToTry,
+  normalizeDoubaoSpeechCredential,
+  resolveDoubaoSpeechPreset,
+  type DoubaoSpeechPresetId,
+} from "./supervisor-settings.js";
 
 export type ApiKeyProvider = "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl";
 
@@ -55,10 +61,46 @@ export type DoubaoSpeechCredentials = {
   preset?: string;
 };
 
+export type DoubaoSpeechTestResult = {
+  preset: DoubaoSpeechPresetId;
+};
+
+/** Probe which Doubao streaming ASR endpoint accepts these credentials. */
+export async function testDoubaoSpeechCredentials(
+  creds: DoubaoSpeechCredentials,
+): Promise<DoubaoSpeechTestResult> {
+  const appId = normalizeDoubaoSpeechCredential(creds.appId);
+  const accessToken = normalizeDoubaoSpeechCredential(creds.accessToken);
+  if (!appId && !accessToken) {
+    throw new Error("请填写 APP ID 与 Access Token");
+  }
+  const candidates = doubaoSpeechPresetsToTry(creds.preset);
+  let lastError: Error | null = null;
+  for (const id of candidates) {
+    const preset = resolveDoubaoSpeechPreset(id);
+    try {
+      await testWebSocket(
+        preset.wsUrl,
+        buildDoubaoSpeechWsHeaders(appId, accessToken, preset.resourceId),
+        "豆包语音",
+      );
+      return { preset: id };
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    }
+  }
+  throw (
+    lastError ??
+    new Error(
+      "豆包语音 WebSocket 握手失败。请确认 APP ID / Access Token，以及控制台已开通流式语音识别",
+    )
+  );
+}
+
 export async function testApiKey(
   provider: ApiKeyProvider,
   credential: string | DoubaoSpeechCredentials,
-): Promise<void> {
+): Promise<DoubaoSpeechTestResult | void> {
   const apiKey = typeof credential === "string" ? credential : "";
   const signal = AbortSignal.timeout(12_000);
   let response: Response | undefined;
@@ -72,15 +114,7 @@ export async function testApiKey(
     case "doubao": {
       const creds =
         typeof credential === "string" ? { appId: "", accessToken: credential } : credential;
-      if (!creds.appId.trim() && !creds.accessToken.trim()) {
-        throw new Error("App ID 与 Access Token 不能同时为空");
-      }
-      const preset = resolveDoubaoSpeechPreset(creds.preset);
-      return testWebSocket(
-        preset.wsUrl,
-        buildDoubaoSpeechWsHeaders(creds.appId, creds.accessToken, preset.resourceId),
-        "豆包语音",
-      );
+      return testDoubaoSpeechCredentials(creds);
     }
     case "tavily":
       response = await fetch("https://api.tavily.com/search", {

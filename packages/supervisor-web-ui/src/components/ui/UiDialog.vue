@@ -76,16 +76,20 @@ function onBackdrop() {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 20px;
-  background: rgb(0 0 0 / 36%);
+  padding: 24px;
+  background: rgb(0 0 0 / 42%);
+  backdrop-filter: blur(2px);
 }
 
 .ui-dialog {
-  width: min(360px, calc(100vw - 40px));
+  width: min(380px, calc(100vw - 48px));
   overflow: hidden;
+  border: 1px solid var(--app-popup-border, var(--app-border-subtle));
   border-radius: 12px;
   background: var(--app-popup-bg);
-  box-shadow: 0 12px 40px rgb(0 0 0 / 18%);
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / 3%),
+    0 24px 64px rgb(0 0 0 / 22%);
 }
 
 .ui-dialog__header {

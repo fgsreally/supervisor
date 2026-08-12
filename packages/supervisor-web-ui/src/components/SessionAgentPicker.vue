@@ -1,45 +1,40 @@
 <template>
-  <Teleport to="body">
-    <Transition name="agent-picker">
-      <div
-        v-if="open"
-        class="fixed inset-0 z-[200] flex items-end sm:items-center justify-center"
-        @mousedown.self="emit('close')"
+  <ResponsiveDialog
+    :open="open"
+    title="选择 Agent"
+    description="为当前会话挑选一个智能代理"
+    width="sm"
+    size="auto"
+    @close="emit('close')"
+  >
+    <template #header-actions>
+      <button
+        type="button"
+        title="重新检测外部 Agent"
+        :disabled="detecting"
+        @click="detectAgents"
       >
-        <div class="absolute inset-0 bg-black/45" />
-        <div
-          class="agent-picker relative w-full sm:max-w-[380px] sm:rounded-xl flex flex-col overflow-hidden"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="agent-picker-title"
-          @mousedown.stop
-        >
-          <header class="agent-picker__header shrink-0">
-            <span class="w-9" />
-            <h2 id="agent-picker-title" class="agent-picker__title">选择 Agent</h2>
-            <div class="agent-picker__actions">
-              <button
-                type="button"
-                class="agent-picker__nav"
-                title="重新检测外部 Agent"
-                :disabled="detecting"
-                @click="detectAgents"
-              >
-                <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': detecting }" />
-              </button>
-              <button type="button" class="agent-picker__nav" title="关闭" @click="emit('close')">
-                <X class="w-5 h-5" />
-              </button>
-            </div>
-          </header>
+        <RefreshCw :class="{ 'animate-spin': detecting }" />
+      </button>
+    </template>
 
-          <div class="agent-picker__body custom-scrollbar">
-            <div v-if="project" class="agent-picker__project-chip">
-              <FolderOpen class="w-3.5 h-3.5 shrink-0" />
-              <span class="truncate">{{ project.name }} · {{ project.cwd }}</span>
-            </div>
+    <div class="agent-picker custom-scrollbar">
+      <div v-if="project" class="agent-picker__project">
+        <div class="agent-picker__project-icon">
+          <FolderOpen class="w-4 h-4" />
+        </div>
+        <div class="agent-picker__project-text min-w-0">
+          <div class="agent-picker__project-name truncate">{{ project.name }}</div>
+          <div class="agent-picker__project-cwd truncate">{{ project.cwd }}</div>
+        </div>
+      </div>
+
+      <div class="agent-picker__groups">
+        <section v-for="group in groups" :key="group.label" class="agent-picker__group">
+          <div class="agent-picker__section-label">{{ group.label }}</div>
+          <div class="agent-picker__card">
             <button
-              v-for="agent in agents"
+              v-for="agent in group.agents"
               :key="agent.id"
               type="button"
               class="agent-picker__row"
@@ -51,7 +46,7 @@
                 :agent-id="agent.id"
                 :agent-name="agent.name"
                 :icon="agent.avatar"
-                class="agent-picker__avatar-comp !rounded-full w-11 h-11 text-base"
+                class="agent-picker__avatar !rounded-full w-10 h-10 text-sm"
               />
               <div class="min-w-0 flex-1">
                 <div class="agent-picker__name">{{ agent.name }}</div>
@@ -64,17 +59,21 @@
               </div>
             </button>
           </div>
-        </div>
+        </section>
       </div>
-    </Transition>
-  </Teleport>
+
+      <div v-if="!groups.length" class="agent-picker__empty">无可选智能代理</div>
+      <p v-else class="agent-picker__hint">选择后将在当前项目下创建新会话</p>
+    </div>
+  </ResponsiveDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { FolderOpen, RefreshCw, X } from "lucide-vue-next";
+import { FolderOpen, RefreshCw } from "lucide-vue-next";
 import type { Project } from "@/api";
 import { useAgentStore } from "@/store";
+import ResponsiveDialog from "@/components/ui/ResponsiveDialog.vue";
 import AgentAvatar from "./AgentAvatar.vue";
 
 const props = defineProps<{
@@ -89,7 +88,8 @@ const emit = defineEmits<{
 }>();
 
 const agentStore = useAgentStore();
-const agents = computed(() => agentStore.agents);
+/** 与「智能代理」Tab 共用同一套分类/可见性规则 */
+const groups = computed(() => agentStore.getAgentsByCategory);
 const detecting = ref(false);
 
 const project = computed(() =>
@@ -115,68 +115,76 @@ async function detectAgents() {
 
 <style scoped>
 .agent-picker {
-  max-height: min(82vh, 560px);
-  background: var(--app-chat-bg);
-  color: var(--app-text-primary);
-  box-shadow: 0 -8px 32px rgb(0 0 0 / 18%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(64vh, 520px);
+  overflow-y: auto;
+  padding: 2px 0 8px;
 }
 
-@media (min-width: 640px) {
-  .agent-picker {
-    box-shadow: 0 12px 40px rgb(0 0 0 / 18%);
-  }
-}
-
-.agent-picker__header {
-  display: grid;
-  grid-template-columns: 40px 1fr auto;
-  align-items: center;
-  gap: 4px;
-  min-height: 52px;
-  padding: 0 8px;
-  background: var(--app-chat-header-bg);
-  border-bottom: 1px solid var(--app-border-subtle);
-}
-
-.agent-picker__title {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 500;
-  text-align: center;
-}
-
-.agent-picker__actions {
+.agent-picker__project {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 2px;
-  min-width: 40px;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--app-list-search-bg, var(--app-hover)) 70%, transparent);
 }
 
-.agent-picker__nav {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
+.agent-picker__project-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  place-items: center;
   border-radius: 8px;
   color: var(--app-text-secondary);
+  background: var(--app-popup-bg, var(--app-settings-card));
+  border: 1px solid var(--app-border-subtle);
 }
 
-.agent-picker__nav:hover:not(:disabled) {
-  background: var(--app-hover);
+.agent-picker__project-name {
+  font-size: 13px;
+  font-weight: 500;
   color: var(--app-text-primary);
+  line-height: 1.3;
 }
 
-.agent-picker__nav:disabled {
-  opacity: 0.45;
+.agent-picker__project-cwd {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--app-text-muted);
+  line-height: 1.3;
 }
 
-.agent-picker__body {
-  overflow-y: auto;
-  flex: 1;
-  min-height: 0;
-  padding-bottom: 12px;
+.agent-picker__groups {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.agent-picker__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agent-picker__section-label {
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--app-text-muted);
+}
+
+.agent-picker__card {
+  overflow: hidden;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 10px;
+  background: var(--app-settings-card, var(--app-popup-bg));
 }
 
 .agent-picker__row {
@@ -184,11 +192,17 @@ async function detectAgents() {
   width: 100%;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
+  padding: 11px 12px;
   text-align: left;
-  background: var(--app-settings-card);
+  background: transparent;
   border-bottom: 1px solid var(--app-divider);
-  transition: background-color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.agent-picker__row:last-child {
+  border-bottom: none;
 }
 
 .agent-picker__row:hover:not(:disabled) {
@@ -199,7 +213,7 @@ async function detectAgents() {
   cursor: not-allowed;
 }
 
-.agent-picker__row--disabled .agent-picker__avatar-comp {
+.agent-picker__row--disabled .agent-picker__avatar {
   filter: grayscale(1);
   opacity: 0.62;
 }
@@ -210,19 +224,20 @@ async function detectAgents() {
   text-decoration-thickness: 1px;
 }
 
-.agent-picker__avatar-comp {
+.agent-picker__avatar {
   border-radius: 50% !important;
   overflow: hidden;
 }
 
 .agent-picker__name {
-  font-size: 16px;
+  font-size: 14px;
+  font-weight: 500;
   line-height: 1.3;
   color: var(--app-text-primary);
 }
 
 .agent-picker__desc {
-  margin-top: 2px;
+  margin-top: 3px;
   font-size: 12px;
   line-height: 1.35;
   color: var(--app-text-secondary);
@@ -236,45 +251,53 @@ async function detectAgents() {
   white-space: normal;
 }
 
-.agent-picker__project-chip {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 10px 12px 6px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--app-settings-card);
-  color: var(--app-text-secondary);
-  font-size: 12px;
+.agent-picker__empty {
+  padding: 36px 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--app-text-muted);
 }
 
-.agent-picker-enter-active,
-.agent-picker-leave-active {
-  transition: opacity 0.18s ease;
+.agent-picker__hint {
+  margin: 0;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--app-text-muted);
 }
 
-.agent-picker-enter-active .agent-picker,
-.agent-picker-leave-active .agent-picker {
-  transition:
-    transform 0.22s cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 0.18s ease;
-}
+/* PC：内容区留白、分组卡片、副文案 */
+@media (min-width: 768px) {
+  .agent-picker {
+    gap: 18px;
+    padding: 18px 20px 20px;
+    max-height: min(68vh, 560px);
+  }
 
-.agent-picker-enter-from,
-.agent-picker-leave-to {
-  opacity: 0;
-}
+  .agent-picker__groups {
+    gap: 18px;
+  }
 
-.agent-picker-enter-from .agent-picker,
-.agent-picker-leave-to .agent-picker {
-  transform: translateY(18px);
-  opacity: 0;
-}
+  .agent-picker__group {
+    gap: 8px;
+  }
 
-@media (min-width: 640px) {
-  .agent-picker-enter-from .agent-picker,
-  .agent-picker-leave-to .agent-picker {
-    transform: scale(0.96) translateY(0);
+  .agent-picker__project {
+    padding: 12px 14px;
+    border-radius: 12px;
+  }
+
+  .agent-picker__card {
+    border-radius: 12px;
+  }
+
+  .agent-picker__row {
+    padding: 12px 14px;
+    gap: 14px;
+  }
+
+  .agent-picker__hint {
+    padding-top: 2px;
   }
 }
 </style>

@@ -2,7 +2,7 @@
   <Teleport to="body">
     <Transition name="message-menu" :duration="{ enter: 160, leave: 120 }">
       <div
-        v-if="open && mode === 'menu'"
+        v-if="open && mode === 'menu' && !usageOpen"
         class="message-context-overlay"
         @mousedown="emit('close')"
         @contextmenu.prevent="emit('close')"
@@ -18,17 +18,15 @@
             <span>复制</span>
           </button>
 
-          <div v-if="showUsage" class="message-context-menu__usage">
-            <div>
-              <Coins class="message-context-menu__icon" /><strong>本条用量</strong
-              ><b>{{ usage ? formatCost(usage.cost.total) : "暂无记录" }}</b>
-            </div>
-            <template v-if="usage">
-              <span>输入 {{ formatTokens(usage.input) }}</span>
-              <span>输出 {{ formatTokens(usage.output) }}</span>
-              <span>缓存 {{ formatTokens(usage.cacheRead + usage.cacheWrite) }}</span>
-            </template>
-          </div>
+          <button
+            v-if="showUsage"
+            type="button"
+            class="message-context-menu__item"
+            @click="openUsage"
+          >
+            <Coins class="message-context-menu__icon" />
+            <span>查看用量</span>
+          </button>
 
           <button
             v-if="canRewind"
@@ -41,7 +39,7 @@
           </button>
 
           <div
-            v-if="(canCopy || canRewind) && canFork"
+            v-if="(canCopy || showUsage || canRewind) && canFork"
             class="message-context-menu__sep"
             role="separator"
           />
@@ -60,30 +58,62 @@
     </Transition>
 
     <MobileDrawer
-      :open="open && mode === 'sheet'"
+      :open="open && mode === 'sheet' && !usageOpen"
       ariaLabel="消息操作"
       size="auto"
       show-footer
       @close="emit('close')"
     >
       <div class="message-sheet__actions">
-        <div v-if="showUsage" class="message-sheet__usage">
-          <strong>本条用量 {{ usage ? formatCost(usage.cost.total) : "暂无记录" }}</strong>
-          <span v-if="usage">{{ formatTokens(usage.totalTokens) }} tokens</span>
-        </div>
         <button v-if="canCopy" type="button" @click="emit('copy')">复制</button>
+        <button v-if="showUsage" type="button" @click="openUsage">查看用量</button>
         <button v-if="canRewind" type="button" @click="emit('rewind')">回到这里</button>
         <button v-if="canFork" type="button" @click="emit('fork')">从此消息分支</button>
       </div>
     </MobileDrawer>
+
+    <UiDialog :open="usageOpen" title="本条用量" show-close @close="closeUsage">
+      <div class="message-usage-dialog">
+        <div class="message-usage-dialog__cost">
+          <span>费用</span>
+          <strong>{{ usage ? formatCost(usage.cost.total) : "暂无记录" }}</strong>
+        </div>
+        <div v-if="durationLabel" class="message-usage-dialog__row">
+          <span>耗时</span>
+          <strong>{{ durationLabel }}</strong>
+        </div>
+        <template v-if="usage">
+          <div class="message-usage-dialog__grid">
+            <div>
+              <span>输入</span>
+              <strong>{{ formatTokens(usage.input) }}</strong>
+            </div>
+            <div>
+              <span>输出</span>
+              <strong>{{ formatTokens(usage.output) }}</strong>
+            </div>
+            <div>
+              <span>缓存</span>
+              <strong>{{ formatTokens(usage.cacheRead + usage.cacheWrite) }}</strong>
+            </div>
+          </div>
+          <div class="message-usage-dialog__row">
+            <span>合计 tokens</span>
+            <strong>{{ formatTokens(usage.totalTokens) }}</strong>
+          </div>
+        </template>
+        <p v-else class="message-usage-dialog__empty">暂无用量记录</p>
+      </div>
+    </UiDialog>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import { Coins, Copy, GitBranch, Undo2 } from "lucide-vue-next";
 import type { MessageUsage } from "@/api";
 import { MobileDrawer } from "@/components/mobile/ui";
+import UiDialog from "@/components/ui/UiDialog.vue";
 
 const props = withDefaults(
   defineProps<{
@@ -96,6 +126,7 @@ const props = withDefaults(
     canCopy?: boolean;
     usage?: MessageUsage | null;
     showUsage?: boolean;
+    durationLabel?: string | null;
   }>(),
   {
     x: 0,
@@ -104,6 +135,7 @@ const props = withDefaults(
     canFork: true,
     canCopy: false,
     showUsage: false,
+    durationLabel: null,
   },
 );
 
@@ -123,6 +155,24 @@ const emit = defineEmits<{
   fork: [];
   copy: [];
 }>();
+
+const usageOpen = ref(false);
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) usageOpen.value = false;
+  },
+);
+
+function openUsage() {
+  usageOpen.value = true;
+}
+
+function closeUsage() {
+  usageOpen.value = false;
+  emit("close");
+}
 
 const MENU_WIDTH = 168;
 const MENU_PAD = 8;
@@ -206,49 +256,12 @@ const menuStyle = computed(() => {
   margin: 5px 6px;
   background: var(--app-border-subtle);
 }
-.message-context-menu__usage {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 5px;
-  margin: 4px 2px 6px;
-  padding: 9px;
-  border-radius: 7px;
-  color: var(--app-text-muted);
-  background: var(--app-hover);
-  font-size: 10px;
-}
-.message-context-menu__usage div {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  color: var(--app-text-primary);
-}
-.message-context-menu__usage b {
-  margin-left: auto;
-  color: #07c160;
-  font-variant-numeric: tabular-nums;
-}
 
 .message-sheet__actions {
   display: flex;
   flex-direction: column;
   gap: 0;
   margin: -14px -10px;
-}
-
-.message-sheet__usage {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 14px 16px;
-  color: var(--m-text-primary, var(--app-text-primary));
-  font-size: 13px;
-  border-bottom: 1px solid var(--m-divider, var(--app-border-subtle));
-}
-
-.message-sheet__usage span {
-  color: var(--m-text-muted, var(--app-text-muted));
 }
 
 .message-sheet__actions > button {
@@ -265,5 +278,62 @@ const menuStyle = computed(() => {
 
 .message-sheet__actions > button:active {
   background: var(--m-pressed, var(--app-hover));
+}
+
+.message-usage-dialog {
+  display: grid;
+  gap: 14px;
+}
+
+.message-usage-dialog__cost,
+.message-usage-dialog__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--app-text-secondary);
+  font-size: 13px;
+}
+
+.message-usage-dialog__cost strong,
+.message-usage-dialog__row strong {
+  color: var(--app-text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.message-usage-dialog__cost strong {
+  color: #07c160;
+  font-size: 18px;
+}
+
+.message-usage-dialog__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.message-usage-dialog__grid > div {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 8px;
+  background: var(--app-hover);
+}
+
+.message-usage-dialog__grid span {
+  color: var(--app-text-muted);
+  font-size: 11px;
+}
+
+.message-usage-dialog__grid strong {
+  color: var(--app-text-primary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.message-usage-dialog__empty {
+  margin: 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
 }
 </style>

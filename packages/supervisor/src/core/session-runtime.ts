@@ -106,6 +106,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
   private permissionConfig: {
     rules: AgentPermissionRules;
     cwd: string;
+    projectRoots: string[];
     requestApproval: (request: ApprovalRequest) => Promise<ApprovalResult>;
     approvedCalls: Set<string>;
     sessionAllowed: Set<string>;
@@ -259,10 +260,12 @@ export class SessionRuntime implements ManagedSessionRuntime {
     rules: AgentPermissionRules,
     cwd: string,
     requestApproval: (request: ApprovalRequest) => Promise<ApprovalResult>,
+    options?: { projectRoots?: string[] },
   ): void {
     this.permissionConfig = {
       rules,
       cwd,
+      projectRoots: options?.projectRoots ?? [],
       requestApproval,
       approvedCalls: new Set(),
       sessionAllowed: new Set(),
@@ -475,7 +478,13 @@ export class SessionRuntime implements ManagedSessionRuntime {
         if (!config || config.approvedCalls.has(toolCallId)) {
           return execute(toolCallId, params, signal, onUpdate);
         }
-        const decision = evaluateAgentPermission(config.rules, tool.name, params, config.cwd);
+        const decision = evaluateAgentPermission(
+          config.rules,
+          tool.name,
+          params,
+          config.cwd,
+          config.projectRoots,
+        );
         if (decision.effect === "deny") {
           return {
             content: [

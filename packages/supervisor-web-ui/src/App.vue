@@ -319,6 +319,7 @@
     />
     <ShareSessionPickerSheet />
     <UiMessageHost />
+    <ImagePreviewHost />
     <UiConfirmHost />
     <UiBusyHost />
     <IntroTour ref="introTour" />
@@ -360,6 +361,7 @@ import AddToHomeScreenHint from "./components/AddToHomeScreenHint.vue";
 import GlobalSearchModal from "./components/GlobalSearchModal.vue";
 import ShareSessionPickerSheet from "./components/ShareSessionPickerSheet.vue";
 import UiMessageHost from "./components/UiMessageHost.vue";
+import ImagePreviewHost from "./components/ImagePreviewHost.vue";
 import UiConfirmHost from "./components/UiConfirmHost.vue";
 import UiBusyHost from "./components/UiBusyHost.vue";
 import StartupGate from "./components/StartupGate.vue";
@@ -631,6 +633,7 @@ const chatSessionProps = computed(() => {
     stage: s.stage,
     meta: s.meta,
     agentId: s.agentId ?? undefined,
+    cwd: s.cwd,
     workspaceId: s.cwd,
     pinned: viewPreferences.pinnedSessionIds.includes(s.id),
     muted: viewPreferences.mutedSessionIds.includes(s.id),

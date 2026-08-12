@@ -1,58 +1,57 @@
 <template>
   <MobileDrawer
     :open="open"
+    title="项目设置"
     ariaLabel="项目设置"
     variant="adaptive"
     size="auto"
+    width="sm"
     :show-close="!(busy || parsing)"
     :dismiss-on-backdrop="!(busy || parsing)"
     :modal-breakpoint="767"
-    panel-class="project-settings-drawer"
+    panel-class="form-dialog project-settings-drawer"
     @close="onClose"
   >
-    <div class="project-settings">
-      <div>
-        <label class="project-settings__label">项目名</label>
-        <div class="project-settings__row">
+    <div class="form-dialog__body">
+      <div class="form-dialog__field">
+        <label class="form-dialog__label" for="project-settings-name">项目名</label>
+        <div class="form-dialog__row">
           <input
+            id="project-settings-name"
             v-model="draftName"
             type="text"
-            class="project-settings__input"
+            class="form-dialog__input"
             :disabled="busy || saving || parsing"
             @keydown.enter.prevent="saveName"
           />
-          <button
-            type="button"
-            class="project-settings__save"
-            :disabled="busy || saving || parsing || !nameDirty"
+          <UiActionButton
+            :loading="saving"
+            :disabled="busy || parsing || !nameDirty"
             @click="saveName"
           >
-            {{ saving ? "..." : "保存" }}
-          </button>
+            保存
+          </UiActionButton>
         </div>
       </div>
 
-      <div>
-        <label class="project-settings__label">路径</label>
-        <div class="project-settings__path" :title="cwd">{{ cwd || "—" }}</div>
+      <div class="form-dialog__field">
+        <span class="form-dialog__label">路径</span>
+        <div class="form-dialog__value" :title="cwd">{{ cwd || "—" }}</div>
       </div>
 
-      <div class="project-settings__parse">
-        <div class="project-settings__desc-head">
-          <div>
-            <div class="project-settings__parse-title">解析</div>
-            <div class="project-settings__muted">初始化 Git 与 AGENTS.md</div>
-          </div>
-          <button
-            type="button"
-            class="project-settings__refresh"
+      <div class="form-dialog__field">
+        <div class="form-dialog__row">
+          <p class="form-dialog__hint form-dialog__grow">初始化 Git 与 AGENTS.md</p>
+          <UiActionButton
+            variant="secondary"
+            :loading="parsing"
+            :disabled="busy"
             title="解析并初始化项目"
-            :disabled="busy || parsing"
             @click="emit('parse')"
           >
             <WatsonIcon class="h-3.5 w-3.5" />
-            {{ parsing ? "解析中..." : "解析" }}
-          </button>
+            解析
+          </UiActionButton>
         </div>
       </div>
     </div>
@@ -62,6 +61,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { MobileDrawer } from "@/components/mobile/ui";
+import UiActionButton from "./UiActionButton.vue";
 import WatsonIcon from "./WatsonIcon.vue";
 
 const props = defineProps<{
@@ -110,116 +110,6 @@ async function saveName() {
   }
 }
 </script>
-
-<style scoped>
-.project-settings {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.project-settings__label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 12px;
-  color: var(--app-text-secondary);
-}
-
-.project-settings__row {
-  display: flex;
-  gap: 8px;
-}
-
-.project-settings__input {
-  flex: 1;
-  min-width: 0;
-  height: 34px;
-  padding: 0 10px;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
-  background: var(--app-chat-bg);
-  color: var(--app-text-primary);
-  font-size: 13px;
-  outline: none;
-}
-
-.project-settings__input:focus {
-  border-color: var(--app-accent);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-accent) 18%, transparent);
-}
-
-.project-settings__save,
-.project-settings__refresh {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 6px;
-  background: var(--app-accent);
-  color: #fff;
-  font-size: 13px;
-  white-space: nowrap;
-}
-
-.project-settings__save:disabled,
-.project-settings__refresh:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.project-settings__refresh {
-  height: 28px;
-  padding: 0 10px;
-  background: transparent;
-  border: 1px solid var(--app-btn-secondary-border);
-  color: var(--app-btn-secondary-text);
-}
-
-.project-settings__refresh:hover:not(:disabled) {
-  background: var(--app-btn-secondary-hover-bg);
-}
-
-.project-settings__path {
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--app-chat-bg);
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--app-text-primary);
-  word-break: break-all;
-}
-
-.project-settings__desc-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.project-settings__parse-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.project-settings__muted {
-  color: var(--app-text-muted);
-}
-
-@media (max-width: 767px) {
-  .project-settings__input,
-  .project-settings__save {
-    height: 40px;
-    font-size: 15px;
-  }
-
-  .project-settings__path,
-  .project-settings__parse-title {
-    font-size: 14px;
-  }
-}
-</style>
 
 <style>
 .project-settings-drawer.m-drawer--modal {

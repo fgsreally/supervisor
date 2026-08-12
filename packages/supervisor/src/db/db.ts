@@ -802,7 +802,13 @@ export class SupervisorDb {
     const todos = Array.isArray(meta?.todos) ? meta.todos : [];
     return todos.flatMap((item, index) => {
       if (!item || typeof item !== "object") return [];
-      const todo = item as { title?: unknown; status?: unknown };
+      const todo = item as {
+        id?: unknown;
+        title?: unknown;
+        status?: unknown;
+        dependsOn?: unknown;
+        sessionId?: unknown;
+      };
       if (typeof todo.title !== "string") return [];
       return [
         {
@@ -810,6 +816,13 @@ export class SupervisorDb {
           session_id: sessionId,
           title: todo.title,
           status: normalizeTodoStatus(todo.status),
+          task_key: typeof todo.id === "string" ? todo.id : null,
+          depends_on: Array.isArray(todo.dependsOn)
+            ? todo.dependsOn.filter((value): value is string => typeof value === "string")
+            : [],
+          child_session_id: Number.isSafeInteger(todo.sessionId)
+            ? (todo.sessionId as number)
+            : null,
           sort_order: index,
           created_at: index,
           updated_at: index,
@@ -820,10 +833,22 @@ export class SupervisorDb {
 
   replaceSessionTodos(
     sessionId: number,
-    todos: Array<{ title: string; status: SessionTodoRow["status"] }>,
+    todos: Array<{
+      id?: string;
+      title: string;
+      status: SessionTodoRow["status"];
+      dependsOn?: string[];
+      sessionId?: number;
+    }>,
   ): SessionTodoRow[] {
     this.updateMeta(sessionId, {
-      todos: todos.map((todo) => ({ title: todo.title, status: normalizeTodoStatus(todo.status) })),
+      todos: todos.map((todo) => ({
+        ...(todo.id ? { id: todo.id } : {}),
+        title: todo.title,
+        status: normalizeTodoStatus(todo.status),
+        ...(todo.dependsOn?.length ? { dependsOn: todo.dependsOn } : {}),
+        ...(todo.sessionId ? { sessionId: todo.sessionId } : {}),
+      })),
     });
     return this.listSessionTodos(sessionId);
   }

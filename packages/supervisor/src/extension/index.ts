@@ -8,7 +8,7 @@ export {
   messageAssetsExtension,
   persistentBashExtension,
   projectServicesExtension,
-  sessionGitWorktreeExtension,
+  gitExtension,
   shadowExtension,
   subagentExtension,
   supervisorAdminExtension,

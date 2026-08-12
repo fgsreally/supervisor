@@ -46,8 +46,9 @@ import {
   BookOpen,
   Clock3,
   Plug,
+  AppWindow,
 } from "lucide-vue-next";
-import { isSkillReadPath, toolCallSummary, toolResultSummary } from "../utils/tool-display";
+import { isSkillReadPath, toolCallSummary } from "../utils/tool-display";
 import { isAskToolName } from "../utils/ask-tool";
 
 const props = defineProps<{
@@ -74,9 +75,8 @@ const statusClass = computed(() => {
 
 const summary = computed(() => {
   const call = toolCallSummary(props.toolName, props.callArgs);
-  if (!hasResult.value) return call;
   if (props.isError) return `${call} · 失败`;
-  return `${call} · ${toolResultSummary(props.toolName, props.resultContent)}`;
+  return call;
 });
 
 const isSkillLoad = computed(() => {
@@ -101,6 +101,11 @@ const icon = computed(() => {
       return PencilLine;
     case "bash":
       return Terminal;
+    case "ProjectServiceSetup":
+    case "ProjectServiceStart":
+    case "ProjectServiceStop":
+    case "ProjectServiceDestroy":
+      return AppWindow;
     case "spawn_agent":
       return Users;
     case "skill":

@@ -94,7 +94,7 @@ export function createDefaultTools(
         bash,
       );
     case "readonly":
-      return replacePiBash(createReadOnlyTools(cwd, merged), bash);
+      return createReadOnlyTools(cwd, merged);
     case "none":
       return [];
   }

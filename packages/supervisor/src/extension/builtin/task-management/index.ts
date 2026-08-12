@@ -7,7 +7,13 @@ import {
 import { parseSessionTodos, renderSessionTodos } from "../../../core/session-todos.js";
 import type { ExtensionContext, ExtensionDefinition } from "../../types.js";
 
-type Todo = { title: string; status: "pending" | "in_progress" | "completed" | "cancelled" };
+type Todo = {
+  id?: string;
+  title: string;
+  status: "pending" | "in_progress" | "completed" | "cancelled";
+  dependsOn?: string[];
+  sessionId?: number;
+};
 type TaskStage = "todo" | "plan:planning" | "plan:executing" | "goal:active";
 
 const TASK_TOOL_NAMES = new Set([
@@ -72,6 +78,9 @@ const todoExtension: ExtensionDefinition = {
           Type.Array(
             Type.Object({
               title: Type.String({ minLength: 1 }),
+              id: Type.Optional(Type.String({ minLength: 1 })),
+              dependsOn: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
+              sessionId: Type.Optional(Type.Number()),
               status: Type.Union([
                 Type.Literal("pending"),
                 Type.Literal("in_progress"),
@@ -86,7 +95,18 @@ const todoExtension: ExtensionDefinition = {
         if (params.todos === undefined) {
           return {
             content: [
-              { type: "text" as const, text: renderSessionTodos(await ctx.session.todos.list()) },
+              {
+                type: "text" as const,
+                text: renderSessionTodos(
+                  (await ctx.session.todos.list()).map((todo) => ({
+                    id: todo.taskKey ?? undefined,
+                    title: todo.title,
+                    status: todo.status,
+                    dependsOn: todo.dependsOn,
+                    sessionId: todo.childSessionId ?? undefined,
+                  })),
+                ),
+              },
             ],
           };
         }
@@ -94,7 +114,22 @@ const todoExtension: ExtensionDefinition = {
         if (!stage && saved.some((todo) => !FINISHED.has(todo.status))) await setStage("todo");
         else if (stage === "todo" && saved.every((todo) => FINISHED.has(todo.status)))
           await setStage(null);
-        return { content: [{ type: "text" as const, text: renderSessionTodos(saved) }] };
+        return {
+          content: [
+            {
+              type: "text" as const,
+              text: renderSessionTodos(
+                saved.map((todo) => ({
+                  id: todo.taskKey ?? undefined,
+                  title: todo.title,
+                  status: todo.status,
+                  dependsOn: todo.dependsOn,
+                  sessionId: todo.childSessionId ?? undefined,
+                })),
+              ),
+            },
+          ],
+        };
       },
     });
 

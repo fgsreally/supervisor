@@ -171,6 +171,10 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
       content,
     });
   }
+  // Harness metadata (e.g. thinking_level_change) must not become chat bubbles —
+  // they were previously treated as empty assistant messages and inflated turn duration.
+  if (entry.type !== "message") return null;
+
   return {
     ...base,
     id: entry.id,

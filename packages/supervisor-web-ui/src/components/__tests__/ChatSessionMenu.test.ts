@@ -51,4 +51,25 @@ describe("ChatSessionMenu", () => {
     expect(wrapper.text()).not.toContain("外部 Agent");
     expect(wrapper.text()).toContain("仅显示结论");
   });
+
+  it("opens a dialog to pick available subagents", async () => {
+    const wrapper = mount(ChatSessionMenu, {
+      props: {
+        ...baseProps,
+        configurableAgents: [
+          { id: "a1", name: "Coder", avatar: null },
+          { id: "a2", name: "Reviewer", avatar: null },
+        ] as never[],
+        spawnedAgentIds: ["a1"],
+      },
+      global: {
+        stubs: { Teleport: true, Transition: false },
+      },
+    });
+
+    await wrapper.get('[aria-label="添加子代理"]').trigger("click");
+    expect(wrapper.text()).toContain("选择子代理");
+    expect(wrapper.text()).toContain("Reviewer");
+    expect(wrapper.find(".session-agent-picker").exists()).toBe(true);
+  });
 });

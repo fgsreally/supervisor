@@ -80,10 +80,14 @@ const actions = computed(() => {
   const items: Array<{ id: ActionId; label: string; danger?: boolean }> = [
     { id: "pin", label: props.pinned ? "取消置顶" : "置顶" },
   ];
-  if (props.status !== "finish") {
-    items.push({ id: "sync", label: "同步项目修改" }, { id: "achieve", label: "完成并归档" });
+  if (props.status !== "finish" && props.status !== "finished") {
+    items.push(
+      { id: "fork", label: "Fork 新会话" },
+      { id: "sync", label: "同步项目修改" },
+      { id: "achieve", label: "完成并归档" },
+    );
   } else {
-    items.push({ id: "fork", label: "Fork 后继续" });
+    items.push({ id: "fork", label: "Fork 新会话" });
   }
   items.push({ id: "delete", label: "删除", danger: true });
   return items;

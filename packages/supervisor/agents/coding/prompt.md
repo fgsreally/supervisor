@@ -21,15 +21,15 @@
 
 ## 端口与本地服务
 
-已登记服务时环境会注入 `PORT` / `API_PORT` 等，自行再起请复用，勿另开冲突端口。
+Session 准备阶段可能已由 Supervisor 启动项目服务；以系统提示中的“项目服务”状态、命令和入口为准，不要重复启动。已登记服务时环境会注入 `PORT` / `API_PORT` 等，自行再起请复用，勿另开冲突端口。
 
-用户要启动/重启项目：
+仅当对话过程中需要新增服务，或用户明确要求更换现有服务时：
 
 1. Session cwd 下 `bash` + `run_in_background` + `disable_timeout`（同一次调用会等到就绪）
 2. 用返回的 `detectedPort` / `task_id` 调 `ProjectServiceSetup`（`apps` + `taskId`）→ 活跃应用
 3. 仅未在跑时才 `ProjectServiceStart`
 
-不要前台跑长期 dev server，不要对 background task 轮询 `read`。
+不要猜测或占用 3000、5173 等默认端口，不要前台跑长期 dev server，不要对 background task 轮询 `read`。
 
 ## 边界
 

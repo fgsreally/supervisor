@@ -196,191 +196,179 @@
       </div>
     </div>
 
-    <Teleport to="body">
-      <div v-if="activeLog" class="service-overlay" @click.self="activeLog = null">
-        <section class="service-dialog settings-log-dialog" role="dialog" aria-modal="true">
-          <header>
-            <div>
-              <h2 class="settings-log-title">
-                <WatsonIcon v-if="activeLog === 'watson'" />
-                {{ activeLog === "watson" ? "华生运行日志" : "系统运行与诊断" }}
-              </h2>
-              <p>{{ activeLogFiles.join(" · ") || "实时读取最近的日志记录" }}</p>
-            </div>
-            <button type="button" class="icon-button" title="关闭" @click="activeLog = null">
-              <X class="h-5 w-5" />
-            </button>
-          </header>
-          <pre class="settings-log">{{ activeLogText }}</pre>
-        </section>
+    <ResponsiveDialog
+      :open="!!activeLog"
+      width="xl"
+      size="tall"
+      @close="activeLog = null"
+    >
+      <template #header>
+        <div class="m-drawer__heading">
+          <span class="m-drawer__title settings-log-title">
+            <WatsonIcon v-if="activeLog === 'watson'" />
+            {{ activeLog === "watson" ? "华生运行日志" : "系统运行与诊断" }}
+          </span>
+          <p class="m-drawer__desc">
+            {{
+              activeLogFiles.length
+                ? `${activeLogFiles.length} 个日志文件 · 最近记录`
+                : "实时读取最近的日志记录"
+            }}
+          </p>
+        </div>
+      </template>
+      <div class="settings-log-shell">
+        <LogViewer
+          embedded
+          :entries="activeLogEntries"
+          :loading="activeLogLoading"
+          empty-text="暂无日志"
+        />
       </div>
-    </Teleport>
+    </ResponsiveDialog>
 
-    <Teleport to="body">
-      <div v-if="activeService" class="service-overlay" @click.self="closeService">
-        <section
-          class="service-dialog"
-          role="dialog"
-          aria-modal="true"
-          :aria-label="activeMeta.name"
-        >
-          <header>
-            <div>
-              <h2>{{ activeMeta.name }}</h2>
-              <p v-if="activeService !== 'local' && activeMeta.description">
-                {{ activeMeta.description }}
-              </p>
-            </div>
-            <button type="button" class="icon-button" title="关闭" @click="closeService">
-              <X class="h-5 w-5" />
-            </button>
-          </header>
-          <div class="dialog-body" :class="{ 'dialog-body--list': activeService === 'local' }">
-            <template v-if="activeService === 'local'">
-              <ul class="local-model-list">
-                <li v-for="model in localSpeechModels" :key="model.id">
-                  <button
-                    type="button"
-                    class="local-model-item"
-                    :class="{
-                      'local-model-item--selected':
-                        model.installed && draftLocalSpeechModelId === model.id,
-                      'local-model-item--busy': model.installing,
-                    }"
-                    :disabled="model.installing"
-                    @click="onLocalModelRowClick(model)"
-                  >
-                    <span class="local-model-item__copy">
-                      <span class="local-model-item__title-row">
-                        <strong class="local-model-item__title">{{ model.name }}</strong>
-                        <span class="local-model-item__meta">
-                          <span class="local-model-item__size">{{ model.sizeLabel }}</span>
-                          <span v-if="model.installing" class="local-model-item__progress"
-                            >{{ model.progress }}%</span
-                          >
-                          <span
-                            v-else-if="model.error"
-                            class="local-model-item__error"
-                            :title="model.error"
-                            >失败</span
-                          >
-                        </span>
-                      </span>
-                      <small class="local-model-item__desc">{{ model.description }}</small>
+    <ResponsiveDialog
+      :open="!!activeService"
+      :title="activeMeta.name"
+      :description="
+        activeService !== 'local' && activeMeta.description ? activeMeta.description : undefined
+      "
+      width="md"
+      size="auto"
+      panel-class="form-dialog"
+      @close="closeService"
+    >
+      <div
+        class="form-dialog__body"
+        :class="{ 'form-dialog__body--flush': activeService === 'local' }"
+      >
+        <template v-if="activeService === 'local'">
+          <ul class="local-model-list">
+            <li v-for="model in localSpeechModels" :key="model.id">
+              <button
+                type="button"
+                class="local-model-item"
+                :class="{
+                  'local-model-item--selected':
+                    model.installed && draftLocalSpeechModelId === model.id,
+                  'local-model-item--busy': model.installing,
+                }"
+                :disabled="model.installing"
+                @click="onLocalModelRowClick(model)"
+              >
+                <span class="local-model-item__copy">
+                  <span class="local-model-item__title-row">
+                    <strong class="local-model-item__title">{{ model.name }}</strong>
+                    <span class="local-model-item__meta">
+                      <span class="local-model-item__size">{{ model.sizeLabel }}</span>
+                      <span v-if="model.installing" class="local-model-item__progress"
+                        >{{ model.progress }}%</span
+                      >
+                      <span
+                        v-else-if="model.error"
+                        class="local-model-item__error"
+                        :title="model.error"
+                        >失败</span
+                      >
                     </span>
-                    <UiListStatus
-                      :status="localModelStatus(model)"
-                      :title="localModelStatusTitle(model)"
-                    />
-                  </button>
-                </li>
-              </ul>
-            </template>
-            <template v-else-if="activeService === 'doubao'">
-              <label>
-                <span>服务版本</span>
-                <select v-model="draftDoubaoSpeechPreset">
-                  <option value="2.0-duration">2.0 小时版（推荐）</option>
-                  <option value="2.0-concurrent">2.0 并发版</option>
-                  <option value="1.0-duration">1.0 小时版</option>
-                  <option value="1.0-concurrent">1.0 并发版</option>
-                </select>
-              </label>
-              <label>
-                <span>APP ID（旧版控制台）</span>
-                <input
-                  v-model.trim="draftDoubaoAppId"
-                  autocomplete="off"
-                  :placeholder="
-                    activeMeta.configured ? '已配置，留空则保持不变' : '旧版控制台填写 APP ID'
-                  "
+                  </span>
+                  <small class="local-model-item__desc">{{ model.description }}</small>
+                </span>
+                <UiListStatus
+                  :status="localModelStatus(model)"
+                  :title="localModelStatusTitle(model)"
                 />
-              </label>
-              <label>
-                <span>Access Token / API Key</span>
-                <input
-                  v-model.trim="draftDoubaoAccessToken"
-                  type="password"
-                  autocomplete="new-password"
-                  :placeholder="
-                    activeMeta.configured
-                      ? '已配置，留空则保持不变'
-                      : '旧版填 Access Token；新版控制台可只填 API Key'
-                  "
-                />
-              </label>
-              <p class="dialog-note">
-                旧版控制台需同时填写 APP ID 与 Access Token；新版控制台只需填写 API Key（填在上方
-                Access Token
-                字段即可）。「服务版本」须与火山控制台已开通的流式识别版本一致，可在控制台服务页查看
-                Resource ID（bigasr=1.0，seedasr=2.0）。
-              </p>
-            </template>
-            <template v-else>
-              <label>
-                <span>API Key</span>
-                <input
-                  v-model.trim="draftApiKey"
-                  type="password"
-                  autocomplete="new-password"
-                  :placeholder="activeMeta.configured ? '已配置，留空则保持不变' : '输入 API Key'"
-                />
-              </label>
-              <label v-if="isWebService">
-                <span>环境变量名（可选）</span>
-                <input v-model.trim="draftEnvName" placeholder="也可以从环境变量读取" />
-              </label>
-            </template>
-            <p
-              v-if="dialogMessage"
-              class="dialog-message"
-              :class="dialogFailed ? 'failed' : 'passed'"
-            >
-              {{ dialogMessage }}
-            </p>
-          </div>
-          <footer v-if="activeService !== 'local'">
-            <a
-              v-if="activeMeta.consoleUrl"
-              class="console-link"
-              :href="activeMeta.consoleUrl"
-              target="_blank"
-              rel="noreferrer"
-            >
-              <ExternalLink class="h-4 w-4" />创建 API Key
-            </a>
-            <button
-              class="secondary-button"
-              type="button"
-              :disabled="testingKey === activeService"
-              @click="testActiveKey"
-            >
-              {{ testingKey === activeService ? "测试中..." : "测试" }}
-            </button>
-            <button
-              v-if="activeMeta.configured"
-              class="danger-button"
-              type="button"
-              @click="clearActiveKey"
-            >
-              清除密钥
-            </button>
-            <button class="primary-button" type="button" :disabled="saving" @click="saveService">
-              {{ saving ? "保存中..." : "保存" }}
-            </button>
-          </footer>
-        </section>
+              </button>
+            </li>
+          </ul>
+        </template>
+        <template v-else-if="activeService === 'doubao'">
+          <label class="form-dialog__field">
+            <span class="form-dialog__label">APP ID</span>
+            <input
+              v-model.trim="draftDoubaoAppId"
+              autocomplete="off"
+              :placeholder="activeMeta.configured ? '已配置，留空则保持不变' : '填写 APP ID'"
+            />
+          </label>
+          <label class="form-dialog__field">
+            <span class="form-dialog__label">Access Token</span>
+            <input
+              v-model.trim="draftDoubaoAccessToken"
+              type="password"
+              autocomplete="new-password"
+              :placeholder="
+                activeMeta.configured ? '已配置，留空则保持不变' : '填写 Access Token'
+              "
+            />
+          </label>
+        </template>
+        <template v-else>
+          <label class="form-dialog__field">
+            <span class="form-dialog__label">API Key</span>
+            <input
+              v-model.trim="draftApiKey"
+              type="password"
+              autocomplete="new-password"
+              :placeholder="activeMeta.configured ? '已配置，留空则保持不变' : '输入 API Key'"
+            />
+          </label>
+          <label v-if="isWebService" class="form-dialog__field">
+            <span class="form-dialog__label">环境变量名（可选）</span>
+            <input v-model.trim="draftEnvName" placeholder="也可以从环境变量读取" />
+          </label>
+        </template>
+        <p
+          v-if="dialogMessage"
+          class="form-dialog__message"
+          :class="dialogFailed ? 'form-dialog__message--err' : 'form-dialog__message--ok'"
+        >
+          {{ dialogMessage }}
+        </p>
       </div>
-    </Teleport>
+      <template v-if="activeService && activeService !== 'local'" #footer>
+        <div class="form-dialog__actions">
+          <a
+            v-if="activeMeta.consoleUrl"
+            class="form-dialog__link"
+            :href="activeMeta.consoleUrl"
+            target="_blank"
+            rel="noreferrer"
+          >
+            <ExternalLink class="h-4 w-4" />创建 API Key
+          </a>
+          <UiActionButton
+            variant="secondary"
+            :loading="testingKey === activeService"
+            @click="testActiveKey"
+          >
+            <FlaskConical class="h-4 w-4" />
+            测试
+          </UiActionButton>
+          <UiActionButton
+            v-if="activeMeta.configured"
+            variant="danger"
+            @click="clearActiveKey"
+          >
+            清除密钥
+          </UiActionButton>
+          <UiActionButton :loading="saving" @click="saveService">保存</UiActionButton>
+        </div>
+      </template>
+    </ResponsiveDialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Check, ChevronLeft, ExternalLink, ScrollText, Settings2, X } from "lucide-vue-next";
+import { Check, ChevronLeft, ExternalLink, FlaskConical, ScrollText, Settings2 } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from "vue";
 import ModelTreeSelect, { type ModelTreeGroup } from "./ModelTreeSelect.vue";
+import UiActionButton from "./UiActionButton.vue";
 import UiListStatus, { type UiListStatusKind } from "./UiListStatus.vue";
 import WatsonIcon from "./WatsonIcon.vue";
+import ResponsiveDialog from "@/components/ui/ResponsiveDialog.vue";
+import LogViewer from "./LogViewer.vue";
+import { parsePlainLogText } from "@/utils/parse-plain-log";
 import { resolveProviderIcon } from "@/constants/providers";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { useAppFontScale, type AppFontScale } from "@/composables/use-app-font-scale";
@@ -398,6 +386,7 @@ import {
   type FeatureModelRef,
   type LocalSpeechModelId,
   type LocalSpeechModelStatus,
+  type LogEntry,
   type SupervisorSettings,
   type UtilityFeature,
 } from "../api/api";
@@ -446,30 +435,35 @@ const pageTitle = computed(() => {
   return "设置";
 });
 
-const watsonLogText = ref("");
-const systemLogText = ref("");
+const watsonLogEntries = ref<LogEntry[]>([]);
+const systemLogEntries = ref<LogEntry[]>([]);
 const watsonLogFiles = ref<string[]>([]);
 const systemLogFiles = ref<string[]>([]);
 const activeLog = ref<"watson" | "system" | null>(null);
-const activeLogText = computed(() =>
-  activeLog.value === "watson" ? watsonLogText.value : systemLogText.value,
+const activeLogLoading = ref(false);
+const activeLogEntries = computed(() =>
+  activeLog.value === "watson" ? watsonLogEntries.value : systemLogEntries.value,
 );
 const activeLogFiles = computed(() =>
   activeLog.value === "watson" ? watsonLogFiles.value : systemLogFiles.value,
 );
 
 async function loadLog(kind: "watson" | "system") {
-  const target = kind === "watson" ? watsonLogText : systemLogText;
+  const target = kind === "watson" ? watsonLogEntries : systemLogEntries;
   const files = kind === "watson" ? watsonLogFiles : systemLogFiles;
   activeLog.value = kind;
-  target.value = "加载中…";
+  activeLogLoading.value = true;
+  target.value = [];
   try {
     const result =
       kind === "watson" ? await getWatsonLogs({ limit: 500 }) : await getSystemLogs({ limit: 500 });
     files.value = result.files;
-    target.value = result.text || "暂无日志";
+    target.value = parsePlainLogText(result.text || "");
   } catch (error) {
-    target.value = error instanceof Error ? error.message : "日志加载失败";
+    const message = error instanceof Error ? error.message : "日志加载失败";
+    target.value = [{ t: Date.now(), l: "error", m: message, tags: ["error"] }];
+  } finally {
+    activeLogLoading.value = false;
   }
 }
 
@@ -856,14 +850,9 @@ async function saveService() {
     } else if (id === "doubao") {
       const nextAppId = draftDoubaoAppId.value.trim();
       const nextToken = draftDoubaoAccessToken.value.trim();
-      if (!clearRequested.value && !configured.doubao && !nextAppId && !nextToken) {
+      if (!clearRequested.value && !configured.doubao && (!nextAppId || !nextToken)) {
         dialogFailed.value = true;
-        dialogMessage.value = "请填写 Access Token 或 API Key（旧版控制台需同时填写 APP ID）";
-        return;
-      }
-      if (!clearRequested.value && !configured.doubao && nextAppId && !nextToken) {
-        dialogFailed.value = true;
-        dialogMessage.value = "填写 APP ID 时需同时填写 Access Token";
+        dialogMessage.value = "请填写 APP ID 与 Access Token";
         return;
       }
       if (draftDoubaoAppId.value || clearRequested.value) {
@@ -1000,25 +989,32 @@ onBeforeUnmount(() => {
   color: var(--app-accent);
 }
 
-.settings-log {
+.settings-log-shell {
+  display: flex;
   min-height: 0;
   flex: 1;
-  overflow: auto;
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 8px;
-  background: #111827;
-  color: #d1fae5;
-  font:
-    12px/1.5 ui-monospace,
-    SFMono-Regular,
-    Consolas,
-    monospace;
-  white-space: pre-wrap;
+  flex-direction: column;
+  padding: 14px;
 }
-.settings-log-dialog {
-  width: min(920px, calc(100vw - 32px));
-  height: min(720px, calc(100vh - 32px));
+
+.settings-log-shell :deep(.log-viewer) {
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 12px;
+  background: var(--app-settings-card, var(--app-popup-bg));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+}
+
+@media (min-width: 768px) {
+  .settings-log-shell {
+    padding: 18px 20px 20px;
+  }
+
+  .settings-log-shell :deep(.log-viewer) {
+    border-radius: 12px;
+  }
 }
 .settings-page,
 .settings-header {
@@ -1093,8 +1089,8 @@ onBeforeUnmount(() => {
   font-size: var(--app-font-micro);
   color: var(--app-text-muted);
 }
-select,
-input {
+.settings-field select,
+.settings-field input {
   width: 100%;
   min-height: 34px;
   padding: 6px 10px;
@@ -1104,8 +1100,8 @@ input {
   background: var(--app-settings-bg);
   color: var(--app-text-primary);
 }
-select:focus,
-input:focus {
+.settings-field select:focus,
+.settings-field input:focus {
   border-color: #07c160;
   box-shadow: 0 0 0 3px rgb(7 193 96 / 12%);
 }
@@ -1241,68 +1237,8 @@ input:focus {
   margin-left: -8px;
   margin-right: 8px;
 }
-.settings-back:hover,
-.icon-button:hover {
+.settings-back:hover {
   background: var(--app-hover);
-}
-.service-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
-  background: rgb(0 0 0 / 42%);
-}
-.service-dialog {
-  display: flex;
-  width: min(500px, 100%);
-  max-height: 90vh;
-  flex-direction: column;
-  overflow: hidden;
-  border: 1px solid var(--app-border);
-  border-radius: 8px;
-  background: var(--app-settings-card);
-  box-shadow: 0 18px 48px rgb(0 0 0 / 20%);
-}
-.service-dialog header {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  padding: 17px 20px;
-  border-bottom: 1px solid var(--app-border-subtle);
-}
-.service-dialog header > div {
-  min-width: 0;
-  flex: 1;
-}
-.service-dialog h2 {
-  font-size: var(--app-font-title);
-  font-weight: var(--app-font-weight-semibold);
-  color: var(--app-text-primary);
-}
-.service-dialog header p {
-  margin-top: 2px;
-  font-size: var(--app-font-caption);
-  color: var(--app-text-muted);
-}
-.dialog-body {
-  overflow-y: auto;
-  padding: 18px 20px;
-}
-.dialog-body--list {
-  padding: 0;
-}
-.dialog-body label {
-  display: block;
-  margin-bottom: 16px;
-}
-.dialog-body label span {
-  display: block;
-  margin-bottom: 6px;
-  font-size: var(--app-font-control);
-  color: var(--app-text-secondary);
 }
 .local-model-list {
   margin: 0;
@@ -1390,44 +1326,6 @@ input:focus {
 .local-model-item__error {
   color: #fa5151;
 }
-.dialog-message {
-  margin-top: 12px;
-  font-size: var(--app-font-control);
-}
-.dialog-message.passed {
-  color: #07a65a;
-}
-.dialog-message.failed {
-  color: var(--app-danger, #dc2626);
-}
-.service-dialog footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 13px 20px;
-  border-top: 1px solid var(--app-border-subtle);
-}
-.console-link {
-  display: flex;
-  margin-right: auto;
-  align-items: center;
-  gap: 5px;
-  font-size: var(--app-font-caption);
-  color: var(--app-accent);
-}
-.secondary-button,
-.danger-button {
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 6px;
-  font-size: var(--app-font-control);
-  background: var(--app-hover);
-  color: var(--app-text-secondary);
-}
-.danger-button {
-  color: var(--app-danger, #dc2626);
-}
 @media (max-width: 767px) {
   .settings-page {
     background: var(--m-page-bg, var(--app-settings-bg));
@@ -1485,8 +1383,8 @@ input:focus {
   .settings-field > span {
     font-size: var(--app-font-body-strong);
   }
-  select,
-  input {
+  .settings-field select,
+  .settings-field input {
     min-height: 44px;
     padding: 10px 12px;
     border-radius: 8px;
@@ -1531,22 +1429,6 @@ input:focus {
     border-radius: 10px;
     font-size: var(--app-font-title);
     font-weight: var(--app-font-weight-medium);
-  }
-  .service-overlay {
-    align-items: flex-end;
-    padding: 0;
-  }
-  .service-dialog {
-    width: 100%;
-    max-height: 86vh;
-    border-radius: 12px 12px 0 0;
-  }
-  .service-dialog footer {
-    flex-wrap: wrap;
-  }
-  .console-link {
-    width: 100%;
-    margin-bottom: 4px;
   }
   .settings-header {
     display: grid;

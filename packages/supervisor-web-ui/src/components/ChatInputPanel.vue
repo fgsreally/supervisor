@@ -1,83 +1,93 @@
 <template>
   <div class="chat-input-shell shrink-0">
-    <div class="chat-input-island relative" :style="{ height: `${panelHeight}px` }">
-      <div v-if="emptyStateTitle" class="chat-input-empty-state">
-        <div class="chat-input-empty-state__icon"><Bot class="h-5 w-5" /></div>
-        <div class="chat-input-empty-state__copy">
-          <strong>{{ emptyStateTitle }}</strong>
-          <span v-if="emptyStateDescription">{{ emptyStateDescription }}</span>
-        </div>
-        <button v-if="emptyStateAction" type="button" @click="emit('empty-action')">
-          {{ emptyStateAction }}
-        </button>
+    <div class="chat-input-hold-stage">
+      <div
+        v-if="holdRecording"
+        class="hold-voice-hint"
+        :class="{ 'hold-voice-hint--cancel': willCancel }"
+        aria-live="polite"
+      >
+        {{ willCancel ? "松手取消" : "松手发送" }}
       </div>
-      <ResizeHandle orientation="horizontal" label="调整输入区高度" @start="startResize" />
-      <ChatPendingImages :images="pendingImages" @remove="removePendingImage" />
       <div
         ref="composerHoldZoneRef"
-        class="chat-input-editor-wrap flex-1 min-h-0 relative"
-        :class="{ 'chat-input-editor-wrap--holding': holdRecording }"
+        class="chat-input-island relative"
+        :class="{ 'chat-input-island--holding': holdRecording }"
+        :style="{ height: `${panelHeight}px` }"
         @pointerdown="onHoldPointerDown"
         @pointermove="onHoldPointerMove"
         @pointerup="onHoldPointerUp"
         @pointercancel="onHoldPointerCancel"
       >
-        <ChatComposer
-          ref="composerRef"
-          v-model="text"
-          class="chat-input-editor flex-1 min-h-0"
-          :class="{ 'chat-input-editor--voice-overlay': holdRecording }"
-          :editor-height="editorHeight"
-          :workspace-files="workspaceFiles"
-          :projects="projectOptions"
-          :workspace-cwd="workspaceId"
-          :current-project-id="currentProjectId"
-          :skills="skills"
-          :prompts="prompts"
-          :commands="autocompleteCommands"
-          :skill-trigger="skillTrigger"
-          :disabled="disabled || holdRecording"
-          :placeholder="composerPlaceholder"
-          @send="emit('send', { text, images: pendingImages })"
-          @paste-image="addPendingImage"
-        />
         <div
           v-if="holdRecording"
-          class="hold-voice-overlay"
-          :class="{ 'hold-voice-overlay--cancel': willCancel }"
-          aria-live="polite"
+          class="hold-voice-button"
+          :class="{ 'hold-voice-button--cancel': willCancel }"
         >
-          <span class="hold-voice-overlay__bars" aria-hidden="true">
+          <span class="hold-voice-button__bars" aria-hidden="true">
             <span
               v-for="(level, index) in voice.waveformBars.value"
               :key="index"
-              class="hold-voice-overlay__bar"
-              :style="{ height: `${level * 2}px` }"
+              class="hold-voice-button__bar"
+              :style="{ height: `${Math.max(8, level * 2)}px` }"
             />
           </span>
-          <span class="hold-voice-overlay__hint">{{ willCancel ? "松手取消" : "松开发送" }}</span>
         </div>
+        <template v-else>
+          <div v-if="emptyStateTitle" class="chat-input-empty-state">
+            <div class="chat-input-empty-state__icon"><Bot class="h-5 w-5" /></div>
+            <div class="chat-input-empty-state__copy">
+              <strong>{{ emptyStateTitle }}</strong>
+              <span v-if="emptyStateDescription">{{ emptyStateDescription }}</span>
+            </div>
+            <button v-if="emptyStateAction" type="button" @click="emit('empty-action')">
+              {{ emptyStateAction }}
+            </button>
+          </div>
+          <ResizeHandle orientation="horizontal" label="调整输入区高度" @start="startResize" />
+          <ChatPendingImages :images="pendingImages" @remove="removePendingImage" />
+          <div class="chat-input-editor-wrap flex-1 min-h-0 relative">
+            <ChatComposer
+              ref="composerRef"
+              v-model="text"
+              class="chat-input-editor flex-1 min-h-0"
+              :editor-height="editorHeight"
+              :workspace-files="workspaceFiles"
+              :projects="projectOptions"
+              :workspace-cwd="workspaceId"
+              :current-project-id="currentProjectId"
+              :skills="skills"
+              :prompts="prompts"
+              :commands="autocompleteCommands"
+              :skill-trigger="skillTrigger"
+              :disabled="disabled"
+              :placeholder="composerPlaceholder"
+              @send="emit('send', { text, images: pendingImages })"
+              @paste-image="addPendingImage"
+            />
+          </div>
+          <ChatInputToolbar
+            :voice="voice"
+            :disabled="disabled"
+            :can-send="canSend"
+            :interrupting="interrupting"
+            :shadow-running="shadowRunning"
+            :hold-recording="holdRecording"
+            @action="onToolbarAction"
+            @send="emit('send', { text, images: pendingImages })"
+            @interrupt="emit('interrupt')"
+          />
+          <input
+            ref="imageInputRef"
+            type="file"
+            class="sr-only"
+            accept="image/*"
+            multiple
+            tabindex="-1"
+            @change="onImageInputChange"
+          />
+        </template>
       </div>
-      <ChatInputToolbar
-        :voice="voice"
-        :disabled="disabled"
-        :can-send="canSend"
-        :interrupting="interrupting"
-        :shadow-running="shadowRunning"
-        :hold-recording="holdRecording"
-        @action="onToolbarAction"
-        @send="emit('send', { text, images: pendingImages })"
-        @interrupt="emit('interrupt')"
-      />
-      <input
-        ref="imageInputRef"
-        type="file"
-        class="sr-only"
-        accept="image/*"
-        multiple
-        tabindex="-1"
-        @change="onImageInputChange"
-      />
     </div>
   </div>
 </template>
@@ -211,39 +221,48 @@ const composerPlaceholder = computed(() => {
   return props.placeholder ?? "输入消息";
 });
 
-const voice = useVoiceRecognition({
-  onStart: () => {
-    if (!holdRecording.value) {
-      toolbarVoiceActive.value = true;
-      voiceBaseText.value = text.value;
-      void nextTick(() => composerRef.value?.focus());
-    }
-  },
-  onEnd: () => {
-    if (holdRecording.value) return;
-    toolbarVoiceActive.value = false;
-    voiceBaseText.value = text.value;
-  },
-  onPreview: (preview) => {
-    if (holdRecording.value) return;
-    applyVoicePreview(preview);
-  },
-  onTranscript: (transcript) => {
-    if (holdRecording.value) return;
-    appendTranscript(transcript);
-  },
-  onError: (message) => {
-    if (holdRecording.value) {
-      holdRecording.value = false;
-      willCancel.value = false;
-      text.value = voiceBaseText.value;
-    } else {
+const voice = useVoiceRecognition(
+  {
+    onStart: () => {
+      if (!holdRecording.value) {
+        toolbarVoiceActive.value = true;
+        voiceBaseText.value = text.value;
+        void nextTick(() => composerRef.value?.focus());
+      }
+    },
+    onEnd: () => {
+      if (holdRecording.value) return;
       toolbarVoiceActive.value = false;
       voiceBaseText.value = text.value;
-    }
-    showUiMessage(message, "error");
+    },
+    onPreview: (preview) => {
+      if (holdRecording.value) return;
+      applyVoicePreview(preview);
+    },
+    onTranscript: (transcript) => {
+      if (holdRecording.value) return;
+      appendTranscript(transcript);
+    },
+    onError: (message) => {
+      if (holdRecording.value) {
+        holdRecording.value = false;
+        willCancel.value = false;
+        text.value = voiceBaseText.value;
+      } else {
+        toolbarVoiceActive.value = false;
+        voiceBaseText.value = text.value;
+      }
+      showUiMessage(message, "error");
+    },
   },
-});
+  {
+    // 移动端长按录音按钮需要密集音波；工具栏小图标会抽样展示
+    barCount: 40,
+    idleHeight: 6,
+    minHeight: 6,
+    maxHeight: 22,
+  },
+);
 
 function clearLongPressTimer() {
   if (longPressTimer) {
@@ -272,6 +291,14 @@ function isInsideHoldZone(clientX: number, clientY: number): boolean {
 function onHoldPointerDown(event: PointerEvent) {
   if (!isMobile.value || props.disabled || holdRecording.value || voice.recording.value) return;
   if (event.pointerType === "mouse") return;
+  const target = event.target as Element | null;
+  if (
+    target?.closest(
+      ".chat-input-toolbar, .chat-input-empty-state, .resize-handle, .pending-images, input, button",
+    )
+  ) {
+    return;
+  }
 
   event.preventDefault();
   holdPointerId = event.pointerId;
@@ -583,6 +610,10 @@ defineExpose({ focus, clearAfterSend, addPendingImage });
   background: var(--app-chat-bg);
 }
 
+.chat-input-hold-stage {
+  position: relative;
+}
+
 .chat-input-island {
   display: flex;
   flex-direction: column;
@@ -590,6 +621,14 @@ defineExpose({ focus, clearAfterSend, addPendingImage });
   background: var(--app-chat-input-island-bg, var(--app-chat-bg));
   border: 1px solid var(--app-chat-input-island-border);
   border-radius: 10px;
+  touch-action: manipulation;
+}
+
+.chat-input-island--holding {
+  overflow: hidden;
+  border-color: transparent;
+  background: transparent;
+  touch-action: none;
 }
 
 .chat-input-editor {
@@ -601,54 +640,60 @@ defineExpose({ focus, clearAfterSend, addPendingImage });
   touch-action: manipulation;
 }
 
-.chat-input-editor-wrap--holding {
-  touch-action: none;
-}
-
-.chat-input-editor--voice-overlay :deep(.cm-editor) {
+.hold-voice-hint {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  z-index: 5;
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--app-text-secondary, #888);
+  user-select: none;
   pointer-events: none;
 }
 
-.hold-voice-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 20;
+.hold-voice-hint--cancel {
+  color: #fa5151;
+}
+
+.hold-voice-button {
   display: flex;
-  flex-direction: column;
+  flex: 1;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  border-radius: 8px;
+  width: 100%;
+  min-height: 100%;
+  border-radius: 10px;
   background: var(--app-accent, #07c160);
   color: #fff;
   user-select: none;
   touch-action: none;
+  transition: background-color 0.12s ease;
 }
 
-.hold-voice-overlay--cancel {
+.hold-voice-button--cancel {
   background: #fa5151;
 }
 
-.hold-voice-overlay__bars {
+.hold-voice-button__bars {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  height: 28px;
+  gap: 2px;
+  width: min(82%, 340px);
+  height: 36px;
 }
 
-.hold-voice-overlay__bar {
-  width: 3px;
+.hold-voice-button__bar {
+  flex: 1 1 0;
+  min-width: 1.5px;
   min-height: 8px;
   border-radius: 999px;
   background: currentColor;
   will-change: height;
-}
-
-.hold-voice-overlay__hint {
-  font-size: 12px;
-  line-height: 1.2;
-  opacity: 0.92;
 }
 
 .chat-input-empty-state {
@@ -718,6 +763,21 @@ defineExpose({ focus, clearAfterSend, addPendingImage });
 @media (max-width: 767px) {
   .chat-input-shell {
     padding: 0 5px calc(5px + env(safe-area-inset-bottom));
+  }
+
+  .hold-voice-hint {
+    margin-bottom: 12px;
+    font-size: 13px;
+  }
+
+  .hold-voice-button__bars {
+    width: min(88%, 380px);
+    height: 42px;
+    gap: 1.5px;
+  }
+
+  .hold-voice-button__bar {
+    min-width: 1px;
   }
 
   .chat-input-island:not(:has(.chat-input-empty-state)) {

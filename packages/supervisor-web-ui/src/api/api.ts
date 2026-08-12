@@ -65,7 +65,13 @@ export interface SupervisorSettings {
   doubaoSpeechConfigured?: boolean;
   doubaoSpeechAppId?: string;
   doubaoSpeechAccessToken?: string;
-  doubaoSpeechPreset?: "2.0-duration" | "2.0-concurrent" | "1.0-duration" | "1.0-concurrent";
+  doubaoSpeechPreset?:
+    | "2.0-duration"
+    | "2.0-concurrent"
+    | "1.0-duration"
+    | "1.0-concurrent"
+    | "2.0-duration-async"
+    | "1.0-duration-async";
 }
 
 export type LocalSpeechModelId = "zh-en-bilingual" | "zh-int8";
@@ -178,8 +184,11 @@ export interface TaskArtifact {
 }
 
 export interface TodoItem {
+  id?: string | null;
   title: string;
   status: "pending" | "in_progress" | "completed" | "cancelled";
+  dependsOn?: string[];
+  sessionId?: number | null;
 }
 
 /** Agent definition */
@@ -526,6 +535,13 @@ export interface SessionStatusEvent {
   timestamp: number;
 }
 
+/** Project services registration / active preview updates. */
+export interface SessionServicesEvent {
+  type: "session_services";
+  services: unknown;
+  timestamp: number;
+}
+
 export interface ApprovalPendingEvent {
   type: "approval.pending";
   sessionId: string | number;
@@ -542,6 +558,7 @@ export type SessionStreamEvent =
   | ShadowRunningEvent
   | UiNotifyEvent
   | SessionStatusEvent
+  | SessionServicesEvent
   | ApprovalPendingEvent;
 
 export interface SseEvent {
@@ -582,6 +599,12 @@ export interface ExternalSessionCandidate {
   lastActiveAt: string;
   imported?: boolean;
   importedSessionId?: number;
+}
+
+export interface ExternalSessionPage {
+  items: ExternalSessionCandidate[];
+  hasMore: boolean;
+  nextOffset: number;
 }
 
 export interface CreateProjectRequest {
@@ -1086,6 +1109,16 @@ export async function pickDirectory(
   });
 }
 
+/** Check whether a path exists on the supervisor host filesystem. */
+export async function pathExists(path: string): Promise<{ exists: boolean; path: string | null }> {
+  return postJson<{ exists: boolean; path: string | null }>("/system/path-exists", { path });
+}
+
+/** Open a path in the supervisor host OS file manager (Explorer / Finder / xdg-open). */
+export async function openPath(path: string): Promise<{ ok: true; path: string }> {
+  return postJson<{ ok: true; path: string }>("/system/open-path", { path });
+}
+
 export async function parseProject(id: string): Promise<{
   description: string | null;
   status: "ready" | "skipped" | "error";
@@ -1329,8 +1362,12 @@ export async function createSession(options: CreateSessionRequest): Promise<Sess
   return mapSession(session);
 }
 
-export function listExternalSessions(limit = 40): Promise<ExternalSessionCandidate[]> {
-  return fetchJson<ExternalSessionCandidate[]>(`/external-sessions?limit=${limit}`);
+export function listExternalSessions(
+  options: { limit?: number; offset?: number } = {},
+): Promise<ExternalSessionPage> {
+  const limit = options.limit ?? 40;
+  const offset = options.offset ?? 0;
+  return fetchJson<ExternalSessionPage>(`/external-sessions?limit=${limit}&offset=${offset}`);
 }
 
 export async function importExternalSession(options: {

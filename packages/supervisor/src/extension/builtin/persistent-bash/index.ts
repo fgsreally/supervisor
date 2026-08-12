@@ -9,6 +9,11 @@ import { stopBackgroundBashSessions } from "../../../tools/bash/index.js";
 export default {
   name: "persistent-bash",
   setup(ctx) {
+    const stopAll = async () => {
+      await stopBackgroundBashSessions(ctx.session.id, ctx.jobs);
+    };
+    ctx.on("session.before_complete", stopAll, { priority: 400, mode: "sync" });
+    ctx.on("session.before_delete", stopAll, { priority: 400, mode: "sync" });
     return () => {
       void stopBackgroundBashSessions(ctx.session.id, ctx.jobs).catch(() => undefined);
     };

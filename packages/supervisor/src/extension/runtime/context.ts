@@ -172,7 +172,15 @@ interface ContextSessionOptions {
   };
   todos: {
     list(): Promise<SessionTodoInfo[]>;
-    replace(todos: Array<{ title: string; status: SessionTodoStatus }>): Promise<SessionTodoInfo[]>;
+    replace(
+      todos: Array<{
+        id?: string;
+        title: string;
+        status: SessionTodoStatus;
+        dependsOn?: string[];
+        sessionId?: number;
+      }>,
+    ): Promise<SessionTodoInfo[]>;
   };
   tools: ContextSessionTools;
   appendSystemPrompt: (content: string) => Promise<void>;

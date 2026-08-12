@@ -14,7 +14,7 @@ import {
   messageAssetsExtension,
   persistentBashExtension,
   projectServicesExtension,
-  sessionGitWorktreeExtension,
+  gitExtension,
   subagentExtension,
   supervisorAdminExtension,
   taskManagementExtension,
@@ -112,8 +112,8 @@ export class SessionExtensionRuntime {
     if (allow("project-services")) {
       await this.loadExtension(projectServicesExtension, "builtin:project-services");
     }
-    if (allow("session-git-worktree")) {
-      await this.loadExtension(sessionGitWorktreeExtension, "builtin:session-git-worktree");
+    if (allow("git")) {
+      await this.loadExtension(gitExtension, "builtin:git");
     }
     if (allow("skill")) {
       await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");

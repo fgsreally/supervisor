@@ -388,7 +388,7 @@
       @sync="syncSession"
       @delete="confirmDeleteSession"
       @achieve="achieveSession"
-      @fork="forkFinishedSession"
+      @fork="forkSessionFromMenu"
     />
 
     <ProjectListContextMenu
@@ -1148,19 +1148,21 @@ async function syncSession() {
   }
 }
 
-async function forkFinishedSession() {
+async function forkSessionFromMenu() {
   const target = contextMenu.value;
   closeContextMenu();
   if (!target) return;
   const source = sessionStore.sessions.find((session) => session.id === target.sessionId);
-  if (!source?.leafId) return;
+  if (!source) return;
   try {
-    const forked = await sessionStore.forkSession(target.sessionId, {
-      entryId: source.leafId,
-      label: `${source.title || "会话"} · 继续`,
-    });
+    const forked = source.leafId
+      ? await sessionStore.forkSession(target.sessionId, {
+          entryId: source.leafId,
+          label: `${source.title || "会话"} · Fork`,
+        })
+      : await sessionStore.cloneSession(target.sessionId);
     emit("select", forked.id);
-    showUiMessage("已创建继续会话", "success");
+    showUiMessage("已 Fork 新会话", "success");
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : "Fork 失败", "error");
   }

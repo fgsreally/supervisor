@@ -4,6 +4,7 @@ import { createApp } from "vue";
 import App from "./App.vue";
 import router from "./router";
 import "./style.css";
+import "./icons/register-vscode-icons";
 import { initAppTheme } from "./composables/use-app-theme";
 import { initAppStyle } from "./composables/use-app-style";
 import { initAppFontScale } from "./composables/use-app-font-scale";

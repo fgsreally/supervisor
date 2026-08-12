@@ -139,9 +139,9 @@
           </div>
           <div
             v-else-if="preview.content != null && preview.encoding === 'utf8'"
-            class="p-4 session-file-code"
+            class="p-0 session-file-code"
           >
-            <MarkdownContent :content="highlightedPreviewMarkdown" variant="terminal" />
+            <HighlightedCodeBlock :code="formatTextContent(preview)" :lang="previewCodeLang" />
           </div>
           <div
             v-else-if="isLegacyOffice"
@@ -173,6 +173,7 @@ import {
   type SessionFileDiff,
 } from "@/api";
 import type { SessionChangedFileView } from "./chat/SessionChangesPopover.vue";
+import HighlightedCodeBlock from "./HighlightedCodeBlock.vue";
 import InlineFileDiffView from "./InlineFileDiffView.vue";
 import MarkdownContent from "./MarkdownContent.vue";
 import { docxBase64ToHtml, pptxBase64ToHtml, xlsxBase64ToHtml } from "@/utils/office-file-preview";
@@ -240,10 +241,9 @@ const isLegacyOffice = computed(() => {
   return /\.(doc|ppt|xls)$/.test(path);
 });
 
-const highlightedPreviewMarkdown = computed(() => {
-  if (!preview.value) return "";
-  const language = preview.value.language || (preview.value.kind === "json" ? "json" : "text");
-  return `\`\`\`${language}\n${formatTextContent(preview.value)}\n\`\`\``;
+const previewCodeLang = computed(() => {
+  if (!preview.value) return "text";
+  return preview.value.language || (preview.value.kind === "json" ? "json" : "text");
 });
 
 function formatSize(bytes: number): string {
@@ -387,12 +387,6 @@ onBeforeUnmount(revokeMediaUrl);
 <style scoped>
 .session-file-code {
   min-width: max-content;
-}
-
-.session-file-code :deep(.md-term-pre) {
-  width: max-content;
-  min-width: 100%;
-  overflow: visible;
 }
 
 .file-breadcrumb {

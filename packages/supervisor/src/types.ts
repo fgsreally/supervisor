@@ -163,6 +163,9 @@ export interface SessionTodoRow {
   session_id: number;
   title: string;
   status: SessionTodoStatus;
+  task_key?: string | null;
+  depends_on?: string[];
+  child_session_id?: number | null;
   sort_order: number;
   created_at: number;
   updated_at: number;
@@ -173,6 +176,9 @@ export interface SessionTodoItem {
   sessionId: number;
   title: string;
   status: SessionTodoStatus;
+  taskKey?: string | null;
+  dependsOn?: string[];
+  childSessionId?: number | null;
   sortOrder: number;
   createdAt: Date;
   updatedAt: Date;

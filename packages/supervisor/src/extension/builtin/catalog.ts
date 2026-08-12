@@ -65,8 +65,8 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
     requiresMainSession: true,
   },
   {
-    slug: "session-git-worktree",
-    name: "Session git worktree",
+    slug: "git",
+    name: "Git",
     description:
       "Per-session git worktree; Watson cleans up locked worktrees on delete via AGENTS.md",
   },

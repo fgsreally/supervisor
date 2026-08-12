@@ -96,26 +96,39 @@ export type DoubaoSpeechPresetId =
   | "2.0-duration"
   | "2.0-concurrent"
   | "1.0-duration"
-  | "1.0-concurrent";
+  | "1.0-concurrent"
+  | "2.0-duration-async"
+  | "1.0-duration-async";
 
 export const DOUBAO_SPEECH_PRESETS: Record<
   DoubaoSpeechPresetId,
   { resourceId: string; wsUrl: string; label: string }
 > = {
+  // Matches the previously working supervisor endpoint (appid+token).
   "2.0-duration": {
     resourceId: "volc.seedasr.sauc.duration",
-    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
+    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
     label: "2.0 小时版",
+  },
+  "2.0-duration-async": {
+    resourceId: "volc.seedasr.sauc.duration",
+    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
+    label: "2.0 小时版（async）",
   },
   "2.0-concurrent": {
     resourceId: "volc.seedasr.sauc.concurrent",
-    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
+    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
     label: "2.0 并发版",
   },
   "1.0-duration": {
     resourceId: "volc.bigasr.sauc.duration",
     wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
     label: "1.0 小时版",
+  },
+  "1.0-duration-async": {
+    resourceId: "volc.bigasr.sauc.duration",
+    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
+    label: "1.0 小时版（async）",
   },
   "1.0-concurrent": {
     resourceId: "volc.bigasr.sauc.concurrent",
@@ -133,12 +146,40 @@ export function isDoubaoSpeechPresetId(value: string): value is DoubaoSpeechPres
 export function resolveDoubaoSpeechPreset(
   presetId?: string,
 ): (typeof DOUBAO_SPEECH_PRESETS)[DoubaoSpeechPresetId] & { id: DoubaoSpeechPresetId } {
-  const id = presetId && isDoubaoSpeechPresetId(presetId) ? presetId : ("2.0-duration" as const);
+  // Migrate renamed preset ids from earlier builds.
+  const normalized = presetId === "2.0-duration-sync" ? "2.0-duration" : presetId;
+  const id =
+    normalized && isDoubaoSpeechPresetId(normalized) ? normalized : ("2.0-duration" as const);
   return { id, ...DOUBAO_SPEECH_PRESETS[id] };
+}
+
+/** Prefer saved preset, then try common resource/URL combinations. */
+export function doubaoSpeechPresetsToTry(preferred?: string): DoubaoSpeechPresetId[] {
+  const order: DoubaoSpeechPresetId[] = [
+    "2.0-duration",
+    "2.0-duration-async",
+    "1.0-duration",
+    "1.0-duration-async",
+    "2.0-concurrent",
+    "1.0-concurrent",
+  ];
+  const preferredId = preferred
+    ? resolveDoubaoSpeechPreset(preferred).id
+    : null;
+  if (!preferredId) return order;
+  return [preferredId, ...order.filter((id) => id !== preferredId)];
 }
 
 export function resolveDoubaoSpeechFromSettings(settings: SupervisorSettings) {
   return resolveDoubaoSpeechPreset(settings.doubaoSpeechPreset);
+}
+
+/** Strip common paste noise from console credentials. */
+export function normalizeDoubaoSpeechCredential(value: string): string {
+  let next = value.trim().replace(/^["']|["']$/g, "");
+  // Users sometimes paste "Bearer; xxx" or "Bearer xxx" from old docs.
+  next = next.replace(/^bearer\s*;\s*/i, "").replace(/^bearer\s+/i, "").trim();
+  return next;
 }
 
 /** WebSocket handshake headers (legacy APP ID + Access Token, or new-console X-Api-Key). */
@@ -147,14 +188,15 @@ export function buildDoubaoSpeechWsHeaders(
   accessToken: string,
   resourceId: string = DOUBAO_SPEECH_RESOURCE_ID,
 ): Record<string, string> {
+  const trimmedAppId = normalizeDoubaoSpeechCredential(appId);
+  const trimmedToken = normalizeDoubaoSpeechCredential(accessToken);
+  // Keep the header set that previously worked in this project.
   const base = {
     "X-Api-Resource-Id": resourceId,
     "X-Api-Connect-Id": randomUUID(),
     "X-Api-Request-Id": randomUUID(),
     "X-Api-Sequence": "-1",
   };
-  const trimmedAppId = appId.trim();
-  const trimmedToken = accessToken.trim();
   if (trimmedAppId && trimmedToken) {
     return {
       ...base,

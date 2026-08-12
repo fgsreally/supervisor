@@ -63,8 +63,10 @@ import {
   parseSessionServicesMeta,
   sessionServicePortEnv,
   scrubStaleSessionRuntimeMeta,
+  stopSessionProjectServices,
   stoppedSessionServicesMeta,
 } from "./session-services.js";
+import { startSessionServiceSleepScheduler } from "./session-service-sleep.js";
 import { runWatson } from "./watson.js";
 import type { CreateHomeTaskOptions, HomeTask, UpdateHomeTaskOptions } from "../types.js";
 import {
@@ -148,6 +150,7 @@ import { ensureSessionDir, removeProjectDirSync, removeSessionDirSync } from "./
 import { removeSessionMediaDirSync, type SessionPromptImage } from "./session-media.js";
 import { runShadow } from "../extension/builtin/shadow/index.js";
 import {
+  DEFAULT_PARENT_MESSAGE_LEVEL,
   DEFAULT_SESSION_INPUT_LEVEL,
   SESSION_INPUT_INTERRUPT_LEVEL,
   type SessionInputDisposition,
@@ -270,6 +273,9 @@ function toSessionTodo(row: SessionTodoRow): SessionTodoItem {
     sessionId: row.session_id,
     title: row.title,
     status: row.status,
+    taskKey: row.task_key ?? null,
+    dependsOn: row.depends_on ?? [],
+    childSessionId: row.child_session_id ?? null,
     sortOrder: row.sort_order,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -341,6 +347,12 @@ export class SessionManager {
   private resourcesInitialized = false;
   readonly jobs: JobManager;
   private readonly detachHomeTaskSync: () => void;
+  private readonly detachSubagentResultSync: () => void;
+  private readonly pendingSubagentResultNotifications = new Map<
+    number,
+    ReturnType<typeof setTimeout>
+  >();
+  private readonly stopSessionServiceSleepScheduler: () => void;
 
   constructor(db: SupervisorDb) {
     this.db = db;
@@ -353,6 +365,19 @@ export class SessionManager {
           console.error(`home task schedule failed [${parentId}]:`, message);
         });
       },
+    });
+    this.detachSubagentResultSync = this.db.onSessionStatusChange((childId, status) => {
+      if (status !== "idle" && status !== "error") return;
+      const pending = this.pendingSubagentResultNotifications.get(childId);
+      if (pending) clearTimeout(pending);
+      const timer = setTimeout(() => {
+        this.pendingSubagentResultNotifications.delete(childId);
+        void this.notifyParentOfSubagentResult(childId).catch((error: unknown) => {
+          const detail = error instanceof Error ? error.message : String(error);
+          console.error(`Subagent result delivery failed [${childId}]:`, detail);
+        });
+      }, 0);
+      this.pendingSubagentResultNotifications.set(childId, timer);
     });
     for (const input of this.db.listPersistedSessionInputs()) {
       this.sessionInputQueues.enqueue(input.sessionId, {
@@ -369,6 +394,14 @@ export class SessionManager {
       list: () => this.db.list(),
       updateMeta: (id, patch) => this.db.updateMeta(id, patch),
     });
+    this.stopSessionServiceSleepScheduler = startSessionServiceSleepScheduler(
+      this.db,
+      this.jobs,
+      (sessionId) => {
+        this.publishServicesChange(sessionId);
+        this.publishSessionStatus(sessionId);
+      },
+    );
     this.resourceHandlers = createResourceHandlers({
       db: this.db,
       extensionRegistry: this.extensionRegistry,
@@ -382,6 +415,36 @@ export class SessionManager {
     void this.ensureResourceCatalog();
     setSessionUnreadHandler((sessionId, entry, options) => {
       this.handleAssistantMessageUnread(sessionId, entry, options);
+    });
+  }
+
+  private async notifyParentOfSubagentResult(childId: number): Promise<void> {
+    const child = this.get(childId);
+    if (!child || child.parentId == null || child.creationMethod !== "spawn_agent") return;
+    if (child.status !== "idle" && child.status !== "error") return;
+    if (this.sessionInputQueues.size(childId) > 0 || this.drainingSessionInputs.has(childId))
+      return;
+    const subagent =
+      child.meta.subagent &&
+      typeof child.meta.subagent === "object" &&
+      !Array.isArray(child.meta.subagent)
+        ? (child.meta.subagent as Record<string, unknown>)
+        : undefined;
+    if (subagent?.notifyParentOnEnd !== true) return;
+    const parent = this.get(child.parentId);
+    if (!parent) return;
+    const childAgent = child.agentId == null ? undefined : this.getAgent(child.agentId);
+    const result = this.getLatestAssistantText(childId, 20_000);
+    const message = [
+      `[内部事件] 子 Agent Session ${childId} 本轮${child.status === "error" ? "执行失败" : "执行结束"}。`,
+      `Agent: ${childAgent?.name ?? "unknown"}`,
+      result ? `结果：\n${result}` : "结果：无文本输出",
+      "请判断关联任务是否真正完成，更新 Todo 状态和依赖，并按需派发已就绪的后续任务。",
+    ].join("\n");
+    await this.submitSessionInput(parent.id, {
+      message,
+      level: DEFAULT_PARENT_MESSAGE_LEVEL,
+      source: `extension:flow:subagent-result:${childId}`,
     });
   }
 
@@ -828,10 +891,15 @@ export class SessionManager {
       const refreshedAfterExtensions = this.get(session.id)!;
       runtime.syncWorkingDirectory(refreshedAfterExtensions.cwd);
       if (agent?.backendType === "native") {
+        const project =
+          refreshedAfterExtensions.projectId != null
+            ? this.db.getProject(refreshedAfterExtensions.projectId)
+            : null;
         runtime.configureAgentPermissions(
           agent.permissionRules,
           refreshedAfterExtensions.cwd,
           (request) => this.requestSessionApproval(session.id, request),
+          { projectRoots: project?.cwd ? [project.cwd] : [] },
         );
       }
       const extensionTools = runtime.collectExtensionTools();
@@ -1132,10 +1200,15 @@ export class SessionManager {
       const refreshedAfterExtensions = this.get(activeSession.id)!;
       runtime.syncWorkingDirectory(refreshedAfterExtensions.cwd);
       if (agentInDb?.backendType === "native") {
+        const project =
+          refreshedAfterExtensions.projectId != null
+            ? this.db.getProject(refreshedAfterExtensions.projectId)
+            : null;
         runtime.configureAgentPermissions(
           agentInDb.permissionRules,
           refreshedAfterExtensions.cwd,
           (request) => this.requestSessionApproval(activeSession.id, request),
+          { projectRoots: project?.cwd ? [project.cwd] : [] },
         );
       }
       const extensionTools = runtime.collectExtensionTools();
@@ -1339,6 +1412,9 @@ export class SessionManager {
       if (session.status === "initializing") {
         throw new Error(`Session ${id} is still initializing`);
       }
+      if (session.status === "finish" || session.status === "finished") {
+        throw new Error("会话已完成，不能继续对话；请先 Fork 新会话");
+      }
       if (session.status === "blocked" && session.error_msg) {
         throw new Error(`Session ${id} is blocked: ${session.error_msg}`);
       }
@@ -1384,6 +1460,11 @@ export class SessionManager {
     },
   ): Promise<SessionInputDisposition> {
     await this.waitUntilSpawnReady(id);
+    const session = this.db.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    if (session.status === "finish" || session.status === "finished") {
+      throw new Error("会话已完成，不能继续对话；请先 Fork 新会话");
+    }
     const level = input.level ?? DEFAULT_SESSION_INPUT_LEVEL;
     const entry: SessionQueuedInput = {
       id: randomUUID(),
@@ -1426,7 +1507,7 @@ export class SessionManager {
       throw new Error(`Session ${childSessionId} cannot be continued (status: ${child.status})`);
     }
     if (child.status === "finish" || child.status === "finished") {
-      this.db.updateStatus(childSessionId, "idle");
+      throw new Error(`Session ${childSessionId} 已完成；请 Fork 后继续`);
     }
 
     const submit = () =>
@@ -1511,7 +1592,11 @@ export class SessionManager {
   resumePersistedSessionInputs(): void {
     for (const sessionId of this.sessionInputQueues.sessionIds()) {
       const session = this.get(sessionId);
-      if (!session || session.status === "finish" || session.status === "error") continue;
+      if (!session || session.status === "finish" || session.status === "finished") {
+        this.clearSessionInputs(sessionId);
+        continue;
+      }
+      if (session.status === "error") continue;
       void this.drainSessionInputQueue(sessionId).catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
         console.error(`Persisted Session input failed [${sessionId}]:`, detail);
@@ -1521,6 +1606,11 @@ export class SessionManager {
 
   async drainSessionInputQueue(sessionId: number): Promise<boolean> {
     if (this.drainingSessionInputs.has(sessionId)) return false;
+    const session = this.get(sessionId);
+    if (!session || session.status === "finish" || session.status === "finished") {
+      this.clearSessionInputs(sessionId);
+      return false;
+    }
     const next = this.sessionInputQueues.dequeue(sessionId);
     if (!next) return false;
     this.drainingSessionInputs.add(sessionId);
@@ -1550,6 +1640,12 @@ export class SessionManager {
           console.error(`Queued Session input failed [${sessionId}]:`, detail);
         });
       }
+    }
+  }
+
+  private clearSessionInputs(sessionId: number): void {
+    for (const input of this.sessionInputQueues.clear(sessionId)) {
+      this.db.deleteSessionInput(input.id);
     }
   }
 
@@ -1667,7 +1763,48 @@ export class SessionManager {
     throw new Error(`Timed out waiting for session ${sessionId}`);
   }
 
+  private getLatestAssistantText(sessionId: number, maxChars: number): string {
+    const row = this.db.db
+      .prepare(
+        `SELECT payload FROM messages
+         WHERE session_id = ? AND role = 'assistant'
+         ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(sessionId) as { payload?: string } | undefined;
+    if (!row?.payload) return "";
+    try {
+      const payload = JSON.parse(row.payload) as {
+        message?: { content?: unknown };
+        content?: unknown;
+      };
+      const content = payload.message?.content ?? payload.content;
+      const text =
+        typeof content === "string"
+          ? content
+          : Array.isArray(content)
+            ? content
+                .flatMap((item) =>
+                  item &&
+                  typeof item === "object" &&
+                  (item as { type?: unknown }).type === "text" &&
+                  typeof (item as { text?: unknown }).text === "string"
+                    ? [(item as { text: string }).text]
+                    : [],
+                )
+                .join("\n")
+            : "";
+      return text.length > maxChars ? text.slice(-maxChars) : text;
+    } catch {
+      return "";
+    }
+  }
+
   async steer(id: number, message: string, images?: SessionPromptImage[]): Promise<void> {
+    const session = this.db.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    if (session.status === "finish" || session.status === "finished") {
+      throw new Error("会话已完成，不能继续对话；请先 Fork 新会话");
+    }
     this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
@@ -1680,6 +1817,11 @@ export class SessionManager {
     source?: string | null,
     images?: SessionPromptImage[],
   ): void {
+    const session = this.db.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    if (session.status === "finish" || session.status === "finished") {
+      throw new Error("会话已完成，不能继续对话；请先 Fork 新会话");
+    }
     this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
@@ -1807,6 +1949,8 @@ export class SessionManager {
   async kill(id: number): Promise<void> {
     const current = this.db.get(id);
     if (!current) throw new Error(`Session ${id} not found`);
+    const session = rowToSession(current, this.db);
+    if (session) await this.stopSessionProcesses(session);
     const runtime = this.runtimes.get(id);
     if (!runtime) {
       throw new Error("not running");
@@ -1833,7 +1977,11 @@ export class SessionManager {
       return session;
     }
 
-    // Emit session.before_complete (extensions: stop → uninstall → worktree on achieve)
+    // Process shutdown is a hard precondition for commit/merge. Extension event
+    // errors are intentionally isolated by the host, so enforce this at core level.
+    await this.stopSessionProcesses(session);
+
+    // Emit session.before_complete (extensions: uninstall → worktree on achieve)
     const runtime = this.runtimes.get(id);
     if (runtime?.extension) {
       await runtime.extension.emit({
@@ -1895,8 +2043,31 @@ export class SessionManager {
       this.turnTrackers.delete(id);
       this.sessionToolConfigs.delete(id);
     }
+    this.clearSessionInputs(id);
     this.db.updateStatus(id, "finish");
     return rowToSession(this.db.get(id)!, this.db);
+  }
+
+  private async stopSessionProcesses(session: Session): Promise<void> {
+    const liveBashJobs = this.jobs
+      .list(session.id, { kind: "shell", limit: 200 })
+      .filter(
+        (job) =>
+          job.executionMode === "background" &&
+          (job.status === "queued" || job.status === "running" || job.status === "waiting"),
+      );
+    await Promise.all(liveBashJobs.map((job) => this.jobs.cancel(job.id)));
+    const services = parseSessionServicesMeta(session.meta);
+    if (!services?.startCommand) return;
+    await stopSessionProjectServices({
+      sessionId: session.id,
+      cwd: session.cwd,
+      services,
+      jobs: this.jobs,
+      mode: "stop",
+    });
+    this.db.updateMeta(session.id, { services: stoppedSessionServicesMeta(services) });
+    this.publishServicesChange(session.id);
   }
 
   async emitSessionExtensionEvent(sessionId: number, event: ExtensionEvent): Promise<void> {
@@ -2053,8 +2224,12 @@ export class SessionManager {
     }
   }
 
-  listImportableExternalSessions(limit?: number) {
-    return this.annotateImportedExternalSessions(listExternalSessions(limit));
+  async listImportableExternalSessions(limit?: number, offset?: number) {
+    const page = await listExternalSessions(limit, offset);
+    return {
+      ...page,
+      items: await this.annotateImportedExternalSessions(Promise.resolve(page.items)),
+    };
   }
 
   private async annotateImportedExternalSessions(
@@ -2507,7 +2682,13 @@ export class SessionManager {
 
   replaceSessionTodos(
     id: number,
-    todos: Array<{ title: string; status: SessionTodoStatus }>,
+    todos: Array<{
+      id?: string;
+      title: string;
+      status: SessionTodoStatus;
+      dependsOn?: string[];
+      sessionId?: number;
+    }>,
   ): SessionTodoItem[] {
     return this.db.replaceSessionTodos(id, todos).map(toSessionTodo);
   }
@@ -2535,6 +2716,8 @@ export class SessionManager {
         await this.delete(child.id, options);
       }
     }
+
+    if (session) await this.stopSessionProcesses(session);
 
     let runtime = this.runtimes.get(id);
     let restoredForDelete = false;
@@ -2687,7 +2870,9 @@ export class SessionManager {
   }
 
   async dispose(): Promise<void> {
+    this.stopSessionServiceSleepScheduler();
     this.detachHomeTaskSync();
+    this.detachSubagentResultSync();
     setSessionUnreadHandler(null);
     await Promise.all([...this.runtimes.keys()].map((id) => this.kill(id).catch(() => {})));
     this.runtimes.clear();

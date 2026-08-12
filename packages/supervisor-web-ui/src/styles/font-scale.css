@@ -1,25 +1,25 @@
 html[data-font-scale="small"] {
-  font-size: 14px;
-}
-
-html[data-font-scale="standard"] {
   font-size: 16px;
 }
 
-html[data-font-scale="large"] {
+html[data-font-scale="standard"] {
   font-size: 18px;
+}
+
+html[data-font-scale="large"] {
+  font-size: 20px;
 }
 
 @media (min-width: 768px) {
   html[data-font-scale="small"] {
-    font-size: 12px;
-  }
-
-  html[data-font-scale="standard"] {
     font-size: 13px;
   }
 
-  html[data-font-scale="large"] {
+  html[data-font-scale="standard"] {
     font-size: 16px;
+  }
+
+  html[data-font-scale="large"] {
+    font-size: 18px;
   }
 }

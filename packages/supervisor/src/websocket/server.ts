@@ -7,10 +7,14 @@ import { decryptApiKey } from "../utils/encrypt.js";
 import { formatUnknownError } from "../utils/format-error.js";
 import {
   buildDoubaoSpeechWsHeaders,
+  doubaoSpeechPresetsToTry,
+  normalizeDoubaoSpeechCredential,
   readSupervisorSettings,
   isDoubaoSpeechConfigured,
-  resolveDoubaoSpeechFromSettings,
+  resolveDoubaoSpeechPreset,
+  writeSupervisorSettings,
   resolveSpeechRecognitionMode,
+  type DoubaoSpeechPresetId,
 } from "../utils/supervisor-settings.js";
 import {
   isLocalSpeechReady,
@@ -164,36 +168,83 @@ class SpeechConnection {
 
     let doubaoAppId = "";
     let doubaoAccessToken = "";
-    let doubaoWsUrl = "";
-    let doubaoResourceId = "";
     let qwenApiKey = "";
     if (this.provider === "doubao") {
       if (!isDoubaoSpeechConfigured(settings)) {
         throw new Error("doubao speech App ID or Access Token is not configured");
       }
-      const preset = resolveDoubaoSpeechFromSettings(settings);
-      doubaoWsUrl = preset.wsUrl;
-      doubaoResourceId = preset.resourceId;
-      doubaoAppId = settings.doubaoSpeechAppId?.trim() ?? "";
-      doubaoAccessToken = decryptApiKey(settings.doubaoSpeechAccessTokenEncrypted!);
+      doubaoAppId = normalizeDoubaoSpeechCredential(settings.doubaoSpeechAppId ?? "");
+      doubaoAccessToken = normalizeDoubaoSpeechCredential(
+        decryptApiKey(settings.doubaoSpeechAccessTokenEncrypted!),
+      );
       if (!doubaoAccessToken && !doubaoAppId) {
         throw new Error("doubao speech credentials are not configured");
       }
-    } else {
-      if (!settings.speechApiKeyEncrypted) throw new Error("qwen speech API key is not configured");
-      qwenApiKey = decryptApiKey(settings.speechApiKeyEncrypted);
+      const candidates = doubaoSpeechPresetsToTry(settings.doubaoSpeechPreset);
+      let lastError: Error | null = null;
+      for (const presetId of candidates) {
+        try {
+          await this.connectProvider({
+            language,
+            qwenApiKey: "",
+            doubaoAppId,
+            doubaoAccessToken,
+            doubaoPresetId: presetId,
+          });
+          if (presetId !== settings.doubaoSpeechPreset) {
+            writeSupervisorSettings({ doubaoSpeechPreset: presetId });
+          }
+          return;
+        } catch (error) {
+          lastError = error instanceof Error ? error : new Error(String(error));
+          this.upstream = null;
+        }
+      }
+      throw (
+        lastError ??
+        new Error("豆包语音 WebSocket 握手失败，请确认 APP ID 与 Access Token 填写正确")
+      );
     }
 
-    await new Promise<void>((resolve, reject) => {
-      const upstream = new WebSocket(this.provider === "doubao" ? doubaoWsUrl : QWEN_REALTIME_URL, {
-        headers:
-          this.provider === "doubao"
-            ? buildDoubaoSpeechWsHeaders(doubaoAppId, doubaoAccessToken, doubaoResourceId)
-            : { Authorization: `Bearer ${qwenApiKey}`, "User-Agent": "pi-supervisor" },
-        handshakeTimeout: 15_000,
-      });
+    if (!settings.speechApiKeyEncrypted) throw new Error("qwen speech API key is not configured");
+    qwenApiKey = decryptApiKey(settings.speechApiKeyEncrypted);
+    await this.connectProvider({ language, qwenApiKey, doubaoAppId: "", doubaoAccessToken: "" });
+  }
+
+  private connectProvider(options: {
+    language: unknown;
+    qwenApiKey: string;
+    doubaoAppId: string;
+    doubaoAccessToken: string;
+    doubaoPresetId?: DoubaoSpeechPresetId;
+  }): Promise<void> {
+    const { language, qwenApiKey, doubaoAppId, doubaoAccessToken, doubaoPresetId } = options;
+    const doubaoPreset = doubaoPresetId ? resolveDoubaoSpeechPreset(doubaoPresetId) : null;
+
+    return new Promise<void>((resolve, reject) => {
+      const upstream = new WebSocket(
+        this.provider === "doubao" ? doubaoPreset!.wsUrl : QWEN_REALTIME_URL,
+        {
+          headers:
+            this.provider === "doubao"
+              ? buildDoubaoSpeechWsHeaders(
+                  doubaoAppId,
+                  doubaoAccessToken,
+                  doubaoPreset!.resourceId,
+                )
+              : { Authorization: `Bearer ${qwenApiKey}`, "User-Agent": "pi-supervisor" },
+          handshakeTimeout: 15_000,
+        },
+      );
       this.upstream = upstream;
       let doubaoReady = false;
+      let settled = false;
+      let connected = false;
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        fn();
+      };
       upstream.once("open", () => {
         if (this.provider === "doubao") {
           // 双向流式不传 language（文档注明仅 nostream 支持）；并开启首字加速
@@ -221,6 +272,10 @@ class SpeechConnection {
             }),
           );
           upstream.send(doubaoPacket(1, 0, payload));
+          // Match previously working behavior: handshake success is enough to start.
+          connected = true;
+          sendJson(this.client, { channel: "speech", type: "speech.ready" });
+          settle(() => resolve());
         } else {
           upstream.send(
             JSON.stringify({
@@ -240,11 +295,7 @@ class SpeechConnection {
         if (this.provider === "doubao") {
           try {
             const event = parseDoubaoEvent(data);
-            if (!doubaoReady) {
-              doubaoReady = true;
-              sendJson(this.client, { channel: "speech", type: "speech.ready" });
-              resolve();
-            }
+            doubaoReady = true;
             const text = event.result?.text ?? "";
             if (text) this.doubaoText = text;
             sendJson(this.client, {
@@ -254,15 +305,15 @@ class SpeechConnection {
             });
           } catch (error) {
             const message = formatUnknownError(error, "豆包语音识别失败");
-            if (!doubaoReady) reject(new Error(message));
             this.fail(message);
           }
           return;
         }
         const event = JSON.parse(data.toString()) as UpstreamEvent;
         if (event.type === "session.updated") {
+          connected = true;
           sendJson(this.client, { channel: "speech", type: "speech.ready" });
-          resolve();
+          settle(() => resolve());
         } else {
           this.forwardEvent(event);
         }
@@ -281,23 +332,40 @@ class SpeechConnection {
               detail = raw.slice(0, 240);
             }
           }
-          const message = `${this.provider === "doubao" ? "豆包语音" : "DashScope 语音"}连接被拒绝 (HTTP ${res.statusCode})${detail ? `: ${detail}` : ""}${this.provider === "doubao" ? "。请确认 App ID / Access Token 正确，且设置中的「服务版本」与火山控制台已开通的版本（1.0 或 2.0）一致" : ""}`;
-          if (upstream.readyState !== WebSocket.OPEN) reject(new Error(message));
-          this.fail(message);
+          const message = `${this.provider === "doubao" ? "豆包语音" : "DashScope 语音"}连接被拒绝 (HTTP ${res.statusCode})${detail ? `: ${detail}` : ""}${this.provider === "doubao" ? "。请确认 APP ID / Access Token，以及控制台已开通流式语音识别" : ""}`;
+          try {
+            upstream.terminate();
+          } catch {
+            /* ignore */
+          }
+          settle(() => reject(new Error(message)));
         });
       });
       upstream.on("error", (error) => {
         let message = formatUnknownError(error, "语音服务连接失败");
-        if (this.provider === "doubao" && /101|unexpected server response/i.test(message)) {
-          message =
-            "豆包语音 WebSocket 握手失败，请检查 App ID / Access Token，并在设置中选择与火山控制台开通版本一致的「服务版本」（1.0 或 2.0）";
+        if (this.provider === "doubao") {
+          const statusMatch = message.match(/Unexpected server response:\s*(\d+)/i);
+          if (statusMatch) {
+            message = `豆包语音 WebSocket 握手失败 (HTTP ${statusMatch[1]})。请确认 APP ID / Access Token，以及控制台已开通流式语音识别`;
+          } else if (/101|unexpected server response/i.test(message)) {
+            message =
+              "豆包语音 WebSocket 握手失败。请确认 APP ID / Access Token，以及控制台已开通流式语音识别";
+          }
         }
-        if (upstream.readyState !== WebSocket.OPEN) reject(new Error(message));
-        this.fail(message);
+        try {
+          upstream.terminate();
+        } catch {
+          /* ignore */
+        }
+        settle(() => reject(new Error(message)));
       });
       upstream.on("close", () => {
-        if (!this.stopping) this.fail("speech provider connection closed");
-        this.upstream = null;
+        if (!settled) {
+          settle(() => reject(new Error("speech provider connection closed")));
+        } else if (connected && !this.stopping) {
+          this.fail("speech provider connection closed");
+        }
+        if (this.upstream === upstream) this.upstream = null;
       });
     });
   }

@@ -405,21 +405,16 @@ describe("supervisor: SessionManager", () => {
     expect(manager.children(parent.id)).toHaveLength(2);
   });
 
-  it("reopens a finished spawned child before submitting more input", async () => {
+  it("requires Fork before submitting more input to a finished child", async () => {
     const parent = manager.create();
     const child = manager.create({ parentId: parent.id });
     const completed = await manager.complete(child.id);
     expect(completed).toMatchObject({ status: "finish", spawnType: "subagent" });
-    const submit = vi.spyOn(manager, "submitSessionInput").mockResolvedValue("drained");
 
-    await manager.submitSubagentInput(parent.id, child.id, "continue reviewing");
-
-    expect(manager.get(child.id)).toMatchObject({ status: "idle", spawnType: "subagent" });
-    expect(submit).toHaveBeenCalledWith(child.id, {
-      message: "continue reviewing",
-      level: 50,
-      source: `subagent:parent:${parent.id}`,
-    });
+    await expect(
+      manager.submitSubagentInput(parent.id, child.id, "continue reviewing"),
+    ).rejects.toThrow("Fork");
+    expect(manager.get(child.id)).toMatchObject({ status: "finish", spawnType: "subagent" });
   });
 
   it("interrupts the current child turn for urgent continued input", async () => {

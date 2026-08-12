@@ -131,15 +131,18 @@ describe("packaged agents", () => {
     const introId = findPackagedAgentId(db, "intro");
     const btwId = findPackagedAgentId(db, "btw");
     const codingId = findPackagedAgentId(db, "coding");
+    const smartRouterId = findPackagedAgentId(db, "smart-router");
     expect(shadowId).toBeDefined();
     expect(introId).toBeDefined();
     expect(btwId).toBeDefined();
     expect(codingId).toBeDefined();
+    expect(smartRouterId).toBeDefined();
 
     const shadow = db.getAgent(shadowId!);
     const intro = db.getAgent(introId!);
     const btw = db.getAgent(btwId!);
     const coding = db.getAgent(codingId!);
+    const smartRouter = db.getAgent(smartRouterId!);
     expect(shadow?.isBuiltin).toBe(true);
     expect(intro?.isBuiltin).toBe(true);
     expect(coding?.isBuiltin).toBe(true);
@@ -153,11 +156,24 @@ describe("packaged agents", () => {
     expect(shadow?.homeDir).toBeNull();
     expect(intro?.toolsPreset).toBe("coding");
     expect(coding?.toolsPreset).toBe("coding");
+    expect(smartRouter?.toolsPreset).toBe("readonly");
+    expect(smartRouter?.systemPrompt).toContain("用户可以编辑");
     expect(btw?.toolsPreset).toBe("readonly");
     expect(btw?.isBuiltin).toBe(true);
     expect(isBuiltinAgent(shadow)).toBe(true);
     expect(isBuiltinAgent(intro)).toBe(true);
     expect(isBuiltinAgent(coding)).toBe(true);
+  });
+
+  it("preserves a user-edited Smart Router prompt", () => {
+    configureModel();
+    ensurePackagedAgents(db);
+    const id = findPackagedAgentId(db, "smart-router")!;
+    db.updateAgent(id, { system_prompt: "Route frontend work to Web Agent." });
+
+    ensurePackagedAgents(db);
+
+    expect(db.getAgent(id)?.systemPrompt).toBe("Route frontend work to Web Agent.");
   });
 
   it("does not rewrite an existing packaged agent row", () => {

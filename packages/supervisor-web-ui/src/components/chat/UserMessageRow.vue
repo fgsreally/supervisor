@@ -38,15 +38,21 @@
           :style="{ background: 'var(--app-bubble-user)' }"
         />
         <div v-if="images.length" class="user-message-images relative z-10">
-          <img
-            v-for="(image, index) in images"
+          <button
+            v-for="(image, index) in previewableImages"
             :key="image.mediaId || `${image.name}-${index}`"
-            v-show="image.mediaId && !image.missing"
-            class="user-message-images__thumb"
-            :src="image.mediaId ? mediaUrl(image.mediaId) : undefined"
-            :alt="image.name"
-            loading="lazy"
-          />
+            type="button"
+            class="user-message-images__thumb-btn"
+            :title="`预览 ${image.name}`"
+            @click.stop="openPreview(index)"
+          >
+            <img
+              class="user-message-images__thumb"
+              :src="mediaUrl(image.mediaId!)"
+              :alt="image.name"
+              loading="lazy"
+            />
+          </button>
           <span
             v-for="(image, index) in images.filter((item) => item.missing || !item.mediaId)"
             :key="`missing-${image.name}-${index}`"
@@ -83,6 +89,7 @@ import ChatFileBubble from "../ChatFileBubble.vue";
 import ChatRichText from "../ChatRichText.vue";
 import type { ChatUserFileAttachment } from "@/types/chat-entry";
 import { sessionMediaUrl } from "@/api";
+import { openImagePreview } from "@/composables/use-image-preview";
 import { FileText, Plug, Sparkles, Terminal, Undo2 } from "lucide-vue-next";
 
 const props = defineProps<{
@@ -103,9 +110,19 @@ const emit = defineEmits<{
 }>();
 
 const images = computed(() => props.images ?? []);
+const previewableImages = computed(() =>
+  images.value.filter((image) => image.mediaId && !image.missing),
+);
 
 function mediaUrl(mediaId: string): string {
   return sessionMediaUrl(props.sessionId, mediaId);
+}
+
+function openPreview(index: number) {
+  const urls = previewableImages.value
+    .map((image) => (image.mediaId ? mediaUrl(image.mediaId) : ""))
+    .filter(Boolean);
+  openImagePreview(urls, index);
 }
 
 let longPressTimer: ReturnType<typeof setTimeout> | undefined;
@@ -303,7 +320,17 @@ onBeforeUnmount(cancelLongPress);
   margin-bottom: 0.45rem;
 }
 
+.user-message-images__thumb-btn {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  cursor: zoom-in;
+}
+
 .user-message-images__thumb {
+  display: block;
   width: min(7.5rem, 42vw);
   aspect-ratio: 1;
   object-fit: cover;

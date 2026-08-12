@@ -62,8 +62,10 @@
               :class="node.filePath || node.children?.length ? 'cursor-pointer' : 'cursor-default'"
               @click="onNodeClick(node, stat)"
             >
-              <Folder v-if="node.children?.length" class="w-3.5 h-3.5 shrink-0 text-amber-500/80" />
-              <FileText v-else class="w-3.5 h-3.5 shrink-0 text-sky-500/80" />
+              <FileTypeIcon
+                :path="node.filePath || node.text"
+                :is-directory="Boolean(node.children?.length)"
+              />
               <span
                 class="truncate font-mono text-[12px]"
                 :class="nodeChangeStatus(node) === 'deleted' ? 'line-through opacity-70' : ''"
@@ -87,8 +89,9 @@
 import { computed, ref, watch } from "vue";
 import { BaseTree } from "@he-tree/vue";
 import "@he-tree/vue/style/default.css";
-import { ChevronRight, FileText, Folder, RefreshCw } from "lucide-vue-next";
+import { ChevronRight, RefreshCw } from "lucide-vue-next";
 import type { SessionChangedFileView } from "./chat/SessionChangesPopover.vue";
+import FileTypeIcon from "./FileTypeIcon.vue";
 import { changeStatusLabel, type SessionFileTreeNode } from "@/utils/session-file-tree";
 
 const props = withDefaults(
@@ -172,6 +175,18 @@ function isSelectedFile(node: SessionFileTreeNode): boolean {
   --he-tree-node-padding: 2px 0;
 }
 
+.session-file-tree-pane :deep(.tree-node),
+.session-file-tree-pane :deep(.tree-node-inner),
+.session-file-tree-pane :deep(.tree-node-content) {
+  width: 100%;
+  min-width: 0;
+}
+
+.file-tree-row {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .session-file-tree-pane__icon-btn {
   display: inline-flex;
   align-items: center;
@@ -199,10 +214,6 @@ function isSelectedFile(node: SessionFileTreeNode): boolean {
   box-shadow: inset 3px 0 0 var(--app-accent);
   background: color-mix(in srgb, var(--app-accent) 24%, var(--app-settings-bg));
   color: var(--app-text-primary);
-}
-
-.file-tree-row--selected .text-sky-500\/80 {
-  color: var(--app-accent);
 }
 
 .file-tree-status {

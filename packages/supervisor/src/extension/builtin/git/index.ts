@@ -2,6 +2,7 @@ import type { ExtensionContext, ExtensionDefinition } from "../../types.js";
 import { parseSessionMeta } from "../../../core/session-fields.js";
 import type { SessionRow } from "../../../types.js";
 import {
+  commitAll,
   createSessionWorktree,
   ensureProjectGitRootSync,
   getGitStatusPorcelain,
@@ -77,15 +78,6 @@ function shouldCreateWorktree(input: {
   const needsOwnWorktree = input.spawnType === "fork" || input.spawnType === "clone";
   if (input.parentId != null && !needsOwnWorktree) return false;
   return true;
-}
-
-async function isCodingAgent(ctx: ExtensionContext, sessionId: number): Promise<boolean> {
-  const row = ctx.db.queryOne<{ tools_preset: string }>(
-    `SELECT a.tools_preset FROM agents a
-     JOIN sessions s ON s.agent_id = a.id WHERE s.id = ?`,
-    [sessionId],
-  );
-  return row?.tools_preset === "coding";
 }
 
 type SessionGit = {
@@ -177,13 +169,9 @@ async function removeWorktreeWithWatson(
   );
 }
 
-const sessionGitWorktreeExtension: ExtensionDefinition = {
-  name: "session-git-worktree",
+const gitExtension: ExtensionDefinition = {
+  name: "git",
   async setup(ctx) {
-    if (!(await isCodingAgent(ctx, ctx.session.id))) {
-      return () => {};
-    }
-
     const sessionId = ctx.session.id;
     const projectCwd = ctx.project.cwd;
     const projectRow = ctx.db.queryOne<{ id: number }>(
@@ -198,6 +186,69 @@ const sessionGitWorktreeExtension: ExtensionDefinition = {
         cwd: ctx.session.cwd,
         projectCwd,
       });
+
+    // task-management loads before git. Only compose auto-commit when both extensions are active.
+    if (ctx.tools.get("TodoList")) {
+      let completedTodoKeys = new Set(
+        (await ctx.session.todos.list())
+          .filter((todo) => todo.status === "completed")
+          .map((todo) => todo.taskKey ?? todo.title),
+      );
+      let taskCommitQueue = Promise.resolve();
+      ctx.session.tools.afterUse(async (call) => {
+        if (call.name !== "TodoList") return;
+        const args = call.args as { todos?: unknown } | undefined;
+        if (!Array.isArray(args?.todos)) return;
+        const result = call.result as { isError?: boolean } | undefined;
+        if (result?.isError) return;
+
+        const todos = await ctx.session.todos.list();
+        const nextCompleted = new Set(
+          todos
+            .filter((todo) => todo.status === "completed")
+            .map((todo) => todo.taskKey ?? todo.title),
+        );
+        const newlyCompleted = todos.filter(
+          (todo) =>
+            todo.status === "completed" && !completedTodoKeys.has(todo.taskKey ?? todo.title),
+        );
+        completedTodoKeys = nextCompleted;
+        if (!newlyCompleted.length) return;
+
+        taskCommitQueue = taskCommitQueue.then(async () => {
+          try {
+            const status = await getGitStatusPorcelain(ctx.session.cwd);
+            if (!status.trim()) return;
+            const subject =
+              newlyCompleted.length === 1
+                ? `task: ${newlyCompleted[0]!.title}`
+                : `task: complete ${newlyCompleted.length} tasks`;
+            const commit = await commitAll(ctx.session.cwd, subject.slice(0, 72));
+            if (!commit) return;
+            const meta = await ctx.session.meta.get();
+            const gitMeta =
+              meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)
+                ? (meta.git as Record<string, unknown>)
+                : {};
+            await ctx.session.meta.patch({ git: { ...gitMeta, lastCommit: commit.hash } });
+            sessionLog(sessionId, "info", `Task completion committed: ${commit.hash}`, [
+              "system",
+              "git",
+              "task",
+            ]);
+          } catch (error: unknown) {
+            const detail = error instanceof Error ? error.message : String(error);
+            ctx.log("error", `Task completion commit failed: ${detail}`);
+            sessionLog(sessionId, "error", `Task completion commit failed: ${detail}`, [
+              "system",
+              "git",
+              "task",
+            ]);
+          }
+        });
+        await taskCommitQueue;
+      });
+    }
 
     ctx.on("session.create", async (event) => {
       const row = ctx.db.queryOne<Pick<SessionRow, "is_builtin" | "parent_id" | "spawn_type">>(
@@ -300,4 +351,4 @@ const sessionGitWorktreeExtension: ExtensionDefinition = {
   },
 };
 
-export default sessionGitWorktreeExtension;
+export default gitExtension;

@@ -6,10 +6,10 @@
     v-if="session"
   >
     <ToolApprovalDialog
-      v-if="pendingApproval"
+      v-if="pendingPlanApproval"
       :session-id="session.id"
-      :approval="pendingApproval"
-      @resolved="resolvePendingApproval"
+      :approval="pendingPlanApproval"
+      @resolved="resolvePendingApproval(pendingPlanApproval.approvalId)"
       @view-plan="openPendingPlan"
     />
     <ChatViewHeader
@@ -33,13 +33,6 @@
           </ChatHeaderAction>
           <ChatHeaderAction title="查看会话日志" :active="logActionActive" @click="toggleLogPanel">
             <ScrollText />
-          </ChatHeaderAction>
-          <ChatHeaderAction
-            title="查看工作区文件"
-            :active="filesActionActive"
-            @click="toggleFilesPanel"
-          >
-            <FolderTree />
           </ChatHeaderAction>
           <SessionCommitPopover :session-id="session.id" />
           <ChatHeaderAction
@@ -78,6 +71,14 @@
           @click="toggleEvalPanel"
         >
           <Braces />
+        </ChatHeaderAction>
+        <ChatHeaderAction
+          class="desktop-only-action"
+          title="查看工作区文件"
+          :active="filesActionActive"
+          @click="toggleFilesPanel"
+        >
+          <FolderTree />
         </ChatHeaderAction>
         <div class="mobile-session-actions">
           <ChatHeaderAction
@@ -158,6 +159,12 @@
             @rewind="rewindToMessage"
             @fork="forkFromMessage"
             @retry-error="onRetryLlmError"
+          />
+          <ToolPermissionCard
+            v-if="pendingToolPermission"
+            :session-id="session.id"
+            :approval="pendingToolPermission"
+            @resolved="resolvePendingApproval(pendingToolPermission.approvalId)"
           />
         </div>
 
@@ -469,7 +476,7 @@
       :show-thinking="showThinking"
       :split-assistant-messages="splitAssistantMessages"
       :session-status="session.status"
-      :cwd="session.cwd"
+      :cwd="session.cwd || workspaceId || null"
       :git-branch="gitBranch"
       :can-complete="canCompleteSession"
       :can-checkpoint="canCheckpointActions"
@@ -637,6 +644,7 @@ import SessionAppPreviewBrowser from "../components/SessionAppPreviewBrowser.vue
 import FloatingPreviewOrb from "../components/FloatingPreviewOrb.vue";
 import SessionBackgroundBashPanel from "../components/SessionBackgroundBashPanel.vue";
 import ToolApprovalDialog from "../components/ToolApprovalDialog.vue";
+import ToolPermissionCard from "../components/chat/ToolPermissionCard.vue";
 import type { ChatSendPayload } from "@/types/chat-compose";
 import {
   getShowThinking,
@@ -778,7 +786,12 @@ const inputText = ref("");
 const suggestedQuestions = ref<string[]>([]);
 const shadowRunning = ref(false);
 const pendingApprovals = ref<api.ApprovalPendingEvent[]>([]);
-const pendingApproval = computed(() => pendingApprovals.value[0] ?? null);
+const pendingToolPermission = computed(
+  () => pendingApprovals.value.find((item) => item.kind === "tool_permission") ?? null,
+);
+const pendingPlanApproval = computed(
+  () => pendingApprovals.value.find((item) => item.kind === "plan_review") ?? null,
+);
 const rewindableEntryIds = ref<string[]>([]);
 const inputPanelRef = ref<InstanceType<typeof ChatInputPanel> | null>(null);
 const pendingShareRevision = usePendingShareRevision();
@@ -1654,7 +1667,13 @@ function handleApprovalEvent(event: api.SessionStreamEvent | undefined) {
   return true;
 }
 
-function resolvePendingApproval() {
+function resolvePendingApproval(approvalId?: string) {
+  if (approvalId) {
+    pendingApprovals.value = pendingApprovals.value.filter(
+      (item) => item.approvalId !== approvalId,
+    );
+    return;
+  }
   pendingApprovals.value.shift();
 }
 
@@ -1703,7 +1722,7 @@ function subscribeShadowSuggestions(sessionId: string) {
       if (payload.type !== "agent" || !payload.event) return;
       if (handleUiNotifyEvent(payload.event)) return;
       if (handleApprovalEvent(payload.event)) return;
-      if (payload.event.type === "session_status") {
+      if (payload.event.type === "session_status" || payload.event.type === "session_services") {
         void sessionStore.fetchSession(sessionId);
         return;
       }
@@ -2931,6 +2950,10 @@ async function executeCustomSlash(name: string) {
 }
 
 @media (max-width: 767px) {
+  .desktop-only-action {
+    display: none !important;
+  }
+
   .chat-panel-host {
     width: 100% !important;
     min-width: 0;

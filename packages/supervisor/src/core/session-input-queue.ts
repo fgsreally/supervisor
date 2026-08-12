@@ -71,6 +71,12 @@ export class SessionInputQueue {
     return removed;
   }
 
+  clear(sessionId: number): SessionQueuedInput[] {
+    const queue = this.queues.get(sessionId) ?? [];
+    this.queues.delete(sessionId);
+    return queue;
+  }
+
   sessionIds(): number[] {
     return [...this.queues.keys()];
   }

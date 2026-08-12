@@ -83,13 +83,17 @@ export async function runShellCommand(
   });
 }
 
-export function killProcessTree(pid: number): void {
+export async function killProcessTree(pid: number): Promise<void> {
   if (!Number.isInteger(pid) || pid <= 0) return;
   try {
     if (process.platform === "win32") {
-      spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
-        stdio: "ignore",
-        windowsHide: true,
+      await new Promise<void>((resolve) => {
+        const killer = spawn("taskkill", ["/PID", String(pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        killer.once("error", () => resolve());
+        killer.once("exit", () => resolve());
       });
       return;
     }
@@ -98,17 +102,24 @@ export function killProcessTree(pid: number): void {
     } catch {
       process.kill(pid, "SIGTERM");
     }
-    setTimeout(() => {
+    const deadline = Date.now() + 2000;
+    while (Date.now() < deadline) {
       try {
-        process.kill(-pid, "SIGKILL");
+        process.kill(pid, 0);
       } catch {
-        try {
-          process.kill(pid, "SIGKILL");
-        } catch {
-          // already gone
-        }
+        return;
       }
-    }, 2000);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      try {
+        process.kill(pid, "SIGKILL");
+      } catch {
+        // already gone
+      }
+    }
   } catch {
     // ignore
   }

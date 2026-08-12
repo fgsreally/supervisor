@@ -54,6 +54,56 @@ describe("sessionTreeEntryToChatEntry", () => {
     });
   });
 
+  it("ignores harness metadata entries such as thinking_level_change", () => {
+    const entry = sessionTreeEntryToChatEntry({
+      id: "tl1",
+      parentId: "a1",
+      type: "thinking_level_change",
+      isOld: false,
+      meta: {},
+      createdAt: 99,
+      thinkingLevel: "off",
+    } as unknown as import("@/api").SessionTreeEntry);
+
+    expect(entry).toBeNull();
+  });
+
+  it("does not let thinking_level_change inflate assistant turn duration", () => {
+    const entries = sessionTreeToChatEntries([
+      {
+        id: "u1",
+        parentId: null,
+        type: "message",
+        isOld: false,
+        meta: {},
+        createdAt: 1_000,
+        message: { role: "user", content: "start" },
+      },
+      {
+        id: "a1",
+        parentId: "u1",
+        type: "message",
+        isOld: false,
+        meta: {},
+        createdAt: 2_000,
+        message: { role: "assistant", content: "done" },
+      },
+      {
+        id: "tl1",
+        parentId: "a1",
+        type: "thinking_level_change",
+        isOld: false,
+        meta: {},
+        createdAt: 3_036_000,
+        thinkingLevel: "off",
+      },
+    ] as unknown as import("@/api").SessionTreeEntry[]);
+
+    const groups = buildDisplayGroups(entries);
+    const assistant = groups.find((group) => group.type === "grouped_assistant");
+    expect(assistant && "endedAt" in assistant ? assistant.endedAt : null).toBe(2_000);
+  });
+
   it("maps llm_error entries to error cards", () => {
     const entry = sessionTreeEntryToChatEntry({
       id: "e1",

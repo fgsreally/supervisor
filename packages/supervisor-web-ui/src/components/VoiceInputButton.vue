@@ -12,7 +12,7 @@
     <Mic v-if="!voice.recording.value" class="voice-icon" />
     <span v-else class="voice-bars" aria-hidden="true">
       <span
-        v-for="(level, index) in voice.waveformBars.value"
+        v-for="(level, index) in toolbarBars"
         :key="index"
         class="voice-bars__bar"
         :style="{ height: `${level}px` }"
@@ -22,14 +22,27 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from "vue";
 import { Mic } from "lucide-vue-next";
 import type { VoiceRecognitionController } from "../composables/use-voice-recognition";
+
+const TOOLBAR_BAR_COUNT = 4;
 
 const props = defineProps<{
   voice: VoiceRecognitionController;
   disabled?: boolean;
   holdRecording?: boolean;
 }>();
+
+const toolbarBars = computed(() => {
+  const bars = props.voice.waveformBars.value;
+  if (bars.length <= TOOLBAR_BAR_COUNT) return bars;
+  const step = bars.length / TOOLBAR_BAR_COUNT;
+  return Array.from({ length: TOOLBAR_BAR_COUNT }, (_, index) => {
+    const source = bars[Math.min(bars.length - 1, Math.floor(index * step + step / 2))];
+    return Math.min(15, Math.max(4, Math.round((source ?? 4) * 0.7)));
+  });
+});
 
 async function onToggleClick() {
   if (props.disabled || props.holdRecording) return;

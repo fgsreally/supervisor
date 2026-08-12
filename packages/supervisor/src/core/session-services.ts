@@ -19,13 +19,30 @@ type SessionMetaStore = {
 /** Build the injected session tip about started services. */
 export function buildSessionServicesPrompt(services: SessionServicesMeta): string {
   if (!services.startCommand?.trim()) return "";
-  const lines = [`- start: \`${services.resolvedStartCommand ?? services.startCommand}\``];
+  const running =
+    services.status === "active" || services.status === "running" || services.status === "starting";
+  const status = running ? "active" : services.status === "error" ? "error" : "idle";
+  const lines = [
+    "## 项目服务",
+    running
+      ? "本 Session 的项目服务已由 Supervisor 启动并托管，不要重复启动。"
+      : services.status === "error"
+        ? "本 Session 的项目服务自动启动失败；下一次对话前会重试，也可使用服务工具检查或调整。"
+        : "本 Session 已登记项目服务；Supervisor 会在下一次对话前启动它。",
+    `- 状态：${status}`,
+    `- 启动命令：\`${services.resolvedStartCommand ?? services.startCommand}\``,
+  ];
+  if (services.error) lines.push(`- 最近错误：${services.error}`);
   if (services.apps?.length) {
     lines.push(
-      `- apps: ${services.apps.map((app) => `${app.name}@${app.port}${app.path ?? "/"}`).join(", ")}`,
+      `- 入口：${services.apps.map((app) => `${app.name}@127.0.0.1:${app.port}${app.path ?? "/"}`).join(", ")}`,
     );
   }
-  return ["本 session 的项目服务已启动：", ...lines].join("\n");
+  lines.push(
+    "端口已为本 Session 保留，并会注入 bash 环境变量（主入口为 PORT）。",
+    "ProjectServiceSetup / Start / Stop 等工具仍可用于对话过程中新增、调整或重启服务。",
+  );
+  return lines.join("\n");
 }
 
 /** Start agent-registered session services. */
@@ -78,6 +95,8 @@ export function stoppedSessionServicesMeta(
     status: "idle",
     installedAt: previous?.installedAt,
     lastActiveAt: previous?.lastActiveAt,
+    sleepAt: undefined,
+    error: undefined,
     pid: null,
     jobId: undefined,
     resolvedStartCommand: undefined,

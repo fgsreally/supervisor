@@ -23,8 +23,14 @@
           </div>
           <header v-if="showHeader" class="m-drawer__header">
             <slot name="header">
-              <span v-if="title" class="m-drawer__title">{{ title }}</span>
+              <div class="m-drawer__heading">
+                <span v-if="title" class="m-drawer__title">{{ title }}</span>
+                <p v-if="description" class="m-drawer__desc">{{ description }}</p>
+              </div>
             </slot>
+            <div v-if="$slots['header-actions']" class="m-drawer__header-actions">
+              <slot name="header-actions" />
+            </div>
             <button
               v-if="showClose"
               type="button"
@@ -56,16 +62,20 @@ import MobileButton from "./MobileButton.vue";
 
 export type MobileDrawerSize = "auto" | "tall";
 export type MobileDrawerVariant = "sheet" | "modal" | "adaptive";
+/** PC modal 宽度档位；移动端 sheet 忽略 */
+export type MobileDrawerWidth = "sm" | "md" | "lg" | "xl";
 
 const props = withDefaults(
   defineProps<{
     open: boolean;
     ariaLabel: string;
     title?: string;
+    description?: string;
     /** @deprecated 使用 size="tall" */
     flush?: boolean;
     size?: MobileDrawerSize;
     variant?: MobileDrawerVariant;
+    width?: MobileDrawerWidth;
     resizable?: boolean;
     showFooter?: boolean;
     showClose?: boolean;
@@ -75,19 +85,21 @@ const props = withDefaults(
     panelClass?: string;
     minHeight?: number;
     maxHeightRatio?: number;
+    /** 与 useMobileViewport 对齐，默认 767 */
     modalBreakpoint?: number;
   }>(),
   {
     flush: false,
     size: undefined,
     variant: "sheet",
+    width: "md",
     showFooter: false,
     showClose: false,
     footerCancelText: "取消",
     dismissOnBackdrop: true,
     minHeight: 240,
     maxHeightRatio: 0.94,
-    modalBreakpoint: 720,
+    modalBreakpoint: 767,
   },
 );
 
@@ -118,7 +130,13 @@ const canResize = computed(() => {
 const showHandle = computed(() => sheetMode.value);
 
 const showHeader = computed(() =>
-  Boolean(slots.header || props.title || (!sheetMode.value && props.showClose)),
+  Boolean(
+    slots.header ||
+      slots["header-actions"] ||
+      props.title ||
+      props.description ||
+      (!sheetMode.value && props.showClose),
+  ),
 );
 
 const overlayClass = computed(() => (sheetMode.value ? "m-overlay--sheet" : "m-overlay--modal"));
@@ -131,6 +149,9 @@ const panelClasses = computed(() => [
     "m-drawer--flush": isTall.value && sheetMode.value,
     "m-drawer--auto": !isTall.value && sheetMode.value,
     "m-drawer--modal": !sheetMode.value,
+    "m-drawer--modal-tall": isTall.value && !sheetMode.value,
+    "m-drawer--modal-auto": !isTall.value && !sheetMode.value,
+    [`m-drawer--width-${props.width}`]: !sheetMode.value,
   },
   props.panelClass,
 ]);

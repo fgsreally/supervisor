@@ -20,6 +20,12 @@ export interface ExternalSessionCandidate {
   importedSessionId?: number;
 }
 
+export interface ExternalSessionPage {
+  items: ExternalSessionCandidate[];
+  hasMore: boolean;
+  nextOffset: number;
+}
+
 interface ExternalSessionFile extends ExternalSessionCandidate {
   file: string;
 }
@@ -538,16 +544,28 @@ async function discoverFiles(limit: number): Promise<ExternalSessionFile[]> {
   return inspected.filter((item): item is ExternalSessionFile => item !== null).slice(0, limit);
 }
 
-export async function listExternalSessions(limit = 40): Promise<ExternalSessionCandidate[]> {
-  const files = await discoverFiles(Math.min(Math.max(limit, 1), 100));
-  return files.map(({ file: _file, ...candidate }) => candidate);
+export async function listExternalSessions(
+  limit = 40,
+  offset = 0,
+): Promise<ExternalSessionPage> {
+  const pageSize = Math.min(Math.max(limit, 1), 100);
+  const start = Math.max(offset, 0);
+  const files = await discoverFiles(start + pageSize + 1);
+  const page = files.slice(start, start + pageSize);
+  return {
+    items: page.map(({ file: _file, ...candidate }) => candidate),
+    hasMore: files.length > start + pageSize,
+    nextOffset: start + page.length,
+  };
 }
 
 export async function loadExternalSession(
   backend: ImportableExternalBackend,
   externalSessionId: string,
 ): Promise<{ candidate: ExternalSessionCandidate; entries: SessionTreeEntry[] }> {
-  const files = await discoverFiles(100);
+  // The picker can expose conversations far older than the first page. Search
+  // every source file here so selecting an old conversation remains importable.
+  const files = await discoverFiles(Number.MAX_SAFE_INTEGER);
   const match = files.find(
     (item) => item.backend === backend && item.externalSessionId === externalSessionId,
   );

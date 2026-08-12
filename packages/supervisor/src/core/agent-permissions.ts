@@ -72,12 +72,66 @@ function canonicalPath(path: string): string {
   }
 }
 
-export function permissionPathTarget(input: string, cwd: string): string {
-  const root = canonicalPath(cwd);
+function isWorktreePath(path: string): boolean {
+  return /(?:^|[/\\])\.supervisor[/\\]worktrees(?:[/\\]|$)/i.test(path);
+}
+
+/** Infer repo/project root when cwd is a session worktree under `.supervisor/worktrees`. */
+export function inferProjectRootFromCwd(cwd: string): string | null {
+  const canon = canonicalPath(cwd);
+  const normalized = slashes(canon);
+  const marker = "/.supervisor/worktrees/";
+  const index = normalized.toLowerCase().indexOf(marker);
+  if (index < 0) return null;
+  return canonicalPath(normalized.slice(0, index));
+}
+
+function uniquePaths(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const path of paths) {
+    const key = process.platform === "win32" ? path.toLowerCase() : path;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(path);
+  }
+  return result;
+}
+
+export function resolvePermissionRoots(cwd: string, projectRoots: string[] = []): string[] {
+  const cwdCanon = canonicalPath(cwd);
+  const inferred = inferProjectRootFromCwd(cwdCanon);
+  return uniquePaths([
+    ...projectRoots.map((root) => canonicalPath(root)),
+    ...(inferred ? [inferred] : []),
+    cwdCanon,
+  ]);
+}
+
+/**
+ * Map a filesystem path into permission targets:
+ * - inside session cwd / project root / worktree parent → `project/<rel>`
+ * - otherwise → `external/<abs>`
+ *
+ * Relatives prefer the non-worktree project root so reading
+ * `D:/repo/package.json` from a worktree cwd is still `project/package.json`.
+ */
+export function permissionPathTarget(
+  input: string,
+  cwd: string,
+  projectRoots: string[] = [],
+): string {
+  const roots = resolvePermissionRoots(cwd, projectRoots);
   const target = canonicalPath(isAbsolute(input) ? input : resolve(cwd, input));
-  const rel = relative(root, target);
-  const outside = rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel);
-  return outside ? `external/${slashes(target)}` : `project/${slashes(rel || ".")}`;
+  const hits: Array<{ root: string; rel: string; worktree: boolean }> = [];
+  for (const root of roots) {
+    const rel = relative(root, target);
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) continue;
+    hits.push({ root, rel: slashes(rel || "."), worktree: isWorktreePath(root) });
+  }
+  if (hits.length === 0) return `external/${slashes(target)}`;
+  hits.sort((a, b) => Number(a.worktree) - Number(b.worktree) || a.rel.length - b.rel.length);
+  return `project/${hits[0]!.rel}`;
 }
 
 function globToRegExp(pattern: string): RegExp {
@@ -139,7 +193,12 @@ export function splitShellCommand(command: string): string[] {
   return parts;
 }
 
-export function permissionTargets(toolName: string, args: unknown, cwd: string): string[] {
+export function permissionTargets(
+  toolName: string,
+  args: unknown,
+  cwd: string,
+  projectRoots: string[] = [],
+): string[] {
   if (!args || typeof args !== "object") return [];
   const record = args as Record<string, unknown>;
   const name = toolName.toLowerCase();
@@ -150,7 +209,7 @@ export function permissionTargets(toolName: string, args: unknown, cwd: string):
     const pathKeys = new Set(["file_path", "filePath", "path", "file"]);
     return Object.entries(record).flatMap(([key, value]) => {
       if (typeof value !== "string" || value.length === 0) return [];
-      return [pathKeys.has(key) ? permissionPathTarget(value, cwd) : value];
+      return [pathKeys.has(key) ? permissionPathTarget(value, cwd, projectRoots) : value];
     });
   }
   return Object.values(record).filter(
@@ -171,10 +230,11 @@ export function evaluateAgentPermission(
   toolName: string,
   args: unknown,
   cwd: string,
+  projectRoots: string[] = [],
 ): AgentPermissionDecision {
   const tool = toolName.toLowerCase();
   const entries = rules[tool];
-  const targets = permissionTargets(tool, args, cwd);
+  const targets = permissionTargets(tool, args, cwd, projectRoots);
   if (!entries || targets.length === 0) return { effect: "allow", tool, target: targets[0] ?? "" };
   const matches: AgentPermissionDecision[] = [];
   for (const target of targets) {

@@ -32,6 +32,32 @@ describe("agent permission rules", () => {
     expect(permissionPathTarget(join(external, "a.ts"), project)).toMatch(/^external\/.+\/a\.ts$/);
   });
 
+  it("treats project-root paths as project/** when cwd is a session worktree", () => {
+    const project = makeRoot("worktree-project");
+    const worktree = join(project, ".supervisor", "worktrees", "42");
+    mkdirSync(worktree, { recursive: true });
+
+    expect(permissionPathTarget(join(project, "package.json"), worktree)).toBe(
+      "project/package.json",
+    );
+    expect(
+      evaluateAgentPermission(
+        { read: { "external/**": "ask" } },
+        "read",
+        { path: join(project, "package.json") },
+        worktree,
+      ).effect,
+    ).toBe("allow");
+  });
+
+  it("uses explicit projectRoots even when cwd is unrelated", () => {
+    const project = makeRoot("explicit-project");
+    const other = makeRoot("other-cwd");
+    expect(
+      permissionPathTarget(join(project, "README.md"), other, [project]),
+    ).toBe("project/README.md");
+  });
+
   it("allows unmatched arguments and asks for matching arguments", () => {
     const project = makeRoot("match");
     const rules: AgentPermissionRules = { read: { "external/**": "ask" } };

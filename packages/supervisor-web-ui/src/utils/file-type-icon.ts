@@ -1,4 +1,4 @@
-/** VS Code–style file icons (colored badges, extension-aware). */
+/** VS Code file icons via Iconify `vscode-icons` set. */
 
 export type FileIconKind =
   | "folder"
@@ -21,17 +21,78 @@ export type FileIconKind =
   | "pdf"
   | "lock"
   | "config"
+  | "pnpm"
+  | "npm"
+  | "vite"
+  | "yarn"
   | "generic";
 
+const FILE_NAME_ICONS: Record<string, string> = {
+  "pnpm-lock.yaml": "vscode-icons:file-type-pnpm",
+  "pnpm-workspace.yaml": "vscode-icons:file-type-pnpm",
+  ".npmrc": "vscode-icons:file-type-npm",
+  "package.json": "vscode-icons:file-type-npm",
+  "package-lock.json": "vscode-icons:file-type-npm",
+  "npm-shrinkwrap.json": "vscode-icons:file-type-npm",
+  "yarn.lock": "vscode-icons:file-type-yarn",
+  ".yarnrc": "vscode-icons:file-type-yarn",
+  ".yarnrc.yml": "vscode-icons:file-type-yarn",
+  "bun.lock": "vscode-icons:file-type-bun",
+  "bun.lockb": "vscode-icons:file-type-bun",
+  "vite.config.js": "vscode-icons:file-type-vite",
+  "vite.config.ts": "vscode-icons:file-type-vite",
+  "vite.config.mjs": "vscode-icons:file-type-vite",
+  "vite.config.cjs": "vscode-icons:file-type-vite",
+  "vite.config.mts": "vscode-icons:file-type-vite",
+  "vite.config.cts": "vscode-icons:file-type-vite",
+  dockerfile: "vscode-icons:file-type-docker",
+  "docker-compose.yml": "vscode-icons:file-type-docker",
+  "docker-compose.yaml": "vscode-icons:file-type-docker",
+  "compose.yml": "vscode-icons:file-type-docker",
+  "compose.yaml": "vscode-icons:file-type-docker",
+  ".gitignore": "vscode-icons:file-type-git",
+  ".gitattributes": "vscode-icons:file-type-git",
+  ".gitmodules": "vscode-icons:file-type-git",
+  "tsconfig.json": "vscode-icons:file-type-tsconfig",
+  "jsconfig.json": "vscode-icons:file-type-jsconfig",
+  "readme.md": "vscode-icons:file-type-markdown",
+  "agents.md": "vscode-icons:file-type-markdown",
+  "plan.md": "vscode-icons:file-type-markdown",
+};
+
+const FOLDER_NAME_ICONS: Record<string, string> = {
+  ".git": "vscode-icons:folder-type-git",
+  ".github": "vscode-icons:folder-type-github",
+  node_modules: "vscode-icons:folder-type-node",
+  dist: "vscode-icons:folder-type-dist",
+  build: "vscode-icons:folder-type-dist",
+  src: "vscode-icons:folder-type-src",
+  public: "vscode-icons:folder-type-public",
+  docs: "vscode-icons:folder-type-docs",
+  test: "vscode-icons:folder-type-test",
+  tests: "vscode-icons:folder-type-test",
+  __tests__: "vscode-icons:folder-type-test",
+};
+
 export function getFileIconKind(path: string, isDirectory = false): FileIconKind {
-  if (isDirectory || path.endsWith("/")) return "folder";
-  const base = path.split("/").pop() ?? path;
+  if (isDirectory || path.endsWith("/") || path.endsWith("\\")) return "folder";
+  const base = getFileBaseName(path);
   const lower = base.toLowerCase();
 
+  if (lower === "pnpm-lock.yaml" || lower === "pnpm-workspace.yaml") return "pnpm";
+  if (
+    lower === "package.json" ||
+    lower === "package-lock.json" ||
+    lower === "npm-shrinkwrap.json" ||
+    lower === ".npmrc"
+  ) {
+    return "npm";
+  }
+  if (lower === "yarn.lock" || lower === ".yarnrc" || lower === ".yarnrc.yml") return "yarn";
+  if (/^vite\.config\./.test(lower)) return "vite";
   if (lower === "dockerfile" || lower.startsWith("dockerfile.")) return "docker";
   if (lower === ".gitignore" || lower === ".gitattributes" || lower === ".gitmodules") return "git";
-  if (lower.endsWith(".lock") || lower === "package-lock.json" || lower === "pnpm-lock.yaml")
-    return "lock";
+  if (lower.endsWith(".lock") || lower === "bun.lockb") return "lock";
 
   const dot = base.lastIndexOf(".");
   if (dot <= 0) return "generic";
@@ -69,8 +130,9 @@ export function getFileIconKind(path: string, isDirectory = false): FileIconKind
       return "json";
     case "yaml":
     case "yml":
-    case "toml":
       return "yaml";
+    case "toml":
+      return "config";
     case "py":
     case "pyw":
     case "pyi":
@@ -129,7 +191,18 @@ export function fileIconSvgFromPath(path: string, isDirectory = false): string {
 }
 
 export function fileIconNameFromPath(path: string, isDirectory = false): string {
-  return fileIconName(getFileIconKind(path, isDirectory));
+  const base = getFileBaseName(path);
+  const lower = base.toLowerCase();
+
+  if (isDirectory || path.endsWith("/") || path.endsWith("\\")) {
+    return FOLDER_NAME_ICONS[lower] ?? "vscode-icons:default-folder";
+  }
+
+  if (FILE_NAME_ICONS[lower]) return FILE_NAME_ICONS[lower];
+  if (lower.startsWith("dockerfile")) return "vscode-icons:file-type-docker";
+  if (/^vite\.config\./.test(lower)) return "vscode-icons:file-type-vite";
+
+  return fileIconName(getFileIconKind(path, false));
 }
 
 /** Real VS Code file icon theme ids (vscode-icons set via Iconify). */
@@ -171,6 +244,18 @@ export function fileIconName(kind: FileIconKind): string {
       return "vscode-icons:file-type-image";
     case "pdf":
       return "vscode-icons:file-type-pdf2";
+    case "lock":
+      return "vscode-icons:file-type-yarn";
+    case "config":
+      return "vscode-icons:file-type-config";
+    case "pnpm":
+      return "vscode-icons:file-type-pnpm";
+    case "npm":
+      return "vscode-icons:file-type-npm";
+    case "vite":
+      return "vscode-icons:file-type-vite";
+    case "yarn":
+      return "vscode-icons:file-type-yarn";
     default:
       return "vscode-icons:default-file";
   }
@@ -188,7 +273,7 @@ function docIcon(bg: string): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path fill="${bg}" d="M3 1.5h6.8L13.5 5.2V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V2.5a1 1 0 0 1 1-1z"/><path fill="#ffffff" opacity="0.9" d="M9 1.5v3.5h3.5z"/></svg>`;
 }
 
-/** Colored VS Code–style 16px icons for autocomplete and tags. */
+/** Fallback colored badges for CodeMirror / non-Iconify surfaces. */
 export function fileIconSvg(kind: FileIconKind): string {
   switch (kind) {
     case "folder":
@@ -206,11 +291,11 @@ export function fileIconSvg(kind: FileIconKind): string {
     case "css":
       return badgeIcon("#", "#2f8fff");
     case "markdown":
-      return badgeIcon("M", "#2b6fff");
+      return badgeIcon("MD", "#2b6fff");
     case "json":
       return badgeIcon("{}", "#ffd94f", "#1f2328");
     case "yaml":
-      return badgeIcon("Y", "#ff4d5a");
+      return badgeIcon("YML", "#cb171e");
     case "python":
       return badgeIcon("PY", "#3b82f6");
     case "rust":
@@ -231,6 +316,14 @@ export function fileIconSvg(kind: FileIconKind): string {
       return badgeIcon("LK", "#8b8b8b");
     case "config":
       return badgeIcon("CFG", "#6d8086");
+    case "pnpm":
+      return badgeIcon("PN", "#f9ad00", "#1f2328");
+    case "npm":
+      return badgeIcon("NPM", "#cb3837");
+    case "vite":
+      return badgeIcon("VT", "#646cff");
+    case "yarn":
+      return badgeIcon("Y", "#2c8ebb");
     default:
       return docIcon("#6d8086");
   }

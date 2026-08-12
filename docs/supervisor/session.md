@@ -60,7 +60,7 @@ Complete/Achieve 不缓存 merge 目标，而是始终合并到执行当下 `pro
 级联删除。
 
 删除前扩展按 `session.before_delete` 停服务并移除 worktree。若 `git worktree remove`
-因文件占用失败，`session-git-worktree` 会请华生阅读 AGENTS.md（本地开发服务启停）并重试，直到
+因文件占用失败，`git` 扩展会请华生阅读 AGENTS.md（本地开发服务启停）并重试，直到
 目录可删。
 
 ## 主要接口

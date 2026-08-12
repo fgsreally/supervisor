@@ -39,6 +39,9 @@ export interface SessionTodoInfo {
   id: number;
   title: string;
   status: SessionTodoStatus;
+  taskKey: string | null;
+  dependsOn: string[];
+  childSessionId: number | null;
   sortOrder: number;
 }
 
@@ -179,7 +182,15 @@ export interface ExtensionSession {
   /** Session todo list backed by sessions.meta. */
   readonly todos: {
     list(): Promise<SessionTodoInfo[]>;
-    replace(todos: Array<{ title: string; status: SessionTodoStatus }>): Promise<SessionTodoInfo[]>;
+    replace(
+      todos: Array<{
+        id?: string;
+        title: string;
+        status: SessionTodoStatus;
+        dependsOn?: string[];
+        sessionId?: number;
+      }>,
+    ): Promise<SessionTodoInfo[]>;
   };
   readonly tools: {
     beforeUse(handler: ToolGuardHandler, options?: { priority?: number }): () => void;

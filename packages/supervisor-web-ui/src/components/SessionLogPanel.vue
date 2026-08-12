@@ -43,33 +43,43 @@
           {{ lv.label }}
         </button>
       </div>
-      <div v-if="allTags.length" class="flex flex-wrap gap-1">
-        <button
-          v-for="tag in allTags"
-          :key="tag"
-          type="button"
-          class="px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors"
-          :style="{
-            background: tagFilter.includes(tag) ? tagBg(tag) : 'transparent',
-            color: tagFilter.includes(tag) ? tagColor(tag) : 'var(--app-text-muted)',
-            border: `1px solid ${tagFilter.includes(tag) ? tagColor(tag) : 'var(--app-border)'}`,
-          }"
-          @click="toggleTag(tag)"
-        >
-          #{{ tag }}
-        </button>
-      </div>
-      <div class="flex items-center gap-3 text-[11px]" style="color: var(--app-text-muted)">
-        <span>{{ entries.length }} 条{{ hasMoreOlder ? "+" : "" }}</span>
-        <button
-          v-if="levelFilter || tagFilter.length"
-          type="button"
-          class="hover:underline"
-          style="color: var(--app-text-link)"
-          @click="clearFilters"
-        >
-          清除筛选
-        </button>
+      <div class="log-filter-row">
+        <div v-if="allTags.length" class="log-filter-row__tags">
+          <button
+            v-for="tag in allTags"
+            :key="tag"
+            type="button"
+            class="px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors"
+            :style="{
+              background: tagFilter.includes(tag) ? tagBg(tag) : 'transparent',
+              color: tagFilter.includes(tag) ? tagColor(tag) : 'var(--app-text-muted)',
+              border: `1px solid ${tagFilter.includes(tag) ? tagColor(tag) : 'var(--app-border)'}`,
+            }"
+            @click="toggleTag(tag)"
+          >
+            #{{ tag }}
+          </button>
+        </div>
+        <div class="log-filter-row__opts" style="color: var(--app-text-muted)">
+          <span>{{ entries.length }} 条{{ hasMoreOlder ? "+" : "" }}</span>
+          <label class="log-opt">
+            <input v-model="showTime" type="checkbox" />
+            显示时间
+          </label>
+          <label class="log-opt">
+            <input v-model="showDelta" type="checkbox" />
+            显示时间差
+          </label>
+          <button
+            v-if="levelFilter || tagFilter.length"
+            type="button"
+            class="hover:underline"
+            style="color: var(--app-text-link)"
+            @click="clearFilters"
+          >
+            清除筛选
+          </button>
+        </div>
       </div>
     </div>
 
@@ -95,13 +105,16 @@
           :title="hasMeta(entry) ? '点击查看元数据' : undefined"
           @click="toggleMeta(i, entry)"
         >
-          <span class="log-row__time">{{ formatTime(entry.t) }}</span>
           <span class="log-row__level" :style="{ color: levelColor(entry.l) }">{{ entry.l }}</span>
           <span v-if="entry.tags?.length" class="log-row__tags">
             <span v-for="tag in entry.tags" :key="tag" class="log-row__tag">{{ tag }}</span>
           </span>
           <span class="log-row__msg">{{ entry.m }}</span>
           <span v-if="hasMeta(entry)" class="log-row__meta-dot" aria-hidden="true">·</span>
+          <span v-if="showTime" class="log-row__time">{{ formatTime(entry.t) }}</span>
+          <span v-if="showDelta" class="log-row__delta" :title="deltaTitle(entry, i)">{{
+            formatDelta(entry, i)
+          }}</span>
         </div>
         <div v-if="expandedIndex === i && entry.meta" class="log-meta-panel">
           <pre>{{ formatMeta(entry.meta) }}</pre>
@@ -112,12 +125,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onBeforeUnmount } from "vue";
+import { ref, computed, watch, onBeforeUnmount, nextTick } from "vue";
 import { ChevronLeft } from "lucide-vue-next";
 import type { LogEntry } from "@/api";
 import { getSessionLog } from "@/api";
 
 const LOG_PAGE_SIZE = 120;
+const SHOW_TIME_KEY = "pi-supervisor:session-log-show-time";
+const SHOW_DELTA_KEY = "pi-supervisor:session-log-show-delta";
+
+function readPref(key: string, fallback: boolean): boolean {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw == null) return fallback;
+    return raw === "1" || raw === "true";
+  } catch {
+    return fallback;
+  }
+}
 
 const props = withDefaults(
   defineProps<{
@@ -135,11 +160,28 @@ defineEmits<{ close: [] }>();
 const entries = ref<LogEntry[]>([]);
 const levelFilter = ref<string | null>(null);
 const tagFilter = ref<string[]>([]);
+const showTime = ref(readPref(SHOW_TIME_KEY, false));
+const showDelta = ref(readPref(SHOW_DELTA_KEY, true));
 const loading = ref(false);
 const loadingOlder = ref(false);
 const hasMoreOlder = ref(false);
 const expandedIndex = ref<number | null>(null);
 const scrollEl = ref<HTMLElement | null>(null);
+
+watch(showTime, (value) => {
+  try {
+    localStorage.setItem(SHOW_TIME_KEY, value ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+});
+watch(showDelta, (value) => {
+  try {
+    localStorage.setItem(SHOW_DELTA_KEY, value ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+});
 
 const levels = [
   { key: "debug", label: "DEBUG", color: "#10b981" },
@@ -233,6 +275,34 @@ function formatTime(ts: number): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+function formatDeltaMs(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (ms < 1000) return `+${Math.round(ms)}ms`;
+  if (ms < 60_000) return `+${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+  if (ms < 3_600_000) {
+    const minutes = Math.floor(ms / 60_000);
+    const seconds = Math.round((ms % 60_000) / 1000);
+    return seconds ? `+${minutes}m${seconds}s` : `+${minutes}m`;
+  }
+  const hours = Math.floor(ms / 3_600_000);
+  const minutes = Math.round((ms % 3_600_000) / 60_000);
+  return minutes ? `+${hours}h${minutes}m` : `+${hours}h`;
+}
+
+function formatDelta(entry: LogEntry, index: number): string {
+  if (index <= 0) return "·";
+  const prev = entries.value[index - 1];
+  if (!prev) return "·";
+  return formatDeltaMs(entry.t - prev.t);
+}
+
+function deltaTitle(entry: LogEntry, index: number): string {
+  if (index <= 0) return "首条";
+  const prev = entries.value[index - 1];
+  if (!prev) return "";
+  return `距上条 ${entry.t - prev.t}ms`;
+}
+
 function formatMeta(meta: Record<string, unknown>): string {
   try {
     return JSON.stringify(meta, null, 2);
@@ -250,6 +320,18 @@ function toggleMeta(index: number, entry: LogEntry) {
   expandedIndex.value = expandedIndex.value === index ? null : index;
 }
 
+async function scrollToBottom() {
+  await nextTick();
+  const el = scrollEl.value;
+  if (!el) return;
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  el.scrollTop = el.scrollHeight;
+}
+
+function isNearBottom(el: HTMLElement, threshold = 48): boolean {
+  return el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+}
+
 async function fetchInitial() {
   if (loading.value) return;
   loading.value = true;
@@ -258,6 +340,7 @@ async function fetchInitial() {
     const result = await getSessionLog(props.sessionId, queryOptions());
     entries.value = result.entries;
     hasMoreOlder.value = result.hasMore;
+    await scrollToBottom();
   } catch {
     entries.value = [];
     hasMoreOlder.value = false;
@@ -301,10 +384,13 @@ async function pollNewer() {
   }
   const last = entries.value[entries.value.length - 1];
   if (!last) return;
+  const el = scrollEl.value;
+  const stickToBottom = !el || isNearBottom(el);
   try {
     const result = await getSessionLog(props.sessionId, queryOptions({ after: last.t }));
     if (result.entries.length) {
       entries.value = [...entries.value, ...result.entries];
+      if (stickToBottom) await scrollToBottom();
     }
   } catch {
     // ignore poll errors
@@ -399,9 +485,71 @@ onBeforeUnmount(stopPolling);
   background: var(--app-hover);
 }
 
+.log-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.log-filter-row__tags {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-width: 0;
+}
+
+.log-filter-row__opts {
+  display: inline-flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  font-size: 11px;
+}
+
+.log-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.log-opt input {
+  appearance: none;
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  border: 1px solid var(--app-border);
+  border-radius: 3px;
+  background: transparent;
+  vertical-align: middle;
+}
+
+.log-opt input:checked {
+  border-color: var(--app-accent, #07c160);
+  background-color: var(--app-accent, #07c160);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' d='M2.5 6.2 4.8 8.5 9.5 3.5'/%3E%3C/svg%3E");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: 10px 10px;
+}
+
 .log-row__time {
   flex: none;
+  margin-left: 4px;
   color: var(--app-text-muted);
+}
+
+.log-row__delta {
+  flex: none;
+  min-width: 2.75rem;
+  color: var(--app-text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .log-row__level {

@@ -105,6 +105,7 @@ export default {
         (configuredNames ? ` Available agentName values: ${configuredNames}.` : ""),
       parameters: spawnAgentSchema,
       async execute(params: SpawnAgentParams, _context): Promise<ExtensionToolCallResult> {
+        const runInBackground = params.run_in_background === true;
         const instructions = (params.prompt ?? params.instructions ?? "").trim();
         if (!instructions) {
           throw new Error("spawn_agent requires prompt or instructions");
@@ -113,17 +114,17 @@ export default {
         if (params.sessionId !== undefined) {
           await ctx.session.sendToChild(params.sessionId, instructions, {
             source: `spawn_agent:parent:${ctx.session.id}`,
-            background: params.run_in_background,
+            background: runInBackground,
             urgency: params.urgency ?? "normal",
           });
           const resumed = {
             sessionId: params.sessionId,
             parentId: ctx.session.id,
-            status: params.run_in_background ? "accepted" : "idle",
+            status: runInBackground ? "accepted" : "idle",
             resumed: true,
             description: params.description,
           };
-          if (params.run_in_background) {
+          if (runInBackground) {
             return {
               content: [{ type: "text", text: JSON.stringify(resumed) }],
               details: resumed,
@@ -169,12 +170,13 @@ export default {
             subagent: {
               agentName: allowedAgent.name,
               description: params.description,
-              mode: params.run_in_background ? "background" : "foreground",
+              mode: runInBackground ? "background" : "foreground",
               finishOnResult: params.finish_on_result ?? false,
+              notifyParentOnEnd: runInBackground,
             },
           },
         });
-        if (params.run_in_background) {
+        if (runInBackground) {
           const details = { ...result, description: params.description };
           return {
             content: [{ type: "text", text: JSON.stringify(details) }],

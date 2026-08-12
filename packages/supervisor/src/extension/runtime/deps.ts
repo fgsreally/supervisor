@@ -51,6 +51,9 @@ function toTodoInfo(row: SessionTodoRow): SessionTodoInfo {
     id: row.id,
     title: row.title,
     status: row.status,
+    taskKey: row.task_key ?? null,
+    dependsOn: row.depends_on ?? [],
+    childSessionId: row.child_session_id ?? null,
     sortOrder: row.sort_order,
   };
 }
@@ -453,8 +456,15 @@ export function buildExtensionDeps(deps: {
 
     listTodos: async () => db.listSessionTodos(sessionId).map(toTodoInfo),
 
-    setTodos: async (todos: Array<{ title: string; status: SessionTodoStatus }>) =>
-      db.replaceSessionTodos(sessionId, todos).map(toTodoInfo),
+    setTodos: async (
+      todos: Array<{
+        id?: string;
+        title: string;
+        status: SessionTodoStatus;
+        dependsOn?: string[];
+        sessionId?: number;
+      }>,
+    ) => db.replaceSessionTodos(sessionId, todos).map(toTodoInfo),
 
     setMessageMeta: async (messageId: string, meta: Record<string, unknown>) => {
       db.setMessageMeta(sessionId, messageId, meta);
@@ -717,7 +727,13 @@ type RuntimeDeps = {
   setCurrentTaskPath: (path: string | null) => Promise<void>;
   listTodos: () => Promise<SessionTodoInfo[]>;
   setTodos: (
-    todos: Array<{ title: string; status: SessionTodoStatus }>,
+    todos: Array<{
+      id?: string;
+      title: string;
+      status: SessionTodoStatus;
+      dependsOn?: string[];
+      sessionId?: number;
+    }>,
   ) => Promise<SessionTodoInfo[]>;
   setMessageMeta: (messageId: string, meta: Record<string, unknown>) => Promise<void>;
   patchMessageMeta: (

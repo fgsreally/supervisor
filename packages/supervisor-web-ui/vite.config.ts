@@ -7,7 +7,8 @@ import { fileURLToPath } from "url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 const playgroundCwd = path.resolve(repoRoot, "playground");
-const backendTarget = "http://localhost:3040";
+const backendTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:3040";
+const backendWsTarget = backendTarget.replace(/^http/i, "ws");
 
 function spaAwareProxy() {
   return {
@@ -17,6 +18,10 @@ function spaAwareProxy() {
       return req.headers.accept?.includes("text/html") ? "/index.html" : undefined;
     },
   };
+}
+
+function apiProxy() {
+  return { target: backendTarget, changeOrigin: true };
 }
 
 export default defineConfig({
@@ -71,77 +76,39 @@ export default defineConfig({
     // 允许局域网 IP + 隧道域名；勿只白名单域名（会挡手机扫码）
     allowedHosts: true,
     proxy: {
-      "/auth": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
-      "/sessions": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
-      "/external-sessions": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
-      "/agents": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
+      "/auth": apiProxy(),
+      "/sessions": apiProxy(),
+      "/external-sessions": apiProxy(),
+      "/agents": apiProxy(),
       "/providers": {
         ...spaAwareProxy(),
       },
-      "/projects": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
+      "/projects": apiProxy(),
       "/home": {
         ...spaAwareProxy(),
       },
-      "/healthz": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
+      "/healthz": apiProxy(),
       "/settings": {
         ...spaAwareProxy(),
       },
+      "/system": apiProxy(),
       "/ws": {
-        target: "ws://localhost:3040",
+        target: backendWsTarget,
         ws: true,
       },
-      "/messages": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
-      "/workspace": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
+      "/messages": apiProxy(),
+      "/workspace": apiProxy(),
       "/resources": {
         ...spaAwareProxy(),
       },
       "/extensions": {
         ...spaAwareProxy(),
       },
-      "/skills": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
-      "/upload": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
-      "/uploaded-icons": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
-      "/devices": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
-      "/public": {
-        target: "http://localhost:3040",
-        changeOrigin: true,
-      },
+      "/skills": apiProxy(),
+      "/upload": apiProxy(),
+      "/uploaded-icons": apiProxy(),
+      "/devices": apiProxy(),
+      "/public": apiProxy(),
     },
   },
 });

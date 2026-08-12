@@ -52,6 +52,14 @@ export function toolCallSummary(name: string, args: Record<string, unknown> | un
     }
     case "spawn_agent":
       return `spawn ${args.agentId ?? "subagent"}`;
+    case "ProjectServiceSetup":
+      return "注册应用";
+    case "ProjectServiceStart":
+      return "启动应用";
+    case "ProjectServiceStop":
+      return "停止应用";
+    case "ProjectServiceDestroy":
+      return "销毁应用";
     case "skill": {
       const skillName = String(args.name ?? "skill");
       const path = typeof args.path === "string" ? args.path.trim() : "";

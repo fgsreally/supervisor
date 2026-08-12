@@ -1,13 +1,11 @@
 <template>
-  <span class="file-type-icon">
-    <Icon :icon="iconName" />
-  </span>
+  <span class="file-type-icon" v-html="svgMarkup" />
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { Icon } from "@iconify/vue";
-import { fileIconName, fileIconNameFromPath, type FileIconKind } from "../utils/file-type-icon";
+import { fileIconSvg, type FileIconKind } from "../utils/file-type-icon";
+import { fileTypeIconSvg } from "../utils/vscode-file-icon-svg";
 
 const props = defineProps<{
   path?: string;
@@ -15,9 +13,14 @@ const props = defineProps<{
   isDirectory?: boolean;
 }>();
 
-const iconName = computed(() => {
-  if (props.kind) return fileIconName(props.kind);
-  return fileIconNameFromPath(props.path ?? "", props.isDirectory);
+const svgMarkup = computed(() => {
+  const svg = fileTypeIconSvg({
+    path: props.path,
+    kind: props.kind,
+    isDirectory: props.isDirectory,
+  });
+  if (svg) return svg;
+  return fileIconSvg(props.kind ?? "generic");
 });
 </script>
 
@@ -27,11 +30,13 @@ const iconName = computed(() => {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+  line-height: 0;
 }
 
 .file-type-icon :deep(svg) {
   width: 16px;
   height: 16px;
   display: block;
+  flex-shrink: 0;
 }
 </style>

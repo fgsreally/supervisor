@@ -89,6 +89,7 @@ import {
   resolveSessionPreviewTarget,
 } from "../core/session-preview-proxy.js";
 import { pickDirectory } from "../utils/pick-directory.js";
+import { openPathInFileManager, pathExistsOnHost } from "../utils/open-path.js";
 import { sessionTimersToScheduleDto } from "../core/session-timers.js";
 
 /** Strip apiKey before sending provider to clients. */
@@ -932,8 +933,11 @@ export function createHttpServer(
           typeof body.preset === "string" && isDoubaoSpeechPresetId(body.preset)
             ? body.preset
             : settings.doubaoSpeechPreset;
-        await testApiKey(providerName, { appId, accessToken, preset });
-        return c.json({ ok: true });
+        const result = await testApiKey(providerName, { appId, accessToken, preset });
+        if (result?.preset && result.preset !== settings.doubaoSpeechPreset) {
+          writeSupervisorSettings({ doubaoSpeechPreset: result.preset });
+        }
+        return c.json({ ok: true, preset: result?.preset });
       }
 
       let apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
@@ -1019,6 +1023,29 @@ export function createHttpServer(
     } catch (error) {
       return jsonError(c, 500, error instanceof Error ? error.message : String(error));
     }
+  });
+
+  // POST /system/path-exists — check whether a path exists on the supervisor host
+  app.post("/system/path-exists", async (c) => {
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
+    const targetPath = typeof body.path === "string" ? body.path : "";
+    return c.json(pathExistsOnHost(targetPath));
+  });
+
+  // POST /system/open-path — reveal a path in the host OS file manager
+  app.post("/system/open-path", async (c) => {
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
+    const targetPath = typeof body.path === "string" ? body.path : "";
+    const result = openPathInFileManager(targetPath);
+    if (!result.ok) {
+      // Use 400 (not 404): web-ui maps bare 404 to "接口不存在".
+      return jsonError(c, 400, result.error);
+    }
+    return c.json({ ok: true, path: result.path });
   });
 
   // GET /agents/:id
@@ -1841,7 +1868,13 @@ export function createHttpServer(
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, "session not found");
     return c.json(
-      manager.listSessionTodos(id).map((todo) => ({ title: todo.title, status: todo.status })),
+      manager.listSessionTodos(id).map((todo) => ({
+        id: todo.taskKey,
+        title: todo.title,
+        status: todo.status,
+        dependsOn: todo.dependsOn,
+        sessionId: todo.childSessionId,
+      })),
     );
   });
 
@@ -1874,8 +1907,10 @@ export function createHttpServer(
   app.get("/external-sessions", async (c) => {
     try {
       const rawLimit = Number(c.req.query("limit") ?? 40);
+      const rawOffset = Number(c.req.query("offset") ?? 0);
       const limit = Number.isFinite(rawLimit) ? rawLimit : 40;
-      return c.json(await manager.listImportableExternalSessions(limit));
+      const offset = Number.isFinite(rawOffset) ? rawOffset : 0;
+      return c.json(await manager.listImportableExternalSessions(limit, offset));
     } catch (error: unknown) {
       return jsonError(c, 500, error instanceof Error ? error.message : String(error));
     }

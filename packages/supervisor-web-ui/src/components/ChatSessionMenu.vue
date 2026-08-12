@@ -63,9 +63,27 @@
                   @change="emit('update:title', ($event.target as HTMLInputElement).value)"
                 />
               </label>
-              <p v-if="cwd" class="mt-4 text-[12px] chat-session-menu__muted break-all">
-                工作目录：<code class="text-[11px]" :title="cwd">{{ cwd }}</code>
-              </p>
+              <div v-if="cwd" class="chat-session-menu__cwd mt-4">
+                <button
+                  v-if="showOpenCwd"
+                  type="button"
+                  class="chat-session-menu__open-cwd"
+                  title="在本机打开"
+                  :disabled="openingCwd"
+                  @click="onOpenCwd"
+                >
+                  <FolderOpen class="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  class="chat-session-menu__cwd-path"
+                  :class="{ 'is-expanded': cwdExpanded }"
+                  :title="cwdExpanded ? '收起' : '展开完整路径'"
+                  @click="cwdExpanded = !cwdExpanded"
+                >
+                  <code>{{ cwd }}</code>
+                </button>
+              </div>
               <p v-if="gitBranch" class="mt-2 text-[12px] chat-session-menu__muted break-all">
                 分支：<code class="text-[11px]">{{ gitBranch }}</code>
               </p>
@@ -305,21 +323,9 @@
                   class="session-agent-card session-agent-card--add"
                   title="添加子代理"
                   aria-label="添加子代理"
-                  @click="spawnAgentPickerOpen = !spawnAgentPickerOpen"
+                  @click="spawnAgentPickerOpen = true"
                 >
                   <span class="session-agent-card__add"><Plus /></span>
-                </button>
-              </div>
-              <div v-if="spawnAgentPickerOpen" class="session-agent-picker">
-                <button
-                  v-for="agent in availableSpawnAgents"
-                  :key="`available-${agent.id}`"
-                  type="button"
-                  @click="addSpawned(agent.id)"
-                >
-                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
-                  <span>{{ agent.name }}</span>
-                  <Plus />
                 </button>
               </div>
             </section>
@@ -349,15 +355,41 @@
       </div>
     </Transition>
   </Teleport>
+
+  <UiDialog
+    :open="spawnAgentPickerOpen"
+    title="选择子代理"
+    show-close
+    @close="spawnAgentPickerOpen = false"
+  >
+    <div class="session-agent-picker">
+      <button
+        v-for="agent in availableSpawnAgents"
+        :key="`available-${agent.id}`"
+        type="button"
+        @click="addSpawned(agent.id)"
+      >
+        <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
+        <span>{{ agent.name }}</span>
+        <Plus />
+      </button>
+      <p v-if="!availableSpawnAgents.length" class="session-agent-picker__empty">
+        暂无可添加的子代理
+      </p>
+    </div>
+  </UiDialog>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronRight, Plus, X } from "lucide-vue-next";
-import type { Session } from "@/api";
+import { ChevronRight, FolderOpen, Plus, X } from "lucide-vue-next";
+import { openPath, pathExists, type Session } from "@/api";
 import type { Agent } from "@/api";
 import { SESSION_AVATAR_COLORS, type SessionAvatarValue } from "@/utils/session-avatar";
 import AgentAvatar from "./AgentAvatar.vue";
+import UiDialog from "./ui/UiDialog.vue";
+import { useMobileViewport } from "@/composables/use-mobile-viewport";
+import { showUiMessage } from "@/composables/use-ui-message";
 import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
 import type { SessionUsage } from "@/api";
 
@@ -423,7 +455,18 @@ const emit = defineEmits<{
   "update:spawnedAgents": [value: string[]];
 }>();
 
+const isMobileViewport = useMobileViewport();
 const spawnAgentPickerOpen = ref(false);
+const openingCwd = ref(false);
+const cwdExpanded = ref(false);
+/** null = checking; true/false after /system/path-exists. */
+const cwdLocal = ref<boolean | null>(null);
+const showOpenCwd = computed(() => {
+  if (isMobileViewport.value) return false;
+  if (!props.cwd?.trim()) return false;
+  // Show while checking / if confirmed local; hide only when confirmed missing.
+  return cwdLocal.value !== false;
+});
 const selectedSpawnAgents = computed(() =>
   props.configurableAgents.filter((agent) => props.spawnedAgentIds.includes(agent.id)),
 );
@@ -431,12 +474,65 @@ const availableSpawnAgents = computed(() =>
   props.configurableAgents.filter((agent) => !props.spawnedAgentIds.includes(agent.id)),
 );
 
+async function refreshCwdLocal() {
+  if (isMobileViewport.value) {
+    cwdLocal.value = false;
+    return;
+  }
+  const target = props.cwd?.trim();
+  if (!target || !props.open) {
+    cwdLocal.value = null;
+    return;
+  }
+  cwdLocal.value = null;
+  try {
+    const result = await pathExists(target);
+    cwdLocal.value = result.exists;
+  } catch {
+    // Keep icon visible if probe fails (e.g. stale proxy); open will report errors.
+    cwdLocal.value = true;
+  }
+}
+
+async function onOpenCwd() {
+  const target = props.cwd?.trim();
+  if (!target || openingCwd.value || isMobileViewport.value) return;
+  openingCwd.value = true;
+  try {
+    await openPath(target);
+    showUiMessage("已在本机打开工作目录", "success");
+  } catch (error) {
+    cwdLocal.value = false;
+    showUiMessage(error instanceof Error ? error.message : "打开工作目录失败", "error");
+  } finally {
+    openingCwd.value = false;
+  }
+}
+
 watch(
   () => props.open,
   (open) => {
-    if (!open) spawnAgentPickerOpen.value = false;
+    if (!open) {
+      spawnAgentPickerOpen.value = false;
+      cwdLocal.value = null;
+      cwdExpanded.value = false;
+      return;
+    }
+    void refreshCwdLocal();
   },
 );
+
+watch(
+  () => props.cwd,
+  () => {
+    cwdExpanded.value = false;
+    void refreshCwdLocal();
+  },
+);
+
+watch(isMobileViewport, () => {
+  void refreshCwdLocal();
+});
 
 function toggleSpawned(agentId: string) {
   const next = props.spawnedAgentIds.includes(agentId)
@@ -583,6 +679,67 @@ function childSessionName(child: Pick<Session, "id" | "title">): string {
   color: var(--app-text-secondary);
 }
 
+.chat-session-menu__cwd {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 100%;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+}
+
+.chat-session-menu__open-cwd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--app-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-session-menu__open-cwd:hover:not(:disabled) {
+  color: var(--app-text-primary);
+  background: var(--app-hover-bg, rgb(0 0 0 / 6%));
+}
+
+.chat-session-menu__open-cwd:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.chat-session-menu__cwd-path {
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chat-session-menu__cwd-path code {
+  display: block;
+  overflow: hidden;
+  color: inherit;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-session-menu__cwd-path.is-expanded code {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
 .chat-session-menu__chevron {
   color: var(--app-text-muted);
 }
@@ -644,8 +801,19 @@ function childSessionName(child: Pick<Session, "id" | "title">): string {
   transform: scale(0.97);
 }
 .session-agent-card--add {
-  align-self: flex-start;
-  padding-bottom: 5px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-self: start;
+  align-self: start;
+  border-radius: 8px;
+}
+.session-agent-card--add:hover {
+  background: transparent;
+}
+.session-agent-card--add:hover .session-agent-card__add,
+.session-agent-card--add:focus-visible .session-agent-card__add {
+  background: var(--app-popup-hover);
 }
 .session-agent-card :deep(.agent-avatar),
 .session-agent-card__builtin,
@@ -665,9 +833,12 @@ function childSessionName(child: Pick<Session, "id" | "title">): string {
 .session-agent-card__add {
   display: grid;
   place-items: center;
+  width: 100%;
+  height: 100%;
   border: 1px dashed var(--app-border);
   border-radius: 8px;
   color: var(--app-text-muted);
+  transition: background-color 0.15s;
 }
 .session-agent-card__add svg {
   width: 22px;
@@ -700,10 +871,9 @@ function childSessionName(child: Pick<Session, "id" | "title">): string {
   stroke-width: 2.4;
 }
 .session-agent-picker {
-  margin-top: 10px;
-  overflow: hidden;
-  border: 1px solid var(--app-border-subtle);
-  border-radius: 8px;
+  margin: 4px -10px 0;
+  max-height: min(50vh, 320px);
+  overflow: auto;
 }
 .session-agent-picker button {
   display: grid;
@@ -711,12 +881,10 @@ function childSessionName(child: Pick<Session, "id" | "title">): string {
   grid-template-columns: 30px minmax(0, 1fr) 18px;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
   color: var(--app-text-primary);
   text-align: left;
-}
-.session-agent-picker button + button {
-  border-top: 1px solid var(--app-border-subtle);
 }
 .session-agent-picker button:hover {
   background: var(--app-popup-hover);
@@ -728,6 +896,12 @@ function childSessionName(child: Pick<Session, "id" | "title">): string {
 .session-agent-picker svg {
   width: 16px;
   color: #07a65a;
+}
+.session-agent-picker__empty {
+  margin: 8px 0 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  text-align: center;
 }
 
 .chat-session-menu__name input:focus {

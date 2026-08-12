@@ -104,6 +104,7 @@
       :can-copy="contextMenu.canCopy"
       :usage="contextMenu.usage"
       :show-usage="contextMenu.showUsage"
+      :duration-label="contextMenu.durationLabel"
       @close="closeContextMenu"
       @rewind="onContextRewind"
       @fork="onContextFork"
@@ -203,6 +204,7 @@ const contextMenu = reactive({
   canCopy: false,
   usage: null as import("@/api").MessageUsage | null,
   showUsage: false,
+  durationLabel: null as string | null,
 });
 
 const rowVirtualizer = useVirtualizer(
@@ -323,6 +325,9 @@ function openActions(
   contextMenu.usage =
     !props.externalAgent && isGroupedAssistantGroup(group) ? (group.usage ?? null) : null;
   contextMenu.showUsage = !props.externalAgent && isGroupedAssistantGroup(group);
+  const groupIndex = props.groups.findIndex((item) => item.id === group.id);
+  contextMenu.durationLabel =
+    groupIndex >= 0 ? assistantDurationLabel(groupIndex) : null;
 }
 
 function closeContextMenu() {
@@ -332,6 +337,7 @@ function closeContextMenu() {
   contextMenu.canCopy = false;
   contextMenu.usage = null;
   contextMenu.showUsage = false;
+  contextMenu.durationLabel = null;
 }
 
 function onContextRewind() {

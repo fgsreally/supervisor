@@ -26,10 +26,16 @@
           <CheckCircle2 v-if="todo.status === 'completed'" class="todo-done" />
           <Loader2 v-else-if="todo.status === 'in_progress'" class="todo-progress" />
           <Circle v-else />
-          <span
-            :class="{ completed: todo.status === 'completed' || todo.status === 'cancelled' }"
-            >{{ todo.title }}</span
-          >
+          <span class="todo-item-copy">
+            <span
+              :class="{ completed: todo.status === 'completed' || todo.status === 'cancelled' }"
+            >
+              {{ todo.title }}
+            </span>
+            <small v-if="todo.dependsOn?.length" class="todo-item-deps">
+              依赖：{{ todo.dependsOn.join("、") }}
+            </small>
+          </span>
         </li>
       </ul>
     </template>
@@ -54,6 +60,17 @@ const completedCount = computed(
 </script>
 
 <style scoped>
+.todo-item-copy {
+  display: grid;
+  gap: 2px;
+}
+
+.todo-item-deps {
+  color: var(--app-text-tertiary);
+  font-size: var(--app-font-caption);
+  font-weight: var(--app-font-weight-regular);
+}
+
 .todo-sheet-meta {
   margin: -4px 0 4px;
   color: var(--app-text-muted);

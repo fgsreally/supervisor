@@ -14,6 +14,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { marked, Renderer } from "marked";
+import { escapeHtml, highlightCode } from "@/utils/code-highlight";
 
 const props = withDefaults(
   defineProps<{
@@ -33,42 +34,6 @@ const variant = computed<"prose" | "terminal">(() => {
   if (props.prose === false) return "terminal";
   return "prose";
 });
-
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;");
-}
-
-function highlightCode(text: string, lang?: string): string {
-  if (
-    !lang ||
-    !/^(?:js|jsx|ts|tsx|javascript|typescript|json|css|html|vue|sh|bash|sql)$/i.test(lang)
-  ) {
-    return escapeHtml(text);
-  }
-  const highlightPlain = (value: string) =>
-    escapeHtml(value)
-      .replace(
-        /\b(const|let|var|function|return|if|else|for|while|class|interface|type|import|export|from|async|await|new|throw|try|catch|true|false|null|undefined|SELECT|FROM|WHERE|INSERT|UPDATE|DELETE|CREATE|TABLE)\b/g,
-        '<span class="tok-keyword">$1</span>',
-      )
-      .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="tok-number">$1</span>');
-
-  let html = "";
-  let cursor = 0;
-  const strings = /(["'`])(?:\\.|(?!\1)[^\\\r\n])*\1/g;
-  for (const match of text.matchAll(strings)) {
-    const index = match.index ?? cursor;
-    html += highlightPlain(text.slice(cursor, index));
-    html += `<span class="tok-string">${escapeHtml(match[0])}</span>`;
-    cursor = index + match[0].length;
-  }
-  html += highlightPlain(text.slice(cursor));
-  return html;
-}
 
 function createTerminalRenderer(): Renderer {
   const renderer = new Renderer();
@@ -271,10 +236,33 @@ function onContentClick(event: MouseEvent) {
   color: #c084fc;
 }
 .md-content :deep(.tok-string) {
-  color: #86efac;
+  color: #ce9178;
 }
 .md-content :deep(.tok-number) {
-  color: #fbbf24;
+  color: #b5cea8;
+}
+.md-content :deep(.tok-comment) {
+  color: #6a9955;
+  font-style: italic;
+}
+.md-content :deep(.tok-tag),
+.md-content :deep(.tok-tag-name) {
+  color: #569cd6;
+}
+.md-content :deep(.tok-attr) {
+  color: #9cdcfe;
+}
+.md-content :deep(.tok-property) {
+  color: #9cdcfe;
+}
+.md-content :deep(.tok-function) {
+  color: #dcdcaa;
+}
+.md-content :deep(.tok-builtin) {
+  color: #4ec9b0;
+}
+.md-content :deep(.tok-punct) {
+  color: #d4d4d4;
 }
 .md-content--terminal :deep(hr.md-term-hr) {
   margin: 1.05em 0;

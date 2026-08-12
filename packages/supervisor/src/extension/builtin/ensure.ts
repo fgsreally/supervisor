@@ -7,6 +7,18 @@ import {
 
 /** Upsert shipped extensions into the global resources catalog. */
 export function ensureBuiltinExtensionResources(db: SupervisorDb): void {
+  const legacyGit = db.getResourceByKindSlug("extension", "session-git-worktree");
+  if (legacyGit && isBuiltinExtensionResource(legacyGit.meta)) {
+    db.db.transaction(() => {
+      db.db
+        .prepare(
+          `DELETE FROM agent_resources
+           WHERE resource_id = ?`,
+        )
+        .run(legacyGit.id);
+      db.db.prepare("DELETE FROM resources WHERE id = ?").run(legacyGit.id);
+    })();
+  }
   for (const spec of BUILTIN_EXTENSIONS) {
     const existing = db.getResourceByKindSlug("extension", spec.slug);
     if (existing && !isBuiltinExtensionResource(existing.meta)) {

@@ -61,6 +61,12 @@
           >
             {{ todo.title }}
           </span>
+          <small v-if="todo.dependsOn?.length" class="task-workspace__todo-deps">
+            依赖：{{ todo.dependsOn.join("、") }}
+          </small>
+          <small v-if="todo.sessionId" class="task-workspace__todo-session">
+            Session {{ todo.sessionId }}
+          </small>
         </li>
       </ul>
       <MarkdownContent v-else :content="markdownBody" prose />
@@ -257,6 +263,13 @@ function statusLabel(status: string): string {
   display: flex;
   align-items: flex-start;
   gap: 9px;
+}
+
+.task-workspace__todo-deps,
+.task-workspace__todo-session {
+  color: var(--app-text-tertiary);
+  font-size: var(--app-font-caption);
+  font-weight: var(--app-font-weight-regular);
 }
 
 .task-workspace__todo-status {

@@ -114,11 +114,10 @@
                   "
                   @click="onNodeClick(node, stat)"
                 >
-                  <Folder
-                    v-if="node.children?.length"
-                    class="w-3.5 h-3.5 shrink-0 text-amber-500/80"
+                  <FileTypeIcon
+                    :path="node.filePath || node.text"
+                    :is-directory="Boolean(node.children?.length)"
                   />
-                  <FileText v-else class="w-3.5 h-3.5 shrink-0 text-sky-500/80" />
                   <span
                     class="truncate font-mono text-[12px]"
                     :class="nodeChangeStatus(node) === 'deleted' ? 'line-through opacity-70' : ''"
@@ -310,9 +309,9 @@
               </div>
               <div
                 v-else-if="preview.content != null && preview.encoding === 'utf8'"
-                class="p-4 session-file-code"
+                class="p-0 session-file-code"
               >
-                <MarkdownContent :content="highlightedPreviewMarkdown" variant="terminal" />
+                <HighlightedCodeBlock :code="formatTextContent(preview)" :lang="previewCodeLang" />
               </div>
               <div
                 v-else-if="isLegacyOffice"
@@ -344,8 +343,6 @@ import "@he-tree/vue/style/default.css";
 import {
   ChevronLeft,
   ChevronRight,
-  FileText,
-  Folder,
   FolderTree,
   Loader2,
   RefreshCw,
@@ -359,6 +356,8 @@ import {
   type SessionWorkspaceFileEntry,
 } from "@/api";
 import type { SessionChangedFileView } from "./chat/SessionChangesPopover.vue";
+import FileTypeIcon from "./FileTypeIcon.vue";
+import HighlightedCodeBlock from "./HighlightedCodeBlock.vue";
 import InlineFileDiffView from "./InlineFileDiffView.vue";
 import MarkdownContent from "./MarkdownContent.vue";
 import { docxBase64ToHtml, pptxBase64ToHtml, xlsxBase64ToHtml } from "@/utils/office-file-preview";
@@ -485,10 +484,9 @@ function startTreeResize(event: PointerEvent) {
     stopTreeResize = null;
   };
 }
-const highlightedPreviewMarkdown = computed(() => {
-  if (!preview.value) return "";
-  const language = preview.value.language || (preview.value.kind === "json" ? "json" : "text");
-  return `\`\`\`${language}\n${formatTextContent(preview.value)}\n\`\`\``;
+const previewCodeLang = computed(() => {
+  if (!preview.value) return "text";
+  return preview.value.language || (preview.value.kind === "json" ? "json" : "text");
 });
 
 function formatSize(bytes: number): string {
@@ -853,12 +851,6 @@ onBeforeUnmount(() => {
   min-width: max-content;
 }
 
-.session-file-code :deep(.md-term-pre) {
-  width: max-content;
-  min-width: 100%;
-  overflow: visible;
-}
-
 @media (max-width: 767px) {
   .session-files-panel__tree {
     position: absolute;
@@ -953,6 +945,18 @@ onBeforeUnmount(() => {
   --he-tree-node-padding: 2px 0;
 }
 
+.session-files-panel :deep(.tree-node),
+.session-files-panel :deep(.tree-node-inner),
+.session-files-panel :deep(.tree-node-content) {
+  width: 100%;
+  min-width: 0;
+}
+
+.file-tree-row {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .file-tree-row--idle {
   color: var(--app-text-secondary);
 }
@@ -966,10 +970,6 @@ onBeforeUnmount(() => {
   box-shadow: inset 3px 0 0 var(--app-accent);
   background: color-mix(in srgb, var(--app-accent) 24%, var(--app-settings-bg));
   color: var(--app-text-primary);
-}
-
-.file-tree-row--selected .text-sky-500\/80 {
-  color: var(--app-accent);
 }
 
 .file-tree-status {

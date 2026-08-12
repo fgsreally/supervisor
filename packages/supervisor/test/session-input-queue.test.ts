@@ -42,4 +42,25 @@ describe("SessionInputQueue", () => {
     expect(shouldInterruptSessionInput(SESSION_INPUT_INTERRUPT_LEVEL)).toBe(true);
     expect(DEFAULT_SESSION_INPUT_LEVEL).toBeLessThan(SESSION_INPUT_INTERRUPT_LEVEL);
   });
+
+  it("clears every pending input for a completed session", () => {
+    const queue = new SessionInputQueue();
+    queue.enqueue(7, {
+      id: "first",
+      message: "first",
+      level: 50,
+      source: null,
+      enqueuedAt: 1,
+    });
+    queue.enqueue(7, {
+      id: "second",
+      message: "second",
+      level: 40,
+      source: null,
+      enqueuedAt: 2,
+    });
+
+    expect(queue.clear(7).map((entry) => entry.id)).toEqual(["first", "second"]);
+    expect(queue.list(7)).toEqual([]);
+  });
 });

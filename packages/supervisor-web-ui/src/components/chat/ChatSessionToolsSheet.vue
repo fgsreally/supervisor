@@ -3,10 +3,10 @@
     <div class="chat-session-tools__grid">
       <button type="button" @click="emit('search')"><Search /><span>搜索</span></button>
       <button type="button" @click="emit('logs')"><ScrollText /><span>日志</span></button>
-      <button type="button" @click="emit('files')"><FolderTree /><span>文件</span></button>
       <button v-if="showTasks" type="button" @click="emit('tasks')">
         <ClipboardList /><span>任务</span>
       </button>
+      <button type="button" @click="emit('files')"><FolderTree /><span>文件</span></button>
     </div>
   </MobileDrawer>
 </template>

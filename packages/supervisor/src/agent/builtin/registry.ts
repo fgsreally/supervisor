@@ -13,9 +13,14 @@ import {
   ensureBuiltinExtensionResources,
 } from "../../extension/builtin/ensure.js";
 
-export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro", "coding"] as const;
+export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro", "coding", "smart-router"] as const;
 export type PackagedAgentKind = (typeof PACKAGED_AGENT_KINDS)[number];
-const ACTIVE_PACKAGED_AGENT_KINDS: readonly PackagedAgentKind[] = ["shadow", "btw", "coding"];
+const ACTIVE_PACKAGED_AGENT_KINDS: readonly PackagedAgentKind[] = [
+  "shadow",
+  "btw",
+  "coding",
+  "smart-router",
+];
 
 const LEGACY_INTRO_PROMPT = `你是 Supervisor 的 Intro 引导助手，面向使用者直接对话。
 
@@ -109,6 +114,11 @@ const PACKAGED_AGENT_LABELS: Record<
     description: "General-purpose coding agent for project work across sessions/worktrees",
     toolsPreset: "coding",
   },
+  "smart-router": {
+    name: "Smart Router",
+    description: "只读任务路由 Agent，负责将工作派发到长期存在的 Agent Session",
+    toolsPreset: "readonly",
+  },
 };
 
 export function isBuiltinAgent(agent: Pick<Agent, "isBuiltin"> | undefined): boolean {
@@ -140,7 +150,11 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
     const packagedPrompt = loadPackagedAgentPrompt(kind);
     const legacyIntroPrompt = agent?.systemPrompt?.trim() === LEGACY_INTRO_PROMPT;
     // Packaged agents keep system_prompt in sync with agents/<kind>/prompt.md on boot.
-    if (agent?.systemPrompt !== packagedPrompt || (kind === "intro" && legacyIntroPrompt)) {
+    // Smart Router is intentionally user-configurable: seed its routing policy once and preserve edits.
+    if (
+      kind !== "smart-router" &&
+      (agent?.systemPrompt !== packagedPrompt || (kind === "intro" && legacyIntroPrompt))
+    ) {
       db.updateAgent(existing, { system_prompt: packagedPrompt });
     }
     ensureAgentHome(existing, getAgentHomeDir(existing));

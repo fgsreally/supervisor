@@ -1,17 +1,6 @@
 @media (max-width: 767px) {
-  /* 三档整体小一号：standard=原 small，large=原 standard */
+  /* small = 原标准（改字号功能接入前的原始移动端字号） */
   html[data-font-scale="small"] {
-    --m-font-page-title: 16px;
-    --m-font-list-primary: 12px;
-    --m-font-list-secondary: 10px;
-    --m-font-section: 10px;
-    --m-font-tabbar: 10px;
-    --m-font-time: 9px;
-    --chat-msg-font-size: 11px;
-    --chat-input-font-size: 12px;
-  }
-
-  html[data-font-scale="standard"] {
     --m-font-page-title: 17px;
     --m-font-list-primary: 13px;
     --m-font-list-secondary: 11px;
@@ -22,7 +11,8 @@
     --chat-input-font-size: 13px;
   }
 
-  html[data-font-scale="large"] {
+  /* standard = 原大号，现为默认 */
+  html[data-font-scale="standard"] {
     --m-font-page-title: 18px;
     --m-font-list-primary: 15px;
     --m-font-list-secondary: 13px;
@@ -31,6 +21,17 @@
     --m-font-time: 11px;
     --chat-msg-font-size: 14px;
     --chat-input-font-size: 15px;
+  }
+
+  html[data-font-scale="large"] {
+    --m-font-page-title: 20px;
+    --m-font-list-primary: 17px;
+    --m-font-list-secondary: 15px;
+    --m-font-section: 13px;
+    --m-font-tabbar: 13px;
+    --m-font-time: 12px;
+    --chat-msg-font-size: 16px;
+    --chat-input-font-size: 17px;
   }
 
   .mobile-app-shell .session-name,

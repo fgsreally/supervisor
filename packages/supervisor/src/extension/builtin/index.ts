@@ -8,7 +8,7 @@ export { default as timerExtension } from "./timer/index.js";
 export { default as toolLoopGuardExtension } from "./tool-loop-guard/index.js";
 export { default as persistentBashExtension } from "./persistent-bash/index.js";
 export { default as projectServicesExtension } from "./project-services/index.js";
-export { default as sessionGitWorktreeExtension } from "./session-git-worktree/index.js";
+export { default as gitExtension } from "./git/index.js";
 export { default as supervisorAdminExtension } from "./supervisor-admin/index.js";
 export * as shadowExtension from "./shadow/index.js";
 export {

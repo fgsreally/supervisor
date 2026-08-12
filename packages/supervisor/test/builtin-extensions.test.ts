@@ -76,5 +76,19 @@ describe("builtin extension catalog bindings", () => {
         "supervisor-admin",
       ),
     ).toBe(true);
+
+    const router = db.insertAgent({
+      name: "Smart Router",
+      model_id: modelId,
+      tools_preset: "readonly",
+      is_builtin: true,
+    });
+    ensureAgentBuiltinExtensionBindings(db, router.id);
+    const routerSlugs = listEnabledBuiltinExtensionSlugs(db, router.id, {
+      isMainSession: true,
+    });
+    expect(routerSlugs.has("smart-router")).toBe(false);
+    expect(routerSlugs.has("task-management")).toBe(true);
+    expect(routerSlugs.has("subagent")).toBe(true);
   });
 });

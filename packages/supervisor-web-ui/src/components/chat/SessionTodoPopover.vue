@@ -26,9 +26,10 @@
           <CheckCircle2 v-if="todo.status === 'completed'" class="todo-done" />
           <Loader2 v-else-if="todo.status === 'in_progress'" class="todo-progress" />
           <Circle v-else />
-          <span :class="{ completed: todo.status === 'completed' || todo.status === 'cancelled' }">{{
-            todo.title
-          }}</span>
+          <span
+            :class="{ completed: todo.status === 'completed' || todo.status === 'cancelled' }"
+            >{{ todo.title }}</span
+          >
         </li>
       </ul>
     </template>

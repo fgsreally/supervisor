@@ -5,7 +5,7 @@ import {
   writeTaskArtifact,
 } from "../../../core/task-artifacts.js";
 import { parseSessionTodos, renderSessionTodos } from "../../../core/session-todos.js";
-import type { ExtensionContext, ExtensionDefinition, ToolInfo } from "../../types.js";
+import type { ExtensionContext, ExtensionDefinition } from "../../types.js";
 
 type Todo = { title: string; status: "pending" | "in_progress" | "completed" | "cancelled" };
 type TaskStage = "todo" | "plan:planning" | "plan:executing" | "goal:active";
@@ -337,11 +337,14 @@ const todoExtension: ExtensionDefinition = {
 
 async function applyToolStage(ctx: ExtensionContext, stage: string | null): Promise<void> {
   const visible = visibleTaskTools(stage);
-  const tools = ctx.agent.listTools();
-  const names = tools
-    .filter((tool: ToolInfo) => !TASK_TOOL_NAMES.has(tool.name) || visible.has(tool.name))
-    .map((tool) => tool.name);
-  await ctx.session.tools.setActive(names);
+  const activate: string[] = [];
+  const deactivate: string[] = [];
+  for (const name of TASK_TOOL_NAMES) {
+    if (visible.has(name)) activate.push(name);
+    else deactivate.push(name);
+  }
+  if (deactivate.length) await ctx.agent.deactivate(deactivate);
+  if (activate.length) await ctx.agent.activate(activate);
 }
 
 async function executeGoal(

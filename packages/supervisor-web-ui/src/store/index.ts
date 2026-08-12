@@ -31,6 +31,12 @@ import {
   viewPreferences,
 } from "@/utils/view-preferences";
 import { createMessageStorage } from "@/utils/message-storage";
+import {
+  loadSessionListCache,
+  projectFromListCache,
+  saveSessionListCache,
+  sessionFromListCache,
+} from "@/utils/session-list-cache";
 
 // ============ Types ============
 
@@ -81,14 +87,21 @@ export const useRootStore = defineStore("root", () => {
 export const useSessionStore = defineStore("session", () => {
   const root = useRootStore();
 
+  // Hydrate list paint fields from local cache so the sidebar is instant (no meta).
+  const listCache = loadSessionListCache();
+
   // State
-  const sessions = ref<Session[]>([]);
-  const projects = ref<Project[]>([]);
+  const sessions = ref<Session[]>(listCache?.sessions.map(sessionFromListCache) ?? []);
+  const projects = ref<Project[]>(listCache?.projects.map(projectFromListCache) ?? []);
   const currentSessionId = ref<string | null>(null);
   const messages = ref<Record<string, SessionTreeEntry[]>>({});
   const messageCursors = ref<Record<string, { oldestRowId: number | null; hasMore: boolean }>>({});
   /** Session list fetch error only — not shared with import / agent detect / chat ops. */
   const sessionsListError = ref<string | null>(null);
+
+  function persistSessionListCache() {
+    saveSessionListCache(sessions.value, projects.value);
+  }
 
   // Getters
   const getSessionById = computed(() => (id: string) => {
@@ -112,6 +125,7 @@ export const useSessionStore = defineStore("session", () => {
     root.clearError();
     try {
       projects.value = sortByProjectPreference(await api.listProjects());
+      persistSessionListCache();
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch projects");
       throw err;
@@ -125,6 +139,7 @@ export const useSessionStore = defineStore("session", () => {
       const index = projects.value.findIndex((p) => p.id === project.id);
       if (index >= 0) projects.value[index] = project;
       else projects.value.unshift(project);
+      persistSessionListCache();
       return project;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create project");
@@ -139,6 +154,7 @@ export const useSessionStore = defineStore("session", () => {
       const index = projects.value.findIndex((p) => p.id === id);
       if (index >= 0) projects.value[index] = project;
       else projects.value.unshift(project);
+      persistSessionListCache();
       return project;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to update project");
@@ -155,17 +171,18 @@ export const useSessionStore = defineStore("session", () => {
   }) {
     const { silent, ...query } = params ?? {};
     const hasQuery = Object.keys(query).length > 0;
-    if (!silent) {
+    // Cached list already painted → refresh quietly (no "加载会话..." flash).
+    const quiet = !!silent || (!hasQuery && sessions.value.length > 0);
+    if (!quiet) {
       root.loading.sessions = true;
       sessionsListError.value = null;
     }
     try {
       sessions.value = await api.listSessions(hasQuery ? query : undefined);
-      if (!silent) {
-        sessionsListError.value = null;
-      }
-      // Full list only: prune local message caches for sessions deleted elsewhere.
+      sessionsListError.value = null;
+      // Full list only: prune local message caches + persist slim list cache.
       if (!hasQuery) {
+        persistSessionListCache();
         void createMessageStorage()
           .then((storage) => storage.pruneDeletedSessions(sessions.value.map((s) => s.id)))
           .catch((error) => {
@@ -173,13 +190,12 @@ export const useSessionStore = defineStore("session", () => {
           });
       }
     } catch (err) {
-      if (!silent) {
-        sessionsListError.value =
-          err instanceof Error ? err.message : "Failed to fetch sessions";
+      if (!quiet || sessions.value.length === 0) {
+        sessionsListError.value = err instanceof Error ? err.message : "Failed to fetch sessions";
       }
       throw err;
     } finally {
-      if (!silent) {
+      if (!quiet) {
         root.loading.sessions = false;
       }
     }
@@ -207,6 +223,7 @@ export const useSessionStore = defineStore("session", () => {
     try {
       const session = await api.createSession(options);
       sessions.value.unshift(session);
+      persistSessionListCache();
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create session");
@@ -261,6 +278,7 @@ export const useSessionStore = defineStore("session", () => {
         delete messages.value[removedId];
         delete messageCursors.value[removedId];
       }
+      persistSessionListCache();
       void createMessageStorage()
         .then(async (storage) => {
           for (const removedId of removedIds) {
@@ -371,6 +389,7 @@ export const useSessionStore = defineStore("session", () => {
     try {
       const session = await api.forkSession(id, options);
       sessions.value.unshift(session);
+      persistSessionListCache();
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fork session");
@@ -383,6 +402,7 @@ export const useSessionStore = defineStore("session", () => {
     try {
       const session = await api.cloneSession(id);
       sessions.value.unshift(session);
+      persistSessionListCache();
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to clone session");
@@ -395,6 +415,7 @@ export const useSessionStore = defineStore("session", () => {
     try {
       const session = await api.createBtwSession(id);
       sessions.value.unshift(session);
+      persistSessionListCache();
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create BTW session");
@@ -421,6 +442,7 @@ export const useSessionStore = defineStore("session", () => {
       if (index >= 0) {
         sessions.value[index] = session;
       }
+      persistSessionListCache();
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to complete session");

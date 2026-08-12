@@ -1,6 +1,10 @@
 import { WebPlugin } from "@capacitor/core";
 
-import type { LiveStatusPayload, PendingSharePayload, SupervisorNativePlugin } from "./definitions.js";
+import type {
+  LiveStatusPayload,
+  PendingSharePayload,
+  SupervisorNativePlugin,
+} from "./definitions.js";
 
 export class SupervisorNativeWeb extends WebPlugin implements SupervisorNativePlugin {
   async getPushToken(): Promise<{ token: string | null; platform: "ios" | "android" | "web" }> {
@@ -37,5 +41,9 @@ export class SupervisorNativeWeb extends WebPlugin implements SupervisorNativePl
 
   async isOppoLiveUpdatesAvailable(): Promise<{ available: boolean; reason?: string }> {
     return this.isAndroidLiveUpdatesAvailable();
+  }
+
+  async scanQrCode(): Promise<{ value: string }> {
+    throw this.unimplemented("scanQrCode is only available on native platforms.");
   }
 }

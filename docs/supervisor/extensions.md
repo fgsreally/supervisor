@@ -75,7 +75,16 @@ pi-supervisor extensions update <extension-resource-id>
 - `tasks.list/upsert/remove/getCurrentPath/setCurrentPath`：`sessions.meta.tasks/currentTask`。
 - `todos.list/replace`：`sessions.meta.todos`。
 - `messages.list/get/tree/currentBranch/search/getMeta/setMeta/patchMeta/setLabel/stats/contextUsage`。
-- `tools.beforeUse/afterUse/enable/disable/setActive/getActive`：当前会话的工具策略。
+- `tools.beforeUse/afterUse/enable/disable`：工具守卫与硬禁用。
+- 工具可见性三件套（在 `ctx.agent`）：
+  - `registerTool({ ..., active? })`：注册；`active` 默认 `true`，也可显式 `false`
+  - `activate(names)` / `deactivate(names)`：切换已注册工具是否发给 LLM
+  - 只有 `active: true` 的工具会进入模型可见集合
+- `setCwd`：更新会话工作目录（如 worktree）。
+- `appendSystemPrompt`：向本 Session 运行时 `system_prompt`（DB + harness）追加文本；内容已存在则
+  幂等跳过。
+- `upsertSystemPromptBlock`：按 id 写入 marker 包裹的 system 块；同 id 再次调用会替换旧块。适合在
+  `session.create` 注入可演进的一次性引导（如 project-services）。
 - `spawn`、`sendToChild`、`inspectChild`、`waitForResult`、`finish`：子 Agent 协作。
 - `fork`、`switchTo`、`navigateTree`、`compact`：会话树与上下文操作。
 - `appendEntry`、`sendMessage`、`sendUserMessage`：持久消息；`sendCustomMessage` 只写 timeline，
@@ -89,9 +98,9 @@ pi-supervisor extensions update <extension-resource-id>
 
 身份字段为 `id`、`name`、`providerId`、`modelId`、`systemPrompt`、`model`。
 
-`registerTool/unregisterTool` 注册工具；`registerSlash/unregisterSlash` 注册 slash。
-`registerCommand/unregisterCommand` 是 slash 的兼容别名。另有 `listTools/getTool`、
-`setModel`、`setThinkingLevel/getThinkingLevel`。
+`registerTool/unregisterTool` 注册工具（`active` 默认 true）；`activate` / `deactivate` 切换是否发给 LLM。
+`registerSlash/unregisterSlash` 注册 slash。`registerCommand/unregisterCommand` 是 slash 的兼容别名。
+另有 `listTools/getTool`、`setModel`、`setThinkingLevel/getThinkingLevel`。
 
 `findByRole("spawned")` 解析 `sessions.meta.subagentIds`。`findByTag` 是旧兼容入口，
 当前返回空列表，新扩展应显式使用 Session 的可委派 Agent 白名单。

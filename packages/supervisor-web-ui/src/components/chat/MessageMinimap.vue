@@ -290,8 +290,7 @@ watch(
     // Stick to the newest end when turns append (typical chat growth).
     const total = sortedTurns.value.length;
     const size = windowSize();
-    const wasNearEnd =
-      total <= size || windowStart.value >= Math.max(0, total - size - 2);
+    const wasNearEnd = total <= size || windowStart.value >= Math.max(0, total - size - 2);
     if (wasNearEnd) {
       windowStart.value = clampWindowStart(total - size);
     } else {

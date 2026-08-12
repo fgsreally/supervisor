@@ -79,7 +79,6 @@ import { Loader2, LockKeyhole, RefreshCw, ServerOff } from "lucide-vue-next";
 import { getAuthStatus, listProviderModels, listProviders, saveWebPassword } from "@/api";
 import UiEmptyState from "@/components/ui/UiEmptyState.vue";
 import ProviderFormView from "@/views/ProviderFormView.vue";
-import { bootstrapMessageArchives } from "@/utils/message-storage";
 
 const PIN_LENGTH = 6;
 const digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] as const;
@@ -186,37 +185,51 @@ async function hasUsableModel(): Promise<boolean> {
   return models.some((items) => items.length > 0);
 }
 
-async function runInitialMessageSync() {
-  checkingLabel.value = "正在同步会话消息…";
-  try {
-    await bootstrapMessageArchives((progress) => {
-      checkingLabel.value = progress.label || "正在同步会话消息…";
-    });
-  } catch (error) {
-    console.warn("[StartupGate] message archive bootstrap failed", error);
-    checkingLabel.value = "会话消息同步未完成，将稍后在后台继续";
-  }
+const STARTUP_TIMEOUT_MS = 8_000;
+
+function withStartupTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label} timed out after ${STARTUP_TIMEOUT_MS}ms`));
+    }, STARTUP_TIMEOUT_MS);
+    promise.then(
+      (value) => {
+        window.clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        window.clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
 }
 
 async function continueStartup() {
   startupError.value = "";
   state.value = "checking";
   checkingLabel.value = "正在启动 Supervisor…";
-  const auth = await getAuthStatus();
-  if (auth.required && !auth.authenticated) {
-    password.value = "";
-    error.value = "";
-    state.value = "login";
-    return;
+  try {
+    const auth = await withStartupTimeout(getAuthStatus(), "auth");
+    if (auth.required && !auth.authenticated) {
+      password.value = "";
+      error.value = "";
+      state.value = "login";
+      return;
+    }
+    checkingLabel.value = "正在检查模型配置…";
+    if (!(await withStartupTimeout(hasUsableModel(), "providers"))) {
+      state.value = "setup";
+      return;
+    }
+    // Message archives sync only when opening a session (useSessionMessageSync).
+    checkingLabel.value = "正在进入…";
+    emit("ready");
+  } catch (err) {
+    console.warn("[StartupGate] startup check failed", err);
+    state.value = "checking";
+    startupError.value = "无法连接 Supervisor，请确认服务已启动";
   }
-  if (!(await hasUsableModel())) {
-    state.value = "setup";
-    return;
-  }
-  // After password / auth OK: block on first archive sync while the loading screen is up.
-  await runInitialMessageSync();
-  checkingLabel.value = "正在进入…";
-  emit("ready");
 }
 
 function triggerShake(message: string) {
@@ -273,7 +286,6 @@ function onKeyup(event: KeyboardEvent) {
 async function finishSetup() {
   if (!(await hasUsableModel())) return;
   state.value = "checking";
-  await runInitialMessageSync();
   checkingLabel.value = "正在进入…";
   emit("ready");
 }

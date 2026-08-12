@@ -1,4 +1,8 @@
-import { CapacitorSQLite, SQLiteConnection, type SQLiteDBConnection } from "@capacitor-community/sqlite";
+import {
+  CapacitorSQLite,
+  SQLiteConnection,
+  type SQLiteDBConnection,
+} from "@capacitor-community/sqlite";
 import { MessageStorage } from "./message-storage";
 import type { SyncMeta, TurnIndex } from "./types";
 
@@ -77,13 +81,7 @@ export class CapacitorMessageStorage extends MessageStorage {
       `INSERT OR REPLACE INTO sync_meta
         (session_id, oldest_row_id, newest_row_id, has_more, updated_at)
        VALUES (?, ?, ?, ?, ?)`,
-      [
-        meta.sessionId,
-        meta.oldestRowId,
-        meta.newestRowId,
-        meta.hasMore ? 1 : 0,
-        meta.updatedAt,
-      ],
+      [meta.sessionId, meta.oldestRowId, meta.newestRowId, meta.hasMore ? 1 : 0, meta.updatedAt],
     );
   }
 
@@ -122,14 +120,7 @@ export class CapacitorMessageStorage extends MessageStorage {
         `INSERT OR REPLACE INTO turns
           (session_id, turn_id, user_entry_id, summary, created_at, role_hint)
          VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          sessionId,
-          turn.turnId,
-          turn.userEntryId,
-          turn.summary,
-          turn.createdAt,
-          turn.roleHint,
-        ],
+        [sessionId, turn.turnId, turn.userEntryId, turn.summary, turn.createdAt, turn.roleHint],
       );
     }
   }

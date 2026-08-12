@@ -6,8 +6,9 @@ meta 结构见[数据库结构](/supervisor/schema-reference)。
 ## 身份与运行配置
 
 - `agent_id` 决定 Agent、模型和 tools preset；Session 不单独保存模型配置。
-- `system_prompt` 保存本 Session 实际使用的完整 system 快照，不包含 skills 目录内容与
-  `servicesPrompt`。
+- `system_prompt` 保存本 Session 实际使用的完整 system 快照，不包含 skills 目录内容。
+  扩展可在 `session.create` 时通过 `ctx.session.upsertSystemPromptBlock` /
+  `appendSystemPrompt` 写入引导（如 project-services 的登记说明）；运行时服务状态提示仍不写入该列。
 - 核心展示/状态使用列：`title`、`avatar`、`pinned`、`muted`、`unread`、`error_msg`、
   `stage`、`shadow_enabled` 等；不要重复写入 meta。
 - 缺模型、等待审批等需要用户介入的情况使用 `status=blocked`，原因写 `error_msg`。
@@ -57,6 +58,10 @@ Complete/Achieve 不缓存 merge 目标，而是始终合并到执行当下 `pro
 删除父 Session 时，依赖父上下文的 `subagent` 与 `btw` 递归删除；已经复制消息的 `fork` 与
 `clone` 保留，外键将其 `parent_id` 置空。Session 关联的 messages、queued inputs 与 jobs
 级联删除。
+
+删除前扩展按 `session.before_delete` 停服务并移除 worktree。若 `git worktree remove`
+因文件占用失败，`session-git-worktree` 会请华生阅读 AGENTS.md（本地开发服务启停）并重试，直到
+目录可删。
 
 ## 主要接口
 

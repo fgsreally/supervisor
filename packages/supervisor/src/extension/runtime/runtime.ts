@@ -82,6 +82,7 @@ export class SessionExtensionRuntime {
     context.attachExtensionHost({
       emit: (event) => this.emit(event),
       listTools: () => this.getAllTools(),
+      setToolsActive: (names, active) => this.setToolsActive(names, active),
       on: (extensionId, event, handler) => this.on(extensionId, event, handler),
       registerTool: (extensionId, definition) => this.registerTool(extensionId, definition),
       unregisterTool: (extensionId, name) => this.unregisterTool(extensionId, name),
@@ -295,19 +296,41 @@ export class SessionExtensionRuntime {
     extensionId: string,
     definition: ToolDefinition<TParams, TResult>,
   ): void {
+    const active = definition.active !== false;
     this.registry.tools.set(definition.name, {
       name: definition.name,
       description: definition.description,
       parameters: definition.parameters,
       source: "extension",
       extensionName: extensionId,
+      active,
       definition: definition as ToolDefinition<TSchema, unknown>,
     });
+    this.services.tools.noteRegistered(definition.name, active);
   }
 
   private unregisterTool(extensionId: string, name: string): void {
     const tool = this.registry.tools.get(name);
-    if (tool?.extensionName === extensionId) this.registry.tools.delete(name);
+    if (tool?.extensionName === extensionId) {
+      this.registry.tools.delete(name);
+      this.services.tools.noteUnregistered(name);
+    }
+  }
+
+  setToolsActive(names: string[], active: boolean): void {
+    for (const name of names) {
+      const tool = this.registry.tools.get(name);
+      if (tool) tool.active = active;
+    }
+    if (active) this.services.tools.activate(names);
+    else this.services.tools.deactivate(names);
+  }
+
+  /** Active tool names among currently registered extension tools (+ optional extras). */
+  listActiveToolNames(extraNames: string[] = []): string[] {
+    const names = new Set<string>(extraNames);
+    for (const tool of this.registry.tools.values()) names.add(tool.name);
+    return this.services.tools.filterActiveNames([...names]);
   }
 
   private registerCommand(
@@ -413,8 +436,10 @@ export class SessionExtensionRuntime {
       parameters: tool.parameters as TSchema,
       source: "builtin",
       extensionName: packageId,
+      active: true,
       definition,
     });
+    this.services.tools.noteRegistered(tool.name, true);
   }
 
   logPackagedToolWarning(toolId: string, error: unknown): void {

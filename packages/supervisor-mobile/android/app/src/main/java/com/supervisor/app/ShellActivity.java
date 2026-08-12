@@ -8,18 +8,22 @@ import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.view.LayoutInflater;
 import android.view.View;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Button;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
@@ -28,13 +32,12 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanOptions;
 
-public class ShellActivity extends AppCompatActivity {
-    private static final String PREFS = "supervisor_shell";
-    private static final String KEY_SERVER_URL = "server_url";
+import java.util.List;
 
+public class ShellActivity extends AppCompatActivity {
     /**
      * SPA root tabs. At these paths, history.back() often only hits the "/" redirect
-     * (looks like a no-op) and the next back would leave the app — so we background instead.
+     * (looks like a no-op) — return to the instance list instead of leaving the app.
      */
     private static final String HISTORY_BACK_JS =
         "(function(){"
@@ -48,8 +51,12 @@ public class ShellActivity extends AppCompatActivity {
             + "})()";
 
     private WebView webView;
+    private View listPanel;
     private View emptyView;
-    private Button scanButton;
+    private View sectionLabel;
+    private LinearLayout instanceList;
+    private TextView scanButton;
+    private ImageButton scanHeaderButton;
 
     private final ActivityResultLauncher<String> cameraPermissionLauncher =
         registerForActivityResult(
@@ -58,7 +65,7 @@ public class ShellActivity extends AppCompatActivity {
                 if (granted) {
                     launchScanner();
                 } else {
-                    Toast.makeText(this, "需要相机权限才能扫码", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, R.string.shell_camera_denied, Toast.LENGTH_SHORT).show();
                 }
             }
         );
@@ -79,21 +86,25 @@ public class ShellActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_shell);
 
-        // No native top chrome. Light status bar only; web pads the title itself.
         WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
         getWindow().setStatusBarColor(Color.WHITE);
-        getWindow().setNavigationBarColor(Color.WHITE);
+        getWindow().setNavigationBarColor(Color.parseColor("#EDEDED"));
         WindowInsetsControllerCompat insets =
             WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         insets.setAppearanceLightStatusBars(true);
         insets.setAppearanceLightNavigationBars(true);
 
         webView = findViewById(R.id.shell_webview);
+        listPanel = findViewById(R.id.shell_list_panel);
         emptyView = findViewById(R.id.shell_empty);
+        sectionLabel = findViewById(R.id.shell_section_label);
+        instanceList = findViewById(R.id.shell_instance_list);
         scanButton = findViewById(R.id.shell_scan_button);
+        scanHeaderButton = findViewById(R.id.shell_scan_header_button);
 
         setupWebView();
         scanButton.setOnClickListener(v -> startScanFlow());
+        scanHeaderButton.setOnClickListener(v -> startScanFlow());
 
         getOnBackPressedDispatcher()
             .addCallback(
@@ -106,12 +117,7 @@ public class ShellActivity extends AppCompatActivity {
                 }
             );
 
-        String saved = getPrefs().getString(KEY_SERVER_URL, null);
-        if (saved != null && !saved.isEmpty()) {
-            loadServer(saved);
-        } else {
-            showEmpty();
-        }
+        showInstanceList();
     }
 
     private void handleShellBack() {
@@ -119,13 +125,12 @@ public class ShellActivity extends AppCompatActivity {
             moveTaskToBack(true);
             return;
         }
-        // Prefer SPA history.back(); never finish() the activity on swipe-back.
         webView.evaluateJavascript(
             HISTORY_BACK_JS,
             value -> {
-                // evaluateJavascript wraps strings in quotes: "back" / "root"
                 if (value == null || value.contains("root")) {
-                    moveTaskToBack(true);
+                    // Leave the remote UI and return to the multi-instance picker.
+                    showInstanceList();
                 }
             }
         );
@@ -194,7 +199,7 @@ public class ShellActivity extends AppCompatActivity {
     private void launchScanner() {
         ScanOptions options = new ScanOptions();
         options.setDesiredBarcodeFormats(ScanOptions.QR_CODE);
-        options.setPrompt("扫描电脑端 Supervisor 二维码");
+        options.setPrompt(getString(R.string.shell_scan_prompt));
         options.setBeepEnabled(false);
         options.setOrientationLocked(true);
         options.setCaptureActivity(PortraitCaptureActivity.class);
@@ -202,48 +207,115 @@ public class ShellActivity extends AppCompatActivity {
     }
 
     private void handleScannedPayload(String raw) {
-        String url = normalizeServerUrl(raw);
+        String url = ShellInstanceStore.normalizeServerUrl(raw);
         if (url == null) {
-            Toast.makeText(this, "二维码不是有效的 http(s) 地址", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, R.string.shell_scan_invalid, Toast.LENGTH_SHORT).show();
             return;
         }
-        getPrefs().edit().putString(KEY_SERVER_URL, url).apply();
-        loadServer(url);
-        Toast.makeText(this, "已连接", Toast.LENGTH_SHORT).show();
+        ShellInstanceStore.Instance instance = ShellInstanceStore.upsertByUrl(getPrefs(), url);
+        Toast.makeText(this, R.string.shell_added, Toast.LENGTH_SHORT).show();
+        loadServer(instance);
     }
 
-    @Nullable
-    private String normalizeServerUrl(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        String value = raw.trim();
-        if (value.isEmpty()) {
-            return null;
-        }
-        Uri uri = Uri.parse(value);
-        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
-        if (!"http".equals(scheme) && !"https".equals(scheme)) {
-            return null;
-        }
-        if (uri.getHost() == null || uri.getHost().isEmpty()) {
-            return null;
-        }
-        return value;
-    }
-
-    private void loadServer(String url) {
-        emptyView.setVisibility(View.GONE);
-        webView.setVisibility(View.VISIBLE);
-        webView.loadUrl(url);
-    }
-
-    private void showEmpty() {
+    private void showInstanceList() {
+        webView.stopLoading();
+        webView.loadUrl("about:blank");
         webView.setVisibility(View.GONE);
-        emptyView.setVisibility(View.VISIBLE);
+        listPanel.setVisibility(View.VISIBLE);
+        renderInstanceList();
+    }
+
+    private void renderInstanceList() {
+        List<ShellInstanceStore.Instance> instances = ShellInstanceStore.load(getPrefs());
+        instanceList.removeAllViews();
+
+        if (instances.isEmpty()) {
+            emptyView.setVisibility(View.VISIBLE);
+            sectionLabel.setVisibility(View.GONE);
+            instanceList.setVisibility(View.GONE);
+            return;
+        }
+
+        emptyView.setVisibility(View.GONE);
+        sectionLabel.setVisibility(View.VISIBLE);
+        instanceList.setVisibility(View.VISIBLE);
+
+        LayoutInflater inflater = LayoutInflater.from(this);
+        for (int i = 0; i < instances.size(); i++) {
+            ShellInstanceStore.Instance item = instances.get(i);
+            View row = inflater.inflate(R.layout.item_shell_instance, instanceList, false);
+            TextView avatar = row.findViewById(R.id.shell_instance_avatar);
+            TextView title = row.findViewById(R.id.shell_instance_title);
+            TextView subtitle = row.findViewById(R.id.shell_instance_subtitle);
+
+            String label = item.name != null && !item.name.isEmpty()
+                ? item.name
+                : ShellInstanceStore.displayNameForUrl(item.url);
+            avatar.setText(avatarLetter(label));
+            title.setText(label);
+            subtitle.setText(item.url);
+
+            row.setOnClickListener(v -> {
+                ShellInstanceStore.touch(getPrefs(), item.id);
+                loadServer(item);
+            });
+            row.setOnLongClickListener(v -> {
+                confirmDelete(item);
+                return true;
+            });
+
+            instanceList.addView(row);
+            if (i < instances.size() - 1) {
+                View divider = new View(this);
+                LinearLayout.LayoutParams lp =
+                    new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        1
+                    );
+                lp.setMargins(dp(68), 0, 0, 0);
+                divider.setLayoutParams(lp);
+                divider.setBackgroundColor(Color.parseColor("#1A000000"));
+                instanceList.addView(divider);
+            }
+        }
+    }
+
+    private void confirmDelete(ShellInstanceStore.Instance item) {
+        String label = item.name != null && !item.name.isEmpty()
+            ? item.name
+            : ShellInstanceStore.displayNameForUrl(item.url);
+        new AlertDialog.Builder(this)
+            .setTitle(R.string.shell_delete_title)
+            .setMessage(getString(R.string.shell_delete_message, label))
+            .setNegativeButton(R.string.shell_cancel, null)
+            .setPositiveButton(
+                R.string.shell_delete_confirm,
+                (dialog, which) -> {
+                    ShellInstanceStore.remove(getPrefs(), item.id);
+                    renderInstanceList();
+                }
+            )
+            .show();
+    }
+
+    private void loadServer(ShellInstanceStore.Instance instance) {
+        listPanel.setVisibility(View.GONE);
+        webView.setVisibility(View.VISIBLE);
+        webView.loadUrl(instance.url);
+        Toast.makeText(this, R.string.shell_connected, Toast.LENGTH_SHORT).show();
+    }
+
+    private static String avatarLetter(String label) {
+        if (label == null || label.isEmpty()) return "S";
+        int cp = label.codePointAt(0);
+        return new String(Character.toChars(cp)).toUpperCase();
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
     }
 
     private SharedPreferences getPrefs() {
-        return getSharedPreferences(PREFS, MODE_PRIVATE);
+        return getSharedPreferences(ShellInstanceStore.PREFS, MODE_PRIVATE);
     }
 }

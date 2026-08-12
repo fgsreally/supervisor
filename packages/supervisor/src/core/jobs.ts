@@ -122,6 +122,7 @@ export class JobManager {
   readonly #db: SupervisorDb["db"];
   readonly #cancelHandlers = new Map<string, () => void | Promise<void>>();
   readonly #inputHandlers = new Map<string, (input: string) => void | Promise<void>>();
+  #onTerminal: ((job: JobRecord) => void) | undefined;
 
   constructor(db: SupervisorDb) {
     this.#db = db.db;
@@ -130,6 +131,11 @@ export class JobManager {
         "UPDATE jobs SET status = 'interrupted', finished_at = ? WHERE status IN ('queued', 'running', 'waiting')",
       )
       .run(Date.now());
+  }
+
+  /** Fired once when a Job first enters a terminal status (succeeded/failed/cancelled/interrupted). */
+  setTerminalHandler(handler: ((job: JobRecord) => void) | undefined): void {
+    this.#onTerminal = handler;
   }
 
   create(sessionId: number, input: CreateJobInput): JobRecord {
@@ -186,6 +192,8 @@ export class JobManager {
     const current = this.get(id);
     if (!current) throw new Error(`Job ${id} not found`);
     const nextStatus = patch.status ?? current.status;
+    const becameTerminal =
+      TERMINAL_STATUSES.has(nextStatus) && !TERMINAL_STATUSES.has(current.status);
     const metadata = patch.metadata ? { ...current.metadata, ...patch.metadata } : current.metadata;
     const startedAt =
       nextStatus === "running" ? (current.startedAt ?? Date.now()) : current.startedAt;
@@ -216,7 +224,16 @@ export class JobManager {
       this.#cancelHandlers.delete(id);
       this.#inputHandlers.delete(id);
     }
-    return this.get(id)!;
+    const next = this.get(id)!;
+    if (becameTerminal) {
+      try {
+        this.#onTerminal?.(next);
+      } catch (error: unknown) {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`Job terminal handler failed [${id}]:`, detail);
+      }
+    }
+    return next;
   }
 
   setCancelHandler(id: string, handler: () => void | Promise<void>): void {

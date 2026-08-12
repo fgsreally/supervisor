@@ -110,6 +110,7 @@ function createRuntimeOptions(sessionId = 1): RuntimeOptions & { finishedSession
       eventBus,
       continueTurn: async () => {},
       setActiveTools: async () => {},
+      syncActiveTools: async () => {},
       getContextUsage: async () => ({ tokens: null }),
     },
   };

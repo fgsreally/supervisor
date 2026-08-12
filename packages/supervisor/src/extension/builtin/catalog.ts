@@ -39,8 +39,9 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
   },
   {
     slug: "persistent-bash",
-    name: "Persistent bash",
-    description: "Long-lived shell sessions as jobs",
+    name: "Background bash cleanup",
+    description:
+      "Stops leftover background bash jobs when a Session unloads (bash tool is built-in)",
   },
   {
     slug: "skill",
@@ -66,7 +67,8 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
   {
     slug: "session-git-worktree",
     name: "Session git worktree",
-    description: "Per-session git worktree for coding agents",
+    description:
+      "Per-session git worktree; Watson cleans up locked worktrees on delete via AGENTS.md",
   },
   {
     slug: "subagent",

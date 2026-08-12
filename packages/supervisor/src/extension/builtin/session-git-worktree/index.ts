@@ -14,7 +14,6 @@ import {
   syncSessionWorktree,
 } from "../../../utils/git.js";
 import { sessionLog } from "../../../utils/session-log.js";
-import { runWatson } from "../../../core/watson.js";
 
 function patchSessionMeta(
   ctx: ExtensionContext,
@@ -87,6 +86,95 @@ async function isCodingAgent(ctx: ExtensionContext, sessionId: number): Promise<
     [sessionId],
   );
   return row?.tools_preset === "coding";
+}
+
+type SessionGit = {
+  repoRoot: string;
+  worktreePath: string;
+  branch: string;
+};
+
+/**
+ * Remove worktree; on failure ask Watson to read AGENTS.md (service stop etc.)
+ * and retry until the path is gone.
+ */
+async function removeWorktreeWithWatson(
+  ctx: ExtensionContext,
+  sessionId: number,
+  git: SessionGit,
+  options?: { forceBranch?: boolean; reason?: string },
+): Promise<void> {
+  const tryRemove = () =>
+    removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch, {
+      forceBranch: options?.forceBranch,
+    });
+
+  let lastError = "";
+  try {
+    await tryRemove();
+    return;
+  } catch (error: unknown) {
+    lastError = error instanceof Error ? error.message : String(error);
+  }
+
+  const reason = options?.reason ?? "worktree remove failed";
+  const maxRounds = 3;
+  for (let round = 1; round <= maxRounds; round++) {
+    sessionLog(
+      sessionId,
+      "warn",
+      `worktree remove failed (${reason}), Watson cleanup ${round}/${maxRounds}: ${lastError}`,
+      ["system", "git", "worktree", "watson"],
+    );
+    try {
+      await ctx.watson.run({
+        mode: "agent",
+        cwd: git.repoRoot,
+        kind: "worktree-cleanup",
+        toolsPreset: "coding",
+        prompt: [
+          "Session 删除/收尾时无法移除 git worktree，目录很可能仍被本地服务或进程占用。",
+          "请先阅读项目根目录与该 worktree 内的 AGENTS.md（尤其「本地开发服务」启停、安装/销毁说明），",
+          "按文档停止相关服务与占用该目录的进程，再执行：",
+          `git -C ${JSON.stringify(git.repoRoot)} worktree remove --force ${JSON.stringify(git.worktreePath)}`,
+          "必要时可 `git worktree prune`。不要 rm -rf 整个仓库或无关路径。",
+          "目标：使 worktree 目录不再存在，分支可随后删除。",
+          "",
+          `reason: ${reason}`,
+          `worktreePath: ${git.worktreePath}`,
+          `branch: ${git.branch}`,
+          `error: ${lastError}`,
+          `attempt: ${round}/${maxRounds}`,
+        ].join("\n"),
+      });
+    } catch (watsonError: unknown) {
+      const detail = watsonError instanceof Error ? watsonError.message : String(watsonError);
+      ctx.log("error", `Watson worktree cleanup failed: ${detail}`);
+      sessionLog(sessionId, "error", `Watson worktree cleanup failed: ${detail}`, [
+        "system",
+        "git",
+        "worktree",
+        "watson",
+      ]);
+    }
+
+    try {
+      await tryRemove();
+      sessionLog(sessionId, "info", `Worktree removed after Watson cleanup: ${git.worktreePath}`, [
+        "system",
+        "git",
+        "worktree",
+        "watson",
+      ]);
+      return;
+    } catch (error: unknown) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  throw new Error(
+    `Worktree still present after Watson cleanup: ${git.worktreePath} (${lastError})`,
+  );
 }
 
 const sessionGitWorktreeExtension: ExtensionDefinition = {
@@ -164,23 +252,7 @@ const sessionGitWorktreeExtension: ExtensionDefinition = {
         await mergeSessionBranch(git.repoRoot, git.branch, targetBranch);
         const newHead = await getHeadHash(git.repoRoot);
         const files = await listChangedFilesBetween(git.repoRoot, oldHead, newHead);
-        try {
-          await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch);
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : String(error);
-          await runWatson({
-            mode: "agent",
-            cwd: git.repoRoot,
-            kind: "worktree-cleanup",
-            prompt: [
-              "`git worktree remove` 失败，请诊断并尽量安全修复。",
-              `worktreePath: ${git.worktreePath}`,
-              `branch: ${git.branch}`,
-              `error: ${message}`,
-            ].join("\n"),
-          }).catch(() => {});
-          await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch);
-        }
+        await removeWorktreeWithWatson(ctx, sessionId, git, { reason: "session.achieve" });
         await ctx.session.setCwd(git.repoRoot);
         if (projectId != null) {
           markSiblingsPendingUpdate(ctx, sessionId, projectId, projectCwd, {
@@ -197,27 +269,10 @@ const sessionGitWorktreeExtension: ExtensionDefinition = {
       async () => {
         const git = resolveGit();
         if (!git) return;
-        const tryRemove = () =>
-          removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch, {
-            forceBranch: true,
-          });
-        try {
-          await tryRemove();
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : String(error);
-          await runWatson({
-            mode: "agent",
-            cwd: git.repoRoot,
-            kind: "worktree-cleanup",
-            prompt: [
-              "`git worktree remove` 失败，请诊断并尽量安全修复。",
-              `worktreePath: ${git.worktreePath}`,
-              `branch: ${git.branch}`,
-              `error: ${message}`,
-            ].join("\n"),
-          }).catch(() => {});
-          await tryRemove();
-        }
+        await removeWorktreeWithWatson(ctx, sessionId, git, {
+          forceBranch: true,
+          reason: "session.before_delete",
+        });
       },
       { priority: 100, mode: "sync" },
     );

@@ -1,11 +1,22 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import type { JobRecord } from "../../../core/jobs.js";
-import type { ExtensionJobFacade } from "../../types.js";
+import type { CreateJobInput, JobRecord, UpdateJobInput } from "../../core/jobs.js";
 
 const MAX_SESSIONS = 10;
 const MAX_OUTPUT_CHARS = 200_000;
 
-export interface PersistentBashSession {
+/** Session-scoped job host (matches ExtensionJobFacade shape). */
+export interface BashJobHost {
+  create(input: CreateJobInput): Promise<JobRecord>;
+  get(id: string): Promise<JobRecord | undefined>;
+  list(options?: { limit?: number; kind?: string }): Promise<JobRecord[]>;
+  update(id: string, patch: UpdateJobInput): Promise<JobRecord>;
+  cancel(id: string): Promise<JobRecord>;
+  input(id: string, input: string): Promise<void>;
+  setCancelHandler(id: string, handler: () => void | Promise<void>): void;
+  setInputHandler(id: string, handler: (input: string) => void | Promise<void>): void;
+}
+
+export interface BackgroundBashSession {
   id: string;
   sessionId: number;
   command: string;
@@ -23,7 +34,7 @@ interface ManagedSession {
   id: string;
   sessionId: number;
   child: ChildProcessWithoutNullStreams;
-  jobs: ExtensionJobFacade;
+  jobs: BashJobHost;
   output: string;
   stopping: boolean;
   settled: boolean;
@@ -32,7 +43,7 @@ interface ManagedSession {
 
 const sessions = new Map<string, ManagedSession>();
 
-function publicSession(job: JobRecord, tailChars?: number): PersistentBashSession {
+function publicSession(job: JobRecord, tailChars?: number): BackgroundBashSession {
   const metadata = job.metadata;
   const output = tailChars ? job.output.slice(-Math.max(1, Math.floor(tailChars))) : job.output;
   const status =
@@ -74,38 +85,55 @@ async function stopChild(session: ManagedSession): Promise<void> {
   sessions.delete(session.id);
 }
 
-export async function listPersistentBashSessions(
+export async function listBackgroundBashSessions(
   _sessionId: number,
-  jobs: ExtensionJobFacade,
-): Promise<PersistentBashSession[]> {
+  jobs: BashJobHost,
+): Promise<BackgroundBashSession[]> {
   return (await jobs.list({ kind: "shell" })).map((job) => publicSession(job, 12_000));
 }
 
-export async function getPersistentBashSession(
+export async function getBackgroundBashSession(
   sessionId: number,
   id: string,
-  jobs: ExtensionJobFacade,
+  jobs: BashJobHost,
   tailChars = 12_000,
-): Promise<PersistentBashSession | undefined> {
+): Promise<BackgroundBashSession | undefined> {
+  const managed = sessions.get(id);
+  if (managed && managed.sessionId === sessionId) {
+    const job = await jobs.get(id);
+    if (!job || job.sessionId !== sessionId || job.kind !== "shell") return undefined;
+    const pub = publicSession(job, tailChars);
+    // Prefer live memory output (DB append is async and can lag).
+    const live = managed.output;
+    if (live.length >= (job.output?.length ?? 0)) {
+      return {
+        ...pub,
+        output: tailChars ? live.slice(-Math.max(1, Math.floor(tailChars))) : live,
+        pid: managed.child.pid ?? pub.pid,
+        status: managed.child.exitCode === null && !managed.stopping ? "running" : pub.status,
+      };
+    }
+    return pub;
+  }
   const job = await jobs.get(id);
   return job?.sessionId === sessionId && job.kind === "shell"
     ? publicSession(job, tailChars)
     : undefined;
 }
 
-export async function startPersistentBashSession(options: {
+export async function startBackgroundBashSession(options: {
   sessionId: number;
   cwd: string;
-  jobs: ExtensionJobFacade;
+  jobs: BashJobHost;
   command?: string;
   label?: string;
   env?: NodeJS.ProcessEnv;
-}): Promise<PersistentBashSession> {
+}): Promise<BackgroundBashSession> {
   const running = (await options.jobs.list({ kind: "shell" })).filter(
     (job) => job.status === "running",
   ).length;
   if (running >= MAX_SESSIONS) {
-    throw new Error(`A Session can have at most ${MAX_SESSIONS} Bash sessions`);
+    throw new Error(`A Session can have at most ${MAX_SESSIONS} background bash tasks`);
   }
 
   const command = options.command?.trim() ?? "";
@@ -117,7 +145,7 @@ export async function startPersistentBashSession(options: {
       : spawn(process.env.SHELL ?? "/bin/bash", [], { cwd: options.cwd, env, stdio: "pipe" });
   const job = await options.jobs.create({
     kind: "shell",
-    name: "persistent-bash",
+    name: "bash",
     label: options.label?.trim() || command || "Interactive shell",
     status: "running",
     executionMode: "background",
@@ -137,7 +165,7 @@ export async function startPersistentBashSession(options: {
   sessions.set(job.id, session);
   options.jobs.setCancelHandler(job.id, () => stopChild(session));
   options.jobs.setInputHandler(job.id, (input) =>
-    writePersistentBashSession(options.sessionId, job.id, input),
+    writeBackgroundBashSession(options.sessionId, job.id, input),
   );
 
   const appendOutput = (chunk: unknown) => {
@@ -180,18 +208,96 @@ export async function startPersistentBashSession(options: {
   return publicSession((await options.jobs.get(job.id))!);
 }
 
-export function writePersistentBashSession(sessionId: number, id: string, input: string): void {
+/** Block until ready pattern, output growth, process exit, or timeout (kimi TaskOutput-style). */
+export async function waitBackgroundBashSession(options: {
+  sessionId: number;
+  id: string;
+  jobs: BashJobHost;
+  timeoutMs?: number;
+  pattern?: string;
+  /** Also succeed when output grows by at least this many chars from the baseline. */
+  untilChangeChars?: number;
+  pollMs?: number;
+  tailChars?: number;
+}): Promise<{
+  matched: boolean;
+  changed: boolean;
+  timedOut: boolean;
+  exited: boolean;
+  item: BackgroundBashSession;
+}> {
+  const timeoutMs = Math.min(Math.max(options.timeoutMs ?? 90_000, 500), 300_000);
+  const pollMs = Math.min(Math.max(options.pollMs ?? 500, 100), 5_000);
+  const untilChangeChars = Math.max(0, Math.floor(options.untilChangeChars ?? 24));
+  let pattern: RegExp;
+  try {
+    pattern = options.pattern?.trim()
+      ? new RegExp(options.pattern.trim(), "i")
+      : /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):\d+|Local:\s+https?:\/\/|ready in \d+/i;
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Invalid bash wait pattern: ${message}`);
+  }
+  const deadline = Date.now() + timeoutMs;
+
+  let item = await getBackgroundBashSession(
+    options.sessionId,
+    options.id,
+    options.jobs,
+    options.tailChars ?? 12_000,
+  );
+  if (!item) throw new Error(`Background bash task ${options.id} not found`);
+  const baselineLen = (item.output || "").length;
+
+  while (true) {
+    const output = item.output || "";
+    if (pattern.test(output)) {
+      return {
+        matched: true,
+        changed: output.length > baselineLen,
+        timedOut: false,
+        exited: item.status !== "running",
+        item,
+      };
+    }
+    if (untilChangeChars > 0 && output.length - baselineLen >= untilChangeChars) {
+      return {
+        matched: false,
+        changed: true,
+        timedOut: false,
+        exited: item.status !== "running",
+        item,
+      };
+    }
+    if (item.status !== "running") {
+      return { matched: false, changed: false, timedOut: false, exited: true, item };
+    }
+    if (Date.now() >= deadline) {
+      return { matched: false, changed: false, timedOut: true, exited: false, item };
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+    item = (await getBackgroundBashSession(
+      options.sessionId,
+      options.id,
+      options.jobs,
+      options.tailChars ?? 12_000,
+    ))!;
+    if (!item) throw new Error(`Background bash task ${options.id} not found`);
+  }
+}
+
+export function writeBackgroundBashSession(sessionId: number, id: string, input: string): void {
   const session = sessions.get(id);
-  if (!session || session.sessionId !== sessionId) throw new Error(`Bash Job ${id} not found`);
+  if (!session || session.sessionId !== sessionId) throw new Error(`Bash task ${id} not found`);
   if (session.stopping || session.child.exitCode !== null) {
-    throw new Error(`Bash Job ${id} is not running`);
+    throw new Error(`Bash task ${id} is not running`);
   }
   session.child.stdin.write(input.endsWith("\n") ? input : `${input}\n`);
 }
 
-export async function stopPersistentBashSessions(
+export async function stopBackgroundBashSessions(
   sessionId: number,
-  jobs: ExtensionJobFacade,
+  jobs: BashJobHost,
 ): Promise<void> {
   const ids = [...sessions.values()]
     .filter((session) => session.sessionId === sessionId)

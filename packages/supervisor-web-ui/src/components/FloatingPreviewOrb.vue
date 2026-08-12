@@ -9,8 +9,8 @@
       'floating-preview-orb--open': open,
     }"
     :style="{ left: `${pointX}px`, top: `${pointY}px` }"
-    :title="open ? '关闭应用预览' : `打开应用预览（${count}）`"
-    :aria-label="open ? '关闭应用预览' : `打开应用预览，${count} 个应用`"
+    :title="open ? closeTitle : openTitle"
+    :aria-label="open ? closeTitle : openAriaLabel"
     @pointerdown="onPointerDown"
     @click="onClick"
   >
@@ -35,11 +35,17 @@ const props = withDefaults(
     count?: number;
     containerRef?: HTMLElement | null | Ref<HTMLElement | null>;
     storageKey?: string;
+    /** Prefer docking to the right edge on first show (mobile bash orb). */
+    defaultSide?: "left" | "right";
+    /** Override default preview copy (e.g. 后台终端). */
+    label?: string;
   }>(),
   {
     active: false,
     open: false,
     count: 0,
+    defaultSide: "left",
+    label: "应用预览",
   },
 );
 
@@ -49,11 +55,14 @@ const emit = defineEmits<{
 
 const containerEl = ref<HTMLElement | null>(null);
 const countLabel = computed(() => (props.count > 99 ? "99+" : String(props.count)));
+const closeTitle = computed(() => `关闭${props.label}`);
+const openTitle = computed(() => `打开${props.label}（${props.count}）`);
+const openAriaLabel = computed(() => `打开${props.label}，${props.count} 个`);
 
 const { pointX, pointY, dragging, startDrag, consumeClick, clampToContainer } = useDraggablePoint({
   containerRef: containerEl,
   storageKey: props.storageKey,
-  defaultX: 16,
+  defaultX: props.defaultSide === "right" ? 9999 : 16,
   defaultY: 72,
 });
 

@@ -319,7 +319,8 @@
                 class="py-12 text-center text-[13px] px-4"
                 style="color: var(--app-text-muted)"
               >
-                暂不支持旧版 Office 格式（.doc / .ppt / .xls），请转换为 .docx / .pptx / .xlsx 后预览
+                暂不支持旧版 Office 格式（.doc / .ppt / .xls），请转换为 .docx / .pptx / .xlsx
+                后预览
               </div>
               <div
                 v-else
@@ -360,11 +361,7 @@ import {
 import type { SessionChangedFileView } from "./chat/SessionChangesPopover.vue";
 import InlineFileDiffView from "./InlineFileDiffView.vue";
 import MarkdownContent from "./MarkdownContent.vue";
-import {
-  docxBase64ToHtml,
-  pptxBase64ToHtml,
-  xlsxBase64ToHtml,
-} from "@/utils/office-file-preview";
+import { docxBase64ToHtml, pptxBase64ToHtml, xlsxBase64ToHtml } from "@/utils/office-file-preview";
 
 interface FileTreeNode {
   id: string;

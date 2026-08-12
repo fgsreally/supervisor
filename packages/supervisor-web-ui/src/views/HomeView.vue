@@ -76,8 +76,7 @@
                 <span class="attention__body">
                   <strong>{{ session.title || `Session ${session.id}` }}</strong>
                   <small
-                    >{{ projectName(session.projectId) }} ·
-                    {{ statusLabel(session.status) }}</small
+                    >{{ projectName(session.projectId) }} · {{ statusLabel(session.status) }}</small
                   >
                 </span>
                 <em>打开</em>

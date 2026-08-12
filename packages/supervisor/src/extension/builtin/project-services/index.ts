@@ -1,10 +1,6 @@
 import { Type } from "typebox";
-import type {
-  ExtensionContext,
-  ExtensionDefinition,
-  ExtensionJobFacade,
-  ToolInfo,
-} from "../../types.js";
+import { resolve as resolvePath } from "node:path";
+import type { ExtensionContext, ExtensionDefinition, ExtensionJobFacade } from "../../types.js";
 import type { SessionServiceApp, SessionServicesMeta } from "../../../core/project-runtime.js";
 import {
   hasRegisteredServices,
@@ -17,27 +13,27 @@ import {
   SESSION_SERVICE_SLEEP_TICK_MS,
   computeServiceSleepAt,
 } from "../../../core/session-service-sleep.js";
-import { parseSessionServicesMeta } from "../../../core/session-services.js";
+import {
+  parseSessionServicesMeta,
+  stoppedSessionServicesMeta,
+} from "../../../core/session-services.js";
 import type { SessionServiceJobHost } from "../../../core/session-registered-services.js";
+import { anyTcpPortOpen, isTcpPortOpen } from "../../../utils/ports.js";
+import { detectListenPort } from "../../../utils/listen-port.js";
 
 const SETUP_TOOL = "ProjectServiceSetup";
-const SERVICE_TOOL_NAMES = new Set([SETUP_TOOL, "ProjectServiceStart", "ProjectServiceList"]);
 
-const FIRST_SESSION_PROMPT = [
-  "项目服务（首会话硬性要求，未完成前不要只做讲解）：",
-  "1. 用「本地开发服务」的 install/start/stop/destroy；若章节缺失，再从 package.json scripts 推断。",
-  "2. 按需 install。",
-  "3. 先真正启动服务（不要只口述），确认 name/port/path（例如 Vite：web:5173:/）。",
-  "4. 再 ProjectServiceSetup 登记命令与已确认入口。",
-  "5. 需要系统托管时再 ProjectServiceStart（端口已通勿重复拉起）。",
-  "6. 完成 3→4 后才能回答用户；禁止只回复命令而不启动、不登记。",
-].join("\n");
-
-const RUNNING_PROMPT = [
-  "项目服务：",
-  "- 命令与入口已登记；继续对话前会自动尝试唤醒。",
-  "- 也可手动 ProjectServiceStart；关闭/销毁由系统在闲置或归档时执行。",
-].join("\n");
+/** True when jobCwd is the session cwd or a path inside it. */
+function isJobCwdInSession(jobCwd: string, sessionCwd: string): boolean {
+  const session = resolvePath(sessionCwd);
+  const job = resolvePath(jobCwd);
+  if (process.platform === "win32") {
+    const a = session.toLowerCase();
+    const b = job.toLowerCase();
+    return b === a || b.startsWith(a.endsWith("\\") ? a : `${a}\\`);
+  }
+  return job === session || job.startsWith(session.endsWith("/") ? session : `${session}/`);
+}
 
 function extensionJobsAsHost(jobs: ExtensionJobFacade): SessionServiceJobHost {
   return {
@@ -48,7 +44,12 @@ function extensionJobsAsHost(jobs: ExtensionJobFacade): SessionServiceJobHost {
       await jobs.update(id, patch);
     },
     async get(id) {
-      return jobs.get(id);
+      const job = await jobs.get(id);
+      if (!job) return undefined;
+      return { id: job.id, status: job.status, metadata: job.metadata };
+    },
+    async cancel(id) {
+      return jobs.cancel(id);
     },
     setCancelHandler(id, handler) {
       jobs.setCancelHandler(id, handler);
@@ -77,17 +78,6 @@ function parseAppsParam(
       path: item.path?.trim() || "/",
     }))
     .filter((item) => item.name && Number.isFinite(item.port) && item.port > 0);
-}
-
-async function applyVisibleServiceTools(ctx: ExtensionContext, showSetup: boolean): Promise<void> {
-  const tools = ctx.agent.listTools();
-  const names = tools
-    .filter(
-      (tool: ToolInfo) =>
-        !SERVICE_TOOL_NAMES.has(tool.name) || (tool.name === SETUP_TOOL ? showSetup : true),
-    )
-    .map((tool) => tool.name);
-  await ctx.session.tools.setActive(names);
 }
 
 let globalSleepSchedulerStarted = false;
@@ -163,26 +153,36 @@ const projectServicesExtension: ExtensionDefinition = {
       await ctx.session.meta.patch({ services });
     };
 
-    const refreshInject = async (services: SessionServicesMeta | null) => {
-      const unregistered = !hasRegisteredServices(services) || services?.status === "unregistered";
-      ctx.inject.clear("project-services");
-      ctx.inject.schedule({
-        variant: "project-services",
-        content: unregistered ? FIRST_SESSION_PROMPT : RUNNING_PROMPT,
-        priority: unregistered ? 60 : 40,
-      });
-      await applyVisibleServiceTools(ctx, unregistered);
+    /** Drop meta.services.jobId when the Job is gone or its cwd is outside this Session. */
+    const reconcileBoundJob = async (): Promise<void> => {
+      const current = await readServices();
+      if (!current?.jobId) return;
+      const job = await jobs.get(current.jobId);
+      const alive = job && (job.status === "running" || job.status === "waiting");
+      const jobCwd = typeof job?.metadata?.cwd === "string" ? job.metadata.cwd.trim() : "";
+      const cwdOk = !jobCwd || isJobCwdInSession(jobCwd, cwd());
+      if (alive && cwdOk) return;
+      await writeServices(stoppedSessionServicesMeta(current));
+      if (alive && jobCwd && !cwdOk) {
+        ctx.log(
+          "warn",
+          `Cleared services.jobId=${current.jobId}: cwd ${jobCwd} outside session ${cwd()}`,
+        );
+      }
     };
 
     const wakeServices = async (): Promise<void> => {
       const current = await readServices();
       if (!hasRegisteredServices(current)) return;
       const now = Date.now();
+      const ports = (current!.apps ?? []).map((app) => app.port).filter((p) => p > 0);
+      const portsOpen = ports.length > 0 ? await anyTcpPortOpen(ports) : false;
 
       if (isServiceActive(current!.status)) {
-        if (isSessionServiceProcessAlive(sessionId, current)) {
+        if (isSessionServiceProcessAlive(sessionId, current) || portsOpen) {
           await writeServices({
             ...current!,
+            status: "active",
             lastActiveAt: now,
             sleepAt: computeServiceSleepAt(now),
           });
@@ -195,6 +195,17 @@ const projectServicesExtension: ExtensionDefinition = {
           jobs,
           mode: "stop",
         });
+      }
+
+      // Already serving via bash/adopted job: just mark active, do not spawn a second process.
+      if (portsOpen || isSessionServiceProcessAlive(sessionId, current)) {
+        await writeServices({
+          ...current!,
+          status: "active",
+          lastActiveAt: now,
+          sleepAt: computeServiceSleepAt(now),
+        });
+        return;
       }
 
       if (isServiceIdle(current!.status) || isServiceActive(current!.status)) {
@@ -210,10 +221,15 @@ const projectServicesExtension: ExtensionDefinition = {
       }
     };
 
-    await refreshInject(await readServices());
     ensureGlobalSleepScheduler(ctx);
 
+    ctx.on("session.create", async () => {
+      // Clear legacy hardcoded inject; workflow lives in coding prompt + tool results.
+      await ctx.session.upsertSystemPromptBlock("project-services", "");
+    });
+
     ctx.on("session.start", async () => {
+      await reconcileBoundJob();
       const current = await readServices();
       if (!current) return;
       const lastActive = current.lastActiveAt ?? Date.now();
@@ -226,7 +242,6 @@ const projectServicesExtension: ExtensionDefinition = {
           resolvedStartCommand: undefined,
         });
       }
-      await refreshInject(await readServices());
     });
 
     ctx.on("message.user", async () => {
@@ -317,12 +332,17 @@ const projectServicesExtension: ExtensionDefinition = {
     ctx.agent.registerTool({
       name: SETUP_TOOL,
       description:
-        "在服务已启动并确认入口后，登记本 session 的运行时：install/start/stop/destroy 命令（用「本地开发服务」）以及已确认的 apps[{ name, port, path }]。登记后此工具会隐藏。",
+        "登记 install/start/stop/destroy 与 apps[{ name, port, path }]。已有后台 bash 时传 taskId；port 用 bash 返回的 detectedPort（会按 Job 输出校正）。成功即活跃应用，勿再 Start。",
       parameters: Type.Object({
         installCommand: Type.Optional(Type.String()),
         startCommand: Type.String({ description: "启动命令（长期运行）" }),
         stopCommand: Type.Optional(Type.String({ description: "关闭命令（闲置时）" })),
         destroyCommand: Type.Optional(Type.String({ description: "销毁/卸载命令（归档删除时）" })),
+        taskId: Type.Optional(
+          Type.String({
+            description: "已在跑的后台 bash task_id；传入则直接标为活跃应用，不再 Start。",
+          }),
+        ),
         apps: Type.Array(
           Type.Object({
             name: Type.String({ description: "入口名，如 web" }),
@@ -337,7 +357,71 @@ const projectServicesExtension: ExtensionDefinition = {
           status: "unregistered" as const,
           startCommand: "",
         };
-        const apps = parseAppsParam(params.apps);
+        let apps = parseAppsParam(params.apps);
+        const taskId = params.taskId?.trim() || undefined;
+        let jobId = taskId;
+        let pid: number | null = null;
+        let status: SessionServicesMeta["status"] = "unregistered";
+        let jobOutput = "";
+
+        if (taskId) {
+          const job = await jobs.get(taskId);
+          if (job && (job.status === "running" || job.status === "waiting")) {
+            const jobCwd = typeof job.metadata?.cwd === "string" ? job.metadata.cwd.trim() : "";
+            if (jobCwd && !isJobCwdInSession(jobCwd, ctx.session.cwd)) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: [
+                      `拒绝绑定 taskId=${taskId}：该 Job 的 cwd（${jobCwd}）不在本 Session 工作目录（${ctx.session.cwd}）内。`,
+                      "请在 Session cwd 下重新 bash 启动服务后再 Setup。",
+                    ].join(""),
+                  },
+                ],
+              };
+            }
+            const metaPid = job.metadata?.pid;
+            pid = typeof metaPid === "number" ? metaPid : null;
+            status = "active";
+            jobId = job.id;
+            const full = await ctx.jobs.get(taskId);
+            jobOutput = typeof full?.output === "string" ? full.output : "";
+          }
+        }
+
+        // Prefer the real listen port from server output (Vite may bump 5173 → 5174).
+        const detectedPort = detectListenPort(jobOutput);
+        if (detectedPort && apps.length > 0) {
+          const declaredOpen = await anyTcpPortOpen(apps.map((app) => app.port));
+          const detectedOpen = await isTcpPortOpen(detectedPort);
+          if (detectedOpen && (!declaredOpen || apps.every((app) => app.port !== detectedPort))) {
+            apps = apps.map((app, index) => (index === 0 ? { ...app, port: detectedPort } : app));
+          }
+        }
+
+        const portsOpen =
+          apps.length > 0 ? await anyTcpPortOpen(apps.map((app) => app.port)) : false;
+        if (status !== "active" && portsOpen) {
+          status = "active";
+        }
+        // Bound running job counts as active even if declared ports were wrong.
+        if (status !== "active" && jobId && pid != null) {
+          status = "active";
+        }
+
+        if (!apps.length) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: "Setup 需要至少一个 apps[{ name, port, path }] 入口。",
+              },
+            ],
+          };
+        }
+
+        const now = Date.now();
         const next: SessionServicesMeta = {
           ...current,
           installCommand: params.installCommand?.trim() || undefined,
@@ -345,18 +429,31 @@ const projectServicesExtension: ExtensionDefinition = {
           stopCommand: params.stopCommand?.trim() || undefined,
           destroyCommand: params.destroyCommand?.trim() || undefined,
           apps,
-          status: "unregistered",
-          pid: null,
-          jobId: undefined,
+          status,
+          pid: status === "active" ? pid : null,
+          jobId: status === "active" ? jobId : undefined,
           resolvedStartCommand: undefined,
+          ...(status === "active"
+            ? {
+                lastActiveAt: now,
+                sleepAt: computeServiceSleepAt(now),
+                startedAt: new Date().toISOString(),
+                installedAt: current.installedAt ?? new Date().toISOString(),
+              }
+            : {}),
         };
         await writeServices(next);
-        await refreshInject(next);
+        const appsSummary = apps
+          .map((app) => `${app.name}:${app.port}${app.path ?? "/"}`)
+          .join(", ");
         return {
           content: [
             {
               type: "text",
-              text: `已登记项目服务（${apps.length} 个入口）。若尚未交给系统托管，可调用 ProjectServiceStart（端口已通时勿重复拉起）。`,
+              text:
+                status === "active"
+                  ? `已登记并激活应用（${apps.length}）：${appsSummary}${jobId ? `；job=${jobId}` : ""}${detectedPort ? `；detectedPort=${detectedPort}` : ""}。勿再 ProjectServiceStart。`
+                  : `已登记项目服务（${apps.length} 个入口：${appsSummary}），但尚未确认在跑（端口未通且无有效 taskId）。可 ProjectServiceStart，或修正 apps.port 后重试 Setup。`,
             },
           ],
         };
@@ -365,7 +462,8 @@ const projectServicesExtension: ExtensionDefinition = {
 
     ctx.agent.registerTool({
       name: "ProjectServiceStart",
-      description: "启动已登记的项目服务（后台运行）。",
+      description:
+        "按已登记命令后台启动项目服务。仅当服务未在跑时使用。若 Setup 已带 taskId/端口已通，不要调用。重启先 ProjectServiceStop。",
       parameters: Type.Object({
         skipInstall: Type.Optional(Type.Boolean()),
       }),
@@ -376,12 +474,24 @@ const projectServicesExtension: ExtensionDefinition = {
             content: [{ type: "text", text: "尚未登记服务，请先调用 ProjectServiceSetup。" }],
           };
         }
-        if (isServiceActive(current!.status) && isSessionServiceProcessAlive(sessionId, current)) {
+        const ports = (current!.apps ?? []).map((app) => app.port).filter((p) => p > 0);
+        const portsOpen = ports.length > 0 ? await anyTcpPortOpen(ports) : false;
+        if (
+          (isServiceActive(current!.status) && isSessionServiceProcessAlive(sessionId, current)) ||
+          portsOpen
+        ) {
+          const now = Date.now();
+          await writeServices({
+            ...current!,
+            status: "active",
+            lastActiveAt: now,
+            sleepAt: computeServiceSleepAt(now),
+          });
           return {
             content: [
               {
                 type: "text",
-                text: `服务已在运行。入口：${JSON.stringify(current!.apps ?? [])}`,
+                text: `服务已在运行，已标记活跃。入口：${JSON.stringify(current!.apps ?? [])}。勿重复拉起。`,
               },
             ],
           };
@@ -400,6 +510,44 @@ const projectServicesExtension: ExtensionDefinition = {
             {
               type: "text",
               text: `服务已启动。入口：${JSON.stringify(next.apps ?? [])}`,
+            },
+          ],
+        };
+      },
+    });
+
+    ctx.agent.registerTool({
+      name: "ProjectServiceStop",
+      description:
+        "停止本 session 已登记的项目服务（系统托管进程）。用户要求停止或重启时用这个，不要 taskkill。",
+      parameters: Type.Object({}),
+      execute: async () => {
+        const current = await readServices();
+        if (!hasRegisteredServices(current)) {
+          return {
+            content: [{ type: "text", text: "尚未登记服务，请先调用 ProjectServiceSetup。" }],
+          };
+        }
+        await stopRegisteredSessionServices({
+          sessionId,
+          cwd: cwd(),
+          services: current,
+          jobs,
+          mode: "stop",
+        });
+        const next: SessionServicesMeta = {
+          ...current!,
+          status: "idle",
+          pid: null,
+          jobId: undefined,
+          resolvedStartCommand: undefined,
+        };
+        await writeServices(next);
+        return {
+          content: [
+            {
+              type: "text",
+              text: `服务已停止。入口：${JSON.stringify(next.apps ?? [])}。需要再启动时调用 ProjectServiceStart。`,
             },
           ],
         };

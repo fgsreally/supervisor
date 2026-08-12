@@ -1,8 +1,5 @@
 <template>
-  <aside
-    class="session-file-tree-sidebar"
-    :style="{ width: `${treePaneWidth}px` }"
-  >
+  <aside class="session-file-tree-sidebar" :style="{ width: `${treePaneWidth}px` }">
     <div
       class="session-file-tree-sidebar__resize"
       role="separator"
@@ -74,7 +71,6 @@ function startTreeResize(event: PointerEvent) {
   const startX = event.clientX;
   const startWidth = treePaneWidth.value;
   const onMove = (moveEvent: PointerEvent) => {
-    // Dragging the left edge: moving left increases width
     treePaneWidth.value = Math.min(420, Math.max(160, startWidth + (startX - moveEvent.clientX)));
   };
   const onUp = () => {
@@ -171,8 +167,8 @@ onBeforeUnmount(() => {
 .session-file-tree-sidebar__title {
   overflow: hidden;
   color: var(--app-text-primary);
-  font-size: 13px;
-  font-weight: 500;
+  font-size: var(--app-font-control);
+  font-weight: var(--app-font-weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }

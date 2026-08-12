@@ -61,6 +61,7 @@ export class SessionExtensionHost {
         description: tool.description ?? tool.name,
         parameters: tool.parameters as TSchema,
         source: "builtin",
+        active: true,
         definition: tool as unknown as ToolDefinition<TSchema, unknown>,
       });
     }
@@ -253,6 +254,14 @@ export class SessionExtensionHost {
   /** 将扩展注册的全部工具转换为 Pi Agent Harness 可执行工具。 */
   collectTools(): AgentTool[] {
     return (this.runtime.getAllTools() as ToolInfo[]).map((tool) => this.toAgentTool(tool));
+  }
+
+  setToolsActive(names: string[], active: boolean): void {
+    this.runtime.setToolsActive(names, active);
+  }
+
+  listActiveToolNames(extraNames: string[] = []): string[] {
+    return this.runtime.listActiveToolNames(extraNames);
   }
 
   /** 用当前 Agent 的扩展守卫和结果钩子包装普通 Agent 工具。 */

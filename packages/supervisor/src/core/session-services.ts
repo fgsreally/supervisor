@@ -11,6 +11,11 @@ import {
 
 export type { RegisteredServiceEntry };
 
+type SessionMetaStore = {
+  list: () => Array<{ id: number; meta: string }>;
+  updateMeta: (id: number, patch: Record<string, unknown>) => Record<string, unknown>;
+};
+
 /** Build the injected session tip about started services. */
 export function buildSessionServicesPrompt(services: SessionServicesMeta): string {
   if (!services.startCommand?.trim()) return "";
@@ -77,6 +82,34 @@ export function stoppedSessionServicesMeta(
     jobId: undefined,
     resolvedStartCommand: undefined,
   };
+}
+
+/**
+ * After Supervisor restart, child processes / Jobs are gone.
+ * Drop process-bound fields from meta.services; keep registration (commands/apps).
+ * Eval / background bash are not stored in meta (jobs table + session eval dir).
+ */
+export function scrubStaleSessionRuntimeMeta(db: SessionMetaStore): number {
+  let changed = 0;
+  for (const row of db.list()) {
+    let meta: Record<string, unknown>;
+    try {
+      meta = row.meta ? (JSON.parse(row.meta) as Record<string, unknown>) : {};
+    } catch {
+      continue;
+    }
+    const services = parseSessionServicesMeta(meta);
+    if (!services) continue;
+    const liveStatus =
+      services.status === "starting" ||
+      services.status === "running" ||
+      services.status === "active";
+    const hasRuntimeRef = Boolean(services.jobId) || services.pid != null;
+    if (!liveStatus && !hasRuntimeRef) continue;
+    db.updateMeta(row.id, { services: stoppedSessionServicesMeta(services) });
+    changed += 1;
+  }
+  return changed;
 }
 
 function parseApps(raw: unknown): SessionServiceApp[] {
@@ -180,7 +213,9 @@ function migrateLegacyEntries(row: Record<string, unknown>): SessionServicesMeta
     startCommand:
       entries.length === 1
         ? primary.startCommand
-        : entries.map((entry) => entry.startCommand).join(process.platform === "win32" ? " & " : " & "),
+        : entries
+            .map((entry) => entry.startCommand)
+            .join(process.platform === "win32" ? " & " : " & "),
     stopCommand: primary.stopCommand,
     destroyCommand: primary.destroyCommand ?? primary.uninstallCommand,
     apps: apps.length > 0 ? apps : undefined,
@@ -218,8 +253,7 @@ export function parseSessionServicesMeta(
     return null;
   }
 
-  const startCommand =
-    typeof row.startCommand === "string" ? row.startCommand.trim() : "";
+  const startCommand = typeof row.startCommand === "string" ? row.startCommand.trim() : "";
   if (startCommand) {
     return {
       status,

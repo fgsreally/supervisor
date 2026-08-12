@@ -130,4 +130,107 @@ describe("agent permission rules", () => {
       expect.objectContaining({ type: "text", text: expect.stringContaining("permission denied") }),
     );
   });
+
+  it("setTools only exposes active tools to the model", async () => {
+    const harnessState: {
+      tools: Map<string, { name: string }>;
+      activeToolNames: string[];
+    } = {
+      tools: new Map(),
+      activeToolNames: [],
+    };
+    const setTools = vi.fn(async (tools: Array<{ name: string }>, active?: string[]) => {
+      harnessState.tools = new Map(tools.map((tool) => [tool.name, tool]));
+      harnessState.activeToolNames = active ? [...active] : tools.map((tool) => tool.name);
+    });
+    const setActiveTools = vi.fn(async (names: string[]) => {
+      harnessState.activeToolNames = [...names];
+    });
+    const runtime = new SessionRuntime({
+      session: { id: 8 } as never,
+      harness: {
+        subscribe: vi.fn(),
+        setTools,
+        setActiveTools,
+        get tools() {
+          return harnessState.tools;
+        },
+        get activeToolNames() {
+          return harnessState.activeToolNames;
+        },
+      } as never,
+      resource: {} as never,
+      getSession: () => ({ id: 8, projectId: null }) as never,
+      getMessages: async () => [],
+    });
+
+    // Simulate extension registry: Setup inactive, Start active
+    (
+      runtime as unknown as {
+        _extension: {
+          services: {
+            tools: {
+              ensureRegistered(name: string, active?: boolean): void;
+              filterActiveNames(names: string[]): string[];
+              noteRegistered(name: string, active?: boolean): void;
+              activate(names: string[]): void;
+              deactivate(names: string[]): void;
+            };
+          };
+        };
+      }
+    )._extension = {
+      services: {
+        tools: {
+          _map: new Map<string, boolean>([
+            ["bash", true],
+            ["ProjectServiceSetup", false],
+            ["ProjectServiceStart", true],
+          ]),
+          ensureRegistered(name, active = true) {
+            if (!this._map.has(name)) this._map.set(name, active);
+          },
+          noteRegistered(name, active = true) {
+            this._map.set(name, active);
+          },
+          activate(names) {
+            for (const name of names) this._map.set(name, true);
+          },
+          deactivate(names) {
+            for (const name of names) this._map.set(name, false);
+          },
+          filterActiveNames(names) {
+            return names.filter((name) => this._map.get(name) !== false);
+          },
+        },
+      },
+      wrapTools: (tools: unknown) => tools,
+    } as never;
+
+    await runtime.setTools([
+      {
+        name: "bash",
+        label: "bash",
+        description: "bash",
+        parameters: {} as never,
+        execute: vi.fn(),
+      },
+      {
+        name: "ProjectServiceSetup",
+        label: "ProjectServiceSetup",
+        description: "setup",
+        parameters: {} as never,
+        execute: vi.fn(),
+      },
+      {
+        name: "ProjectServiceStart",
+        label: "ProjectServiceStart",
+        description: "start",
+        parameters: {} as never,
+        execute: vi.fn(),
+      },
+    ]);
+
+    expect(setTools.mock.calls[0]?.[1]).toEqual(["bash", "ProjectServiceStart"]);
+  });
 });

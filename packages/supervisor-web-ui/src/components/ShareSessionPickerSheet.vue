@@ -1,7 +1,7 @@
 <template>
   <MobileDrawer
     :open="open"
-    aria-label="选择会话"
+    ariaLabel="选择会话"
     title="选择会话"
     size="auto"
     :resizable="false"

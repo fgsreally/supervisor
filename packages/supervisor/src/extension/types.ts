@@ -186,12 +186,20 @@ export interface ExtensionSession {
     afterUse(handler: ToolResultHandler, options?: { priority?: number }): () => void;
     enable(name: string): void;
     disable(name: string, reason?: string): void;
-    setActive(names: string[]): Promise<void>;
-    getActive(): string[] | null;
   };
   getDir(): Promise<string>;
   /** Update session working directory (e.g. after worktree create). */
   setCwd(path: string): Promise<void>;
+  /**
+   * Append text to this session's runtime system prompt (DB + harness).
+   * No-op when `content` is empty or already present (idempotent).
+   */
+  appendSystemPrompt(content: string): Promise<void>;
+  /**
+   * Upsert a named block into the session system prompt (DB + harness).
+   * Replaces any previous block with the same `id` (marker-wrapped).
+   */
+  upsertSystemPromptBlock(id: string, content: string): Promise<void>;
   isIdle(): boolean;
   isStreaming(): boolean;
   abort(): void;
@@ -254,6 +262,10 @@ export interface ExtensionAgent {
     definition: ToolDefinition<TParams, TResult>,
   ): void;
   unregisterTool(name: string): void;
+  /** Mark registered tools as model-visible (sent to the LLM). */
+  activate(names: string[]): Promise<void>;
+  /** Mark registered tools as hidden from the LLM (does not unregister). */
+  deactivate(names: string[]): Promise<void>;
   registerCommand(name: string, definition: ExtensionCommandDefinition): void;
   unregisterCommand(name: string): void;
   registerSlash(name: string, definition: ExtensionSlashDefinition): void;
@@ -931,6 +943,12 @@ export interface ToolDefinition<TParams extends TSchema, TResult> {
   description: string;
   parameters: TParams;
 
+  /**
+   * Whether the tool is model-visible after registration.
+   * Defaults to true when omitted.
+   */
+  active?: boolean;
+
   /** 可选：工具提示片段（用于系统提示） */
   promptSnippet?: string;
 
@@ -966,6 +984,8 @@ export interface ToolInfo {
   parameters: TSchema;
   source: "builtin" | "extension";
   extensionName?: string;
+  /** Model-visible when true. Only active tools are sent to the LLM. */
+  active: boolean;
   definition: ToolDefinition<TSchema, unknown>;
 }
 

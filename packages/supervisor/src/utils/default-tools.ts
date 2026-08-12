@@ -9,53 +9,20 @@ import {
   type ToolsOptions,
 } from "@earendil-works/pi-coding-agent";
 import type { ToolsPreset } from "../types.js";
+import {
+  createSupervisorBashTool,
+  type BashJobHost,
+  type SupervisorBashOptions,
+} from "../tools/bash/index.js";
 
-const BASH_INTENT_ERROR =
-  "bash tool requires a non-empty `intent` field describing why you are running this command.";
-
-function assertBashIntent(params: unknown): void {
-  const intent =
-    typeof params === "object" &&
-    params !== null &&
-    "intent" in params &&
-    typeof params.intent === "string"
-      ? params.intent.trim()
-      : "";
-  if (!intent) {
-    throw new Error(BASH_INTENT_ERROR);
-  }
-}
-
-function requireBashIntent(tool: AgentTool): AgentTool {
-  const execute = tool.execute.bind(tool);
-  const prepareArguments = tool.prepareArguments?.bind(tool);
-  return {
-    ...tool,
-    description: `${tool.description} The \`intent\` parameter is required: a one-line summary of why you run the command.`,
-    prepareArguments(args) {
-      const prepared = prepareArguments ? prepareArguments(args) : args;
-      assertBashIntent(prepared);
-      return prepared;
-    },
-    async execute(toolCallId, params, signal, onUpdate) {
-      assertBashIntent(params);
-      return execute(toolCallId, params, signal, onUpdate);
-    },
-  };
-}
-
-function wrapTools(tools: AgentTool[]): AgentTool[] {
-  return tools.map((tool) => (tool.name === "bash" ? requireBashIntent(tool) : tool));
-}
-
-/** Exploration tools from pi-coding-agent (not included in createCodingTools). */
-function createExplorationTools(cwd: string, options?: ToolsOptions): AgentTool[] {
-  return [
-    createGrepTool(cwd, options?.grep),
-    createFindTool(cwd, options?.find),
-    createLsTool(cwd, options?.ls),
-  ];
-}
+export type DefaultToolsOptions = ToolsOptions & {
+  /** Session id for background bash tasks (kimi-style run_in_background). */
+  sessionId?: number;
+  /** Job host used by background bash. Omit → foreground-only. */
+  jobs?: BashJobHost;
+  /** Extra env for bash (e.g. registered service ports). */
+  getEnv?: () => NodeJS.ProcessEnv;
+};
 
 /** Match interactive pi: merge global + project settings for bash shell resolution. */
 export function resolveToolsOptions(cwd: string, overrides?: ToolsOptions): ToolsOptions {
@@ -83,21 +50,51 @@ export function resolveToolsOptions(cwd: string, overrides?: ToolsOptions): Tool
   };
 }
 
+function createExplorationTools(cwd: string, options?: ToolsOptions): AgentTool[] {
+  return [
+    createGrepTool(cwd, options?.grep),
+    createFindTool(cwd, options?.find),
+    createLsTool(cwd, options?.ls),
+  ];
+}
+
+function replacePiBash(tools: AgentTool[], bash: AgentTool): AgentTool[] {
+  const without = tools.filter((tool) => tool.name !== "bash");
+  return [...without, bash];
+}
+
+function buildSupervisorBash(cwd: string, options?: DefaultToolsOptions): AgentTool {
+  const merged = resolveToolsOptions(cwd, options);
+  const bashOptions: SupervisorBashOptions = {
+    cwd,
+    sessionId: options?.sessionId,
+    jobs: options?.jobs,
+    shellPath: merged.bash?.shellPath,
+    commandPrefix: merged.bash?.commandPrefix,
+    getEnv: options?.getEnv,
+  };
+  return createSupervisorBashTool(bashOptions);
+}
+
 /**
- * Default supervisor tools: pi coding tools plus grep/find/ls for exploration.
- * Additional capabilities come from packaged tools (`src/tools/`) and extensions.
+ * Default supervisor tools: pi coding tools with Supervisor bash (fg + bg) replacing pi bash.
+ * Background tasks require sessionId + jobs (wired by SessionManager).
  */
 export function createDefaultTools(
   cwd: string,
   preset: ToolsPreset = "coding",
-  options?: ToolsOptions,
+  options?: DefaultToolsOptions,
 ): AgentTool[] {
   const merged = resolveToolsOptions(cwd, options);
+  const bash = buildSupervisorBash(cwd, options);
   switch (preset) {
     case "coding":
-      return wrapTools([...createCodingTools(cwd, merged), ...createExplorationTools(cwd, merged)]);
+      return replacePiBash(
+        [...createCodingTools(cwd, merged), ...createExplorationTools(cwd, merged)],
+        bash,
+      );
     case "readonly":
-      return wrapTools(createReadOnlyTools(cwd, merged));
+      return replacePiBash(createReadOnlyTools(cwd, merged), bash);
     case "none":
       return [];
   }

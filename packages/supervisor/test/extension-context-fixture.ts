@@ -140,6 +140,7 @@ export interface RuntimeOptions {
     eventBus: EventBus;
     continueTurn: (content: string, options?: { source?: string }) => Promise<void>;
     setActiveTools: (names: string[]) => Promise<void>;
+    syncActiveTools: () => Promise<void>;
     getContextUsage: () => Promise<{ tokens: number | null }>;
   };
 }
@@ -147,6 +148,7 @@ export interface RuntimeOptions {
 interface TestExtensionHost {
   emit(event: ExtensionEvent): void | Promise<void>;
   listTools(): ToolInfo[];
+  setToolsActive?(names: string[], active: boolean): void;
   on<T extends ExtensionEvent>(
     extensionId: string,
     event: T["type"],
@@ -298,11 +300,31 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
           services.tools.afterUse(handler, toolOptions),
         enable: (name: string) => services.tools.enable(name),
         disable: (name: string, reason?: string) => services.tools.disable(name, reason),
-        setActive: async (names: string[]) => {
-          services.tools.setActive(names);
-          await options.deps.setActiveTools(names);
-        },
-        getActive: () => services.tools.getActiveToolNames(),
+      },
+      setCwd: async (path: string) => {
+        options.cwd = path;
+      },
+      appendSystemPrompt: async (content: string) => {
+        const fragment = content.trim();
+        if (!fragment) return;
+        const current = options.agent.systemPrompt ?? "";
+        if (current.includes(fragment)) return;
+        options.agent.systemPrompt = current ? `${current}\n\n${fragment}` : fragment;
+      },
+      upsertSystemPromptBlock: async (id: string, content: string) => {
+        const key = id.trim();
+        const fragment = content.trim();
+        if (!key || !fragment) return;
+        const start = `<!-- ext-sys:${key} -->`;
+        const end = `<!-- /ext-sys:${key} -->`;
+        const block = `${start}\n${fragment}\n${end}`;
+        const current = options.agent.systemPrompt ?? "";
+        const marked = new RegExp(
+          `${start.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}[\\s\\S]*?${end.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\n?`,
+          "g",
+        );
+        const base = current.replace(marked, "").trim();
+        options.agent.systemPrompt = base ? `${base}\n\n${block}` : block;
       },
       getParent: options.db.getParentSession,
       children: options.db.getChildSessions,
@@ -346,6 +368,16 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
         definition: ToolDefinition<TParams, TResult>,
       ) => requireHost().registerTool(requireExtension(), definition),
       unregisterTool: (name: string) => requireHost().unregisterTool(requireExtension(), name),
+      activate: async (names: string[]) => {
+        requireHost().setToolsActive?.(names, true);
+        services.tools.activate(names);
+        await options.deps.syncActiveTools();
+      },
+      deactivate: async (names: string[]) => {
+        requireHost().setToolsActive?.(names, false);
+        services.tools.deactivate(names);
+        await options.deps.syncActiveTools();
+      },
       registerCommand: (name: string, definition: ExtensionCommandDefinition) =>
         requireHost().registerCommand(requireExtension(), name, definition),
       unregisterCommand: (name: string) =>

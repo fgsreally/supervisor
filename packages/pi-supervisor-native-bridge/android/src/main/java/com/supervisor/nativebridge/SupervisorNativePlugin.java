@@ -1,15 +1,35 @@
 package com.supervisor.nativebridge;
 
+import android.Manifest;
+import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.os.Build;
+
+import androidx.activity.result.ActivityResult;
+import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
+import com.getcapacitor.annotation.ActivityCallback;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
+import com.journeyapps.barcodescanner.ScanContract;
+import com.journeyapps.barcodescanner.ScanOptions;
+import com.journeyapps.barcodescanner.ScanIntentResult;
 
-@CapacitorPlugin(name = "SupervisorNative")
+@CapacitorPlugin(
+    name = "SupervisorNative",
+    permissions = {
+        @Permission(
+            alias = "camera",
+            strings = { Manifest.permission.CAMERA }
+        )
+    }
+)
 public class SupervisorNativePlugin extends Plugin {
 
     private static SupervisorNativePlugin instance;
@@ -117,6 +137,57 @@ public class SupervisorNativePlugin extends Plugin {
     @PluginMethod
     public void isOppoLiveUpdatesAvailable(PluginCall call) {
         isAndroidLiveUpdatesAvailable(call);
+    }
+
+    @PluginMethod
+    public void scanQrCode(PluginCall call) {
+        if (ContextCompat.checkSelfPermission(getContext(), Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED) {
+            launchQrScanner(call);
+            return;
+        }
+        requestPermissionForAlias("camera", call, "cameraPermissionCallback");
+    }
+
+    @PermissionCallback
+    private void cameraPermissionCallback(PluginCall call) {
+        if (getPermissionState("camera") == com.getcapacitor.PermissionState.GRANTED) {
+            launchQrScanner(call);
+        } else {
+            call.reject("需要相机权限才能扫码");
+        }
+    }
+
+    private void launchQrScanner(PluginCall call) {
+        ScanOptions options = new ScanOptions();
+        options.setDesiredBarcodeFormats(ScanOptions.QR_CODE);
+        options.setPrompt("扫描电脑端 Supervisor 二维码");
+        options.setBeepEnabled(false);
+        options.setOrientationLocked(true);
+        options.setCaptureActivity(QrCaptureActivity.class);
+        Intent intent = new ScanContract().createIntent(getContext(), options);
+        startActivityForResult(call, intent, "handleScanResult");
+    }
+
+    @ActivityCallback
+    private void handleScanResult(PluginCall call, ActivityResult result) {
+        if (call == null) return;
+        if (result.getResultCode() != Activity.RESULT_OK) {
+            call.reject("cancelled");
+            return;
+        }
+        ScanIntentResult scan = ScanIntentResult.parseActivityResult(
+            result.getResultCode(),
+            result.getData()
+        );
+        String contents = scan != null ? scan.getContents() : null;
+        if (contents == null || contents.trim().isEmpty()) {
+            call.reject("cancelled");
+            return;
+        }
+        JSObject ret = new JSObject();
+        ret.put("value", contents.trim());
+        call.resolve(ret);
     }
 
     private void applyLiveStatus(PluginCall call) {

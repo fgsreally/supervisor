@@ -11,7 +11,11 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function upsertFromPage(storage: MessageStorage, sessionId: string, messages: api.SessionTreeEntry[]) {
+async function upsertFromPage(
+  storage: MessageStorage,
+  sessionId: string,
+  messages: api.SessionTreeEntry[],
+) {
   const entries = sessionTreeToChatEntries(messages);
   const turns = chatEntriesToTurns(sessionId, entries);
   if (turns.length) await storage.upsertTurns(sessionId, turns);

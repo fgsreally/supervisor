@@ -3,7 +3,13 @@
     class="app-root flex h-full w-full overflow-hidden font-sans"
     style="background: var(--app-shell-bg)"
   >
-    <StartupGate v-if="!appReady" @ready="onStartupReady" />
+    <MobileInstanceListView
+      v-if="showInstancePicker"
+      :allow-dismiss="instancePickerDismissible"
+      @connected="onInstanceConnected"
+      @dismiss="closeInstancePicker"
+    />
+    <StartupGate v-else-if="!appReady" @ready="onStartupReady" />
     <template v-else>
       <AddToHomeScreenHint />
       <template v-if="!isMobile">
@@ -193,7 +199,11 @@
               />
             </template>
             <template #me>
-              <MobileMeView @navigate="navigateMobilePath" @tutorial="introTour?.start()" />
+              <MobileMeView
+                @navigate="navigateMobilePath"
+                @tutorial="introTour?.start()"
+                @manage-servers="openInstancePicker"
+              />
             </template>
           </MobilePrimaryTabPager>
           <SettingsPanel
@@ -355,8 +365,11 @@ import UiBusyHost from "./components/UiBusyHost.vue";
 import StartupGate from "./components/StartupGate.vue";
 import IntroTour from "./components/IntroTour.vue";
 import MobileAppShell from "./components/mobile/MobileAppShell.vue";
+import MobileInstanceListView from "./components/mobile/MobileInstanceListView.vue";
 import MobileMeView from "./components/mobile/MobileMeView.vue";
 import MobileWorkView from "./components/mobile/MobileWorkView.vue";
+import { isNativeApp } from "./composables/use-native-app";
+import { hasConfiguredSupervisorInstance } from "./utils/mobile-server-config";
 import MobilePrimaryTabPager, {
   type MobilePrimaryTabKey,
 } from "./components/mobile/MobilePrimaryTabPager.vue";
@@ -374,11 +387,11 @@ import "./styles/font-scale.css";
 import "./styles/type-scale.css";
 
 const { width: chatListWidth, startResize: startListResize } = useResizableWidth({
-  // 导航栏(64px) + 聊天列表合计约 1/4 屏宽
-  defaultWidth: Math.max(136, Math.round(window.innerWidth * 0.25) - 64),
-  minWidth: 136,
-  maxWidth: Math.max(360, Math.round(window.innerWidth * 0.32) - 64),
-  storageKey: "pi-supervisor-chat-list-width-v3",
+  // Session list needs room for avatar + title + preview; bump key to drop old narrow caches.
+  defaultWidth: Math.min(360, Math.max(300, Math.round(window.innerWidth * 0.22))),
+  minWidth: 260,
+  maxWidth: Math.max(420, Math.round(window.innerWidth * 0.36)),
+  storageKey: "pi-supervisor-chat-list-width-v4",
 });
 
 const route = useRoute();
@@ -411,7 +424,24 @@ const providerEditOpen = ref(false);
 const providerEditId = ref<string | null>(null);
 const appReady = ref(false);
 const introTour = ref<InstanceType<typeof IntroTour> | null>(null);
+const instancePickerMode = ref<"required" | "manage" | null>(
+  isNativeApp() && !hasConfiguredSupervisorInstance() ? "required" : null,
+);
+const showInstancePicker = computed(() => instancePickerMode.value !== null);
+const instancePickerDismissible = computed(() => instancePickerMode.value === "manage");
 let appDataLoaded = false;
+
+function openInstancePicker() {
+  instancePickerMode.value = "manage";
+}
+
+function closeInstancePicker() {
+  if (instancePickerMode.value === "manage") instancePickerMode.value = null;
+}
+
+function onInstanceConnected() {
+  instancePickerMode.value = null;
+}
 
 function applyRoute() {
   const tab = tabFromRoute(route);

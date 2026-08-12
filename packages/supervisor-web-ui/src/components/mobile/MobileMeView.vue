@@ -33,12 +33,11 @@
         </button>
       </template>
     </div>
-    <MobileServerConfigSheet v-model:open="serverSheetOpen" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed } from "vue";
 import {
   BookOpenCheck,
   Boxes,
@@ -54,7 +53,7 @@ import { useAppTheme } from "@/composables/use-app-theme";
 import { useAppFontScale, type AppFontScale } from "@/composables/use-app-font-scale";
 import { isNativeApp } from "@/composables/use-native-app";
 import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
-import MobileServerConfigSheet from "./MobileServerConfigSheet.vue";
+import { displayNameForUrl, getActiveSupervisorInstance } from "@/utils/mobile-server-config";
 
 type ItemId =
   | "providers"
@@ -67,12 +66,17 @@ type ItemId =
   | "tutorial"
   | "diagnostics";
 
-const serverSheetOpen = ref(false);
 const showNativeServer = computed(() => isNativeApp());
+const activeServerLabel = computed(() => {
+  const active = getActiveSupervisorInstance();
+  if (!active) return "扫码或填写地址，连接多个实例";
+  return active.name || displayNameForUrl(active.url);
+});
 
 const emit = defineEmits<{
   navigate: [route: string];
   tutorial: [];
+  manageServers: [];
 }>();
 
 const { isDark, toggleDark } = useAppTheme();
@@ -120,8 +124,8 @@ const groups = computed(() => {
       ? [
           {
             id: "server" as const,
-            label: "服务器连接",
-            description: "Supervisor 地址与 PIN、后台连接",
+            label: "服务器",
+            description: activeServerLabel.value,
             icon: Server,
             color: "#576b95",
           },
@@ -196,7 +200,7 @@ function open(id: ItemId) {
     viewPreferences.advancedAnimations = !viewPreferences.advancedAnimations;
     saveViewPreferences();
   } else if (id === "settings") emit("navigate", "/settings/services");
-  else if (id === "server") serverSheetOpen.value = true;
+  else if (id === "server") emit("manageServers");
   else if (id === "diagnostics") emit("navigate", "/settings/diagnostics");
   else emit("tutorial");
 }

@@ -15,9 +15,7 @@ export interface ActiveUiEntry {
   status: "starting" | "running" | "active" | "stopped" | "error" | "idle";
 }
 
-function isActiveStatus(
-  status: string,
-): status is "starting" | "running" | "active" {
+function isActiveStatus(status: string): status is "starting" | "running" | "active" {
   return status === "running" || status === "starting" || status === "active";
 }
 

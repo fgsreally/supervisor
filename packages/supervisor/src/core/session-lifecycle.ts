@@ -352,31 +352,49 @@ export async function finalizeSessionLifecycleGit(
   try {
     await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch);
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    sessionLog(session.id, "warn", `worktree remove failed, asking Watson: ${message}`, [
-      "system",
-      "git",
-      "worktree",
-      "watson",
-    ]);
-    await runWatson({
-      mode: "agent",
-      cwd: git.repoRoot,
-      kind: "worktree-cleanup",
-      prompt: [
-        "`git worktree remove` 失败，请诊断并尽量安全修复，使该 worktree 可被移除。",
-        "优先结束占用该目录的进程（如 vite/node），不要 rm -rf 强删整个仓库。",
-        "修复后可自行再试 `git worktree remove --force <path>`。",
-        "",
-        `worktreePath: ${git.worktreePath}`,
-        `branch: ${git.branch}`,
-        `error: ${message}`,
-      ].join("\n"),
-    }).catch((watsonError: unknown) => {
-      const detail = watsonError instanceof Error ? watsonError.message : String(watsonError);
-      console.error(`Watson worktree cleanup failed [${session.id}]:`, detail);
-    });
-    await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch);
+    let lastError = error instanceof Error ? error.message : String(error);
+    const maxRounds = 3;
+    for (let round = 1; round <= maxRounds; round++) {
+      sessionLog(
+        session.id,
+        "warn",
+        `worktree remove failed, asking Watson (${round}/${maxRounds}): ${lastError}`,
+        ["system", "git", "worktree", "watson"],
+      );
+      await runWatson({
+        mode: "agent",
+        cwd: git.repoRoot,
+        kind: "worktree-cleanup",
+        toolsPreset: "coding",
+        prompt: [
+          "Session 收尾时无法移除 git worktree，目录很可能仍被本地服务或进程占用。",
+          "请先阅读项目根目录与该 worktree 内的 AGENTS.md（尤其「本地开发服务」启停说明），",
+          "按文档停止相关服务与占用该目录的进程，再执行：",
+          `git -C ${JSON.stringify(git.repoRoot)} worktree remove --force ${JSON.stringify(git.worktreePath)}`,
+          "必要时可 `git worktree prune`。不要 rm -rf 整个仓库或无关路径。",
+          "",
+          `worktreePath: ${git.worktreePath}`,
+          `branch: ${git.branch}`,
+          `error: ${lastError}`,
+          `attempt: ${round}/${maxRounds}`,
+        ].join("\n"),
+      }).catch((watsonError: unknown) => {
+        const detail = watsonError instanceof Error ? watsonError.message : String(watsonError);
+        console.error(`Watson worktree cleanup failed [${session.id}]:`, detail);
+      });
+      try {
+        await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch);
+        lastError = "";
+        break;
+      } catch (retryError: unknown) {
+        lastError = retryError instanceof Error ? retryError.message : String(retryError);
+      }
+    }
+    if (lastError) {
+      throw new Error(
+        `Worktree still present after Watson cleanup: ${git.worktreePath} (${lastError})`,
+      );
+    }
   }
   sessionLog(
     session.id,

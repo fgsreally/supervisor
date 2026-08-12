@@ -104,7 +104,9 @@ export class IndexedDBMessageStorage extends MessageStorage {
     return this.withStore(STORE_TURNS, "readonly", async (tx) => {
       const index = tx.objectStore(STORE_TURNS).index("bySession");
       const rows = await request(index.getAll(sessionId));
-      const turns = (rows as Array<TurnIndex & { key: string }>).map(({ key: _key, ...turn }) => turn);
+      const turns = (rows as Array<TurnIndex & { key: string }>).map(
+        ({ key: _key, ...turn }) => turn,
+      );
       return turns.sort((a, b) => a.createdAt - b.createdAt || a.turnId.localeCompare(b.turnId));
     });
   }

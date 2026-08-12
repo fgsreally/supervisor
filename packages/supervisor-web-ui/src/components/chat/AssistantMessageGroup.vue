@@ -38,8 +38,13 @@
           :style="{ background: 'var(--app-bubble-assistant)' }"
         />
         <div class="relative z-10 leading-[1.42] flex flex-col gap-2.5">
-          <div v-if="collapsedExecutionPieces.length" class="external-details">
+          <div
+            v-if="collapsedExecutionPieces.length"
+            class="external-details"
+            :class="{ 'external-details--collapsed': showExecutionSummary }"
+          >
             <button
+              v-if="showExecutionSummary"
               type="button"
               class="external-details__summary"
               :aria-expanded="executionOpen"
@@ -50,14 +55,16 @@
             </button>
             <div
               class="external-details__collapse"
-              :class="{ 'external-details__collapse--open': executionOpen }"
+              :class="{
+                'external-details__collapse--open': executionOpen || isActiveStreamGroup,
+              }"
             >
               <div class="external-details__body">
                 <template v-for="{ piece, index } in collapsedExecutionPieces" :key="index">
                   <ThinkingBlock
                     v-if="piece.kind === 'thinking'"
                     :content="piece.text"
-                    :streaming="false"
+                    :streaming="isStreamingPiece(index)"
                   />
                   <MarkdownContent
                     v-else-if="piece.kind === 'text'"
@@ -108,7 +115,7 @@
             <MarkdownContent
               v-else-if="piece.kind === 'text'"
               variant="terminal"
-              :content="piece.text + (isStreamingPiece(pieceIndex) ? '▍' : '')"
+              :content="piece.text"
             />
 
             <ToolStepRenderer
@@ -148,7 +155,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from "vue";
+import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ChevronRight, Loader2 } from "lucide-vue-next";
 import type { DisplayGroup, RenderPiece } from "@/utils/flatten-messages";
 import MarkdownContent from "../MarkdownContent.vue";
@@ -211,9 +218,17 @@ const lastToolIndex = computed(() =>
   props.group.pieces.reduce((latest, piece, index) => (isToolPiece(piece) ? index : latest), -1),
 );
 
+/** Preference on + this turn has tools: rail execution into the collapse container. */
 const collapseExecution = computed(
   () => viewPreferences.collapseExternalAgentDetails && lastToolIndex.value >= 0,
 );
+
+const isActiveStreamGroup = computed(
+  () => props.isStreaming && props.streamingGroupId === props.group.id,
+);
+
+/** Hide "执行过程" chrome while streaming; show it only after the turn finishes. */
+const showExecutionSummary = computed(() => collapseExecution.value && !isActiveStreamGroup.value);
 
 const collapsedExecutionPieces = computed(() =>
   collapseExecution.value
@@ -238,6 +253,17 @@ const displayPieces = computed(() =>
     ),
 );
 
+// After stream ends, keep the rail open one frame then close so CSS can animate the collapse.
+watch(isActiveStreamGroup, (active, wasActive) => {
+  if (!wasActive || active || !collapseExecution.value) return;
+  executionOpen.value = true;
+  nextTick(() => {
+    requestAnimationFrame(() => {
+      executionOpen.value = false;
+    });
+  });
+});
+
 function showTextDivider(displayIndex: number): boolean {
   if (displayIndex <= 0) return false;
   const prev = displayPieces.value[displayIndex - 1]?.piece;
@@ -245,14 +271,12 @@ function showTextDivider(displayIndex: number): boolean {
   return prev?.kind === "text" && curr?.kind === "text";
 }
 
-const isActiveStreamGroup = computed(
-  () => props.isStreaming && props.streamingGroupId === props.group.id,
-);
-
 function isStreamingPiece(pieceIndex: number): boolean {
   if (!isActiveStreamGroup.value) return false;
   const piece = props.group.pieces[pieceIndex];
-  return piece?.kind === "text" || piece?.kind === "thinking";
+  if (piece?.kind !== "text" && piece?.kind !== "thinking") return false;
+  // Only the trailing text/thinking piece is still growing; earlier segments are done.
+  return pieceIndex === props.group.pieces.length - 1;
 }
 
 function isToolPiecePending(piece: RenderPiece): boolean {
@@ -318,7 +342,7 @@ onBeforeUnmount(cancelLongPress);
   line-height: 1.65;
 }
 
-.external-details {
+.external-details--collapsed {
   margin-top: 4px;
   color: var(--app-text-secondary);
   font-size: 12px;

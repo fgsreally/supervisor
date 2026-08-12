@@ -149,9 +149,7 @@ function isSwipeBlocked(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return true;
   // Only block text editing / explicit opt-out. Large work-page rows are often
   // <button>, and blocking them made horizontal tab swipes feel broken.
-  return !!target.closest(
-    "input, textarea, select, [contenteditable='true'], [data-no-tab-swipe]",
-  );
+  return !!target.closest("input, textarea, select, [contenteditable='true'], [data-no-tab-swipe]");
 }
 
 function suppressClickAfterSwipe() {

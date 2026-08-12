@@ -59,7 +59,12 @@ import {
   runProjectRuntimeParse,
   type SessionServicesMeta,
 } from "./project-runtime.js";
-import { parseSessionServicesMeta } from "./session-services.js";
+import {
+  parseSessionServicesMeta,
+  sessionServicePortEnv,
+  scrubStaleSessionRuntimeMeta,
+  stoppedSessionServicesMeta,
+} from "./session-services.js";
 import { runWatson } from "./watson.js";
 import type { CreateHomeTaskOptions, HomeTask, UpdateHomeTaskOptions } from "../types.js";
 import {
@@ -357,6 +362,13 @@ export class SessionManager {
       });
     }
     this.jobs = new JobManager(db);
+    this.jobs.setTerminalHandler((job) => {
+      this.clearServiceRuntimeIfJob(job.sessionId, job.id);
+    });
+    scrubStaleSessionRuntimeMeta({
+      list: () => this.db.list(),
+      updateMeta: (id, patch) => this.db.updateMeta(id, patch),
+    });
     this.resourceHandlers = createResourceHandlers({
       db: this.db,
       extensionRegistry: this.extensionRegistry,
@@ -421,9 +433,44 @@ export class SessionManager {
     toolsPreset: "coding" | "readonly" | "none",
     overrideTools?: AgentTool[],
   ): AgentTool[] {
-    const baseTools = overrideTools ?? createDefaultTools(cwd, toolsPreset);
+    const baseTools =
+      overrideTools ??
+      createDefaultTools(cwd, toolsPreset, {
+        sessionId,
+        jobs: this.createBashJobHost(sessionId),
+        getEnv: () => this.getSessionBashEnv(sessionId),
+      });
     this.sessionToolConfigs.set(sessionId, { cwd, agentId, toolsPreset, overrideTools });
     return baseTools;
+  }
+
+  private createBashJobHost(sessionId: number) {
+    return {
+      create: async (input: Parameters<JobManager["create"]>[1]) =>
+        this.jobs.create(sessionId, input),
+      get: async (id: string) => this.jobs.get(id),
+      list: async (options?: { limit?: number; kind?: string }) =>
+        this.jobs.list(sessionId, options),
+      update: async (id: string, patch: Parameters<JobManager["update"]>[1]) =>
+        this.jobs.update(id, patch),
+      cancel: (id: string) => this.jobs.cancel(id),
+      input: (id: string, input: string) => this.jobs.input(id, input),
+      setCancelHandler: (id: string, handler: () => void | Promise<void>) =>
+        this.jobs.setCancelHandler(id, handler),
+      setInputHandler: (id: string, handler: (input: string) => void | Promise<void>) =>
+        this.jobs.setInputHandler(id, handler),
+    };
+  }
+
+  private getSessionBashEnv(sessionId: number): NodeJS.ProcessEnv {
+    const row = this.db.get(sessionId);
+    if (!row) return {};
+    try {
+      const meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
+      return sessionServicePortEnv(meta);
+    } catch {
+      return {};
+    }
   }
 
   /** BTW is always read-only, regardless of the parent agent's toolsPreset. */
@@ -1196,10 +1243,17 @@ export class SessionManager {
   ): Promise<void> {
     const toolsPreset = this.resolveToolsPresetForSession(session, agent.toolsPreset ?? "coding");
     const toolConfig = this.sessionToolConfigs.get(sessionId);
-    const baseTools = toolConfig?.overrideTools ?? createDefaultTools(session.cwd, toolsPreset);
+    const baseTools =
+      toolConfig?.overrideTools ??
+      createDefaultTools(session.cwd, toolsPreset, {
+        sessionId,
+        jobs: this.createBashJobHost(sessionId),
+        getEnv: () => this.getSessionBashEnv(sessionId),
+      });
     const merged = new Map<string, AgentTool>();
     for (const tool of baseTools) merged.set(tool.name, tool);
-    for (const tool of runtime.collectExtensionTools()) merged.set(tool.name, tool);
+    const extensionTools = runtime.collectExtensionTools();
+    for (const tool of extensionTools) merged.set(tool.name, tool);
     await runtime.setTools([...merged.values()]);
   }
 
@@ -2326,7 +2380,23 @@ export class SessionManager {
   }
 
   updateMeta(id: number, patch: Record<string, unknown>): Record<string, unknown> {
-    return this.db.updateMeta(id, patch);
+    const merged = this.db.updateMeta(id, patch);
+    if ("services" in patch) {
+      this.publishServicesChange(id);
+      this.publishSessionStatus(id);
+    }
+    return merged;
+  }
+
+  /** When a Job that backed meta.services ends, drop process-bound fields (keep registration). */
+  clearServiceRuntimeIfJob(sessionId: number, jobId: string): void {
+    const session = this._getSession(sessionId);
+    if (!session) return;
+    const services = parseSessionServicesMeta(session.meta);
+    if (!services?.jobId || services.jobId !== jobId) return;
+    this.db.updateMeta(sessionId, { services: stoppedSessionServicesMeta(services) });
+    this.publishServicesChange(sessionId);
+    this.publishSessionStatus(sessionId);
   }
 
   /** Promote known column keys (title, avatar, pinned, ...) onto the sessions row. */

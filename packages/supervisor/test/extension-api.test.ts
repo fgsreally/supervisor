@@ -49,6 +49,7 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
       sendUserMessage: async () => {},
       continueTurn: overrides?.continueTurn ?? vi.fn(async () => {}),
       setActiveTools: vi.fn(async () => {}),
+      syncActiveTools: vi.fn(async () => {}),
       getContextUsage: async () => ({ tokens: 42 }),
       getSessionDir: async () => process.cwd(),
       getProjectDir: async () => process.cwd(),
@@ -108,34 +109,36 @@ function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.
 }
 
 describe("extension api", () => {
-  it("runs and reads an in-memory persistent Bash session", async () => {
-    const runtime = new SessionExtensionHost(createExtensionTestContext(createRuntimeOptions()));
-    await runtime.initialize();
-    const context = {
-      toolCallId: "persistent-bash-test",
-      session: { id: "1", cwd: process.cwd() },
-      reportProgress: () => {},
-    };
-    const started = await runtime.executeTool(
-      "PersistentBash",
-      {
-        action: "start",
-        command: `node -e "process.stdout.write('persistent-ready')"`,
-        label: "test shell",
-      },
-      context,
-    );
+  it("runs and reads a background bash task via unified bash tool", async () => {
+    const options = createRuntimeOptions();
+    const host = createExtensionTestContext(options);
+    const { createSupervisorBashTool } = await import("../src/tools/bash/index.js");
+    const bash = createSupervisorBashTool({
+      cwd: process.cwd(),
+      sessionId: options.sessionId,
+      jobs: host.jobs,
+    });
+    const started = await bash.execute("bash-bg-test", {
+      intent: "start test shell",
+      command: `node -e "process.stdout.write('persistent-ready')"`,
+      run_in_background: true,
+      description: "test shell",
+      disable_timeout: true,
+    });
     const id = (started.details as { id: string }).id;
     await vi.waitFor(
       async () => {
-        const read = await runtime.executeTool("PersistentBash", { action: "read", id }, context);
+        const read = await bash.execute("bash-bg-read", {
+          intent: "read test shell",
+          action: "read",
+          task_id: id,
+        });
         expect(read.content[0]?.type === "text" ? read.content[0].text : "").toContain(
           "persistent-ready",
         );
       },
       { timeout: 5_000 },
     );
-    await runtime.clear();
   });
 
   it("persists timers in session meta and records fired timers as Jobs", async () => {

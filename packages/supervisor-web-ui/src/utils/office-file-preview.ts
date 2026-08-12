@@ -48,9 +48,7 @@ export async function pptxBase64ToHtml(base64: string): Promise<string> {
       texts.length > 0
         ? texts.map((line) => `<p>${escapeHtml(line)}</p>`).join("")
         : "<p class='office-preview__muted'>（本页无文本）</p>";
-    parts.push(
-      `<section class="office-preview__slide"><h3>幻灯片 ${i + 1}</h3>${body}</section>`,
-    );
+    parts.push(`<section class="office-preview__slide"><h3>幻灯片 ${i + 1}</h3>${body}</section>`);
   }
   return parts.join("");
 }

@@ -201,7 +201,8 @@ export class SessionToolSet {
   private beforeHandlers: GuardRegistration[] = [];
   private afterHandlers: Array<{ handler: ToolResultHandler; priority: number }> = [];
   private disabledTools = new Map<string, string | undefined>();
-  private activeToolNames: string[] | null = null;
+  /** Per-tool model visibility. Missing key means active (default true). */
+  private toolActive = new Map<string, boolean>();
 
   setPolicy(policy: ToolPolicy): void {
     this.policy = policy.clone();
@@ -239,20 +240,43 @@ export class SessionToolSet {
     this.disabledTools.delete(name);
   }
 
-  setActive(names: string[]): void {
-    this.activeToolNames = [...names];
+  /** Record initial visibility from registerTool (default true). */
+  noteRegistered(name: string, active = true): void {
+    this.toolActive.set(name, active);
   }
 
-  getActiveToolNames(): string[] | null {
-    return this.activeToolNames ? [...this.activeToolNames] : null;
+  /** Default-active for tools that appear on the harness without registerTool. */
+  ensureRegistered(name: string, active = true): void {
+    if (!this.toolActive.has(name)) this.toolActive.set(name, active);
   }
 
-  filterActiveTools(names: string[]): string[] {
-    const base = this.activeToolNames ?? names;
-    return base.filter((name) => {
+  noteUnregistered(name: string): void {
+    this.toolActive.delete(name);
+  }
+
+  activate(names: string[]): void {
+    for (const name of names) this.toolActive.set(name, true);
+  }
+
+  deactivate(names: string[]): void {
+    for (const name of names) this.toolActive.set(name, false);
+  }
+
+  isActive(name: string): boolean {
+    return this.toolActive.get(name) !== false;
+  }
+
+  /** Active names among `allNames` (default true when never recorded). */
+  filterActiveNames(allNames: string[]): string[] {
+    return allNames.filter((name) => {
+      if (!this.isActive(name)) return false;
       if (this.disabledTools.has(name)) return false;
       return this.policy.check({ name, args: {} }).allow;
     });
+  }
+
+  filterActiveTools(names: string[]): string[] {
+    return this.filterActiveNames(names);
   }
 
   async checkBeforeCall(call: ToolCallInfo & { toolCallId: string }): Promise<ToolDecision> {
@@ -263,8 +287,8 @@ export class SessionToolSet {
       };
     }
 
-    if (this.activeToolNames && !this.activeToolNames.includes(call.name)) {
-      return { allow: false, reason: `Tool "${call.name}" is not in the active tool set.` };
+    if (!this.isActive(call.name)) {
+      return { allow: false, reason: `Tool "${call.name}" is not active.` };
     }
 
     const policyDecision = this.policy.check(call);

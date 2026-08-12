@@ -140,10 +140,7 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
     const packagedPrompt = loadPackagedAgentPrompt(kind);
     const legacyIntroPrompt = agent?.systemPrompt?.trim() === LEGACY_INTRO_PROMPT;
     // Packaged agents keep system_prompt in sync with agents/<kind>/prompt.md on boot.
-    if (
-      agent?.systemPrompt !== packagedPrompt ||
-      (kind === "intro" && legacyIntroPrompt)
-    ) {
+    if (agent?.systemPrompt !== packagedPrompt || (kind === "intro" && legacyIntroPrompt)) {
       db.updateAgent(existing, { system_prompt: packagedPrompt });
     }
     ensureAgentHome(existing, getAgentHomeDir(existing));

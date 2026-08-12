@@ -90,7 +90,23 @@ const actions = computed(() => {
 });
 
 function runAction(id: ActionId) {
-  emit(id);
+  switch (id) {
+    case "pin":
+      emit("pin");
+      break;
+    case "sync":
+      emit("sync");
+      break;
+    case "achieve":
+      emit("achieve");
+      break;
+    case "fork":
+      emit("fork");
+      break;
+    case "delete":
+      emit("delete");
+      break;
+  }
 }
 </script>
 

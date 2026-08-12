@@ -24,7 +24,9 @@ export class MemoryMessageStorage extends MessageStorage {
   async listTurns(sessionId: string): Promise<TurnIndex[]> {
     const map = this.turns.get(sessionId);
     if (!map) return [];
-    return [...map.values()].sort((a, b) => a.createdAt - b.createdAt || a.turnId.localeCompare(b.turnId));
+    return [...map.values()].sort(
+      (a, b) => a.createdAt - b.createdAt || a.turnId.localeCompare(b.turnId),
+    );
   }
 
   async upsertTurns(sessionId: string, turns: TurnIndex[]): Promise<void> {

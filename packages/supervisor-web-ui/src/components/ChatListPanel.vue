@@ -127,7 +127,7 @@
         <div v-if="!searching && !searchResults.length" class="chat-search-state">无匹配会话</div>
       </template>
       <template v-else>
-        <div v-if="sessionsLoading" class="chat-list-state">
+        <div v-if="sessionsLoading && !hasListContent" class="chat-list-state">
           <Loader2 class="chat-list-state__spin" aria-hidden="true" />
           <span>加载会话...</span>
         </div>
@@ -152,7 +152,9 @@
         </UiEmptyState>
         <template v-else>
           <div v-if="sessionsListError" class="chat-list-error-banner">
-            <span class="chat-list-error-banner__text">会话列表刷新失败：{{ sessionsListError }}</span>
+            <span class="chat-list-error-banner__text"
+              >会话列表刷新失败：{{ sessionsListError }}</span
+            >
             <button type="button" class="chat-list-error-banner__retry" @click="retryLoadSessions">
               重试
             </button>

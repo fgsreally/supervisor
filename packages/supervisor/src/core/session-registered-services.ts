@@ -53,7 +53,9 @@ export function appsToPortEnv(apps: SessionServiceApp[] | undefined): Record<str
 }
 
 /** Prefer `isSessionServiceProcessAlive(sessionId, services)` when sessionId is known. */
-export function areRegisteredServicesAlive(services: SessionServicesMeta | null | undefined): boolean {
+export function areRegisteredServicesAlive(
+  services: SessionServicesMeta | null | undefined,
+): boolean {
   if (!services?.pid) return false;
   return isPidAlive(services.pid);
 }
@@ -82,7 +84,15 @@ export function isSessionServiceProcessAlive(
 export interface SessionServiceJobHost {
   create(sessionId: number, input: CreateJobInput): Promise<{ id: string }>;
   update(id: string, patch: UpdateJobInput): Promise<void>;
-  get(id: string): Promise<{ status: string } | undefined>;
+  get(id: string): Promise<
+    | {
+        id: string;
+        status: string;
+        metadata?: Record<string, unknown>;
+      }
+    | undefined
+  >;
+  cancel?(id: string): Promise<unknown>;
   setCancelHandler(id: string, handler: () => void | Promise<void>): void;
 }
 
@@ -95,7 +105,12 @@ export function jobManagerAsHost(jobs: JobManager): SessionServiceJobHost {
       jobs.update(id, patch);
     },
     async get(id) {
-      return jobs.get(id);
+      const job = jobs.get(id);
+      if (!job) return undefined;
+      return { id: job.id, status: job.status, metadata: job.metadata };
+    },
+    async cancel(id) {
+      return jobs.cancel(id);
     },
     setCancelHandler(id, handler) {
       jobs.setCancelHandler(id, handler);
@@ -215,6 +230,7 @@ export async function startRegisteredSessionServices(options: {
       metadata: {
         command: meta.startCommand,
         resolvedCommand: resolved,
+        cwd: options.cwd,
         apps,
       },
     });
@@ -286,7 +302,9 @@ export async function stopRegisteredSessionServices(options: {
   const mode = options.mode ?? "stop";
   const destroy = services.destroyCommand?.trim() ?? services.uninstallCommand?.trim();
   const command =
-    mode === "uninstall" || mode === "destroy" ? destroy : (services.stopCommand?.trim() ?? destroy);
+    mode === "uninstall" || mode === "destroy"
+      ? destroy
+      : (services.stopCommand?.trim() ?? destroy);
 
   if (command) {
     const resolved = substitutePortPlaceholders(command, portEnv);
@@ -342,7 +360,11 @@ export async function stopRegisteredSessionServices(options: {
   if (services.jobId && options.jobs) {
     const job = await options.jobs.get(services.jobId);
     if (job && (job.status === "running" || job.status === "waiting")) {
-      await options.jobs.update(services.jobId, { status: "cancelled" });
+      if (typeof options.jobs.cancel === "function") {
+        await options.jobs.cancel(services.jobId).catch(() => undefined);
+      } else {
+        await options.jobs.update(services.jobId, { status: "cancelled" });
+      }
     }
   }
 

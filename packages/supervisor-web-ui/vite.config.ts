@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 const playgroundCwd = path.resolve(repoRoot, "playground");
-const backendTarget = "http://localhost:3030";
+const backendTarget = "http://localhost:3040";
 
 function spaAwareProxy() {
   return {
@@ -72,48 +72,48 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/auth": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/sessions": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/external-sessions": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/agents": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/providers": {
         ...spaAwareProxy(),
       },
       "/projects": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/home": {
         ...spaAwareProxy(),
       },
       "/healthz": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/settings": {
         ...spaAwareProxy(),
       },
       "/ws": {
-        target: "ws://localhost:3030",
+        target: "ws://localhost:3040",
         ws: true,
       },
       "/messages": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/workspace": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/resources": {
@@ -123,23 +123,23 @@ export default defineConfig({
         ...spaAwareProxy(),
       },
       "/skills": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/upload": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/uploaded-icons": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/devices": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
       "/public": {
-        target: "http://localhost:3030",
+        target: "http://localhost:3040",
         changeOrigin: true,
       },
     },

@@ -35,6 +35,7 @@ export interface ManagedSessionRuntime {
   setThinkingLevel(level: ThinkingLevel): Promise<void>;
   setActiveTools(toolNames: string[]): Promise<void>;
   setTools(tools: AgentTool[], activeToolNames?: string[]): Promise<void>;
+  syncActiveTools(): Promise<void>;
   getMessages(): Promise<SessionTreeEntry[]>;
   getState(): Promise<SessionState>;
   getSlashCommands(): SlashCommandInfo[];

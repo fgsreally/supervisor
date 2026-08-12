@@ -140,6 +140,12 @@ async function saveName() {
   background: var(--app-chat-bg);
   color: var(--app-text-primary);
   font-size: 13px;
+  outline: none;
+}
+
+.project-settings__input:focus {
+  border-color: var(--app-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-accent) 18%, transparent);
 }
 
 .project-settings__save,

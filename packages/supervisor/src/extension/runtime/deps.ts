@@ -293,6 +293,10 @@ export function buildExtensionDeps(deps: {
       await runtime.setActiveTools(names);
     },
 
+    syncActiveTools: async () => {
+      await runtime.syncActiveTools();
+    },
+
     getContextUsage: async () => {
       const row = db.db
         .prepare(
@@ -757,6 +761,7 @@ type RuntimeDeps = {
   eventBus: EventBus;
   continueTurn: (content: string, options?: { source?: string }) => Promise<void>;
   setActiveTools: (names: string[]) => Promise<void>;
+  syncActiveTools: () => Promise<void>;
   getContextUsage: () => Promise<{ tokens: number | null }>;
 };
 // ============================================================================

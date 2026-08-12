@@ -14,15 +14,6 @@
     >
       <ChevronLeft class="w-5 h-5" />
     </button>
-    <button
-      v-if="showPreview"
-      type="button"
-      class="session-preview-trigger mr-2 shrink-0"
-      title="项目页面预览"
-      @click="emit('open-preview')"
-    >
-      <span /><span />
-    </button>
     <h1
       class="chat-header-title font-medium text-[18px] min-w-0 max-w-[40%] truncate"
       style="color: var(--app-text-primary)"
@@ -85,7 +76,6 @@ const props = defineProps<{
   showBack?: boolean;
   stage?: string | null;
   usage?: SessionUsage | null;
-  showPreview?: boolean;
 }>();
 
 function formatCost(value: number) {
@@ -96,7 +86,6 @@ const emit = defineEmits<{
   back: [];
   "view-agent": [agentId: string];
   "open-menu": [];
-  "open-preview": [];
 }>();
 
 const statusLabel = computed(() => {
@@ -236,25 +225,5 @@ html[data-theme="dark"] .chat-header-external-badge {
     padding-inline: 6px;
     font-size: 10px;
   }
-}
-
-.session-preview-trigger {
-  display: inline-flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 3px;
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-
-.session-preview-trigger span {
-  display: block;
-  width: 4px;
-  height: 4px;
-  border-radius: 999px;
-  background: var(--app-text-secondary);
 }
 </style>

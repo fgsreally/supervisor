@@ -3,8 +3,32 @@
     <div v-if="!mobile && !embedded" class="tool-detail-panel__grabber" />
     <header v-if="!mobile && !embedded">
       <span>{{ title }}</span>
-      <button type="button" title="关闭" @click="$emit('close')"><X /></button>
+      <div class="tool-detail-panel__actions">
+        <button
+          v-if="canKillJob"
+          type="button"
+          class="tool-detail-panel__kill"
+          :disabled="killing"
+          title="结束此后台进程"
+          @click="killJob"
+        >
+          {{ killing ? "结束中…" : "结束" }}
+        </button>
+        <button type="button" title="关闭" @click="$emit('close')"><X /></button>
+      </div>
     </header>
+    <div v-else-if="canKillJob" class="tool-detail-panel__toolbar">
+      <span class="tool-detail-panel__toolbar-label">{{ title }}</span>
+      <button
+        type="button"
+        class="tool-detail-panel__kill"
+        :disabled="killing"
+        title="结束此后台进程"
+        @click="killJob"
+      >
+        {{ killing ? "结束中…" : "结束" }}
+      </button>
+    </div>
     <ToolTerminal v-if="terminal" :lines="terminalLines" :prompt="terminalPrompt" />
     <div v-else class="tool-detail-panel__body custom-scrollbar">
       <section v-for="(section, index) in sections" :key="index">
@@ -18,8 +42,16 @@
 
 <script setup lang="ts">
 import { X } from "lucide-vue-next";
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { getSessionEvalState, type EvalRuntimeState } from "@/api";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import {
+  cancelSessionJob,
+  getSessionEvalState,
+  getSessionJobs,
+  type EvalRuntimeState,
+  type SessionJob,
+} from "@/api";
+import { showUiMessage } from "@/composables/use-ui-message";
+import { useSessionStore } from "@/store";
 import MarkdownContent from "./MarkdownContent.vue";
 import ToolTerminal from "./ToolTerminal.vue";
 import type { ToolDetailSection } from "./ToolDetailModal.vue";
@@ -27,16 +59,47 @@ import type { ToolDetailSection } from "./ToolDetailModal.vue";
 const props = defineProps<{
   title: string;
   sections: ToolDetailSection[];
+  /** Eval surface: kernel history and/or a background bash Job. */
   terminal?: "bash" | "eval";
+  /** Live-poll this Job's output (background bash / project-service). */
+  jobId?: string;
   sessionId?: string;
   mobile?: boolean;
   /** PC tab host: hide standalone header/close chrome. */
   embedded?: boolean;
 }>();
-defineEmits<{ close: [] }>();
+const emit = defineEmits<{
+  close: [];
+  /** Background job reached a terminal status — host should dismiss the tab. */
+  "job-ended": [jobId: string];
+}>();
 const evalState = ref<EvalRuntimeState>();
+const jobState = ref<SessionJob>();
+const killing = ref(false);
+const sessionStore = useSessionStore();
 let evalSignature = "";
+let jobSignature = "";
+let endedEmittedFor = "";
+let closeTimer: ReturnType<typeof setTimeout> | undefined;
+
+const watchingJob = computed(() => Boolean(props.jobId));
+const canKillJob = computed(() => {
+  if (!props.jobId || !props.sessionId) return false;
+  const status = jobState.value?.status;
+  return status === "running" || status === "waiting" || status === "queued";
+});
+
 const terminalLines = computed(() => {
+  if (watchingJob.value && jobState.value) {
+    const job = jobState.value;
+    const metaCommand = typeof job.metadata.command === "string" ? job.metadata.command : "";
+    const header = metaCommand
+      ? `\x1b[36m$ ${metaCommand}\x1b[0m`
+      : `\x1b[36m# ${job.label}\x1b[0m`;
+    const status = `\x1b[90m# ${job.kind} · ${job.status}\x1b[0m`;
+    const body = job.output || "(暂无输出)";
+    return [header, status, body];
+  }
   if (props.terminal === "eval" && evalState.value?.history.length) {
     return evalState.value.history.flatMap((entry) => [
       `\x1b[36m[${entry.language}]\x1b[0m ${entry.code}`,
@@ -48,12 +111,61 @@ const terminalLines = computed(() => {
     section.content,
   ]);
 });
-const terminalPrompt = computed(() =>
-  props.terminal === "bash" ? "$ output complete" : ">>> kernel ready",
-);
+const terminalPrompt = computed(() => {
+  if (watchingJob.value) {
+    return jobState.value?.status === "running" || jobState.value?.status === "waiting"
+      ? "$ running…"
+      : "$ output complete";
+  }
+  if (props.terminal === "eval") return ">>> kernel ready";
+  return "$ output complete";
+});
+
+function isTerminalJobStatus(status: string | undefined): boolean {
+  return (
+    status === "completed" ||
+    status === "succeeded" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "interrupted" ||
+    status === "error"
+  );
+}
+
+function maybeEmitJobEnded(job: SessionJob) {
+  if (!props.jobId || !isTerminalJobStatus(job.status)) return;
+  if (endedEmittedFor === props.jobId) return;
+  endedEmittedFor = props.jobId;
+  if (closeTimer) clearTimeout(closeTimer);
+  // Brief pause so the final lines are visible, then dismiss (npm i etc.).
+  closeTimer = setTimeout(() => {
+    emit("job-ended", props.jobId!);
+  }, 1200);
+}
+
+async function killJob() {
+  if (!props.sessionId || !props.jobId || killing.value) return;
+  killing.value = true;
+  try {
+    const { job } = await cancelSessionJob(props.sessionId, props.jobId);
+    jobState.value = job;
+    jobSignature = `${job.status}:${job.output.length}:${job.finishedAt ?? 0}`;
+    // Server clears meta.services.jobId/pid on terminal; refresh local session row.
+    void sessionStore.fetchSession(props.sessionId);
+    showUiMessage("已结束后台进程", "success");
+    maybeEmitJobEnded(job);
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "结束失败", "error");
+  } finally {
+    killing.value = false;
+  }
+}
+
 let poll: ReturnType<typeof setInterval> | undefined;
 async function refreshEvalState() {
-  if (props.terminal !== "eval" || !props.sessionId || document.hidden) return;
+  if (watchingJob.value || props.terminal !== "eval" || !props.sessionId || document.hidden) {
+    return;
+  }
   const next = await getSessionEvalState(props.sessionId).catch(() => undefined);
   if (!next) return;
   const signature = JSON.stringify(next.history);
@@ -61,12 +173,53 @@ async function refreshEvalState() {
   evalSignature = signature;
   evalState.value = next;
 }
-onMounted(() => {
-  void refreshEvalState();
-  if (props.terminal === "eval") poll = setInterval(refreshEvalState, 3000);
-});
+async function refreshJobState() {
+  if (!props.jobId || !props.sessionId || document.hidden) return;
+  const snapshot = await getSessionJobs(props.sessionId).catch(() => undefined);
+  const next = snapshot?.jobs.find((job) => job.id === props.jobId);
+  if (!next) {
+    // Job row gone (CASCADE / restart) — treat as ended.
+    if (endedEmittedFor !== props.jobId) {
+      endedEmittedFor = props.jobId;
+      emit("job-ended", props.jobId);
+    }
+    return;
+  }
+  const signature = `${next.status}:${next.output.length}:${next.finishedAt ?? 0}`;
+  if (signature === jobSignature) return;
+  jobSignature = signature;
+  jobState.value = next;
+  maybeEmitJobEnded(next);
+}
+function startPolling() {
+  if (poll) clearInterval(poll);
+  poll = undefined;
+  if (closeTimer) {
+    clearTimeout(closeTimer);
+    closeTimer = undefined;
+  }
+  endedEmittedFor = "";
+  killing.value = false;
+  if (props.jobId) {
+    void refreshJobState();
+    poll = setInterval(refreshJobState, 1500);
+  } else if (props.terminal === "eval") {
+    void refreshEvalState();
+    poll = setInterval(refreshEvalState, 3000);
+  }
+}
+onMounted(() => startPolling());
+watch(
+  () => [props.terminal, props.jobId, props.sessionId] as const,
+  () => {
+    evalSignature = "";
+    jobSignature = "";
+    startPolling();
+  },
+);
 onBeforeUnmount(() => {
   if (poll) clearInterval(poll);
+  if (closeTimer) clearTimeout(closeTimer);
 });
 </script>
 
@@ -96,16 +249,56 @@ header {
   color: var(--app-text-primary);
 }
 header span {
-  font-size: 15px;
-  font-weight: 500;
+  font-size: var(--app-font-body-strong);
+  font-weight: var(--app-font-weight-medium);
 }
-header button {
+.tool-detail-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.tool-detail-panel__toolbar {
+  flex: none;
+  height: 40px;
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid var(--app-border-subtle);
+}
+.tool-detail-panel__toolbar-label {
+  font-size: var(--app-font-control);
+  font-weight: var(--app-font-weight-medium);
+  color: var(--app-text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tool-detail-panel__kill {
+  cursor: pointer;
+  padding: 0.3rem 0.65rem;
+  border-radius: 0.35rem;
+  font-size: var(--app-font-control);
+  font-weight: var(--app-font-weight-medium);
+  color: var(--app-danger, #c44);
+  border: 1px solid color-mix(in srgb, var(--app-danger, #c44) 35%, transparent);
+  background: transparent;
+}
+.tool-detail-panel__kill:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--app-danger, #c44) 12%, transparent);
+}
+.tool-detail-panel__kill:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+header button:not(.tool-detail-panel__kill) {
   cursor: pointer;
   padding: 0.4rem;
   border-radius: 0.35rem;
   color: var(--app-text-muted);
 }
-header button:hover {
+header button:not(.tool-detail-panel__kill):hover {
   background: var(--app-hover);
   color: var(--app-text-primary);
 }
@@ -118,52 +311,34 @@ header svg {
 }
 .tool-detail-panel__body {
   overflow: auto;
-  padding: 1rem;
-  display: grid;
-  gap: 1rem;
+  flex: 1;
+  padding: 12px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 section label {
   display: block;
-  margin-bottom: 0.4rem;
-  font-size: 0.7rem;
+  margin-bottom: 6px;
+  font-size: var(--app-font-caption);
+  font-weight: var(--app-font-weight-medium);
   color: var(--app-text-muted);
 }
-pre {
+section pre {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--app-code-bg, var(--app-hover));
   white-space: pre-wrap;
   word-break: break-word;
-  padding: 0.75rem;
-  border-radius: 0.4rem;
-  background: var(--app-code-bg);
-  color: var(--app-code-text);
-  font-size: 0.75rem;
+  font-size: var(--app-font-caption);
+  line-height: 1.45;
 }
 @media (max-width: 767px) {
   .tool-detail-panel {
-    position: absolute;
-    inset: auto 0 0;
-    z-index: 60;
     width: 100%;
     min-width: 0;
-    height: min(68%, 620px);
-    border-top: 1px solid var(--app-border-subtle);
     border-left: 0;
-    border-radius: 16px 16px 0 0;
-    box-shadow: 0 -10px 30px rgb(0 0 0 / 14%);
-  }
-  .tool-detail-panel__grabber {
-    position: absolute;
-    top: 6px;
-    left: 50%;
-    display: block;
-    width: 36px;
-    height: 4px;
-    border-radius: 999px;
-    background: var(--app-border);
-    transform: translateX(-50%);
-  }
-  header {
-    height: 48px;
-    padding-top: 4px;
   }
 }
 </style>

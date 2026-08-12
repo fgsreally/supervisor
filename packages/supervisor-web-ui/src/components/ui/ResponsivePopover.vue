@@ -55,11 +55,7 @@ function toggle() {
   emit("update:open", !props.open);
 }
 
-useOutsideDismiss(
-  root,
-  close,
-  () => props.open && props.dismissOnOutside && !isMobile.value,
-);
+useOutsideDismiss(root, close, () => props.open && props.dismissOnOutside && !isMobile.value);
 </script>
 
 <style scoped>

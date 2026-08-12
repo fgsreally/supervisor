@@ -61,12 +61,30 @@ const mocks = vi.hoisted(() => {
     setThinkingLevel = vi.fn(async (level: string) => {
       this.agent.state.thinkingLevel = level;
     });
-    setActiveTools = vi.fn(async () => {});
-    setTools = vi.fn(async () => {});
+    setActiveTools = vi.fn(async (names: string[]) => {
+      this.activeToolNames = [...names];
+    });
+    setTools = vi.fn(async (tools: Array<{ name: string }>, activeToolNames?: string[]) => {
+      this.tools = tools;
+      // Mirror AgentHarness: omitting activeToolNames keeps the previous active set.
+      this.activeToolNames = activeToolNames
+        ? [...activeToolNames]
+        : this.activeToolNames.length > 0
+          ? this.activeToolNames
+          : tools.map((tool) => tool.name);
+    });
+    tools: Array<{ name: string }> = [];
+    activeToolNames: string[] = [];
 
-    constructor(options: { model?: { provider: string; id: string } }) {
+    constructor(options: {
+      model?: { provider: string; id: string };
+      tools?: Array<{ name: string }>;
+      activeToolNames?: string[];
+    }) {
       this.agent = new MockAgent();
       if (options.model) this.agent.state.model = options.model;
+      this.tools = options.tools ?? [];
+      this.activeToolNames = options.activeToolNames ?? this.tools.map((tool) => tool.name);
       this.agent.subscribe((event) => {
         for (const listener of this._listeners) listener(event);
       });

@@ -16,6 +16,7 @@
   "main": "dist/plugin.cjs.js",
   "module": "dist/esm/index.js",
   "types": "dist/esm/index.d.ts",
+  "unpkg": "dist/plugin.js",
   "exports": {
     ".": {
       "types": "./dist/esm/index.d.ts",
@@ -23,7 +24,6 @@
       "require": "./dist/plugin.cjs.js"
     }
   },
-  "unpkg": "dist/plugin.js",
   "scripts": {
     "build": "tsdown",
     "check": "tsc --noEmit",

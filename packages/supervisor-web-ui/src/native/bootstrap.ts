@@ -5,9 +5,8 @@ import { SplashScreen } from "@capacitor/splash-screen";
 
 import { registerPushDevice } from "../api/api";
 import {
-  getMobileServerPin,
-  getMobileServerUrl,
   getOrCreateDeviceId,
+  hasConfiguredSupervisorInstance,
   isBackgroundConnectionEnabled,
 } from "../utils/mobile-server-config";
 import { isNativeApp, nativePlatform } from "../composables/use-native-app";
@@ -94,5 +93,5 @@ function setupDeepLinks(): void {
 }
 
 export function isNativeServerConfigured(): boolean {
-  return Boolean(getMobileServerUrl() && getMobileServerPin());
+  return hasConfiguredSupervisorInstance();
 }

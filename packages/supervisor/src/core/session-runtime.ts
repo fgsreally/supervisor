@@ -427,9 +427,6 @@ export class SessionRuntime implements ManagedSessionRuntime {
   }
 
   async setActiveTools(toolNames: string[]): Promise<void> {
-    // Extensions may call setActive during setup before their tools are merged onto
-    // the harness. Keep the desired names in SessionExtensionServices; only sync
-    // names the harness already knows to avoid validateToolNames failures.
     const known = new Set(readHarnessTools(this.harness).map((tool) => tool.name));
     if (known.size === 0) return;
     const filtered = toolNames.filter((name) => known.has(name));
@@ -437,14 +434,36 @@ export class SessionRuntime implements ManagedSessionRuntime {
     await this.harness.setActiveTools(filtered);
   }
 
+  /**
+   * Replace the tool registry on the harness.
+   * Only tools with active:true (per-tool flag) are model-visible.
+   */
   async setTools(tools: AgentTool[], activeToolNames?: string[]): Promise<void> {
     const extensionTools = this._extension?.wrapTools(tools) ?? tools;
     const effectiveTools = this.permissionConfig
       ? extensionTools.map((tool) => this.wrapPermissionTool(tool))
       : extensionTools;
-    const stagedActiveTools =
-      activeToolNames ?? this._extension?.services.tools.getActiveToolNames() ?? undefined;
-    await this.harness.setTools(effectiveTools, stagedActiveTools);
+    const toolServices = this._extension?.services.tools;
+    for (const tool of effectiveTools) {
+      toolServices?.ensureRegistered(tool.name, true);
+    }
+    const knownNames = effectiveTools.map((tool) => tool.name);
+    const nextActive =
+      activeToolNames?.filter((name) => knownNames.includes(name)) ??
+      toolServices?.filterActiveNames(knownNames) ??
+      knownNames;
+    await this.harness.setTools(effectiveTools, nextActive);
+  }
+
+  /** Sync harness activeToolNames from per-tool active flags. */
+  async syncActiveTools(): Promise<void> {
+    const known = readHarnessTools(this.harness).map((tool) => tool.name);
+    if (known.length === 0) return;
+    const active =
+      this._extension?.services.tools.filterActiveNames(known) ??
+      this._extension?.listActiveToolNames(known) ??
+      known;
+    await this.harness.setActiveTools(active);
   }
 
   private wrapPermissionTool(tool: AgentTool): AgentTool {

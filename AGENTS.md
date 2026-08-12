@@ -51,23 +51,23 @@ pnpm docs:build
 
 ### 覆盖层 / 分屏表面（优先复用）
 
-| 代号 | 场景 | PC | 移动端 | 封装 |
-| ---- | ---- | -- | ------ | ---- |
-| a | Session 内容区分屏（日志、文件树、工具详情、Todo、BTW、预览等） | 右侧分屏 | 自下而上抽屉 | `ResponsiveSplitSurface` |
-| b | 内容较多的弹层（多段表单、列表、长内容仍需 overlay） | 居中弹窗 | 自下而上抽屉 | `ResponsiveDialog` |
-| c | 内容较少的通知 / 确认 | 居中弹窗 | 居中弹窗 | `UiDialog` / `requestUiConfirm` |
-| d | 删除确认 | 居中弹窗 | 居中弹窗 + 确认时马达震动 | `requestUiDeleteConfirm` |
+| 代号 | 场景                                                            | PC       | 移动端                    | 封装                            |
+| ---- | --------------------------------------------------------------- | -------- | ------------------------- | ------------------------------- |
+| a    | Session 内容区分屏（日志、文件树、工具详情、Todo、BTW、预览等） | 右侧分屏 | 自下而上抽屉              | `ResponsiveSplitSurface`        |
+| b    | 内容较多的弹层（多段表单、列表、长内容仍需 overlay）            | 居中弹窗 | 自下而上抽屉              | `ResponsiveDialog`              |
+| c    | 内容较少的通知 / 确认                                           | 居中弹窗 | 居中弹窗                  | `UiDialog` / `requestUiConfirm` |
+| d    | 删除确认                                                        | 居中弹窗 | 居中弹窗 + 确认时马达震动 | `requestUiDeleteConfirm`        |
 
 删除确认禁止改用抽屉；统一走 `requestUiDeleteConfirm`（内部仍是 `UiConfirmHost` 居中弹窗，确认时调用 `hapticDelete`）。
 
 ### 反馈形态
 
-| 场景                                   | Loading                                  | 成功 / 失败                     |
-| -------------------------------------- | ---------------------------------------- | ------------------------------- |
-| 通过按钮触发的创建 / 保存              | 按钮自身 loading（`UiActionButton`）     | `showUiMessage`                 |
-| 非按钮触发（快捷键、拖放、自动提交等） | 全屏 busy（`withUiBusy` / `UiBusyHost`） | `showUiMessage`                 |
-| 列表项上的逐条操作（如外部引入某一项） | 该项右侧 loading 图标（`UiListStatus`）  | 列表项勾 / 叉 + `showUiMessage` |
-| 删除                                   | 先 `requestUiDeleteConfirm`（非原生 confirm） | `showUiMessage`            |
+| 场景                                   | Loading                                       | 成功 / 失败                     |
+| -------------------------------------- | --------------------------------------------- | ------------------------------- |
+| 通过按钮触发的创建 / 保存              | 按钮自身 loading（`UiActionButton`）          | `showUiMessage`                 |
+| 非按钮触发（快捷键、拖放、自动提交等） | 全屏 busy（`withUiBusy` / `UiBusyHost`）      | `showUiMessage`                 |
+| 列表项上的逐条操作（如外部引入某一项） | 该项右侧 loading 图标（`UiListStatus`）       | 列表项勾 / 叉 + `showUiMessage` |
+| 删除                                   | 先 `requestUiDeleteConfirm`（非原生 confirm） | `showUiMessage`                 |
 
 ### 对应封装（优先复用）
 
@@ -124,7 +124,7 @@ pnpm docs:build
 
 - 创建 worktree：从 **`project.cwd` 当时 checkout 的分支** 切出；merge 目标**不**缓存在 session。
 - Achieve / Complete：**始终 merge 进执行当下 `project.cwd` 的当前 checkout 分支**。
-- 模型 / toolsPreset：只跟 **`agent_id` → agents 表**；`system_prompt` 列存本 session 运行时完整 system（不含 skills 目录、不含 servicesPrompt）。
+- 模型 / toolsPreset：只跟 **`agent_id` → agents 表**；`system_prompt` 列存本 session 运行时完整 system（不含 skills 目录）。project-services 在 `session.create` 时用 `upsertSystemPromptBlock` 写入登记引导（可替换更新）；运行时服务状态提示不写入该列。
 - 需用户介入（未配模型、审批等）：`status = blocked`（不是 `error`）；原因写 **`error_msg`**（有则展示）。
 
 ## 沟通风格

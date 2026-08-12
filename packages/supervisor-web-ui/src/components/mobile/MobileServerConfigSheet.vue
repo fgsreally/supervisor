@@ -1,11 +1,14 @@
 <template>
-  <MobileSheet v-model:open="open" title="服务器连接">
+  <MobileSheet v-model:open="open" :title="editingId ? '编辑服务器' : '添加服务器'">
     <div class="mobile-server-config space-y-4 px-4 pb-6">
       <MobileField
         label="服务器地址"
         hint="例如 https://xxx.trycloudflare.com 或 http://192.168.1.10:3030"
       >
         <MobileInput v-model="serverUrl" placeholder="https://..." autocomplete="url" />
+      </MobileField>
+      <MobileField label="显示名称" hint="可选，默认使用主机名">
+        <MobileInput v-model="serverName" placeholder="家里的电脑" />
       </MobileField>
       <MobileField label="访问 PIN" hint="与 Supervisor 启动时显示的 6 位 PIN 一致">
         <MobileInput v-model="serverPin" type="password" inputmode="numeric" maxlength="6" />
@@ -28,12 +31,12 @@ import { ref, watch } from "vue";
 import * as api from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import {
-  getMobileServerPin,
-  getMobileServerUrl,
+  displayNameForUrl,
+  getActiveSupervisorInstance,
   isBackgroundConnectionEnabled,
+  listSupervisorInstances,
   setBackgroundConnectionEnabled,
-  setMobileServerPin,
-  setMobileServerUrl,
+  upsertSupervisorInstance,
 } from "@/utils/mobile-server-config";
 import { startBackgroundConnection, stopBackgroundConnection } from "@/composables/use-live-status";
 import MobileButton from "./ui/MobileButton.vue";
@@ -44,21 +47,44 @@ import MobileSwitch from "./ui/MobileSwitch.vue";
 
 const open = defineModel<boolean>("open", { default: false });
 
-const serverUrl = ref(getMobileServerUrl() ?? "");
-const serverPin = ref(getMobileServerPin() ?? "");
+const props = defineProps<{
+  initialUrl?: string;
+  initialPin?: string;
+  editingId?: string;
+}>();
+
+const emit = defineEmits<{ saved: [] }>();
+
+const serverUrl = ref("");
+const serverName = ref("");
+const serverPin = ref("");
 const backgroundEnabled = ref(isBackgroundConnectionEnabled());
 const testing = ref(false);
 
 watch(open, (visible) => {
   if (!visible) return;
-  serverUrl.value = getMobileServerUrl() ?? "";
-  serverPin.value = getMobileServerPin() ?? "";
+  if (props.editingId) {
+    const editing = listSupervisorInstances().find((item) => item.id === props.editingId) ?? null;
+    serverUrl.value = props.initialUrl || editing?.url || "";
+    serverPin.value = props.initialPin || editing?.pin || "";
+    serverName.value = editing?.name || displayNameForUrl(serverUrl.value);
+  } else if (props.initialUrl) {
+    serverUrl.value = props.initialUrl;
+    serverPin.value = props.initialPin || "";
+    serverName.value = displayNameForUrl(props.initialUrl);
+  } else {
+    const active = getActiveSupervisorInstance();
+    serverUrl.value = active?.url ?? "";
+    serverPin.value = active?.pin ?? "";
+    serverName.value = active?.name || (active ? displayNameForUrl(active.url) : "");
+  }
   backgroundEnabled.value = isBackgroundConnectionEnabled();
 });
 
 async function save() {
   const url = serverUrl.value.trim().replace(/\/+$/, "");
   const pin = serverPin.value.trim();
+  const name = serverName.value.trim() || displayNameForUrl(url);
   if (!url) {
     showUiMessage("请填写服务器地址", "error");
     return;
@@ -69,8 +95,13 @@ async function save() {
   }
   testing.value = true;
   try {
-    setMobileServerUrl(url);
-    setMobileServerPin(pin);
+    upsertSupervisorInstance({
+      id: props.editingId,
+      name,
+      url,
+      pin,
+      activate: true,
+    });
     setBackgroundConnectionEnabled(backgroundEnabled.value);
     await api.healthCheck();
     if (backgroundEnabled.value) {
@@ -80,6 +111,7 @@ async function save() {
     }
     showUiMessage("服务器连接已保存", "success");
     open.value = false;
+    emit("saved");
     window.location.reload();
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : "无法连接服务器", "error");

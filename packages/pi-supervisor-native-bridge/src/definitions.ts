@@ -58,4 +58,7 @@ export interface SupervisorNativePlugin {
 
   /** @deprecated Use isAndroidLiveUpdatesAvailable */
   isOppoLiveUpdatesAvailable(): Promise<{ available: boolean; reason?: string }>;
+
+  /** Native QR scanner. Resolves `{ value }` or rejects on cancel/error. */
+  scanQrCode(): Promise<{ value: string }>;
 }

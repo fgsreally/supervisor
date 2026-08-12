@@ -290,13 +290,38 @@ export async function createSessionWorktree(
   const worktreePath = sessionWorktreePath(repoRoot, sessionId);
   mkdirSync(join(repoRoot, ".supervisor", "worktrees"), { recursive: true });
   const startBranch = await getCurrentBranch(repoRoot);
-  await runGit(repoRoot, ["worktree", "add", "-b", branch, worktreePath, startBranch]);
+
+  // Session restore / re-init re-emits session.create; reuse an existing worktree.
+  if (existsSync(worktreePath)) {
+    try {
+      await runGit(worktreePath, ["rev-parse", "--is-inside-work-tree"]);
+      return { repoRoot, worktreePath, branch, startBranch };
+    } catch {
+      // Path exists but is not a usable worktree; fall through and recreate.
+    }
+  }
+
+  const branchExists = await localBranchExists(repoRoot, branch);
+  if (branchExists) {
+    await runGit(repoRoot, ["worktree", "add", worktreePath, branch]);
+  } else {
+    await runGit(repoRoot, ["worktree", "add", "-b", branch, worktreePath, startBranch]);
+  }
   return {
     repoRoot,
     worktreePath,
     branch,
     startBranch,
   };
+}
+
+async function localBranchExists(repoRoot: string, branch: string): Promise<boolean> {
+  try {
+    await runGit(repoRoot, ["show-ref", "--verify", "--quiet", `refs/heads/${branch}`]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function getGitStatusPorcelain(cwd: string): Promise<string> {
@@ -524,10 +549,21 @@ export async function removeSessionWorktree(
   branch: string,
   options?: { forceBranch?: boolean },
 ): Promise<void> {
+  let removeError: unknown;
   try {
     await runGit(repoRoot, ["worktree", "remove", worktreePath, "--force"]);
-  } catch {
-    // worktree may already be gone / not registered
+  } catch (error) {
+    removeError = error;
+  }
+  // Path gone (or never registered) counts as success; leftover path must surface.
+  if (existsSync(worktreePath)) {
+    const detail =
+      removeError instanceof Error
+        ? removeError.message
+        : removeError
+          ? String(removeError)
+          : "worktree path still exists after remove";
+    throw new Error(`Failed to remove worktree ${worktreePath}: ${detail}`);
   }
   const branchFlag = options?.forceBranch ? "-D" : "-d";
   try {

@@ -1,11 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition name="chat-overlay" :duration="{ enter: 220, leave: 160 }">
-      <div
-        v-if="open"
-        class="ui-dialog-backdrop"
-        @click.self="onBackdrop"
-      >
+      <div v-if="open" class="ui-dialog-backdrop" @click.self="onBackdrop">
         <section
           class="ui-dialog"
           :class="panelClass"

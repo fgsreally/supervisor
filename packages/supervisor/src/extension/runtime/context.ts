@@ -35,7 +35,11 @@ import type {
 import { getProjectDir, getSessionDir } from "../../core/session-files.js";
 import type { SessionManager } from "../../core/session-manager.js";
 import type { SessionRuntime } from "../../core/session-runtime.js";
-import { readHarnessSystemPrompt, readHarnessTools } from "../../core/harness-compat.js";
+import {
+  readHarnessSystemPrompt,
+  readHarnessTools,
+  writeHarnessSystemPrompt,
+} from "../../core/harness-compat.js";
 import { runWatson } from "../../core/watson.js";
 import type {
   SessionTaskInfo,
@@ -44,6 +48,66 @@ import type {
   WorkflowStatePatch,
 } from "../types.js";
 import type { SessionTaskKind, SessionTodoStatus } from "../../types.js";
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function readSessionSystemPrompt(
+  harness: Parameters<typeof readHarnessSystemPrompt>[0],
+  fallback: string | null | undefined,
+): string {
+  return readHarnessSystemPrompt(harness) ?? fallback ?? "";
+}
+
+function writeSessionSystemPrompt(
+  harness: Parameters<typeof writeHarnessSystemPrompt>[0],
+  db: { updateSessionFields(id: number, patch: { systemPrompt: string }): void },
+  sessionId: number,
+  next: string,
+): void {
+  db.updateSessionFields(sessionId, { systemPrompt: next });
+  writeHarnessSystemPrompt(harness, next);
+}
+
+/** Replace or insert a marker-wrapped system-prompt block. Empty content removes the block. */
+export function upsertMarkedSystemPromptBlock(
+  current: string,
+  id: string,
+  content: string,
+): string {
+  const start = `<!-- ext-sys:${id} -->`;
+  const end = `<!-- /ext-sys:${id} -->`;
+  const marked = new RegExp(`${escapeRegExp(start)}[\\s\\S]*?${escapeRegExp(end)}\\n?`, "g");
+  let base = current.replace(marked, "").trim();
+  // Drop legacy unscoped project-services section from earlier injects.
+  if (id === "project-services") {
+    base = stripMarkdownSection(base, "## 项目服务");
+  }
+  const fragment = content.trim();
+  if (!fragment) return base;
+  const block = `${start}\n${fragment}\n${end}`;
+  return base ? `${base}\n\n${block}` : block;
+}
+
+function stripMarkdownSection(text: string, heading: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === heading) {
+      skipping = true;
+      continue;
+    }
+    if (skipping && /^##\s/.test(trimmed)) skipping = false;
+    if (!skipping) out.push(line);
+  }
+  return out
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 export interface ContextSessionMessages {
   list: ExtensionDatabase["getMessages"];
@@ -72,8 +136,6 @@ export interface ContextSessionTools {
   afterUse(handler: ToolResultHandler, options?: { priority?: number }): () => void;
   enable(name: string): void;
   disable(name: string, reason?: string): void;
-  setActive(names: string[]): Promise<void>;
-  getActive(): string[] | null;
 }
 
 interface ContextSessionOptions {
@@ -113,6 +175,8 @@ interface ContextSessionOptions {
     replace(todos: Array<{ title: string; status: SessionTodoStatus }>): Promise<SessionTodoInfo[]>;
   };
   tools: ContextSessionTools;
+  appendSystemPrompt: (content: string) => Promise<void>;
+  upsertSystemPromptBlock: (id: string, content: string) => Promise<void>;
   getParent: () => Promise<SessionInfo | undefined>;
   children: () => Promise<SessionInfo[]>;
   appendEntry: <T>(customType: string, data: T) => Promise<string>;
@@ -169,6 +233,8 @@ interface ContextAgentOptions {
     definition: ToolDefinition<TParams, TResult>,
   ) => void;
   unregisterTool: (name: string) => void;
+  activate: (names: string[]) => Promise<void>;
+  deactivate: (names: string[]) => Promise<void>;
   registerCommand?: (name: string, definition: ExtensionCommandDefinition) => void;
   unregisterCommand?: (name: string) => void;
   listTools: () => ToolInfo[];
@@ -193,6 +259,7 @@ export type Database = SupervisorDb;
 interface ContextExtensionHost {
   emit(event: ExtensionEvent): void | Promise<void>;
   listTools(): ToolInfo[];
+  setToolsActive(names: string[], active: boolean): void;
   on<K extends ExtensionEvent["type"]>(
     extensionId: string,
     event: K,
@@ -262,7 +329,8 @@ export class Context {
     const projectRow = db.getProject(session.projectId);
     if (!projectRow) throw new Error(`Project ${session.projectId} not found`);
     const model = sessionRuntime.harness.getModel();
-    const systemPrompt = readHarnessSystemPrompt(sessionRuntime.harness) ?? session.systemPrompt ?? undefined;
+    const systemPrompt =
+      readHarnessSystemPrompt(sessionRuntime.harness) ?? session.systemPrompt ?? undefined;
     const listHarnessTools = () => readHarnessTools(sessionRuntime.harness);
     const extensionDb = createExtensionDatabase({
       sessionId: session.id,
@@ -301,11 +369,6 @@ export class Context {
       afterUse: (handler, options) => this.services.tools.afterUse(handler, options),
       enable: (name) => this.services.tools.enable(name),
       disable: (name, reason) => this.services.tools.disable(name, reason),
-      setActive: async (names) => {
-        this.services.tools.setActive(names);
-        await deps.setActiveTools(names);
-      },
-      getActive: () => this.services.tools.getActiveToolNames(),
     };
 
     const sessionState = { cwd: session.cwd };
@@ -321,6 +384,28 @@ export class Context {
       isMain: session.parentId == null,
       isChild: session.parentId != null,
       getDir: deps.getSessionDir,
+      appendSystemPrompt: async (content: string) => {
+        const fragment = content.trim();
+        if (!fragment) return;
+        const current = readSessionSystemPrompt(
+          sessionRuntime.harness,
+          sessionManager.get(session.id)?.systemPrompt,
+        );
+        if (current.includes(fragment)) return;
+        const next = current ? `${current}\n\n${fragment}` : fragment;
+        writeSessionSystemPrompt(sessionRuntime.harness, db, session.id, next);
+      },
+      upsertSystemPromptBlock: async (id: string, content: string) => {
+        const key = id.trim();
+        if (!key) return;
+        const current = readSessionSystemPrompt(
+          sessionRuntime.harness,
+          sessionManager.get(session.id)?.systemPrompt,
+        );
+        const next = upsertMarkedSystemPromptBlock(current, key, content);
+        if (next === current.trim()) return;
+        writeSessionSystemPrompt(sessionRuntime.harness, db, session.id, next);
+      },
       isIdle: deps.isIdle,
       isStreaming: deps.isStreaming,
       getSignal: deps.getSignal,
@@ -392,6 +477,14 @@ export class Context {
         this.requireExtensionHost().registerTool(this.requireActiveExtension(), definition),
       unregisterTool: (name) =>
         this.requireExtensionHost().unregisterTool(this.requireActiveExtension(), name),
+      activate: async (names) => {
+        this.requireExtensionHost().setToolsActive(names, true);
+        await deps.syncActiveTools();
+      },
+      deactivate: async (names) => {
+        this.requireExtensionHost().setToolsActive(names, false);
+        await deps.syncActiveTools();
+      },
       registerCommand: (name, definition) =>
         this.requireExtensionHost().registerCommand(
           this.requireActiveExtension(),
@@ -575,6 +668,7 @@ export class Context {
         description: tool.description ?? tool.name,
         parameters: tool.parameters as TSchema,
         source: "builtin",
+        active: this.services.tools.isActive(tool.name),
         definition: tool as unknown as ToolDefinition<TSchema, unknown>,
       });
     }
@@ -610,6 +704,12 @@ export class ContextSession {
   }
   async setCwd(path: string): Promise<void> {
     await this.options.setCwd(path);
+  }
+  appendSystemPrompt(content: string): Promise<void> {
+    return this.options.appendSystemPrompt(content);
+  }
+  upsertSystemPromptBlock(id: string, content: string): Promise<void> {
+    return this.options.upsertSystemPromptBlock(id, content);
   }
   get isMain(): boolean {
     return this.options.isMain;
@@ -741,6 +841,12 @@ export class ContextAgent {
   }
   unregisterTool(name: string): void {
     this.options.unregisterTool(name);
+  }
+  activate(names: string[]): Promise<void> {
+    return this.options.activate(names);
+  }
+  deactivate(names: string[]): Promise<void> {
+    return this.options.deactivate(names);
   }
   registerCommand(name: string, definition: ExtensionCommandDefinition): void {
     if (!this.options.registerCommand) throw new Error("Slash command registration is unavailable");

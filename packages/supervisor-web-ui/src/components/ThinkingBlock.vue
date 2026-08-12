@@ -9,7 +9,7 @@
       />
     </button>
     <div v-if="expanded" class="thinking-block__body">
-      <p class="thinking-block__text">{{ content + (streaming ? "▍" : "") }}</p>
+      <p class="thinking-block__text">{{ content }}</p>
     </div>
   </div>
 </template>

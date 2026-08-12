@@ -623,6 +623,8 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
 
   async setActiveTools(_toolNames: string[]): Promise<void> {}
 
+  async syncActiveTools(): Promise<void> {}
+
   async setTools(_tools: AgentTool[], _activeToolNames?: string[]): Promise<void> {}
 
   async getMessages(): Promise<SessionTreeEntry[]> {

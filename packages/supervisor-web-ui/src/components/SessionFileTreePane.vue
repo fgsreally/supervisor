@@ -62,10 +62,7 @@
               :class="node.filePath || node.children?.length ? 'cursor-pointer' : 'cursor-default'"
               @click="onNodeClick(node, stat)"
             >
-              <Folder
-                v-if="node.children?.length"
-                class="w-3.5 h-3.5 shrink-0 text-amber-500/80"
-              />
+              <Folder v-if="node.children?.length" class="w-3.5 h-3.5 shrink-0 text-amber-500/80" />
               <FileText v-else class="w-3.5 h-3.5 shrink-0 text-sky-500/80" />
               <span
                 class="truncate font-mono text-[12px]"
@@ -92,10 +89,7 @@ import { BaseTree } from "@he-tree/vue";
 import "@he-tree/vue/style/default.css";
 import { ChevronRight, FileText, Folder, RefreshCw } from "lucide-vue-next";
 import type { SessionChangedFileView } from "./chat/SessionChangesPopover.vue";
-import {
-  changeStatusLabel,
-  type SessionFileTreeNode,
-} from "@/utils/session-file-tree";
+import { changeStatusLabel, type SessionFileTreeNode } from "@/utils/session-file-tree";
 
 const props = withDefaults(
   defineProps<{

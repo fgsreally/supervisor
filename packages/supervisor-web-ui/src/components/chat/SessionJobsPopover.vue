@@ -117,6 +117,7 @@ export interface JobDetailRequest {
   sections: Array<{ label: string; content: string }>;
   presentation: "modal" | "panel";
   terminal?: "bash";
+  jobId?: string;
 }
 
 const props = withDefaults(defineProps<{ sessionId: string; dismissOnOutside?: boolean }>(), {
@@ -131,9 +132,20 @@ const expandedId = ref<string>();
 const inputs = reactive<Record<string, string>>({});
 let poll: ReturnType<typeof setTimeout> | undefined;
 
-const visibleJobs = computed(() => jobs.value.slice(0, 12));
-const activeCount = computed(() => jobs.value.filter((job) => isActive(job.status)).length);
-const totalCount = computed(() => schedules.value.length + jobs.value.length);
+const visibleJobs = computed(() => {
+  const attention = jobs.value.filter((job) => isAttentionJob(job));
+  const ranked = [...attention].sort((left, right) => {
+    const leftActive = isActive(left.status) ? 0 : 1;
+    const rightActive = isActive(right.status) ? 0 : 1;
+    if (leftActive !== rightActive) return leftActive - rightActive;
+    return (right.startedAt ?? right.createdAt) - (left.startedAt ?? left.createdAt);
+  });
+  return ranked.slice(0, 12);
+});
+const activeCount = computed(
+  () => jobs.value.filter((job) => isAttentionJob(job) && isActive(job.status)).length,
+);
+const totalCount = computed(() => schedules.value.length + visibleJobs.value.length);
 const summaryTitle = computed(() => {
   const parts = [`${totalCount.value} 个 Job`];
   if (activeCount.value) parts.push(`${activeCount.value} 个进行中`);
@@ -147,7 +159,8 @@ async function refresh(): Promise<void> {
     const snapshot = await getSessionJobs(props.sessionId);
     jobs.value = snapshot.jobs;
     schedules.value = snapshot.schedules;
-    if (snapshot.jobs.length + snapshot.schedules.length === 0) open.value = false;
+    const attention = snapshot.jobs.filter(isAttentionJob).length;
+    if (attention + snapshot.schedules.length === 0) open.value = false;
   } catch {
     jobs.value = [];
     schedules.value = [];
@@ -158,6 +171,12 @@ async function refresh(): Promise<void> {
 
 function isActive(status: JobStatus): boolean {
   return status === "queued" || status === "running" || status === "waiting";
+}
+
+/** Jobs tray is for things the user should notice (timers, etc.), not Vite/runtime logs. */
+function isAttentionJob(job: SessionJob): boolean {
+  if (job.kind === "shell" || job.kind === "project-service") return false;
+  return true;
 }
 
 function openJob(job: SessionJob): void {
@@ -174,7 +193,9 @@ function openJob(job: SessionJob): void {
       { label: "输出", content: output },
     ],
     presentation: output.length > 2_000 || lines > 16 ? "panel" : "modal",
-    ...(job.kind === "shell" ? { terminal: "bash" as const } : {}),
+    ...(job.kind === "shell" || job.kind === "project-service"
+      ? { terminal: "bash" as const, jobId: job.id }
+      : {}),
   });
   open.value = false;
 }

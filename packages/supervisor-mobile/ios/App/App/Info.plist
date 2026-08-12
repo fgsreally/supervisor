@@ -48,7 +48,7 @@
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>用于在聊天中拍摄并发送图片</string>
+	<string>用于扫码添加 Supervisor 实例，以及在聊天中拍摄并发送图片</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于在聊天中选择并发送图片</string>
 	<key>CFBundleURLTypes</key>

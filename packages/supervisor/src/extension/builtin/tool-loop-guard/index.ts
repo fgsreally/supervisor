@@ -2,8 +2,8 @@ import type { ExtensionDefinition } from "../../types.js";
 
 const DEFAULT_WARNING_COUNT = 3;
 const DEFAULT_BLOCK_COUNT = 4;
-const POLLING_WARNING_COUNT = 6;
-const POLLING_BLOCK_COUNT = 10;
+const POLLING_WARNING_COUNT = 3;
+const POLLING_BLOCK_COUNT = 5;
 const IGNORED_ARGUMENT_KEYS = new Set(["intent"]);
 
 function normalize(value: unknown, depth = 0): unknown {
@@ -38,9 +38,20 @@ function resultSummary(result: unknown): unknown {
   };
 }
 
-function thresholds(toolName: string): { warning: number; block: number } {
+function isPollingCall(toolName: string, args?: unknown): boolean {
   const normalized = toolName.toLowerCase();
-  const polling = normalized.includes("wait") || normalized.includes("status");
+  const action =
+    args && typeof args === "object" && !Array.isArray(args)
+      ? String((args as { action?: unknown }).action ?? "").toLowerCase()
+      : "";
+  return (
+    normalized.includes("wait") ||
+    normalized.includes("status") ||
+    (normalized === "bash" && (action === "read" || action === "list" || action === "wait"))
+  );
+}
+
+function thresholds(polling: boolean): { warning: number; block: number } {
   return polling
     ? { warning: POLLING_WARNING_COUNT, block: POLLING_BLOCK_COUNT }
     : { warning: DEFAULT_WARNING_COUNT, block: DEFAULT_BLOCK_COUNT };
@@ -49,12 +60,16 @@ function thresholds(toolName: string): { warning: number; block: number } {
 export default {
   name: "tool-loop-guard",
   async setup(ctx) {
-    const pendingCalls = new Map<string, { toolName: string; callSignature: string }>();
+    const pendingCalls = new Map<
+      string,
+      { toolName: string; callSignature: string; polling: boolean }
+    >();
     type CompletedCall = {
       toolName: string;
       callSignature: string;
       resultSignature: string;
       count: number;
+      polling: boolean;
     };
     const saved = (await ctx.session.meta.get()).toolLoopGuard;
     let lastCompleted: CompletedCall | null =
@@ -64,7 +79,10 @@ export default {
       typeof (saved as CompletedCall).callSignature === "string" &&
       typeof (saved as CompletedCall).resultSignature === "string" &&
       typeof (saved as CompletedCall).count === "number"
-        ? (saved as CompletedCall)
+        ? {
+            ...(saved as CompletedCall),
+            polling: Boolean((saved as { polling?: unknown }).polling),
+          }
         : null;
 
     async function persist(value: CompletedCall | null): Promise<void> {
@@ -72,8 +90,9 @@ export default {
     }
 
     ctx.session.tools.beforeUse(async (call) => {
+      const polling = isPollingCall(call.name, call.args);
       const callSignature = signature({ name: call.name, args: call.args });
-      pendingCalls.set(call.toolCallId, { toolName: call.name, callSignature });
+      pendingCalls.set(call.toolCallId, { toolName: call.name, callSignature, polling });
       if (!lastCompleted || lastCompleted.callSignature !== callSignature) {
         const changed = lastCompleted !== null;
         lastCompleted = null;
@@ -81,14 +100,17 @@ export default {
         if (changed) await persist(null);
         return;
       }
-      const { block } = thresholds(call.name);
+      const { block } = thresholds(lastCompleted.polling || polling);
       if (lastCompleted.count < block - 1) return;
       pendingCalls.delete(call.toolCallId);
       return {
         allow: false,
         reason:
-          `Blocked repeated tool call: ${call.name} has returned the same result ` +
-          `${lastCompleted.count} consecutive times. Change the approach or explain why retrying is necessary.`,
+          `Blocked repeated tool call: ${call.name} has been called ` +
+          `${lastCompleted.count} consecutive times with the same arguments. ` +
+          (polling
+            ? "Stop polling; if a project service is up, call ProjectServiceSetup instead."
+            : "Change the approach or explain why retrying is necessary."),
       };
     });
 
@@ -97,18 +119,25 @@ export default {
       pendingCalls.delete(call.toolCallId);
       if (!current || current.toolName !== call.name) return;
       const resultSignature = signature(resultSummary(call.result));
-      const count =
-        lastCompleted?.callSignature === current.callSignature &&
-        lastCompleted.resultSignature === resultSignature
-          ? lastCompleted.count + 1
-          : 1;
-      lastCompleted = { ...current, resultSignature, count };
+      // Polling tools (e.g. PersistentBash read) often change output each time;
+      // count consecutive same-args calls even when the result text grows.
+      const sameCall = lastCompleted?.callSignature === current.callSignature;
+      const sameResult = lastCompleted?.resultSignature === resultSignature;
+      const count = sameCall && (current.polling || sameResult) ? lastCompleted!.count + 1 : 1;
+      lastCompleted = {
+        ...current,
+        resultSignature,
+        count,
+        polling: current.polling,
+      };
       await persist(lastCompleted);
-      const { warning } = thresholds(call.name);
+      const { warning } = thresholds(current.polling);
       if (count !== warning) return;
-      const content =
-        `You have called ${call.name} with the same effective arguments and received the same ` +
-        `result ${count} consecutive times. Reassess the approach before calling it again.`;
+      const content = current.polling
+        ? `You have polled ${call.name} ${count} times with the same arguments. ` +
+          `If the service URL/port is already known, call ProjectServiceSetup and stop reading.`
+        : `You have called ${call.name} with the same effective arguments and received the same ` +
+          `result ${count} consecutive times. Reassess the approach before calling it again.`;
       ctx.inject.schedule({
         variant: "tool-call-loop",
         content,

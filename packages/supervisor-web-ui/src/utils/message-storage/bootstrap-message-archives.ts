@@ -11,8 +11,9 @@ export type BootstrapArchiveProgress = {
 };
 
 /**
- * After auth / during startup loading: prune deleted sessions, then sync every
- * session archive into local MessageStorage (IndexedDB / Capacitor SQLite).
+ * Optional full-archive crawl for every session.
+ * Not used at app startup — message sync happens when opening a session
+ * via `useSessionMessageSync`. Kept for manual / tooling use.
  */
 export async function bootstrapMessageArchives(
   onProgress?: (progress: BootstrapArchiveProgress) => void,

@@ -14,6 +14,9 @@ export interface SessionServicesMeta {
   sleepAt?: number;
   installedAt?: string;
   error?: string;
+  /** Process-bound; cleared on Supervisor restart / job cancel. */
+  jobId?: string;
+  pid?: number | null;
 }
 
 export interface SessionServicesPreview {
@@ -66,9 +69,7 @@ function parseApps(raw: unknown): SessionServiceApp[] {
 }
 
 /** Legacy uiPorts + portEnv → apps */
-function legacyAppsFromUiPorts(
-  row: Record<string, unknown>,
-): SessionServiceApp[] {
+function legacyAppsFromUiPorts(row: Record<string, unknown>): SessionServiceApp[] {
   if (!Array.isArray(row.uiPorts)) return [];
   const portEnv =
     row.portEnv && typeof row.portEnv === "object" && !Array.isArray(row.portEnv)
@@ -87,11 +88,7 @@ function legacyAppsFromUiPorts(
     const envVar = typeof port.envVar === "string" ? port.envVar.trim() : "";
     const raw = envVar ? portEnv[envVar] : undefined;
     const num =
-      typeof raw === "number"
-        ? raw
-        : typeof raw === "string"
-          ? Number.parseInt(raw, 10)
-          : NaN;
+      typeof raw === "number" ? raw : typeof raw === "string" ? Number.parseInt(raw, 10) : NaN;
     if (!name || !Number.isFinite(num) || num <= 0) continue;
     apps.push({
       name,
@@ -132,6 +129,8 @@ export function parseSessionServicesFromMeta(
     sleepAt: typeof row.sleepAt === "number" ? row.sleepAt : undefined,
     installedAt: typeof row.installedAt === "string" ? row.installedAt : undefined,
     error: typeof row.error === "string" ? row.error : undefined,
+    jobId: typeof row.jobId === "string" ? row.jobId : undefined,
+    pid: typeof row.pid === "number" ? row.pid : null,
   };
 }
 

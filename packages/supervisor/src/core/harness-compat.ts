@@ -15,6 +15,7 @@ type HarnessInternals = {
   agent?: HarnessAgentController;
   systemPrompt?: string | ((ctx: unknown) => string | Promise<string>);
   tools?: Map<string, AgentTool> | AgentTool[];
+  activeToolNames?: string[];
   steerQueue?: unknown[];
   followUpQueue?: unknown[];
   nextTurnQueue?: unknown[];
@@ -32,12 +33,23 @@ export function readHarnessSystemPrompt(harness: AgentHarness): string | undefin
   return typeof value === "string" ? value : undefined;
 }
 
+/** Write system prompt string onto harness internals (runtime snapshot). */
+export function writeHarnessSystemPrompt(harness: AgentHarness, prompt: string): void {
+  asInternals(harness).systemPrompt = prompt;
+}
+
 /** Read currently registered tools from harness internals. */
 export function readHarnessTools(harness: AgentHarness): AgentTool[] {
   const tools = asInternals(harness).tools;
   if (!tools) return [];
   if (tools instanceof Map) return [...tools.values()];
   return Array.isArray(tools) ? [...tools] : [];
+}
+
+/** Read the harness active tool name list (model-visible set). */
+export function readHarnessActiveToolNames(harness: AgentHarness): string[] | undefined {
+  const names = asInternals(harness).activeToolNames;
+  return Array.isArray(names) ? [...names] : undefined;
 }
 
 function overlayFor(harness: AgentHarness): HarnessAgentState {

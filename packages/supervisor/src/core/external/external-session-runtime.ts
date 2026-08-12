@@ -304,6 +304,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
 
   async setThinkingLevel(_level: ThinkingLevel): Promise<void> {}
   async setActiveTools(_toolNames: string[]): Promise<void> {}
+  async syncActiveTools(): Promise<void> {}
   async setTools(_tools: AgentTool[], _activeToolNames?: string[]): Promise<void> {}
 
   async getMessages(): Promise<SessionTreeEntry[]> {

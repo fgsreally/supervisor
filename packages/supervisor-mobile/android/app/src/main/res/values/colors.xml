@@ -2,6 +2,16 @@
 <resources>
     <color name="colorPrimary">#FFFFFF</color>
     <color name="colorPrimaryDark">#FFFFFF</color>
-    <color name="colorAccent">#2563EB</color>
+    <color name="colorAccent">#07C160</color>
     <color name="shell_status_bar">#FFFFFF</color>
+    <!-- WeUI light -->
+    <color name="weui_bg_page">#EDEDED</color>
+    <color name="weui_bg_primary">#FFFFFF</color>
+    <color name="weui_fg_title">#E6000000</color>
+    <color name="weui_fg_desc">#8C000000</color>
+    <color name="weui_fg_weak">#4D000000</color>
+    <color name="weui_brand">#07C160</color>
+    <color name="weui_link">#576B95</color>
+    <color name="weui_divider">#1A000000</color>
+    <color name="weui_danger">#FA5151</color>
 </resources>

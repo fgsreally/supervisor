@@ -133,15 +133,14 @@
           >
             {{ officeError }}
           </div>
-          <div
-            v-else-if="officeHtml"
-            class="office-preview p-4"
-            v-html="officeHtml"
-          />
+          <div v-else-if="officeHtml" class="office-preview p-4" v-html="officeHtml" />
           <div v-else-if="preview.kind === 'markdown' && preview.content != null" class="p-4">
             <MarkdownContent :content="preview.content" prose />
           </div>
-          <div v-else-if="preview.content != null && preview.encoding === 'utf8'" class="p-4 session-file-code">
+          <div
+            v-else-if="preview.content != null && preview.encoding === 'utf8'"
+            class="p-4 session-file-code"
+          >
             <MarkdownContent :content="highlightedPreviewMarkdown" variant="terminal" />
           </div>
           <div
@@ -176,11 +175,7 @@ import {
 import type { SessionChangedFileView } from "./chat/SessionChangesPopover.vue";
 import InlineFileDiffView from "./InlineFileDiffView.vue";
 import MarkdownContent from "./MarkdownContent.vue";
-import {
-  docxBase64ToHtml,
-  pptxBase64ToHtml,
-  xlsxBase64ToHtml,
-} from "@/utils/office-file-preview";
+import { docxBase64ToHtml, pptxBase64ToHtml, xlsxBase64ToHtml } from "@/utils/office-file-preview";
 
 const props = defineProps<{
   sessionId: string;
@@ -301,9 +296,7 @@ async function setOfficePreview(file: SessionFileContent) {
     !file.content
   ) {
     if (file.kind === "docx" || file.kind === "pptx" || file.kind === "xlsx") {
-      officeError.value = file.truncated
-        ? "文件过大，无法预览"
-        : "无法读取办公文档内容";
+      officeError.value = file.truncated ? "文件过大，无法预览" : "无法读取办公文档内容";
     }
     return;
   }

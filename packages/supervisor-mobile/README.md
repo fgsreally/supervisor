@@ -14,7 +14,9 @@ Native bridge plugin: `packages/pi-supervisor-native-bridge`（Android 16 Live U
 
 原生 App **不会**连 Vite dev server，而是加载打进壳的 `dist`；改 UI 后由 `build:watch` 重建并自动 `cap sync`。
 
-App 内 **我的 → 服务器连接** 配置 API 地址（模拟器常用 `http://10.0.2.2:3030`，PIN 默认 `123456`）。
+App 启动后进入微信风格「服务器」列表，可扫码或手动添加多个 Supervisor 实例；在「我的 → 服务器」可切换。模拟器手填常用 `http://10.0.2.2:3030`，PIN 默认 `123456`。
+
+Android 默认入口也可使用原生 `ShellActivity`（扫码壳）：一进 App 即为实例列表，扫码添加后点选进入对应远程页面；返回键在根页会回到列表。
 
 ## 仅同步 / 打开 IDE
 

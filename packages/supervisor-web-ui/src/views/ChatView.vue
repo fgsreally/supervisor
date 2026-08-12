@@ -22,11 +22,9 @@
       :status-key="headerStatusKey"
       :stage="stage"
       :show-back="showBack"
-      :show-preview="hasServicePreviews"
       @back="emit('back')"
       @view-agent="emit('view-agent', $event)"
       @open-menu="sessionMenuOpen = true"
-      @open-preview="openSessionPreview"
     >
       <template #actions>
         <div class="desktop-session-actions">
@@ -55,6 +53,24 @@
           </ChatHeaderAction>
         </div>
         <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
+        <ChatHeaderAction
+          v-if="hasServicePreviews"
+          :title="`活跃应用 · ${servicePreviews.length}`"
+          :active="previewActionActive"
+          :count="servicePreviews.length"
+          @click="toggleSessionPreview"
+        >
+          <AppWindow />
+        </ChatHeaderAction>
+        <ChatHeaderAction
+          v-if="backgroundBashCount > 0"
+          :title="`后台终端 · ${backgroundBashCount}`"
+          :active="bashTerminalsActionActive"
+          :count="backgroundBashCount"
+          @click="toggleBackgroundBashPanel"
+        >
+          <Terminal />
+        </ChatHeaderAction>
         <ChatHeaderAction
           v-if="hasEvalActivity"
           title="查看 Eval"
@@ -209,7 +225,20 @@
           :count="servicePreviews.length"
           :container-ref="conversationHostRef"
           :storage-key="`supervisor:preview-orb:${session.id}`"
+          label="应用预览"
           @toggle="toggleMobilePreview"
+        />
+        <FloatingPreviewOrb
+          v-if="isMobileViewport"
+          :visible="backgroundBashCount > 0"
+          :active="backgroundBashCount > 0"
+          :open="mobileBashOpen"
+          :count="backgroundBashCount"
+          default-side="right"
+          label="后台终端"
+          :container-ref="conversationHostRef"
+          :storage-key="`supervisor:bash-orb:${session.id}`"
+          @toggle="toggleMobileBash"
         />
 
         <SessionAppPreviewBrowser
@@ -220,6 +249,20 @@
           v-model="lastPreviewKey"
           @close="mobilePreviewOpen = false"
         />
+        <ResponsiveSplitSurface
+          :open="isMobileViewport && mobileBashOpen"
+          ariaLabel="后台终端"
+          :width="sidePanelWidth"
+          @close="mobileBashOpen = false"
+          @resize-start="startSidePanelResize"
+        >
+          <SessionBackgroundBashPanel
+            class="chat-panel-host__body"
+            :session-id="session.id"
+            :initial-job-id="mobileBashJobId ?? undefined"
+            @close="mobileBashOpen = false"
+          />
+        </ResponsiveSplitSurface>
       </div>
 
       <ResponsiveSplitSurface
@@ -313,8 +356,10 @@
             :title="toolPanel.title"
             :sections="toolPanel.sections"
             :terminal="toolPanel.terminal"
+            :job-id="toolPanel.jobId"
             :session-id="session.id"
             @close="toolPanel = null"
+            @job-ended="onEvalJobEnded"
           />
         </template>
       </ResponsiveSplitSurface>
@@ -357,8 +402,10 @@
             :title="tab.title"
             :sections="tab.sections"
             :terminal="tab.terminal"
+            :job-id="tab.jobId"
             :session-id="session.id"
             @close="closeContentTab(tab.id)"
+            @job-ended="onEvalJobEnded"
           />
           <SessionPreviewPanel
             v-else-if="tab.kind === 'preview'"
@@ -369,6 +416,15 @@
             :loading="previewLoading"
             v-model="lastPreviewKey"
             @close="closeContentTab('preview')"
+          />
+          <SessionBackgroundBashPanel
+            v-else-if="tab.kind === 'bash-terminals'"
+            v-show="activeContentTabId === tab.id"
+            embedded
+            class="chat-panel-host__body"
+            :session-id="session.id"
+            :initial-job-id="tab.jobId"
+            @close="closeContentTab('bash-terminals')"
           />
         </template>
       </ResponsiveSplitSurface>
@@ -508,6 +564,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch, onBeforeUnmount, onMounted } from "vue";
 import {
+  AppWindow,
   Braces,
   ClipboardList,
   FolderTree,
@@ -515,6 +572,7 @@ import {
   SlidersHorizontal,
   ScrollText,
   Search,
+  Terminal,
 } from "lucide-vue-next";
 import { useSessionStore, useAgentStore, useProviderStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
@@ -577,6 +635,7 @@ import SessionCommitPopover from "../components/chat/SessionCommitPopover.vue";
 import SessionPreviewPanel from "../components/SessionPreviewPanel.vue";
 import SessionAppPreviewBrowser from "../components/SessionAppPreviewBrowser.vue";
 import FloatingPreviewOrb from "../components/FloatingPreviewOrb.vue";
+import SessionBackgroundBashPanel from "../components/SessionBackgroundBashPanel.vue";
 import ToolApprovalDialog from "../components/ToolApprovalDialog.vue";
 import type { ChatSendPayload } from "@/types/chat-compose";
 import {
@@ -586,7 +645,10 @@ import {
   setSplitAssistantMessages,
 } from "../composables/use-chat-session-prefs";
 import { useChatFontSize } from "../composables/use-chat-font-size";
-import { attachPendingShareToInput, usePendingShareRevision } from "../composables/use-pending-share";
+import {
+  attachPendingShareToInput,
+  usePendingShareRevision,
+} from "../composables/use-pending-share";
 import { notifyAskUserInput, notifyMessageComplete } from "../composables/use-notifications";
 import { syncAgentLiveStatus } from "../composables/use-live-status";
 import { findPendingAskInDisplayGroups } from "../utils/ask-tool";
@@ -607,6 +669,7 @@ const props = defineProps<{
     avatar?: Partial<SessionAvatarValue> | null;
     shadowEnabled?: boolean;
     stage?: string | null;
+    cwd?: string | null;
     meta?: {
       subagentIds?: number[];
       shadow?: { suggestedQuestions?: string[]; status?: string; running?: boolean };
@@ -664,7 +727,8 @@ const sessionChangedFiles = computed<SessionChangedFileView[]>(() => {
               status: files.get(path)?.status === "added" ? "added" : "modified",
             });
           }
-          for (const path of turn.files?.deleted ?? []) files.set(path, { path, status: "deleted" });
+          for (const path of turn.files?.deleted ?? [])
+            files.set(path, { path, status: "deleted" });
         }
         return [...files.values()];
       })();
@@ -737,9 +801,7 @@ const fallbackMinimapTurns = computed(() =>
 const minimapTurns = computed(() =>
   archivedTurns.value.length > 0 ? archivedTurns.value : fallbackMinimapTurns.value,
 );
-const showMessageMinimap = computed(
-  () => !isMobileViewport.value && minimapTurns.value.length > 0,
-);
+const showMessageMinimap = computed(() => !isMobileViewport.value && minimapTurns.value.length > 0);
 const sessionLoading = ref(false);
 const chatViewportReady = ref(false);
 const chatComposerReady = computed(() => chatViewportReady.value || searchOpen.value);
@@ -752,6 +814,7 @@ const toolPanel = ref<{
   title: string;
   sections: { label: string; content: string }[];
   terminal?: "bash" | "eval";
+  jobId?: string;
 } | null>(null);
 
 function openJobDetail(request: JobDetailRequest): void {
@@ -760,6 +823,7 @@ function openJobDetail(request: JobDetailRequest): void {
     title: request.title,
     sections: request.sections,
     terminal: request.terminal,
+    jobId: request.jobId,
   });
 }
 const isStreaming = ref(false);
@@ -806,6 +870,10 @@ const modelPickerSaving = ref(false);
 const modelSearch = ref("");
 const sessionActionsOpen = ref(false);
 const mobilePreviewOpen = ref(false);
+const mobileBashOpen = ref(false);
+const mobileBashJobId = ref<string | null>(null);
+const backgroundBashCount = ref(0);
+let backgroundBashPoll: ReturnType<typeof setInterval> | undefined;
 const previewLoading = ref(false);
 const lastPreviewKey = ref("");
 const conversationHostRef = ref<HTMLElement | null>(null);
@@ -818,6 +886,7 @@ type SidePanelKind = "task" | "btw" | "log" | "files";
 type ContentTab =
   | { id: "log"; kind: "log"; title: string }
   | { id: "preview"; kind: "preview"; title: string }
+  | { id: "bash-terminals"; kind: "bash-terminals"; title: string; jobId?: string }
   | { id: string; kind: "file"; path: string; title: string }
   | {
       id: string;
@@ -825,6 +894,7 @@ type ContentTab =
       title: string;
       sections: { label: string; content: string; markdown?: boolean }[];
       terminal?: "bash" | "eval";
+      jobId?: string;
     };
 
 const contentTabs = ref<ContentTab[]>([]);
@@ -846,20 +916,98 @@ const hasLogTab = computed(() => contentTabs.value.some((tab) => tab.kind === "l
 const hasEvalTab = computed(() =>
   contentTabs.value.some((tab) => tab.kind === "tool" && tab.terminal === "eval"),
 );
+const hasBashTerminalsTab = computed(() =>
+  contentTabs.value.some((tab) => tab.kind === "bash-terminals"),
+);
 const logActionActive = computed(() =>
   isMobileViewport.value ? showLogPanel.value : hasLogTab.value,
 );
 const filesActionActive = computed(() =>
   isMobileViewport.value ? showFilesPanel.value : showFileTreeSidebar.value,
 );
-const evalActionActive = computed(() =>
-  isMobileViewport.value ? toolPanel.value?.terminal === "eval" : hasEvalTab.value,
-);
+const evalActionActive = computed(() => {
+  if (isMobileViewport.value) {
+    return toolPanel.value?.terminal === "eval";
+  }
+  return hasEvalTab.value;
+});
+const bashTerminalsActionActive = computed(() => {
+  if (isMobileViewport.value) return mobileBashOpen.value;
+  return hasBashTerminalsTab.value;
+});
+const previewActionActive = computed(() => {
+  if (isMobileViewport.value) return mobilePreviewOpen.value;
+  return hasPreviewTab.value;
+});
 
-function toolTabId(panel: {
-  title: string;
-  terminal?: "bash" | "eval";
-}): string {
+function bashTerminalsTabTitle(count = backgroundBashCount.value): string {
+  return count > 0 ? `后台终端 · ${count}` : "后台终端";
+}
+
+function openBackgroundBashPanel(jobId?: string) {
+  if (isMobileViewport.value) {
+    taskPaneOpen.value = false;
+    btwPanelOpen.value = false;
+    showLogPanel.value = false;
+    showFilesPanel.value = false;
+    mobilePreviewOpen.value = false;
+    toolPanel.value = null;
+    mobileBashJobId.value = jobId ?? null;
+    mobileBashOpen.value = true;
+    return;
+  }
+  upsertContentTab({
+    id: "bash-terminals",
+    kind: "bash-terminals",
+    title: bashTerminalsTabTitle(),
+    jobId,
+  });
+}
+
+function toggleBackgroundBashPanel() {
+  if (isMobileViewport.value) {
+    toggleMobileBash();
+    return;
+  }
+  if (hasBashTerminalsTab.value) {
+    closeContentTab("bash-terminals");
+    return;
+  }
+  openBackgroundBashPanel();
+}
+
+function toggleMobileBash() {
+  if (mobileBashOpen.value) {
+    mobileBashOpen.value = false;
+    return;
+  }
+  if (backgroundBashCount.value <= 0) return;
+  openBackgroundBashPanel();
+}
+
+async function refreshBackgroundBashCount() {
+  if (!props.session.id || document.hidden) return;
+  try {
+    const snapshot = await api.getSessionJobs(props.session.id);
+    backgroundBashCount.value = snapshot.jobs.filter(
+      (job) =>
+        (job.status === "running" || job.status === "waiting" || job.status === "queued") &&
+        (job.kind === "shell" ||
+          (job.kind === "project-service" && (job.name || "").startsWith("start:"))),
+    ).length;
+  } catch {
+    /* ignore transient poll errors */
+  }
+}
+
+function startBackgroundBashPolling() {
+  if (backgroundBashPoll) clearInterval(backgroundBashPoll);
+  void refreshBackgroundBashCount();
+  backgroundBashPoll = setInterval(() => void refreshBackgroundBashCount(), 2000);
+}
+
+function toolTabId(panel: { title: string; terminal?: "bash" | "eval"; jobId?: string }): string {
+  if (panel.terminal === "eval" && panel.jobId) return `tool:eval:${panel.jobId}`;
   if (panel.terminal) return `tool:${panel.terminal}`;
   return `tool:${panel.title}`;
 }
@@ -876,7 +1024,11 @@ function closeContentTab(id: string) {
   if (index < 0) return;
   const removed = contentTabs.value[index];
   contentTabs.value.splice(index, 1);
-  if (removed?.kind === "tool" && removed.terminal && toolPanel.value?.terminal === removed.terminal) {
+  if (
+    removed?.kind === "tool" &&
+    removed.terminal &&
+    toolPanel.value?.terminal === removed.terminal
+  ) {
     toolPanel.value = null;
   } else if (removed?.kind === "tool" && toolPanel.value?.title === removed.title) {
     toolPanel.value = null;
@@ -909,6 +1061,8 @@ function closeAllSidePanels() {
   showLogPanel.value = false;
   showFilesPanel.value = false;
   mobilePreviewOpen.value = false;
+  mobileBashOpen.value = false;
+  mobileBashJobId.value = null;
   toolPanel.value = null;
   clearContentTabs();
 }
@@ -952,6 +1106,7 @@ function setToolPanel(panel: NonNullable<typeof toolPanel.value>) {
     title: panel.title,
     sections: panel.sections,
     terminal: panel.terminal,
+    jobId: panel.jobId,
   });
 }
 
@@ -1530,7 +1685,11 @@ watch(
     showLogPanel.value = false;
     showFilesPanel.value = false;
     mobilePreviewOpen.value = false;
+    mobileBashOpen.value = false;
+    mobileBashJobId.value = null;
+    backgroundBashCount.value = 0;
     lastPreviewKey.value = "";
+    startBackgroundBashPolling();
     void restorePendingApprovals(sessionId);
   },
   { immediate: true },
@@ -1868,6 +2027,10 @@ onBeforeUnmount(() => {
     clearInterval(streamingReconcileTimer);
     streamingReconcileTimer = null;
   }
+  if (backgroundBashPoll) {
+    clearInterval(backgroundBashPoll);
+    backgroundBashPoll = undefined;
+  }
 });
 
 const displayGroups = computed(() =>
@@ -1877,6 +2040,12 @@ const displayGroups = computed(() =>
     showThinkingBlocks: showThinking.value,
   }),
 );
+const sessionServices = computed(() => parseSessionServicesFromMeta(props.session.meta));
+const servicesRunning = computed(() => {
+  const status = sessionServices.value?.status;
+  return status === "running" || status === "starting" || status === "active";
+});
+/** Eval header only for eval kernel activity (not background bash). */
 const hasEvalActivity = computed(
   () =>
     sessionTitle.value.toLowerCase().includes("eval") ||
@@ -1899,14 +2068,11 @@ const headerStatusKey = computed(() => {
   return props.session.status;
 });
 
-const sessionServices = computed(() => parseSessionServicesFromMeta(props.session.meta));
-const servicesRunning = computed(() => {
-  const status = sessionServices.value?.status;
-  return status === "running" || status === "starting" || status === "active";
-});
 const servicePreviews = computed<SessionServicesPreview[]>(() => {
   const services = sessionServices.value;
   if (!services?.apps?.length) return [];
+  const status = services.status;
+  if (status !== "active" && status !== "running" && status !== "starting") return [];
   return services.apps.map((app) => ({
     name: app.name,
     port: app.port,
@@ -1959,13 +2125,30 @@ async function openSessionPreview() {
     showLogPanel.value = false;
     showFilesPanel.value = false;
     toolPanel.value = null;
+    mobileBashOpen.value = false;
     mobilePreviewOpen.value = true;
     return;
   }
 
   taskPaneOpen.value = false;
   btwPanelOpen.value = false;
-  upsertContentTab({ id: "preview", kind: "preview", title: "应用" });
+  upsertContentTab({ id: "preview", kind: "preview", title: "活跃应用" });
+}
+
+function toggleSessionPreview() {
+  if (isMobileViewport.value) {
+    if (mobilePreviewOpen.value) {
+      mobilePreviewOpen.value = false;
+      return;
+    }
+    void openSessionPreview();
+    return;
+  }
+  if (hasPreviewTab.value) {
+    closeContentTab("preview");
+    return;
+  }
+  void openSessionPreview();
 }
 
 async function toggleMobilePreview() {
@@ -1977,39 +2160,63 @@ async function toggleMobilePreview() {
   await openSessionPreview();
 }
 
-type ConversationTouch = { x: number; y: number; edge: boolean };
+type ConversationTouch = { x: number; y: number; edge: "left" | "right" | null };
 const conversationTouch = ref<ConversationTouch | null>(null);
 const CONVERSATION_EDGE_PX = 24;
 const CONVERSATION_SWIPE_MIN = 56;
 const CONVERSATION_AXIS_RATIO = 1.35;
 
 function onConversationTouchStart(event: TouchEvent) {
-  if (!isMobileViewport.value || !hasServicePreviews.value || mobilePreviewOpen.value) return;
+  if (!isMobileViewport.value) return;
+  if (mobilePreviewOpen.value || mobileBashOpen.value) return;
+  const canPreview = hasServicePreviews.value;
+  const canBash = backgroundBashCount.value > 0;
+  if (!canPreview && !canBash) return;
   const t = event.touches[0];
   const host = conversationHostRef.value;
   if (!t || !host) return;
   const rect = host.getBoundingClientRect();
   const fromRightEdge = t.clientX >= rect.right - CONVERSATION_EDGE_PX;
-  conversationTouch.value = { x: t.clientX, y: t.clientY, edge: fromRightEdge };
+  const fromLeftEdge = t.clientX <= rect.left + CONVERSATION_EDGE_PX;
+  conversationTouch.value = {
+    x: t.clientX,
+    y: t.clientY,
+    edge: fromRightEdge ? "right" : fromLeftEdge ? "left" : null,
+  };
 }
 
 function onConversationTouchEnd(event: TouchEvent) {
   const start = conversationTouch.value;
   conversationTouch.value = null;
-  if (!start || !isMobileViewport.value || !hasServicePreviews.value || mobilePreviewOpen.value) {
-    return;
-  }
+  if (!start || !isMobileViewport.value) return;
+  if (mobilePreviewOpen.value || mobileBashOpen.value) return;
   const t = event.changedTouches[0];
   if (!t) return;
   const dx = t.clientX - start.x;
   const dy = t.clientY - start.y;
   const absX = Math.abs(dx);
   const absY = Math.abs(dy);
-  const horizontalDominant = absX >= CONVERSATION_SWIPE_MIN && absX > absY * CONVERSATION_AXIS_RATIO;
-  if (dx <= 0) return;
-  if (!start.edge && !horizontalDominant) return;
-  if (start.edge && absX < 28) return;
-  void openSessionPreview();
+  const horizontalDominant =
+    absX >= CONVERSATION_SWIPE_MIN && absX > absY * CONVERSATION_AXIS_RATIO;
+
+  // 右滑 → 活跃应用预览
+  if (dx > 0 && hasServicePreviews.value) {
+    if (start.edge === "left") return;
+    if (!start.edge && !horizontalDominant) return;
+    if (start.edge === "right" && absX < 28) return;
+    void openSessionPreview();
+    return;
+  }
+
+  // 左滑 → 后台终端
+  if (dx < 0 && backgroundBashCount.value > 0) {
+    if (start.edge === "left") {
+      if (absX < 28) return;
+    } else if (!horizontalDominant) {
+      return;
+    }
+    openBackgroundBashPanel();
+  }
 }
 
 watch(hasServicePreviews, (has) => {
@@ -2017,6 +2224,17 @@ watch(hasServicePreviews, (has) => {
     mobilePreviewOpen.value = false;
     if (hasPreviewTab.value) closeContentTab("preview");
   }
+});
+
+watch(backgroundBashCount, (count) => {
+  if (count <= 0) {
+    mobileBashOpen.value = false;
+    mobileBashJobId.value = null;
+    if (hasBashTerminalsTab.value) closeContentTab("bash-terminals");
+    return;
+  }
+  const tab = contentTabs.value.find((item) => item.kind === "bash-terminals");
+  if (tab) tab.title = bashTerminalsTabTitle(count);
 });
 
 const lastNotifiedAskId = ref<string | null>(null);
@@ -2103,6 +2321,20 @@ const showStreamingPlaceholder = computed(() => {
   return !group;
 });
 
+function extractBackgroundBashTaskId(
+  callArgs?: Record<string, unknown>,
+  resultContent?: Array<{ type: string; text: string }>,
+): string | undefined {
+  if (callArgs?.run_in_background === true || typeof callArgs?.task_id === "string") {
+    if (typeof callArgs.task_id === "string" && callArgs.task_id.trim()) {
+      return callArgs.task_id.trim();
+    }
+  }
+  const text = resultContent?.map((part) => part.text ?? "").join("\n") ?? "";
+  const match = text.match(/(?:^|\n)task_id:\s*(\S+)/);
+  return match?.[1]?.trim() || undefined;
+}
+
 async function openToolDetail(
   toolName: string,
   callArgs?: Record<string, unknown>,
@@ -2130,9 +2362,20 @@ async function openToolDetail(
   const detail = buildToolModal(toolName, callArgs, content);
   const normalizedToolName = toolName.toLowerCase();
   const isEval = normalizedToolName.includes("eval");
-  const isTerminal = isEval || normalizedToolName.includes("bash");
-  // PC: content tabs; mobile: exclusive tool drawer (both via setToolPanel)
-  setToolPanel({ ...detail, ...(isTerminal ? { terminal: isEval ? "eval" : "bash" } : {}) });
+  const isBash = normalizedToolName.includes("bash");
+  if (isBash) {
+    const jobId = extractBackgroundBashTaskId(callArgs, content);
+    if (jobId) {
+      openBackgroundBashPanel(jobId);
+      return;
+    }
+    setToolPanel(detail);
+    return;
+  }
+  setToolPanel({
+    ...detail,
+    ...(isEval ? { terminal: "eval" as const } : {}),
+  });
 }
 
 function openExternalInteractionDetail(
@@ -2142,7 +2385,7 @@ function openExternalInteractionDetail(
   toolModal.value = buildExternalInteractionModal(callArgs, resultContent);
 }
 
-function openEvalPanel() {
+async function openEvalPanel() {
   setToolPanel({
     title: "Eval",
     sections: [{ label: "运行环境", content: "正在读取 Eval 历史…" }],
@@ -2156,17 +2399,29 @@ function toggleEvalPanel() {
       toolPanel.value = null;
       return;
     }
-    openEvalPanel();
+    void openEvalPanel();
     return;
   }
-  const evalTab = contentTabs.value.find(
+  const evalTabs = contentTabs.value.filter(
     (tab) => tab.kind === "tool" && tab.terminal === "eval",
   );
-  if (evalTab) {
-    closeContentTab(evalTab.id);
+  if (evalTabs.length) {
+    for (const tab of [...evalTabs]) closeContentTab(tab.id);
     return;
   }
-  openEvalPanel();
+  void openEvalPanel();
+}
+
+function onEvalJobEnded(jobId: string) {
+  if (isMobileViewport.value) {
+    if (toolPanel.value?.jobId === jobId) toolPanel.value = null;
+    return;
+  }
+  const tab = contentTabs.value.find(
+    (item) => item.kind === "tool" && item.terminal === "eval" && item.jobId === jobId,
+  );
+  if (tab) closeContentTab(tab.id);
+  if (toolPanel.value?.jobId === jobId) toolPanel.value = null;
 }
 
 async function openBashDetail(
@@ -2191,6 +2446,11 @@ async function openBashDetail(
   }
   const detail = buildBashModal(command, content, intent);
   const output = content?.map((part) => part.text ?? "").join("\n") ?? "";
+  const jobId = extractBackgroundBashTaskId(undefined, content);
+  if (jobId) {
+    openBackgroundBashPanel(jobId);
+    return;
+  }
   const terminalPresentation =
     content === undefined || output.length > 1000 || output.split(/\r?\n/).length > 8;
   if (isMobileViewport.value) {
@@ -2198,7 +2458,8 @@ async function openBashDetail(
     else toolModal.value = detail;
     return;
   }
-  setToolPanel({ ...detail, terminal: "bash" });
+  if (terminalPresentation) setToolPanel({ ...detail, terminal: "bash" });
+  else toolModal.value = detail;
 }
 
 function openCompactionDetail(entry: ChatCompactionEntry) {

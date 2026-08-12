@@ -4,11 +4,19 @@
     <string name="title_activity_main">Supervisor</string>
     <string name="package_name">com.supervisor.app</string>
     <string name="custom_url_scheme">com.supervisor.app</string>
-    <string name="shell_scan_title">扫码连接</string>
-    <string name="shell_scan_hint">扫描电脑终端里的 Supervisor 二维码\n连接后在此显示网页界面</string>
-    <string name="shell_scan_button">开始扫码</string>
-    <string name="shell_scan_prompt">对准终端二维码</string>
-    <string name="shell_scan_cancelled">已取消扫码</string>
-    <string name="shell_scan_invalid">无法识别，请扫描 http(s) 地址二维码</string>
-    <string name="shell_rescan">重新扫码</string>
+    <string name="shell_list_title">服务器</string>
+    <string name="shell_list_section">已添加的实例</string>
+    <string name="shell_empty_title">添加 Supervisor 实例</string>
+    <string name="shell_empty_hint">在电脑启动 Supervisor 后，扫描终端二维码即可添加。一个 App 可连接多个实例。</string>
+    <string name="shell_scan_button">扫一扫</string>
+    <string name="shell_scan_prompt">扫描电脑端 Supervisor 二维码</string>
+    <string name="shell_scan_invalid">二维码不是有效的 http(s) 地址</string>
+    <string name="shell_added">已添加</string>
+    <string name="shell_connected">已连接</string>
+    <string name="shell_delete_title">删除实例</string>
+    <string name="shell_delete_message">确定删除「%1$s」？</string>
+    <string name="shell_delete_confirm">删除</string>
+    <string name="shell_cancel">取消</string>
+    <string name="shell_camera_denied">需要相机权限才能扫码</string>
+    <string name="shell_switch_servers">切换服务器</string>
 </resources>

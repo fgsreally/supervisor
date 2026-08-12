@@ -2351,7 +2351,12 @@ export function createHttpServer(
     if (id === null) return jsonError(c, 400, "invalid session id");
     const job = manager.jobs.get(c.req.param("jobId"));
     if (!job || job.sessionId !== id) return jsonError(c, 404, "Job not found");
-    return c.json({ job: await manager.jobs.cancel(job.id) });
+    try {
+      const cancelled = await manager.jobs.cancel(job.id);
+      return c.json({ job: cancelled });
+    } catch (error) {
+      return jsonError(c, 409, error instanceof Error ? error.message : String(error));
+    }
   });
 
   // Compatibility aliases for clients that still use the PersistentBash endpoints.

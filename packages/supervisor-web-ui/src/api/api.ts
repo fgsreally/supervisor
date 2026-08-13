@@ -353,6 +353,7 @@ export interface AgentResources {
   }>;
   layers: {
     agent: ResourceLayer;
+    project?: ResourceLayer;
   };
 }
 

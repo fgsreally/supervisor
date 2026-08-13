@@ -30,7 +30,6 @@ describe("AgentResource", () => {
     const agent = db.insertAgent({
       name: "Resource Agent",
       provider_id: providerId,
-      model_id: "test-model",
       home_dir: homeDir,
     });
 
@@ -104,7 +103,6 @@ describe("AgentResource", () => {
     const agent = db.insertAgent({
       name: "Skill Tool Agent",
       provider_id: providerId,
-      model_id: "test-model",
       home_dir: join(root, "agent-home"),
     });
 
@@ -153,7 +151,6 @@ describe("AgentResource", () => {
     const agent = db.insertAgent({
       name: "Skill Files Agent",
       provider_id: providerId,
-      model_id: "test-model",
       home_dir: join(root, "agent-home"),
     });
     const skillDir = join(root, "file-reader");
@@ -204,5 +201,82 @@ describe("AgentResource", () => {
     expect(first.skills).toHaveLength(0);
     expect(second.getSlashCommands()).toEqual([]);
     await second.clear();
+  });
+
+  it("自动合并项目 .agents/skills，且项目同名覆盖 Agent 绑定", async () => {
+    const providerId = db.insertProvider({
+      slug: "project-skill-test",
+      name: "Project Skill Test",
+      protocol: "chat-completions",
+    });
+    const agent = db.insertAgent({
+      name: "Project Skill Agent",
+      provider_id: providerId,
+      home_dir: join(root, "agent-home"),
+    });
+
+    const agentSkillDir = join(root, "agent-review");
+    mkdirSync(agentSkillDir, { recursive: true });
+    writeFileSync(
+      join(agentSkillDir, "SKILL.md"),
+      "---\nname: review\ndescription: Agent review\n---\nAgent version",
+      "utf8",
+    );
+    const onlyAgentDir = join(root, "agent-only");
+    mkdirSync(onlyAgentDir, { recursive: true });
+    writeFileSync(
+      join(onlyAgentDir, "SKILL.md"),
+      "---\nname: agent-only\ndescription: Agent only\n---\nOnly on agent",
+      "utf8",
+    );
+    const review = db.upsertResource({
+      kind: "skill",
+      slug: "review",
+      name: "review",
+      source_path: agentSkillDir,
+    });
+    const agentOnly = db.upsertResource({
+      kind: "skill",
+      slug: "agent-only",
+      name: "agent-only",
+      source_path: onlyAgentDir,
+    });
+    db.bindAgentResource(agent.id, review.id);
+    db.bindAgentResource(agent.id, agentOnly.id);
+
+    const projectSkillDir = join(root, ".agents", "skills", "review");
+    mkdirSync(projectSkillDir, { recursive: true });
+    writeFileSync(
+      join(projectSkillDir, "SKILL.md"),
+      "---\nname: review\ndescription: Project review\n---\nProject version",
+      "utf8",
+    );
+    const projectExtraDir = join(root, ".agents", "skills", "project-extra");
+    mkdirSync(projectExtraDir, { recursive: true });
+    writeFileSync(
+      join(projectExtraDir, "SKILL.md"),
+      "---\nname: project-extra\ndescription: Project extra\n---\nProject only",
+      "utf8",
+    );
+
+    const resource = new AgentResource({
+      sessionId: 20,
+      agentId: agent.id,
+      cwd: root,
+      db,
+      agent,
+    });
+    await resource.load();
+
+    expect(resource.skills.map((s) => s.name).sort()).toEqual([
+      "agent-only",
+      "project-extra",
+      "review",
+    ]);
+    expect(resource.expandPrompt("/skill:review")).toContain("Project version");
+    expect(resource.expandPrompt("/skill:review")).not.toContain("Agent version");
+    expect(resource.getSlashCommands().map((c) => c.name)).toEqual(
+      expect.arrayContaining(["review", "agent-only", "project-extra"]),
+    );
   });
 });

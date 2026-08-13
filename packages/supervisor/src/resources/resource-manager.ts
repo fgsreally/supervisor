@@ -1,4 +1,5 @@
 import type { SupervisorDb } from "../db/db.js";
+import { NPX_SKILLS_EXTERNAL } from "../agent/skill-dirs.js";
 import type { ResourceHandler, ResourceInstallOutput } from "./handler.js";
 import type { AgentResourceBinding, Resource, ResourceKind } from "./types.js";
 import { isResourceKind } from "./types.js";
@@ -112,6 +113,11 @@ export class ResourceManager {
     const resource = this.deps.db.getResourceByKindSlug(kind, slug);
     if (resource?.meta?.builtin === true) {
       throw new Error(`Cannot uninstall built-in ${kind}/${slug}`);
+    }
+    if (resource?.meta?.external === NPX_SKILLS_EXTERNAL) {
+      throw new Error(
+        `Cannot uninstall external ${kind}/${slug} (managed by npx skills; remove with \`npx skills remove -g\`)`,
+      );
     }
     if (resource) {
       try {

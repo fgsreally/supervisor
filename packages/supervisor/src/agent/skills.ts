@@ -376,6 +376,12 @@ export interface LoadSkillsOptions {
   cwd: string;
   /** Skill paths obtained from resource catalog bindings. */
   skillPaths: string[];
+  /**
+   * Name collision policy across skillPaths.
+   * - keep-first (default): earlier path wins
+   * - keep-last: later path overrides (used so project skills beat agent skills)
+   */
+  collision?: "keep-first" | "keep-last";
 }
 
 function normalizePath(input: string): string {
@@ -396,7 +402,7 @@ function resolveSkillPath(p: string, cwd: string): string {
  * Returns skills and any validation diagnostics.
  */
 export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
-  const { cwd, skillPaths } = options;
+  const { cwd, skillPaths, collision = "keep-first" } = options;
 
   const skillMap = new Map<string, Skill>();
   const realPathSet = new Set<string>();
@@ -414,17 +420,34 @@ export function loadSkills(options: LoadSkillsOptions): LoadSkillsResult {
 
       const existing = skillMap.get(skill.name);
       if (existing) {
-        collisionDiagnostics.push({
-          type: "collision",
-          message: `name "${skill.name}" collision`,
-          path: skill.filePath,
-          collision: {
-            resourceType: "skill",
-            name: skill.name,
-            winnerPath: existing.filePath,
-            loserPath: skill.filePath,
-          },
-        });
+        if (collision === "keep-last") {
+          realPathSet.delete(canonicalizePath(existing.filePath));
+          skillMap.set(skill.name, skill);
+          realPathSet.add(realPath);
+          collisionDiagnostics.push({
+            type: "collision",
+            message: `name "${skill.name}" collision`,
+            path: existing.filePath,
+            collision: {
+              resourceType: "skill",
+              name: skill.name,
+              winnerPath: skill.filePath,
+              loserPath: existing.filePath,
+            },
+          });
+        } else {
+          collisionDiagnostics.push({
+            type: "collision",
+            message: `name "${skill.name}" collision`,
+            path: skill.filePath,
+            collision: {
+              resourceType: "skill",
+              name: skill.name,
+              winnerPath: existing.filePath,
+              loserPath: skill.filePath,
+            },
+          });
+        }
       } else {
         skillMap.set(skill.name, skill);
         realPathSet.add(realPath);

@@ -57,7 +57,7 @@ export interface UIProvider {
 }
 
 export type UIResourceKind = "skills" | "extensions" | "prompts" | "mcp";
-export type UIResourceLayer = "global" | "agent";
+export type UIResourceLayer = "global" | "agent" | "project";
 
 export interface UISkillFile {
   id: string;

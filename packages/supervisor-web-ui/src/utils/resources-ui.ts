@@ -3,6 +3,7 @@ import type {
   UIFileItem,
   UIResourceItem,
   UIResourceKind,
+  UIResourceLayer,
   UISkillItem,
   UISkillFile,
 } from "@/types/ui";
@@ -50,7 +51,7 @@ function extensionFilesToUi(
 function layerToUiItems(
   agentId: string | undefined,
   layer: ResourceLayer,
-  resourceLayer: "global" | "agent",
+  resourceLayer: UIResourceLayer,
 ): UIResourceItem[] {
   const items: UIResourceItem[] = [];
   for (const skill of layer.skills) {
@@ -116,7 +117,11 @@ export function agentResourcesToUiItems(
   agentId: string,
   resources: AgentResources,
 ): UIResourceItem[] {
-  return layerToUiItems(agentId, resources.layers.agent, "agent");
+  const empty: ResourceLayer = { skills: [], prompts: [], extensions: [], mcp: [] };
+  return [
+    ...layerToUiItems(agentId, resources.layers.agent, "agent"),
+    ...layerToUiItems(agentId, resources.layers.project ?? empty, "project"),
+  ];
 }
 
 /** Agent tab shows resources currently bound to the agent. */

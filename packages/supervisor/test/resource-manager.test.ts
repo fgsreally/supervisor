@@ -48,7 +48,6 @@ describe("ResourceManager", () => {
     const agent = db.insertAgent({
       name: "A",
       provider_id: providerId,
-      model_id: "m",
     });
 
     const promptSrc = join(tmpDir, "hello.md");
@@ -120,7 +119,6 @@ describe("ResourceManager", () => {
     const agent = db.insertAgent({
       name: "B",
       provider_id: providerId,
-      model_id: "m",
     });
     const promptSrc = join(tmpDir, "bound.md");
     writeFileSync(promptSrc, "# Bound\n", "utf8");
@@ -160,5 +158,20 @@ describe("ResourceManager", () => {
     await extensionManager.unbindResource({ agentId: agent.id, resourceId: extension.id });
 
     expect(deactivated).toEqual([[agent.id, "test-extension"]]);
+  });
+
+  it("refuses to uninstall npx-skills external catalog entries", async () => {
+    db.upsertResource({
+      kind: "skill",
+      slug: "from-npx",
+      name: "from-npx",
+      source_path: join(tmpDir, ".agents", "skills", "from-npx"),
+      meta: { external: "npx-skills" },
+    });
+
+    await expect(manager.uninstallResource("skill", "from-npx")).rejects.toThrow(
+      /Cannot uninstall external skill\/from-npx/,
+    );
+    expect(db.getResourceByKindSlug("skill", "from-npx")).toBeDefined();
   });
 });

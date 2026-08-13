@@ -199,11 +199,17 @@ describe("supervisor: Web UI API compatibility", () => {
       const resources = (await (await req("GET", `/agents/${agent.id}/resources`)).json()) as {
         homeDir: string;
         tools: unknown[];
-        layers: { agent: Record<string, unknown[]> };
+        layers: { agent: Record<string, unknown[]>; project: Record<string, unknown[]> };
       };
       expect(resources.homeDir).toBe("");
       expect(resources.tools).toEqual([]);
       expect(resources.layers.agent).toEqual({ skills: [], prompts: [], extensions: [], mcp: [] });
+      expect(resources.layers.project).toEqual({
+        skills: [],
+        prompts: [],
+        extensions: [],
+        mcp: [],
+      });
     });
 
     it("GET /agents/:id/resources returns agent resources", async () => {
@@ -214,10 +220,18 @@ describe("supervisor: Web UI API compatibility", () => {
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
 
+      const modelRes = await req("POST", `/providers/${providerId}/models`, {
+        modelId: "test-model",
+        name: "Test Model",
+      });
+      expect(modelRes.status).toBe(201);
+      const model = (await modelRes.json()) as { id: number };
+
       const agentRes = await req("POST", "/agents", {
         name: "Test Agent",
-        providerId,
+        modelId: model.id,
       });
+      expect(agentRes.status).toBe(201);
       const { id: agentId } = (await agentRes.json()) as { id: string };
 
       // Get resources
@@ -225,12 +239,14 @@ describe("supervisor: Web UI API compatibility", () => {
       expect(res.status).toBe(200);
       const body = (await res.json()) as {
         agentId: string;
-        layers: { agent: { skills: unknown[] } };
+        layers: { agent: { skills: unknown[] }; project: { skills: unknown[] } };
       };
       expect(body.agentId).toBe(agentId);
       expect(body.layers).toBeDefined();
       expect(body.layers.agent).toBeDefined();
       expect(body.layers.agent.skills).toBeDefined();
+      expect(body.layers.project).toBeDefined();
+      expect(body.layers.project.skills).toBeDefined();
     });
 
     it("GET /agents/:id/system-md returns system prompt", async () => {

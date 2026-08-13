@@ -11,6 +11,7 @@ import { isPackagedToolId, probePackagedTool } from "../tools/catalog.js";
 import { createDefaultTools } from "../utils/default-tools.js";
 import { loadPromptTemplates, type PromptTemplate } from "./prompt-templates.js";
 import { loadSkills, type Skill } from "./skills.js";
+import { getProjectSkillsDirectory } from "./skill-dirs.js";
 import type { Agent, ToolsPreset } from "../types.js";
 import type { Resource } from "../resources/types.js";
 
@@ -142,6 +143,7 @@ function createProbeContext(
       name: "probe",
       providerId: 0,
       modelId: "probe",
+      backendType: "native",
       getModel: () => ({ provider: "probe", id: "probe", contextWindow: 0 }),
       registerTool: toolRegistry.register,
       unregisterTool: noop,
@@ -294,6 +296,7 @@ export interface AgentResources {
   tools: AgentToolInfo[];
   layers: {
     agent: ResourceLayer;
+    project: ResourceLayer;
   };
 }
 
@@ -386,7 +389,7 @@ export function promptsToResourceInfo(prompts: PromptTemplate[]): PromptTemplate
   return prompts.map(promptToInfo);
 }
 
-/** Load skills/prompts for session runtime from DB bindings. */
+/** Load skills/prompts for session runtime from DB bindings + project .agents/skills. */
 export function loadAgentSessionResources(
   db: SupervisorDb,
   agent: Agent | undefined,
@@ -409,9 +412,16 @@ export function loadAgentSessionResources(
           .filter((p): p is string => Boolean(p))
       : [];
 
+  const projectSkillsDir = getProjectSkillsDirectory(cwd);
+  if (existsSync(projectSkillsDir)) {
+    skillPaths.push(projectSkillsDir);
+  }
+
   const { skills } = loadSkills({
     cwd,
     skillPaths,
+    // Project skills are appended last and should override same-name agent skills.
+    collision: "keep-last",
   });
 
   const promptTemplates = loadPromptTemplates({
@@ -485,7 +495,7 @@ export async function resolveAgentTools(
   return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** API/UI: agent resources from DB bindings. */
+/** API/UI: agent resources from DB bindings + project .agents/skills. */
 export async function resolveAgentResources(
   db: SupervisorDb,
   agentId: number,
@@ -498,28 +508,31 @@ export async function resolveAgentResources(
   }
 
   const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
-  const { skills, promptTemplates, systemMd } = loadAgentSessionResources(db, agent, cwd);
+  const { promptTemplates, systemMd } = loadAgentSessionResources(db, agent, cwd);
 
   const bindings = db.listAgentResources(agentId);
-  const boundSkillPaths = new Set(
-    bindings
-      .filter((b) => b.resource?.kind === "skill" && b.resource.sourcePath)
-      .map((b) => b.resource!.sourcePath!),
-  );
+  const agentSkillPaths = bindings
+    .filter((b) => b.resource?.kind === "skill" && b.resource.sourcePath)
+    .map((b) => b.resource!.sourcePath!);
   const boundPromptPaths = new Set(
     bindings
       .filter((b) => b.resource?.kind === "prompt" && b.resource.sourcePath)
       .map((b) => b.resource!.sourcePath!),
   );
 
-  const agentSkills =
-    boundSkillPaths.size > 0
-      ? skillsToResourceInfo(
-          skills.filter(
-            (skill) => boundSkillPaths.has(skill.baseDir) || boundSkillPaths.has(skill.filePath),
-          ),
-        )
-      : skillsToResourceInfo(skills);
+  const { skills: agentBoundSkills } = loadSkills({
+    cwd,
+    skillPaths: agentSkillPaths,
+  });
+  const agentSkills = skillsToResourceInfo(agentBoundSkills);
+
+  const projectSkillsDir = getProjectSkillsDirectory(cwd);
+  const { skills: projectSkillsRaw } = loadSkills({
+    cwd,
+    skillPaths: existsSync(projectSkillsDir) ? [projectSkillsDir] : [],
+  });
+  const projectSkills = skillsToResourceInfo(projectSkillsRaw);
+
   const agentPrompts =
     boundPromptPaths.size > 0
       ? promptsToResourceInfo(promptTemplates.filter((p) => boundPromptPaths.has(p.filePath)))
@@ -553,6 +566,12 @@ export async function resolveAgentResources(
         prompts: agentPrompts,
         extensions: agentExtensions,
         mcp: agentMcp,
+      },
+      project: {
+        skills: projectSkills,
+        prompts: [],
+        extensions: [],
+        mcp: [],
       },
     },
   };

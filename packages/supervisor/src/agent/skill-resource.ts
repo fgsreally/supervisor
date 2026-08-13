@@ -1,4 +1,4 @@
-import { cpSync, existsSync, readdirSync, rmSync, statSync } from "node:fs";
+import { cpSync, existsSync, rmSync, statSync } from "node:fs";
 import { basename, isAbsolute, join, resolve } from "node:path";
 import type { ResourceHandler } from "../resources/handler.js";
 import {
@@ -6,13 +6,16 @@ import {
   parseGitOrLocalSource,
   resolveSkillDirectory,
 } from "../resources/git-source.js";
+import { ensureGlobalResourceDirectory } from "../resources/resource-paths.js";
 import {
-  ensureGlobalResourceDirectory,
-  getGlobalResourceDirectory,
-} from "../resources/resource-paths.js";
+  discoverSkillDescriptors,
+  listGlobalSkillRoots,
+  NPX_SKILLS_EXTERNAL,
+  getSupervisorGlobalSkillsDirectory,
+} from "./skill-dirs.js";
 
 export function getGlobalSkillsDirectory(): string {
-  return getGlobalResourceDirectory("skills");
+  return getSupervisorGlobalSkillsDirectory();
 }
 
 function installLocalDirectory(absoluteSource: string, slug?: string) {
@@ -39,16 +42,14 @@ function installLocalDirectory(absoluteSource: string, slug?: string) {
 export const skillResourceHandler: ResourceHandler = {
   kind: "skill",
   discover() {
-    const directory = getGlobalSkillsDirectory();
-    if (!existsSync(directory)) return [];
-    return readdirSync(directory, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory() || entry.isSymbolicLink())
-      .map((entry) => ({
-        kind: "skill" as const,
-        slug: entry.name,
-        name: entry.name,
-        sourcePath: resolve(directory, entry.name),
-      }));
+    return discoverSkillDescriptors(listGlobalSkillRoots()).map((skill) => ({
+      kind: "skill" as const,
+      slug: skill.slug,
+      name: skill.name,
+      sourcePath: skill.sourcePath,
+      // Always set meta so catalog sync can clear a stale external flag after a local install.
+      meta: skill.external ? { external: NPX_SKILLS_EXTERNAL } : {},
+    }));
   },
   install({ source, slug }) {
     const parsed = parseGitOrLocalSource(source);
@@ -82,6 +83,7 @@ export const skillResourceHandler: ResourceHandler = {
     }
   },
   uninstall(slug) {
+    // Only remove Supervisor-owned installs; npx global skills are never deleted here.
     const target = join(getGlobalSkillsDirectory(), slug);
     if (existsSync(target)) rmSync(target, { recursive: true, force: true });
   },

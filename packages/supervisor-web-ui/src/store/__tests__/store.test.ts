@@ -123,7 +123,10 @@ describe("Agent Store", () => {
       agentId: "agent-1",
       homeDir: "/home/agent",
       systemMd: "Test",
-      layers: { agent: { skills: [], prompts: [], extensions: [] } },
+      layers: {
+        agent: { skills: [], prompts: [], extensions: [] },
+        project: { skills: [], prompts: [], extensions: [], mcp: [] },
+      },
     };
     vi.mocked(api.getAgentResources).mockResolvedValue(mockResources as any);
 

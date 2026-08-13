@@ -60,11 +60,8 @@ export interface SupervisorSettings {
   localSpeechModels?: LocalSpeechModelStatus[];
   speechApiKeyConfigured?: boolean;
   speechApiKey?: string;
-  doubaoSpeechAppIdConfigured?: boolean;
-  doubaoSpeechAccessTokenConfigured?: boolean;
   doubaoSpeechConfigured?: boolean;
-  doubaoSpeechAppId?: string;
-  doubaoSpeechAccessToken?: string;
+  doubaoSpeechApiKey?: string;
   doubaoSpeechPreset?:
     | "2.0-duration"
     | "2.0-concurrent"
@@ -1025,8 +1022,6 @@ export function testSettingsApiKey(
   provider: "qwen" | "doubao" | "tavily" | "brave" | "serper" | "firecrawl",
   apiKey?: string,
   options?: {
-    appId?: string;
-    accessToken?: string;
     preset?: SupervisorSettings["doubaoSpeechPreset"];
   },
 ): Promise<{ ok: true }> {

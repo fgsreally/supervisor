@@ -1,5 +1,4 @@
-import { WebSocket } from "ws";
-import { formatUnknownError } from "./format-error.js";
+import { createOutboundWebSocket, formatOutboundHandshakeError } from "./outbound-ws.js";
 import {
   buildDoubaoSpeechWsHeaders,
   doubaoSpeechPresetsToTry,
@@ -18,7 +17,22 @@ function testWebSocket(url: string, headers: Record<string, string>, label: stri
       settled = true;
       fn();
     };
-    const socket = new WebSocket(url, { headers, handshakeTimeout: 12_000 });
+    const socket = createOutboundWebSocket(url, headers, 12_000);
+
+    socket.on("error", (error) => {
+      try {
+        socket.terminate();
+      } catch {
+        /* ignore */
+      }
+      finish(() =>
+        reject(
+          new Error(
+            formatOutboundHandshakeError(error, label, "请确认 API Key，以及控制台已开通对应服务"),
+          ),
+        ),
+      );
+    });
 
     socket.once("open", () => {
       finish(() => {
@@ -26,38 +40,11 @@ function testWebSocket(url: string, headers: Record<string, string>, label: stri
         resolve();
       });
     });
-
-    socket.on("unexpected-response", (_req, res) => {
-      const chunks: Buffer[] = [];
-      res.on("data", (chunk) => chunks.push(chunk as Buffer));
-      res.on("end", () => {
-        const raw = Buffer.concat(chunks).toString("utf8").trim();
-        let detail = raw;
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw) as { message?: string; error?: string; code?: number };
-            detail = parsed.message ?? parsed.error ?? raw;
-          } catch {
-            detail = raw.slice(0, 240);
-          }
-        }
-        finish(() =>
-          reject(
-            new Error(`${label}连接被拒绝 (HTTP ${res.statusCode})${detail ? `: ${detail}` : ""}`),
-          ),
-        );
-      });
-    });
-
-    socket.once("error", (error) => {
-      finish(() => reject(new Error(formatUnknownError(error, `${label}连接失败`))));
-    });
   });
 }
 
 export type DoubaoSpeechCredentials = {
-  appId: string;
-  accessToken: string;
+  apiKey: string;
   preset?: string;
 };
 
@@ -69,11 +56,8 @@ export type DoubaoSpeechTestResult = {
 export async function testDoubaoSpeechCredentials(
   creds: DoubaoSpeechCredentials,
 ): Promise<DoubaoSpeechTestResult> {
-  const appId = normalizeDoubaoSpeechCredential(creds.appId);
-  const accessToken = normalizeDoubaoSpeechCredential(creds.accessToken);
-  if (!appId && !accessToken) {
-    throw new Error("请填写 APP ID 与 Access Token");
-  }
+  const apiKey = normalizeDoubaoSpeechCredential(creds.apiKey);
+  if (!apiKey) throw new Error("请填写 API Key");
   const candidates = doubaoSpeechPresetsToTry(creds.preset);
   let lastError: Error | null = null;
   for (const id of candidates) {
@@ -81,7 +65,7 @@ export async function testDoubaoSpeechCredentials(
     try {
       await testWebSocket(
         preset.wsUrl,
-        buildDoubaoSpeechWsHeaders(appId, accessToken, preset.resourceId),
+        buildDoubaoSpeechWsHeaders(apiKey, preset.resourceId),
         "豆包语音",
       );
       return { preset: id };
@@ -91,9 +75,7 @@ export async function testDoubaoSpeechCredentials(
   }
   throw (
     lastError ??
-    new Error(
-      "豆包语音 WebSocket 握手失败。请确认 APP ID / Access Token，以及控制台已开通流式语音识别",
-    )
+    new Error("豆包语音 WebSocket 握手失败。请确认 API Key，以及控制台已开通流式语音识别")
   );
 }
 
@@ -113,7 +95,7 @@ export async function testApiKey(
       );
     case "doubao": {
       const creds =
-        typeof credential === "string" ? { appId: "", accessToken: credential } : credential;
+        typeof credential === "string" ? { apiKey: credential } : credential;
       return testDoubaoSpeechCredentials(creds);
     }
     case "tavily":

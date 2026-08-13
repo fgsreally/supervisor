@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { decryptApiKey } from "./encrypt.js";
 import { getSupervisorHome } from "./supervisor-home.js";
 
 /**
@@ -60,9 +59,8 @@ export interface SupervisorSettings {
   /** 本地 sherpa-onnx 模型 id，见 LOCAL_SPEECH_MODELS */
   localSpeechModelId?: string;
   speechApiKeyEncrypted?: string;
-  /** Volcengine console App ID (not secret). */
-  doubaoSpeechAppId?: string;
-  doubaoSpeechAccessTokenEncrypted?: string;
+  /** Volcengine Doubao streaming ASR API Key (encrypted). */
+  doubaoSpeechApiKeyEncrypted?: string;
   /** Doubao streaming ASR billing preset (resource id + endpoint). */
   doubaoSpeechPreset?: DoubaoSpeechPresetId;
   /** Firebase Cloud Messaging service account JSON (encrypted). */
@@ -92,6 +90,9 @@ export interface SupervisorSettings {
 /** Fixed resource id for Doubao streaming ASR 2.0 (hourly). */
 export const DOUBAO_SPEECH_RESOURCE_ID = "volc.seedasr.sauc.duration";
 
+/** Latest bidirectional streaming ASR endpoint (docs 6561/2630027). */
+export const DOUBAO_SPEECH_WS_URL = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async";
+
 export type DoubaoSpeechPresetId =
   | "2.0-duration"
   | "2.0-concurrent"
@@ -104,35 +105,34 @@ export const DOUBAO_SPEECH_PRESETS: Record<
   DoubaoSpeechPresetId,
   { resourceId: string; wsUrl: string; label: string }
 > = {
-  // Matches the previously working supervisor endpoint (appid+token).
   "2.0-duration": {
     resourceId: "volc.seedasr.sauc.duration",
-    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
+    wsUrl: DOUBAO_SPEECH_WS_URL,
     label: "2.0 小时版",
   },
   "2.0-duration-async": {
     resourceId: "volc.seedasr.sauc.duration",
-    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
-    label: "2.0 小时版（async）",
+    wsUrl: DOUBAO_SPEECH_WS_URL,
+    label: "2.0 小时版",
   },
   "2.0-concurrent": {
     resourceId: "volc.seedasr.sauc.concurrent",
-    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
+    wsUrl: DOUBAO_SPEECH_WS_URL,
     label: "2.0 并发版",
   },
   "1.0-duration": {
     resourceId: "volc.bigasr.sauc.duration",
-    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
+    wsUrl: DOUBAO_SPEECH_WS_URL,
     label: "1.0 小时版",
   },
   "1.0-duration-async": {
     resourceId: "volc.bigasr.sauc.duration",
-    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async",
-    label: "1.0 小时版（async）",
+    wsUrl: DOUBAO_SPEECH_WS_URL,
+    label: "1.0 小时版",
   },
   "1.0-concurrent": {
     resourceId: "volc.bigasr.sauc.concurrent",
-    wsUrl: "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel",
+    wsUrl: DOUBAO_SPEECH_WS_URL,
     label: "1.0 并发版",
   },
 };
@@ -146,26 +146,27 @@ export function isDoubaoSpeechPresetId(value: string): value is DoubaoSpeechPres
 export function resolveDoubaoSpeechPreset(
   presetId?: string,
 ): (typeof DOUBAO_SPEECH_PRESETS)[DoubaoSpeechPresetId] & { id: DoubaoSpeechPresetId } {
-  // Migrate renamed preset ids from earlier builds.
-  const normalized = presetId === "2.0-duration-sync" ? "2.0-duration" : presetId;
+  // Migrate renamed / pre-async preset ids from earlier builds.
+  const aliases: Record<string, DoubaoSpeechPresetId> = {
+    "2.0-duration-sync": "2.0-duration",
+    "2.0-duration-async": "2.0-duration",
+    "1.0-duration-async": "1.0-duration",
+  };
+  const normalized = presetId ? (aliases[presetId] ?? presetId) : presetId;
   const id =
     normalized && isDoubaoSpeechPresetId(normalized) ? normalized : ("2.0-duration" as const);
   return { id, ...DOUBAO_SPEECH_PRESETS[id] };
 }
 
-/** Prefer saved preset, then try common resource/URL combinations. */
+/** Prefer saved preset, then try common resource IDs on the latest bidirectional URL. */
 export function doubaoSpeechPresetsToTry(preferred?: string): DoubaoSpeechPresetId[] {
   const order: DoubaoSpeechPresetId[] = [
     "2.0-duration",
-    "2.0-duration-async",
-    "1.0-duration",
-    "1.0-duration-async",
     "2.0-concurrent",
+    "1.0-duration",
     "1.0-concurrent",
   ];
-  const preferredId = preferred
-    ? resolveDoubaoSpeechPreset(preferred).id
-    : null;
+  const preferredId = preferred ? resolveDoubaoSpeechPreset(preferred).id : null;
   if (!preferredId) return order;
   return [preferredId, ...order.filter((id) => id !== preferredId)];
 }
@@ -178,42 +179,30 @@ export function resolveDoubaoSpeechFromSettings(settings: SupervisorSettings) {
 export function normalizeDoubaoSpeechCredential(value: string): string {
   let next = value.trim().replace(/^["']|["']$/g, "");
   // Users sometimes paste "Bearer; xxx" or "Bearer xxx" from old docs.
-  next = next.replace(/^bearer\s*;\s*/i, "").replace(/^bearer\s+/i, "").trim();
+  next = next
+    .replace(/^bearer\s*;\s*/i, "")
+    .replace(/^bearer\s+/i, "")
+    .trim();
   return next;
 }
 
-/** WebSocket handshake headers (legacy APP ID + Access Token, or new-console X-Api-Key). */
+/** WebSocket handshake headers for the latest Doubao ASR console (X-Api-Key). */
 export function buildDoubaoSpeechWsHeaders(
-  appId: string,
-  accessToken: string,
+  apiKey: string,
   resourceId: string = DOUBAO_SPEECH_RESOURCE_ID,
 ): Record<string, string> {
-  const trimmedAppId = normalizeDoubaoSpeechCredential(appId);
-  const trimmedToken = normalizeDoubaoSpeechCredential(accessToken);
-  // Keep the header set that previously worked in this project.
-  const base = {
+  const trimmedKey = normalizeDoubaoSpeechCredential(apiKey);
+  if (!trimmedKey) throw new Error("Doubao speech API Key is missing");
+  return {
+    "X-Api-Key": trimmedKey,
     "X-Api-Resource-Id": resourceId,
-    "X-Api-Connect-Id": randomUUID(),
     "X-Api-Request-Id": randomUUID(),
     "X-Api-Sequence": "-1",
   };
-  if (trimmedAppId && trimmedToken) {
-    return {
-      ...base,
-      "X-Api-App-Key": trimmedAppId,
-      "X-Api-Access-Key": trimmedToken,
-    };
-  }
-  const apiKey = trimmedToken || trimmedAppId;
-  if (!apiKey) throw new Error("Doubao speech credentials are missing");
-  return { ...base, "X-Api-Key": apiKey };
 }
 
 export function isDoubaoSpeechConfigured(settings: SupervisorSettings): boolean {
-  const appId = settings.doubaoSpeechAppId?.trim();
-  const hasToken = Boolean(settings.doubaoSpeechAccessTokenEncrypted);
-  if (appId && hasToken) return true;
-  return hasToken && !appId;
+  return Boolean(settings.doubaoSpeechApiKeyEncrypted);
 }
 
 export type SpeechRecognitionMode = "local" | "qwen" | "doubao";
@@ -251,19 +240,8 @@ export function readSupervisorSettings(): SupervisorSettings {
   const path = getSupervisorSettingsPath();
   if (!existsSync(path)) return { ...DEFAULT_SETTINGS };
   try {
-    const parsed = JSON.parse(readFileSync(path, "utf-8")) as SupervisorSettings & {
-      doubaoSpeechAppIdEncrypted?: string;
-      doubaoSpeechApiKeyEncrypted?: string;
-    };
-    const settings: SupervisorSettings = { ...DEFAULT_SETTINGS, ...parsed };
-    if (!settings.doubaoSpeechAppId?.trim() && parsed.doubaoSpeechAppIdEncrypted) {
-      try {
-        settings.doubaoSpeechAppId = decryptApiKey(parsed.doubaoSpeechAppIdEncrypted).trim();
-      } catch {
-        // ignore legacy migration failures
-      }
-    }
-    return settings;
+    const parsed = JSON.parse(readFileSync(path, "utf-8")) as SupervisorSettings;
+    return { ...DEFAULT_SETTINGS, ...parsed };
   } catch {
     return { ...DEFAULT_SETTINGS };
   }
@@ -271,7 +249,9 @@ export function readSupervisorSettings(): SupervisorSettings {
 
 export function writeSupervisorSettings(patch: Partial<SupervisorSettings>): SupervisorSettings {
   const current = readSupervisorSettings();
-  const next: SupervisorSettings = { ...current };
+  const next: SupervisorSettings & Record<string, unknown> = { ...current };
+  delete next.doubaoSpeechAppId;
+  delete next.doubaoSpeechAccessTokenEncrypted;
   for (const [key, value] of Object.entries(patch) as [keyof SupervisorSettings, unknown][]) {
     if (value === undefined) delete next[key];
     else next[key] = value as never;

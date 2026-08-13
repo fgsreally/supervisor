@@ -2,11 +2,17 @@
 include ':capacitor-android'
 project(':capacitor-android').projectDir = new File('../../../node_modules/.pnpm/@capacitor+android@6.2.1_@capacitor+core@6.2.1/node_modules/@capacitor/android/capacitor')
 
+include ':capacitor-community-sqlite'
+project(':capacitor-community-sqlite').projectDir = new File('../../../node_modules/.pnpm/@capacitor-community+sqlite@6.0.2_@capacitor+core@6.2.1/node_modules/@capacitor-community/sqlite/android')
+
 include ':capacitor-app'
 project(':capacitor-app').projectDir = new File('../../../node_modules/.pnpm/@capacitor+app@6.0.3_@capacitor+core@6.2.1/node_modules/@capacitor/app/android')
 
 include ':capacitor-camera'
 project(':capacitor-camera').projectDir = new File('../../../node_modules/.pnpm/@capacitor+camera@6.1.3_@capacitor+core@6.2.1/node_modules/@capacitor/camera/android')
+
+include ':capacitor-local-notifications'
+project(':capacitor-local-notifications').projectDir = new File('../../../node_modules/.pnpm/@capacitor+local-notifications@6.1.2_@capacitor+core@6.2.1/node_modules/@capacitor/local-notifications/android')
 
 include ':capacitor-push-notifications'
 project(':capacitor-push-notifications').projectDir = new File('../../../node_modules/.pnpm/@capacitor+push-notifications@6.0.5_@capacitor+core@6.2.1/node_modules/@capacitor/push-notifications/android')
@@ -15,4 +21,4 @@ include ':capacitor-splash-screen'
 project(':capacitor-splash-screen').projectDir = new File('../../../node_modules/.pnpm/@capacitor+splash-screen@6.0.4_@capacitor+core@6.2.1/node_modules/@capacitor/splash-screen/android')
 
 include ':pi-supervisor-native-bridge'
-project(':pi-supervisor-native-bridge').projectDir = new File('../../pi-supervisor-native-bridge/android')
+project(':pi-supervisor-native-bridge').projectDir = new File('../node_modules/pi-supervisor-native-bridge/android')

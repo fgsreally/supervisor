@@ -76,7 +76,7 @@ function step(delta: number) {
   const current = preview.value;
   if (!current || current.urls.length <= 1) return;
   const next = (current.index + delta + current.urls.length) % current.urls.length;
-  openImagePreview(current.urls, next);
+  openImagePreview([...current.urls], next);
 }
 
 function onKeydown(event: KeyboardEvent) {

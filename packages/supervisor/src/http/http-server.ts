@@ -32,7 +32,6 @@ import {
   isFeatureModelRef,
   isUtilityFeature,
   readSupervisorSettings,
-  isDoubaoSpeechConfigured,
   isDoubaoSpeechPresetId,
   resolveSpeechRecognitionMode,
   writeSupervisorSettings,
@@ -583,7 +582,7 @@ export function createHttpServer(
       serperApiKeyEncrypted: _serper,
       firecrawlApiKeyEncrypted: _firecrawl,
       speechApiKeyEncrypted,
-      doubaoSpeechAccessTokenEncrypted,
+      doubaoSpeechApiKeyEncrypted,
       ...safeSettings
     } = settings;
     const speechRecognitionMode = resolveSpeechRecognitionMode(settings);
@@ -605,9 +604,7 @@ export function createHttpServer(
         _firecrawl || process.env[safeSettings.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY"],
       ),
       speechApiKeyConfigured: Boolean(speechApiKeyEncrypted),
-      doubaoSpeechAppIdConfigured: Boolean(safeSettings.doubaoSpeechAppId?.trim()),
-      doubaoSpeechAccessTokenConfigured: Boolean(doubaoSpeechAccessTokenEncrypted),
-      doubaoSpeechConfigured: isDoubaoSpeechConfigured(settings),
+      doubaoSpeechConfigured: Boolean(doubaoSpeechApiKeyEncrypted),
       localSpeechConfigured: isLocalSpeechReady(localSpeechModelId),
       localSpeechModels: listLocalSpeechModelStatuses(),
       pushFcmConfigured: Boolean(settings.pushFcmServiceAccountEncrypted),
@@ -838,19 +835,12 @@ export function createHttpServer(
         ? encryptApiKey(body.speechApiKey)
         : undefined;
     }
-    if (body.doubaoSpeechAppId !== undefined) {
-      if (typeof body.doubaoSpeechAppId !== "string") {
-        return jsonError(c, 400, "doubaoSpeechAppId must be a string");
+    if (body.doubaoSpeechApiKey !== undefined) {
+      if (typeof body.doubaoSpeechApiKey !== "string") {
+        return jsonError(c, 400, "doubaoSpeechApiKey must be a string");
       }
-      const appId = body.doubaoSpeechAppId.trim();
-      patch.doubaoSpeechAppId = appId || undefined;
-    }
-    if (body.doubaoSpeechAccessToken !== undefined) {
-      if (typeof body.doubaoSpeechAccessToken !== "string") {
-        return jsonError(c, 400, "doubaoSpeechAccessToken must be a string");
-      }
-      patch.doubaoSpeechAccessTokenEncrypted = body.doubaoSpeechAccessToken
-        ? encryptApiKey(body.doubaoSpeechAccessToken)
+      patch.doubaoSpeechApiKeyEncrypted = body.doubaoSpeechApiKey
+        ? encryptApiKey(body.doubaoSpeechApiKey)
         : undefined;
     }
     if (body.doubaoSpeechPreset !== undefined) {
@@ -869,7 +859,7 @@ export function createHttpServer(
       serperApiKeyEncrypted,
       firecrawlApiKeyEncrypted,
       speechApiKeyEncrypted,
-      doubaoSpeechAccessTokenEncrypted,
+      doubaoSpeechApiKeyEncrypted,
       ...safeSaved
     } = saved;
     const speechRecognitionMode = resolveSpeechRecognitionMode(saved);
@@ -892,9 +882,7 @@ export function createHttpServer(
         process.env[safeSaved.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY"],
       ),
       speechApiKeyConfigured: Boolean(speechApiKeyEncrypted),
-      doubaoSpeechAppIdConfigured: Boolean(safeSaved.doubaoSpeechAppId?.trim()),
-      doubaoSpeechAccessTokenConfigured: Boolean(doubaoSpeechAccessTokenEncrypted),
-      doubaoSpeechConfigured: isDoubaoSpeechConfigured(saved),
+      doubaoSpeechConfigured: Boolean(doubaoSpeechApiKeyEncrypted),
       localSpeechConfigured: isLocalSpeechReady(localSpeechModelId),
       localSpeechModels: listLocalSpeechModelStatuses(),
     });
@@ -920,20 +908,16 @@ export function createHttpServer(
     const settings = readSupervisorSettings();
     try {
       if (providerName === "doubao") {
-        let appId = typeof body.appId === "string" ? body.appId.trim() : "";
-        let accessToken = typeof body.accessToken === "string" ? body.accessToken.trim() : "";
-        if (!appId) appId = settings.doubaoSpeechAppId?.trim() ?? "";
-        if (!accessToken && settings.doubaoSpeechAccessTokenEncrypted) {
-          accessToken = decryptApiKey(settings.doubaoSpeechAccessTokenEncrypted);
+        let apiKey = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+        if (!apiKey && settings.doubaoSpeechApiKeyEncrypted) {
+          apiKey = decryptApiKey(settings.doubaoSpeechApiKeyEncrypted);
         }
-        if (!appId && !accessToken) {
-          return jsonError(c, 409, "App ID or Access Token is not configured");
-        }
+        if (!apiKey) return jsonError(c, 409, "API Key is not configured");
         const preset =
           typeof body.preset === "string" && isDoubaoSpeechPresetId(body.preset)
             ? body.preset
             : settings.doubaoSpeechPreset;
-        const result = await testApiKey(providerName, { appId, accessToken, preset });
+        const result = await testApiKey(providerName, { apiKey, preset });
         if (result?.preset && result.preset !== settings.doubaoSpeechPreset) {
           writeSupervisorSettings({ doubaoSpeechPreset: result.preset });
         }

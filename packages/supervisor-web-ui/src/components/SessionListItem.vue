@@ -37,8 +37,8 @@
       :style="treeDotStyle"
     />
 
-    <div class="flex min-w-0 items-center gap-3 relative overflow-hidden">
-      <div class="relative shrink-0">
+    <div class="flex min-w-0 items-center gap-3 relative">
+      <div class="relative shrink-0 session-avatar-wrap">
         <SessionAvatar
           :session-id="session.id"
           :name="session.title"
@@ -265,41 +265,47 @@ const statusDotClass = computed(() => {
   background: var(--app-list-tree-line);
 }
 
+.session-avatar-wrap :deep(.session-avatar) {
+  -webkit-mask-image: radial-gradient(
+    circle 0.4375rem at calc(100% - 0.3125rem) calc(100% - 0.3125rem),
+    transparent 0.4375rem,
+    #000 0.5rem
+  );
+  mask-image: radial-gradient(
+    circle 0.4375rem at calc(100% - 0.3125rem) calc(100% - 0.3125rem),
+    transparent 0.4375rem,
+    #000 0.5rem
+  );
+}
+
 .session-status-ring {
-  border-color: var(--app-list-status-ring);
-}
-
-.session-row--active .session-status-ring {
-  border-color: var(--app-list-item-active);
-}
-
-.session-row--active:hover .session-status-ring {
-  border-color: color-mix(in srgb, var(--app-list-item-active) 86%, white);
+  border-color: transparent;
+  background-clip: padding-box;
 }
 
 .session-status-dot--initializing {
-  background: var(--app-status-initializing);
+  background: var(--app-status-initializing, #60a5fa);
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .session-status-dot--running {
-  background: var(--app-status-running);
+  background: var(--app-status-running, #eab308);
 }
 
 .session-status-dot--waiting-user {
-  background: var(--app-status-waiting-user);
+  background: var(--app-status-waiting-user, #f97316);
 }
 
 .session-status-dot--idle {
-  background: var(--app-status-idle);
+  background: var(--app-status-idle, #22c55e);
 }
 
 .session-status-dot--error {
-  background: var(--app-status-error);
+  background: var(--app-status-error, #ef4444);
 }
 
 .session-status-dot--stopped {
-  background: var(--app-status-stopped);
+  background: var(--app-status-stopped, #9ca3af);
 }
 
 .session-status-dot--finish {

@@ -15,10 +15,15 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.webkit.WebStorage;
+import android.webkit.CookieManager;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.app.Dialog;
+import android.view.Window;
+import android.view.WindowManager;
 
 import androidx.activity.OnBackPressedCallback;
 import androidx.activity.result.ActivityResultLauncher;
@@ -28,11 +33,15 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.journeyapps.barcodescanner.ScanContract;
 import com.journeyapps.barcodescanner.ScanOptions;
 
 import java.util.List;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 public class ShellActivity extends AppCompatActivity {
     /**
@@ -101,6 +110,21 @@ public class ShellActivity extends AppCompatActivity {
         instanceList = findViewById(R.id.shell_instance_list);
         scanButton = findViewById(R.id.shell_scan_button);
         scanHeaderButton = findViewById(R.id.shell_scan_header_button);
+
+        View header = findViewById(R.id.shell_header);
+        int headerStart = header.getPaddingStart();
+        int headerEnd = header.getPaddingEnd();
+        int headerBottom = header.getPaddingBottom();
+        ViewCompat.setOnApplyWindowInsetsListener(
+            header,
+            (view, windowInsets) -> {
+                int statusBarTop = windowInsets
+                    .getInsets(WindowInsetsCompat.Type.statusBars())
+                    .top;
+                view.setPaddingRelative(headerStart, statusBarTop, headerEnd, headerBottom);
+                return windowInsets;
+            }
+        );
 
         setupWebView();
         scanButton.setOnClickListener(v -> startScanFlow());
@@ -247,6 +271,8 @@ public class ShellActivity extends AppCompatActivity {
             TextView avatar = row.findViewById(R.id.shell_instance_avatar);
             TextView title = row.findViewById(R.id.shell_instance_title);
             TextView subtitle = row.findViewById(R.id.shell_instance_subtitle);
+            TextView status = row.findViewById(R.id.shell_instance_status);
+            TextView delete = row.findViewById(R.id.shell_instance_delete);
 
             String label = item.name != null && !item.name.isEmpty()
                 ? item.name
@@ -254,6 +280,10 @@ public class ShellActivity extends AppCompatActivity {
             avatar.setText(avatarLetter(label));
             title.setText(label);
             subtitle.setText(item.url);
+            status.setText("检测中");
+            status.setBackgroundResource(R.drawable.shell_status_pill_offline);
+            status.setTextColor(Color.parseColor("#8C8C8C"));
+            probeInstance(item, status);
 
             row.setOnClickListener(v -> {
                 ShellInstanceStore.touch(getPrefs(), item.id);
@@ -263,6 +293,7 @@ public class ShellActivity extends AppCompatActivity {
                 confirmDelete(item);
                 return true;
             });
+            delete.setOnClickListener(v -> confirmDelete(item));
 
             instanceList.addView(row);
             if (i < instances.size() - 1) {
@@ -272,30 +303,78 @@ public class ShellActivity extends AppCompatActivity {
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         1
                     );
-                lp.setMargins(dp(68), 0, 0, 0);
+                lp.setMargins(0, dp(10), 0, dp(10));
                 divider.setLayoutParams(lp);
-                divider.setBackgroundColor(Color.parseColor("#1A000000"));
+                divider.setBackgroundColor(Color.TRANSPARENT);
                 instanceList.addView(divider);
             }
         }
+    }
+
+    private void probeInstance(ShellInstanceStore.Instance instance, TextView statusView) {
+        new Thread(() -> {
+            boolean online = false;
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(instance.url).openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(2500);
+                connection.setReadTimeout(2500);
+                connection.setInstanceFollowRedirects(true);
+                int code = connection.getResponseCode();
+                online = code >= 200 && code < 500;
+            } catch (Exception ignored) {
+                online = false;
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            boolean result = online;
+            runOnUiThread(() -> {
+                statusView.setText(result ? "在线" : "离线");
+                statusView.setBackgroundResource(
+                    result ? R.drawable.shell_status_pill_online : R.drawable.shell_status_pill_offline
+                );
+                statusView.setTextColor(Color.parseColor(result ? "#14804A" : "#737B8C"));
+            });
+        }, "shell-probe").start();
     }
 
     private void confirmDelete(ShellInstanceStore.Instance item) {
         String label = item.name != null && !item.name.isEmpty()
             ? item.name
             : ShellInstanceStore.displayNameForUrl(item.url);
-        new AlertDialog.Builder(this)
-            .setTitle(R.string.shell_delete_title)
-            .setMessage(getString(R.string.shell_delete_message, label))
-            .setNegativeButton(R.string.shell_cancel, null)
-            .setPositiveButton(
-                R.string.shell_delete_confirm,
-                (dialog, which) -> {
-                    ShellInstanceStore.remove(getPrefs(), item.id);
-                    renderInstanceList();
-                }
-            )
-            .show();
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        View content = LayoutInflater.from(this).inflate(R.layout.dialog_shell_delete, null);
+        TextView description = content.findViewById(R.id.shell_delete_description);
+        description.setText("将删除“" + label + "”的连接记录，以及保存在此设备上的相关数据。服务器端数据不会受到影响。");
+        content.findViewById(R.id.shell_delete_cancel).setOnClickListener(v -> dialog.dismiss());
+        content.findViewById(R.id.shell_delete_confirm_custom).setOnClickListener(v -> {
+            dialog.dismiss();
+            clearInstanceData(item);
+        });
+        dialog.setContentView(content);
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawableResource(android.R.color.transparent);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams attributes = window.getAttributes();
+            attributes.width = getResources().getDisplayMetrics().widthPixels - dp(48);
+            attributes.dimAmount = 0.48f;
+            window.setAttributes(attributes);
+        }
+        dialog.show();
+    }
+
+    private void clearInstanceData(ShellInstanceStore.Instance item) {
+        WebStorage.getInstance().deleteOrigin(item.url);
+        CookieManager cookies = CookieManager.getInstance();
+        cookies.setCookie(item.url, "supervisor=; Max-Age=0; Path=/");
+        cookies.flush();
+        webView.clearCache(true);
+        ShellInstanceStore.remove(getPrefs(), item.id);
+        Toast.makeText(this, "连接记录与客户端数据已删除", Toast.LENGTH_SHORT).show();
+        renderInstanceList();
     }
 
     private void loadServer(ShellInstanceStore.Instance instance) {

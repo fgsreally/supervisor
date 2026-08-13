@@ -359,8 +359,8 @@ onUnmounted(() => {
   justify-content: center;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 38%, rgb(16 45 35 / 48%), transparent 44%),
-    linear-gradient(160deg, #07100d 0%, #020806 56%, #06100c 100%);
+    radial-gradient(circle at 50% 36%, rgb(255 255 255 / 24%), transparent 43%),
+    linear-gradient(160deg, #16cb6d 0%, #07c160 48%, #049f50 100%);
   color: #fff;
   text-align: center;
   isolation: isolate;
@@ -374,8 +374,7 @@ onUnmounted(() => {
   border-radius: 50%;
   content: "";
   filter: blur(52px);
-  mix-blend-mode: screen;
-  opacity: 0.72;
+  opacity: 0.82;
   pointer-events: none;
   will-change: transform;
 }
@@ -385,8 +384,8 @@ onUnmounted(() => {
   left: -18%;
   background: radial-gradient(
     circle,
-    rgb(7 193 96 / 62%) 0%,
-    rgb(18 128 82 / 32%) 42%,
+    rgb(204 255 227 / 44%) 0%,
+    rgb(85 232 155 / 25%) 42%,
     transparent 70%
   );
   animation: pin-mist-a 13s ease-in-out infinite alternate;
@@ -397,8 +396,8 @@ onUnmounted(() => {
   bottom: -8%;
   background: radial-gradient(
     circle,
-    rgb(29 181 116 / 52%) 0%,
-    rgb(24 160 166 / 25%) 45%,
+    rgb(166 255 218 / 36%) 0%,
+    rgb(0 145 104 / 24%) 45%,
     transparent 70%
   );
   animation: pin-mist-b 16s ease-in-out infinite alternate;
@@ -431,7 +430,7 @@ onUnmounted(() => {
   font-weight: 420;
   letter-spacing: 0.08em;
   line-height: 1;
-  text-shadow: 0 2px 10px rgb(0 0 0 / 22%);
+  text-shadow: 0 2px 10px rgb(255 255 255 / 42%);
 }
 
 .pin-dots {
@@ -474,13 +473,13 @@ onUnmounted(() => {
 .startup-error {
   color: #ff7878;
   font-size: 13px;
-  text-shadow: 0 1px 8px rgb(0 0 0 / 45%);
+  text-shadow: 0 1px 8px rgb(0 0 0 / 20%);
 }
 
 .startup-spinner {
   width: 18px;
   height: 18px;
-  color: rgb(255 255 255 / 72%);
+  color: rgb(39 42 56 / 72%);
   animation: startup-spin 1s linear infinite;
 }
 
@@ -501,22 +500,25 @@ onUnmounted(() => {
   height: 72px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 16%);
+  border: 1px solid rgb(255 255 255 / 76%);
   border-radius: 50%;
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgb(2 2 4 / 98%) 0%,
-    rgb(7 7 10 / 96%) 42%,
-    rgb(22 22 27 / 94%) 68%,
-    rgb(68 69 76 / 90%) 100%
-  );
+  background:
+    radial-gradient(
+      circle at 48% 45%,
+      rgb(255 255 255 / 34%) 0%,
+      rgb(255 255 255 / 28%) 48%,
+      rgb(255 255 255 / 44%) 76%,
+      rgb(255 255 255 / 72%) 100%
+    ),
+    rgb(255 255 255 / 18%);
   color: #fff;
   box-shadow:
-    inset 0 0 12px rgb(255 255 255 / 10%),
-    inset 0 0 2px rgb(255 255 255 / 18%),
-    0 5px 18px rgb(0 0 0 / 26%);
-  backdrop-filter: blur(16px) brightness(1.34) saturate(0.72);
-  -webkit-backdrop-filter: blur(16px) brightness(1.34) saturate(0.72);
+    inset 0 2px 4px rgb(255 255 255 / 72%),
+    inset 0 -9px 18px rgb(130 125 170 / 10%),
+    inset 8px 5px 20px rgb(255 255 255 / 18%),
+    0 10px 26px rgb(74 70 110 / 12%);
+  backdrop-filter: blur(18px) saturate(1.08);
+  -webkit-backdrop-filter: blur(18px) saturate(1.08);
   isolation: isolate;
   transition:
     background-color 0.11s cubic-bezier(0.4, 0, 1, 1),
@@ -534,9 +536,10 @@ onUnmounted(() => {
   border-radius: 50%;
   background: radial-gradient(
     circle at var(--light-x, 50%) var(--light-y, 50%),
-    rgb(255 255 255 / 78%) 0%,
-    rgb(255 255 255 / 30%) 27%,
-    transparent 61%
+    rgb(255 255 255 / 94%) 0%,
+    rgb(255 255 255 / 48%) 24%,
+    rgb(255 255 255 / 20%) 43%,
+    transparent 65%
   );
   filter: blur(5px);
   opacity: 0;
@@ -553,7 +556,7 @@ onUnmounted(() => {
   font-size: 28px;
   font-weight: 360;
   line-height: 1;
-  text-shadow: 0 1px 5px rgb(0 0 0 / 42%);
+  text-shadow: 0 2px 7px rgb(65 62 92 / 28%);
 }
 
 .pin-key--affected-near .pin-key__glow {
@@ -566,32 +569,30 @@ onUnmounted(() => {
 }
 
 .pin-key--affected-near {
-  border-color: rgb(255 255 255 / 28%);
+  border-color: rgb(255 255 255 / 90%);
   box-shadow:
-    inset 0 -7px 14px rgb(255 255 255 / 17%),
-    inset 0 8px 14px rgb(0 0 0 / 36%),
-    inset 0 1px 1px rgb(255 255 255 / 28%),
-    0 0 18px rgb(255 255 255 / 7%);
+    inset 0 2px 4px rgb(255 255 255 / 82%),
+    inset 0 -8px 18px rgb(255 255 255 / 10%),
+    0 0 22px rgb(255 255 255 / 18%);
 }
 
 .pin-key--affected-far {
-  border-color: rgb(255 255 255 / 22%);
+  border-color: rgb(255 255 255 / 82%);
 }
 
 .pin-key--illuminated {
-  border-color: rgb(255 255 255 / 96%);
+  border-color: rgb(255 255 255 / 92%);
   background: radial-gradient(
     circle at 50% 50%,
-    rgb(48 48 48) 0%,
-    rgb(61 61 61) 27%,
-    rgb(112 112 112) 44%,
-    rgb(218 218 218) 67%,
-    rgb(255 255 255) 88%
+    rgb(255 255 255 / 46%) 0%,
+    rgb(255 255 255 / 54%) 36%,
+    rgb(255 255 255 / 68%) 62%,
+    rgb(255 255 255 / 92%) 100%
   );
   box-shadow:
-    0 0 1px 1px rgb(255 255 255 / 42%),
-    0 0 26px 6px rgb(255 255 255 / 16%),
-    inset 0 0 10px rgb(255 255 255 / 36%);
+    0 0 2px 1px rgb(255 255 255 / 52%),
+    0 0 28px 7px rgb(255 255 255 / 24%),
+    inset 0 0 12px rgb(255 255 255 / 42%);
   transition-duration: 55ms;
   transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }

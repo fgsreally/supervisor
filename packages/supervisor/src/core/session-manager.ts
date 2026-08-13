@@ -343,6 +343,8 @@ export class SessionManager {
   private readonly sessionInputQueues = new SessionInputQueue();
   private readonly drainingSessionInputs = new Set<number>();
   private readonly pendingSpawns = new Map<number, Promise<Session>>();
+  /** Runtime restores for existing Sessions; creation-time initialization uses pendingSpawns. */
+  private readonly pendingRuntimeRestores = new Map<number, Promise<ManagedSessionRuntime>>();
   private readonly systemPromptOverlays = new Map<number, SystemPromptOverlay>();
   private readonly extensionRegistry = new ExtensionModuleRegistry();
   private readonly resourceHandlers: ReturnType<typeof createResourceHandlers>;
@@ -935,7 +937,28 @@ export class SessionManager {
   private async getOrRestoreRuntime(id: number): Promise<ManagedSessionRuntime> {
     const runtime = this.runtimes.get(id);
     if (runtime) return runtime;
-    return this.restoreRuntime(id);
+
+    // A newly created Session has exactly one initializer: finalizeSpawn(). Any
+    // request arriving while it runs must wait for it, never start a restore.
+    const pendingSpawn = this.pendingSpawns.get(id);
+    if (pendingSpawn) {
+      await pendingSpawn;
+      const initialized = this.runtimes.get(id);
+      if (!initialized) {
+        throw new Error(`Session ${id} initialization completed without a runtime`);
+      }
+      return initialized;
+    }
+
+    // Existing Sessions may legitimately need restoring after a process restart.
+    // Coalesce concurrent callers so only one restore can run per Session.
+    const pendingRestore = this.pendingRuntimeRestores.get(id);
+    if (pendingRestore) return pendingRestore;
+    const restore = this.restoreRuntime(id).finally(() => {
+      this.pendingRuntimeRestores.delete(id);
+    });
+    this.pendingRuntimeRestores.set(id, restore);
+    return restore;
   }
 
   /** Create a DB record only, no embedded agent. */

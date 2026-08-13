@@ -44,7 +44,7 @@ const DEFAULT_IDLE_HEIGHT = 4;
 const DEFAULT_MIN_HEIGHT = 4;
 const DEFAULT_MAX_HEIGHT = 15;
 const SILENCE_THRESHOLD = 0.025;
-/** 官方建议双向流式单包约 200ms（16kHz PCM16 mono = 6400 bytes） */
+/** 官方双向流式建议单包约 200ms（16kHz PCM16 mono = 6400 bytes） */
 const TARGET_PCM_BYTES = 6400;
 const SETTINGS_CACHE_MS = 30_000;
 

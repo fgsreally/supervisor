@@ -34,7 +34,7 @@
     />
 
     <div class="flex items-center gap-3 relative">
-      <div class="relative shrink-0">
+      <div class="relative shrink-0 session-avatar-wrap">
         <div
           class="rounded-md flex items-center justify-center text-white font-medium shadow-sm"
           :class="avatarClass"
@@ -221,12 +221,22 @@ const statusDotClass = computed(() => {
   background: var(--app-list-tree-line);
 }
 
-.session-status-ring {
-  border-color: var(--app-list-status-ring);
+.session-avatar-wrap .rounded-md {
+  -webkit-mask-image: radial-gradient(
+    circle 0.4375rem at calc(100% - 0.3125rem) calc(100% - 0.3125rem),
+    transparent 0.4375rem,
+    #000 0.5rem
+  );
+  mask-image: radial-gradient(
+    circle 0.4375rem at calc(100% - 0.3125rem) calc(100% - 0.3125rem),
+    transparent 0.4375rem,
+    #000 0.5rem
+  );
 }
 
-.session-row--active .session-status-ring {
-  border-color: var(--app-list-item-active);
+.session-status-ring {
+  border-color: transparent;
+  background-clip: padding-box;
 }
 
 .session-status-dot--starting {

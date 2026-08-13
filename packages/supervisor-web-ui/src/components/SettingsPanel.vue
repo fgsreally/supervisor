@@ -282,27 +282,6 @@
             </li>
           </ul>
         </template>
-        <template v-else-if="activeService === 'doubao'">
-          <label class="form-dialog__field">
-            <span class="form-dialog__label">APP ID</span>
-            <input
-              v-model.trim="draftDoubaoAppId"
-              autocomplete="off"
-              :placeholder="activeMeta.configured ? '已配置，留空则保持不变' : '填写 APP ID'"
-            />
-          </label>
-          <label class="form-dialog__field">
-            <span class="form-dialog__label">Access Token</span>
-            <input
-              v-model.trim="draftDoubaoAccessToken"
-              type="password"
-              autocomplete="new-password"
-              :placeholder="
-                activeMeta.configured ? '已配置，留空则保持不变' : '填写 Access Token'
-              "
-            />
-          </label>
-        </template>
         <template v-else>
           <label class="form-dialog__field">
             <span class="form-dialog__label">API Key</span>
@@ -518,8 +497,8 @@ const serviceMeta: Record<ServiceId, { name: string; description: string; consol
   },
   doubao: {
     name: "豆包流式语音识别 2.0",
-    description: "火山引擎流式语音识别",
-    consoleUrl: "https://console.volcengine.com/speech/app",
+    description: "火山引擎双向流式语音识别",
+    consoleUrl: "https://console.volcengine.com/speech/new/setting/apikeys?projectName=default",
   },
   tavily: {
     name: "Tavily",
@@ -549,8 +528,6 @@ const webServices = computed(() =>
 );
 const activeService = ref<ServiceId | null>(null);
 const draftApiKey = ref("");
-const draftDoubaoAppId = ref("");
-const draftDoubaoAccessToken = ref("");
 const draftDoubaoSpeechPreset =
   ref<NonNullable<SupervisorSettings["doubaoSpeechPreset"]>>("2.0-duration");
 const draftLocalSpeechModelId = ref<LocalSpeechModelId>("zh-en-bilingual");
@@ -751,8 +728,6 @@ async function installLocalModel(id: LocalSpeechModelId) {
 function openService(id: ServiceId) {
   activeService.value = id;
   draftApiKey.value = "";
-  draftDoubaoAppId.value = "";
-  draftDoubaoAccessToken.value = "";
   draftEnvName.value = id in envNames ? envNames[id as keyof typeof envNames] : "";
   clearRequested.value = false;
   dialogMessage.value = "";
@@ -773,8 +748,6 @@ function closeService() {
 function clearActiveKey() {
   if (!activeService.value || activeService.value === "local") return;
   draftApiKey.value = "";
-  draftDoubaoAppId.value = "";
-  draftDoubaoAccessToken.value = "";
   clearRequested.value = true;
   dialogMessage.value = "保存后将清除密钥";
   dialogFailed.value = false;
@@ -786,9 +759,7 @@ async function testActiveKey() {
   dialogMessage.value = "";
   try {
     if (activeService.value === "doubao") {
-      await testSettingsApiKey("doubao", undefined, {
-        appId: draftDoubaoAppId.value || undefined,
-        accessToken: draftDoubaoAccessToken.value || undefined,
+      await testSettingsApiKey("doubao", draftApiKey.value || undefined, {
         preset: draftDoubaoSpeechPreset.value,
       });
     } else {
@@ -848,21 +819,15 @@ async function saveService() {
       patch.localSpeechModelId = draftLocalSpeechModelId.value;
       form.speechRecognitionMode = "local";
     } else if (id === "doubao") {
-      const nextAppId = draftDoubaoAppId.value.trim();
-      const nextToken = draftDoubaoAccessToken.value.trim();
-      if (!clearRequested.value && !configured.doubao && (!nextAppId || !nextToken)) {
+      const nextKey = draftApiKey.value.trim();
+      if (!clearRequested.value && !configured.doubao && !nextKey) {
         dialogFailed.value = true;
-        dialogMessage.value = "请填写 APP ID 与 Access Token";
+        dialogMessage.value = "请填写 API Key";
         return;
       }
-      if (draftDoubaoAppId.value || clearRequested.value) {
+      if (draftApiKey.value || clearRequested.value) {
         Object.assign(patch, {
-          doubaoSpeechAppId: clearRequested.value ? "" : nextAppId,
-        });
-      }
-      if (draftDoubaoAccessToken.value || clearRequested.value) {
-        Object.assign(patch, {
-          doubaoSpeechAccessToken: clearRequested.value ? "" : nextToken,
+          doubaoSpeechApiKey: clearRequested.value ? "" : nextKey,
         });
       }
       patch.doubaoSpeechPreset = draftDoubaoSpeechPreset.value;

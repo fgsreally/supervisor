@@ -53,7 +53,7 @@
           <ExternalAgentDetails :agent="agent" @saved="onAgentSaved" />
         </div>
 
-        <div v-else class="mobile-agent-sections">
+        <div class="mobile-agent-sections">
           <button
             v-for="item in mobileSections"
             :key="item.id"
@@ -122,7 +122,7 @@
         </div>
       </div>
 
-      <div v-if="!isExternal" class="flex border-b shrink-0 contact-detail-tabs">
+      <div class="flex border-b shrink-0 contact-detail-tabs">
         <button
           v-for="t in rightTabs"
           :key="t.id"
@@ -135,12 +135,13 @@
         </button>
       </div>
 
-      <div v-if="!isExternal" class="flex-1 flex min-h-0 overflow-hidden">
+      <div class="flex-1 flex min-h-0 overflow-hidden">
         <template v-if="rightTab === 'config'">
           <div
             class="flex flex-1 justify-center overflow-auto min-h-0 contact-detail-content contact-detail-config-content"
           >
-            <AgentConfigPanel :agent-id="agentId" />
+            <ExternalAgentDetails v-if="isExternal" :agent="agent" @saved="onAgentSaved" />
+            <AgentConfigPanel v-else :agent-id="agentId" />
           </div>
         </template>
 
@@ -159,14 +160,6 @@
         />
 
         <AgentResourceBrowser v-else class="flex-1 min-h-0" :agent-id="agentId" :kind="rightTab" />
-      </div>
-
-      <div v-else class="flex-1 flex min-h-0 overflow-hidden">
-        <div
-          class="flex flex-1 justify-center overflow-auto min-h-0 contact-detail-content contact-detail-config-content"
-        >
-          <ExternalAgentDetails :agent="agent" @saved="onAgentSaved" />
-        </div>
       </div>
     </div>
 
@@ -219,7 +212,18 @@ const mobilePage = ref<MobileAgentPage | null>(null);
 const editOpen = ref(false);
 const savingModel = ref(false);
 
+const isExternal = computed(() => agent.value?.backendType !== "native");
+const canEdit = computed(() => {
+  return agent.value?.backendType === "native";
+});
+
 const rightTabs = computed(() => {
+  if (isExternal.value) {
+    return [
+      { id: "config" as AgentTab, label: "配置" },
+      { id: "extensions" as AgentTab, label: "扩展" },
+    ];
+  }
   const tabs: Array<{ id: AgentTab; label: string }> = [
     { id: "config", label: "配置" },
     { id: "system", label: "系统提示" },
@@ -232,7 +236,9 @@ const rightTabs = computed(() => {
 });
 
 const mobileSections = computed<Array<{ id: MobileAgentPage; label: string }>>(() =>
-  isExternal.value ? [] : rightTabs.value,
+  isExternal.value
+    ? [{ id: "extensions", label: "扩展" }]
+    : rightTabs.value,
 );
 const mobilePageTitle = computed(
   () => mobileSections.value.find((item) => item.id === mobilePage.value)?.label ?? "Agent 详情",
@@ -257,11 +263,6 @@ const modelGroups = computed<ModelTreeGroup[]>(() =>
       models: provider.models.map((model) => ({ value: model.id, name: model.name })),
     })),
 );
-
-const isExternal = computed(() => agent.value?.backendType !== "native");
-const canEdit = computed(() => {
-  return agent.value?.backendType === "native";
-});
 
 function onAgentSaved() {
   void agentStore.fetchAgent(props.agentId);

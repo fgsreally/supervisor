@@ -8,6 +8,8 @@ export type BuiltinExtensionSpec = {
   requiresMainSession?: boolean;
   /** Restrict binding/loading to shipped assistant names. */
   agentNames?: readonly string[];
+  /** Also bind by default on packaged external agents (Codex / Claude / ACP). */
+  bindExternalByDefault?: boolean;
 };
 
 export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
@@ -61,14 +63,16 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
   {
     slug: "project-services",
     name: "Project services",
-    description: "Register one project runtime (commands + apps) per coding session",
+    description: "Add, delete, or update per-session local services without bash",
     requiresMainSession: true,
+    bindExternalByDefault: true,
   },
   {
     slug: "git",
     name: "Git",
     description:
       "Per-session git worktree; Watson cleans up locked worktrees on delete via AGENTS.md",
+    bindExternalByDefault: true,
   },
   {
     slug: "subagent",

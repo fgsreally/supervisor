@@ -32,6 +32,7 @@ import {
   resolveExecutable,
   spawnExternalProcess,
 } from "./external-agent-config.js";
+import { composeLiveSessionSystemPrompt } from "../session-system-prompt.js";
 import { sessionServicePortEnv } from "../session-services.js";
 import { ExternalTurnBuffer } from "./external-turn-buffer.js";
 
@@ -117,7 +118,7 @@ function parseCursorAskQuestions(params: Record<string, unknown>): CursorAskQues
 
 export class AcpSessionRuntime implements ManagedSessionRuntime {
   readonly id: number;
-  readonly extension: SessionExtensionHost | null = null;
+  private _extension: SessionExtensionHost | null = null;
 
   private readonly db: SupervisorDb;
   private readonly session: Session;
@@ -225,6 +226,14 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     }
   }
 
+  get extension(): SessionExtensionHost | null {
+    return this._extension;
+  }
+
+  attachExtension(host: SessionExtensionHost): void {
+    this._extension = host;
+  }
+
   subscribe(listener: Listener): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
@@ -232,6 +241,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
 
   private async emit(event: AgentHarnessEvent): Promise<void> {
     for (const listener of this.listeners) await listener(event);
+    void this._extension?.handleHarnessEvent(event);
   }
 
   private async handlePermission(
@@ -549,14 +559,29 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     this.assistantText = "";
     this.tools.clear();
     this.turnBuffer.reset();
+    await this._extension?.emit({
+      type: "message.user",
+      text: message,
+      messageId: userId,
+      entryId: userId,
+      timestamp: Date.now(),
+    });
     await this.emit({ type: "agent_start" });
     await this.emit({ type: "message_start", message: createExternalAssistantMessage("") });
     try {
+      const systemPrompt = this.liveSystemPrompt();
+      const entries = await this.storage.getEntries();
+      const firstUserTurn = !entries.some(
+        (entry) =>
+          entry.id !== userId && entry.type === "message" && entry.message?.role === "user",
+      );
+      const externalMessage =
+        firstUserTurn && systemPrompt?.trim() ? `${systemPrompt.trim()}\n\n${message}` : message;
       await this.connection.prompt({
         sessionId: this.backendSessionId,
         messageId: userId,
         prompt: [
-          { type: "text", text: message },
+          { type: "text", text: externalMessage },
           ...(imageContent ?? []).map((image) => ({
             type: "image" as const,
             data: image.data,
@@ -602,6 +627,8 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
 
   async clear(): Promise<void> {
     await this.abort().catch(() => {});
+    await this._extension?.clear().catch(() => {});
+    this._extension = null;
     if (this.child.exitCode !== null || this.child.signalCode !== null) return;
     await new Promise<void>((resolve) => {
       this.child.once("exit", () => resolve());
@@ -656,7 +683,17 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     return this.assistantText || undefined;
   }
 
-  async deactivateExtension(_extensionId: string): Promise<boolean> {
-    return false;
+  private liveSystemPrompt(): string {
+    const row = this.db.get(this.id);
+    return composeLiveSessionSystemPrompt({
+      cwd: row?.cwd ?? this.session.cwd,
+      agentSystemMd: this.agent.systemPrompt,
+      storedSystemPrompt: row?.system_prompt ?? this.session.systemPrompt,
+      meta: row?.meta ?? this.session.meta,
+    });
+  }
+
+  async deactivateExtension(extensionId: string): Promise<boolean> {
+    return (await this._extension?.unload(extensionId)) ?? false;
   }
 }

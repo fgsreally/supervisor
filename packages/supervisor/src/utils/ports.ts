@@ -1,5 +1,36 @@
 import net from "node:net";
 
+/** Preferred range for session-local preview services when the caller omits port. */
+export const SESSION_SERVICE_PREFERRED_PORT_MIN = 4396;
+export const SESSION_SERVICE_PREFERRED_PORT_MAX = 4500;
+
+function canBindPort(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.listen(port, "127.0.0.1", () => {
+      server.close((error) => resolve(!error));
+    });
+  });
+}
+
+/** First free TCP port in [min, max] on 127.0.0.1, skipping `occupied`. */
+export async function findFreePortInRange(
+  min: number,
+  max: number,
+  occupied: Iterable<number> = [],
+): Promise<number | undefined> {
+  const skip = new Set(
+    [...occupied].filter((port) => Number.isInteger(port) && port >= min && port <= max),
+  );
+  for (let port = min; port <= max; port++) {
+    if (skip.has(port)) continue;
+    if (await isTcpPortOpen(port)) continue;
+    if (await canBindPort(port)) return port;
+  }
+  return undefined;
+}
+
 /** Bind port 0 to learn a free TCP port on 127.0.0.1. */
 export async function findFreePort(): Promise<number> {
   return new Promise((resolve, reject) => {

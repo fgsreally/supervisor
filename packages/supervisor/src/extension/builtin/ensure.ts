@@ -1,6 +1,7 @@
 import type { SupervisorDb } from "../../db/db.js";
 import {
   BUILTIN_EXTENSIONS,
+  BUILTIN_EXTENSION_SLUGS,
   builtinExtensionSourcePath,
   isBuiltinExtensionResource,
 } from "./catalog.js";
@@ -45,8 +46,10 @@ export function ensureAgentBuiltinExtensionBindings(db: SupervisorDb, agentId: n
   const agent = db.getAgent(agentId);
   if (!agent) return;
   ensureBuiltinExtensionResources(db);
+  const isExternal = agent.backendType !== "native";
   for (const spec of BUILTIN_EXTENSIONS) {
     if (spec.agentNames && !spec.agentNames.includes(agent.name)) continue;
+    if (isExternal && !spec.bindExternalByDefault) continue;
     const resource = db.getResourceByKindSlug("extension", spec.slug);
     if (!resource || !isBuiltinExtensionResource(resource.meta)) continue;
     db.ensureAgentResourceBinding(agentId, resource.id, { enabled: true });
@@ -61,10 +64,22 @@ export function listEnabledBuiltinExtensionSlugs(
 ): Set<string> {
   ensureAgentBuiltinExtensionBindings(db, agentId);
   const agent = db.getAgent(agentId);
+  const isExternal = agent != null && agent.backendType !== "native";
+  const boundSlugs = isExternal
+    ? new Set(
+        db
+          .listAgentResourceBindings(agentId, { kind: "extension", enabledOnly: false })
+          .flatMap((binding) => {
+            const slug = binding.resource?.slug;
+            return slug && BUILTIN_EXTENSION_SLUGS.has(slug) ? [slug] : [];
+          }),
+      )
+    : null;
   const enabled = new Set<string>();
   for (const spec of BUILTIN_EXTENSIONS) {
     if (spec.agentNames && (!agent || !spec.agentNames.includes(agent.name))) continue;
     if (spec.requiresMainSession && options?.isMainSession === false) continue;
+    if (boundSlugs && !boundSlugs.has(spec.slug)) continue;
     enabled.add(spec.slug);
   }
   return enabled;

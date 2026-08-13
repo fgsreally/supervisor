@@ -210,7 +210,7 @@ describe("agent permission rules", () => {
         tools: {
           _map: new Map<string, boolean>([
             ["bash", true],
-            ["ProjectServiceSetup", false],
+            ["UpdateService", false],
             ["ProjectServiceStart", true],
           ]),
           ensureRegistered(name, active = true) {
@@ -242,9 +242,9 @@ describe("agent permission rules", () => {
         execute: vi.fn(),
       },
       {
-        name: "ProjectServiceSetup",
-        label: "ProjectServiceSetup",
-        description: "setup",
+        name: "UpdateService",
+        label: "UpdateService",
+        description: "update",
         parameters: {} as never,
         execute: vi.fn(),
       },

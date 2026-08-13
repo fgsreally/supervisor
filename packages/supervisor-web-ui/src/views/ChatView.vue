@@ -857,13 +857,21 @@ watch(
       subtitle:
         status === "blocked"
           ? "等待你确认"
+          : status === "error"
+            ? "出错，需要处理"
+            : streaming
+              ? "思考中"
+              : status === "running"
+                ? "运行中"
+                : "连接中",
+      phase:
+        status === "blocked" || status === "error"
+          ? "waiting"
           : streaming
-            ? "思考中"
-            : status === "running"
-              ? "运行中"
-              : "连接中",
-      phase: status === "blocked" ? "waiting" : streaming ? "thinking" : "connecting",
+            ? "thinking"
+            : "connecting",
       running,
+      status,
     });
   },
   { immediate: true },

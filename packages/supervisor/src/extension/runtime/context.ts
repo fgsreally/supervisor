@@ -1,4 +1,4 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { AgentHarness, AgentTool } from "@earendil-works/pi-agent-core";
 import type { TSchema } from "typebox";
 import type { SupervisorDb } from "../../db/db.js";
 import { buildExtensionDeps, createExtensionDatabase } from "./deps.js";
@@ -34,12 +34,9 @@ import type {
 } from "../index.js";
 import { getProjectDir, getSessionDir } from "../../core/session-files.js";
 import type { SessionManager } from "../../core/session-manager.js";
-import type { SessionRuntime } from "../../core/session-runtime.js";
-import {
-  readHarnessSystemPrompt,
-  readHarnessTools,
-  writeHarnessSystemPrompt,
-} from "../../core/harness-compat.js";
+import type { ManagedSessionRuntime } from "../../core/managed-session-runtime.js";
+import type { AgentResource } from "../../agent/runtime-resources.js";
+import { readHarnessTools } from "../../core/harness-compat.js";
 import { runWatson } from "../../core/watson.js";
 import type {
   SessionTaskInfo,
@@ -53,21 +50,16 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function readSessionSystemPrompt(
-  harness: Parameters<typeof readHarnessSystemPrompt>[0],
-  fallback: string | null | undefined,
-): string {
-  return readHarnessSystemPrompt(harness) ?? fallback ?? "";
+function nativeHarness(runtime: ManagedSessionRuntime): AgentHarness | undefined {
+  const harness = (runtime as { harness?: AgentHarness }).harness;
+  return harness ?? undefined;
 }
 
-function writeSessionSystemPrompt(
-  harness: Parameters<typeof writeHarnessSystemPrompt>[0],
-  db: { updateSessionFields(id: number, patch: { systemPrompt: string }): void },
-  sessionId: number,
-  next: string,
-): void {
-  db.updateSessionFields(sessionId, { systemPrompt: next });
-  writeHarnessSystemPrompt(harness, next);
+function nativeResource(
+  runtime: ManagedSessionRuntime,
+  fallback?: AgentResource,
+): AgentResource | undefined {
+  return fallback ?? (runtime as { resource?: AgentResource }).resource;
 }
 
 /** Replace or insert a marker-wrapped system-prompt block. Empty content removes the block. */
@@ -235,7 +227,9 @@ interface ContextAgentOptions {
   name: string;
   providerId: number;
   modelId: string;
+  backendType: string;
   systemPrompt?: string;
+  getSystemPrompt?: () => string | undefined;
   getModel: () => { provider: string; id: string; contextWindow: number } | undefined;
   registerTool: <TParams extends TSchema, TResult>(
     definition: ToolDefinition<TParams, TResult>,
@@ -259,7 +253,8 @@ type ContextDbOptions = ExtensionSqliteDatabase | undefined;
 export interface ContextDependencies {
   sessionManager: SessionManager;
   db: Database;
-  sessionRuntime: SessionRuntime;
+  sessionRuntime: ManagedSessionRuntime;
+  resource?: AgentResource;
 }
 
 export type Database = SupervisorDb;
@@ -312,7 +307,7 @@ export class Context {
   readonly inject;
   readonly services: SessionExtensionServices;
   /** Internal session resource bridge used by built-in extensions. */
-  readonly agentResource: SessionRuntime["resource"];
+  readonly agentResource: AgentResource;
   readonly watson: ExtensionContext["watson"];
 
   private activeExtensionId: string | undefined;
@@ -328,7 +323,7 @@ export class Context {
     options?: { cwd?: string; timeout?: number; signal?: AbortSignal },
   ) => Promise<ExecResult>;
 
-  constructor({ sessionManager, db, sessionRuntime }: ContextDependencies) {
+  constructor({ sessionManager, db, sessionRuntime, resource }: ContextDependencies) {
     const session = sessionManager.get(sessionRuntime.id);
     if (!session) throw new Error(`Session ${sessionRuntime.id} not found`);
     if (session.projectId == null) throw new Error(`Session ${session.id} has no project`);
@@ -336,10 +331,15 @@ export class Context {
     const agent = session.agentId == null ? undefined : sessionManager.getAgent(session.agentId);
     const projectRow = db.getProject(session.projectId);
     if (!projectRow) throw new Error(`Project ${session.projectId} not found`);
-    const model = sessionRuntime.harness.getModel();
-    const systemPrompt =
-      readHarnessSystemPrompt(sessionRuntime.harness) ?? session.systemPrompt ?? undefined;
-    const listHarnessTools = () => readHarnessTools(sessionRuntime.harness);
+    const harness = nativeHarness(sessionRuntime);
+    const agentResource = nativeResource(sessionRuntime, resource);
+    if (!agentResource) throw new Error(`Session ${session.id} has no agent resource`);
+    const model = harness?.getModel() ?? {
+      id: agent?.name ?? "external",
+      provider: agent?.backendType ?? "external",
+    };
+    const getSystemPrompt = () => sessionManager.composeLiveSystemPrompt(session.id);
+    const listHarnessTools = () => (harness ? readHarnessTools(harness) : []);
     const extensionDb = createExtensionDatabase({
       sessionId: session.id,
       query: async <T>(sql: string, params: unknown[]) => db.db.prepare(sql).all(...params) as T[],
@@ -368,7 +368,7 @@ export class Context {
         broadcast: (event: Record<string, unknown>) => deps.broadcast(event as BroadcastEvent),
       },
     });
-    this.agentResource = sessionRuntime.resource;
+    this.agentResource = agentResource;
 
     const sessionTools: ContextSessionTools = {
       setPolicy: (policy) => this.services.tools.setPolicy(policy),
@@ -393,26 +393,10 @@ export class Context {
       isChild: session.parentId != null,
       getDir: deps.getSessionDir,
       appendSystemPrompt: async (content: string) => {
-        const fragment = content.trim();
-        if (!fragment) return;
-        const current = readSessionSystemPrompt(
-          sessionRuntime.harness,
-          sessionManager.get(session.id)?.systemPrompt,
-        );
-        if (current.includes(fragment)) return;
-        const next = current ? `${current}\n\n${fragment}` : fragment;
-        writeSessionSystemPrompt(sessionRuntime.harness, db, session.id, next);
+        sessionManager.appendSystemPromptOverlay(session.id, content);
       },
       upsertSystemPromptBlock: async (id: string, content: string) => {
-        const key = id.trim();
-        if (!key) return;
-        const current = readSessionSystemPrompt(
-          sessionRuntime.harness,
-          sessionManager.get(session.id)?.systemPrompt,
-        );
-        const next = upsertMarkedSystemPromptBlock(current, key, content);
-        if (next === current.trim()) return;
-        writeSessionSystemPrompt(sessionRuntime.harness, db, session.id, next);
+        sessionManager.upsertSystemPromptBlockOverlay(session.id, id, content);
       },
       isIdle: deps.isIdle,
       isStreaming: deps.isStreaming,
@@ -478,8 +462,10 @@ export class Context {
       id: agent?.id ?? session.id,
       name: agent?.name ?? "Session",
       providerId: agent?.providerId ?? 0,
-      modelId: model.id,
-      systemPrompt,
+      modelId: String(model.id),
+      backendType: agent?.backendType ?? "native",
+      systemPrompt: getSystemPrompt(),
+      getSystemPrompt,
       getModel: deps.getModel,
       registerTool: (definition) =>
         this.requireExtensionHost().registerTool(this.requireActiveExtension(), definition),
@@ -607,6 +593,7 @@ export class Context {
         systemPrompt?: string;
         injectSystem?: string;
         toolsPreset?: "coding" | "readonly" | "none";
+        extraTools?: AgentTool[];
         resultSchema?: TSchema;
       }) =>
         runWatson({
@@ -616,7 +603,9 @@ export class Context {
           prompt: options.prompt,
           systemPrompt: options.systemPrompt,
           injectSystem: options.injectSystem,
-          ...(options.mode === "agent" ? { toolsPreset: options.toolsPreset } : {}),
+          ...(options.mode === "agent"
+            ? { toolsPreset: options.toolsPreset, extraTools: options.extraTools }
+            : {}),
           ...(options.resultSchema ? { resultSchema: options.resultSchema } : {}),
         })) as ExtensionContext["watson"]["run"],
     };
@@ -829,6 +818,9 @@ export class ContextAgent {
   get name(): string {
     return this.options.name;
   }
+  get backendType(): string {
+    return this.options.backendType;
+  }
   get providerId(): number {
     return this.options.providerId;
   }
@@ -836,7 +828,7 @@ export class ContextAgent {
     return this.options.modelId;
   }
   get systemPrompt(): string | undefined {
-    return this.options.systemPrompt;
+    return this.options.getSystemPrompt?.() ?? this.options.systemPrompt;
   }
   get model() {
     return this.options.getModel();

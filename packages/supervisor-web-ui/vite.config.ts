@@ -54,6 +54,7 @@ export default defineConfig({
         navigateFallback: undefined,
         runtimeCaching: [],
         cleanupOutdatedCaches: true,
+        importScripts: ["sw-notifications.js"],
       },
     }),
   ],

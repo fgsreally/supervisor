@@ -80,6 +80,19 @@ describe("supervisor: SessionManager", () => {
     expect(btw.systemPrompt ?? "").toBe("");
   });
 
+  it("composeLiveSystemPrompt uses spawn extra and ignores stored snapshots", () => {
+    const extra = manager.create({ cwd: "/proj", systemPrompt: "Only do X" });
+    expect(manager.composeLiveSystemPrompt(extra.id)).toContain("Only do X");
+
+    const snapshot = manager.create({
+      cwd: "/proj",
+      systemPrompt: "You are coding.\n\n# Context File: /old/AGENTS.md\nstale",
+    });
+    const live = manager.composeLiveSystemPrompt(snapshot.id);
+    expect(live).not.toContain("stale");
+    expect(live).not.toContain("/old/AGENTS.md");
+  });
+
   it("spawn() creates AgentHarness and marks instance idle when no instructions", async () => {
     const inst = await manager.spawn(SPAWN_OPTS);
     expect(MockAgentHarness.instances).toHaveLength(1);

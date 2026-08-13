@@ -1,4 +1,4 @@
-﻿import { randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import {
@@ -32,6 +32,11 @@ import {
 import { ensureGlobalResourceRoot } from "../resources/resource-paths.js";
 import { AgentResource } from "../agent/runtime-resources.js";
 import {
+  loadSessionExtensions,
+  startSessionExtensions,
+  ExtensionAttachRuntime,
+} from "./session-extension-attach.js";
+import {
   promptsToResourceInfo,
   mcpResourcesToInfo,
   type ResourceLayer,
@@ -63,10 +68,7 @@ import {
   parseSessionServicesMeta,
   sessionServicePortEnv,
   scrubStaleSessionRuntimeMeta,
-  stopSessionProjectServices,
-  stoppedSessionServicesMeta,
 } from "./session-services.js";
-import { startSessionServiceSleepScheduler } from "./session-service-sleep.js";
 import { runWatson } from "./watson.js";
 import type { CreateHomeTaskOptions, HomeTask, UpdateHomeTaskOptions } from "../types.js";
 import {
@@ -86,7 +88,11 @@ import {
   handleSessionLifecycleAgentEnd,
   prepareSessionLifecycleSpawn,
 } from "./session-lifecycle.js";
-import { appendContextFilesToSystemPrompt } from "../agent/context-files.js";
+import {
+  composeLiveSessionSystemPrompt,
+  formatSystemPromptOverlay,
+  type SystemPromptOverlay,
+} from "./session-system-prompt.js";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
 import {
@@ -150,7 +156,6 @@ import { ensureSessionDir, removeProjectDirSync, removeSessionDirSync } from "./
 import { removeSessionMediaDirSync, type SessionPromptImage } from "./session-media.js";
 import { runShadow } from "../extension/builtin/shadow/index.js";
 import {
-  DEFAULT_PARENT_MESSAGE_LEVEL,
   DEFAULT_SESSION_INPUT_LEVEL,
   SESSION_INPUT_INTERRUPT_LEVEL,
   type SessionInputDisposition,
@@ -273,9 +278,6 @@ function toSessionTodo(row: SessionTodoRow): SessionTodoItem {
     sessionId: row.session_id,
     title: row.title,
     status: row.status,
-    taskKey: row.task_key ?? null,
-    dependsOn: row.depends_on ?? [],
-    childSessionId: row.child_session_id ?? null,
     sortOrder: row.sort_order,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -341,18 +343,13 @@ export class SessionManager {
   private readonly sessionInputQueues = new SessionInputQueue();
   private readonly drainingSessionInputs = new Set<number>();
   private readonly pendingSpawns = new Map<number, Promise<Session>>();
+  private readonly systemPromptOverlays = new Map<number, SystemPromptOverlay>();
   private readonly extensionRegistry = new ExtensionModuleRegistry();
   private readonly resourceHandlers: ReturnType<typeof createResourceHandlers>;
   private readonly resourceManager: ResourceManager;
   private resourcesInitialized = false;
   readonly jobs: JobManager;
   private readonly detachHomeTaskSync: () => void;
-  private readonly detachSubagentResultSync: () => void;
-  private readonly pendingSubagentResultNotifications = new Map<
-    number,
-    ReturnType<typeof setTimeout>
-  >();
-  private readonly stopSessionServiceSleepScheduler: () => void;
 
   constructor(db: SupervisorDb) {
     this.db = db;
@@ -365,19 +362,6 @@ export class SessionManager {
           console.error(`home task schedule failed [${parentId}]:`, message);
         });
       },
-    });
-    this.detachSubagentResultSync = this.db.onSessionStatusChange((childId, status) => {
-      if (status !== "idle" && status !== "error") return;
-      const pending = this.pendingSubagentResultNotifications.get(childId);
-      if (pending) clearTimeout(pending);
-      const timer = setTimeout(() => {
-        this.pendingSubagentResultNotifications.delete(childId);
-        void this.notifyParentOfSubagentResult(childId).catch((error: unknown) => {
-          const detail = error instanceof Error ? error.message : String(error);
-          console.error(`Subagent result delivery failed [${childId}]:`, detail);
-        });
-      }, 0);
-      this.pendingSubagentResultNotifications.set(childId, timer);
     });
     for (const input of this.db.listPersistedSessionInputs()) {
       this.sessionInputQueues.enqueue(input.sessionId, {
@@ -394,14 +378,6 @@ export class SessionManager {
       list: () => this.db.list(),
       updateMeta: (id, patch) => this.db.updateMeta(id, patch),
     });
-    this.stopSessionServiceSleepScheduler = startSessionServiceSleepScheduler(
-      this.db,
-      this.jobs,
-      (sessionId) => {
-        this.publishServicesChange(sessionId);
-        this.publishSessionStatus(sessionId);
-      },
-    );
     this.resourceHandlers = createResourceHandlers({
       db: this.db,
       extensionRegistry: this.extensionRegistry,
@@ -415,36 +391,6 @@ export class SessionManager {
     void this.ensureResourceCatalog();
     setSessionUnreadHandler((sessionId, entry, options) => {
       this.handleAssistantMessageUnread(sessionId, entry, options);
-    });
-  }
-
-  private async notifyParentOfSubagentResult(childId: number): Promise<void> {
-    const child = this.get(childId);
-    if (!child || child.parentId == null || child.creationMethod !== "spawn_agent") return;
-    if (child.status !== "idle" && child.status !== "error") return;
-    if (this.sessionInputQueues.size(childId) > 0 || this.drainingSessionInputs.has(childId))
-      return;
-    const subagent =
-      child.meta.subagent &&
-      typeof child.meta.subagent === "object" &&
-      !Array.isArray(child.meta.subagent)
-        ? (child.meta.subagent as Record<string, unknown>)
-        : undefined;
-    if (subagent?.notifyParentOnEnd !== true) return;
-    const parent = this.get(child.parentId);
-    if (!parent) return;
-    const childAgent = child.agentId == null ? undefined : this.getAgent(child.agentId);
-    const result = this.getLatestAssistantText(childId, 20_000);
-    const message = [
-      `[内部事件] 子 Agent Session ${childId} 本轮${child.status === "error" ? "执行失败" : "执行结束"}。`,
-      `Agent: ${childAgent?.name ?? "unknown"}`,
-      result ? `结果：\n${result}` : "结果：无文本输出",
-      "请判断关联任务是否真正完成，更新 Todo 状态和依赖，并按需派发已就绪的后续任务。",
-    ].join("\n");
-    await this.submitSessionInput(parent.id, {
-      message,
-      level: DEFAULT_PARENT_MESSAGE_LEVEL,
-      source: `extension:flow:subagent-result:${childId}`,
     });
   }
 
@@ -560,7 +506,7 @@ export class SessionManager {
 
   private formatBtwFirstUserPrompt(question: string): string {
     const guide = loadPackagedAgentPrompt("btw").trim();
-    return `${guide}\n\n---\n\n鐢ㄦ埛渚ч棶锛歕n${question.trim()}`;
+    return `${guide}\n\n---\n\n用户侧问：\n${question.trim()}`;
   }
 
   async resolveAgentResources(agentId: number, cwd: string) {
@@ -621,9 +567,44 @@ export class SessionManager {
     return project.homeDir;
   }
 
-  private buildSystemPrompt(sessionOverride: string, systemMd: string, cwd: string): string {
-    const parts = [sessionOverride, systemMd].filter((p) => p.length > 0);
-    return appendContextFilesToSystemPrompt(parts.join("\n\n"), cwd);
+  /** Compose system prompt from current agent prompt, AGENTS.md, meta.services, and overlays. */
+  composeLiveSystemPrompt(sessionId: number): string {
+    const session = this._getSession(sessionId);
+    if (!session) return "";
+    const agent = session.agentId == null ? undefined : this.db.getAgent(session.agentId);
+    return composeLiveSessionSystemPrompt({
+      cwd: session.cwd,
+      agentSystemMd: agent?.systemPrompt ?? "",
+      storedSystemPrompt: session.systemPrompt,
+      meta: session.meta,
+      overlay: formatSystemPromptOverlay(this.systemPromptOverlays.get(sessionId)),
+    });
+  }
+
+  appendSystemPromptOverlay(sessionId: number, content: string): void {
+    const fragment = content.trim();
+    if (!fragment) return;
+    if (this.composeLiveSystemPrompt(sessionId).includes(fragment)) return;
+    const overlay = this.ensureSystemPromptOverlay(sessionId);
+    overlay.fragments.push(fragment);
+  }
+
+  upsertSystemPromptBlockOverlay(sessionId: number, id: string, content: string): void {
+    const key = id.trim();
+    if (!key) return;
+    const overlay = this.ensureSystemPromptOverlay(sessionId);
+    const fragment = content.trim();
+    if (!fragment) overlay.blocks.delete(key);
+    else overlay.blocks.set(key, fragment);
+  }
+
+  private ensureSystemPromptOverlay(sessionId: number): SystemPromptOverlay {
+    let overlay = this.systemPromptOverlays.get(sessionId);
+    if (!overlay) {
+      overlay = { fragments: [], blocks: new Map() };
+      this.systemPromptOverlays.set(sessionId, overlay);
+    }
+    return overlay;
   }
 
   private setupRuntime(sessionId: number, runtime: ManagedSessionRuntime): void {
@@ -779,15 +760,53 @@ export class SessionManager {
     if (!agent || agent.backendType === "native") return parentAgentId;
     const codingId = findPackagedAgentId(this.db, "coding");
     if (codingId === undefined) {
-      throw new Error("瀛愪細璇濅笉鑳戒娇鐢ㄥ閮?Agent锛屼笖鏈厤缃彲鐢ㄧ殑鍘熺敓 Coding Agent");
+      throw new Error("子会话不能使用外部 Agent，且未配置可用的原生 Coding Agent");
     }
     return codingId;
+  }
+
+  private async attachExternalSessionExtensions(
+    session: Session,
+    agent: Agent,
+    startRuntime: (session: Session) => Promise<ManagedSessionRuntime>,
+  ): Promise<ManagedSessionRuntime> {
+    if (session.projectId == null) return startRuntime(session);
+
+    const resource = new AgentResource({
+      sessionId: session.id,
+      agentId: session.agentId ?? 0,
+      agent,
+      cwd: session.cwd,
+      db: this.db,
+    });
+    await resource.load();
+
+    const bridge = new ExtensionAttachRuntime(session.id);
+    const host = await loadSessionExtensions({
+      runtime: bridge,
+      agentId: session.agentId ?? 0,
+      agentName: agent.name,
+      cwd: session.cwd,
+      db: this.db,
+      manager: this,
+      resource,
+    });
+    if (host) bridge.attachExtension(host);
+
+    const updated = this.get(session.id) ?? session;
+    const runtime = await startRuntime(updated);
+    bridge.setTarget(runtime);
+    if (host) {
+      runtime.attachExtension?.(host);
+      await startSessionExtensions(host);
+    }
+    return runtime;
   }
 
   private createExternalRuntime(session: Session, agent: Agent): Promise<ManagedSessionRuntime> {
     const availability = externalAgentAvailability(agent);
     if (!availability.available)
-      throw new Error(availability.unavailableReason ?? "澶栭儴 Agent 涓嶅彲鐢?);
+      throw new Error(availability.unavailableReason ?? "外部 Agent 不可用");
     const options = { db: this.db, session, agent };
     if (agent.backendType === "codex") return CodexSessionRuntime.create(options);
     if (agent.backendType === "claude") return ClaudeSessionRuntime.create(options);
@@ -819,7 +838,9 @@ export class SessionManager {
       const agent = this.getAgentForSession(session.agentId);
       if (agent && agent.backendType !== "native") {
         const runtime = await timedSessionStep(id, "restoreRuntime/createExternalRuntime", () =>
-          this.createExternalRuntime(session, agent),
+          this.attachExternalSessionExtensions(session, agent, (next) =>
+            this.createExternalRuntime(next, agent),
+          ),
         );
         this.setupRuntime(session.id, runtime);
         this.db.updateStatus(session.id, "idle");
@@ -857,16 +878,11 @@ export class SessionManager {
       );
       const tools = sessionTools;
 
-      const systemPrompt =
-        session.systemPrompt && session.systemPrompt.length > 0
-          ? session.systemPrompt
-          : this.buildSystemPrompt("", resource.systemMd, session.cwd);
-
       const harness = new AgentHarness({
         env,
         session: harnessSession,
         model: llm.model,
-        systemPrompt,
+        systemPrompt: () => this.composeLiveSystemPrompt(session.id),
         tools,
         getApiKeyAndHeaders: async () => ({ apiKey: llm.apiKey }),
       });
@@ -894,15 +910,10 @@ export class SessionManager {
       const refreshedAfterExtensions = this.get(session.id)!;
       runtime.syncWorkingDirectory(refreshedAfterExtensions.cwd);
       if (agent?.backendType === "native") {
-        const project =
-          refreshedAfterExtensions.projectId != null
-            ? this.db.getProject(refreshedAfterExtensions.projectId)
-            : null;
         runtime.configureAgentPermissions(
           agent.permissionRules,
           refreshedAfterExtensions.cwd,
           (request) => this.requestSessionApproval(session.id, request),
-          { projectRoots: project?.cwd ? [project.cwd] : [] },
         );
       }
       const extensionTools = runtime.collectExtensionTools();
@@ -975,7 +986,7 @@ export class SessionManager {
 
   /**
    * Spawn an embedded agent (AgentHarness + SQLite session).
-   * Resources (skills/prompts/extensions) follow session.agentId 鈥?main or child session.
+   * Resources (skills/prompts/extensions) follow session.agentId — main or child session.
    *
    * With `awaitReady: false`, returns immediately as `initializing` while worktree + runtime
    * prepare in the background. Prompt paths wait via `waitUntilSpawnReady`.
@@ -1088,7 +1099,7 @@ export class SessionManager {
         (agentInDb.providerId == null || agentInDb.modelId == null) &&
         !(options.providerId != null && options.model)
       ) {
-        this.db.updateSessionFields(activeSession.id, { errorMsg: "Agent 鏈厤缃ā鍨? });
+        this.db.updateSessionFields(activeSession.id, { errorMsg: "Agent 未配置模型" });
         this.db.updateStatus(activeSession.id, "blocked");
         this.publishSessionStatus(activeSession.id);
         return rowToSession(this.db.get(activeSession.id)!, this.db);
@@ -1103,7 +1114,9 @@ export class SessionManager {
           { backendType: agentInDb.backendType, agentName: agentInDb.name },
         );
         const runtime = await timedSessionStep(activeSession.id, "createExternalRuntime", () =>
-          this.createExternalRuntime(activeSession, agentInDb),
+          this.attachExternalSessionExtensions(activeSession, agentInDb, (next) =>
+            this.createExternalRuntime(next, agentInDb),
+          ),
         );
         sessionLog(activeSession.id, "info", "External runtime ready", ["system", "runtime"], {
           backendType: agentInDb.backendType,
@@ -1163,19 +1176,11 @@ export class SessionManager {
       );
       const tools = sessionTools;
 
-      const baseSystemPrompt = options.systemPrompt ?? "";
-      const systemPrompt = this.buildSystemPrompt(
-        baseSystemPrompt,
-        resource.systemMd,
-        activeSession.cwd,
-      );
-      this.db.updateSessionFields(activeSession.id, { systemPrompt });
-
       const harness = new AgentHarness({
         env,
         session: harnessSession,
         model: llm.model,
-        systemPrompt,
+        systemPrompt: () => this.composeLiveSystemPrompt(activeSession.id),
         tools,
         getApiKeyAndHeaders: async () => ({ apiKey: llm.apiKey }),
       });
@@ -1203,15 +1208,10 @@ export class SessionManager {
       const refreshedAfterExtensions = this.get(activeSession.id)!;
       runtime.syncWorkingDirectory(refreshedAfterExtensions.cwd);
       if (agentInDb?.backendType === "native") {
-        const project =
-          refreshedAfterExtensions.projectId != null
-            ? this.db.getProject(refreshedAfterExtensions.projectId)
-            : null;
         runtime.configureAgentPermissions(
           agentInDb.permissionRules,
           refreshedAfterExtensions.cwd,
           (request) => this.requestSessionApproval(activeSession.id, request),
-          { projectRoots: project?.cwd ? [project.cwd] : [] },
         );
       }
       const extensionTools = runtime.collectExtensionTools();
@@ -1295,19 +1295,44 @@ export class SessionManager {
     }
   }
 
-  /** Rebuild extension modules and tool wiring for active native sessions of an agent. */
+  /** Rebuild extension modules and tool wiring for active sessions of an agent. */
   async reloadNativeAgentExtensions(agentId: number): Promise<void> {
     const agent = this.db.getAgent(agentId);
-    if (!agent || agent.backendType !== "native") return;
+    if (!agent) return;
 
     for (const [sessionId, runtime] of this.runtimes) {
-      if (!(runtime instanceof SessionRuntime)) continue;
       const session = this._getSession(sessionId);
       if (!session || session.agentId !== agentId) continue;
+      await runtime.waitForIdle().catch(() => {});
 
-      await runtime.harness.waitForIdle().catch(() => {});
-      await runtime.reloadExtensions(agentId, agent.name, session.cwd, this.db, this);
-      await this.refreshRuntimeTools(sessionId, runtime, session, agent);
+      if (runtime instanceof SessionRuntime) {
+        await runtime.reloadExtensions(agentId, agent.name, session.cwd, this.db, this);
+        await this.refreshRuntimeTools(sessionId, runtime, session, agent);
+        continue;
+      }
+
+      if (session.projectId == null) continue;
+      await runtime.extension?.clear().catch(() => {});
+      const resource = new AgentResource({
+        sessionId,
+        agentId,
+        agent,
+        cwd: session.cwd,
+        db: this.db,
+      });
+      await resource.load();
+      const host = await loadSessionExtensions({
+        runtime,
+        agentId,
+        agentName: agent.name,
+        cwd: session.cwd,
+        db: this.db,
+        manager: this,
+        resource,
+      });
+      if (!host) continue;
+      runtime.attachExtension?.(host);
+      await startSessionExtensions(host);
     }
   }
 
@@ -1415,9 +1440,6 @@ export class SessionManager {
       if (session.status === "initializing") {
         throw new Error(`Session ${id} is still initializing`);
       }
-      if (session.status === "finish" || session.status === "finished") {
-        throw new Error("会话已完成，不能继续对话；请先 Fork 新会话");
-      }
       if (session.status === "blocked" && session.error_msg) {
         throw new Error(`Session ${id} is blocked: ${session.error_msg}`);
       }
@@ -1463,11 +1485,6 @@ export class SessionManager {
     },
   ): Promise<SessionInputDisposition> {
     await this.waitUntilSpawnReady(id);
-    const session = this.db.get(id);
-    if (!session) throw new Error(`Session ${id} not found`);
-    if (session.status === "finish" || session.status === "finished") {
-      throw new Error("会话已完成，不能继续对话；请先 Fork 新会话");
-    }
     const level = input.level ?? DEFAULT_SESSION_INPUT_LEVEL;
     const entry: SessionQueuedInput = {
       id: randomUUID(),
@@ -1510,7 +1527,7 @@ export class SessionManager {
       throw new Error(`Session ${childSessionId} cannot be continued (status: ${child.status})`);
     }
     if (child.status === "finish" || child.status === "finished") {
-      throw new Error(`Session ${childSessionId} 已完成；请 Fork 后继续`);
+      this.db.updateStatus(childSessionId, "idle");
     }
 
     const submit = () =>
@@ -1595,11 +1612,7 @@ export class SessionManager {
   resumePersistedSessionInputs(): void {
     for (const sessionId of this.sessionInputQueues.sessionIds()) {
       const session = this.get(sessionId);
-      if (!session || session.status === "finish" || session.status === "finished") {
-        this.clearSessionInputs(sessionId);
-        continue;
-      }
-      if (session.status === "error") continue;
+      if (!session || session.status === "finish" || session.status === "error") continue;
       void this.drainSessionInputQueue(sessionId).catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
         console.error(`Persisted Session input failed [${sessionId}]:`, detail);
@@ -1609,11 +1622,6 @@ export class SessionManager {
 
   async drainSessionInputQueue(sessionId: number): Promise<boolean> {
     if (this.drainingSessionInputs.has(sessionId)) return false;
-    const session = this.get(sessionId);
-    if (!session || session.status === "finish" || session.status === "finished") {
-      this.clearSessionInputs(sessionId);
-      return false;
-    }
     const next = this.sessionInputQueues.dequeue(sessionId);
     if (!next) return false;
     this.drainingSessionInputs.add(sessionId);
@@ -1625,8 +1633,8 @@ export class SessionManager {
       return true;
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      // Failures must not bounce the message back into the queue 鈥?that shows
-      // as "鎺掗槦涓? forever. Persist the user turn (if needed) + custom error.
+      // Failures must not bounce the message back into the queue — that shows
+      // as "排队中" forever. Persist the user turn (if needed) + custom error.
       await this.abandonFailedSessionInput(sessionId, next, detail).catch((persistError) => {
         console.error(`abandonFailedSessionInput failed [${sessionId}]:`, persistError);
       });
@@ -1643,12 +1651,6 @@ export class SessionManager {
           console.error(`Queued Session input failed [${sessionId}]:`, detail);
         });
       }
-    }
-  }
-
-  private clearSessionInputs(sessionId: number): void {
-    for (const input of this.sessionInputQueues.clear(sessionId)) {
-      this.db.deleteSessionInput(input.id);
     }
   }
 
@@ -1687,8 +1689,8 @@ export class SessionManager {
         { source: input.source },
       );
     }
-    const notice = errorMessage.trim() || "娑堟伅鍙戦€佸け璐?;
-    // External runtimes already emit agent_end(error) 鈫?recordLlmError; avoid duplicates.
+    const notice = errorMessage.trim() || "消息发送失败";
+    // External runtimes already emit agent_end(error) → recordLlmError; avoid duplicates.
     if (!this.leafIsLlmError(sessionId)) {
       await this.recordLlmError(sessionId, notice);
     }
@@ -1766,48 +1768,7 @@ export class SessionManager {
     throw new Error(`Timed out waiting for session ${sessionId}`);
   }
 
-  private getLatestAssistantText(sessionId: number, maxChars: number): string {
-    const row = this.db.db
-      .prepare(
-        `SELECT payload FROM messages
-         WHERE session_id = ? AND role = 'assistant'
-         ORDER BY created_at DESC LIMIT 1`,
-      )
-      .get(sessionId) as { payload?: string } | undefined;
-    if (!row?.payload) return "";
-    try {
-      const payload = JSON.parse(row.payload) as {
-        message?: { content?: unknown };
-        content?: unknown;
-      };
-      const content = payload.message?.content ?? payload.content;
-      const text =
-        typeof content === "string"
-          ? content
-          : Array.isArray(content)
-            ? content
-                .flatMap((item) =>
-                  item &&
-                  typeof item === "object" &&
-                  (item as { type?: unknown }).type === "text" &&
-                  typeof (item as { text?: unknown }).text === "string"
-                    ? [(item as { text: string }).text]
-                    : [],
-                )
-                .join("\n")
-            : "";
-      return text.length > maxChars ? text.slice(-maxChars) : text;
-    } catch {
-      return "";
-    }
-  }
-
   async steer(id: number, message: string, images?: SessionPromptImage[]): Promise<void> {
-    const session = this.db.get(id);
-    if (!session) throw new Error(`Session ${id} not found`);
-    if (session.status === "finish" || session.status === "finished") {
-      throw new Error("会话已完成，不能继续对话；请先 Fork 新会话");
-    }
     this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
@@ -1820,11 +1781,6 @@ export class SessionManager {
     source?: string | null,
     images?: SessionPromptImage[],
   ): void {
-    const session = this.db.get(id);
-    if (!session) throw new Error(`Session ${id} not found`);
-    if (session.status === "finish" || session.status === "finished") {
-      throw new Error("会话已完成，不能继续对话；请先 Fork 新会话");
-    }
     this.assertSessionProviderEnabled(id);
     const runtime = this.runtimes.get(id);
     if (!runtime) throw new Error(`Session ${id} is not running`);
@@ -1920,7 +1876,7 @@ export class SessionManager {
   }
 
   async getState(id: number): Promise<SessionState> {
-    // Do not restore a runtime just to read state 鈥?that can spawn Codex and
+    // Do not restore a runtime just to read state — that can spawn Codex and
     // is slow / wrong while checking whether a turn is still in flight.
     const runtime = this.runtimes.get(id);
     if (runtime) return runtime.getState();
@@ -1952,8 +1908,6 @@ export class SessionManager {
   async kill(id: number): Promise<void> {
     const current = this.db.get(id);
     if (!current) throw new Error(`Session ${id} not found`);
-    const session = rowToSession(current, this.db);
-    if (session) await this.stopSessionProcesses(session);
     const runtime = this.runtimes.get(id);
     if (!runtime) {
       throw new Error("not running");
@@ -1980,11 +1934,7 @@ export class SessionManager {
       return session;
     }
 
-    // Process shutdown is a hard precondition for commit/merge. Extension event
-    // errors are intentionally isolated by the host, so enforce this at core level.
-    await this.stopSessionProcesses(session);
-
-    // Emit session.before_complete (extensions: uninstall → worktree on achieve)
+    // Emit session.before_complete (extensions: stop → uninstall → worktree on achieve)
     const runtime = this.runtimes.get(id);
     if (runtime?.extension) {
       await runtime.extension.emit({
@@ -2032,7 +1982,7 @@ export class SessionManager {
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      // Operational failure (git/merge) 鈥?toast to UI, do NOT mark session as LLM error.
+      // Operational failure (git/merge) — toast to UI, do NOT mark session as LLM error.
       this.reportOperationalError(id, message);
       throw new Error(message);
     }
@@ -2046,31 +1996,8 @@ export class SessionManager {
       this.turnTrackers.delete(id);
       this.sessionToolConfigs.delete(id);
     }
-    this.clearSessionInputs(id);
     this.db.updateStatus(id, "finish");
     return rowToSession(this.db.get(id)!, this.db);
-  }
-
-  private async stopSessionProcesses(session: Session): Promise<void> {
-    const liveBashJobs = this.jobs
-      .list(session.id, { kind: "shell", limit: 200 })
-      .filter(
-        (job) =>
-          job.executionMode === "background" &&
-          (job.status === "queued" || job.status === "running" || job.status === "waiting"),
-      );
-    await Promise.all(liveBashJobs.map((job) => this.jobs.cancel(job.id)));
-    const services = parseSessionServicesMeta(session.meta);
-    if (!services?.startCommand) return;
-    await stopSessionProjectServices({
-      sessionId: session.id,
-      cwd: session.cwd,
-      services,
-      jobs: this.jobs,
-      mode: "stop",
-    });
-    this.db.updateMeta(session.id, { services: stoppedSessionServicesMeta(services) });
-    this.publishServicesChange(session.id);
   }
 
   async emitSessionExtensionEvent(sessionId: number, event: ExtensionEvent): Promise<void> {
@@ -2110,7 +2037,7 @@ export class SessionManager {
   async syncSession(id: number): Promise<Session> {
     const session = this.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
-    if (session.projectId == null) throw new Error("褰撳墠浼氳瘽鏈粦瀹氶」鐩紝鏃犳硶鍚屾");
+    if (session.projectId == null) throw new Error("当前会话未绑定项目，无法同步");
     const project = this.db.getProject(session.projectId);
     if (!project) throw new Error(`Project ${session.projectId} not found`);
     const git = resolveSessionGitContext({
@@ -2118,7 +2045,7 @@ export class SessionManager {
       cwd: session.cwd,
       projectCwd: project.cwd,
     });
-    if (!git) throw new Error("褰撳墠浼氳瘽鏈惎鐢ㄧ嫭绔?worktree锛屾棤闇€鍚屾");
+    if (!git) throw new Error("当前会话未启用独立 worktree，无需同步");
 
     const runtime = await this.ensureRuntime(id);
     if (!runtime.extension) throw new Error("Session extensions are not loaded");
@@ -2197,7 +2124,8 @@ export class SessionManager {
   }
 
   /**
-   * 瑙ｆ瀽骞跺垵濮嬪寲椤圭洰锛氬啓 AGENTS.md 鍜屾弿杩般€?   */
+   * 解析并初始化项目：写 AGENTS.md 和描述。
+   */
   async parseProject(projectId: number): Promise<{
     description: string | null;
     status: "ready" | "skipped" | "error";
@@ -2208,7 +2136,7 @@ export class SessionManager {
 
     const ref = readSupervisorSettings().featureModels?.assistant;
     if (!isFeatureModelRef(ref)) {
-      const message = "鏈厤缃€屽姪鎵嬫ā鍨嬨€?;
+      const message = "未配置「助手模型」";
       return { description: null, status: "skipped", error: message };
     }
 
@@ -2226,12 +2154,8 @@ export class SessionManager {
     }
   }
 
-  async listImportableExternalSessions(limit?: number, offset?: number) {
-    const page = await listExternalSessions(limit, offset);
-    return {
-      ...page,
-      items: await this.annotateImportedExternalSessions(Promise.resolve(page.items)),
-    };
+  listImportableExternalSessions(limit?: number) {
+    return this.annotateImportedExternalSessions(listExternalSessions(limit));
   }
 
   private async annotateImportedExternalSessions(
@@ -2265,7 +2189,7 @@ export class SessionManager {
     );
     if (existing) {
       if (!options.replace) {
-        throw new Error(`璇ュ閮ㄥ璇濆凡瀵煎叆涓轰細璇?#${existing.id}锛屼笉鍙噸澶嶅紩鍏);
+        throw new Error(`该外部对话已导入为会话 #${existing.id}，不可重复引入`);
       }
       await this.delete(existing.id);
     }
@@ -2367,16 +2291,16 @@ export class SessionManager {
   async installExternalAgent(id: number): Promise<AgentWithSystemMd> {
     const agent = this.db.getAgent(id);
     if (!agent) throw new Error(`Agent ${id} not found`);
-    if (agent.backendType === "native") throw new Error("鍘熺敓 Agent 鏃犻渶瀹夎");
+    if (agent.backendType === "native") throw new Error("原生 Agent 无需安装");
     const installCommand = getExternalAgentInstallCommand(agent);
-    if (!installCommand) throw new Error("鏈厤缃畨瑁呭懡浠?);
+    if (!installCommand) throw new Error("未配置安装命令");
     const shellCommand = resolveExternalAgentInstallShellCommand(installCommand);
     const result = await runShellCommand(shellCommand, homedir(), process.env, {
       timeoutMs: 20 * 60 * 1000,
     });
     if (result.code !== 0) {
       const detail =
-        result.stderr.trim() || result.stdout.trim() || `瀹夎澶辫触 (code ${result.code})`;
+        result.stderr.trim() || result.stdout.trim() || `安装失败 (code ${result.code})`;
       throw new Error(detail);
     }
     return this.enrichAgentWithSystemMd(agent);
@@ -2387,13 +2311,13 @@ export class SessionManager {
   ): Promise<{ agent: AgentWithSystemMd; summary: string; fixed: boolean }> {
     const agent = this.db.getAgent(id);
     if (!agent) throw new Error(`Agent ${id} not found`);
-    if (agent.backendType === "native") throw new Error("鍘熺敓 Agent 鏃犻渶淇");
+    if (agent.backendType === "native") throw new Error("原生 Agent 无需修复");
 
     const before = externalAgentAvailability(agent);
     if (before.available) {
       return {
         agent: this.enrichAgentWithSystemMd(agent),
-        summary: "宸插彲鐢紝鏃犻渶淇",
+        summary: "已可用，无需修复",
         fixed: true,
       };
     }
@@ -2549,7 +2473,7 @@ export class SessionManager {
       const spawned = this.db.getAgent(agentId);
       if (!spawned) throw new Error(`Spawned agent ${agentId} not found`);
       if (spawned.backendType !== "native") {
-        throw new Error("瀛?Agent 鎴愬憳鍙兘浣跨敤鍘熺敓 Agent锛屼笉鑳戒娇鐢ㄥ閮?Agent锛圕odex/Claude 绛夛級");
+        throw new Error("子 Agent 成员只能使用原生 Agent，不能使用外部 Agent（Codex/Claude 等）");
       }
     }
     this.db.setSessionSubagentIds(sessionId, uniqueIds);
@@ -2565,13 +2489,30 @@ export class SessionManager {
     return merged;
   }
 
-  /** When a Job that backed meta.services ends, drop process-bound fields (keep registration). */
+  /** When a Job that backed a registered service ends, drop that app's process fields. */
   clearServiceRuntimeIfJob(sessionId: number, jobId: string): void {
     const session = this._getSession(sessionId);
     if (!session) return;
     const services = parseSessionServicesMeta(session.meta);
-    if (!services?.jobId || services.jobId !== jobId) return;
-    this.db.updateMeta(sessionId, { services: stoppedSessionServicesMeta(services) });
+    if (!services) return;
+    const apps = services.apps ?? [];
+    const hitApp = apps.some((app) => app.jobId === jobId);
+    const hitSession = services.jobId === jobId;
+    if (!hitApp && !hitSession) return;
+    const nextApps = apps.map((app) =>
+      app.jobId === jobId ? { ...app, jobId: undefined, pid: null } : app,
+    );
+    const still = nextApps.find((app) => app.jobId);
+    this.db.updateMeta(sessionId, {
+      services: {
+        ...services,
+        apps: nextApps,
+        jobId: still?.jobId,
+        pid: still?.pid ?? null,
+        resolvedStartCommand: still?.startCommand,
+        status: still ? services.status : "idle",
+      },
+    });
     this.publishServicesChange(sessionId);
     this.publishSessionStatus(sessionId);
   }
@@ -2684,13 +2625,7 @@ export class SessionManager {
 
   replaceSessionTodos(
     id: number,
-    todos: Array<{
-      id?: string;
-      title: string;
-      status: SessionTodoStatus;
-      dependsOn?: string[];
-      sessionId?: number;
-    }>,
+    todos: Array<{ title: string; status: SessionTodoStatus }>,
   ): SessionTodoItem[] {
     return this.db.replaceSessionTodos(id, todos).map(toSessionTodo);
   }
@@ -2711,15 +2646,13 @@ export class SessionManager {
     const row = this.db.get(id);
     const session = row ? rowToSession(row, this.db) : undefined;
     if (session?.isBuiltin && !options.allowBuiltin) {
-      throw new Error("Pi 鍔╂墜涓嶈兘鍒犻櫎");
+      throw new Error("Pi 助手不能删除");
     }
     for (const child of this.children(id)) {
       if (child.spawnType === "subagent" || child.spawnType === "btw") {
         await this.delete(child.id, options);
       }
     }
-
-    if (session) await this.stopSessionProcesses(session);
 
     let runtime = this.runtimes.get(id);
     let restoredForDelete = false;
@@ -2750,6 +2683,7 @@ export class SessionManager {
       this.turnTrackers.delete(id);
       this.sessionToolConfigs.delete(id);
     }
+    this.systemPromptOverlays.delete(id);
 
     const projectId = session?.projectId ?? null;
     this.db.delete(id);
@@ -2776,12 +2710,12 @@ export class SessionManager {
     // Same agent as the parent session (external parents remap to native Coding).
     const agentId = this.resolveAgentIdForChildSession(parent.agentId);
     if (agentId == null) {
-      throw new Error("鐖朵細璇濇湭缁戝畾 Agent锛屾棤娉曞垱寤洪『渚块棶");
+      throw new Error("父会话未绑定 Agent，无法创建顺便问");
     }
     const agent = this.db.getAgent(agentId);
     if (!agent) throw new Error(`Agent ${agentId} not found`);
     if (agent.backendType !== "native") {
-      throw new Error("椤轰究闂紙BTW锛夊彧鑳戒娇鐢ㄥ師鐢?Agent锛屼笉鑳戒娇鐢ㄥ閮?Agent");
+      throw new Error("顺便问（BTW）只能使用原生 Agent，不能使用外部 Agent");
     }
     return this.create({
       projectId: parent.projectId,
@@ -2789,7 +2723,7 @@ export class SessionManager {
       cwd: parent.cwd,
       agentId,
       spawnType: "btw",
-      title: "椤轰究闂?,
+      title: "顺便问",
     });
   }
 
@@ -2872,9 +2806,7 @@ export class SessionManager {
   }
 
   async dispose(): Promise<void> {
-    this.stopSessionServiceSleepScheduler();
     this.detachHomeTaskSync();
-    this.detachSubagentResultSync();
     setSessionUnreadHandler(null);
     await Promise.all([...this.runtimes.keys()].map((id) => this.kill(id).catch(() => {})));
     this.runtimes.clear();
@@ -2882,6 +2814,7 @@ export class SessionManager {
     this.outputListeners.clear();
     this.globalOutputListeners.clear();
     this.sessionToolConfigs.clear();
+    this.systemPromptOverlays.clear();
     this.db.close();
   }
 
@@ -3362,7 +3295,7 @@ export class SessionManager {
         patch.subagentIds !== undefined ||
         patch.projectId !== undefined)
     ) {
-      throw new Error("宸插紑濮嬫墽琛岀殑宸ヤ綔椤逛笉鑳藉啀鏀硅鍒掑瓧娈?);
+      throw new Error("已开始执行的工作项不能再改规划字段");
     }
     const updated = this.db.updateHomeTask(id, patch);
     if (updated.parentId != null && patch.dependsOn !== undefined) {
@@ -3378,7 +3311,7 @@ export class SessionManager {
   private resolveDefaultSpawnAgentId(): number {
     const agents = this.db.listAgents();
     const preferred =
-      agents.find((agent) => agent.name === "Pi 鍔╂墜") ??
+      agents.find((agent) => agent.name === "Pi 助手") ??
       agents.find((agent) => agent.backendType === "native") ??
       agents[0];
     if (!preferred) throw new Error("No agent configured");
@@ -3390,15 +3323,15 @@ export class SessionManager {
     const task = this.db.getHomeTask(id);
     if (!task) throw new Error(`Home task ${id} not found`);
     if (task.parentId != null) throw new Error("Only root todos can be planned");
-    if (!task.projectId) throw new Error("Todo 蹇呴』鍏堢粦瀹氶」鐩啀瑙勫垝");
-    if (task.phase === "executing") throw new Error("Todo 宸插湪鎵ц涓紝涓嶈兘閲嶆柊瑙勫垝");
+    if (!task.projectId) throw new Error("Todo 必须先绑定项目再规划");
+    if (task.phase === "executing") throw new Error("Todo 已在执行中，不能重新规划");
 
     const project = this.db.getProject(task.projectId);
     if (!project) throw new Error(`Project ${task.projectId} not found`);
 
     const existingChildren = this.db.listHomeTaskChildren(id);
     if (existingChildren.some((child) => child.sessionId != null)) {
-      throw new Error("宸叉湁宸ヤ綔椤瑰紑濮嬫墽琛岋紝涓嶈兘閲嶆柊瑙勫垝");
+      throw new Error("已有工作项开始执行，不能重新规划");
     }
     for (const child of existingChildren) {
       this.db.deleteHomeTask(child.id);
@@ -3483,28 +3416,28 @@ export class SessionManager {
       return { task, children: this.db.listHomeTaskChildren(id) };
     }
     if (task.phase !== "awaiting_confirm") {
-      throw new Error("璇峰厛瀹屾垚瑙勫垝骞剁‘璁ゅ悗鍐嶆墽琛?);
+      throw new Error("请先完成规划并确认后再执行");
     }
 
     const children = this.db.listHomeTaskChildren(id);
-    if (children.length === 0) throw new Error("璇峰厛瑙勫垝宸ヤ綔椤?);
+    if (children.length === 0) throw new Error("请先规划工作项");
     if (children.some((child) => child.sessionId != null)) {
-      throw new Error("宸叉湁宸ヤ綔椤瑰紑濮嬫墽琛?);
+      throw new Error("已有工作项开始执行");
     }
 
     validateHomeTaskDependencies(children);
     for (const child of children) {
       const projectId = child.projectId ?? task.projectId;
       if (projectId == null || !this.db.getProject(projectId)) {
-        throw new Error(`宸ヤ綔椤广€?{child.title}銆嶇己灏戞湁鏁堥」鐩甡);
+        throw new Error(`工作项「${child.title}」缺少有效项目`);
       }
       const agentId = child.agentId ?? this.resolveDefaultSpawnAgentId();
       if (!this.db.getAgent(agentId)) {
-        throw new Error(`宸ヤ綔椤广€?{child.title}銆嶇己灏戞湁鏁?Agent`);
+        throw new Error(`工作项「${child.title}」缺少有效 Agent`);
       }
       for (const subId of child.subagentIds) {
         if (!this.db.getAgent(subId)) {
-          throw new Error(`宸ヤ綔椤广€?{child.title}銆嶇殑瀛?Agent ${subId} 涓嶅瓨鍦╜);
+          throw new Error(`工作项「${child.title}」的子 Agent ${subId} 不存在`);
         }
       }
     }

@@ -91,4 +91,27 @@ describe("builtin extension catalog bindings", () => {
     expect(routerSlugs.has("task-management")).toBe(true);
     expect(routerSlugs.has("subagent")).toBe(true);
   });
+
+  it("binds only git and project-services on packaged external agents", () => {
+    const agent = db.insertAgent({
+      name: "Codex",
+      backend_type: "codex",
+      tools_preset: "coding",
+      is_builtin: true,
+    });
+    ensureAgentBuiltinExtensionBindings(db, agent.id);
+    const bound = new Set(
+      db
+        .listAgentResourceBindings(agent.id, { kind: "extension", enabledOnly: false })
+        .map((binding) => binding.resource?.slug),
+    );
+    expect(bound.has("session-git-worktree")).toBe(true);
+    expect(bound.has("project-services")).toBe(true);
+    expect(bound.has("mcp")).toBe(false);
+    expect(bound.has("skill")).toBe(false);
+    expect(bound.has("task-management")).toBe(false);
+
+    const enabled = listEnabledBuiltinExtensionSlugs(db, agent.id, { isMainSession: true });
+    expect([...enabled].sort()).toEqual(["project-services", "session-git-worktree"]);
+  });
 });

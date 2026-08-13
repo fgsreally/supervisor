@@ -22,14 +22,12 @@ import { resolveLLMConfig } from "../utils/model-utils.js";
 import type { SessionManager } from "./session-manager.js";
 import { resolveSessionPromptImages, type SessionPromptImage } from "./session-media.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
-import { Context } from "../extension/runtime/index.js";
-import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
+import { ensureSessionDir } from "./session-files.js";
 import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
-import { BUILTIN_EXTENSION_SLUGS } from "../extension/builtin/catalog.js";
-import { listEnabledBuiltinExtensionSlugs } from "../extension/builtin/ensure.js";
 import { evaluateAgentPermission, type AgentPermissionRules } from "./agent-permissions.js";
-import type { ApprovalRequest, ApprovalResult, ExtensionEvent } from "../extension/index.js";
+import type { ApprovalRequest, ApprovalResult } from "../extension/index.js";
 import { harnessAgentState, readHarnessTools } from "./harness-compat.js";
+import { loadSessionExtensions, startSessionExtensions } from "./session-extension-attach.js";
 
 export {
   harnessAgentController,
@@ -147,6 +145,10 @@ export class SessionRuntime implements ManagedSessionRuntime {
     return this._extension;
   }
 
+  attachExtension(host: SessionExtensionHost): void {
+    this._extension = host;
+  }
+
   /**
    * Initialize the extension runtime: load and setup all extensions.
    */
@@ -162,51 +164,21 @@ export class SessionRuntime implements ManagedSessionRuntime {
     // artifact directory. Its regular Agent tools and resources still work, while
     // project/session extensions are skipped because their Context requires a project.
     if (session?.projectId == null) return;
-    await ensureProjectDir(session.projectId);
-    const sessionDir = await ensureSessionDir(session.projectId, this.id);
-    const context = new Context({ sessionManager: manager, db, sessionRuntime: this });
-    const extension = new SessionExtensionHost(context);
-    this._extension = extension;
-
-    await manager.ensureResourceCatalog();
-    const currentSession = this.getSession();
-    const isMainSession = currentSession?.parentId == null;
-    const enabledBuiltins = listEnabledBuiltinExtensionSlugs(db, agentId, { isMainSession });
-    await extension.initialize(enabledBuiltins);
-
-    const agent = db.getAgent(agentId);
-    const toolsPreset = agent?.toolsPreset ?? "coding";
-    const spawnType = currentSession?.spawnType ?? null;
-    const createEvent = {
-      type: "session.create",
-      sessionId: this.id,
-      parentSessionId: currentSession?.parentId ? String(currentSession.parentId) : undefined,
+    const extension = await loadSessionExtensions({
+      runtime: this,
+      agentId,
+      agentName,
       cwd,
-      toolsPreset,
-      spawnType,
-      agentDisplayName: agentName,
-    } as ExtensionEvent;
-
-    await extension.emit(createEvent);
-    await extension.emit({ ...createEvent, type: "session.prepare" } as ExtensionEvent);
+      db,
+      manager,
+      resource: this.resource,
+    });
+    this._extension = extension;
+    if (!extension) return;
 
     this.syncWorkingDirectory(this.getSession()?.cwd ?? cwd);
 
-    // User-installed extensions only (builtins load via initialize). Bound = active.
-    const extensionSlugs = db
-      .listAgentResourceBindings(agentId, { kind: "extension", enabledOnly: false })
-      .flatMap((binding) => {
-        const slug = binding.resource?.slug;
-        if (!slug || BUILTIN_EXTENSION_SLUGS.has(slug)) return [];
-        return [slug];
-      });
-    const moduleErrors = await extension.loadModules(
-      manager.getExtensionRegistry().getMany(extensionSlugs),
-    );
-    for (const moduleError of moduleErrors) {
-      console.error(`extension module [${moduleError.slug}]:`, moduleError.error);
-    }
-
+    const sessionDir = await ensureSessionDir(session.projectId, this.id);
     const toolSlugs = db.listAgentResourceSlugs(agentId, "tool");
     const packagedToolIds = toolSlugs.filter(isPackagedToolId);
     await activatePackagedTools(extension, {
@@ -217,12 +189,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
     });
 
     extension.bindHarness(this.harness);
-
-    await extension.emit({
-      type: "session.start",
-      reason: "startup",
-      sessionId: this.id,
-    } as ExtensionEvent);
+    await startSessionExtensions(extension);
   }
 
   /** Keep harness permission cwd in sync after extensions change session cwd (e.g. worktree). */

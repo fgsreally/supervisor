@@ -21,15 +21,14 @@
 
 ## 端口与本地服务
 
-Session 准备阶段可能已由 Supervisor 启动项目服务；以系统提示中的“项目服务”状态、命令和入口为准，不要重复启动。已登记服务时环境会注入 `PORT` / `API_PORT` 等，自行再起请复用，勿另开冲突端口。
+创建 Session 时华生已按 AGENTS.md「本地开发服务」启动并写入当前服务列表。不要用 bash 直接跑 vite / `pnpm dev`。
 
-仅当对话过程中需要新增服务，或用户明确要求更换现有服务时：
+中途要增删改服务时调用 `UpdateService`，必须带 `action`：
+- `add`：新起一个进程并登记（例如加了 express）。未指定 port 时使用 4396–4500 中的空闲端口，不要猜 3000/5173。
+- `delete`：关掉对应进程并移除
+- `update`：关掉旧进程，再按新命令启动
 
-1. Session cwd 下 `bash` + `run_in_background` + `disable_timeout`（同一次调用会等到就绪）
-2. 用返回的 `detectedPort` / `task_id` 调 `ProjectServiceSetup`（`apps` + `taskId`）→ 活跃应用
-3. 仅未在跑时才 `ProjectServiceStart`
-
-不要猜测或占用 3000、5173 等默认端口，不要前台跑长期 dev server，不要对 background task 轮询 `read`。
+未改动的服务保持运行。已登记服务时环境会注入 `PORT` / `API_PORT` 等。闲置关闭、同步前停止、会话结束清理由系统处理。配置未变只需停/再开时用 `ProjectServiceStop` / `ProjectServiceStart`。
 
 ## 边界
 

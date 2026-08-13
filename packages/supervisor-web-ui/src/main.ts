@@ -10,6 +10,7 @@ import { initAppStyle } from "./composables/use-app-style";
 import { initAppFontScale } from "./composables/use-app-font-scale";
 import { initVisualViewport } from "./composables/use-visual-viewport";
 import { requestNotificationPermission } from "./composables/use-notifications";
+import { initSessionNotifyWatch } from "./composables/use-session-notify-watch";
 import { initNativeShell } from "./native/bootstrap";
 
 // Android shell WebView: mark early so page headers can pad below the status bar.
@@ -42,6 +43,7 @@ app.use(createPinia());
 app.use(router);
 app.mount("#app");
 
+void initSessionNotifyWatch();
 void initNativeShell();
 
 window.addEventListener(

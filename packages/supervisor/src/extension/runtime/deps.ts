@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { SessionRuntime } from "../../core/session-runtime.js";
+import type { ManagedSessionRuntime } from "../../core/managed-session-runtime.js";
 import type { SessionManager } from "../../core/session-manager.js";
 import type { SupervisorDb } from "../../db/db.js";
 import { ensureProjectDir, ensureSessionDir } from "../../core/session-files.js";
@@ -58,15 +58,26 @@ function toTodoInfo(row: SessionTodoRow): SessionTodoInfo {
   };
 }
 
-/** Read model / thinking level from AgentHarness public getters. */
-function getHarnessAgentState(runtime: SessionRuntime): {
+/** Read model / thinking level from a native harness when present. */
+function getRuntimeAgentState(runtime: ManagedSessionRuntime): {
   model: { provider: string; id: string };
   thinkingLevel: string;
 } {
-  const model = runtime.harness.getModel();
+  const harness = (
+    runtime as {
+      harness?: { getModel(): { provider: unknown; id: unknown }; getThinkingLevel(): string };
+    }
+  ).harness;
+  if (harness) {
+    const model = harness.getModel();
+    return {
+      model: { provider: String(model.provider), id: String(model.id) },
+      thinkingLevel: harness.getThinkingLevel(),
+    };
+  }
   return {
-    model: { provider: String(model.provider), id: String(model.id) },
-    thinkingLevel: runtime.harness.getThinkingLevel(),
+    model: { provider: "external", id: "external" },
+    thinkingLevel: "none",
   };
 }
 
@@ -149,7 +160,7 @@ function readSessionResultSummary(
  * 将所有能力连接到 SessionRuntime、SessionManager 和 SupervisorDb。
  */
 export function buildExtensionDeps(deps: {
-  runtime: SessionRuntime;
+  runtime: ManagedSessionRuntime;
   manager: SessionManager;
   db: SupervisorDb;
   sessionId: number;
@@ -517,7 +528,7 @@ export function buildExtensionDeps(deps: {
     },
 
     waitForIdle: async () => {
-      await runtime["harness"]?.waitForIdle();
+      await runtime.waitForIdle();
     },
 
     fork: async (entryId: string, options?: { position?: "before" | "at" }) => {
@@ -579,7 +590,7 @@ export function buildExtensionDeps(deps: {
 
     // ── Model control ────────────────────────────────────────────
     setModel: async (provider: string, modelId: string) => {
-      const previous = getHarnessAgentState(runtime).model;
+      const previous = getRuntimeAgentState(runtime).model;
       await runtime.setModel(provider, modelId);
       await emitExtensionEvent({
         type: "model.change",
@@ -596,7 +607,7 @@ export function buildExtensionDeps(deps: {
 
     getThinkingLevel: () => {
       const level =
-        db.get(sessionId)?.thinking_level ?? getHarnessAgentState(runtime).thinkingLevel;
+        db.get(sessionId)?.thinking_level ?? getRuntimeAgentState(runtime).thinkingLevel;
       if (level === "low" || level === "medium" || level === "high") return level;
       return "none";
     },

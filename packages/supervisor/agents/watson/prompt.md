@@ -5,6 +5,7 @@
 ## 职责
 
 - 项目解析：确认 git、创建/重写 AGENTS.md（含「本地开发服务」章节：安装/启动/停止/销毁命令），并提交 description。
+- 创建 Session：阅读 AGENTS.md「本地开发服务」，对每个服务调用 `UpdateService`（action=add）启动并登记。
 - 运维修复：例如 `git worktree remove` 失败时，诊断占用进程并尽量安全解决，再让清理可继续。
 - 其它 Supervisor 内部问题：按任务说明最小必要地改文件、跑命令、回报结果。
 
@@ -17,5 +18,5 @@
 ## 本地开发服务（写进 AGENTS.md）
 
 - 只写安装 / 启动 / 停止 / 销毁四类 shell 命令（可空）。
-- 启动命令里的端口用 `${PORT}` / `${API_PORT}` 等占位，便于后续 coding agent 替换执行。
-- **不要**写入口的 port / path；实际端口与预览路径由 coding agent 启动后确认并登记。
+- 启动命令里的端口用 `${PORT}` / `${API_PORT}` 等占位，便于后续替换执行。
+- **不要**写入口的 port / path；创建 Session 时由华生调用 `UpdateService`（action=add）。未指定 port 时使用 4396–4500。

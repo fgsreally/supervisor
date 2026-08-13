@@ -4,6 +4,7 @@
  * 新的扩展系统设计，完全面向 HTTP/多会话架构
  */
 
+import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Static, TSchema } from "typebox";
 import type { CreateJobInput, JobRecord, UpdateJobInput } from "../core/jobs.js";
 import type { WatsonRunResult } from "../core/watson.js";
@@ -202,12 +203,12 @@ export interface ExtensionSession {
   /** Update session working directory (e.g. after worktree create). */
   setCwd(path: string): Promise<void>;
   /**
-   * Append text to this session's runtime system prompt (DB + harness).
+   * Append text to this session's live system prompt overlay (not persisted to DB).
    * No-op when `content` is empty or already present (idempotent).
    */
   appendSystemPrompt(content: string): Promise<void>;
   /**
-   * Upsert a named block into the session system prompt (DB + harness).
+   * Upsert a named block into the session system prompt overlay (not persisted to DB).
    * Replaces any previous block with the same `id` (marker-wrapped).
    */
   upsertSystemPromptBlock(id: string, content: string): Promise<void>;
@@ -267,6 +268,8 @@ export interface ExtensionAgent {
   readonly name: string;
   readonly providerId: number;
   readonly modelId: string;
+  /** `native` for Pi agents; Codex / Claude / ACP backends otherwise. */
+  readonly backendType: string;
   readonly systemPrompt: string | undefined;
   readonly model: { provider: string; id: string; contextWindow: number } | undefined;
   registerTool<TParams extends TSchema, TResult>(
@@ -416,6 +419,7 @@ export interface ExtensionContext {
       systemPrompt?: string;
       injectSystem?: string;
       toolsPreset?: "coding" | "readonly" | "none";
+      extraTools?: AgentTool[];
       resultSchema: Schema;
     }): Promise<WatsonRunResult<Static<Schema>>>;
     run(options: {
@@ -426,6 +430,7 @@ export interface ExtensionContext {
       systemPrompt?: string;
       injectSystem?: string;
       toolsPreset?: "coding" | "readonly" | "none";
+      extraTools?: AgentTool[];
     }): Promise<WatsonRunResult>;
   };
 }

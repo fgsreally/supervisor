@@ -23,6 +23,7 @@
     "@capacitor/camera": "^6.1.2",
     "@capacitor/core": "^6.2.0",
     "@capacitor/ios": "^6.2.0",
+    "@capacitor/local-notifications": "6.1.2",
     "@capacitor/push-notifications": "^6.0.4",
     "@capacitor/splash-screen": "^6.0.3",
     "pi-supervisor-native-bridge": "workspace:*"

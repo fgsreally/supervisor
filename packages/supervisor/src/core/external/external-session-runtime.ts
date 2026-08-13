@@ -17,6 +17,7 @@ import { resolveSessionPromptImages, type SessionPromptImage } from "../session-
 import { SQLiteSessionStorage } from "../session-storage.js";
 import { appendLlmErrorMessage } from "../session-llm-error.js";
 import { beginSessionTiming, timedSessionStep } from "../../utils/session-timing.js";
+import { composeLiveSessionSystemPrompt } from "../session-system-prompt.js";
 import { ExternalTurnBuffer } from "./external-turn-buffer.js";
 
 type Listener = (event: AgentHarnessEvent) => void | Promise<void>;
@@ -48,7 +49,7 @@ export function createExternalAssistantMessage(
 
 export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
   readonly id: number;
-  readonly extension: SessionExtensionHost | null = null;
+  private _extension: SessionExtensionHost | null = null;
 
   protected readonly db: SupervisorDb;
   protected readonly session: Session;
@@ -69,6 +70,14 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     this.storage = new SQLiteSessionStorage(options.db, options.session.id);
   }
 
+  get extension(): SessionExtensionHost | null {
+    return this._extension;
+  }
+
+  attachExtension(host: SessionExtensionHost): void {
+    this._extension = host;
+  }
+
   protected abstract runExternalTurn(message: string, images?: ImageContent[]): Promise<void>;
   protected abstract interruptExternal(): Promise<void>;
   protected abstract disposeExternal(): Promise<void>;
@@ -80,6 +89,7 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
 
   protected async emit(event: AgentHarnessEvent): Promise<void> {
     for (const listener of this.listeners) await listener(event);
+    void this._extension?.handleHarnessEvent(event);
   }
 
   protected setExternalSessionId(value: string): void {
@@ -209,28 +219,35 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
       this.assistantText = "";
       this.activeTools.clear();
       this.turnBuffer.reset();
+      await this._extension?.emit({
+        type: "message.user",
+        text: message,
+        messageId: userId,
+        entryId: userId,
+        timestamp: Date.now(),
+      });
       await this.emit({ type: "agent_start" });
       await this.emit({ type: "message_start", message: createExternalAssistantMessage("") });
       try {
+        const systemPrompt = this.liveSystemPrompt();
         const sideQuestionPrompt =
-          this.session.spawnType === "btw" && this.session.systemPrompt
-            ? this.session.systemPrompt
-            : "";
+          this.session.spawnType === "btw" && systemPrompt ? systemPrompt : "";
         const regularMessage = sideQuestionPrompt
           ? `${sideQuestionPrompt}\n\nSide question from the user:\n${message}`
           : message;
+        const firstUserTurn = await this.isFirstStoredUserTurn(userId);
         const externalMessage = isFirstDelegatedTurn
           ? [
               "You are running as a delegated subagent. Work independently on the task below.",
               "Your final response will be returned to the parent agent, so report the concrete result, relevant changes, and any blocker clearly.",
-              this.session.systemPrompt
-                ? `Additional instructions from the parent:\n${this.session.systemPrompt}`
-                : "",
+              systemPrompt ? `Additional instructions from the parent:\n${systemPrompt}` : "",
               `Delegated task:\n${regularMessage}`,
             ]
               .filter(Boolean)
               .join("\n\n")
-          : regularMessage;
+          : firstUserTurn && systemPrompt?.trim() && this.session.spawnType !== "btw"
+            ? `${systemPrompt.trim()}\n\n${regularMessage}`
+            : regularMessage;
         await this.runExternalTurn(externalMessage, imageContent);
         await this.waitForActiveToolsIdle();
         await this.turnBuffer.persist(this.storage, userId);
@@ -262,6 +279,24 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     return userMessageText(entry.message) === message ? leafId : null;
   }
 
+  private liveSystemPrompt(): string | null {
+    const row = this.db.get(this.id);
+    const composed = composeLiveSessionSystemPrompt({
+      cwd: row?.cwd ?? this.session.cwd,
+      agentSystemMd: this.agent.systemPrompt,
+      storedSystemPrompt: row?.system_prompt ?? this.session.systemPrompt,
+      meta: row?.meta ?? this.session.meta,
+    });
+    return composed.trim() ? composed : null;
+  }
+
+  private async isFirstStoredUserTurn(userId: string): Promise<boolean> {
+    const entries = await this.storage.getEntries();
+    return !entries.some(
+      (entry) => entry.id !== userId && entry.type === "message" && entry.message?.role === "user",
+    );
+  }
+
   steer(message: string, images?: SessionPromptImage[]): void {
     void (async () => {
       if (this.running) {
@@ -289,6 +324,8 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
 
   async clear(): Promise<void> {
     await this.interruptExternal().catch(() => {});
+    await this._extension?.clear().catch(() => {});
+    this._extension = null;
     await this.disposeExternal();
   }
 
@@ -338,8 +375,8 @@ export abstract class ExternalSessionRuntime implements ManagedSessionRuntime {
     return this.assistantText || undefined;
   }
 
-  async deactivateExtension(_extensionId: string): Promise<boolean> {
-    return false;
+  async deactivateExtension(extensionId: string): Promise<boolean> {
+    return (await this._extension?.unload(extensionId)) ?? false;
   }
 
   resolveExternalInteraction(

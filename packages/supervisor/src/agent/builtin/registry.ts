@@ -238,9 +238,11 @@ function ensureExternalAgent(
         }),
       });
     }
+    ensureBuiltinExtensionResources(db);
+    ensureAgentBuiltinExtensionBindings(db, existing.id);
     return;
   }
-  db.insertAgent({
+  const agent = db.insertAgent({
     name: spec.name,
     description: spec.description,
     avatar: spec.avatar,
@@ -250,6 +252,8 @@ function ensureExternalAgent(
     external_config: JSON.stringify(externalConfig),
     meta: {},
   });
+  ensureBuiltinExtensionResources(db);
+  ensureAgentBuiltinExtensionBindings(db, agent.id);
 }
 
 /** Ensure shipped native and external agents exist in the database. */

@@ -20,6 +20,9 @@ export interface SessionServiceApp {
   name: string;
   port: number;
   path?: string;
+  startCommand?: string;
+  jobId?: string;
+  pid?: number | null;
 }
 
 /**
@@ -61,7 +64,7 @@ export function buildProjectRuntimeInstructions(project: Pick<Project, "name" | 
     "     - 停止: `<闲置关闭命令，可空>`",
     "     - 销毁: `<归档/删除时清理命令，可空>`",
     "     ```",
-    "   - 不要在 AGENTS.md 里写入口 port/path；实际监听端口与预览路径由后续 coding agent 启动后自行确认并登记。",
+    "   - 不要在 AGENTS.md 里写入口 port/path。",
     "   - 使用简洁 Markdown，不写密钥，不猜测不存在的命令；尽量不超过 200 行。",
     "   - 若已有 AGENTS.md：可以按项目现状重构整份内容（合并重复、修正过时说明），但应保留仍有效的约定与边界；「本地开发服务」只保留一节。",
     "4. 不要自行 commit 或 push；Supervisor 会在解析成功后统一提交改动。",

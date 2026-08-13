@@ -18,29 +18,21 @@ type SessionMetaStore = {
 
 /** Build the injected session tip about started services. */
 export function buildSessionServicesPrompt(services: SessionServicesMeta): string {
-  if (!services.startCommand?.trim()) return "";
-  const running =
-    services.status === "active" || services.status === "running" || services.status === "starting";
-  const status = running ? "active" : services.status === "error" ? "error" : "idle";
-  const lines = [
-    "## 项目服务",
-    running
-      ? "本 Session 的项目服务已由 Supervisor 启动并托管，不要重复启动。"
-      : services.status === "error"
-        ? "本 Session 的项目服务自动启动失败；下一次对话前会重试，也可使用服务工具检查或调整。"
-        : "本 Session 已登记项目服务；Supervisor 会在下一次对话前启动它。",
-    `- 状态：${status}`,
-    `- 启动命令：\`${services.resolvedStartCommand ?? services.startCommand}\``,
-  ];
-  if (services.error) lines.push(`- 最近错误：${services.error}`);
-  if (services.apps?.length) {
-    lines.push(
-      `- 入口：${services.apps.map((app) => `${app.name}@127.0.0.1:${app.port}${app.path ?? "/"}`).join(", ")}`,
-    );
+  const apps = services.apps ?? [];
+  if (!apps.length && !services.startCommand?.trim()) return "";
+  const lines = ["本 Session 已启动的本地服务："];
+  if (apps.length) {
+    for (const app of apps) {
+      const start = app.startCommand ?? services.resolvedStartCommand ?? services.startCommand;
+      lines.push(
+        `- ${app.name}: port ${app.port} path ${app.path ?? "/"}${start ? ` start \`${start}\`` : ""}`,
+      );
+    }
+  } else {
+    lines.push(`- start: \`${services.resolvedStartCommand ?? services.startCommand}\``);
   }
   lines.push(
-    "端口已为本 Session 保留，并会注入 bash 环境变量（主入口为 PORT）。",
-    "ProjectServiceSetup / Start / Stop 等工具仍可用于对话过程中新增、调整或重启服务。",
+    "增删改这些服务必须调用 UpdateService（action 为 add / delete / update），不要用 bash 直接启动或关掉。",
   );
   return lines.join("\n");
 }
@@ -91,12 +83,10 @@ export function stoppedSessionServicesMeta(
     startCommand: previous?.startCommand ?? "",
     stopCommand: previous?.stopCommand,
     destroyCommand: previous?.destroyCommand ?? previous?.uninstallCommand,
-    apps: previous?.apps,
+    apps: previous?.apps?.map((app) => ({ ...app, jobId: undefined, pid: null })),
     status: "idle",
     installedAt: previous?.installedAt,
     lastActiveAt: previous?.lastActiveAt,
-    sleepAt: undefined,
-    error: undefined,
     pid: null,
     jobId: undefined,
     resolvedStartCommand: undefined,
@@ -149,6 +139,9 @@ function parseApps(raw: unknown): SessionServiceApp[] {
       name,
       port,
       path: typeof row.path === "string" ? row.path : undefined,
+      startCommand: typeof row.startCommand === "string" ? row.startCommand.trim() : undefined,
+      jobId: typeof row.jobId === "string" ? row.jobId : undefined,
+      pid: typeof row.pid === "number" ? row.pid : null,
     });
   }
   return apps;

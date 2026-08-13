@@ -37,4 +37,4 @@ Action：`fetchAgent`、`createAgent`、`updateAgent`、`deleteAgent`、`fetchAg
 - `DELETE /agents/:id/resources/:resourceId` → 删除资源绑定（内置 Agent 禁止）
 
 `agents.system_prompt` 是权威来源。运行时不从 Agent Home 的 `SYSTEM.md` 反向覆盖数据库；
-Session 创建时把完整运行时 system 快照写入 `sessions.system_prompt`。
+Session 每次对话现拼 system（当前 Agent prompt + AGENTS.md + `meta.services`），不把全文快照写入 `sessions.system_prompt`。

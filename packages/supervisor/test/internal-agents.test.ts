@@ -112,6 +112,14 @@ describe("packaged agents", () => {
         }),
       ]),
     );
+    for (const agent of external) {
+      const slugs = db
+        .listAgentResourceBindings(agent.id, { kind: "extension", enabledOnly: false })
+        .map((binding) => binding.resource?.slug)
+        .filter((slug): slug is string => typeof slug === "string")
+        .sort();
+      expect(slugs).toEqual(["project-services", "session-git-worktree"]);
+    }
   });
 
   it("loads packaged prompt.md files", () => {

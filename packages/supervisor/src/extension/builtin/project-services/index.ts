@@ -1,36 +1,73 @@
-import { Type } from "typebox";
-import { resolve as resolvePath } from "node:path";
+import { Type, type Static } from "typebox";
+import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { existsSync, readFileSync } from "node:fs";
+import { join as joinPath, resolve as resolvePath } from "node:path";
 import type { ExtensionContext, ExtensionDefinition, ExtensionJobFacade } from "../../types.js";
 import type { SessionServiceApp, SessionServicesMeta } from "../../../core/project-runtime.js";
 import {
   hasRegisteredServices,
   isSessionServiceProcessAlive,
+  startRegisteredApp,
   startRegisteredSessionServices,
+  stopRegisteredApp,
   stopRegisteredSessionServices,
 } from "../../../core/session-registered-services.js";
 import {
   SESSION_SERVICE_SLEEP_MS,
+  SESSION_SERVICE_SLEEP_TICK_MS,
   computeServiceSleepAt,
 } from "../../../core/session-service-sleep.js";
 import {
-  buildSessionServicesPrompt,
   parseSessionServicesMeta,
   stoppedSessionServicesMeta,
 } from "../../../core/session-services.js";
 import type { SessionServiceJobHost } from "../../../core/session-registered-services.js";
-import { anyTcpPortOpen, findFreePort, isTcpPortOpen } from "../../../utils/ports.js";
-import { detectListenPort } from "../../../utils/listen-port.js";
-import { inferProjectRootFromCwd } from "../../../core/agent-permissions.js";
 import {
-  buildProjectServicePreparationPrompt,
-  preparationToServices,
-  ProjectServicePreparationSchema,
-} from "./preparation.js";
+  anyTcpPortOpen,
+  findFreePortInRange,
+  isTcpPortOpen,
+  SESSION_SERVICE_PREFERRED_PORT_MAX,
+  SESSION_SERVICE_PREFERRED_PORT_MIN,
+} from "../../../utils/ports.js";
+import { detectListenPort } from "../../../utils/listen-port.js";
 
-const SETUP_TOOL = "ProjectServiceSetup";
-const PREPARED_META_KEY = "project-services.prepared";
-const pendingSessionPorts = new Set<number>();
-const DISALLOWED_SESSION_PORTS = new Set([3000, 5173]);
+const UPDATE_TOOL = "UpdateService";
+const UPDATE_DESCRIPTION =
+  "增删改本 Session 的本地服务。必须带 action：add 新起一个进程并登记；delete 关掉对应进程并移除；update 关掉旧进程再按新命令启动。不要用 bash 直接跑 vite/dev。未指定 port 时优先使用 4396–4500 中的空闲端口。";
+const UPDATE_PARAMS = Type.Object({
+  action: Type.Union([Type.Literal("add"), Type.Literal("delete"), Type.Literal("update")], {
+    description: "add 新增 / delete 删除 / update 修改",
+  }),
+  name: Type.String({ description: "服务名，如 web、api" }),
+  startCommand: Type.Optional(Type.String({ description: "启动命令；add / update 必填" })),
+  port: Type.Optional(
+    Type.Number({
+      description: "监听端口；未指定时从 4396–4500 分配空闲端口。add 可不填，update 可改",
+    }),
+  ),
+  path: Type.Optional(Type.String({ description: "URL 路径，默认 /" })),
+  installCommand: Type.Optional(Type.String()),
+  stopCommand: Type.Optional(Type.String()),
+  destroyCommand: Type.Optional(Type.String()),
+});
+const APPLY_READY_MS = 90_000;
+
+function hasLocalDevServicesSection(cwd: string): boolean {
+  const path = joinPath(cwd, "AGENTS.md");
+  if (!existsSync(path)) return false;
+  return /##\s*本地开发服务/.test(readFileSync(path, "utf8"));
+}
+
+function applyText(text: string): {
+  content: Array<{ type: "text"; text: string }>;
+  details: unknown;
+} {
+  return { content: [{ type: "text" as const, text }], details: null };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** True when jobCwd is the session cwd or a path inside it. */
 function isJobCwdInSession(jobCwd: string, sessionCwd: string): boolean {
@@ -42,21 +79,6 @@ function isJobCwdInSession(jobCwd: string, sessionCwd: string): boolean {
     return b === a || b.startsWith(a.endsWith("\\") ? a : `${a}\\`);
   }
   return job === session || job.startsWith(session.endsWith("/") ? session : `${session}/`);
-}
-
-/**
- * Allow binding a bash Job whose cwd is the session worktree, the project root,
- * or any ancestor that contains the session cwd (common with git worktrees).
- */
-function isJobBoundableToSession(jobCwd: string, sessionCwd: string): boolean {
-  const job = jobCwd.trim();
-  if (!job) return true;
-  if (isJobCwdInSession(job, sessionCwd)) return true;
-  // Session worktree under the Job's project cwd.
-  if (isJobCwdInSession(sessionCwd, job)) return true;
-  const projectRoot = inferProjectRootFromCwd(sessionCwd);
-  if (projectRoot && isJobCwdInSession(job, projectRoot)) return true;
-  return false;
 }
 
 function extensionJobsAsHost(jobs: ExtensionJobFacade): SessionServiceJobHost {
@@ -91,60 +113,78 @@ function isServiceIdle(status: SessionServicesMeta["status"] | undefined): boole
   );
 }
 
-function parseAppsParam(
-  raw: Array<{ name: string; port: number; path?: string }> | undefined,
-): SessionServiceApp[] {
-  if (!raw?.length) return [];
-  return raw
-    .map((item) => ({
-      name: item.name.trim(),
-      port: item.port,
-      path: item.path?.trim() || "/",
-    }))
-    .filter((item) => item.name && Number.isFinite(item.port) && item.port > 0);
+function finalizeServices(
+  current: SessionServicesMeta,
+  apps: SessionServiceApp[],
+): SessionServicesMeta {
+  const first = apps[0];
+  const running = apps.some((app) => Boolean(app.jobId) || (app.pid != null && app.pid > 0));
+  const now = Date.now();
+  return {
+    ...current,
+    apps,
+    startCommand: first?.startCommand ?? current.startCommand ?? "",
+    jobId: first?.jobId,
+    pid: first?.pid ?? null,
+    resolvedStartCommand: first?.startCommand,
+    status: apps.length === 0 ? "unregistered" : running ? "active" : "idle",
+    lastActiveAt: now,
+    sleepAt: computeServiceSleepAt(now),
+    error: undefined,
+  };
 }
 
-function reservedServicePorts(ctx: ExtensionContext, sessionId: number): Set<number> {
-  const reserved = new Set(pendingSessionPorts);
-  for (const row of ctx.db.query<{ id: number; meta: string }>("SELECT id, meta FROM sessions")) {
-    if (row.id === sessionId) continue;
-    try {
-      const services = parseSessionServicesMeta(JSON.parse(row.meta || "{}"));
-      for (const app of services?.apps ?? []) reserved.add(app.port);
-    } catch {
-      // Ignore malformed legacy metadata while looking for a free port.
+let globalSleepSchedulerStarted = false;
+
+function ensureGlobalSleepScheduler(ctx: ExtensionContext): void {
+  if (globalSleepSchedulerStarted) return;
+  globalSleepSchedulerStarted = true;
+  const tick = async () => {
+    const rows = ctx.db.query<{ id: number; meta: string; cwd: string; last_active_at: number }>(
+      `SELECT id, meta, cwd, last_active_at FROM sessions
+       WHERE status NOT IN ('finish', 'finished')`,
+      [],
+    );
+    const now = Date.now();
+    for (const row of rows) {
+      const meta = parseSessionServicesMeta(JSON.parse(row.meta || "{}"));
+      if (!hasRegisteredServices(meta) || !isServiceActive(meta?.status)) continue;
+      const sleepAt = meta!.sleepAt;
+      if (!sleepAt || sleepAt > now) continue;
+      try {
+        await stopRegisteredSessionServices({
+          sessionId: row.id,
+          cwd: row.cwd,
+          services: meta,
+          mode: "stop",
+        });
+        const merged = {
+          ...JSON.parse(row.meta || "{}"),
+          services: {
+            ...meta,
+            status: "idle" as const,
+            pid: null,
+            jobId: undefined,
+            resolvedStartCommand: undefined,
+          },
+        };
+        ctx.db.execute("UPDATE sessions SET meta = ? WHERE id = ?", [
+          JSON.stringify(merged),
+          row.id,
+        ]);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.log("warn", `Service sleep failed [${row.id}]: ${message}`);
+      }
     }
-  }
-  return reserved;
-}
-
-async function allocateSessionPort(ctx: ExtensionContext, sessionId: number): Promise<number> {
-  const reserved = reservedServicePorts(ctx, sessionId);
-  for (let attempt = 0; attempt < 32; attempt += 1) {
-    const port = await findFreePort();
-    if (reserved.has(port) || DISALLOWED_SESSION_PORTS.has(port)) continue;
-    pendingSessionPorts.add(port);
-    return port;
-  }
-  throw new Error("无法为 Session 分配独占端口");
-}
-
-async function waitForServicePort(apps: SessionServiceApp[], timeoutMs = 30_000): Promise<boolean> {
-  if (apps.length === 0) return true;
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await anyTcpPortOpen(apps.map((app) => app.port))) return true;
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  return false;
+  };
+  void tick();
+  setInterval(() => void tick(), SESSION_SERVICE_SLEEP_TICK_MS).unref?.();
 }
 
 const projectServicesExtension: ExtensionDefinition = {
   name: "project-services",
   async setup(ctx) {
-    // Lightweight extension fixtures and third-party hosts may omit raw SQL.
-    // Project service orchestration needs the Session/Agent rows to scope itself.
-    if (!ctx.db.available) return () => {};
     const agentRow = ctx.db.queryOne<{ tools_preset: string }>(
       `SELECT a.tools_preset FROM agents a
        JOIN sessions s ON s.agent_id = a.id WHERE s.id = ?`,
@@ -165,10 +205,6 @@ const projectServicesExtension: ExtensionDefinition = {
 
     const writeServices = async (services: SessionServicesMeta): Promise<void> => {
       await ctx.session.meta.patch({ services });
-      await ctx.session.upsertSystemPromptBlock(
-        "project-services",
-        buildSessionServicesPrompt(services),
-      );
     };
 
     /** Drop meta.services.jobId when the Job is gone or its cwd is outside this Session. */
@@ -178,13 +214,13 @@ const projectServicesExtension: ExtensionDefinition = {
       const job = await jobs.get(current.jobId);
       const alive = job && (job.status === "running" || job.status === "waiting");
       const jobCwd = typeof job?.metadata?.cwd === "string" ? job.metadata.cwd.trim() : "";
-      const cwdOk = !jobCwd || isJobBoundableToSession(jobCwd, cwd());
+      const cwdOk = !jobCwd || isJobCwdInSession(jobCwd, cwd());
       if (alive && cwdOk) return;
       await writeServices(stoppedSessionServicesMeta(current));
       if (alive && jobCwd && !cwdOk) {
         ctx.log(
           "warn",
-          `Cleared services.jobId=${current.jobId}: cwd ${jobCwd} not boundable to session ${cwd()}`,
+          `Cleared services.jobId=${current.jobId}: cwd ${jobCwd} outside session ${cwd()}`,
         );
       }
     };
@@ -239,124 +275,21 @@ const projectServicesExtension: ExtensionDefinition = {
       }
     };
 
-    ctx.on(
-      "session.create",
-      async () => {
-        const existing = await readServices();
-        if (hasRegisteredServices(existing)) {
-          await ctx.session.upsertSystemPromptBlock(
-            "project-services",
-            buildSessionServicesPrompt(existing),
-          );
-          return;
-        }
-        const sessionMeta = await ctx.session.meta.get();
-        if (sessionMeta[PREPARED_META_KEY] === true) {
-          await ctx.session.upsertSystemPromptBlock("project-services", "");
-          return;
-        }
-
-        let port: number | undefined;
-        try {
-          port = await allocateSessionPort(ctx, sessionId);
-          ctx.log("info", `Watson is preparing project services on reserved port ${port}`);
-          const run = await ctx.watson.run({
-            kind: "session-project-service-prepare",
-            mode: "agent",
-            cwd: cwd(),
-            toolsPreset: "readonly",
-            resultSchema: ProjectServicePreparationSchema,
-            prompt: buildProjectServicePreparationPrompt(port),
-            injectSystem:
-              "你只负责只读探查并提交结构化服务配置。不要修改项目，不要执行安装或启动命令。",
-          });
-          if (!run.result) throw new Error("华生未提交项目服务配置");
-          const services = preparationToServices(run.result, port);
-          if (!services) {
-            await ctx.session.meta.patch({ [PREPARED_META_KEY]: true });
-            await ctx.session.upsertSystemPromptBlock("project-services", "");
-            ctx.log("info", "Watson found no long-running project service");
-            return;
-          }
-
-          await writeServices(services);
-          await ctx.session.meta.patch({ [PREPARED_META_KEY]: true });
-          const started = await startRegisteredSessionServices({
-            sessionId,
-            cwd: cwd(),
-            services,
-            jobs,
-            lastActiveAtMs: Date.now(),
-          });
-          if (!(await waitForServicePort(started.apps ?? []))) {
-            await stopRegisteredSessionServices({
-              sessionId,
-              cwd: cwd(),
-              services: started,
-              jobs,
-              mode: "stop",
-            });
-            const failed: SessionServicesMeta = {
-              ...started,
-              status: "error",
-              pid: null,
-              jobId: undefined,
-              resolvedStartCommand: undefined,
-              error: "启动命令已执行，但预留端口在 30 秒内未开始监听",
-            };
-            await writeServices(failed);
-            throw new Error(failed.error);
-          }
-          await writeServices(started);
-          ctx.log(
-            "info",
-            `Project service prepared and started: ${started.resolvedStartCommand ?? started.startCommand}`,
-          );
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : String(error);
-          const registered = await readServices();
-          if (hasRegisteredServices(registered) && !isServiceActive(registered.status)) {
-            await writeServices({
-              ...registered,
-              status: "error",
-              pid: null,
-              jobId: undefined,
-              resolvedStartCommand: undefined,
-              sleepAt: undefined,
-              error: message,
-            });
-          }
-          ctx.log("warn", `Automatic project service preparation failed: ${message}`);
-        } finally {
-          if (port !== undefined) pendingSessionPorts.delete(port);
-        }
-      },
-      // Worktree preparation uses the default priority. Run after it so the service
-      // belongs to the Session worktree rather than the project's checked-out branch.
-      { priority: -100, mode: "sync" },
-    );
+    ensureGlobalSleepScheduler(ctx);
 
     ctx.on("session.start", async () => {
       await reconcileBoundJob();
-      let current = await readServices();
+      const current = await readServices();
       if (!current) return;
       const lastActive = current.lastActiveAt ?? Date.now();
       if (isServiceActive(current.status) && Date.now() - lastActive >= SESSION_SERVICE_SLEEP_MS) {
-        await stopRegisteredSessionServices({
-          sessionId,
-          cwd: cwd(),
-          services: current,
-          jobs,
-          mode: "stop",
+        await writeServices({
+          ...current,
+          status: "idle",
+          pid: null,
+          jobId: undefined,
+          resolvedStartCommand: undefined,
         });
-        await writeServices(stoppedSessionServicesMeta(current));
-        current = await readServices();
-      }
-      if (current) {
-        await ctx.session.upsertSystemPromptBlock(
-          "project-services",
-          buildSessionServicesPrompt(current),
-        );
       }
     });
 
@@ -403,7 +336,6 @@ const projectServicesExtension: ExtensionDefinition = {
       const current = await readServices();
       if (!hasRegisteredServices(current)) return;
       if (mode === "stop") {
-        if (!isServiceActive(current.status) && !current.pid && !current.jobId) return;
         await stopRegisteredSessionServices({
           sessionId,
           cwd: cwd(),
@@ -426,8 +358,6 @@ const projectServicesExtension: ExtensionDefinition = {
         pid: null,
         jobId: undefined,
         resolvedStartCommand: undefined,
-        sleepAt: undefined,
-        error: undefined,
       });
     };
 
@@ -448,148 +378,211 @@ const projectServicesExtension: ExtensionDefinition = {
       mode: "sync",
     });
 
-    ctx.agent.registerTool({
-      name: SETUP_TOOL,
-      description:
-        "登记 install/start/stop/destroy 与 apps[{ name, port, path }]。已有后台 bash 时传 taskId；port 用 bash 返回的 detectedPort（会按 Job 输出校正）。成功即活跃应用，勿再 Start。",
-      parameters: Type.Object({
-        installCommand: Type.Optional(Type.String()),
-        startCommand: Type.String({ description: "启动命令（长期运行）" }),
-        stopCommand: Type.Optional(Type.String({ description: "关闭命令（闲置时）" })),
-        destroyCommand: Type.Optional(Type.String({ description: "销毁/卸载命令（归档删除时）" })),
-        taskId: Type.Optional(
-          Type.String({
-            description: "已在跑的后台 bash task_id；传入则直接标为活跃应用，不再 Start。",
-          }),
-        ),
-        apps: Type.Array(
-          Type.Object({
-            name: Type.String({ description: "入口名，如 web" }),
-            port: Type.Number({ description: "实际监听端口" }),
-            path: Type.Optional(Type.String({ description: "URL 路径，默认 /" })),
-          }),
-          { description: "可预览的应用入口" },
-        ),
-      }),
-      execute: async (params) => {
-        const current = (await readServices()) ?? {
-          status: "unregistered" as const,
-          startCommand: "",
-        };
-        let apps = parseAppsParam(params.apps);
-        const taskId = params.taskId?.trim() || undefined;
-        let jobId = taskId;
-        let pid: number | null = null;
-        let status: SessionServicesMeta["status"] = "unregistered";
-        let jobOutput = "";
+    const waitForDetectedPort = async (
+      jobId: string,
+    ): Promise<{ port?: number; output: string; exited: boolean }> => {
+      const started = Date.now();
+      let output = "";
+      while (Date.now() - started < APPLY_READY_MS) {
+        const job = await ctx.jobs.get(jobId);
+        output = typeof job?.output === "string" ? job.output : "";
+        const port = detectListenPort(output);
+        if (port) return { port, output, exited: false };
+        if (job && job.status !== "running" && job.status !== "waiting") {
+          return { output, exited: true };
+        }
+        await sleep(300);
+      }
+      return { output, exited: false };
+    };
 
-        if (taskId) {
-          const job = await jobs.get(taskId);
-          if (job && (job.status === "running" || job.status === "waiting")) {
-            const jobCwd = typeof job.metadata?.cwd === "string" ? job.metadata.cwd.trim() : "";
-            if (jobCwd && !isJobBoundableToSession(jobCwd, ctx.session.cwd)) {
-              return {
-                content: [
-                  {
-                    type: "text",
-                    text: [
-                      `拒绝绑定 taskId=${taskId}：该 Job 的 cwd（${jobCwd}）与本 Session 工作目录（${ctx.session.cwd}）不在同一项目下。`,
-                      "请在 Session / 项目目录下重新 bash 启动服务后再注册应用。",
-                    ].join(""),
-                  },
-                ],
-              };
-            }
-            const metaPid = job.metadata?.pid;
-            pid = typeof metaPid === "number" ? metaPid : null;
-            status = "active";
-            jobId = job.id;
-            const full = await ctx.jobs.get(taskId);
-            jobOutput = typeof full?.output === "string" ? full.output : "";
-          }
-        }
+    const updateService = async (
+      params: Static<typeof UPDATE_PARAMS>,
+    ): Promise<{
+      content: Array<{ type: "text"; text: string }>;
+      details: unknown;
+    }> => {
+      const name = params.name.trim();
+      if (!name) return applyText("需要 name。");
+      const action = params.action;
+      const current = (await readServices()) ?? {
+        status: "unregistered" as const,
+        startCommand: "",
+      };
+      const apps = [...(current.apps ?? [])];
+      const existing = apps.find((app) => app.name === name);
 
-        // Prefer the real listen port from server output (Vite may bump 5173 → 5174).
-        const detectedPort = detectListenPort(jobOutput);
-        if (detectedPort && apps.length > 0) {
-          const declaredOpen = await anyTcpPortOpen(apps.map((app) => app.port));
-          const detectedOpen = await isTcpPortOpen(detectedPort);
-          if (detectedOpen && (!declaredOpen || apps.every((app) => app.port !== detectedPort))) {
-            apps = apps.map((app, index) => (index === 0 ? { ...app, port: detectedPort } : app));
-          }
-        }
+      const patchCommands = (base: SessionServicesMeta): SessionServicesMeta => ({
+        ...base,
+        installCommand: params.installCommand?.trim() || base.installCommand,
+        stopCommand: params.stopCommand?.trim() || base.stopCommand,
+        destroyCommand: params.destroyCommand?.trim() || base.destroyCommand,
+      });
 
-        const portsOpen =
-          apps.length > 0 ? await anyTcpPortOpen(apps.map((app) => app.port)) : false;
-        if (status !== "active" && portsOpen) {
-          status = "active";
-        }
-        // Vite may still be binding when Setup runs right after bash — retry once.
-        if (status !== "active" && apps.length > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 500));
-          if (await anyTcpPortOpen(apps.map((app) => app.port))) {
-            status = "active";
-          }
-        }
-        // Bound running job counts as active even if declared ports were wrong.
-        if (status !== "active" && jobId && pid != null) {
-          status = "active";
-        }
-
-        if (!apps.length) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: "Setup 需要至少一个 apps[{ name, port, path }] 入口。",
-              },
-            ],
-          };
-        }
-
-        const now = Date.now();
-        const next: SessionServicesMeta = {
+      const startAndRegister = async (app: SessionServiceApp, list: SessionServiceApp[]) => {
+        let next: SessionServicesMeta = patchCommands({
           ...current,
-          installCommand: params.installCommand?.trim() || undefined,
-          startCommand: params.startCommand.trim(),
-          stopCommand: params.stopCommand?.trim() || undefined,
-          destroyCommand: params.destroyCommand?.trim() || undefined,
-          apps,
-          status,
-          pid: status === "active" ? pid : null,
-          jobId: status === "active" ? jobId : undefined,
-          resolvedStartCommand: undefined,
-          ...(status === "active"
-            ? {
-                lastActiveAt: now,
-                sleepAt: computeServiceSleepAt(now),
-                startedAt: new Date().toISOString(),
-                installedAt: current.installedAt ?? new Date().toISOString(),
-              }
-            : {}),
-        };
+          apps: list,
+          startCommand: current.startCommand || app.startCommand || "",
+          status: "starting",
+        });
         await writeServices(next);
-        const appsSummary = apps
-          .map((app) => `${app.name}:${app.port}${app.path ?? "/"}`)
-          .join(", ");
-        return {
-          content: [
-            {
-              type: "text",
-              text:
-                status === "active"
-                  ? `已登记并激活应用（${apps.length}）：${appsSummary}${jobId ? `；job=${jobId}` : ""}${detectedPort ? `；detectedPort=${detectedPort}` : ""}。勿再 ProjectServiceStart。`
-                  : `已登记项目服务（${apps.length} 个入口：${appsSummary}），但尚未确认在跑（端口未通且无有效 taskId）。可 ProjectServiceStart，或修正 apps.port 后重试 Setup。`,
-            },
-          ],
-        };
-      },
+        const started = await startRegisteredApp({
+          sessionId,
+          cwd: cwd(),
+          services: next,
+          app,
+          jobs,
+        });
+        let ready = started;
+        if (started.jobId) {
+          const waited = await waitForDetectedPort(started.jobId);
+          if (waited.exited) {
+            throw new Error(
+              `服务 ${name} 在就绪前退出。输出：\n${waited.output.slice(-4000) || "(no output)"}`,
+            );
+          }
+          if (waited.port) {
+            const declaredOpen = await isTcpPortOpen(started.port);
+            const detectedOpen = await isTcpPortOpen(waited.port);
+            if (detectedOpen && (!declaredOpen || started.port !== waited.port)) {
+              ready = { ...started, port: waited.port };
+            }
+          }
+        }
+        return ready;
+      };
+
+      try {
+        if (action === "add") {
+          if (existing) return applyText(`服务 ${name} 已存在，请用 action=update。`);
+          const startCommand = params.startCommand?.trim();
+          let port = params.port;
+          if (!startCommand) return applyText("add 需要 startCommand。");
+          if (!port || !Number.isFinite(port) || port <= 0) {
+            port = await findFreePortInRange(
+              SESSION_SERVICE_PREFERRED_PORT_MIN,
+              SESSION_SERVICE_PREFERRED_PORT_MAX,
+              apps.map((app) => app.port),
+            );
+            if (!port) {
+              return applyText(
+                `${SESSION_SERVICE_PREFERRED_PORT_MIN}–${SESSION_SERVICE_PREFERRED_PORT_MAX} 没有空闲端口，请指定 port。`,
+              );
+            }
+          }
+          const app: SessionServiceApp = {
+            name,
+            port,
+            path: params.path?.trim() || "/",
+            startCommand,
+          };
+          const nextList = [...apps, app];
+          if (!current.installedAt && (params.installCommand?.trim() || current.installCommand)) {
+            const pending = patchCommands({
+              ...current,
+              apps: nextList,
+              startCommand: current.startCommand || startCommand,
+              status: "starting",
+              installCommand: params.installCommand?.trim() || current.installCommand,
+            });
+            await writeServices(pending);
+            const startedAll = await startRegisteredSessionServices({
+              sessionId,
+              cwd: cwd(),
+              services: pending,
+              jobs,
+              skipInstall: false,
+              lastActiveAtMs: Date.now(),
+            });
+            await writeServices(startedAll);
+            const summary = (startedAll.apps ?? [])
+              .map((item) => `${item.name}:${item.port}`)
+              .join(", ");
+            return applyText(`已新增 ${name}。当前服务：${summary || name}`);
+          }
+          const started = await startAndRegister(app, nextList);
+          const nextListReady = nextList.map((item) => (item.name === name ? started : item));
+          await writeServices(finalizeServices(patchCommands(current), nextListReady));
+          return applyText(`已新增 ${name}（port ${started.port}）。`);
+        }
+
+        if (action === "delete") {
+          if (!existing) return applyText(`没有名为 ${name} 的服务。`);
+          await stopRegisteredApp({ sessionId, app: existing, jobs });
+          const nextList = apps.filter((app) => app.name !== name);
+          await writeServices(finalizeServices(current, nextList));
+          return applyText(`已删除 ${name}。`);
+        }
+
+        if (!existing) return applyText(`没有名为 ${name} 的服务，请用 action=add。`);
+        const startCommand = params.startCommand?.trim() || existing.startCommand;
+        if (!startCommand) return applyText("update 需要 startCommand。");
+        const port = params.port && params.port > 0 ? params.port : existing.port;
+        const path = params.path?.trim() || existing.path || "/";
+        await stopRegisteredApp({ sessionId, app: existing, jobs });
+        const updated: SessionServiceApp = { name, port, path, startCommand };
+        const nextList = apps.map((app) => (app.name === name ? updated : app));
+        const started = await startAndRegister(updated, nextList);
+        const nextListReady = nextList.map((item) => (item.name === name ? started : item));
+        await writeServices(finalizeServices(patchCommands(current), nextListReady));
+        return applyText(`已更新 ${name}（port ${started.port}）。`);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        await writeServices({ ...current, status: "error", error: message });
+        return applyText(`UpdateService 失败：${message}`);
+      }
+    };
+
+    ctx.agent.registerTool({
+      name: UPDATE_TOOL,
+      description: UPDATE_DESCRIPTION,
+      parameters: UPDATE_PARAMS,
+      execute: updateService,
     });
+
+    const watsonUpdateTool: AgentTool<typeof UPDATE_PARAMS> = {
+      name: UPDATE_TOOL,
+      label: UPDATE_TOOL,
+      description:
+        "登记并启动本 Session 的一个本地服务。创建时用 action=add；传入 name、startCommand。未指定 port 时使用 4396–4500 中的空闲端口。不要用 bash 直接跑 vite/dev。",
+      parameters: UPDATE_PARAMS,
+      execute: async (_toolCallId, params) => updateService(params),
+    };
+
+    ctx.on(
+      "session.create",
+      async () => {
+        if (!hasRegisteredServices(await readServices()) && hasLocalDevServicesSection(cwd())) {
+          try {
+            await ctx.watson.run({
+              mode: "agent",
+              kind: "session-services-register",
+              toolsPreset: "readonly",
+              extraTools: [watsonUpdateTool],
+              injectSystem:
+                "有启动命令则必须调用 UpdateService，action=add；每个服务调用一次。未指定 port 时不要猜 3000/5173，省略 port，系统会在 4396–4500 分配。不要用 bash 启动长期服务；不要改 AGENTS.md。",
+              prompt: [
+                "本 Session 刚创建。请阅读项目根目录 AGENTS.md 的「本地开发服务」章节。",
+                "若有启动命令：对每个要跑的服务调用 UpdateService，action=add，传入 name、startCommand（path 可选）。",
+                "不要填写 port，除非命令里写死了端口；未指定时系统使用 4396–4500。",
+                "没有启动命令则不要调用工具，直接结束。",
+                "不要 commit，不要改 AGENTS.md。",
+              ].join("\n"),
+            });
+          } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : String(error);
+            ctx.log("warn", `Session service register skipped: ${message}`);
+          }
+        }
+      },
+      { priority: -100 },
+    );
 
     ctx.agent.registerTool({
       name: "ProjectServiceStart",
       description:
-        "按已登记命令后台启动项目服务。仅当服务未在跑时使用。若 Setup 已带 taskId/端口已通，不要调用。重启先 ProjectServiceStop。",
+        "按已登记命令后台启动项目服务。仅当配置未变、服务已停时使用。增删改请用 UpdateService。",
       parameters: Type.Object({
         skipInstall: Type.Optional(Type.Boolean()),
       }),
@@ -597,7 +590,9 @@ const projectServicesExtension: ExtensionDefinition = {
         const current = await readServices();
         if (!hasRegisteredServices(current)) {
           return {
-            content: [{ type: "text", text: "尚未登记服务，请先调用 ProjectServiceSetup。" }],
+            content: [
+              { type: "text", text: "尚未登记服务，请先调用 UpdateService（action=add）。" },
+            ],
           };
         }
         const ports = (current!.apps ?? []).map((app) => app.port).filter((p) => p > 0);
@@ -651,7 +646,9 @@ const projectServicesExtension: ExtensionDefinition = {
         const current = await readServices();
         if (!hasRegisteredServices(current)) {
           return {
-            content: [{ type: "text", text: "尚未登记服务，请先调用 ProjectServiceSetup。" }],
+            content: [
+              { type: "text", text: "尚未登记服务，请先调用 UpdateService（action=add）。" },
+            ],
           };
         }
         await stopRegisteredSessionServices({
@@ -667,8 +664,6 @@ const projectServicesExtension: ExtensionDefinition = {
           pid: null,
           jobId: undefined,
           resolvedStartCommand: undefined,
-          sleepAt: undefined,
-          error: undefined,
         };
         await writeServices(next);
         return {

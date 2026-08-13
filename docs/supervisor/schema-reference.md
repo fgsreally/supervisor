@@ -85,7 +85,7 @@
 | `agent_id`                           | INTEGER FK nullable         | 只从 Agent 解析模型与 tools preset            |
 | `spawn_type`                         | TEXT                        | `subagent`、`btw`、`fork`、`clone` 等派生类型 |
 | `created_by`                         | TEXT DEFAULT `user`         | 创建来源                                      |
-| `title` / `system_prompt` / `avatar` | TEXT                        | 会话快照/展示字段                             |
+| `title` / `system_prompt` / `avatar` | TEXT                        | 会话展示字段；`system_prompt` 仅 spawn 额外说明，完整 system 每次现拼 |
 | `is_builtin`                         | INTEGER DEFAULT 0           | 内置会话                                      |
 | `pinned` / `muted` / `unread`        | INTEGER                     | 核心 UI 状态                                  |
 | `external_session_id`                | TEXT                        | 外部运行时 Session ID                         |

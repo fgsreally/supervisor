@@ -37,7 +37,16 @@ const MAIN_SERVICE_NAME = "main";
 export function hasRegisteredServices(
   services: SessionServicesMeta | null | undefined,
 ): services is SessionServicesMeta {
-  return Boolean(services?.startCommand?.trim());
+  if (!services) return false;
+  if (services.startCommand?.trim()) return true;
+  return Boolean(services.apps?.some((app) => app.startCommand?.trim() || app.port > 0));
+}
+
+export function appStartCommand(
+  app: SessionServiceApp,
+  services: SessionServicesMeta,
+): string {
+  return app.startCommand?.trim() || services.startCommand?.trim() || "";
 }
 
 export function appsToPortEnv(apps: SessionServiceApp[] | undefined): Record<string, string> {
@@ -75,9 +84,20 @@ export function isSessionServiceProcessAlive(
   services: SessionServicesMeta | null | undefined,
 ): boolean {
   if (!services) return false;
-  const child = runningChildren.get(childKeyByName(sessionId, MAIN_SERVICE_NAME));
-  if (child?.pid && isPidAlive(child.pid)) return true;
+  const main = runningChildren.get(childKeyByName(sessionId, MAIN_SERVICE_NAME));
+  if (main?.pid && isPidAlive(main.pid)) return true;
+  for (const app of services.apps ?? []) {
+    if (isAppProcessAlive(sessionId, app)) return true;
+  }
   if (services.pid && isPidAlive(services.pid)) return true;
+  return false;
+}
+
+export function isAppProcessAlive(sessionId: number, app: SessionServiceApp | undefined): boolean {
+  if (!app) return false;
+  const child = runningChildren.get(childKeyByName(sessionId, app.name));
+  if (child?.pid && isPidAlive(child.pid)) return true;
+  if (app.pid && isPidAlive(app.pid)) return true;
   return false;
 }
 
@@ -158,7 +178,112 @@ async function resolvePortEnv(services: SessionServicesMeta): Promise<{
   return { portEnv, apps };
 }
 
-/** Start the session's single project runtime. */
+export async function stopRegisteredApp(options: {
+  sessionId: number;
+  app: SessionServiceApp;
+  jobs?: SessionServiceJobHost;
+}): Promise<void> {
+  const key = childKeyByName(options.sessionId, options.app.name);
+  const child = runningChildren.get(key);
+  const pid = child?.pid ?? options.app.pid ?? null;
+  if (pid) {
+    sessionLog(options.sessionId, "info", `Killing service ${options.app.name} pid=${pid}`, [
+      "system",
+      "services",
+    ]);
+    killProcessTree(pid);
+  }
+  runningChildren.delete(key);
+  const jobId = options.app.jobId;
+  if (jobId && options.jobs) {
+    const job = await options.jobs.get(jobId);
+    if (job && (job.status === "running" || job.status === "waiting")) {
+      if (typeof options.jobs.cancel === "function") {
+        await options.jobs.cancel(jobId).catch(() => undefined);
+      } else {
+        await options.jobs.update(jobId, { status: "cancelled" });
+      }
+    }
+  }
+}
+
+export async function startRegisteredApp(options: {
+  sessionId: number;
+  cwd: string;
+  services: SessionServicesMeta;
+  app: SessionServiceApp;
+  jobs: SessionServiceJobHost;
+}): Promise<SessionServiceApp> {
+  const startCommand = appStartCommand(options.app, options.services);
+  if (!startCommand) throw new Error(`服务 ${options.app.name} 缺少 startCommand`);
+
+  const { portEnv, apps } = await resolvePortEnv({
+    ...options.services,
+    apps: options.services.apps?.map((item) =>
+      item.name === options.app.name ? { ...item, ...options.app } : item,
+    ) ?? [options.app],
+  });
+  const env: NodeJS.ProcessEnv = { ...process.env, ...portEnv };
+  const resolved = substitutePortPlaceholders(startCommand, portEnv);
+  const job = await options.jobs.create(options.sessionId, {
+    kind: "project-service",
+    name: `start:${options.app.name}`,
+    label: `start · ${options.app.name}`,
+    status: "running",
+    executionMode: "background",
+    capabilities: ["read_output", "cancel"],
+    metadata: {
+      command: startCommand,
+      resolvedCommand: resolved,
+      cwd: options.cwd,
+      apps,
+      app: options.app.name,
+    },
+  });
+  sessionLog(options.sessionId, "info", `Starting ${options.app.name}: ${resolved}`, [
+    "system",
+    "services",
+  ]);
+  let output = "";
+  const child = spawn(resolved, {
+    cwd: options.cwd,
+    env,
+    shell: true,
+    stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
+    detached: process.platform !== "win32",
+  });
+  const key = childKeyByName(options.sessionId, options.app.name);
+  runningChildren.set(key, child);
+  const append = (chunk: Buffer | string) => {
+    output += chunk.toString();
+    if (output.length > 200_000) output = output.slice(-160_000);
+    void options.jobs.update(job.id, { output });
+  };
+  child.stdout?.on("data", append);
+  child.stderr?.on("data", append);
+  child.on("exit", (code) => {
+    runningChildren.delete(key);
+    void options.jobs.update(job.id, {
+      status: code === 0 ? "succeeded" : "failed",
+      output,
+      error: code === 0 ? undefined : { code },
+    });
+  });
+  options.jobs.setCancelHandler(job.id, () => {
+    if (child.pid) killProcessTree(child.pid);
+  });
+  if (process.platform !== "win32") child.unref();
+
+  return {
+    ...options.app,
+    startCommand,
+    jobId: job.id,
+    pid: child.pid ?? null,
+  };
+}
+
+/** Start registered apps that are not already running. */
 export async function startRegisteredSessionServices(options: {
   sessionId: number;
   cwd: string;
@@ -173,10 +298,13 @@ export async function startRegisteredSessionServices(options: {
 
   const { portEnv, apps } = await resolvePortEnv(options.services);
   const env: NodeJS.ProcessEnv = { ...process.env, ...portEnv };
-
   const meta: SessionServicesMeta = {
     ...options.services,
-    apps,
+    apps: apps.map((app, index) =>
+      app.startCommand?.trim() || index > 0
+        ? app
+        : { ...app, startCommand: options.services.startCommand },
+    ),
     status: "starting",
     startedAt: new Date().toISOString(),
     error: undefined,
@@ -219,58 +347,33 @@ export async function startRegisteredSessionServices(options: {
       }
     }
 
-    const resolved = substitutePortPlaceholders(meta.startCommand, portEnv);
-    const job = await options.jobs.create(options.sessionId, {
-      kind: "project-service",
-      name: "start:main",
-      label: "start · project",
-      status: "running",
-      executionMode: "background",
-      capabilities: ["read_output", "cancel"],
-      metadata: {
-        command: meta.startCommand,
-        resolvedCommand: resolved,
-        cwd: options.cwd,
-        apps,
-      },
-    });
-    sessionLog(options.sessionId, "info", `Starting service: ${resolved}`, ["system", "services"], {
-      apps,
-    });
-    let output = "";
-    const child = spawn(resolved, {
-      cwd: options.cwd,
-      env,
-      shell: true,
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-      detached: process.platform !== "win32",
-    });
-    const key = childKeyByName(options.sessionId, MAIN_SERVICE_NAME);
-    runningChildren.set(key, child);
-    const append = (chunk: Buffer | string) => {
-      output += chunk.toString();
-      if (output.length > 200_000) output = output.slice(-160_000);
-      void options.jobs.update(job.id, { output });
-    };
-    child.stdout?.on("data", append);
-    child.stderr?.on("data", append);
-    child.on("exit", (code) => {
-      runningChildren.delete(key);
-      void options.jobs.update(job.id, {
-        status: code === 0 ? "succeeded" : "failed",
-        output,
-        error: code === 0 ? undefined : { code },
-      });
-    });
-    options.jobs.setCancelHandler(job.id, () => {
-      if (child.pid) return killProcessTree(child.pid);
-    });
-    if (process.platform !== "win32") child.unref();
+    const nextApps: SessionServiceApp[] = [];
+    for (const app of meta.apps ?? []) {
+      if (isAppProcessAlive(options.sessionId, app)) {
+        nextApps.push(app);
+        continue;
+      }
+      if (!appStartCommand(app, meta)) {
+        nextApps.push(app);
+        continue;
+      }
+      nextApps.push(
+        await startRegisteredApp({
+          sessionId: options.sessionId,
+          cwd: options.cwd,
+          services: { ...meta, apps: meta.apps },
+          app,
+          jobs: options.jobs,
+        }),
+      );
+    }
 
-    meta.resolvedStartCommand = resolved;
-    meta.jobId = job.id;
-    meta.pid = child.pid ?? null;
+    const first = nextApps.find((app) => app.jobId) ?? nextApps[0];
+    meta.apps = nextApps;
+    meta.startCommand = first?.startCommand ?? meta.startCommand;
+    meta.resolvedStartCommand = first?.startCommand;
+    meta.jobId = first?.jobId;
+    meta.pid = first?.pid ?? null;
     meta.status = "active";
     meta.lastActiveAt = options.lastActiveAtMs ?? Date.now();
     meta.sleepAt = computeServiceSleepAt(meta.lastActiveAt);
@@ -287,7 +390,7 @@ export async function startRegisteredSessionServices(options: {
   }
 }
 
-/** Stop or destroy the session project runtime. */
+/** Stop or destroy all session project runtimes. */
 export async function stopRegisteredSessionServices(options: {
   sessionId: number;
   cwd: string;
@@ -349,21 +452,28 @@ export async function stopRegisteredSessionServices(options: {
     }
   }
 
+  for (const app of services.apps ?? []) {
+    await stopRegisteredApp({ sessionId: options.sessionId, app, jobs: options.jobs });
+  }
+
   const key = childKeyByName(options.sessionId, MAIN_SERVICE_NAME);
   const child = runningChildren.get(key);
   const pid = child?.pid ?? services.pid ?? null;
   if (pid) {
     sessionLog(options.sessionId, "info", `Killing service pid=${pid}`, ["system", "services"]);
-    await killProcessTree(pid);
+    killProcessTree(pid);
   }
   runningChildren.delete(key);
   if (services.jobId && options.jobs) {
-    const job = await options.jobs.get(services.jobId);
-    if (job && (job.status === "running" || job.status === "waiting")) {
-      if (typeof options.jobs.cancel === "function") {
-        await options.jobs.cancel(services.jobId).catch(() => undefined);
-      } else {
-        await options.jobs.update(services.jobId, { status: "cancelled" });
+    const stillBound = (services.apps ?? []).some((app) => app.jobId === services.jobId);
+    if (!stillBound) {
+      const job = await options.jobs.get(services.jobId);
+      if (job && (job.status === "running" || job.status === "waiting")) {
+        if (typeof options.jobs.cancel === "function") {
+          await options.jobs.cancel(services.jobId).catch(() => undefined);
+        } else {
+          await options.jobs.update(services.jobId, { status: "cancelled" });
+        }
       }
     }
   }

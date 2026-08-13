@@ -14,7 +14,9 @@ import {
   initLiveStatusSessionWatch,
   startBackgroundConnection,
 } from "../composables/use-live-status";
+import { initSessionNotifyWatch } from "../composables/use-session-notify-watch";
 import { initPendingShare } from "../composables/use-pending-share";
+import { initNativeLocalNotifications } from "./local-notifications";
 
 let pushInitialized = false;
 
@@ -22,6 +24,8 @@ export async function initNativeShell(): Promise<void> {
   if (!isNativeApp()) return;
   await SplashScreen.hide().catch(() => undefined);
   await initNativePushNotifications();
+  await initNativeLocalNotifications();
+  initSessionNotifyWatch();
   setupDeepLinks();
   await initPendingShare();
   initLiveStatusSessionWatch();

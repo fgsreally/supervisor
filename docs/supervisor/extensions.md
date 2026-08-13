@@ -81,10 +81,9 @@ pi-supervisor extensions update <extension-resource-id>
   - `activate(names)` / `deactivate(names)`：切换已注册工具是否发给 LLM
   - 只有 `active: true` 的工具会进入模型可见集合
 - `setCwd`：更新会话工作目录（如 worktree）。
-- `appendSystemPrompt`：向本 Session 运行时 `system_prompt`（DB + harness）追加文本；内容已存在则
+- `appendSystemPrompt`：向本 Session 运行时 system 追加文本（进程内 overlay，不写库）；内容已存在则
   幂等跳过。
-- `upsertSystemPromptBlock`：按 id 写入 marker 包裹的 system 块；同 id 再次调用会替换旧块。适合在
-  `session.create` 注入可演进的一次性引导（如 project-services）。
+- `upsertSystemPromptBlock`：按 id 写入 marker 包裹的 overlay 块；同 id 再次调用会替换旧块。
 - `spawn`、`sendToChild`、`inspectChild`、`waitForResult`、`finish`：子 Agent 协作。
 - `fork`、`switchTo`、`navigateTree`、`compact`：会话树与上下文操作。
 - `appendEntry`、`sendMessage`、`sendUserMessage`：持久消息；`sendCustomMessage` 只写 timeline，

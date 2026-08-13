@@ -109,7 +109,7 @@ export default {
           `Blocked repeated tool call: ${call.name} has been called ` +
           `${lastCompleted.count} consecutive times with the same arguments. ` +
           (polling
-            ? "Stop polling; if a project service is up, call ProjectServiceSetup instead."
+            ? "Stop polling; to change project services call UpdateService (add/delete/update), not bash."
             : "Change the approach or explain why retrying is necessary."),
       };
     });
@@ -135,7 +135,7 @@ export default {
       if (count !== warning) return;
       const content = current.polling
         ? `You have polled ${call.name} ${count} times with the same arguments. ` +
-          `If the service URL/port is already known, call ProjectServiceSetup and stop reading.`
+          `If you need to change a project Vite/API server, call UpdateService instead of polling bash.`
         : `You have called ${call.name} with the same effective arguments and received the same ` +
           `result ${count} consecutive times. Reassess the approach before calling it again.`;
       ctx.inject.schedule({

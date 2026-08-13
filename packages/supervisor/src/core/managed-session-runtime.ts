@@ -12,6 +12,7 @@ import type { SessionState, SlashCommandInfo } from "./session-runtime.js";
 export interface ManagedSessionRuntime {
   readonly id: number;
   readonly extension: SessionExtensionHost | null;
+  attachExtension?(host: SessionExtensionHost): void;
   subscribe(listener: (event: AgentHarnessEvent) => void | Promise<void>): () => void;
   clear(): Promise<void>;
   prompt(

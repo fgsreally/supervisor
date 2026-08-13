@@ -3270,7 +3270,9 @@ export function createHttpServer(
         return jsonError(c, 400, "invalid agentId");
       }
       if (agentId !== null) {
-        const mutationError = getAgentMutationError(manager, agentId);
+        const mutationError = getAgentMutationError(manager, agentId, {
+          allowExternalBuiltinConfig: true,
+        });
         if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
         const result = await manager.resources.installAndBind({
           ...input,
@@ -3411,7 +3413,9 @@ export function createHttpServer(
     try {
       const agentId = parseIntegerId(c.req.param("id"));
       if (agentId === null) return jsonError(c, 400, "invalid agent id");
-      const mutationError = getAgentMutationError(manager, agentId);
+      const mutationError = getAgentMutationError(manager, agentId, {
+        allowExternalBuiltinConfig: true,
+      });
       if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
       const bindInput = parseBindResourceBody(agentId, body as Record<string, unknown>);
       const binding = manager.resources.bindResource(bindInput);
@@ -3437,7 +3441,9 @@ export function createHttpServer(
       if (agentId === null || resourceId === null) {
         return jsonError(c, 400, "invalid agent id or resource id");
       }
-      const mutationError = getAgentMutationError(manager, agentId);
+      const mutationError = getAgentMutationError(manager, agentId, {
+        allowExternalBuiltinConfig: true,
+      });
       if (mutationError) return jsonError(c, mutationError.status, mutationError.message);
       const resource = manager.getResource(resourceId);
       await manager.resources.unbindResource({ agentId, resourceId });

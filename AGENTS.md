@@ -114,7 +114,7 @@ pnpm docs:build
 ## Session / Project 的 `meta` 字段
 
 - **`sessions.meta` 与 `projects.meta` 以扩展数据为主**（用户插件、Shadow 输出、`meta.services` 运行实例等）。
-- 核心 UI / 身份字段用 **列**：`title`、`system_prompt`、`avatar`、`is_builtin`、`pinned`、`muted`、`unread`、`external_session_id`、`error_msg`、`stage`、`shadow_enabled`、`created_by`。
+- 核心 UI / 身份字段用 **列**：`title`、`system_prompt`（仅 spawn 额外说明，可选）、`avatar`、`is_builtin`、`pinned`、`muted`、`unread`、`external_session_id`、`error_msg`、`stage`、`shadow_enabled`、`created_by`。
 - 服务于 Session 的扩展状态存于 `sessions.meta`：`tasks` / `currentTask` / `todos`、`subagentIds`（可委派子 Agent）、Shadow 输出、`timers`（定时设定）等；Job **执行记录**仍用 `jobs` 平台表。
 - Git / worktree 状态放在 **`sessions.meta.git`**：`{ worktreePath, branch, lastCommit, mergeError }`；有 `worktreePath` 即启用 worktree。
 - 扩展自定义键请带前缀（如 `myExt.*`）。
@@ -124,7 +124,7 @@ pnpm docs:build
 
 - 创建 worktree：从 **`project.cwd` 当时 checkout 的分支** 切出；merge 目标**不**缓存在 session。
 - Achieve / Complete：**始终 merge 进执行当下 `project.cwd` 的当前 checkout 分支**。
-- 模型 / toolsPreset：只跟 **`agent_id` → agents 表**；`system_prompt` 列存本 session 运行时完整 system（不含 skills 目录）。project-services 在 `session.create` 时用 `upsertSystemPromptBlock` 写入登记引导（可替换更新）；运行时服务状态提示不写入该列。
+- 模型 / toolsPreset：只跟 **`agent_id` → agents 表**；每次对话现拼 system（当前 Agent prompt + 现读 AGENTS.md + `sessions.meta.services`），**不要**把拼好的全文写入 `sessions.system_prompt`。该列只保留 spawn 额外说明；旧行里的完整快照在 compose 时忽略。
 - 需用户介入（未配模型、审批等）：`status = blocked`（不是 `error`）；原因写 **`error_msg`**（有则展示）。
 
 ## 沟通风格
@@ -149,5 +149,5 @@ pnpm docs:build
 - **华生**是内部 runner（`spawn_type: watson`）：`AgentHarness` + 简单工具（`createDefaultTools`）+ 助手模型；**不**再走 `pi-coding-agent` 的 `createAgentSession`（避免两套 agent 系统）。
 - 不创建用户 session；任务提示词临时注入；结构化结果只用终止型 `submit_result` tool（pi 官方方式，无文本托底）。
 - 入口：`SessionManager.runWatson` / 扩展 `ctx.watson.run(...)`；日志在 agent home `logs/`，Agent 详情 Logs 可见。
-- 华生项目解析只把安装/启动/停止/销毁写进项目 `AGENTS.md`「本地开发服务」（不写入口 port/path）；Session 内 coding agent 确认实际入口后，通过 `ProjectServiceSetup` 登记到 `sessions.meta.services`（扁平 commands + `apps[{ name, port, path }]`），再按需启动/唤醒。
+- 华生会在两个时间点跑：创建项目时把安装/启动/停止/销毁写进 `AGENTS.md`「本地开发服务」（不写 port/path）；创建 Session 时再读该节，对每个服务调用 `UpdateService`（action=add）启动进程并写入 `sessions.meta.services`。进程在跑且 meta 有 apps 时，「活跃应用」能看到。对话中途增删改走 `UpdateService`（action 为 add / delete / update）：新增起进程，删除关进程，修改先关再起。不要用 bash 直接跑 vite/dev。创建 Session 后把已启动的 services 注入该 Session 的 system prompt。
 - Session 可委派子 Agent 白名单：`sessions.meta.subagentIds`（不再使用 `members` 表）。

@@ -42,13 +42,13 @@ const bashSchema = Type.Object({
   run_in_background: Type.Optional(
     Type.Boolean({
       description:
-        "If true, start as a background task and return task_id immediately (kimi-style). Use for long builds/tests/watchers/servers.",
+        "If true, start as a background task and return task_id immediately (kimi-style). Use for long builds/tests/watchers. Not for project Vite/API servers.",
     }),
   ),
   disable_timeout: Type.Optional(
     Type.Boolean({
       description:
-        "Background only: do not apply a timeout (for forever servers). Prefer ProjectServiceSetup→Start for project Vite/API.",
+        "Background only: do not apply a timeout. Project Vite/API servers must use UpdateService, not bash.",
     }),
   ),
   description: Type.Optional(
@@ -104,9 +104,8 @@ const BASH_DESCRIPTION = [
   "",
   "Foreground (default): short commands only. Returns stdout/stderr when finished.",
   "Background: set run_in_background=true (+ description/intent). Returns task_id immediately.",
-  "  - Prefer background for long builds, tests, watchers, or servers.",
-  "  - For forever servers set disable_timeout=true.",
-  "  - Project Vite/API hosting: prefer ProjectServiceSetup → ProjectServiceStart (not ad-hoc bash).",
+  "  - Prefer background for long builds, tests, or watchers.",
+  "  - Project Vite/API hosting: do not start via bash. Call UpdateService (action=add|delete|update).",
   "  - After background start: do NOT tight-loop read; use action=wait once if you need ready output.",
   "Manage tasks: action=list | wait|read|stop|write with task_id.",
   "",
@@ -125,10 +124,6 @@ function assertIntent(intent: string | undefined): string {
     );
   }
   return value;
-}
-
-function looksLikeProjectService(command: string): boolean {
-  return /\b(pnpm|npm|yarn|bun|vite|next|nuxt|astro|webpack|turbo)\b/i.test(command);
 }
 
 function requireJobs(options: SupervisorBashOptions): { sessionId: number; jobs: BashJobHost } {
@@ -161,9 +156,7 @@ async function runForeground(
   if (!command) throw new Error("bash foreground requires `command`");
   if (FOREVER_SERVER_COMMAND.test(command)) {
     throw new Error(
-      "Do not run long-lived servers via foreground bash. " +
-        "Use run_in_background=true (disable_timeout=true for forever servers), " +
-        "or ProjectServiceSetup → ProjectServiceStart for project Vite/API.",
+      "Do not start project Vite/API servers via bash. Call UpdateService (action=add).",
     );
   }
 
@@ -211,6 +204,11 @@ async function runBackground(
   const { sessionId, jobs } = requireJobs(options);
   const command = params.command?.trim() ?? "";
   if (!command) throw new Error("bash run_in_background requires `command`");
+  if (FOREVER_SERVER_COMMAND.test(command)) {
+    throw new Error(
+      "Do not start project Vite/API servers via bash. Call UpdateService (action=add).",
+    );
+  }
   const intent = assertIntent(params.intent);
   const label = params.description?.trim() || intent;
   const cwd = params.cwd?.trim() || options.cwd;
@@ -230,48 +228,6 @@ async function runBackground(
     setTimeout(() => {
       void jobs.cancel(jobId).catch(() => undefined);
     }, timeoutS * 1000).unref?.();
-  }
-
-  // Forever servers: wait in this same call so the model does not burn turns on
-  // action=wait retries (kimi-style TaskOutput after background start).
-  if (FOREVER_SERVER_COMMAND.test(command) || looksLikeProjectService(command)) {
-    const waited = await waitBackgroundBashSession({
-      sessionId,
-      id: item.id,
-      jobs,
-      timeoutMs: 90_000,
-      // Do NOT treat mere output growth as ready — that caused premature
-      // "ready" before Vite printed Local: http://localhost:PORT.
-      untilChangeChars: 0,
-    });
-    const ready = waited.matched;
-    const outputTail = (waited.item.output || "").slice(-4_000);
-    const detectedPort = detectListenPort(outputTail);
-    const summary = {
-      task_id: item.id,
-      pid: waited.item.pid ?? item.pid,
-      description: label,
-      status: waited.item.status,
-      ready,
-      matched: waited.matched,
-      changed: waited.changed,
-      timedOut: waited.timedOut,
-      exited: waited.exited,
-      detectedPort: detectedPort ?? null,
-      outputTail,
-    };
-    const next = ready
-      ? [
-          "next_step: Call ProjectServiceSetup with taskId=this task_id and apps[{ name, port, path }].",
-          detectedPort
-            ? `Use port=${detectedPort} from output (do NOT assume 5173).`
-            : "Parse Local:/localhost port from outputTail; do NOT guess 5173.",
-          "Do NOT ProjectServiceStart. Do NOT wait/read/probe ports again.",
-        ].join(" ")
-      : waited.exited
-        ? "next_step: Process exited before ready. Inspect outputTail; fix and retry once."
-        : "next_step: Still starting. One action=wait with higher timeout_ms, then Setup with detectedPort from outputTail. Do not probe fixed ports like 5173.";
-    return textResult(`${JSON.stringify(summary, null, 2)}\n\n${next}`, summary);
   }
 
   return textResult(
@@ -331,15 +287,9 @@ export function createSupervisorBashTool(
             outputTail,
           };
           const hint = result.matched
-            ? [
-                "Call ProjectServiceSetup with taskId and apps[{ name, port, path }].",
-                detectedPort
-                  ? `Use port=${detectedPort}.`
-                  : "Parse Local:/localhost port from outputTail.",
-                "Do NOT ProjectServiceStart; do NOT probe 5173.",
-              ].join(" ")
+            ? "Ready. Do not poll read."
             : result.timedOut
-              ? "Timed out. Increase timeout_ms once or Setup if port is already in outputTail. Do not tight-loop wait/read or hardcode 5173."
+              ? "Timed out. Increase timeout_ms once; do not tight-loop wait/read."
               : result.exited
                 ? "Process exited before ready."
                 : "Still starting — wait once more or inspect outputTail.";

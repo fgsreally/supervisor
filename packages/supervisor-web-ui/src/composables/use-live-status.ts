@@ -6,8 +6,17 @@ import { isNativeApp } from "./use-native-app";
 
 let supervisorNative: typeof import("pi-supervisor-native-bridge").SupervisorNative | null = null;
 
+/**
+ * Per-session state within the current activity wave.
+ * - running: agent working
+ * - waiting: needs user confirmation (ask tool / external approval / blocked)
+ * - error: run failed, needs user attention
+ * - done: this turn finished
+ */
+type TrackedState = "running" | "waiting" | "error" | "done";
+
 type TrackedSession = {
-  running: boolean;
+  state: TrackedState;
   title: string;
   subtitle: string;
   phase: LiveStatusPhase;
@@ -17,6 +26,21 @@ type TrackedSession = {
 const tracked = new Map<string, TrackedSession>();
 let liveStatusWatchStarted = false;
 let publishChain: Promise<void> = Promise.resolve();
+
+/** Transient highlight when one session just finished while others keep running. */
+const RECENT_DONE_MS = 3000;
+let recentDone: { sessionId: string; title: string; expiresAt: number } | null = null;
+let recentDoneTimer: ReturnType<typeof setTimeout> | null = null;
+
+function markRecentDone(sessionId: string, title: string): void {
+  recentDone = { sessionId, title, expiresAt: Date.now() + RECENT_DONE_MS };
+  if (recentDoneTimer) clearTimeout(recentDoneTimer);
+  recentDoneTimer = setTimeout(() => {
+    recentDone = null;
+    recentDoneTimer = null;
+    void publishLiveStatus();
+  }, RECENT_DONE_MS + 100);
+}
 
 async function plugin() {
   if (!isNativeApp()) return null;
@@ -31,8 +55,15 @@ function isActiveStatus(status: string | undefined | null): boolean {
   return status === "running" || status === "blocked" || status === "initializing";
 }
 
-function phaseForStatus(status: string | undefined | null, streaming = false): LiveStatusPhase {
+function stateForStatus(status: string | undefined | null): TrackedState {
   if (status === "blocked") return "waiting";
+  if (status === "error") return "error";
+  if (isActiveStatus(status)) return "running";
+  return "done";
+}
+
+function phaseForStatus(status: string | undefined | null, streaming = false): LiveStatusPhase {
+  if (status === "blocked" || status === "error") return "waiting";
   if (streaming) return "thinking";
   if (status === "running") return "thinking";
   if (status === "initializing") return "connecting";
@@ -41,6 +72,7 @@ function phaseForStatus(status: string | undefined | null, streaming = false): L
 
 function subtitleForStatus(status: string | undefined | null, streaming = false): string {
   if (status === "blocked") return "等待你确认";
+  if (status === "error") return "出错，需要处理";
   if (streaming) return "思考中";
   if (status === "running") return "运行中";
   if (status === "initializing") return "连接中";
@@ -54,11 +86,17 @@ function truncateTitle(title: string, max = 12): string {
 }
 
 function counts() {
-  let active = 0;
+  let running = 0;
+  let waiting = 0;
+  let error = 0;
   for (const entry of tracked.values()) {
-    if (entry.running) active += 1;
+    if (entry.state === "running") running += 1;
+    else if (entry.state === "waiting") waiting += 1;
+    else if (entry.state === "error") error += 1;
   }
-  return { active, total: tracked.size, completed: tracked.size - active };
+  const total = tracked.size;
+  const active = running + waiting;
+  return { running, waiting, error, active, total, completed: total - active - error };
 }
 
 /** Build chip text within ~7 characters for the status-bar Live Update chip. */
@@ -69,22 +107,61 @@ function buildChip(active: number, total: number, allComplete: boolean): string 
   return ratio.length <= 7 ? ratio : `${active}进行`;
 }
 
+/** Aggregate view priority: waiting > error > just-finished highlight > progress > all done. */
 function buildPayload(): LiveStatusPayload | null {
-  const { active, total, completed } = counts();
+  const { running, waiting, error, active, total, completed } = counts();
   if (total === 0) return null;
 
-  const allComplete = active === 0;
   const entries = [...tracked.entries()];
-  const runningEntries = entries.filter(([, entry]) => entry.running);
-  const completedEntries = entries.filter(([, entry]) => !entry.running);
-  const primaryRunning = runningEntries[0]?.[1];
-  const primaryCompleted = completedEntries[0]?.[1];
+  const byState = (state: TrackedState) => entries.filter(([, entry]) => entry.state === state);
+  const runningEntries = byState("running");
+  const waitingEntries = byState("waiting");
+  const errorEntries = byState("error");
+  const doneEntries = byState("done");
+  const base = { activeCount: active, completedCount: completed, totalCount: total };
+
+  // 1. Sessions blocked on the user preempt everything: fastest path back to the app.
+  if (waiting > 0) {
+    const [sessionId, first] = waitingEntries[0];
+    const rest = running > 0 ? ` · 另有 ${running} 个进行中` : "";
+    return {
+      sessionId,
+      title:
+        waiting === 1 ? `${truncateTitle(first.title, 10)} · 待确认` : `${waiting} 个会话待确认`,
+      subtitle:
+        waiting === 1 ? `需要你确认后才能继续${rest}` : `请尽快处理${rest} · 共 ${total} 个会话`,
+      phase: "waiting",
+      chip: waiting === 1 ? "待确认" : `${waiting}待确认`,
+      ...base,
+      allComplete: false,
+    };
+  }
+
+  // 2. Failed sessions also need the user, slightly lower priority than confirmations.
+  if (error > 0) {
+    const [sessionId, first] = errorEntries[0];
+    const rest = running > 0 ? ` · 另有 ${running} 个进行中` : "";
+    return {
+      sessionId,
+      title: error === 1 ? `${truncateTitle(first.title, 10)} · 出错` : `${error} 个会话出错`,
+      subtitle:
+        error === 1
+          ? `运行出错，需要你处理${rest}`
+          : `运行出错，请逐个处理${rest} · 共 ${total} 个会话`,
+      phase: "waiting",
+      chip: error === 1 ? "出错" : `${error}出错`,
+      ...base,
+      allComplete: false,
+    };
+  }
+
+  const allComplete = active === 0;
   const chip = buildChip(active, total, allComplete);
 
   if (allComplete) {
-    const only = completedEntries.length === 1 ? primaryCompleted : null;
+    const only = doneEntries.length === 1 ? doneEntries[0][1] : null;
     return {
-      sessionId: completedEntries[0]?.[0] ?? "aggregate",
+      sessionId: doneEntries[0]?.[0] ?? "aggregate",
       title: only ? `${truncateTitle(only.title, 10)} · 已完成` : "全部任务已完成",
       subtitle:
         total === 1
@@ -99,6 +176,25 @@ function buildPayload(): LiveStatusPayload | null {
     };
   }
 
+  // 3. One session just finished while others keep running: highlight it for a moment.
+  if (
+    recentDone &&
+    Date.now() < recentDone.expiresAt &&
+    tracked.get(recentDone.sessionId)?.state === "done"
+  ) {
+    return {
+      sessionId: recentDone.sessionId,
+      title: `${truncateTitle(recentDone.title, 10)} · 已完成`,
+      subtitle: `进行中 ${active} · 已完成 ${completed}/${total}`,
+      phase: "idle",
+      chip,
+      ...base,
+      allComplete: false,
+    };
+  }
+
+  const primaryRunning = runningEntries[0]?.[1];
+
   if (runningEntries.length === 1 && completed === 0) {
     return {
       sessionId: runningEntries[0][0],
@@ -106,9 +202,7 @@ function buildPayload(): LiveStatusPayload | null {
       subtitle: `${primaryRunning?.subtitle || "进行中"} · 共 1 个任务`,
       phase: primaryRunning?.phase ?? "thinking",
       chip,
-      activeCount: active,
-      completedCount: 0,
-      totalCount: total,
+      ...base,
       allComplete: false,
     };
   }
@@ -120,9 +214,7 @@ function buildPayload(): LiveStatusPayload | null {
       subtitle: `${primaryRunning?.subtitle || "进行中"} · 已完成 ${completed}/${total}`,
       phase: primaryRunning?.phase ?? "thinking",
       chip,
-      activeCount: active,
-      completedCount: completed,
-      totalCount: total,
+      ...base,
       allComplete: false,
     };
   }
@@ -142,9 +234,7 @@ function buildPayload(): LiveStatusPayload | null {
         : `${phaseHints}${more} · 共 ${total} 个任务`,
     phase: primaryRunning?.phase ?? "thinking",
     chip,
-    activeCount: active,
-    completedCount: completed,
-    totalCount: total,
+    ...base,
     allComplete: false,
   };
 }
@@ -164,17 +254,17 @@ async function publishLiveStatus(): Promise<void> {
   await publishChain;
 }
 
-function applyTracked(options: {
+function applyTrackedState(options: {
   sessionId: string;
   title: string;
   subtitle: string;
   phase: LiveStatusPhase;
-  running: boolean;
+  state: TrackedState;
 }): void {
   const existing = tracked.get(options.sessionId);
-  if (options.running) {
+  if (options.state !== "done") {
     tracked.set(options.sessionId, {
-      running: true,
+      state: options.state,
       title: options.title,
       subtitle: options.subtitle,
       phase: options.phase,
@@ -182,12 +272,28 @@ function applyTracked(options: {
     return;
   }
   if (!existing) return;
+  if (existing.state === "running" || existing.state === "waiting") {
+    markRecentDone(options.sessionId, options.title || existing.title);
+  }
   tracked.set(options.sessionId, {
     ...existing,
     title: options.title || existing.title,
-    running: false,
+    state: "done",
     subtitle: "已完成",
     phase: "idle",
+  });
+}
+
+function applyTracked(options: {
+  sessionId: string;
+  title: string;
+  subtitle: string;
+  phase: LiveStatusPhase;
+  running: boolean;
+}): void {
+  applyTrackedState({
+    ...options,
+    state: options.running ? (options.phase === "waiting" ? "waiting" : "running") : "done",
   });
 }
 
@@ -231,8 +337,14 @@ export async function syncAgentLiveStatus(options: {
   subtitle: string;
   phase: LiveStatusPhase;
   running: boolean;
+  /** Session status for waiting/error mapping; falls back to running+phase. */
+  status?: string | null;
 }): Promise<void> {
-  applyTracked(options);
+  if (options.status === "error") {
+    applyTrackedState({ ...options, state: "error" });
+  } else {
+    applyTracked(options);
+  }
   await publishLiveStatus();
 }
 
@@ -251,14 +363,15 @@ export function initLiveStatusSessionWatch(): void {
     () => {
       for (const session of sessionStore.sessions) {
         if (session.isBuiltin) continue;
-        const running = isActiveStatus(session.status);
-        if (!running && !tracked.has(session.id)) continue;
-        applyTracked({
+        const state = stateForStatus(session.status);
+        // Only sessions active in this wave join; stale done/error rows stay out.
+        if (state !== "running" && state !== "waiting" && !tracked.has(session.id)) continue;
+        applyTrackedState({
           sessionId: session.id,
           title: session.title?.trim() || "Supervisor",
           subtitle: subtitleForStatus(session.status),
           phase: phaseForStatus(session.status),
-          running,
+          state,
         });
       }
       void publishLiveStatus();

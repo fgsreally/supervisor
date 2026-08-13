@@ -6,9 +6,9 @@ meta 结构见[数据库结构](/supervisor/schema-reference)。
 ## 身份与运行配置
 
 - `agent_id` 决定 Agent、模型和 tools preset；Session 不单独保存模型配置。
-- `system_prompt` 保存本 Session 实际使用的完整 system 快照，不包含 skills 目录内容。
-  扩展可在 `session.create` 时通过 `ctx.session.upsertSystemPromptBlock` /
-  `appendSystemPrompt` 写入引导（如 project-services 的登记说明）；运行时服务状态提示仍不写入该列。
+- `system_prompt` 只保存 spawn 额外说明（可选），**不是**完整运行时 system 快照。
+  每次对话现拼：当前 Agent prompt + 工作目录现读的 AGENTS.md + `sessions.meta.services`。
+  扩展 `appendSystemPrompt` / `upsertSystemPromptBlock` 写入进程内 overlay，不落库。
 - 核心展示/状态使用列：`title`、`avatar`、`pinned`、`muted`、`unread`、`error_msg`、
   `stage`、`shadow_enabled` 等；不要重复写入 meta。
 - 缺模型、等待审批等需要用户介入的情况使用 `status=blocked`，原因写 `error_msg`。

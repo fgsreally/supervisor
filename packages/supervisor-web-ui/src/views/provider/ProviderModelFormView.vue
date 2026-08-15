@@ -3,7 +3,7 @@
     <header class="model-form-header h-16 px-6 border-b flex items-center shrink-0">
       <div class="flex-1 min-w-0">
         <h1 class="model-form-title text-[16px] font-medium">
-          {{ mode === "create" ? "添加模型" : "编辑模型" }}
+          {{ mode === "create" ? t("provider.createModel") : t("provider.editModel") }}
         </h1>
         <p class="model-form-muted text-[12px] mt-0.5 truncate">{{ providerName }}</p>
       </div>
@@ -12,7 +12,7 @@
     <div class="model-form-scroll custom-scrollbar flex flex-1 justify-center overflow-y-auto">
       <form class="model-form-content w-full max-w-5xl" @submit.prevent="save">
         <section class="model-form-section">
-          <h2 class="model-form-title text-[14px] font-medium mb-5">基本信息</h2>
+          <h2 class="model-form-title text-[14px] font-medium mb-5">{{ t("provider.modelBasicInfo") }}</h2>
           <div class="space-y-4">
             <label class="model-form-field">
               <span>Model ID</span>
@@ -20,16 +20,16 @@
                 v-model="draft.id"
                 type="text"
                 :disabled="mode === 'edit'"
-                placeholder="例如 gpt-4o"
+                :placeholder="t('provider.modelIdPlaceholder')"
                 class="model-form-input font-mono"
               />
             </label>
             <label class="model-form-field">
-              <span>显示名称</span>
+              <span>{{ t("provider.displayName") }}</span>
               <input
                 v-model="draft.name"
                 type="text"
-                placeholder="默认使用 Model ID"
+                :placeholder="t('provider.displayNamePlaceholder')"
                 class="model-form-input"
               />
             </label>
@@ -37,10 +37,10 @@
         </section>
 
         <section class="model-form-section">
-          <h2 class="model-form-title text-[14px] font-medium mb-5">能力与限制</h2>
+          <h2 class="model-form-title text-[14px] font-medium mb-5">{{ t("provider.capabilities") }}</h2>
           <div class="space-y-4">
             <label class="model-form-field">
-              <span>上下文上限</span>
+              <span>{{ t("provider.contextWindow") }}</span>
               <input
                 v-model.number="draft.contextWindow"
                 type="number"
@@ -50,10 +50,10 @@
               />
             </label>
             <label class="model-form-field">
-              <span>图像输入</span>
+              <span>{{ t("provider.imageInput") }}</span>
               <span class="model-form-switch-row">
                 <input v-model="draft.supportsVision" type="checkbox" class="accent-[#07c160]" />
-                <span class="model-form-title">支持图像输入</span>
+                <span class="model-form-title">{{ t("provider.supportsVision") }}</span>
               </span>
             </label>
           </div>
@@ -62,14 +62,14 @@
     </div>
 
     <footer class="model-form-actions border-t px-6 py-3 flex justify-end gap-2 shrink-0">
-      <button type="button" class="model-form-btn" @click="emit('cancel')">取消</button>
+      <button type="button" class="model-form-btn" @click="emit('cancel')">{{ t("common.cancel") }}</button>
       <button
         type="button"
         class="model-form-btn model-form-btn--primary"
         :disabled="!canSave || saving"
         @click="save"
       >
-        {{ saving ? "保存中…" : "保存" }}
+        {{ saving ? t("provider.savingModel") : t("common.save") }}
       </button>
     </footer>
   </div>
@@ -81,6 +81,7 @@ import type { UIProviderModel } from "@/types/ui";
 import { createEmptyProviderModel } from "@/constants/providers";
 import { useProviderStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   providerId: string;
@@ -90,6 +91,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ cancel: []; saved: [modelId: string] }>();
 const providerStore = useProviderStore();
+const { t } = useI18n();
 const draft = ref<UIProviderModel>(createEmptyProviderModel());
 const saving = ref(false);
 
@@ -126,9 +128,9 @@ async function save() {
       await providerStore.updateModel(props.providerId, modelId, payload);
     }
     emit("saved", modelId);
-    showUiMessage(props.mode === "create" ? "模型创建成功" : "模型保存成功", "success");
+    showUiMessage(props.mode === "create" ? t("provider.createSuccess") : t("provider.saveSuccess"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "模型保存失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("provider.saveFailed"), "error");
   } finally {
     saving.value = false;
   }

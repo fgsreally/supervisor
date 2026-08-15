@@ -1,6 +1,6 @@
 <template>
   <div
-    class="provider-list-item cursor-pointer flex items-center gap-3 px-4 py-3 transition-colors relative"
+    class="provider-list-item"
     :class="{
       'provider-list-item--active': active,
       'provider-list-item--disabled': !provider.isEnabled,
@@ -12,16 +12,16 @@
       :provider-id="provider.id"
       :provider-name="provider.name"
       :icon="provider.icon"
-      class="w-10 h-10 text-base"
+      class="provider-list-item__avatar"
     />
 
-    <div class="flex-1 min-w-0">
-      <div class="flex items-center gap-2">
-        <span class="truncate provider-list-item__name">{{ provider.name }}</span>
+    <div class="provider-list-item__content">
+      <div class="provider-list-item__heading">
+        <span class="provider-list-item__name">{{ provider.name }}</span>
         <span v-if="provider.slug" class="provider-list-item__builtin-badge">内置</span>
         <span v-if="!provider.isEnabled" class="provider-list-item__disabled-badge">已禁用</span>
       </div>
-      <div class="truncate mt-0.5 provider-list-item__meta">
+      <div class="provider-list-item__meta">
         {{ provider.models.length }} 个模型
       </div>
     </div>
@@ -41,6 +41,34 @@ defineEmits<{ select: [id: string]; contextmenu: [event: MouseEvent] }>();
 </script>
 
 <style scoped>
+.provider-list-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-3);
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background-color var(--app-motion-fast);
+}
+
+.provider-list-item__avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: var(--app-font-body);
+}
+
+.provider-list-item__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.provider-list-item__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-2);
+  min-width: 0;
+}
+
 .provider-list-item:hover {
   background: var(--app-list-item-hover);
 }
@@ -50,14 +78,21 @@ defineEmits<{ select: [id: string]; contextmenu: [event: MouseEvent] }>();
 }
 
 .provider-list-item__name {
+  overflow: hidden;
   color: var(--app-text-primary);
   font-size: var(--app-font-control);
   font-weight: var(--app-font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .provider-list-item__meta {
+  margin-top: 0.125rem;
+  overflow: hidden;
   color: var(--app-text-secondary);
   font-size: var(--app-font-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .provider-list-item--disabled .provider-avatar {

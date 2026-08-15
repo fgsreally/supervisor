@@ -1,10 +1,10 @@
 <template>
-  <div class="h-full w-full flex flex-col shrink-0 min-w-0 provider-panel">
+  <div class="provider-panel">
     <div
       v-if="!mobileSearchOpen"
-      class="h-16 flex items-center px-4 shrink-0 border-b provider-panel__header m-centered-list-header"
+      class="provider-panel__header m-centered-list-header"
     >
-      <h1 class="provider-panel__title flex-1 max-md:flex-none">模型供应商</h1>
+      <h1 class="provider-panel__title">模型供应商</h1>
       <div class="m-centered-list-header__actions">
         <button
           type="button"
@@ -20,7 +20,7 @@
           title="添加模型供应商"
           @click="emit('add-provider')"
         >
-          <Plus class="w-5 h-5" />
+          <Plus class="provider-panel__action-icon" />
         </button>
       </div>
     </div>
@@ -33,19 +33,19 @@
       <input v-model="query" type="search" placeholder="搜索模型供应商" autofocus />
     </div>
 
-    <div class="panel-inline-search px-3 py-2 shrink-0 border-b provider-panel__header">
-      <div class="relative">
-        <Search class="w-4 h-4 absolute left-2.5 top-2 provider-panel__muted" />
+    <div class="panel-inline-search provider-panel__header">
+      <div class="provider-panel__search-wrap">
+        <Search class="provider-panel__search-icon provider-panel__muted" />
         <input
           v-model="query"
           type="text"
           placeholder="搜索模型供应商"
-          class="list-search-input provider-panel__search w-full rounded-md pl-8 pr-2 py-1.5 focus:outline-none"
+          class="list-search-input provider-panel__search"
         />
       </div>
     </div>
 
-    <div class="flex-1 overflow-y-auto custom-scrollbar">
+    <div class="provider-panel__list custom-scrollbar">
       <ProviderListItem
         v-for="provider in filteredProviders"
         :key="provider.id"
@@ -54,7 +54,7 @@
         @select="emit('select-provider', $event)"
         @contextmenu.prevent.stop="openMenu($event, provider.id)"
       />
-      <div v-if="!filteredProviders.length" class="py-12 text-center text-sm provider-panel__muted">
+      <div v-if="!filteredProviders.length" class="provider-panel__empty provider-panel__muted">
         暂无模型供应商
       </div>
     </div>
@@ -128,18 +128,63 @@ function deleteSelected() {
 </script>
 
 <style scoped>
+.provider-panel {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+  flex-direction: column;
+  background: var(--app-list-bg);
+  color: var(--app-text-primary);
+}
+
 .provider-panel__title {
+  flex: 1;
   font-size: var(--app-font-title);
   font-weight: var(--app-font-weight-medium);
 }
 
 .provider-panel__search {
+  width: 100%;
+  padding: 0.375rem 0.5rem 0.375rem 2rem;
+  border-radius: var(--app-radius-control);
   font-size: var(--app-font-control);
+  outline: none;
 }
 
-.provider-panel {
-  background: var(--app-list-bg);
-  color: var(--app-text-primary);
+.provider-panel__action-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.provider-panel__list {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.provider-panel__empty {
+  padding: 3rem 0;
+  text-align: center;
+  font-size: var(--app-font-body);
+}
+
+.provider-panel__search-wrap {
+  position: relative;
+}
+
+.provider-panel__search-icon {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.625rem;
+  width: 1rem;
+  height: 1rem;
+}
+
+.panel-inline-search {
+  flex-shrink: 0;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--app-border-subtle);
 }
 
 .provider-panel__header {

@@ -2,41 +2,41 @@
   <Teleport to="body">
     <div
       v-if="open && provider"
-      class="provider-edit-overlay fixed inset-0 z-[100] flex items-center justify-center p-4"
+      class="provider-edit-overlay"
       @click.self="close"
     >
       <section
-        class="provider-edit-dialog w-full max-w-lg max-h-[90vh] overflow-hidden rounded-lg shadow-xl border flex flex-col"
+        class="provider-edit-dialog"
       >
-        <header class="h-14 px-5 border-b flex items-center shrink-0">
-          <h2 class="text-[16px] font-medium flex-1">编辑模型供应商</h2>
+        <header class="provider-edit-dialog__header">
+          <h2 class="provider-edit-dialog__title">编辑模型供应商</h2>
           <button type="button" class="provider-edit-close" title="关闭" @click="close">
-            <X class="w-5 h-5" />
+            <X class="provider-edit-dialog__icon" />
           </button>
         </header>
 
-        <div class="p-5 overflow-y-auto custom-scrollbar space-y-5">
-          <section class="space-y-4">
-            <div class="text-[14px] font-medium provider-edit-title">基本信息</div>
+        <div class="provider-edit-dialog__body custom-scrollbar">
+          <section class="provider-edit-dialog__section">
+            <div class="provider-edit-title">基本信息</div>
 
-            <label class="provider-edit-field text-[13px]">
+            <label class="provider-edit-field">
               <span class="provider-edit-label">名称</span>
               <UiField v-model="draft.name" type="text" />
             </label>
 
             <div class="provider-edit-field">
               <div class="provider-edit-label text-[13px]">图标</div>
-              <div class="flex items-center min-w-0">
+              <div class="provider-edit-icon-row">
                 <input
                   ref="iconInput"
                   type="file"
                   accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
-                  class="hidden"
+                  class="provider-edit-hidden-input"
                   @change="onIconSelected"
                 />
                 <button
                   type="button"
-                  class="provider-edit-avatar-upload relative w-14 h-14 rounded-md overflow-hidden"
+                  class="provider-edit-avatar-upload"
                   :disabled="uploading"
                   title="上传图标"
                   @click="iconInput?.click()"
@@ -46,29 +46,29 @@
                     :provider-id="draft.id"
                     :provider-name="draft.name || 'Provider'"
                     :icon="draft.icon"
-                    class="provider-edit-current-icon w-full h-full"
+                    class="provider-edit-current-icon"
                   />
                   <span
-                    class="provider-edit-avatar-overlay absolute inset-0 flex items-center justify-center"
+                    class="provider-edit-avatar-overlay"
                     :class="{ 'provider-edit-avatar-overlay--empty': !draft.icon }"
                   >
-                    <Upload class="w-5 h-5" />
+                    <Upload class="provider-edit-dialog__icon" />
                   </span>
                 </button>
               </div>
             </div>
           </section>
 
-          <section class="space-y-4">
-            <div class="text-[14px] font-medium provider-edit-title">连接配置</div>
+          <section class="provider-edit-dialog__section">
+            <div class="provider-edit-title">连接配置</div>
 
             <div class="provider-edit-field">
               <div class="provider-edit-label text-[13px]">API Type</div>
-              <div class="flex flex-col sm:flex-row gap-2">
+              <div class="provider-edit-protocols">
                 <label
                   v-for="opt in WIRE_PROTOCOLS"
                   :key="opt.value"
-                  class="flex items-center gap-2 px-3 py-2 rounded-md border cursor-pointer text-[13px] transition-colors"
+                  class="provider-edit-radio"
                   :class="
                     draft.protocol === opt.value
                       ? 'provider-edit-radio provider-edit-radio--active'
@@ -79,49 +79,49 @@
                     v-model="draft.protocol"
                     type="radio"
                     :value="opt.value"
-                    class="accent-[var(--app-accent)]"
+                    class="provider-edit-radio-input"
                   />
-                  <span class="font-mono">{{ opt.value }}</span>
+                  <span class="provider-edit-mono">{{ opt.value }}</span>
                 </label>
               </div>
             </div>
 
-            <label class="provider-edit-field text-[13px]">
+            <label class="provider-edit-field">
               <span class="provider-edit-label">Base URL</span>
               <UiField
                 v-model="baseUrlInput"
                 type="text"
                 placeholder="留空使用默认端点"
-                class="font-mono"
+                class="provider-edit-mono-field"
               />
             </label>
 
-            <label class="provider-edit-field text-[13px]">
+            <label class="provider-edit-field">
               <span class="provider-edit-label">API Key</span>
-              <span class="relative block min-w-0">
+              <span class="provider-edit-secret-field">
                 <UiField
                   v-model="apiKeyInput"
                   :type="showApiKey ? 'text' : 'password'"
                   placeholder="留空则保留已有 API Key"
                   autocomplete="new-password"
                   spellcheck="false"
-                  class="font-mono pr-10"
+                  class="provider-edit-mono-field provider-edit-secret-input"
                 />
                 <button
                   type="button"
-                  class="provider-edit-secret-toggle absolute inset-y-0 right-0 w-10 flex items-center justify-center"
+                  class="provider-edit-secret-toggle"
                   :title="showApiKey ? '隐藏 API Key' : '显示 API Key'"
                   @click.prevent="showApiKey = !showApiKey"
                 >
-                  <EyeOff v-if="showApiKey" class="w-4 h-4" />
-                  <Eye v-else class="w-4 h-4" />
+                  <EyeOff v-if="showApiKey" class="provider-edit-small-icon" />
+                  <Eye v-else class="provider-edit-small-icon" />
                 </button>
               </span>
             </label>
           </section>
         </div>
 
-        <footer class="px-5 py-3 border-t flex justify-end gap-2 shrink-0">
+        <footer class="provider-edit-dialog__footer">
           <UiActionButton variant="secondary" @click="close"> 取消 </UiActionButton>
           <UiActionButton variant="primary" :disabled="!canSave || saving" @click="save"> 保存 </UiActionButton>
         </footer>
@@ -239,13 +239,147 @@ async function save() {
 
 <style scoped>
 .provider-edit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
   background: rgb(0 0 0 / 42%);
 }
 
 .provider-edit-dialog {
+  display: flex;
+  width: 100%;
+  max-width: 32rem;
+  max-height: 90vh;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-panel);
+  box-shadow: var(--app-shadow-floating);
   background: var(--app-settings-bg);
   border-color: var(--app-border);
   color: var(--app-text-primary);
+}
+
+.provider-edit-dialog__header,
+.provider-edit-dialog__footer {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--app-border);
+  background: var(--app-settings-card);
+}
+
+.provider-edit-dialog__title {
+  flex: 1;
+  font-size: var(--app-font-body-strong);
+  font-weight: var(--app-font-weight-medium);
+}
+
+.provider-edit-dialog__icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.provider-edit-dialog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  overflow-y: auto;
+  padding: 1.25rem;
+}
+
+.provider-edit-dialog__section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.provider-edit-icon-row,
+.provider-edit-protocols {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: var(--app-space-2);
+}
+
+.provider-edit-protocols {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.provider-edit-hidden-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.provider-edit-mono,
+.provider-edit-mono-field {
+  font-family: var(--app-font-mono);
+}
+
+.provider-edit-radio {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-2);
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-control);
+  cursor: pointer;
+  font-size: var(--app-font-control);
+  transition: background-color var(--app-motion-fast), border-color var(--app-motion-fast);
+}
+
+.provider-edit-radio-input {
+  accent-color: var(--app-accent);
+}
+
+.provider-edit-secret-field {
+  position: relative;
+  display: block;
+  min-width: 0;
+}
+
+.provider-edit-mono-field {
+  font-family: var(--app-font-mono);
+}
+
+.provider-edit-secret-input {
+  padding-right: 2.5rem;
+}
+
+.provider-edit-secret-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  width: 2.5rem;
+  align-items: center;
+  justify-content: center;
+}
+
+.provider-edit-small-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.provider-edit-dialog__footer {
+  justify-content: flex-end;
+  gap: var(--app-space-2);
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-top: 1px solid var(--app-border);
+  border-bottom: 0;
 }
 
 .provider-edit-dialog header,
@@ -303,11 +437,18 @@ async function save() {
 }
 
 .provider-edit-avatar-upload {
+  position: relative;
+  width: 3.5rem;
+  height: 3.5rem;
+  overflow: hidden;
+  border-radius: var(--app-radius-control);
   border: 1px solid var(--app-border);
   background: var(--app-settings-bg);
 }
 
 .provider-edit-current-icon {
+  width: 100%;
+  height: 100%;
   border: 0;
   border-radius: 0;
   box-shadow: none;
@@ -319,6 +460,11 @@ async function save() {
 }
 
 .provider-edit-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: rgb(0 0 0 / 52%);
   color: #ffffff;
   opacity: 0;
@@ -346,6 +492,12 @@ async function save() {
   .provider-edit-field {
     grid-template-columns: minmax(0, 1fr);
     gap: 6px;
+  }
+}
+
+@media (min-width: 640px) {
+  .provider-edit-protocols {
+    flex-direction: row;
   }
 }
 </style>

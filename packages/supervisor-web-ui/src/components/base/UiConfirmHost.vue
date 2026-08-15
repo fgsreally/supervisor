@@ -75,12 +75,12 @@ function confirmAction() {
 .ui-confirm__input {
   width: 100%;
   margin-top: 14px;
-  padding: 9px 10px;
+  padding: 0.5625rem 0.625rem;
   color: var(--app-text-primary);
   font-size: var(--app-font-body);
   background: var(--app-input-bg, transparent);
   border: 1px solid var(--app-border-subtle);
-  border-radius: 7px;
+  border-radius: var(--app-radius-control);
   outline: none;
 }
 
@@ -90,19 +90,19 @@ function confirmAction() {
 
 /* PC: fixed px type matching pre-type-scale confirm */
 .ui-confirm__message--desktop {
-  font-size: 13px;
+  font-size: var(--app-font-control);
 }
 
 .ui-confirm__input--desktop {
-  font-size: 13px;
+  font-size: var(--app-font-control);
 }
 
 .ui-confirm__actions--desktop {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 8px;
-  padding: 12px 20px;
+  gap: var(--app-space-2);
+  padding: var(--app-space-3) var(--app-space-5);
 }
 
 .ui-confirm__actions--mobile {
@@ -112,7 +112,7 @@ function confirmAction() {
 
 .ui-confirm__cancel,
 .ui-confirm__ok {
-  padding: 13px 12px;
+  padding: var(--app-space-3) var(--app-space-2);
   font-size: var(--app-font-control);
   font-weight: var(--app-font-weight-medium);
   transition: background-color 0.12s ease;
@@ -129,7 +129,7 @@ function confirmAction() {
 }
 
 .ui-confirm__ok--danger {
-  color: #fa5151;
+  color: var(--app-danger);
 }
 
 .ui-confirm__cancel:hover,
@@ -151,11 +151,11 @@ function confirmAction() {
 <style>
 /* Unscoped: panelClass lands on UiDialog root */
 .ui-dialog.ui-confirm-dialog--desktop .ui-dialog__title {
-  font-size: 16px;
+  font-size: var(--app-font-title);
   font-weight: 600;
 }
 
 .ui-dialog.ui-confirm-dialog--desktop .ui-dialog__body {
-  font-size: 13px;
+  font-size: var(--app-font-control);
 }
 </style>

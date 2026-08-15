@@ -161,11 +161,11 @@ function closeTab(id: string) {
   min-width: 72px;
   flex: none;
   align-items: center;
-  gap: 4px;
-  padding: 8px 8px 8px 12px;
+  gap: var(--app-space-1);
+  padding: var(--app-space-2) var(--app-space-2) var(--app-space-2) var(--app-space-3);
   border-right: 1px solid var(--app-border-subtle);
   color: var(--app-text-secondary);
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   line-height: 1.2;
   background: transparent;
   cursor: pointer;
@@ -198,7 +198,7 @@ function closeTab(id: string) {
   justify-content: center;
   width: 18px;
   height: 18px;
-  border-radius: 4px;
+  border-radius: var(--app-radius-control);
   color: var(--app-text-muted);
 }
 

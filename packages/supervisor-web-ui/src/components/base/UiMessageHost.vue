@@ -56,7 +56,7 @@ const { message } = useUiMessage();
   color: var(--app-danger);
 }
 .ui-message--info svg {
-  color: #576b95;
+  color: var(--app-text-link);
 }
 .ui-message-enter-active,
 .ui-message-leave-active {
@@ -72,8 +72,8 @@ const { message } = useUiMessage();
   .ui-message {
     top: auto;
     bottom: calc(78px + env(safe-area-inset-bottom));
-    padding: 11px 14px;
-    border-radius: 10px;
+    padding: 0.6875rem 0.875rem;
+    border-radius: var(--app-radius-panel);
     box-shadow: 0 8px 28px rgb(0 0 0 / 20%);
   }
 

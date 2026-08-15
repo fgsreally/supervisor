@@ -76,7 +76,7 @@ function onBackdrop() {
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 24px;
+  padding: var(--app-space-6);
   background: rgb(0 0 0 / 42%);
   backdrop-filter: blur(2px);
 }
@@ -85,7 +85,7 @@ function onBackdrop() {
   width: min(380px, calc(100vw - 48px));
   overflow: hidden;
   border: 1px solid var(--app-popup-border, var(--app-border-subtle));
-  border-radius: 12px;
+  border-radius: var(--app-radius-panel);
   background: var(--app-popup-bg);
   box-shadow:
     0 0 0 1px rgb(0 0 0 / 3%),
@@ -96,8 +96,8 @@ function onBackdrop() {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
-  padding: 22px 22px 8px;
+  gap: var(--app-space-2);
+  padding: var(--app-space-5) var(--app-space-5) var(--app-space-2);
 }
 
 .ui-dialog__title {
@@ -109,11 +109,11 @@ function onBackdrop() {
 
 .ui-dialog__close {
   margin: -6px -6px 0 0;
-  padding: 4px 8px;
+  padding: var(--app-space-1) var(--app-space-2);
   color: var(--app-text-secondary);
   font-size: var(--app-font-title);
   line-height: 1;
-  border-radius: 6px;
+  border-radius: var(--app-radius-control);
 }
 
 .ui-dialog__close:hover {

@@ -1,5 +1,5 @@
 <template>
-  <div class="inline-flex items-center gap-1.5 shrink-0">
+  <div class="inline-edit-actions">
     <button v-if="!editing" type="button" class="inline-edit-btn" @click="emit('edit')">
       编辑
     </button>
@@ -37,6 +37,13 @@ const emit = defineEmits<{
     background-color 0.15s,
     color 0.15s,
     border-color 0.15s;
+}
+
+.inline-edit-actions {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.375rem;
 }
 
 .inline-edit-btn:hover {

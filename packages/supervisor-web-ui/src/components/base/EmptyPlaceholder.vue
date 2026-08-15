@@ -1,17 +1,17 @@
 <template>
   <div
-    class="flex-1 flex min-w-0 basis-0 h-full w-full items-center justify-center overflow-hidden"
+    class="empty-placeholder"
     style="background: var(--app-settings-bg)"
   >
-    <div class="text-center px-8">
+    <div class="empty-placeholder__content">
       <div
-        class="w-24 h-24 mx-auto rounded-full flex items-center justify-center mb-4"
+        class="empty-placeholder__icon-wrap"
         style="background: var(--app-list-search-bg)"
       >
-        <component :is="icon" class="w-10 h-10" style="color: var(--app-text-muted)" />
+        <component :is="icon" class="empty-placeholder__icon" style="color: var(--app-text-muted)" />
       </div>
-      <h2 class="text-xl font-medium" style="color: var(--app-text-primary)">{{ title }}</h2>
-      <p class="mt-2 text-sm max-w-xs" style="color: var(--app-text-secondary)">{{ subtitle }}</p>
+      <h2 class="empty-placeholder__title" style="color: var(--app-text-primary)">{{ title }}</h2>
+      <p class="empty-placeholder__subtitle" style="color: var(--app-text-secondary)">{{ subtitle }}</p>
     </div>
   </div>
 </template>
@@ -58,3 +58,47 @@ const subtitle = computed(() => {
   }
 });
 </script>
+
+<style scoped>
+.empty-placeholder {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.empty-placeholder__content {
+  padding: 0 var(--app-space-8);
+  text-align: center;
+}
+
+.empty-placeholder__icon-wrap {
+  display: flex;
+  width: 6rem;
+  height: 6rem;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto var(--app-space-4);
+  border-radius: var(--app-radius-pill);
+}
+
+.empty-placeholder__icon {
+  width: 2.5rem;
+  height: 2.5rem;
+}
+
+.empty-placeholder__title {
+  font-size: var(--app-font-title);
+  font-weight: var(--app-font-weight-medium);
+}
+
+.empty-placeholder__subtitle {
+  max-width: 16rem;
+  margin-top: var(--app-space-2);
+  font-size: var(--app-font-body);
+}
+</style>

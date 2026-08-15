@@ -48,10 +48,21 @@ export {
   getPackagedToolDir,
   listPackagedToolIds,
 } from "./core/tools/index.js";
-export { defineExtension, Type, type Static, type TSchema } from "./core/extensions/index.js";
+export {
+  defineAgentExtension,
+  defineExtension,
+  Type,
+  type Static,
+  type TSchema,
+} from "./core/extensions/index.js";
 export { loadExtension, loadExtensions } from "./core/extensions/index.js";
 export type {
   ExtensionContext,
+  AgentExtensionContext,
+  AgentExtensionDefinition,
+  AgentExtensionAgent,
+  ExtensionSession,
+  SessionSetupReason,
   ExtensionEvent,
   ExtensionJobFacade,
   MessageEntry,

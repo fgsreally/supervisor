@@ -1,10 +1,10 @@
 import { loadExtensionModule, requireExtensionEntry } from "./loader.js";
-import type { ExtensionDefinition } from "./types.js";
+import type { AnyExtensionDefinition } from "./types.js";
 import type { SupervisorDb } from "../db/db.js";
 
 export interface LoadedExtensionModule {
   slug: string;
-  definition: ExtensionDefinition;
+  definition: AnyExtensionDefinition;
   path: string;
   entryPath: string;
   error?: string;

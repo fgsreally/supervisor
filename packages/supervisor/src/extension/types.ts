@@ -50,15 +50,26 @@ export interface SessionTodoInfo {
 // Extension Entry
 // ============================================================================
 
-export interface ExtensionDefinition {
+export type ExtensionCleanup = () => void | Promise<void>;
+export type SessionSetupReason = "created" | "restored" | "extension_reload";
+
+export interface SessionExtensionDefinition {
   /** 扩展名称（用于标识和日志） */
   name: string;
 
   /** 初始化函数 */
-  setup(
-    context: ExtensionContext,
-  ): (() => void | Promise<void>) | void | Promise<void | (() => void | Promise<void>)>;
+  setup(context: ExtensionContext): ExtensionCleanup | void | Promise<void | ExtensionCleanup>;
 }
+
+export interface AgentExtensionDefinition {
+  name: string;
+  readonly scope: "agent";
+  setup(context: AgentExtensionContext): ExtensionCleanup | void | Promise<void | ExtensionCleanup>;
+}
+
+/** Legacy/session-scoped extension definition retained for compatibility. */
+export type ExtensionDefinition = SessionExtensionDefinition;
+export type AnyExtensionDefinition = SessionExtensionDefinition | AgentExtensionDefinition;
 
 export interface ScheduleInjectionInput {
   variant: string;
@@ -196,12 +207,26 @@ export interface ExtensionSession {
   readonly activity: {
     touch(): void;
   };
+  /** Project belonging to this Session. */
+  readonly project: SupervisorProjectFacade;
+  /** Session-scoped prompt injection. */
+  readonly inject: TurnInjectorFacade;
   readonly tools: {
     beforeUse(handler: ToolGuardHandler, options?: { priority?: number }): () => void;
     afterUse(handler: ToolResultHandler, options?: { priority?: number }): () => void;
+    activate(names: string[]): Promise<void>;
+    deactivate(names: string[]): Promise<void>;
     enable(name: string): void;
     disable(name: string, reason?: string): void;
   };
+  on<K extends SessionExtensionEvent["type"]>(
+    event: K,
+    handler: (
+      event: Extract<SessionExtensionEvent, { type: K }>,
+      ctx: EventHandlerContext,
+    ) => void | Promise<void>,
+    options?: ExtensionEventHandlerOptions,
+  ): void;
   getDir(): Promise<string>;
   /** Update session working directory (e.g. after worktree create). */
   setCwd(path: string): Promise<void>;
@@ -296,6 +321,16 @@ export interface ExtensionAgent {
   setModel(provider: string, modelId: string): Promise<void>;
   setThinkingLevel(level: "none" | "low" | "medium" | "high"): void;
   getThinkingLevel(): "none" | "low" | "medium" | "high";
+}
+
+export interface AgentExtensionAgent extends Omit<ExtensionAgent, "activate" | "deactivate"> {
+  on(
+    event: "session.setup",
+    handler: (
+      session: ExtensionSession,
+      reason: SessionSetupReason,
+    ) => void | ExtensionCleanup | Promise<void | ExtensionCleanup>,
+  ): void;
 }
 
 export type ExtensionSlashSource = "skill" | "prompt" | "custom";
@@ -441,6 +476,25 @@ export interface ExtensionContext {
       extraTools?: AgentTool[];
     }): Promise<WatsonRunResult>;
   };
+}
+
+export interface AgentExtensionContext {
+  readonly agent: AgentExtensionAgent;
+  readonly policies: ExtensionContext["policies"];
+  readonly db: ExtensionRawDatabase;
+  readonly ui: SupervisorUiFacade;
+  readonly events: EventBus;
+  readonly watson: ExtensionContext["watson"];
+  log(
+    level: "debug" | "info" | "warn" | "error",
+    message: string,
+    meta?: Record<string, unknown>,
+  ): void;
+  exec(
+    command: string,
+    args: string[],
+    options?: { cwd?: string; timeout?: number; signal?: AbortSignal },
+  ): Promise<ExecResult>;
 }
 
 export interface ExtensionToolCallResult<TResult = unknown> {
@@ -665,33 +719,6 @@ export interface ExtensionEventHandlerOptions {
 
 export type ExtensionEvent =
   // ==================== 会话生命周期 ====================
-  | {
-      type: "session.start";
-      reason: "startup" | "fork" | "switch";
-      sessionId: number;
-      parentSessionId?: string;
-    }
-  | {
-      /** Fired after session DB row exists, before harness bind (worktree setup). */
-      type: "session.create";
-      sessionId: number;
-      parentSessionId?: string;
-      cwd: string;
-      toolsPreset: "coding" | "readonly" | "none";
-      agentDisplayName?: string;
-      spawnType?: string | null;
-      meta?: Record<string, unknown>;
-    }
-  | {
-      /** @deprecated Alias of session.create */
-      type: "session.prepare";
-      sessionId: number;
-      parentSessionId?: string;
-      cwd: string;
-      toolsPreset: "coding" | "readonly" | "none";
-      agentDisplayName?: string;
-      meta?: Record<string, unknown>;
-    }
   | {
       /** Service teardown before achieve (stop / uninstall). */
       type: "session.before_complete";
@@ -943,6 +970,9 @@ export type ExtensionEvent =
       error: string;
     };
 
+/** Events emitted by one loaded Session runtime. Agent lifecycle uses AgentExtensionAgent.on. */
+export type SessionExtensionEvent = ExtensionEvent;
+
 /** 事件处理器上下文 */
 export interface EventHandlerContext {
   /** 当前会话 ID */
@@ -1122,7 +1152,7 @@ export interface EventBus {
 // ============================================================================
 
 export interface LoadExtensionResult {
-  definition: ExtensionDefinition;
+  definition: AnyExtensionDefinition;
   path: string;
   resolvedPath: string;
   error?: string;

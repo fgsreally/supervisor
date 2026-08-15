@@ -226,7 +226,7 @@ describe("extension runtime events", () => {
       defineExtension({
         name: "event-test",
         setup(ctx) {
-          ctx.on("session.start", async () => {
+          ctx.on("session.end", async () => {
             seen += 1;
           });
           ctx.on("tool.after_call", async () => {
@@ -237,7 +237,7 @@ describe("extension runtime events", () => {
       "/tmp/event-test.ts",
     );
 
-    await runtime.emit({ type: "session.start", reason: "startup", sessionId: 1 } as any);
+    await runtime.emit({ type: "session.end", reason: "shutdown", sessionId: 1 });
     await runtime.emit({
       type: "tool.after_call",
       toolCallId: "1",
@@ -566,7 +566,7 @@ describe("extension runtime events", () => {
     });
   });
 
-  it("loads extension files that listen for session.start", async () => {
+  it("loads extension files that listen for session.end", async () => {
     const tmp = join(tmpdir(), `ext-events-${Date.now()}`);
     mkdirSync(join(tmp, "extensions"), { recursive: true });
     const helloDir = join(tmp, "extensions", "hello");
@@ -579,7 +579,7 @@ let hits = 0;
 export default defineExtension({
   name: "hello-events",
   setup(ctx) {
-    ctx.on("session.start", async () => { hits += 1; });
+    ctx.on("session.end", async () => { hits += 1; });
     ctx.session.appendEntry("hello-events", { hits });
   },
 });`,

@@ -13,8 +13,6 @@ import {
   mcpExtension,
   messageAssetsExtension,
   persistentBashExtension,
-  projectServicesExtension,
-  gitExtension,
   subagentExtension,
   supervisorAdminExtension,
   taskManagementExtension,
@@ -32,7 +30,6 @@ import {
   type ToolInfo,
 } from "../index.js";
 import { SessionExtensionServices } from "./services.js";
-import { sessionActivityStrategy } from "../strategies/session-activity.js";
 
 interface LoadedExtension {
   name: string;
@@ -91,18 +88,16 @@ export class SessionExtensionRuntime {
         this.registerCommand(extensionId, name, definition),
       unregisterCommand: (extensionId, name) => this.unregisterCommand(extensionId, name),
       callTool: (name, params, signal) => this.callRegisteredTool(name, params, signal),
+      removeResources: (extensionId) => this.removeExtensionResources(extensionId),
     });
   }
 
-  async loadBuiltinExtensions(enabledSlugs?: ReadonlySet<string>): Promise<void> {
-    // Hidden strategies are loaded before all visible/bound extensions.
-    if (
-      this.context.db.available &&
-      !this.context.policies?.isDisabled?.("session-activity")
-    ) {
-      await this.loadExtension(sessionActivityStrategy, "strategy:session-activity");
-    }
-    const allow = (slug: string) => enabledSlugs == null || enabledSlugs.has(slug);
+  async loadBuiltinExtensions(
+    enabledSlugs?: ReadonlySet<string>,
+    options?: { exclude?: ReadonlySet<string> },
+  ): Promise<void> {
+    const allow = (slug: string) =>
+      !options?.exclude?.has(slug) && (enabledSlugs == null || enabledSlugs.has(slug));
     if (allow("supervisor-admin")) {
       await this.loadExtension(supervisorAdminExtension, "builtin:supervisor-admin");
     }
@@ -116,12 +111,6 @@ export class SessionExtensionRuntime {
     if (allow("timer")) await this.loadExtension(timerExtension, "builtin:timer");
     if (allow("persistent-bash")) {
       await this.loadExtension(persistentBashExtension, "builtin:persistent-bash");
-    }
-    if (allow("project-services")) {
-      await this.loadExtension(projectServicesExtension, "builtin:project-services");
-    }
-    if (allow("git")) {
-      await this.loadExtension(gitExtension, "builtin:git");
     }
     if (allow("skill")) {
       await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");
@@ -403,7 +392,7 @@ export class SessionExtensionRuntime {
     return result;
   }
 
-  private removeExtensionResources(extensionId: string): void {
+  removeExtensionResources(extensionId: string): void {
     for (const [name, tool] of this.registry.tools) {
       if (tool.extensionName === extensionId) this.registry.tools.delete(name);
     }

@@ -1,8 +1,6 @@
 import { resolve } from "node:path";
-import type { defineExtension } from "pi-supervisor";
+import type { ExtensionSession } from "pi-supervisor";
 import { loadPiNativesBindings } from "../pi-natives-loader.js";
-
-type ExtensionContext = Parameters<Parameters<typeof defineExtension>[0]["setup"]>[0];
 
 const MUTATING_TOOLS = new Set(["write", "edit", "bash", "ast_grep"]);
 
@@ -16,8 +14,8 @@ function extractPath(args: unknown): string | undefined {
   return undefined;
 }
 
-export function registerFsCacheInvalidation(ctx: ExtensionContext): void {
-  ctx.on("tool.after_call", (event) => {
+export function registerFsCacheInvalidation(session: ExtensionSession): void {
+  session.on("tool.after_call", (event) => {
     if (event.type !== "tool.after_call" || event.result.isError) return;
     if (!MUTATING_TOOLS.has(event.name)) return;
 
@@ -26,7 +24,7 @@ export function registerFsCacheInvalidation(ctx: ExtensionContext): void {
 
     try {
       const natives = loadPiNativesBindings();
-      const absolute = resolve(ctx.project.cwd, path);
+      const absolute = resolve(session.project.cwd, path);
       natives.invalidateFsScanCache(absolute);
     } catch {
       // pi-natives unavailable — skip silently

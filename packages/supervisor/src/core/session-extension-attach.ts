@@ -2,9 +2,28 @@ import type { AgentTool, SessionTreeEntry, ThinkingLevel } from "@earendil-works
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentResource } from "../agent/runtime-resources.js";
 import { BUILTIN_EXTENSION_SLUGS } from "../extension/builtin/catalog.js";
+import {
+  createSkillExtension,
+  evalExtension,
+  gitExtension,
+  mcpExtension,
+  messageAssetsExtension,
+  persistentBashExtension,
+  projectServicesExtension,
+  subagentExtension,
+  supervisorAdminExtension,
+  taskManagementExtension,
+  timerExtension,
+  toolLoopGuardExtension,
+} from "../extension/builtin/index.js";
 import { listEnabledBuiltinExtensionSlugs } from "../extension/builtin/ensure.js";
-import type { ExtensionEvent } from "../extension/index.js";
-import { Context, SessionExtensionHost } from "../extension/runtime/index.js";
+import { isAgentExtension } from "../extension/index.js";
+import { sessionActivityPolicy } from "../extension/policies/session-activity.js";
+import {
+  AgentExtensionRuntime,
+  Context,
+  SessionExtensionHost,
+} from "../extension/runtime/index.js";
 import type { SupervisorDb } from "../db/db.js";
 import { ensureProjectDir, ensureSessionDir } from "./session-files.js";
 import type {
@@ -16,6 +35,46 @@ import type { SessionManager } from "./session-manager.js";
 import type { SessionState, SlashCommandInfo } from "./session-runtime.js";
 import type { SessionPromptImage } from "./session-media.js";
 import { writeLog } from "../i18n/logs.js";
+import type { SessionSetupReason } from "../extension/types.js";
+
+const agentExtensionRuntimes = new WeakMap<SessionManager, Map<number, AgentExtensionRuntime>>();
+
+export function isAgentPolicyDisabled(
+  manager: SessionManager,
+  agentId: number,
+  policyId: string,
+): boolean {
+  return agentExtensionRuntimes.get(manager)?.get(agentId)?.isPolicyDisabled(policyId) ?? false;
+}
+
+export async function disposeAgentExtensionRuntime(
+  manager: SessionManager,
+  agentId: number,
+): Promise<void> {
+  const runtimes = agentExtensionRuntimes.get(manager);
+  const runtime = runtimes?.get(agentId);
+  if (!runtime) return;
+  runtimes?.delete(agentId);
+  await runtime.dispose();
+}
+
+function getAgentExtensionRuntime(
+  manager: SessionManager,
+  agentId: number,
+  context: Context,
+): AgentExtensionRuntime {
+  let runtimes = agentExtensionRuntimes.get(manager);
+  if (!runtimes) {
+    runtimes = new Map();
+    agentExtensionRuntimes.set(manager, runtimes);
+  }
+  let runtime = runtimes.get(agentId);
+  if (!runtime) {
+    runtime = new AgentExtensionRuntime(agentId, context);
+    runtimes.set(agentId, runtime);
+  }
+  return runtime;
+}
 
 export async function loadSessionExtensions(options: {
   runtime: ManagedSessionRuntime;
@@ -25,6 +84,7 @@ export async function loadSessionExtensions(options: {
   db: SupervisorDb;
   manager: SessionManager;
   resource: AgentResource;
+  setupReason?: SessionSetupReason;
 }): Promise<SessionExtensionHost | null> {
   const session = options.manager.get(options.runtime.id);
   if (session?.projectId == null) return null;
@@ -41,28 +101,9 @@ export async function loadSessionExtensions(options: {
   const extension = new SessionExtensionHost(context);
 
   await options.manager.ensureResourceCatalog();
-  const currentSession = options.manager.get(options.runtime.id);
-  const isMainSession = currentSession?.parentId == null;
-  const enabledBuiltins = listEnabledBuiltinExtensionSlugs(options.db, options.agentId, {
-    isMainSession,
-  });
-  await extension.initialize(enabledBuiltins);
-
-  const agent = options.db.getAgent(options.agentId);
-  const toolsPreset = agent?.toolsPreset ?? "coding";
-  const spawnType = currentSession?.spawnType ?? null;
-  const createEvent = {
-    type: "session.create",
-    sessionId: options.runtime.id,
-    parentSessionId: currentSession?.parentId ? String(currentSession.parentId) : undefined,
-    cwd: options.cwd,
-    toolsPreset,
-    spawnType,
-    agentDisplayName: options.agentName,
-  } as ExtensionEvent;
-
-  await extension.emit(createEvent);
-  await extension.emit({ ...createEvent, type: "session.prepare" } as ExtensionEvent);
+  const enabledBuiltins = listEnabledBuiltinExtensionSlugs(options.db, options.agentId);
+  // Built-ins are Agent-owned extensions too; the Session host only provides their scoped surface.
+  await extension.initialize(enabledBuiltins, { exclude: BUILTIN_EXTENSION_SLUGS });
 
   const extensionSlugs = options.db
     .listAgentResourceBindings(options.agentId, { kind: "extension", enabledOnly: false })
@@ -71,28 +112,77 @@ export async function loadSessionExtensions(options: {
       if (!slug || BUILTIN_EXTENSION_SLUGS.has(slug)) return [];
       return [slug];
     });
-  const moduleErrors = await extension.loadModules(
-    options.manager.getExtensionRegistry().getMany(extensionSlugs),
+  const modules = options.manager.getExtensionRegistry().getMany(extensionSlugs);
+  const agentRuntime = getAgentExtensionRuntime(options.manager, options.agentId, context);
+  const enabled = (slug: string) => enabledBuiltins == null || enabledBuiltins.has(slug);
+  const loadBuiltin = async (
+    slug: string,
+    definition: Parameters<AgentExtensionRuntime["loadSessionExtension"]>[0],
+  ) => {
+    if (enabled(slug)) await agentRuntime.loadSessionExtension(definition);
+  };
+  // Preparation-sensitive extensions are registered first so their session.setup handlers run first.
+  await loadBuiltin("git", gitExtension);
+  await loadBuiltin("supervisor-admin", supervisorAdminExtension);
+  await loadBuiltin("eval", evalExtension);
+  await loadBuiltin("task-management", taskManagementExtension);
+  await loadBuiltin("tool-loop-guard", toolLoopGuardExtension);
+  await loadBuiltin("timer", timerExtension);
+  await loadBuiltin("persistent-bash", persistentBashExtension);
+  if (enabled("skill")) {
+    await agentRuntime.loadSessionExtensionFactory("skill", (scope) =>
+      createSkillExtension(scope.agentResource),
+    );
+  }
+  await loadBuiltin("mcp", mcpExtension);
+  await loadBuiltin("message-assets", messageAssetsExtension);
+  if (enabled("subagent")) {
+    await agentRuntime.loadSessionExtensionFactory("subagent", () => subagentExtension, {
+      when: (scope) => scope.session.isMain,
+    });
+  }
+  if (enabled("project-services")) {
+    await agentRuntime.loadSessionExtensionFactory(
+      "project-services",
+      () => projectServicesExtension,
+      { when: (scope) => scope.session.isMain },
+    );
+  }
+  const agentModules = modules.filter(
+    (module) => !module.error && isAgentExtension(module.definition),
   );
+  for (const module of agentModules) {
+    if (isAgentExtension(module.definition)) {
+      await agentRuntime.load(module.definition);
+    }
+  }
+  const moduleErrors = modules.flatMap((module) =>
+    module.error ? [{ slug: module.slug, error: module.error }] : [],
+  );
+  for (const module of modules) {
+    if (module.error || isAgentExtension(module.definition)) continue;
+    await agentRuntime.loadSessionExtension(module.definition);
+  }
   for (const moduleError of moduleErrors) {
     writeLog("error", "runtime.extensionAttachFailed", {
       slug: moduleError.slug,
       error: moduleError.error,
     });
   }
+  if (context.policies.isDisabled("session-activity")) {
+    agentRuntime.disablePolicy("session-activity");
+  }
+  if (!agentRuntime.isPolicyDisabled("session-activity")) {
+    await agentRuntime.load(sessionActivityPolicy, { policy: true });
+  }
+
+  await agentRuntime.attach(context, options.setupReason ?? "restored");
+  extension.addScopeCleanup(() => agentRuntime.detach(options.runtime.id));
 
   return extension;
 }
 
-export async function startSessionExtensions(extension: SessionExtensionHost): Promise<void> {
-  await extension.emit({
-    type: "session.start",
-    reason: "startup",
-    sessionId: extension.sessionId,
-  } as ExtensionEvent);
-}
-
-/** Placeholder runtime so session.create (worktree, cwd) can run before the CLI process spawns. */
+/** Placeholder runtime so session.setup can prepare cwd before the CLI process spawns. */
 export class ExtensionAttachRuntime implements ManagedSessionRuntime {
   private target: ManagedSessionRuntime | null = null;
   private host: SessionExtensionHost | null = null;
@@ -178,7 +268,7 @@ export class ExtensionAttachRuntime implements ManagedSessionRuntime {
   }
 
   syncActiveTools(): Promise<void> {
-    return this.requireTarget().syncActiveTools();
+    return this.target?.syncActiveTools() ?? Promise.resolve();
   }
 
   getMessages(): Promise<SessionTreeEntry[]> {

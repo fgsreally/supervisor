@@ -37,19 +37,29 @@ export class SessionExtensionHost {
 
   /** 解除当前 Extension 与 Agent Harness 钩子绑定的清理函数。 */
   private readonly harnessCleanups: Array<() => void> = [];
+  private readonly scopeCleanups: Array<() => void | Promise<void>> = [];
+  readonly context: Context;
 
   /** 当前 Extension 所绑定的 Supervisor 会话 ID。 */
   readonly sessionId: number;
 
   /** 创建 Extension，并将它绑定到唯一的 Agent 会话。 */
   constructor(context: Context) {
+    this.context = context;
     this.sessionId = context.session.id;
     this.runtime = new SessionExtensionRuntime(context);
   }
 
+  addScopeCleanup(cleanup: () => void | Promise<void>): void {
+    this.scopeCleanups.push(cleanup);
+  }
+
   /** Activate built-in extensions after the session Context is fully constructed. */
-  async initialize(enabledBuiltinSlugs?: ReadonlySet<string>): Promise<void> {
-    await this.runtime.loadBuiltinExtensions(enabledBuiltinSlugs);
+  async initialize(
+    enabledBuiltinSlugs?: ReadonlySet<string>,
+    options?: { exclude?: ReadonlySet<string> },
+  ): Promise<void> {
+    await this.runtime.loadBuiltinExtensions(enabledBuiltinSlugs, options);
   }
 
   /** 合并 Harness 内置工具和扩展工具；同名时扩展工具覆盖内置工具。 */
@@ -89,7 +99,8 @@ export class SessionExtensionHost {
         errors.push({ slug: module.slug, error: module.error });
         continue;
       }
-      await this.load(module.definition, module.path);
+      if ("scope" in module.definition && module.definition.scope === "agent") continue;
+      await this.load(module.definition as ExtensionDefinition, module.path);
     }
     return errors;
   }
@@ -347,6 +358,7 @@ export class SessionExtensionHost {
       await this.runtime.unloadAll();
     } finally {
       for (const cleanup of this.harnessCleanups.splice(0)) cleanup();
+      for (const cleanup of this.scopeCleanups.splice(0).reverse()) await cleanup();
       this.emittedAgentMessageCount = 0;
     }
   }

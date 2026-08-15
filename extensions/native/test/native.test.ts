@@ -24,6 +24,7 @@ describe("supervisor-native", () => {
   it("loads extension entry", async () => {
     const mod = await import(extensionEntry);
     expect(mod.default.name).toBe("supervisor-native");
+    expect(mod.default.scope).toBe("agent");
   });
 
   it("exposes required pi-natives bindings", () => {

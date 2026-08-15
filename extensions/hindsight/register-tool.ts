@@ -1,11 +1,9 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import type { defineExtension } from "pi-supervisor";
-
-type ExtensionContext = Parameters<Parameters<typeof defineExtension>[0]["setup"]>[0];
+import type { AgentExtensionContext } from "pi-supervisor";
 
 type ToolContent = Array<{ type: "text"; text: string } | { type: "image"; url: string }>;
 
-export function registerHindsightTool(ctx: ExtensionContext, tool: AgentTool): void {
+export function registerHindsightTool(ctx: AgentExtensionContext, tool: AgentTool): void {
   ctx.agent.registerTool({
     name: tool.name,
     description: tool.description,

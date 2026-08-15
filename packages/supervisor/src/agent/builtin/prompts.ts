@@ -6,6 +6,7 @@ import type { PackagedAgentKind } from "./registry.js";
 export function getPackagedAgentsDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
+    join(here, "../resource/agents"),
     join(here, "../../../resource/agents"),
     join(here, "../../resource/agents"),
     join(here, "../../../prompts/agents"),

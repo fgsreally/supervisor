@@ -162,6 +162,7 @@ interface TestExtensionHost {
   registerCommand(extensionId: string, name: string, definition: ExtensionCommandDefinition): void;
   unregisterCommand(extensionId: string, name: string): void;
   callTool(name: string, params: unknown, signal?: AbortSignal): Promise<ExtensionToolCallResult>;
+  removeResources(extensionId: string): void;
 }
 
 /** Build a Context-shaped test fixture without restoring the removed callback constructor API. */
@@ -298,6 +299,16 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
           services.tools.beforeUse(handler, toolOptions),
         afterUse: (handler: ToolResultHandler, toolOptions?: { priority?: number }) =>
           services.tools.afterUse(handler, toolOptions),
+        activate: async (names: string[]) => {
+          requireHost().setToolsActive?.(names, true);
+          services.tools.activate(names);
+          await options.deps.syncActiveTools();
+        },
+        deactivate: async (names: string[]) => {
+          requireHost().setToolsActive?.(names, false);
+          services.tools.deactivate(names);
+          await options.deps.syncActiveTools();
+        },
         enable: (name: string) => services.tools.enable(name),
         disable: (name: string, reason?: string) => services.tools.disable(name, reason),
       },
@@ -360,6 +371,16 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
       switchTo: options.deps.switchSession,
       navigateTree: options.deps.navigateTree,
       compact: options.deps.compact,
+      on<T extends ExtensionEvent>(
+        event: T["type"],
+        handler: (event: T, eventContext: EventHandlerContext) => void | Promise<void>,
+      ) {
+        requireHost().on(requireExtension(), event, handler);
+      },
+    },
+    policies: {
+      disable: () => {},
+      isDisabled: () => false,
     },
     agent: {
       ...options.agent,
@@ -506,6 +527,18 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
       } finally {
         activeExtensionId = previous;
       }
+    },
+    runExtensionSync<T>(extensionId: string, run: () => T): T {
+      const previous = activeExtensionId;
+      activeExtensionId = extensionId;
+      try {
+        return run();
+      } finally {
+        activeExtensionId = previous;
+      }
+    },
+    removeExtensionResources(extensionId: string) {
+      requireHost().removeResources(extensionId);
     },
     on<T extends ExtensionEvent>(
       event: T["type"],

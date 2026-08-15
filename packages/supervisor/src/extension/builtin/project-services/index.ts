@@ -317,21 +317,23 @@ const projectServicesExtension: ExtensionDefinition = {
 
     ensureGlobalSleepScheduler(ctx);
 
-    ctx.on("session.start", async () => {
-      await reconcileBoundJob();
-      const current = await readServices();
-      if (!current) return;
-      const lastActive = current.lastActiveAt ?? Date.now();
-      if (isServiceActive(current.status) && Date.now() - lastActive >= SESSION_SERVICE_SLEEP_MS) {
+    await reconcileBoundJob();
+    const setupServices = await readServices();
+    if (setupServices) {
+      const lastActive = setupServices.lastActiveAt ?? Date.now();
+      if (
+        isServiceActive(setupServices.status) &&
+        Date.now() - lastActive >= SESSION_SERVICE_SLEEP_MS
+      ) {
         await writeServices({
-          ...current,
+          ...setupServices,
           status: "idle",
           pid: null,
           jobId: undefined,
           resolvedStartCommand: undefined,
         });
       }
-    });
+    }
 
     ctx.on("message.user", async () => wakeServices(), { mode: "async" });
 
@@ -692,35 +694,29 @@ const projectServicesExtension: ExtensionDefinition = {
       execute: async (_toolCallId, params) => updateService(params),
     };
 
-    ctx.on(
-      "session.prepare",
-      async () => {
-        if (!hasRegisteredServices(await readServices())) {
-          try {
-            await ctx.watson.run({
-              mode: "agent",
-              kind: "session-services-register",
-              toolsPreset: "readonly",
-              extraTools: [watsonUpdateTool],
-              injectSystem:
-                "分析当前项目是否有需要启动的本地开发服务。有启动命令则必须调用 UpdateService，action=add；每个服务调用一次。未指定 port 时不要猜 3000/5173，省略 port，系统会在 4396–4500 分配。不要用 bash 启动长期服务；不要改 AGENTS.md。",
-              prompt: [
-                "本 Session 刚创建。请分析项目中需要长期运行的本地开发服务。",
-                "若项目根目录存在 AGENTS.md 且包含「本地开发服务」，优先采用其中的命令；AGENTS.md 或该章节不存在时，继续检查 package.json、workspace 配置、README、构建工具和项目结构，不得因此跳过分析。",
-                "若有启动命令：对每个要跑的服务调用 UpdateService，action=add，传入 name、startCommand 和可选 path；是否需要 installCommand 按工具描述判断。",
-                "不要填写 port，除非命令里写死了端口；未指定时系统使用 4396–4500。",
-                "没有启动命令则不要调用工具，直接结束。",
-                "不要 commit，不要改 AGENTS.md。",
-              ].join("\n"),
-            });
-          } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : String(error);
-            ctx.log("warn", `Session service register skipped: ${message}`);
-          }
-        }
-      },
-      { priority: -100 },
-    );
+    if (!hasRegisteredServices(await readServices())) {
+      try {
+        await ctx.watson.run({
+          mode: "agent",
+          kind: "session-services-register",
+          toolsPreset: "readonly",
+          extraTools: [watsonUpdateTool],
+          injectSystem:
+            "分析当前项目是否有需要启动的本地开发服务。有启动命令则必须调用 UpdateService，action=add；每个服务调用一次。未指定 port 时不要猜 3000/5173，省略 port，系统会在 4396–4500 分配。不要用 bash 启动长期服务；不要改 AGENTS.md。",
+          prompt: [
+            "本 Session 刚创建。请分析项目中需要长期运行的本地开发服务。",
+            "若项目根目录存在 AGENTS.md 且包含「本地开发服务」，优先采用其中的命令；AGENTS.md 或该章节不存在时，继续检查 package.json、workspace 配置、README、构建工具和项目结构，不得因此跳过分析。",
+            "若有启动命令：对每个要跑的服务调用 UpdateService，action=add，传入 name、startCommand 和可选 path；是否需要 installCommand 按工具描述判断。",
+            "不要填写 port，除非命令里写死了端口；未指定时系统使用 4396–4500。",
+            "没有启动命令则不要调用工具，直接结束。",
+            "不要 commit，不要改 AGENTS.md。",
+          ].join("\n"),
+        });
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.log("warn", `Session service register skipped: ${message}`);
+      }
+    }
 
     ctx.agent.registerTool({
       name: "ProjectServiceStart",

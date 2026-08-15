@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "pi-supervisor";
+import type { AgentExtensionContext, ExtensionSession } from "pi-supervisor";
 
 export type StageId =
   | "brainstorm"
@@ -64,4 +64,11 @@ export interface ExecutionState {
   changes: ChangeProgress[];
 }
 
-export type StrictSddContext = ExtensionContext;
+export interface StrictSddContext {
+  session: ExtensionSession;
+  agent: AgentExtensionContext["agent"];
+  project: ExtensionSession["project"];
+  inject: ExtensionSession["inject"];
+  exec: AgentExtensionContext["exec"];
+  log: AgentExtensionContext["log"];
+}

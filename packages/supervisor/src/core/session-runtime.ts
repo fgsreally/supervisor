@@ -17,6 +17,7 @@ import { SessionExtensionHost } from "../extension/runtime/index.js";
 import { activatePackagedTools } from "../tools/loader.js";
 import { isPackagedToolId } from "../tools/catalog.js";
 import type { SupervisorDb } from "../db/db.js";
+import type { SessionSetupReason } from "../extension/types.js";
 import { getDb } from "../db/db.js";
 import { resolveLLMConfig } from "../utils/model-utils.js";
 import type { SessionManager } from "./session-manager.js";
@@ -27,7 +28,7 @@ import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
 import { evaluateAgentPermission, type AgentPermissionRules } from "./agent-permissions.js";
 import type { ApprovalRequest, ApprovalResult } from "../extension/index.js";
 import { harnessAgentState, readHarnessTools } from "./harness-compat.js";
-import { loadSessionExtensions, startSessionExtensions } from "./session-extension-attach.js";
+import { loadSessionExtensions } from "./session-extension-attach.js";
 
 export {
   harnessAgentController,
@@ -158,6 +159,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
     cwd: string,
     db: SupervisorDb,
     manager: SessionManager,
+    setupReason: SessionSetupReason = "restored",
   ): Promise<void> {
     const session = this.getSession();
     // The built-in Pi assistant is deliberately global and has no project-scoped
@@ -172,6 +174,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
       db,
       manager,
       resource: this.resource,
+      setupReason,
     });
     this._extension = extension;
     if (!extension) return;
@@ -189,7 +192,6 @@ export class SessionRuntime implements ManagedSessionRuntime {
     });
 
     extension.bindHarness(this.harness);
-    await startSessionExtensions(extension);
   }
 
   /** Keep harness permission cwd in sync after extensions change session cwd (e.g. worktree). */
@@ -213,7 +215,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
       await this._extension.clear();
       this._extension = null;
     }
-    await this.initExtensions(agentId, agentName, cwd, db, manager);
+    await this.initExtensions(agentId, agentName, cwd, db, manager, "extension_reload");
   }
 
   /**

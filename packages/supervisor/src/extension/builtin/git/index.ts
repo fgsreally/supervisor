@@ -250,21 +250,18 @@ const gitExtension: ExtensionDefinition = {
       });
     }
 
-    ctx.on("session.create", async (event) => {
-      const row = ctx.db.queryOne<Pick<SessionRow, "is_builtin" | "parent_id" | "spawn_type">>(
-        "SELECT is_builtin, parent_id, spawn_type FROM sessions WHERE id = ?",
-        [sessionId],
-      );
-      if (!row) return;
-      if (
-        !shouldCreateWorktree({
-          isBuiltin: !!row.is_builtin,
-          parentId: row.parent_id,
-          spawnType: event.spawnType ?? row.spawn_type,
-        })
-      ) {
-        return;
-      }
+    const row = ctx.db.queryOne<Pick<SessionRow, "is_builtin" | "parent_id" | "spawn_type">>(
+      "SELECT is_builtin, parent_id, spawn_type FROM sessions WHERE id = ?",
+      [sessionId],
+    );
+    if (
+      row &&
+      shouldCreateWorktree({
+        isBuiltin: !!row.is_builtin,
+        parentId: row.parent_id,
+        spawnType: row.spawn_type,
+      })
+    ) {
       try {
         sessionLog(sessionId, "info", "Creating session worktree", ["system", "git", "worktree"]);
         const repoRoot = ensureProjectGitRootSync(projectCwd);
@@ -285,7 +282,7 @@ const gitExtension: ExtensionDefinition = {
           "worktree",
         ]);
       }
-    });
+    }
 
     ctx.on(
       "session.achieve",

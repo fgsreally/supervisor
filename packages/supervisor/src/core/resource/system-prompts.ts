@@ -8,6 +8,7 @@ const templateCache = new Map<string, string>();
 export function getPackagedPromptsDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const candidates = [
+    join(here, "../resource/prompts"),
     join(here, "../../../resource/prompts"),
     join(here, "../../resource/prompts"),
     join(here, "../../../prompts"),

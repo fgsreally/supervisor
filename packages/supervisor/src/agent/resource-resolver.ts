@@ -100,6 +100,8 @@ function createProbeContext(
       },
       todos: { list: async () => [], replace: async () => [] },
       activity: { touch: noop },
+      project: { cwd: process.cwd(), dir: process.cwd(), getDir: async () => process.cwd() },
+      inject: { schedule: noop, clear: noop, reattach: noop },
       getParent: async () => undefined,
       children: async () => [],
       appendEntry: async () => "",
@@ -135,9 +137,12 @@ function createProbeContext(
         getPolicy: () => ToolPolicy.coding(),
         beforeUse: () => noop,
         afterUse: () => noop,
+        activate: noopAsync,
+        deactivate: noopAsync,
         enable: noop,
         disable: noop,
       },
+      on: () => noop,
     }),
     agent: new ContextAgent({
       id: 0,
@@ -468,7 +473,8 @@ export async function resolveAgentTools(
   const extensionSlugs = db.listAgentResourceSlugs(agentId, "extension");
   for (const mod of extensionRegistry.getMany(extensionSlugs)) {
     if (mod.error) continue;
-    const probed = await probeExtensionTools(mod.definition);
+    if ("scope" in mod.definition && mod.definition.scope === "agent") continue;
+    const probed = await probeExtensionTools(mod.definition as ExtensionDefinition);
     for (const tool of probed) {
       merged.set(tool.name, {
         name: tool.name,

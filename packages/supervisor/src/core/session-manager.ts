@@ -32,8 +32,9 @@ import {
 import { ensureGlobalResourceRoot } from "../resources/resource-paths.js";
 import { AgentResource } from "../agent/runtime-resources.js";
 import {
+  disposeAgentExtensionRuntime,
+  isAgentPolicyDisabled,
   loadSessionExtensions,
-  startSessionExtensions,
   ExtensionAttachRuntime,
 } from "./session-extension-attach.js";
 import {
@@ -369,8 +370,21 @@ export class SessionManager {
         });
       },
     });
-    this.stopSessionActivity = startSessionActivityScheduler(this.db, (id) =>
-      this.publishSessionStatus(id),
+    this.stopSessionActivity = startSessionActivityScheduler(
+      this.db,
+      (id) => this.publishSessionStatus(id),
+      (id) => {
+        const row = this.db.get(id);
+        if (row?.agent_id == null) return true;
+        const agent = this.db.getAgent(row.agent_id);
+        if (
+          Array.isArray(agent?.meta.disabledPolicies) &&
+          agent.meta.disabledPolicies.includes("session-activity")
+        ) {
+          return false;
+        }
+        return !isAgentPolicyDisabled(this, row.agent_id, "session-activity");
+      },
     );
     for (const input of this.db.listPersistedSessionInputs()) {
       this.sessionInputQueues.enqueue(input.sessionId, {
@@ -817,6 +831,7 @@ export class SessionManager {
     session: Session,
     agent: Agent,
     startRuntime: (session: Session) => Promise<ManagedSessionRuntime>,
+    setupReason: import("../extension/types.js").SessionSetupReason,
   ): Promise<ManagedSessionRuntime> {
     if (session.projectId == null) return startRuntime(session);
 
@@ -838,6 +853,7 @@ export class SessionManager {
       db: this.db,
       manager: this,
       resource,
+      setupReason,
     });
     if (host) bridge.attachExtension(host);
 
@@ -846,7 +862,6 @@ export class SessionManager {
     bridge.setTarget(runtime);
     if (host) {
       runtime.attachExtension?.(host);
-      await startSessionExtensions(host);
     }
     return runtime;
   }
@@ -886,8 +901,11 @@ export class SessionManager {
       const agent = this.getAgentForSession(session.agentId);
       if (agent && agent.backendType !== "native") {
         const runtime = await timedSessionStep(id, "restoreRuntime/createExternalRuntime", () =>
-          this.attachExternalSessionExtensions(session, agent, (next) =>
-            this.createExternalRuntime(next, agent),
+          this.attachExternalSessionExtensions(
+            session,
+            agent,
+            (next) => this.createExternalRuntime(next, agent),
+            "restored",
           ),
         );
         this.setupRuntime(session.id, runtime);
@@ -1183,8 +1201,11 @@ export class SessionManager {
           { backendType: agentInDb.backendType, agentName: agentInDb.name },
         );
         const runtime = await timedSessionStep(activeSession.id, "createExternalRuntime", () =>
-          this.attachExternalSessionExtensions(activeSession, agentInDb, (next) =>
-            this.createExternalRuntime(next, agentInDb),
+          this.attachExternalSessionExtensions(
+            activeSession,
+            agentInDb,
+            (next) => this.createExternalRuntime(next, agentInDb),
+            "created",
           ),
         );
         sessionLog(activeSession.id, "info", "External runtime ready", ["system", "runtime"], {
@@ -1273,6 +1294,7 @@ export class SessionManager {
         activeSession.cwd,
         this.db,
         this,
+        "created",
       );
       const refreshedAfterExtensions = this.get(activeSession.id)!;
       runtime.syncWorkingDirectory(refreshedAfterExtensions.cwd);
@@ -1368,6 +1390,7 @@ export class SessionManager {
   async reloadNativeAgentExtensions(agentId: number): Promise<void> {
     const agent = this.db.getAgent(agentId);
     if (!agent) return;
+    await disposeAgentExtensionRuntime(this, agentId);
 
     for (const [sessionId, runtime] of this.runtimes) {
       const session = this._getSession(sessionId);
@@ -1398,10 +1421,10 @@ export class SessionManager {
         db: this.db,
         manager: this,
         resource,
+        setupReason: "extension_reload",
       });
       if (!host) continue;
       runtime.attachExtension?.(host);
-      await startSessionExtensions(host);
     }
   }
 

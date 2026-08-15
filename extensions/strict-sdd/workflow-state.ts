@@ -1,4 +1,4 @@
-import type { ExtensionContext } from "pi-supervisor";
+import type { StrictSddContext } from "./types.js";
 
 export type StrictSddStatus = "working" | "waiting_choice" | "waiting_confirmation" | "completed";
 
@@ -18,14 +18,14 @@ function readStatus(meta: Record<string, unknown>): StrictSddStatus {
     : "working";
 }
 
-export async function getWorkflow(ctx: ExtensionContext): Promise<StrictSddWorkflowState | null> {
+export async function getWorkflow(ctx: StrictSddContext): Promise<StrictSddWorkflowState | null> {
   const workflow = await ctx.session.workflow.get();
   if (!workflow?.stage) return null;
   return { stage: workflow.stage, status: readStatus(await ctx.session.meta.get()) };
 }
 
 export async function setWorkflow(
-  ctx: ExtensionContext,
+  ctx: StrictSddContext,
   patch: { stage?: string; status?: StrictSddStatus },
 ): Promise<StrictSddWorkflowState> {
   const current = await getWorkflow(ctx);

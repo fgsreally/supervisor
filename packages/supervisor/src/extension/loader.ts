@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createJiti } from "jiti/static";
-import type { ExtensionDefinition, LoadExtensionResult, LoadExtensionsResult } from "./types.js";
+import type { AnyExtensionDefinition, LoadExtensionResult, LoadExtensionsResult } from "./types.js";
 
 const VALID_ENTRY_EXT = new Set([".ts", ".js", ".mts", ".mjs"]);
 
@@ -157,7 +157,7 @@ export function listExtensionInfosInDirectories(dirs: string[]): ExtensionEntryI
  */
 export async function loadExtensionModule(
   extensionPath: string,
-): Promise<{ definition: ExtensionDefinition | null; error?: string }> {
+): Promise<{ definition: AnyExtensionDefinition | null; error?: string }> {
   try {
     const jiti = createJiti(import.meta.url, {
       moduleCache: false,
@@ -173,7 +173,7 @@ export async function loadExtensionModule(
       };
     }
 
-    const def = module as ExtensionDefinition;
+    const def = module as AnyExtensionDefinition;
 
     if (!def.name || typeof def.name !== "string") {
       return {

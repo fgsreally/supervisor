@@ -291,7 +291,7 @@ export async function createSessionWorktree(
   mkdirSync(join(repoRoot, ".supervisor", "worktrees"), { recursive: true });
   const startBranch = await getCurrentBranch(repoRoot);
 
-  // Session restore / re-init re-emits session.create; reuse an existing worktree.
+  // Session restore / extension reload reruns session.setup; reuse an existing worktree.
   if (existsSync(worktreePath)) {
     try {
       await runGit(worktreePath, ["rev-parse", "--is-inside-work-tree"]);

@@ -118,7 +118,7 @@ describe("packaged agents", () => {
         .map((binding) => binding.resource?.slug)
         .filter((slug): slug is string => typeof slug === "string")
         .sort();
-      expect(slugs).toEqual(["project-services", "session-git-worktree"]);
+      expect(slugs).toEqual(["git", "project-services"]);
     }
   });
 

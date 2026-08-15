@@ -1,5 +1,4 @@
 import { relative, resolve } from "node:path";
-import type { ExtensionContext } from "pi-supervisor";
 import { WorkflowArtifacts } from "./artifacts.js";
 import type {
   ChangeProgress,
@@ -7,6 +6,7 @@ import type {
   PlannedChange,
   StageId,
   WorkflowPlan,
+  StrictSddContext,
 } from "./types.js";
 import { getWorkflow, setWorkflow } from "./workflow-state.js";
 
@@ -37,12 +37,12 @@ function parseJsonResult<T extends object>(text: string): T | null {
   }
 }
 
-async function pickAgent(ctx: ExtensionContext): Promise<number> {
+async function pickAgent(ctx: StrictSddContext): Promise<number> {
   return (await ctx.agent.findByRole("spawned"))[0]?.id ?? ctx.agent.id;
 }
 
 async function spawnWorker(
-  ctx: ExtensionContext,
+  ctx: StrictSddContext,
   role: "test" | "implement" | "verify" | "archive",
   instructions: string,
 ): Promise<number> {
@@ -57,7 +57,7 @@ async function spawnWorker(
   return result.sessionId;
 }
 
-async function waitForWorker(ctx: ExtensionContext, sessionId: number): Promise<string> {
+async function waitForWorker(ctx: StrictSddContext, sessionId: number): Promise<string> {
   const result = await ctx.session.waitForResult(sessionId, { maxChars: MAX_RESULT_CHARS });
   if (result.status === "error") throw new Error(`Worker session ${sessionId} failed`);
   return result.result;
@@ -74,7 +74,7 @@ function nextUnarchived(plan: WorkflowPlan, state: ExecutionState): PlannedChang
 }
 
 async function writeTests(
-  ctx: ExtensionContext,
+  ctx: StrictSddContext,
   artifacts: WorkflowArtifacts,
   change: PlannedChange,
   progress: ChangeProgress,
@@ -105,7 +105,7 @@ async function writeTests(
   await ctx.session.finish(progress.testSessionId);
 }
 
-async function runTestCommand(ctx: ExtensionContext, change: PlannedChange) {
+async function runTestCommand(ctx: StrictSddContext, change: PlannedChange) {
   return ctx.exec(change.test.command, change.test.args, {
     cwd: safeCommandCwd(ctx.project.cwd, change.test.cwd),
     timeout: 10 * 60_000,
@@ -113,7 +113,7 @@ async function runTestCommand(ctx: ExtensionContext, change: PlannedChange) {
 }
 
 async function verifyChange(
-  ctx: ExtensionContext,
+  ctx: StrictSddContext,
   artifacts: WorkflowArtifacts,
   change: PlannedChange,
   progress: ChangeProgress,
@@ -143,7 +143,7 @@ async function verifyChange(
 }
 
 async function implementChange(
-  ctx: ExtensionContext,
+  ctx: StrictSddContext,
   artifacts: WorkflowArtifacts,
   change: PlannedChange,
   progress: ChangeProgress,
@@ -217,7 +217,7 @@ async function implementChange(
 }
 
 async function archiveChange(
-  ctx: ExtensionContext,
+  ctx: StrictSddContext,
   artifacts: WorkflowArtifacts,
   change: PlannedChange,
   progress: ChangeProgress,
@@ -251,7 +251,7 @@ export class WorkflowOrchestrator {
   private running = false;
 
   constructor(
-    private readonly ctx: ExtensionContext,
+    private readonly ctx: StrictSddContext,
     private readonly artifacts: WorkflowArtifacts,
   ) {}
 

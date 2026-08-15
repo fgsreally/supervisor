@@ -1,4 +1,4 @@
-import { defineExtension } from "pi-supervisor";
+import { defineAgentExtension } from "pi-supervisor";
 import { registerFsCacheInvalidation } from "./hooks/fs-cache.js";
 import { isPiNativesAvailable } from "./pi-natives-loader.js";
 import { registerNativeTool } from "./register-tool.js";
@@ -10,30 +10,29 @@ import { createNativeLsTool } from "./tools/ls.js";
 import { createNativeReadTool } from "./tools/read.js";
 import { createNativeWebFetchTool } from "./tools/web-fetch.js";
 
-export default defineExtension({
+export default defineAgentExtension({
   name: "supervisor-native",
+  scope: "agent",
   async setup(ctx) {
     if (!isPiNativesAvailable()) {
       ctx.log("warn", "native extension skipped: pi-natives platform addon unavailable");
       return;
     }
 
-    const cwd = ctx.project.cwd;
-    const tools = [
-      createNativeBashTool(cwd),
-      createNativeGrepTool(cwd),
-      createNativeFindTool(cwd),
-      createNativeLsTool(cwd),
-      createNativeReadTool(cwd),
-      createNativeAstGrepTool(cwd),
-      createNativeWebFetchTool(),
-    ];
+    ctx.agent.on("session.setup", (session) => {
+      const tools = [
+        createNativeBashTool(session.cwd),
+        createNativeGrepTool(session.cwd),
+        createNativeFindTool(session.cwd),
+        createNativeLsTool(session.cwd),
+        createNativeReadTool(session.cwd),
+        createNativeAstGrepTool(session.cwd),
+        createNativeWebFetchTool(),
+      ];
 
-    for (const tool of tools) {
-      registerNativeTool(ctx, tool);
-    }
-
-    registerFsCacheInvalidation(ctx);
+      for (const tool of tools) registerNativeTool(ctx, tool);
+      registerFsCacheInvalidation(session);
+    });
 
     ctx.log(
       "info",

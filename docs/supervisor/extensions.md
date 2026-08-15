@@ -161,7 +161,7 @@ ctx.agent.registerTool({
 
 | 分组      | 当前事件                                                                                          |
 | --------- | ------------------------------------------------------------------------------------------------- |
-| Session   | `session.prepare`、`session.start`、`session.before_complete`、`session.end`                      |
+| Session   | Agent 级 `session.setup`；Session 级 `session.before_complete`、`session.end`                     |
 | 工作流    | `workflow.stage_changed`；`workflow.status_changed` 仅为兼容类型                                  |
 | 消息      | `message.user`、`message.assistant`、`message.tool_call`、`message.tool_result`、`message.custom` |
 | Agent     | `agent.start`、`agent.end`、`agent.error`、`agent.abort`                                          |

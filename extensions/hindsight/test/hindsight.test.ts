@@ -10,6 +10,7 @@ import { extractFactsFromMessages, recallLocalByQuery, retainLocalFacts } from "
 describe("supervisor-hindsight", () => {
   it("exports supervisor-hindsight extension", () => {
     expect(extension.name).toBe("supervisor-hindsight");
+    expect(extension.scope).toBe("agent");
     expect(typeof extension.setup).toBe("function");
   });
 

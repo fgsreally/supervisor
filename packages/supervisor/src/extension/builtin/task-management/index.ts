@@ -332,27 +332,25 @@ const todoExtension: ExtensionDefinition = {
       },
     });
 
-    ctx.on("session.start", async () => {
-      stage = (await ctx.session.workflow.get())?.stage ?? null;
-      if (stage === "goal:active") {
-        await ctx.flow.pause("Goal restored paused after process restart");
-        const task = await currentTask(ctx, "goal");
-        if (task) {
-          await ctx.session.tasks.upsert({ ...taskInput(task), status: "paused" });
-          const artifact = await readTaskArtifact(ctx.session.dir, task.path);
-          if (artifact)
-            await writeTaskArtifact(ctx.session.dir, task.path, {
-              type: "goal",
-              title: artifact.title,
-              status: "paused",
-              body: stripFrontmatter(artifact.content),
-            });
-        }
-        await ctx.session.workflow.clear();
-        stage = null;
+    stage = (await ctx.session.workflow.get())?.stage ?? null;
+    if (stage === "goal:active") {
+      await ctx.flow.pause("Goal restored paused after process restart");
+      const task = await currentTask(ctx, "goal");
+      if (task) {
+        await ctx.session.tasks.upsert({ ...taskInput(task), status: "paused" });
+        const artifact = await readTaskArtifact(ctx.session.dir, task.path);
+        if (artifact)
+          await writeTaskArtifact(ctx.session.dir, task.path, {
+            type: "goal",
+            title: artifact.title,
+            status: "paused",
+            body: stripFrontmatter(artifact.content),
+          });
       }
-      if (isTaskStage(stage)) await applyToolStage(ctx, stage);
-    });
+      await ctx.session.workflow.clear();
+      stage = null;
+    }
+    if (isTaskStage(stage)) await applyToolStage(ctx, stage);
 
     ctx.on("turn.ended", async () => {
       if (stage !== "goal:active") return;

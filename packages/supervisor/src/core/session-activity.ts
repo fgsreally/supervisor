@@ -24,7 +24,18 @@ export function runSessionActivityTick(
   db: SupervisorDb,
   now = Date.now(),
   idleMs = SESSION_ACTIVITY_IDLE_MS,
+  shouldIdle?: (sessionId: number) => boolean,
 ): number {
+  if (shouldIdle) {
+    let changes = 0;
+    for (const row of db.list({ status: "active" })) {
+      if ((row.last_active_at ?? row.created_at) > now - idleMs) continue;
+      if (!shouldIdle(row.id)) continue;
+      db.updateStatus(row.id, "idle");
+      changes += 1;
+    }
+    return changes;
+  }
   const result = db.db
     .prepare(
       `UPDATE sessions
@@ -38,10 +49,11 @@ export function runSessionActivityTick(
 export function startSessionActivityScheduler(
   db: SupervisorDb,
   onUpdated?: (sessionId: number) => void,
+  shouldIdle?: (sessionId: number) => boolean,
 ): () => void {
   const tick = () => {
     const before = new Set(db.list({ status: "active" }).map((row) => row.id));
-    runSessionActivityTick(db);
+    runSessionActivityTick(db, Date.now(), SESSION_ACTIVITY_IDLE_MS, shouldIdle);
     for (const id of before) if (db.get(id)?.status === "idle") onUpdated?.(id);
   };
   tick();

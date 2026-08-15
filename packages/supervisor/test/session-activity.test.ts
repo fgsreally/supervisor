@@ -42,4 +42,20 @@ describe("session activity policy", () => {
     expect(runSessionActivityTick(db, 1000, 100)).toBe(2);
     expect(run).toHaveBeenCalledWith(900);
   });
+
+  it("skips sessions whose Agent disabled the policy", () => {
+    const rows = [
+      { id: 1, status: "active", last_active_at: 100, created_at: 100 },
+      { id: 2, status: "active", last_active_at: 100, created_at: 100 },
+    ];
+    const updateStatus = vi.fn();
+    const db = {
+      list: vi.fn(() => rows),
+      updateStatus,
+    } as any;
+
+    expect(runSessionActivityTick(db, 1000, 100, (id) => id !== 1)).toBe(1);
+    expect(updateStatus).toHaveBeenCalledOnce();
+    expect(updateStatus).toHaveBeenCalledWith(2, "idle");
+  });
 });

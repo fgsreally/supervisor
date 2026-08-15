@@ -65,11 +65,16 @@ describe("strict-sdd extension", () => {
 
   it("never activates a workflow inside a child Session", async () => {
     const registerTool = vi.fn();
-    const result = await extension.setup({
-      session: { isChild: true },
-      agent: { registerTool },
+    let setupSession: ((session: unknown, reason: "created") => Promise<void>) | undefined;
+    await extension.setup({
+      agent: {
+        on: (_event: string, handler: typeof setupSession) => {
+          setupSession = handler;
+        },
+        registerTool,
+      },
     } as never);
-    expect(result).toBeUndefined();
+    await setupSession?.({ isChild: true }, "created");
     expect(registerTool).not.toHaveBeenCalled();
   });
 
@@ -83,38 +88,43 @@ describe("strict-sdd extension", () => {
     const handlers = new Map<string, (event: any) => Promise<void>>();
     let workflow = { stage: "mockup", status: "working" };
     let meta: Record<string, unknown> = {};
-    const context = {
-      session: {
-        id: 1,
-        dir: sessionDir,
-        isChild: false,
-        workflow: {
-          get: async () => workflow,
-          set: async (patch: Partial<typeof workflow>) => (workflow = { ...workflow, ...patch }),
-        },
-        meta: {
-          get: async () => meta,
-          patch: async (patch: Record<string, unknown>) => (meta = { ...meta, ...patch }),
-        },
-        tools: { setActive: vi.fn(async () => {}) },
+    let setupSession: ((session: unknown, reason: "created") => Promise<void>) | undefined;
+    const session = {
+      id: 1,
+      dir: sessionDir,
+      isChild: false,
+      project: { cwd: sessionDir },
+      inject: { reattach: vi.fn(), clear: vi.fn() },
+      workflow: {
+        get: async () => workflow,
+        set: async (patch: Partial<typeof workflow>) => (workflow = { ...workflow, ...patch }),
       },
+      meta: {
+        get: async () => meta,
+        patch: async (patch: Record<string, unknown>) => (meta = { ...meta, ...patch }),
+      },
+      tools: { activate: vi.fn(async () => {}), deactivate: vi.fn(async () => {}) },
+      on: (type: string, handler: (event: any) => Promise<void>) => {
+        handlers.set(type, handler);
+      },
+    };
+    const context = {
       agent: {
         id: 1,
+        on: (_event: string, handler: typeof setupSession) => {
+          setupSession = handler;
+        },
         registerTool: (tool: { name: string; execute: (params: unknown) => Promise<unknown> }) =>
           tools.set(tool.name, tool),
         listTools: () => [...tools].map(([name]) => ({ name })),
         findByRole: async () => [],
       },
-      project: { cwd: sessionDir },
-      inject: { reattach: vi.fn(), clear: vi.fn() },
-      on: (type: string, handler: (event: any) => Promise<void>) => {
-        handlers.set(type, handler);
-        return () => handlers.delete(type);
-      },
+      exec: vi.fn(),
       log: vi.fn(),
     };
 
     await extension.setup(context as never);
+    await setupSession?.(session, "created");
     const complete = tools.get("workflow_complete_stage")!;
     await expect(complete.execute({})).rejects.toThrow("mockup.html");
     await artifacts.write("specs/auth/mockup.html", "<html></html>");

@@ -127,6 +127,8 @@ export interface ContextSessionTools {
   getPolicy(): ToolPolicy;
   beforeUse(handler: ToolGuardHandler, options?: { priority?: number }): () => void;
   afterUse(handler: ToolResultHandler, options?: { priority?: number }): () => void;
+  activate(names: string[]): Promise<void>;
+  deactivate(names: string[]): Promise<void>;
   enable(name: string): void;
   disable(name: string, reason?: string): void;
 }
@@ -176,7 +178,17 @@ interface ContextSessionOptions {
     ): Promise<SessionTodoInfo[]>;
   };
   activity: { touch: () => void };
+  project: ExtensionContext["project"];
+  inject: ExtensionContext["inject"];
   tools: ContextSessionTools;
+  on<K extends ExtensionEvent["type"]>(
+    event: K,
+    handler: (
+      event: Extract<ExtensionEvent, { type: K }>,
+      ctx: EventHandlerContext,
+    ) => void | Promise<void>,
+    options?: ExtensionEventHandlerOptions,
+  ): () => void;
   appendSystemPrompt: (content: string) => Promise<void>;
   upsertSystemPromptBlock: (id: string, content: string) => Promise<void>;
   getParent: () => Promise<SessionInfo | undefined>;
@@ -282,6 +294,7 @@ interface ContextExtensionHost {
   registerCommand(extensionId: string, name: string, definition: ExtensionCommandDefinition): void;
   unregisterCommand(extensionId: string, name: string): void;
   callTool(name: string, params: unknown, signal?: AbortSignal): Promise<ExtensionToolCallResult>;
+  removeResources(extensionId: string): void;
 }
 
 /** Session-scoped context shared by every extension activated for that session. */
@@ -314,6 +327,7 @@ export class Context {
   readonly watson: ExtensionContext["watson"];
 
   private activeExtensionId: string | undefined;
+  private readonly extensionCleanups = new Map<string, Set<() => void>>();
   private extensionHost: ContextExtensionHost | undefined;
   private readonly logger: (
     level: "debug" | "info" | "warn" | "error",
@@ -386,13 +400,34 @@ export class Context {
     const sessionTools: ContextSessionTools = {
       setPolicy: (policy) => this.services.tools.setPolicy(policy),
       getPolicy: () => this.services.tools.getPolicy(),
-      beforeUse: (handler, options) => this.services.tools.beforeUse(handler, options),
-      afterUse: (handler, options) => this.services.tools.afterUse(handler, options),
+      beforeUse: (handler, options) =>
+        this.trackExtensionCleanup(this.services.tools.beforeUse(handler, options)),
+      afterUse: (handler, options) =>
+        this.trackExtensionCleanup(this.services.tools.afterUse(handler, options)),
+      activate: async (names) => {
+        this.requireExtensionHost().setToolsActive(names, true);
+        await deps.syncActiveTools();
+      },
+      deactivate: async (names) => {
+        this.requireExtensionHost().setToolsActive(names, false);
+        await deps.syncActiveTools();
+      },
       enable: (name) => this.services.tools.enable(name),
       disable: (name, reason) => this.services.tools.disable(name, reason),
     };
 
     const sessionState = { cwd: session.cwd };
+    const projectFacade: ExtensionContext["project"] = {
+      cwd: projectRow.cwd,
+      dir: getProjectDir(session.projectId),
+      getDir: deps.getProjectDir,
+    };
+    const injectFacade: ExtensionContext["inject"] = {
+      schedule: (input: ScheduleInjectionInput) => this.services.inject.schedule(input),
+      clear: (variant: string) => this.services.inject.clear(variant),
+      reattach: (variant, content, options) =>
+        this.services.inject.reattach(variant, content, options),
+    };
 
     const sessionOptions: ContextSessionOptions = {
       id: session.id,
@@ -451,7 +486,10 @@ export class Context {
         replace: deps.setTodos,
       },
       activity: { touch: () => touchSessionActivity(db, session.id) },
+      project: projectFacade,
+      inject: injectFacade,
       tools: sessionTools,
+      on: (event, handler, options) => this.on(event, handler, options),
       getParent: extensionDb.getParentSession,
       children: extensionDb.getChildSessions,
       appendEntry: deps.appendEntry,
@@ -566,11 +604,7 @@ export class Context {
     this.db = new ContextDb(db.db);
     // Project cwd is the project root (e.g. D:\myproject\lizi), NOT the session
     // worktree / default supervisor data dir. Worktree creation keys off this.
-    this.project = {
-      cwd: projectRow.cwd,
-      dir: getProjectDir(session.projectId),
-      getDir: deps.getProjectDir,
-    };
+    this.project = projectFacade;
     this.ui = {
       broadcast: deps.broadcast,
       requestApproval: (request) => this.services.uiApproval.requestApproval(request),
@@ -587,15 +621,7 @@ export class Context {
       startScope: (scope: string) => this.services.flow.startScope(scope),
       endScope: (scope: string) => this.services.flow.endScope(scope),
     };
-    this.inject = {
-      schedule: (input: ScheduleInjectionInput) => this.services.inject.schedule(input),
-      clear: (variant: string) => this.services.inject.clear(variant),
-      reattach: (
-        variant: string,
-        content: string,
-        options?: Omit<ScheduleInjectionInput, "variant" | "content">,
-      ) => this.services.inject.reattach(variant, content, options),
-    };
+    this.inject = injectFacade;
     this.logger = deps.log;
     this.commandExecutor = deps.exec;
     this.watson = {
@@ -644,6 +670,27 @@ export class Context {
     }
   }
 
+  /** Synchronous ownership scope used while installing Agent-level registrations. */
+  runExtensionSync<T>(extensionId: string, run: () => T): T {
+    const previous = this.activeExtensionId;
+    this.activeExtensionId = extensionId;
+    try {
+      return run();
+    } finally {
+      this.activeExtensionId = previous;
+    }
+  }
+
+  /** Internal cleanup used when an Agent-owned Session scope detaches. */
+  removeExtensionResources(extensionId: string): void {
+    const cleanups = this.extensionCleanups.get(extensionId);
+    if (cleanups) {
+      this.extensionCleanups.delete(extensionId);
+      for (const cleanup of cleanups) cleanup();
+    }
+    this.requireExtensionHost().removeResources(extensionId);
+  }
+
   on<K extends ExtensionEvent["type"]>(
     event: K,
     handler: (
@@ -685,6 +732,21 @@ export class Context {
     }
     for (const tool of this.extensionHost?.listTools() ?? []) merged.set(tool.name, tool);
     return [...merged.values()];
+  }
+
+  private trackExtensionCleanup(cleanup: () => void): () => void {
+    const extensionId = this.requireActiveExtension();
+    const cleanups = this.extensionCleanups.get(extensionId) ?? new Set<() => void>();
+    let active = true;
+    const tracked = () => {
+      if (!active) return;
+      active = false;
+      cleanups.delete(tracked);
+      cleanup();
+    };
+    cleanups.add(tracked);
+    this.extensionCleanups.set(extensionId, cleanups);
+    return tracked;
   }
 
   private requireActiveExtension(): string {
@@ -734,6 +796,16 @@ export class ContextSession {
   get messages(): ContextSessionMessages {
     return this.options.messages;
   }
+  on<K extends ExtensionEvent["type"]>(
+    event: K,
+    handler: (
+      event: Extract<ExtensionEvent, { type: K }>,
+      ctx: EventHandlerContext,
+    ) => void | Promise<void>,
+    options?: ExtensionEventHandlerOptions,
+  ): void {
+    this.options.on(event, handler, options);
+  }
   get meta(): ContextSessionMeta {
     return this.options.meta;
   }
@@ -748,6 +820,12 @@ export class ContextSession {
   }
   get activity(): ContextSessionOptions["activity"] {
     return this.options.activity;
+  }
+  get project(): ContextSessionOptions["project"] {
+    return this.options.project;
+  }
+  get inject(): ContextSessionOptions["inject"] {
+    return this.options.inject;
   }
   get tools(): ContextSessionTools {
     return this.options.tools;

@@ -2,9 +2,9 @@
   <section class="provider-model-table">
     <div class="provider-model-table__header">
       <div>
-        <div class="provider-model-table__title">模型</div>
+        <div class="provider-model-table__title">{{ t("provider.model") }}</div>
         <div class="provider-model-table__subtitle">
-          {{ editable ? "增删改查" : "查看模型能力标签与启用状态" }}
+          {{ t(editable ? "provider.modelDescriptionEditable" : "provider.modelDescriptionReadonly") }}
         </div>
       </div>
       <button
@@ -13,7 +13,7 @@
         class="provider-model-table__add"
         @click="openCreate"
       >
-        添加模型
+        {{ t("provider.addModel") }}
       </button>
     </div>
 
@@ -23,10 +23,10 @@
           <tr>
             <th class="provider-model-table__cell provider-model-table__cell--center">Provider</th>
             <th class="provider-model-table__cell provider-model-table__cell--left">Model ID</th>
-            <th class="provider-model-table__cell provider-model-table__cell--left">名称</th>
-            <th class="provider-model-table__cell provider-model-table__cell--right">上下文</th>
-            <th class="provider-model-table__cell provider-model-table__cell--center">图像</th>
-            <th v-if="editable" class="provider-model-table__cell provider-model-table__cell--right">操作</th>
+            <th class="provider-model-table__cell provider-model-table__cell--left">{{ t("provider.displayName") }}</th>
+            <th class="provider-model-table__cell provider-model-table__cell--right">{{ t("provider.contextWindow") }}</th>
+            <th class="provider-model-table__cell provider-model-table__cell--center">{{ t("provider.supportsVision") }}</th>
+            <th v-if="editable" class="provider-model-table__cell provider-model-table__cell--right">{{ t("common.edit") }}</th>
           </tr>
         </thead>
         <tbody>
@@ -57,14 +57,14 @@
                 class="provider-model-table__link provider-model-table__link--edit"
                 @click.stop="openEdit(model)"
               >
-                编辑
+                {{ t("common.edit") }}
               </button>
               <button
                 type="button"
                 class="provider-model-table__link provider-model-table__link--danger"
                 @click.stop="removeModel(model.id)"
               >
-                删除
+                {{ t("common.delete") }}
               </button>
             </td>
           </tr>
@@ -76,7 +76,7 @@
       v-if="models.length === 0"
       class="provider-model-table__empty provider-model-table__subtitle"
     >
-      暂无模型，请添加
+      {{ t("provider.noModels") }}
     </div>
 
     <ProviderModelEditor
@@ -98,6 +98,7 @@ import ProviderAvatar from "@/components/provider/ProviderAvatar.vue";
 import type { UIProvider, UIProviderModel } from "@/types/ui";
 import { formatTokenCount } from "../../utils/format-tokens";
 import { requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
+import { useI18n } from "@/i18n";
 
 const props = withDefaults(
   defineProps<{
@@ -107,6 +108,7 @@ const props = withDefaults(
   }>(),
   { editable: false },
 );
+const { t } = useI18n();
 
 const emit = defineEmits<{
   "update:models": [models: UIProviderModel[]];
@@ -146,7 +148,12 @@ function onEditorSave(model: UIProviderModel) {
 }
 
 async function removeModel(modelId: string) {
-  if (!(await requestUiDeleteConfirm({ title: "删除模型", message: `确定删除模型 ${modelId}？` }))) {
+  if (
+    !(await requestUiDeleteConfirm({
+      title: t("provider.deleteModel"),
+      message: t("provider.deleteModelConfirm", { id: modelId }),
+    }))
+  ) {
     return;
   }
   emit(

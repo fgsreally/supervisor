@@ -11,7 +11,7 @@
         class="provider-model-editor__header"
       >
         <div class="provider-model-editor__title">
-          {{ mode === "create" ? "添加模型" : "编辑模型" }}
+          {{ t(mode === "create" ? "provider.createModel" : "provider.editModel") }}
         </div>
         <button
           type="button"
@@ -24,7 +24,7 @@
 
       <div class="provider-model-editor__body custom-scrollbar">
         <label class="provider-model-editor__field">
-          <span class="provider-model-editor__muted">Model ID</span>
+          <span class="provider-model-editor__muted">{{ t("provider.modelId") }}</span>
           <input
             v-model="draft.id"
             type="text"
@@ -35,7 +35,7 @@
         </label>
 
         <label class="provider-model-editor__field">
-          <span class="provider-model-editor__muted">显示名称</span>
+          <span class="provider-model-editor__muted">{{ t("provider.displayName") }}</span>
           <input
             v-model="draft.name"
             type="text"
@@ -46,7 +46,7 @@
 
         <div>
           <label class="provider-model-editor__field">
-            <span class="provider-model-editor__muted">上下文上限 (tokens)</span>
+            <span class="provider-model-editor__muted">{{ t("provider.contextWindow") }}</span>
             <input
               v-model.number="draft.contextWindow"
               type="number"
@@ -66,8 +66,8 @@
           <input v-model="draft.supportsVision" type="checkbox" class="provider-model-editor__checkbox" />
           <ModelMultimodalIcon :supports-multimodal="draft.supportsVision" />
           <div>
-            <div class="provider-model-editor__title provider-model-editor__option-title">支持图像输入</div>
-            <div class="provider-model-editor__muted provider-model-editor__hint">对应 pi Model.input 含 image</div>
+            <div class="provider-model-editor__title provider-model-editor__option-title">{{ t("provider.supportsVision") }}</div>
+            <div class="provider-model-editor__muted provider-model-editor__hint">{{ t("provider.supportsVisionHint") }}</div>
           </div>
         </label>
       </div>
@@ -78,7 +78,7 @@
           class="provider-model-editor__cancel"
           @click="emit('cancel')"
         >
-          取消
+          {{ t("common.cancel") }}
         </button>
         <button
           type="button"
@@ -86,7 +86,7 @@
           :disabled="!canSave || saving"
           @click="save"
         >
-          {{ saving ? "保存中..." : "保存" }}
+          {{ saving ? t("provider.savingModel") : t("provider.saveModel") }}
         </button>
       </div>
     </div>
@@ -100,6 +100,7 @@ import ModelMultimodalIcon from "@/components/provider/ModelMultimodalIcon.vue";
 import type { UIProviderModel } from "@/types/ui";
 import { createEmptyProviderModel } from "@/constants/providers";
 import { formatTokenCount } from "../../utils/format-tokens";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   open: boolean;
@@ -108,6 +109,7 @@ const props = defineProps<{
   existingIds?: string[];
   saving?: boolean;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   cancel: [];

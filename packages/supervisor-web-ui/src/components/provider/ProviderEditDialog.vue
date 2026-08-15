@@ -9,15 +9,15 @@
         class="provider-edit-dialog"
       >
         <header class="provider-edit-dialog__header">
-          <h2 class="provider-edit-dialog__title">编辑模型供应商</h2>
-          <button type="button" class="provider-edit-close" title="关闭" @click="close">
+          <h2 class="provider-edit-dialog__title">{{ t("provider.edit") }}</h2>
+          <button type="button" class="provider-edit-close" :title="t('common.close')" @click="close">
             <X class="provider-edit-dialog__icon" />
           </button>
         </header>
 
         <div class="provider-edit-dialog__body custom-scrollbar">
           <section class="provider-edit-dialog__section">
-            <div class="provider-edit-title">基本信息</div>
+            <div class="provider-edit-title">{{ t("provider.basicInfo") }}</div>
 
             <label class="provider-edit-field">
               <span class="provider-edit-label">名称</span>
@@ -25,7 +25,7 @@
             </label>
 
             <div class="provider-edit-field">
-              <div class="provider-edit-label text-[13px]">图标</div>
+              <div class="provider-edit-label">{{ t("provider.icon") }}</div>
               <div class="provider-edit-icon-row">
                 <input
                   ref="iconInput"
@@ -38,7 +38,7 @@
                   type="button"
                   class="provider-edit-avatar-upload"
                   :disabled="uploading"
-                  title="上传图标"
+                  :title="t('provider.uploadIcon')"
                   @click="iconInput?.click()"
                 >
                   <ProviderAvatar
@@ -60,7 +60,7 @@
           </section>
 
           <section class="provider-edit-dialog__section">
-            <div class="provider-edit-title">连接配置</div>
+            <div class="provider-edit-title">{{ t("provider.connection") }}</div>
 
             <div class="provider-edit-field">
               <div class="provider-edit-label text-[13px]">API Type</div>
@@ -140,11 +140,13 @@ import { useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import { uploadIcon } from "@/api";
 import type { UIProvider } from "@/types/ui";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ open: boolean; providerId: string }>();
 const emit = defineEmits<{ close: []; saved: [] }>();
 
 const providerStore = useProviderStore();
+const { t } = useI18n();
 const saving = ref(false);
 const uploading = ref(false);
 const iconInput = ref<HTMLInputElement | null>(null);

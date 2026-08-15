@@ -15,13 +15,13 @@
         class="text-[16px] font-medium flex-1 max-md:flex-none"
         style="color: var(--app-text-primary)"
       >
-        智能代理
+        {{ t("agent.title") }}
       </h1>
       <div class="m-centered-list-header__actions">
         <button
           type="button"
           class="mobile-search-trigger"
-          aria-label="搜索"
+          :aria-label="t('common.search')"
           @click="mobileSearchOpen = true"
         >
           <Search />
@@ -29,24 +29,24 @@
         <button
           type="button"
           class="list-header-btn"
-          title="重新检测外部 Agent"
+          :title="t('agent.detect')"
           :disabled="detecting"
           @click="refreshAvailability"
         >
           <RefreshCw class="w-5 h-5" :class="{ 'animate-spin': detecting }" />
         </button>
-        <button type="button" class="list-header-btn" title="添加智能代理" @click="$emit('add')">
+        <button type="button" class="list-header-btn" :title="t('agent.add')" @click="$emit('add')">
           <UserPlus class="w-5 h-5" />
         </button>
       </div>
     </div>
 
     <div v-else class="mobile-search-page">
-      <button type="button" aria-label="返回" @click="mobileSearchOpen = false">
+      <button type="button" :aria-label="t('common.back')" @click="mobileSearchOpen = false">
         <ArrowLeft />
       </button>
       <Search />
-      <input v-model="query" type="search" placeholder="搜索智能代理" autofocus />
+      <input v-model="query" type="search" :placeholder="t('agent.search')" autofocus />
     </div>
 
     <div
@@ -58,7 +58,7 @@
         <input
           v-model="query"
           type="text"
-          placeholder="搜索智能代理"
+          :placeholder="t('agent.search')"
           class="list-search-input w-full rounded-md pl-8 pr-2 py-1.5 text-[13px] focus:outline-none transition-colors"
         />
       </div>
@@ -88,7 +88,7 @@
         class="py-12 text-center text-sm"
         style="color: var(--app-text-muted)"
       >
-        无匹配智能代理
+        {{ t("agent.empty") }}
       </div>
     </div>
 
@@ -109,7 +109,7 @@
             class="agent-context-menu__delete w-full px-4 py-2 text-left text-[13px]"
             @click="deleteContextAgent"
           >
-            删除
+            {{ t("agent.delete") }}
           </button>
         </div>
       </div>
@@ -127,6 +127,7 @@ import DustTransitionGroup from "@/components/base/DustTransitionGroup.vue";
 import { requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { refreshExternalAgents } from "@/composables/use-external-agent-actions";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   activeId: string;
@@ -142,6 +143,7 @@ const panelStyle = computed(() => {
 const emit = defineEmits<{ select: [id: string]; add: [] }>();
 
 const agentStore = useAgentStore();
+const { t } = useI18n();
 const query = ref("");
 const detecting = ref(false);
 const contextMenu = ref<{ agent: Agent; x: number; y: number } | null>(null);
@@ -155,7 +157,7 @@ async function refreshAvailability() {
   try {
     await refreshExternalAgents();
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "检测外部 Agent 失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("provider.detectFailed"), "error");
   } finally {
     detecting.value = false;
   }
@@ -175,16 +177,16 @@ async function deleteContextAgent() {
   contextMenu.value = null;
   if (!target) return;
   const confirmed = await requestUiDeleteConfirm({
-    title: "删除智能代理",
-    message: `确定删除“${target.name}”吗？`,
+    title: t("agent.delete"),
+    message: t("agent.deleteConfirm", { name: target.name }),
   });
   if (!confirmed) return;
   try {
     await agentStore.deleteAgent(target.id);
     if (props.activeId === target.id) emit("select", agentStore.agents[0]?.id ?? "");
-    showUiMessage("智能代理已删除", "success");
+    showUiMessage(t("agent.deleted"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "删除智能代理失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("agent.deleteFailed"), "error");
   }
 }
 

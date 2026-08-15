@@ -4,12 +4,12 @@
       v-if="!mobileSearchOpen"
       class="provider-panel__header m-centered-list-header"
     >
-      <h1 class="provider-panel__title">模型供应商</h1>
+      <h1 class="provider-panel__title">{{ t("provider.title") }}</h1>
       <div class="m-centered-list-header__actions">
         <button
           type="button"
           class="mobile-search-trigger"
-          aria-label="搜索"
+          :aria-label="t('common.search')"
           @click="mobileSearchOpen = true"
         >
           <Search />
@@ -17,7 +17,7 @@
         <button
           type="button"
           class="list-header-btn"
-          title="添加模型供应商"
+          :title="t('provider.add')"
           @click="emit('add-provider')"
         >
           <Plus class="provider-panel__action-icon" />
@@ -26,11 +26,11 @@
     </div>
 
     <div v-else class="mobile-search-page provider-panel__header">
-      <button type="button" aria-label="返回" @click="mobileSearchOpen = false">
+      <button type="button" :aria-label="t('common.back')" @click="mobileSearchOpen = false">
         <ArrowLeft />
       </button>
       <Search />
-      <input v-model="query" type="search" placeholder="搜索模型供应商" autofocus />
+      <input v-model="query" type="search" :placeholder="t('provider.search')" autofocus />
     </div>
 
     <div class="panel-inline-search provider-panel__header">
@@ -39,7 +39,7 @@
         <input
           v-model="query"
           type="text"
-          placeholder="搜索模型供应商"
+          :placeholder="t('provider.search')"
           class="list-search-input provider-panel__search"
         />
       </div>
@@ -55,7 +55,7 @@
         @contextmenu.prevent.stop="openMenu($event, provider.id)"
       />
       <div v-if="!filteredProviders.length" class="provider-panel__empty provider-panel__muted">
-        暂无模型供应商
+        {{ t("provider.empty") }}
       </div>
     </div>
 
@@ -64,13 +64,13 @@
       class="context-menu fixed z-50 rounded-md shadow-lg border overflow-hidden"
       :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
     >
-      <button type="button" class="context-menu-item" @click="editSelected">编辑模型供应商</button>
+      <button type="button" class="context-menu-item" @click="editSelected">{{ t("provider.edit") }}</button>
       <button
         type="button"
         class="context-menu-item context-menu-item--danger"
         @click="deleteSelected"
       >
-        删除模型供应商
+        {{ t("provider.delete") }}
       </button>
     </div>
   </div>
@@ -82,6 +82,7 @@ import { ArrowLeft, Plus, Search } from "lucide-vue-next";
 import { useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import ProviderListItem from "@/components/provider/ProviderListItem.vue";
+import { useI18n } from "@/i18n";
 
 defineProps<{ activeId: string | null }>();
 
@@ -93,6 +94,7 @@ const emit = defineEmits<{
 }>();
 
 const providerStore = useProviderStore();
+const { t } = useI18n();
 const query = ref("");
 const mobileSearchOpen = ref(false);
 const menu = reactive({ open: false, x: 0, y: 0, providerId: "" });

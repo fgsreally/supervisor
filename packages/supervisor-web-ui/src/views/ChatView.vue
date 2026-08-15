@@ -232,7 +232,7 @@
           :count="servicePreviews.length"
           :container-ref="conversationHostRef"
           :storage-key="`supervisor:preview-orb:${session.id}`"
-          label="应用预览"
+          :label="t('chat.activeApps')"
           @toggle="toggleMobilePreview"
         />
         <FloatingPreviewOrb
@@ -242,7 +242,7 @@
           :open="mobileBashOpen"
           :count="backgroundBashCount"
           default-side="right"
-          label="后台终端"
+          :label="t('chat.backgroundTerminal')"
           :container-ref="conversationHostRef"
           :storage-key="`supervisor:bash-orb:${session.id}`"
           @toggle="toggleMobileBash"
@@ -258,7 +258,7 @@
         />
         <ResponsiveSplitSurface
           :open="isMobileViewport && mobileBashOpen"
-          ariaLabel="后台终端"
+          :ariaLabel="t('chat.backgroundTerminal')"
           :width="sidePanelWidth"
           @close="mobileBashOpen = false"
           @resize-start="startSidePanelResize"
@@ -274,7 +274,7 @@
 
       <ResponsiveSplitSurface
         :open="Boolean(taskPaneOpen && taskCount)"
-        ariaLabel="任务"
+        :ariaLabel="t('chat.todo')"
         :width="sidePanelWidth"
         @close="taskPaneOpen = false"
         @resize-start="startSidePanelResize"
@@ -294,7 +294,7 @@
 
       <ResponsiveSplitSurface
         :open="btwPanelOpen"
-        ariaLabel="顺便问一下"
+        :ariaLabel="t('chat.suggestions')"
         :width="sidePanelWidth"
         @close="btwPanelOpen = false"
         @resize-start="startSidePanelResize"
@@ -313,7 +313,7 @@
       <!-- Mobile: exclusive drawers (unchanged) -->
       <ResponsiveSplitSurface
         :open="isMobileViewport && showLogPanel"
-        ariaLabel="会话日志"
+        :ariaLabel="t('chat.sessionLog')"
         :width="sidePanelWidth"
         @close="showLogPanel = false"
         @resize-start="startSidePanelResize"
@@ -331,7 +331,7 @@
 
       <ResponsiveSplitSurface
         :open="isMobileViewport && showFilesPanel"
-        ariaLabel="工作区文件"
+        :ariaLabel="t('chat.workspaceFiles')"
         :width="sidePanelWidth"
         @close="showFilesPanel = false"
         @resize-start="startSidePanelResize"
@@ -350,7 +350,7 @@
 
       <ResponsiveSplitSurface
         :open="isMobileViewport && Boolean(toolPanel)"
-        :ariaLabel="toolPanel?.title ?? '工具详情'"
+        :ariaLabel="toolPanel?.title ?? t('tool.close')"
         :width="sidePanelWidth"
         @close="toolPanel = null"
         @resize-start="startSidePanelResize"
@@ -374,7 +374,7 @@
       <!-- PC: browser-like multi-tab content surface -->
       <ResponsiveSplitSurface
         :open="!isMobileViewport && contentPanelOpen"
-        ariaLabel="会话内容"
+        :ariaLabel="t('chat.sessionLog')"
         :width="sidePanelWidth"
         :tabs="contentSplitTabs"
         :active-tab-id="activeContentTabId"
@@ -1106,7 +1106,7 @@ function openSidePanel(kind: SidePanelKind) {
       if (isMobileViewport.value) {
         showLogPanel.value = true;
       } else {
-        upsertContentTab({ id: "log", kind: "log", title: "会话日志" });
+        upsertContentTab({ id: "log", kind: "log", title: t("chat.sessionLog") });
       }
       break;
     case "files":
@@ -1780,7 +1780,7 @@ async function onShadowEnabledChange(value: boolean) {
   try {
     await sessionStore.updateSessionMeta(props.session.id, { shadowEnabled: value });
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "影子代理设置更新失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.shadowUpdateFailed"), "error");
   }
 }
 
@@ -1788,9 +1788,9 @@ async function onSpawnedAgentsChange(spawnedAgentIds: string[]) {
   try {
     const { agentIds } = await api.setSessionSubagents(props.session.id, spawnedAgentIds);
     await sessionStore.updateSessionMeta(props.session.id, { subagentIds: agentIds });
-    showUiMessage("Session 代理配置已更新", "success");
+    showUiMessage(t("chat.shadowUpdated"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "代理配置更新失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.agentUpdateFailed"), "error");
   }
 }
 
@@ -1843,9 +1843,9 @@ async function onAvatarChange(avatar: SessionAvatarValue) {
 
 async function rewindToMessage(entryId: string) {
   const confirmed = await requestUiDeleteConfirm({
-    title: "回到这条消息",
-    message: "此后的代码修改和消息都会被移除，确定继续？",
-    confirmText: "回到这里",
+    title: t("chat.revertTitle"),
+    message: t("chat.revertMessage"),
+    confirmText: t("chat.revertConfirm"),
   });
   if (!confirmed) return;
   try {
@@ -1855,7 +1855,7 @@ async function rewindToMessage(entryId: string) {
     await sessionStore.fetchSessions();
     await scrollToBottom();
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "回撤失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.revertFailed"), "error");
   }
 }
 
@@ -1863,9 +1863,9 @@ async function forkFromMessage(entryId: string) {
   try {
     const forked = await sessionStore.forkSession(props.session.id, { entryId });
     emit("navigate", forked.id);
-    showUiMessage("已从此消息创建分支会话", "success");
+    showUiMessage(t("chat.branchCreated"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "分支失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.branchFailed"), "error");
   }
 }
 
@@ -1878,9 +1878,9 @@ async function onCompleteSession() {
   sessionMenuOpen.value = false;
   if (!canCompleteSession.value || isStreaming.value) return;
   const confirmed = await requestUiConfirm({
-    title: "完成会话",
-    message: "完成会话将把 worktree 分支合并到主分支，并关闭此会话。请先提交所有变更。继续？",
-    confirmText: "完成",
+    title: t("chat.completeTitle"),
+    message: t("chat.completeMessage"),
+    confirmText: t("chat.completeConfirm"),
   });
   if (!confirmed) return;
   stopStreaming();
@@ -1888,9 +1888,9 @@ async function onCompleteSession() {
     await sessionStore.completeSession(props.session.id);
     await sessionStore.fetchSession(props.session.id);
     sessionTitle.value = props.session.title ?? sessionTitle.value;
-    showUiMessage("会话已完成", "success");
+    showUiMessage(t("chat.completeSuccess"), "success");
   } catch (err) {
-    showUiMessage(err instanceof Error ? err.message : "完成会话失败", "error");
+    showUiMessage(err instanceof Error ? err.message : t("chat.completeFailed"), "error");
     await sessionStore.fetchSession(props.session.id);
   }
 }
@@ -1899,16 +1899,16 @@ async function onSyncSession() {
   sessionMenuOpen.value = false;
   if (!canCheckpointActions.value || isStreaming.value) return;
   const confirmed = await requestUiConfirm({
-    title: "同步项目修改",
-    message: "将合并项目最新修改，并重新安装依赖和启动服务。请先提交当前会话中的修改。",
-    confirmText: "同步",
+    title: t("chat.syncTitle"),
+    message: t("chat.syncMessage"),
+    confirmText: t("chat.syncConfirm"),
   });
   if (!confirmed) return;
   try {
-    await withUiBusy("正在同步项目修改…", () => sessionStore.syncSession(props.session.id));
-    showUiMessage("同步完成，服务已重新启动", "success");
+    await withUiBusy(t("chat.syncing"), () => sessionStore.syncSession(props.session.id));
+    showUiMessage(t("chat.syncSuccess"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "同步失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.syncFailed"), "error");
   }
 }
 
@@ -1920,7 +1920,7 @@ async function dismissPendingSync() {
   try {
     await sessionStore.updateSessionMeta(props.session.id, { git: nextGit });
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "操作失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.operationFailed"), "error");
   }
 }
 
@@ -1929,10 +1929,10 @@ async function onCreateCheckpoint() {
   if (!canCheckpointActions.value) return;
   try {
     await sessionStore.createCheckpoint(props.session.id);
-    showUiMessage("存档点已创建", "success");
+    showUiMessage(t("chat.checkpointCreated"), "success");
   } catch (err) {
     console.error("Create checkpoint failed:", err);
-    showUiMessage(err instanceof Error ? err.message : "创建存档点失败", "error");
+    showUiMessage(err instanceof Error ? err.message : t("chat.checkpointCreateFailed"), "error");
   }
 }
 
@@ -1942,24 +1942,24 @@ async function onRewindSession() {
   try {
     const checkpoints = await sessionStore.listCheckpoints(props.session.id);
     if (checkpoints.length === 0) {
-      showUiMessage("没有可用的存档点", "info");
+      showUiMessage(t("chat.noCheckpoints"), "info");
       return;
     }
     const target = checkpoints[checkpoints.length - 1]!;
     const confirmed = await requestUiConfirm({
-      title: "回滚存档点",
-      message: `回滚到最近存档点 ${target.label ?? target.id.slice(0, 8)}？将恢复代码与会话位置。`,
-      confirmText: "回滚",
+      title: t("chat.rollbackTitle"),
+      message: t("chat.rollbackMessage", { label: target.label ?? target.id.slice(0, 8) }),
+      confirmText: t("chat.rollbackConfirm"),
       danger: true,
     });
     if (!confirmed) return;
     stopStreaming();
     await sessionStore.rewindSession(props.session.id, target.id);
     await reloadMessagesFromServer(props.session.id);
-    showUiMessage("已回滚到存档点", "success");
+    showUiMessage(t("chat.rollbackSuccess"), "success");
   } catch (err) {
     console.error("Rewind failed:", err);
-    showUiMessage(err instanceof Error ? err.message : "回滚失败", "error");
+    showUiMessage(err instanceof Error ? err.message : t("chat.rollbackFailed"), "error");
   }
 }
 
@@ -1969,15 +1969,15 @@ async function onCommitSession() {
   try {
     const result = await sessionStore.commitSession(props.session.id);
     if (!result.commit) {
-      showUiMessage("没有需要提交的变更", "info");
+      showUiMessage(t("chat.noChangesToCommit"), "info");
       return;
     }
     await reloadMessagesFromServer(props.session.id);
     void scrollToBottom();
-    showUiMessage("已提交变更", "success");
+    showUiMessage(t("chat.changesCommitted"), "success");
   } catch (err) {
     console.error("Commit failed:", err);
-    showUiMessage(err instanceof Error ? err.message : "提交失败", "error");
+    showUiMessage(err instanceof Error ? err.message : t("chat.commitFailed"), "error");
   }
 }
 
@@ -1992,7 +1992,7 @@ async function onRetryLlmError() {
     void scrollToBottom();
   } catch (err) {
     console.error("Retry failed:", err);
-    showUiMessage(err instanceof Error ? err.message : "重试失败", "error");
+    showUiMessage(err instanceof Error ? err.message : t("chat.retryFailed"), "error");
     await reloadMessagesFromServer(props.session.id).catch(() => {});
     await sessionStore.fetchSession(props.session.id).catch(() => {});
   } finally {
@@ -2164,7 +2164,7 @@ async function openSessionPreview() {
 
   taskPaneOpen.value = false;
   btwPanelOpen.value = false;
-  upsertContentTab({ id: "preview", kind: "preview", title: "活跃应用" });
+  upsertContentTab({ id: "preview", kind: "preview", title: t("chat.activeApps") });
 }
 
 function toggleSessionPreview() {
@@ -2420,7 +2420,7 @@ function openExternalInteractionDetail(
 async function openEvalPanel() {
   setToolPanel({
     title: "Eval",
-    sections: [{ label: "运行环境", content: "正在读取 Eval 历史…" }],
+    sections: [{ label: t("chat.evalEnvironment"), content: t("chat.readingEvalHistory") }],
     terminal: "eval",
   });
 }
@@ -2511,7 +2511,7 @@ function openCompactionDetail(entry: ChatCompactionEntry) {
     });
   }
   sections.push({
-    label: "元数据",
+    label: t("chat.metadata"),
     content: [
       `tokensBefore: ${entry.tokensBefore}`,
       `firstKeptEntryId: ${entry.firstKeptEntryId}`,
@@ -2519,7 +2519,7 @@ function openCompactionDetail(entry: ChatCompactionEntry) {
       `entry.id: ${entry.id}`,
     ].join("\n"),
   });
-  toolModal.value = { title: "上下文压缩摘要", sections };
+  toolModal.value = { title: t("chat.compressionSummary"), sections };
 }
 
 function navigateToSubagent(sessionId: string) {
@@ -2739,7 +2739,7 @@ const sendMessage = async (payload: ChatSendPayload) => {
         await reloadMessagesFromServer(props.session.id);
         await sessionStore.fetchSessions();
       } catch (error) {
-        showUiMessage(error instanceof Error ? error.message : "斜杠命令执行失败", "error");
+        showUiMessage(error instanceof Error ? error.message : t("chat.slashCommandFailed"), "error");
       }
       return;
     }
@@ -2759,7 +2759,7 @@ const sendMessage = async (payload: ChatSendPayload) => {
       .then(() => refreshQueuedInputs())
       .catch((error) => {
         console.error("Send during streaming failed:", error);
-        showUiMessage(error instanceof Error ? error.message : "排队发送失败", "error");
+        showUiMessage(error instanceof Error ? error.message : t("chat.queueSendFailed"), "error");
         void refreshQueuedInputs();
       });
     return;

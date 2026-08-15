@@ -9,12 +9,12 @@
           type="button"
           class="tool-detail-panel__kill"
           :disabled="killing"
-          title="结束此后台进程"
+          :title="t('tool.killProcess')"
           @click="killJob"
         >
-          {{ killing ? "结束中…" : "结束" }}
+          {{ killing ? t("tool.ending") : t("tool.end") }}
         </button>
-        <button type="button" title="关闭" @click="$emit('close')"><X /></button>
+        <button type="button" :title="t('tool.close')" @click="$emit('close')"><X /></button>
       </div>
     </header>
     <div v-else-if="canKillJob" class="tool-detail-panel__toolbar">
@@ -23,10 +23,10 @@
         type="button"
         class="tool-detail-panel__kill"
         :disabled="killing"
-        title="结束此后台进程"
+        :title="t('tool.killProcess')"
         @click="killJob"
       >
-        {{ killing ? "结束中…" : "结束" }}
+        {{ killing ? t("tool.ending") : t("tool.end") }}
       </button>
     </div>
     <ToolTerminal v-if="terminal" :lines="terminalLines" :prompt="terminalPrompt" />
@@ -55,6 +55,7 @@ import { useSessionStore } from "@/store";
 import MarkdownContent from "../base/MarkdownContent.vue";
 import ToolTerminal from "./ToolTerminal.vue";
 import type { ToolDetailSection } from "./ToolDetailModal.vue";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   title: string;
@@ -77,6 +78,7 @@ const evalState = ref<EvalRuntimeState>();
 const jobState = ref<SessionJob>();
 const killing = ref(false);
 const sessionStore = useSessionStore();
+const { t } = useI18n();
 let evalSignature = "";
 let jobSignature = "";
 let endedEmittedFor = "";
@@ -102,7 +104,7 @@ const terminalLines = computed(() => {
       ? `\x1b[36m$ ${metaCommand}\x1b[0m`
       : `\x1b[36m# ${job.label}\x1b[0m`;
     const status = `\x1b[90m# ${job.kind} · ${job.status}\x1b[0m`;
-    const body = job.output || "(暂无输出)";
+    const body = job.output || t("tool.noOutput");
     return [header, status, body];
   }
   if (props.terminal === "eval" && evalState.value?.history.length) {
@@ -119,11 +121,11 @@ const terminalLines = computed(() => {
 const terminalPrompt = computed(() => {
   if (watchingJob.value) {
     return jobState.value?.status === "running" || jobState.value?.status === "waiting"
-      ? "$ running…"
-      : "$ output complete";
+      ? t("tool.running")
+      : t("tool.outputComplete");
   }
-  if (props.terminal === "eval") return ">>> kernel ready";
-  return "$ output complete";
+  if (props.terminal === "eval") return t("tool.kernelReady");
+  return t("tool.outputComplete");
 });
 
 function isTerminalJobStatus(status: string | undefined): boolean {
@@ -157,10 +159,10 @@ async function killJob() {
     jobSignature = `${job.status}:${job.output.length}:${job.finishedAt ?? 0}`;
     // Server clears meta.services.jobId/pid on terminal; refresh local session row.
     void sessionStore.fetchSession(props.sessionId);
-    showUiMessage("已结束后台进程", "success");
+    showUiMessage(t("tool.ended"), "success");
     maybeEmitJobEnded(job);
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "结束失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("tool.endFailed"), "error");
   } finally {
     killing.value = false;
   }

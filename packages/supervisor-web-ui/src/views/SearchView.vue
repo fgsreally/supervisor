@@ -21,7 +21,7 @@
           ref="inputRef"
           v-model="query"
           type="text"
-          placeholder="搜索聊天和消息..."
+          :placeholder="t('search.placeholder')"
           class="w-full rounded-md pl-9 pr-3 py-2 text-[14px] outline-none transition-colors"
           style="background: var(--app-list-search-bg); color: var(--app-text-primary)"
           @input="onSearchInput"
@@ -61,12 +61,12 @@
       <template v-if="!query">
         <div class="py-16 text-center">
           <Search class="w-12 h-12 mx-auto mb-4" style="color: var(--app-text-muted)" />
-          <p class="text-sm" style="color: var(--app-text-muted)">输入关键词搜索会话和消息</p>
+          <p class="text-sm" style="color: var(--app-text-muted)">{{ t("search.instructions") }}</p>
         </div>
       </template>
 
       <template v-else-if="loading">
-        <div class="py-12 text-center text-sm" style="color: var(--app-text-muted)">搜索中...</div>
+        <div class="py-12 text-center text-sm" style="color: var(--app-text-muted)">{{ t("search.searching") }}</div>
       </template>
 
       <template v-else-if="activeTab === 'sessions'">
@@ -75,7 +75,7 @@
           class="py-12 text-center text-sm"
           style="color: var(--app-text-muted)"
         >
-          未找到匹配的会话
+          {{ t("search.noSessions") }}
         </div>
         <div v-for="s in sessionResults" :key="s.id">
           <button
@@ -95,7 +95,7 @@
             </div>
             <div class="flex-1 min-w-0">
               <div class="text-[13px] font-medium truncate" style="color: var(--app-text-primary)">
-                <span v-for="(part, i) in highlight(s.title || '会话', query)" :key="i">
+                <span v-for="(part, i) in highlight(s.title || t('search.sessionFallback'), query)" :key="i">
                   <span v-if="part.highlight" class="text-[#07c160] font-semibold">{{
                     part.text
                   }}</span>
@@ -128,7 +128,7 @@
           class="py-12 text-center text-sm"
           style="color: var(--app-text-muted)"
         >
-          未找到匹配的消息
+          {{ t("search.noMessages") }}
         </div>
         <div v-for="m in messageResults" :key="m.id">
           <button
@@ -150,7 +150,7 @@
             <div class="flex-1 min-w-0">
               <div class="flex items-baseline gap-2">
                 <span class="text-[11px] font-medium" style="color: var(--app-text-muted)">{{
-                  m.role === "user" ? "用户" : "助手"
+                  m.role === "user" ? t("search.user") : t("search.assistant")
                 }}</span>
                 <span class="text-[10px]" style="color: var(--app-text-muted)">{{
                   m.sessionName || ""
@@ -178,9 +178,11 @@ import { useRouter } from "vue-router";
 import { ArrowLeft, Search, X } from "lucide-vue-next";
 import { useSessionStore } from "../store";
 import type { Session } from "../api";
+import { useI18n } from "@/i18n";
 
 const router = useRouter();
 const sessionStore = useSessionStore();
+const { t } = useI18n();
 
 const inputRef = ref<HTMLInputElement | null>(null);
 const query = ref("");
@@ -188,8 +190,8 @@ const loading = ref(false);
 const activeTab = ref<"sessions" | "messages">("sessions");
 
 const searchTabs = [
-  { key: "sessions" as const, label: "会话" },
-  { key: "messages" as const, label: "消息" },
+  { key: "sessions" as const, label: t("search.sessions") },
+  { key: "messages" as const, label: t("search.messages") },
 ];
 
 const avatarColors = [

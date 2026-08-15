@@ -3,9 +3,9 @@
     <UiEmptyState
       v-if="state === 'checking' && startupError"
       tone="error"
-      title="无法连接 Supervisor"
-      description="服务暂时不可用，请确认服务已启动后重试。"
-      action-label="重新连接"
+      :title="t('startup.connectionTitle')"
+      :description="t('startup.connectionDescription')"
+      :action-label="t('startup.retry')"
       @action="continueStartup"
     >
       <template #icon><ServerOff /></template>
@@ -19,9 +19,9 @@
     <section v-else-if="state === 'login'" class="startup-pin">
       <div class="startup-pin__content" :class="{ 'startup-pin--shake': shake }">
         <LockKeyhole class="startup-pin__lock" aria-hidden="true" />
-        <h1>输入密码</h1>
+        <h1>{{ t("startup.enterPassword") }}</h1>
 
-        <div class="pin-dots" aria-label="已输入位数">
+        <div class="pin-dots" :aria-label="t('startup.enteredDigits')">
           <span
             v-for="i in PIN_LENGTH"
             :key="i"
@@ -32,10 +32,10 @@
 
         <div class="startup-feedback" aria-live="polite">
           <p v-if="error" class="startup-error">{{ error }}</p>
-          <Loader2 v-else-if="submitting" class="startup-spinner" aria-label="正在验证" />
+          <Loader2 v-else-if="submitting" class="startup-spinner" :aria-label="t('startup.verifying')" />
         </div>
 
-        <div class="pin-pad" role="group" aria-label="数字键盘">
+        <div class="pin-pad" role="group" :aria-label="t('startup.numberPad')">
           <button
             v-for="digit in digits"
             :key="digit"
@@ -62,8 +62,8 @@
       <header>
         <div class="startup-brand">Pi</div>
         <div>
-          <h1>配置你的第一个模型</h1>
-          <p>完成供应商和模型配置后即可开始使用</p>
+          <h1>{{ t("startup.firstModelTitle") }}</h1>
+          <p>{{ t("startup.firstModelDescription") }}</p>
         </div>
       </header>
       <div class="startup-provider-form">
@@ -79,8 +79,10 @@ import { Loader2, LockKeyhole, RefreshCw, ServerOff } from "lucide-vue-next";
 import { getAuthStatus, listProviderModels, listProviders, saveWebPassword } from "@/api";
 import UiEmptyState from "@/components/base/UiEmptyState.vue";
 import ProviderFormView from "@/views/provider/ProviderFormView.vue";
+import { useI18n } from "@/i18n";
 
 const PIN_LENGTH = 6;
+const { t } = useI18n();
 const digits = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"] as const;
 type PinDigit = (typeof digits)[number];
 
@@ -99,7 +101,7 @@ const keyPositions: Record<PinDigit, { x: number; y: number }> = {
 
 const emit = defineEmits<{ ready: [] }>();
 const state = ref<"checking" | "login" | "setup">("checking");
-const checkingLabel = ref("正在启动 Supervisor…");
+const checkingLabel = ref(t("startup.starting"));
 const password = ref("");
 const error = ref("");
 const submitting = ref(false);
@@ -208,7 +210,7 @@ function withStartupTimeout<T>(promise: Promise<T>, label: string): Promise<T> {
 async function continueStartup() {
   startupError.value = "";
   state.value = "checking";
-  checkingLabel.value = "正在启动 Supervisor…";
+  checkingLabel.value = t("startup.starting");
   try {
     const auth = await withStartupTimeout(getAuthStatus(), "auth");
     if (auth.required && !auth.authenticated) {
@@ -217,18 +219,18 @@ async function continueStartup() {
       state.value = "login";
       return;
     }
-    checkingLabel.value = "正在检查模型配置…";
+    checkingLabel.value = t("startup.checkingModels");
     if (!(await withStartupTimeout(hasUsableModel(), "providers"))) {
       state.value = "setup";
       return;
     }
     // Message archives sync only when opening a session (useSessionMessageSync).
-    checkingLabel.value = "正在进入…";
+    checkingLabel.value = t("startup.entering");
     emit("ready");
   } catch (err) {
     console.warn("[StartupGate] startup check failed", err);
     state.value = "checking";
-    startupError.value = "无法连接 Supervisor，请确认服务已启动";
+    startupError.value = t("startup.connectionError");
   }
 }
 
@@ -250,12 +252,12 @@ async function login() {
   try {
     const auth = await getAuthStatus();
     if (!auth.authenticated) {
-      triggerShake("密码不正确");
+      triggerShake(t("startup.incorrectPassword"));
       return;
     }
     await continueStartup();
   } catch {
-    triggerShake("无法连接 Supervisor，请稍后重试");
+    triggerShake(t("startup.retryConnection"));
   } finally {
     submitting.value = false;
   }
@@ -286,7 +288,7 @@ function onKeyup(event: KeyboardEvent) {
 async function finishSetup() {
   if (!(await hasUsableModel())) return;
   state.value = "checking";
-  checkingLabel.value = "正在进入…";
+  checkingLabel.value = t("startup.entering");
   emit("ready");
 }
 
@@ -297,7 +299,7 @@ onMounted(() => {
     // A connection/configuration failure is not evidence that password auth is
     // enabled. Keep the neutral startup screen instead of asking for a mystery password.
     state.value = "checking";
-    startupError.value = "无法连接 Supervisor，请确认服务已启动";
+    startupError.value = t("startup.connectionError");
   });
 });
 

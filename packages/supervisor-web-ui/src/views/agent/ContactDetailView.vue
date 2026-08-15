@@ -17,7 +17,7 @@
         <span v-else aria-hidden="true" />
         <div class="m-mobile-header__title">{{ agent.name }}</div>
         <button v-if="canEdit" type="button" class="wechat-secondary-btn" @click="editOpen = true">
-          编辑
+          {{ t("common.edit") }}
         </button>
         <span v-else aria-hidden="true" />
       </div>
@@ -39,12 +39,12 @@
         </div>
 
         <div v-if="canEdit" class="mt-2 contact-detail-card border-y px-5 py-3 text-[15px]">
-          <div class="mb-2 text-[12px] contact-detail-subtitle">模型</div>
+          <div class="mb-2 text-[12px] contact-detail-subtitle">{{ t("agent.model") }}</div>
           <ModelTreeSelect
             :model-value="agent.modelId || ''"
             :groups="modelGroups"
             :disabled="savingModel"
-            placeholder="稍后配置"
+            :placeholder="t('agent.configureLater')"
             @change="changeModel"
           />
         </div>
@@ -73,7 +73,7 @@
         <button
           type="button"
           class="contact-detail-back-btn"
-          aria-label="返回 Agent 详情"
+          :aria-label="t('common.back')"
           @click="mobilePage = null"
         >
           <ChevronLeft class="w-5 h-5" />
@@ -117,7 +117,7 @@
             class="wechat-secondary-btn"
             @click="editOpen = true"
           >
-            编辑
+            {{ t("common.edit") }}
           </button>
         </div>
       </div>
@@ -187,6 +187,7 @@ import { useAgentStore, useProviderStore } from "@/store";
 import type { UIResourceKind } from "@/types/ui";
 import { providerToUI } from "@/utils/provider-ui";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useI18n } from "@/i18n";
 
 type AgentTab = "config" | "system" | UIResourceKind;
 type MobileAgentPage = AgentTab;
@@ -204,6 +205,7 @@ const emit = defineEmits<{
 
 const agentStore = useAgentStore();
 const providerStore = useProviderStore();
+const { t } = useI18n();
 
 const agent = computed(() => agentStore.getAgentById(props.agentId) ?? null);
 
@@ -220,16 +222,16 @@ const canEdit = computed(() => {
 const rightTabs = computed(() => {
   if (isExternal.value) {
     return [
-      { id: "config" as AgentTab, label: "配置" },
-      { id: "extensions" as AgentTab, label: "扩展" },
+      { id: "config" as AgentTab, label: t("agent.configure") },
+      { id: "extensions" as AgentTab, label: t("agent.extensions") },
     ];
   }
   const tabs: Array<{ id: AgentTab; label: string }> = [
-    { id: "config", label: "配置" },
-    { id: "system", label: "系统提示" },
-    { id: "skills", label: "技能" },
-    { id: "extensions", label: "扩展" },
-    { id: "prompts", label: "模板" },
+    { id: "config", label: t("agent.configure") },
+    { id: "system", label: t("agent.systemPrompt") },
+    { id: "skills", label: t("agent.skills") },
+    { id: "extensions", label: t("agent.extensions") },
+    { id: "prompts", label: t("agent.templates") },
     { id: "mcp", label: "MCP" },
   ];
   return tabs;
@@ -237,11 +239,11 @@ const rightTabs = computed(() => {
 
 const mobileSections = computed<Array<{ id: MobileAgentPage; label: string }>>(() =>
   isExternal.value
-    ? [{ id: "extensions", label: "扩展" }]
+    ? [{ id: "extensions", label: t("agent.extensions") }]
     : rightTabs.value,
 );
 const mobilePageTitle = computed(
-  () => mobileSections.value.find((item) => item.id === mobilePage.value)?.label ?? "Agent 详情",
+  () => mobileSections.value.find((item) => item.id === mobilePage.value)?.label ?? t("agent.detail"),
 );
 
 watch(
@@ -273,9 +275,9 @@ async function changeModel(modelId: string) {
   savingModel.value = true;
   try {
     await agentStore.updateAgent(props.agentId, { modelId });
-    showUiMessage("模型已更新", "success");
+    showUiMessage(t("agent.modelUpdated"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "模型更新失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("agent.modelUpdateFailed"), "error");
   } finally {
     savingModel.value = false;
   }

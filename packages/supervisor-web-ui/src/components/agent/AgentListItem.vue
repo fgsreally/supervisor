@@ -1,6 +1,6 @@
 <template>
   <div
-    class="agent-list-item flex items-center gap-3 px-4 py-3 transition-colors relative cursor-pointer"
+    class="agent-list-item"
     :class="{
       'agent-list-item--active': active,
       'agent-list-item--struck': isNotInstalledExternal || isUnavailableNative,
@@ -12,28 +12,28 @@
       :agent-id="agent.id"
       :agent-name="agent.name"
       :icon="agent.avatar"
-      class="agent-list-item__avatar w-10 h-10 text-base"
+      class="agent-list-item__avatar"
     />
 
-    <div class="flex-1 min-w-0">
-      <div class="flex items-center gap-2">
-        <span class="text-[13px] font-medium truncate agent-list-item__name">{{ agent.name }}</span>
+    <div class="agent-list-item__content">
+      <div class="agent-list-item__heading">
+        <span class="agent-list-item__name">{{ agent.name }}</span>
         <span
           v-if="isUnavailableNative"
-          class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium agent-list-item__badge agent-list-item__badge--disabled"
+          class="agent-list-item__badge agent-list-item__badge--disabled"
         >
           未配置
         </span>
         <span
           v-else-if="!isUnavailableExternal"
-          class="shrink-0 px-1.5 py-0.5 rounded text-[10px] font-medium agent-list-item__preset"
+          class="agent-list-item__preset"
         >
           {{ presetLabel }}
         </span>
       </div>
       <div
         v-if="summaryText"
-        class="text-[11px] truncate mt-0.5 agent-list-item__desc"
+        class="agent-list-item__desc"
         :class="{ 'agent-list-item__desc--error': isBrokenExternal }"
       >
         {{ summaryText }}
@@ -116,7 +116,32 @@ function onSelect() {
 
 <style scoped>
 .agent-list-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-3);
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background-color var(--app-motion-fast), box-shadow var(--app-motion-fast);
   background: var(--app-list-bg);
+}
+
+.agent-list-item__avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  font-size: var(--app-font-body);
+}
+
+.agent-list-item__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-list-item__heading {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-2);
+  min-width: 0;
 }
 
 .agent-list-item:hover {
@@ -145,21 +170,41 @@ function onSelect() {
 }
 
 .agent-list-item__name {
+  overflow: hidden;
   color: var(--app-text-primary);
+  font-size: var(--app-font-control);
+  font-weight: var(--app-font-weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-list-item__preset {
+  flex-shrink: 0;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: var(--app-font-micro);
+  font-weight: var(--app-font-weight-medium);
   background: color-mix(in srgb, var(--app-hover) 70%, transparent);
   color: var(--app-text-secondary);
 }
 
 .agent-list-item__badge--disabled {
+  flex-shrink: 0;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  font-size: var(--app-font-micro);
+  font-weight: var(--app-font-weight-medium);
   background: color-mix(in srgb, #fa5151 16%, transparent);
   color: #fa5151;
 }
 
 .agent-list-item__desc {
+  margin-top: 0.125rem;
+  overflow: hidden;
   color: var(--app-text-secondary);
+  font-size: var(--app-font-micro);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-list-item__desc--error {

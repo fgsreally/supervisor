@@ -2,30 +2,30 @@
   <Teleport to="body">
     <div
       v-if="open && agent"
-      class="agent-edit-overlay fixed inset-0 z-[100] flex items-center justify-center p-4"
+      class="agent-edit-overlay"
       @click.self="close"
     >
       <section
-        class="agent-edit-dialog w-full max-w-xl max-h-[90vh] overflow-hidden rounded-lg shadow-xl border flex flex-col"
+        class="agent-edit-dialog"
       >
-        <header class="h-14 px-5 border-b flex items-center shrink-0">
+        <header class="agent-edit-header">
           <h2 class="agent-edit-heading">{{ t("agent.editTitle") }}</h2>
           <button type="button" class="agent-edit-close" :title="t('common.close')" @click="close">
             <X class="w-5 h-5" />
           </button>
         </header>
 
-        <div class="p-5 overflow-y-auto custom-scrollbar space-y-4">
-          <div class="flex items-center gap-3 pb-1">
+        <div class="agent-edit-body custom-scrollbar">
+          <div class="agent-edit-avatar-row">
             <AgentAvatar
               :agent-id="agent.id"
               :agent-name="draft.name || agent.name"
               :icon="draft.icon"
-              class="w-12 h-12 text-lg"
+            class="agent-edit-avatar"
             />
-            <label class="block flex-1 text-[13px]">
+            <label class="agent-edit-field agent-edit-field--grow">
               <span class="agent-edit-label">{{ t("agent.avatar") }}</span>
-              <div class="flex gap-2">
+              <div class="agent-edit-inline">
                 <UiField v-model="draft.icon" type="text" :placeholder="t('agent.avatarPlaceholder')" />
                 <input
                   ref="iconInput"
@@ -47,18 +47,18 @@
             </label>
           </div>
 
-          <label class="block text-[13px]">
+          <label class="agent-edit-field">
             <span class="agent-edit-label">{{ t("agent.name") }}</span>
             <UiField v-model="draft.name" type="text" />
           </label>
 
-          <label class="block text-[13px]">
+          <label class="agent-edit-field">
             <span class="agent-edit-label">{{ t("agent.description") }}</span>
             <UiField v-model="draft.description" as="textarea" rows="3" class="resize-y" />
           </label>
 
           <template v-if="agent.backendType === 'native'">
-            <label class="block text-[13px]">
+            <label class="agent-edit-field">
               <span class="agent-edit-label">{{ t("agent.model") }}</span>
               <ModelTreeSelect
                 v-model="draft.modelId"
@@ -67,7 +67,7 @@
                 @change="onModelChange"
               />
             </label>
-            <label class="block text-[13px]">
+            <label class="agent-edit-field">
               <span class="agent-edit-label">{{ t("agent.toolset") }}</span>
               <UiField v-model="draft.toolsPreset" as="select">
                 <option value="coding">coding</option>
@@ -76,13 +76,13 @@
               </UiField>
             </label>
             <AgentPermissionEditor v-model="draft.permissionRules" />
-            <section class="text-[13px]">
-              <div class="agent-edit-label">{{ t("agent.defaultSubagents") }}</div>
-              <div v-if="subagentCandidates.length" class="grid gap-2">
+            <section class="agent-edit-subagents">
+              <div class="agent-edit-label agent-edit-subagents-title">{{ t("agent.defaultSubagents") }}</div>
+              <div v-if="subagentCandidates.length" class="agent-edit-subagent-list">
                 <label
                   v-for="child in subagentCandidates"
                   :key="child.id"
-                  class="flex items-center gap-2"
+                  class="agent-edit-subagent"
                 >
                   <input v-model="draft.subagentIds" type="checkbox" :value="Number(child.id)" />
                   <span>{{ child.name }}</span>
@@ -93,11 +93,11 @@
           </template>
 
           <template v-else>
-            <label class="block text-[13px]">
+            <label class="agent-edit-field">
               <span class="agent-edit-label">{{ t("agent.command") }}</span>
               <UiField v-model="draft.command" type="text" class="font-mono" />
             </label>
-            <label class="block text-[13px]">
+            <label class="agent-edit-field">
               <span class="agent-edit-label">{{ t("agent.arguments") }}</span>
               <UiField
                 v-model="draft.args"
@@ -110,7 +110,7 @@
           </template>
         </div>
 
-        <footer class="px-5 py-3 border-t flex justify-end gap-2 shrink-0">
+        <footer class="agent-edit-footer">
           <UiActionButton variant="secondary" @click="close">{{ t("common.cancel") }}</UiActionButton>
           <UiActionButton :disabled="!canSave" :loading="saving" @click="save">
             {{ t("agent.save") }}
@@ -268,12 +268,27 @@ async function save() {
 
 <style scoped>
 .agent-edit-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
   background: rgb(0 0 0 / 42%);
 }
 
 .agent-edit-dialog {
+  display: flex;
+  width: 100%;
+  max-width: 36rem;
+  max-height: 90vh;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 0.5rem;
+  box-shadow: var(--app-shadow-lg, 0 20px 25px -5px rgb(0 0 0 / 10%));
   background: var(--app-settings-bg);
-  border-color: var(--app-border);
   color: var(--app-text-primary);
 }
 
@@ -281,6 +296,54 @@ async function save() {
 .agent-edit-dialog footer {
   background: var(--app-settings-card);
   border-color: var(--app-border);
+}
+
+.agent-edit-header {
+  display: flex;
+  height: 3.5rem;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--app-space-2);
+  padding: 0 1.25rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.agent-edit-heading {
+  flex: 1;
+  font-size: var(--app-font-title);
+  font-weight: var(--app-font-weight-medium);
+}
+
+.agent-edit-body {
+  display: grid;
+  gap: var(--app-space-4);
+  overflow-y: auto;
+  padding: 1.25rem;
+}
+
+.agent-edit-avatar-row,
+.agent-edit-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-3);
+}
+
+.agent-edit-avatar-row { padding-bottom: 0.25rem; }
+.agent-edit-avatar { width: 3rem; height: 3rem; font-size: var(--app-font-body); }
+.agent-edit-inline { gap: var(--app-space-2); }
+.agent-edit-field { display: block; font-size: var(--app-font-body); }
+.agent-edit-field--grow { flex: 1; }
+.agent-edit-label { display: block; margin-bottom: 0.25rem; color: var(--app-text-secondary); }
+.agent-edit-subagents-title { margin-bottom: 0.5rem; }
+.agent-edit-subagent-list { display: grid; gap: var(--app-space-2); }
+.agent-edit-subagent { display: flex; align-items: center; gap: var(--app-space-2); }
+.agent-edit-footer {
+  display: flex;
+  flex-shrink: 0;
+  justify-content: flex-end;
+  gap: var(--app-space-2);
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--app-border);
 }
 
 .agent-edit-close {

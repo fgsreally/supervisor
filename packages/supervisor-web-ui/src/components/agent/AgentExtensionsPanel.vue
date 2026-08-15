@@ -5,7 +5,7 @@
       class="agent-ext-main flex flex-1 items-center justify-center gap-2 text-[13px]"
     >
       <Loader2 class="h-4 w-4 animate-spin" />
-      正在加载扩展...
+      {{ t("agent.extensionsLoading") }}
     </div>
     <template v-else>
       <div
@@ -14,27 +14,27 @@
       >
         <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 py-3 space-y-5">
           <section>
-            <div class="agent-ext-section-title">内置扩展</div>
-            <p class="agent-ext-hint">随 Agent 提供，不可移除</p>
+            <div class="agent-ext-section-title">{{ t("agent.builtinExtensions") }}</div>
+            <p class="agent-ext-hint">{{ t("agent.builtinExtensionsHint") }}</p>
             <div class="mt-2 space-y-1">
               <div v-for="item in builtinItems" :key="item.resourceId" class="agent-ext-row">
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-1.5 min-w-0">
                     <span class="agent-ext-name truncate">{{ item.name }}</span>
-                    <span class="agent-ext-badge">内置</span>
+                    <span class="agent-ext-badge">{{ t("agent.builtin") }}</span>
                   </div>
                   <p v-if="item.description" class="agent-ext-desc truncate">
                     {{ item.description }}
                   </p>
                 </div>
               </div>
-              <div v-if="builtinItems.length === 0" class="agent-ext-empty">暂无</div>
+              <div v-if="builtinItems.length === 0" class="agent-ext-empty">{{ t("agent.noBuiltinExtensions") }}</div>
             </div>
           </section>
 
           <section>
-            <div class="agent-ext-section-title">已添加扩展</div>
-            <p class="agent-ext-hint">从本 Agent 移除，不会卸载全局扩展</p>
+            <div class="agent-ext-section-title">{{ t("agent.addedExtensions") }}</div>
+            <p class="agent-ext-hint">{{ t("agent.addedExtensionsHint") }}</p>
             <div class="mt-2 space-y-1">
               <div v-for="item in userItems" :key="item.resourceId" class="agent-ext-row">
                 <div class="min-w-0 flex-1">
@@ -49,10 +49,10 @@
                   :disabled="removingId === item.resourceId"
                   @click="remove(item)"
                 >
-                  移除
+                  {{ t("agent.remove") }}
                 </button>
               </div>
-              <div v-if="userItems.length === 0" class="agent-ext-empty">尚未添加用户扩展</div>
+              <div v-if="userItems.length === 0" class="agent-ext-empty">{{ t("agent.noUserExtensions") }}</div>
             </div>
           </section>
         </div>
@@ -68,7 +68,7 @@
         <ResizeHandle
           class="agent-ext-resize-handle"
           orientation="vertical"
-          label="调整扩展侧边栏宽度"
+          :label="t('agent.resizeExtensionSidebar')"
           @start="startSidebarResize"
         />
       </div>
@@ -76,7 +76,7 @@
       <div
         class="agent-ext-main flex-1 flex items-center justify-center text-[13px] px-6 text-center"
       >
-        从下方全局库添加扩展；添加后即可使用。
+        {{ t("agent.extensionLibraryHint") }}
       </div>
     </template>
   </div>
@@ -94,11 +94,13 @@ import { getResourcesByKind } from "@/utils/resources-ui";
 import { resourceEntryPath } from "@/utils/resource-utils";
 import type { AgentExtensionInfo } from "@/api/api";
 import type { UIResourceItem } from "@/types/ui";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ agentId: string }>();
 
 const agentStore = useAgentStore();
 const resourceStore = useResourceStore();
+const { t } = useI18n();
 
 const extensions = ref<AgentExtensionInfo[]>([]);
 const removingId = ref<number | null>(null);
@@ -148,9 +150,9 @@ async function remove(item: AgentExtensionInfo) {
   try {
     await agentStore.unbindAgentResource(props.agentId, item.resourceId);
     extensions.value = extensions.value.filter((row) => row.resourceId !== item.resourceId);
-    showUiMessage(`已移除 ${item.name}`, "success");
+    showUiMessage(t("agent.removedResource", { name: item.name }), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "移除失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("agent.removeFailed"), "error");
   } finally {
     removingId.value = null;
   }
@@ -163,9 +165,9 @@ async function bindGlobalItem(item: UIResourceItem) {
     bindingItemId.value = item.id;
     await agentStore.bindAgentResource(props.agentId, "extension", sourcePath);
     await reload();
-    showUiMessage(`已添加 ${item.name}`, "success");
+    showUiMessage(t("agent.addedResource", { name: item.name }), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "添加失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("agent.addFailed"), "error");
   } finally {
     bindingItemId.value = null;
   }

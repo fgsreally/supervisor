@@ -303,6 +303,7 @@ const messages: TranslationMessages = {
   "agent.modelNotConfigured": "Model not configured",
   "agent.resizeResourceSidebar": "Resize resource sidebar",
   "agent.resizeFileTree": "Resize file tree",
+  "agent.resizeExtensionSidebar": "Resize extension sidebar",
 };
 
 export default messages;

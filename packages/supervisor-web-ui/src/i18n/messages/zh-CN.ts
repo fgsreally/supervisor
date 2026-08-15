@@ -303,6 +303,7 @@ const messages: TranslationMessages = {
   "agent.modelNotConfigured": "未配置模型",
   "agent.resizeResourceSidebar": "调整资源侧边栏宽度",
   "agent.resizeFileTree": "调整文件树宽度",
+  "agent.resizeExtensionSidebar": "调整扩展侧边栏宽度",
 };
 
 export default messages;

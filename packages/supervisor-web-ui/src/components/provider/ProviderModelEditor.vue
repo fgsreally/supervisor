@@ -1,88 +1,88 @@
 <template>
   <div
     v-if="open"
-    class="provider-model-editor fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+    class="provider-model-editor"
     @click.self="emit('cancel')"
   >
     <div
-      class="provider-model-editor__dialog w-full sm:max-w-lg rounded-t-lg sm:rounded-lg shadow-xl overflow-hidden"
+      class="provider-model-editor__dialog"
     >
       <div
-        class="provider-model-editor__header px-5 py-4 border-b flex items-center justify-between"
+        class="provider-model-editor__header"
       >
-        <div class="provider-model-editor__title text-[16px] font-medium">
+        <div class="provider-model-editor__title">
           {{ mode === "create" ? "添加模型" : "编辑模型" }}
         </div>
         <button
           type="button"
-          class="provider-model-editor__close p-1 rounded-md"
+          class="provider-model-editor__close"
           @click="emit('cancel')"
         >
-          <X class="w-5 h-5" />
+          <X class="provider-model-editor__icon" />
         </button>
       </div>
 
-      <div class="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
-        <label class="block text-[13px]">
-          <span class="provider-model-editor__muted mb-1 block">Model ID</span>
+      <div class="provider-model-editor__body custom-scrollbar">
+        <label class="provider-model-editor__field">
+          <span class="provider-model-editor__muted">Model ID</span>
           <input
             v-model="draft.id"
             type="text"
             :disabled="mode === 'edit'"
             placeholder="例如 gpt-4o"
-            class="provider-model-editor__input w-full px-3 py-2 border rounded-md font-mono focus:outline-none"
+            class="provider-model-editor__input provider-model-editor__input--mono"
           />
         </label>
 
-        <label class="block text-[13px]">
-          <span class="provider-model-editor__muted mb-1 block">显示名称</span>
+        <label class="provider-model-editor__field">
+          <span class="provider-model-editor__muted">显示名称</span>
           <input
             v-model="draft.name"
             type="text"
             placeholder="可选，默认同 Model ID"
-            class="provider-model-editor__input w-full px-3 py-2 border rounded-md focus:outline-none"
+            class="provider-model-editor__input"
           />
         </label>
 
         <div>
-          <label class="block text-[13px]">
-            <span class="provider-model-editor__muted mb-1 block">上下文上限 (tokens)</span>
+          <label class="provider-model-editor__field">
+            <span class="provider-model-editor__muted">上下文上限 (tokens)</span>
             <input
               v-model.number="draft.contextWindow"
               type="number"
               min="1"
               step="1000"
-              class="provider-model-editor__input w-full px-3 py-2 border rounded-md font-mono focus:outline-none"
+              class="provider-model-editor__input provider-model-editor__input--mono"
             />
-            <span class="provider-model-editor__muted text-[11px] mt-1 block"
+            <span class="provider-model-editor__hint provider-model-editor__muted"
               >≈ {{ formatTokenCount(draft.contextWindow) }}</span
             >
           </label>
         </div>
 
         <label
-          class="provider-model-editor__option flex items-center gap-3 px-3 py-3 rounded-md border cursor-pointer"
+          class="provider-model-editor__option"
         >
-          <input v-model="draft.supportsVision" type="checkbox" class="rounded border-gray-300" />
+          <input v-model="draft.supportsVision" type="checkbox" class="provider-model-editor__checkbox" />
           <ModelMultimodalIcon :supports-multimodal="draft.supportsVision" />
           <div>
-            <div class="provider-model-editor__title text-[13px]">支持图像输入</div>
-            <div class="provider-model-editor__muted text-[11px]">对应 pi Model.input 含 image</div>
+            <div class="provider-model-editor__title provider-model-editor__option-title">支持图像输入</div>
+            <div class="provider-model-editor__muted provider-model-editor__hint">对应 pi Model.input 含 image</div>
           </div>
         </label>
       </div>
 
-      <div class="provider-model-editor__footer px-5 py-4 border-t flex justify-end gap-2">
+      <div class="provider-model-editor__footer">
         <button
           type="button"
-          class="provider-model-editor__cancel px-4 py-2 text-[13px] rounded-md border"
+          class="provider-model-editor__cancel"
           @click="emit('cancel')"
         >
           取消
         </button>
         <button
           type="button"
-          class="px-4 py-2 text-[13px] rounded-md bg-[#07c160] text-white hover:bg-[#06ad56] disabled:opacity-50"
+          class="provider-model-editor__save"
           :disabled="!canSave || saving"
           @click="save"
         >
@@ -151,12 +151,125 @@ function save() {
 
 <style scoped>
 .provider-model-editor {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0;
   background: rgb(0 0 0 / 42%);
 }
 
 .provider-model-editor__dialog {
+  width: 100%;
+  overflow: hidden;
+  border-radius: var(--app-radius-panel) var(--app-radius-panel) 0 0;
+  box-shadow: var(--app-shadow-floating);
   background: var(--app-settings-card);
   color: var(--app-text-primary);
+}
+
+.provider-model-editor__header,
+.provider-model-editor__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.provider-model-editor__footer {
+  justify-content: flex-end;
+  gap: var(--app-space-2);
+  border-top: 1px solid var(--app-border);
+  border-bottom: 0;
+}
+
+.provider-model-editor__body {
+  display: flex;
+  max-height: 70vh;
+  flex-direction: column;
+  gap: var(--app-space-4);
+  overflow-y: auto;
+  padding: 1rem 1.25rem;
+}
+
+.provider-model-editor__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: var(--app-font-control);
+}
+
+.provider-model-editor__input {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-control);
+  outline: none;
+}
+
+.provider-model-editor__input--mono {
+  font-family: var(--app-font-mono);
+}
+
+.provider-model-editor__hint {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: var(--app-font-micro);
+}
+
+.provider-model-editor__option {
+  display: flex;
+  align-items: center;
+  gap: var(--app-space-3);
+  padding: 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: var(--app-radius-control);
+  cursor: pointer;
+}
+
+.provider-model-editor__option-title {
+  font-size: var(--app-font-control);
+}
+
+.provider-model-editor__checkbox {
+  border-color: var(--app-border);
+}
+
+.provider-model-editor__icon {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.provider-model-editor__close,
+.provider-model-editor__cancel,
+.provider-model-editor__save {
+  padding: 0.5rem 1rem;
+  border-radius: var(--app-radius-control);
+  font-size: var(--app-font-control);
+}
+
+.provider-model-editor__close {
+  padding: 0.25rem;
+}
+
+.provider-model-editor__cancel {
+  border: 1px solid var(--app-border);
+}
+
+.provider-model-editor__save {
+  color: #fff;
+  background: var(--app-accent);
+}
+
+.provider-model-editor__save:hover:not(:disabled) {
+  background: var(--app-accent-hover);
+}
+
+.provider-model-editor__save:disabled {
+  opacity: 0.5;
 }
 
 .provider-model-editor__header,
@@ -200,5 +313,17 @@ function save() {
 .provider-model-editor__cancel {
   border-color: var(--app-border);
   color: var(--app-text-secondary);
+}
+
+@media (min-width: 640px) {
+  .provider-model-editor {
+    align-items: center;
+    padding: 1rem;
+  }
+
+  .provider-model-editor__dialog {
+    max-width: 32rem;
+    border-radius: var(--app-radius-panel);
+  }
 }
 </style>

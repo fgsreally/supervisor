@@ -1,6 +1,6 @@
 <template>
   <MobileSheet v-model:open="open" :title="editingId ? '编辑服务器' : '添加服务器'">
-    <div class="mobile-server-config space-y-4 px-4 pb-6">
+    <div class="mobile-server-config">
       <MobileField
         label="服务器地址"
         hint="例如 https://xxx.trycloudflare.com 或 http://192.168.1.10:3030"
@@ -16,9 +16,9 @@
       <MobileField label="后台保持连接" hint="Android 显示常驻通知，尽量维持 SSE/WebSocket">
         <MobileSwitch v-model="backgroundEnabled" />
       </MobileField>
-      <div class="flex gap-3 pt-2">
-        <MobileButton variant="secondary" class="flex-1" @click="open = false">取消</MobileButton>
-        <MobileButton variant="primary" class="flex-1" :loading="testing" @click="save">
+      <div class="mobile-server-config__actions">
+        <MobileButton variant="secondary" @click="open = false">取消</MobileButton>
+        <MobileButton variant="primary" :loading="testing" @click="save">
           保存并连接
         </MobileButton>
       </div>
@@ -120,3 +120,22 @@ async function save() {
   }
 }
 </script>
+
+<style scoped>
+.mobile-server-config {
+  display: flex;
+  flex-direction: column;
+  gap: var(--app-space-4);
+  padding: 0 var(--app-space-4) var(--app-space-6);
+}
+
+.mobile-server-config__actions {
+  display: flex;
+  gap: var(--app-space-3);
+  padding-top: var(--app-space-2);
+}
+
+.mobile-server-config__actions :deep(button) {
+  flex: 1;
+}
+</style>

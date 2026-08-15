@@ -4,7 +4,7 @@
       <div class="global-search-dialog" role="dialog" aria-modal="true">
         <!-- Header -->
         <div class="global-search-header">
-          <Search class="w-5 h-5 shrink-0" style="color: var(--app-text-muted)" />
+          <Search class="global-search-icon global-search-icon--header" style="color: var(--app-text-muted)" />
           <input
             ref="inputRef"
             v-model="query"
@@ -14,7 +14,7 @@
             @keydown.enter="doSearch"
           />
           <button v-if="query" type="button" class="global-search-clear" @click="query = ''">
-            <X class="w-4 h-4" />
+            <X class="global-search-icon global-search-icon--clear" />
           </button>
         </div>
 
@@ -37,7 +37,7 @@
 
         <!-- Loading -->
         <div v-if="loading" class="global-search-loading">
-          <Loader2 class="w-5 h-5 animate-spin" />
+          <Loader2 class="global-search-icon global-search-icon--loading animate-spin" />
           <span>搜索中...</span>
         </div>
 
@@ -65,7 +65,7 @@
 
         <!-- Empty state -->
         <div v-else-if="searched" class="global-search-empty">
-          <Search class="w-8 h-8 mb-2" style="color: var(--app-text-muted)" />
+          <Search class="global-search-icon global-search-icon--empty" style="color: var(--app-text-muted)" />
           <span>未找到匹配的消息</span>
         </div>
       </div>
@@ -184,6 +184,27 @@ function goToSession(sessionId: string) {
   gap: 8px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--app-border-subtle);
+}
+
+.global-search-icon {
+  flex-shrink: 0;
+}
+
+.global-search-icon--header,
+.global-search-icon--loading {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.global-search-icon--clear {
+  width: 1rem;
+  height: 1rem;
+}
+
+.global-search-icon--empty {
+  width: 2rem;
+  height: 2rem;
+  margin-bottom: var(--app-space-2);
 }
 
 .global-search-input {

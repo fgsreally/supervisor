@@ -1,11 +1,11 @@
 <template>
   <div
-    class="hidden md:flex w-16 flex-col items-center py-5 shrink-0 border-r"
+    class="shell-nav"
     data-tour-sidebar
     style="background: var(--app-nav-bg); border-color: var(--app-nav-border)"
   >
     <div
-      class="w-9 h-9 bg-[#07c160] rounded-md flex items-center justify-center text-white font-bold text-base shadow-sm mb-6"
+      class="shell-nav__brand"
     >
       Pi
     </div>
@@ -14,43 +14,43 @@
       v-for="item in navItems"
       :key="item.id"
       type="button"
-      class="p-2.5 rounded-lg transition-colors mb-2"
+      class="shell-nav__button"
       :class="tab === item.id ? 'nav-btn-active' : 'nav-btn'"
       :title="item.title"
       :data-tour-nav="item.id"
       @click="$emit('update:tab', item.id)"
     >
-      <component :is="item.icon" class="w-[22px] h-[22px]" />
+      <component :is="item.icon" class="shell-nav__icon" />
     </button>
 
-    <div class="mt-auto flex flex-col items-center">
+    <div class="shell-nav__footer">
       <button
         type="button"
-        class="tutorial-nav-btn p-2.5 rounded-lg transition-colors mb-2"
+        class="shell-nav__button tutorial-nav-btn"
         :title="t('nav.tutorial')"
         data-tour-tutorial
         @click="$emit('tutorial')"
       >
-        <BookOpenCheck class="w-[22px] h-[22px]" />
+        <BookOpenCheck class="shell-nav__icon" />
       </button>
       <button
         type="button"
-        class="p-2.5 rounded-lg transition-colors mb-2 nav-btn"
+        class="shell-nav__button nav-btn"
         :title="isDark ? t('nav.lightMode') : t('nav.darkMode')"
         @click="toggleDark($event)"
       >
-        <Sun v-if="isDark" class="w-[22px] h-[22px]" />
-        <Moon v-else class="w-[22px] h-[22px]" />
+        <Sun v-if="isDark" class="shell-nav__icon" />
+        <Moon v-else class="shell-nav__icon" />
       </button>
       <button
         type="button"
-        class="p-2.5 rounded-lg transition-colors"
+        class="shell-nav__button"
         :class="tab === 'settings' ? 'nav-btn-active' : 'nav-btn'"
         :title="t('nav.settings')"
         data-tour-nav="settings"
         @click="$emit('update:tab', 'settings')"
       >
-        <Settings class="w-[22px] h-[22px]" />
+        <Settings class="shell-nav__icon" />
       </button>
     </div>
   </div>
@@ -103,6 +103,61 @@ const navItems = computed(() => [
 </script>
 
 <style scoped>
+.shell-nav {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .shell-nav {
+    display: flex;
+    width: 4rem;
+    flex-shrink: 0;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.25rem 0;
+    border-right: 1px solid var(--app-nav-border);
+  }
+}
+
+.shell-nav__brand {
+  display: flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.5rem;
+  border-radius: var(--app-radius-control);
+  color: #fff;
+  background: #07c160;
+  box-shadow: var(--app-shadow-control);
+  font-size: var(--app-font-body-strong);
+  font-weight: var(--app-font-weight-bold);
+}
+
+.shell-nav__button {
+  display: inline-flex;
+  width: 2.75rem;
+  height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: var(--app-space-2);
+  padding: 0;
+  border-radius: var(--app-radius-control);
+  transition: background-color var(--app-motion-fast), color var(--app-motion-fast);
+}
+
+.shell-nav__icon {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.shell-nav__footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: auto;
+}
+
 .nav-btn {
   color: var(--app-nav-icon);
 }

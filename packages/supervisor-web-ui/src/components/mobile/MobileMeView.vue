@@ -1,6 +1,6 @@
 <template>
   <div
-    class="mobile-me h-full w-full flex flex-col shrink-0 min-w-0"
+    class="mobile-me"
     data-tour-page="me"
     style="background: var(--app-list-section-bg)"
   >
@@ -10,9 +10,9 @@
       <span aria-hidden="true" />
     </header>
 
-    <div class="mobile-me__scroll flex-1 overflow-y-auto custom-scrollbar">
+    <div class="mobile-me__scroll custom-scrollbar">
       <template v-for="group in groups" :key="group.title">
-        <div class="list-section-label px-4 py-1.5 font-semibold tracking-wide sticky top-0 z-10">
+        <div class="list-section-label">
           {{ group.title }}
         </div>
         <button
@@ -26,9 +26,9 @@
           <span class="mobile-me-item__icon" :style="{ '--m-feature-color': item.color }">
             <component :is="item.icon" />
           </span>
-          <div class="flex-1 min-w-0">
-            <div class="font-medium truncate mobile-me-item__name">{{ item.label }}</div>
-            <div class="truncate mt-0.5 mobile-me-item__desc">{{ item.description }}</div>
+          <div class="mobile-me-item__content">
+            <div class="mobile-me-item__name">{{ item.label }}</div>
+            <div class="mobile-me-item__desc">{{ item.description }}</div>
           </div>
         </button>
       </template>
@@ -207,13 +207,33 @@ function open(id: ItemId) {
 </script>
 
 <style scoped>
+.mobile-me {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  flex-shrink: 0;
+  flex-direction: column;
+}
+
+.mobile-me__scroll {
+  flex: 1;
+  overflow-y: auto;
+}
+
 .mobile-me__header {
   flex-shrink: 0;
 }
 
 .list-section-label {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  padding: 0.375rem 1rem;
   background: var(--app-list-section-bg);
   color: var(--app-text-secondary);
+  font-weight: var(--app-font-weight-semibold);
+  letter-spacing: 0.04em;
 }
 
 .mobile-me-item {
@@ -232,11 +252,24 @@ function open(id: ItemId) {
 }
 
 .mobile-me-item__name {
+  overflow: hidden;
+  font-weight: var(--app-font-weight-medium);
   color: var(--app-text-primary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mobile-me-item__desc {
+  margin-top: 0.125rem;
+  overflow: hidden;
   color: var(--app-text-secondary);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-me-item__content {
+  flex: 1;
+  min-width: 0;
 }
 
 .mobile-me-item__icon {

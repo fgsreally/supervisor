@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <section class="timeline">
     <header>
       <div>
@@ -118,7 +118,7 @@
 import { computed, ref, watch } from "vue";
 import { GitCommitHorizontal, Loader2 } from "lucide-vue-next";
 import type { Project, Session, TimelineEvent, WorktreeCommit } from "@/api";
-import UiEmptyState from "@/components/ui/UiEmptyState.vue";
+import UiEmptyState from "@/components/base/UiEmptyState.vue";
 
 type StatusFilter = "running" | "attention" | "finish" | "commits" | null;
 

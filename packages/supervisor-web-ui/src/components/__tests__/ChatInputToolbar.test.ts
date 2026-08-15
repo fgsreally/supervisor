@@ -1,7 +1,7 @@
 import { ref } from "vue";
 import { mount } from "@vue/test-utils";
 import { describe, expect, it, vi } from "vitest";
-import ChatInputToolbar from "../ChatInputToolbar.vue";
+import ChatInputToolbar from "../chat/ChatInputToolbar.vue";
 import type { VoiceRecognitionController } from "../../composables/use-voice-recognition";
 
 function createMockVoice(): VoiceRecognitionController {

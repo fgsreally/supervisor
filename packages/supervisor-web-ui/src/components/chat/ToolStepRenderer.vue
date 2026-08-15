@@ -66,9 +66,9 @@ import { spawnChildSessionId } from "@/utils/flatten-messages";
 import { isAskToolName } from "@/utils/ask-tool";
 import AskStep from "./AskStep.vue";
 import ExternalInteractionStep from "./ExternalInteractionStep.vue";
-import BashStep from "../BashStep.vue";
+import BashStep from "@/components/chat/BashStep.vue";
 import RecordingStep from "./RecordingStep.vue";
-import ToolActivityBar from "../ToolActivityBar.vue";
+import ToolActivityBar from "../tool/ToolActivityBar.vue";
 import SubagentActivityCard from "./SubagentActivityCard.vue";
 
 const props = defineProps<{

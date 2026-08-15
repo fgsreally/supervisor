@@ -32,6 +32,7 @@ import {
   type ToolInfo,
 } from "../index.js";
 import { SessionExtensionServices } from "./services.js";
+import { sessionActivityStrategy } from "../strategies/session-activity.js";
 
 interface LoadedExtension {
   name: string;
@@ -94,6 +95,13 @@ export class SessionExtensionRuntime {
   }
 
   async loadBuiltinExtensions(enabledSlugs?: ReadonlySet<string>): Promise<void> {
+    // Hidden strategies are loaded before all visible/bound extensions.
+    if (
+      this.context.db.available &&
+      !this.context.policies?.isDisabled?.("session-activity")
+    ) {
+      await this.loadExtension(sessionActivityStrategy, "strategy:session-activity");
+    }
     const allow = (slug: string) => enabledSlugs == null || enabledSlugs.has(slug);
     if (allow("supervisor-admin")) {
       await this.loadExtension(supervisorAdminExtension, "builtin:supervisor-admin");

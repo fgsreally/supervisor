@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { promptResourceHandler } from "../src/agent/prompt-resource.js";
+import { promptResourceHandler } from "../src/core/resource/prompt-resource.js";
 import { mcpResourceHandler } from "../src/extension/builtin/mcp/resource.js";
 import { SupervisorDb } from "../src/db.js";
 import { indexResourceHandlers } from "../src/resources/handler.js";

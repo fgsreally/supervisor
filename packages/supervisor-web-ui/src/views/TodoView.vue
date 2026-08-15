@@ -5,7 +5,7 @@
         <h1>Todo</h1>
         <span>{{ headStatus }}</span>
       </div>
-      <div class="todo-mode-switch plan-desktop-only" role="tablist" aria-label="Todo 模式">
+      <div class="todo-mode-switch plan-desktop-only" role="tablist" :aria-label="t('todo.mode')">
         <button
           type="button"
           role="tab"
@@ -13,7 +13,7 @@
           :class="{ active: activeTab === 'plan' }"
           @click="activeTab = 'plan'"
         >
-          规划
+          {{ t("todo.plan") }}
         </button>
         <button
           type="button"
@@ -22,19 +22,19 @@
           :class="{ active: activeTab === 'run' }"
           @click="activeTab = 'run'"
         >
-          执行
+          {{ t("todo.run") }}
         </button>
       </div>
       <div class="todo-head__actions plan-desktop-only">
         <button v-if="activeTab === 'plan'" type="button" class="quiet" @click="openGoalHistory">
-          <History />历史
+          <History />{{ t("todo.history") }}
         </button>
-        <div v-else class="view-switch" aria-label="执行视图">
+        <div v-else class="view-switch" :aria-label="t('todo.runView')">
           <button
             type="button"
             :class="{ active: runView === 'graph' }"
-            title="关系图"
-            aria-label="关系图"
+            :title="t('todo.graph')"
+            :aria-label="t('todo.graph')"
             @click="runView = 'graph'"
           >
             <Waypoints />
@@ -42,8 +42,8 @@
           <button
             type="button"
             :class="{ active: runView === 'timeline' }"
-            title="时间轴"
-            aria-label="时间轴"
+            :title="t('todo.timeline')"
+            :aria-label="t('todo.timeline')"
             @click="runView = 'timeline'"
           >
             <GanttChart />
@@ -52,10 +52,10 @@
       </div>
       <div class="mobile-tabs">
         <button type="button" :class="{ active: activeTab === 'plan' }" @click="activeTab = 'plan'">
-          规划
+          {{ t("todo.plan") }}
         </button>
         <button type="button" :class="{ active: activeTab === 'run' }" @click="activeTab = 'run'">
-          执行
+          {{ t("todo.run") }}
         </button>
       </div>
     </header>
@@ -64,19 +64,19 @@
     <main class="todo-studio plan-desktop-only">
       <aside v-show="activeTab === 'plan'" class="todo-rail">
         <div class="todo-rail__scroll">
-          <div class="rail-label">目标</div>
+          <div class="rail-label">{{ t("todo.goal") }}</div>
           <div class="goal-box">
-            <textarea v-model="goal" rows="5" placeholder="描述你想完成的事情，输入 @ 关联项目" />
+            <textarea v-model="goal" rows="5" :placeholder="t('todo.goalPlaceholder')" />
             <div class="goal-box__footer">
               <span class="project-pill"><FolderGit2 />supervisor-web-ui</span>
               <button type="button" class="primary" :disabled="planning" @click="mockPlan">
-                <Sparkles />{{ planning ? "正在整理…" : "开始规划" }}
+                <Sparkles />{{ planning ? t("todo.planning") : t("todo.startPlanning") }}
               </button>
             </div>
           </div>
 
           <div class="rail-label">
-            <span>待确认任务</span>
+            <span>{{ t("todo.drafts") }}</span>
             <em>{{ drafts.length }}</em>
           </div>
           <div v-if="drafts.length" class="desktop-plan-list">
@@ -96,19 +96,19 @@
               </div>
             </button>
           </div>
-          <p v-else class="rail-empty">规划后，任务会出现在这里</p>
+          <p v-else class="rail-empty">{{ t("todo.emptyDrafts") }}</p>
         </div>
         <div v-if="drafts.length" class="plan-actions plan-actions--rail">
-          <button type="button" class="plan-actions__secondary">仅加入待办</button>
+          <button type="button" class="plan-actions__secondary">{{ t("todo.addOnly") }}</button>
           <button type="button" class="primary plan-actions__main" @click="startPlanExecution">
-            开始执行
+            {{ t("todo.startRun") }}
           </button>
         </div>
       </aside>
 
       <aside v-show="activeTab === 'run'" class="todo-rail todo-rail--run">
         <div class="todo-rail__scroll">
-          <section class="run-summary" aria-label="执行概览">
+          <section class="run-summary" :aria-label="t('todo.runOverview')">
             <div class="run-summary__top">
               <div>
                 <strong>{{ runPulseTitle }}</strong>
@@ -339,7 +339,7 @@
           </div>
         </div>
         <div class="run-controls">
-          <nav v-if="mobileRunView === 'list'" class="filters" aria-label="任务状态筛选">
+          <nav v-if="mobileRunView === 'list'" class="filters" :aria-label="t('todo.statusFilter')">
             <button
               v-for="filter in filters"
               :key="filter.id"
@@ -455,7 +455,8 @@ import {
 } from "lucide-vue-next";
 import TodoSequenceDiagram from "@/components/home/TodoSequenceDiagram.vue";
 import TaskCard from "@/components/task/TaskCard.vue";
-import ResponsiveDialog from "@/components/ui/ResponsiveDialog.vue";
+import ResponsiveDialog from "@/components/base/ResponsiveDialog/index.vue";
+import { useI18n } from "@/i18n";
 import {
   listAgents,
   listTimelineEvents,
@@ -477,6 +478,7 @@ interface MockTask {
 }
 
 const emit = defineEmits<{ "open-session": [sessionId: string] }>();
+const { t } = useI18n();
 const goal = ref("优化 Supervisor 的 Todo，让规划、依赖和执行状态更清晰");
 const planning = ref(false);
 const goalComposerOpen = ref(false);
@@ -618,13 +620,13 @@ const execution = ref<MockTask[]>([
   },
 ]);
 
-const filters = [
-  { id: "all", label: "全部" },
-  { id: "pending", label: "待办" },
-  { id: "running", label: "进行中" },
-  { id: "blocked", label: "阻塞" },
-  { id: "done", label: "已完成" },
-];
+const filters = computed(() => [
+  { id: "all", label: t("todo.all") },
+  { id: "pending", label: t("todo.pending") },
+  { id: "running", label: t("todo.running") },
+  { id: "blocked", label: t("todo.blocked") },
+  { id: "done", label: t("todo.done") },
+]);
 const visibleTasks = computed(() =>
   activeFilter.value === "all"
     ? execution.value
@@ -637,10 +639,10 @@ const runProgress = computed(() => {
   return Math.round((execution.value.filter((t) => t.status === "done").length / total) * 100);
 });
 const runPulseTitle = computed(() => {
-  if (runningCount.value) return "进行中";
-  if (execution.value.some((t) => t.status === "blocked")) return "有阻塞";
-  if (execution.value.some((t) => t.status === "pending")) return "待启动";
-  return "已完成";
+  if (runningCount.value) return t("todo.running");
+  if (execution.value.some((t) => t.status === "blocked")) return t("todo.hasBlocked");
+  if (execution.value.some((t) => t.status === "pending")) return t("todo.notStarted");
+  return t("todo.done");
 });
 const runPulseSubtitle = computed(() => {
   const focus =
@@ -648,15 +650,15 @@ const runPulseSubtitle = computed(() => {
     execution.value.find((t) => t.status === "running") ??
     execution.value.find((t) => t.status === "blocked");
   if (focus) return focus.title;
-  return `共 ${execution.value.length} 个任务`;
+  return t("todo.taskCount", { count: execution.value.length });
 });
-const runChipFilters = [
-  { id: "all", label: "全部" },
-  { id: "running", label: "进行" },
-  { id: "blocked", label: "阻塞" },
-  { id: "pending", label: "排队" },
-  { id: "done", label: "完成" },
-];
+const runChipFilters = computed(() => [
+  { id: "all", label: t("todo.all") },
+  { id: "running", label: t("todo.runningShort") },
+  { id: "blocked", label: t("todo.blocked") },
+  { id: "pending", label: t("todo.queued") },
+  { id: "done", label: t("todo.doneShort") },
+]);
 const runRailGroups = computed(() => {
   const tasks = visibleTasks.value;
   if (activeFilter.value !== "all") {
@@ -682,16 +684,16 @@ const runRailGroups = computed(() => {
 });
 const headStatus = computed(() => {
   if (activeTab.value === "plan") {
-    return drafts.value.length ? `${drafts.value.length} 个任务待确认` : "把想法整理成可执行的任务";
+    return drafts.value.length ? t("todo.draftsCount", { count: drafts.value.length }) : t("todo.organizeIdea");
   }
-  return runningCount.value ? `${runningCount.value} 个任务正在进行` : "暂无进行中的任务";
+  return runningCount.value ? t("todo.runningCount", { count: runningCount.value }) : t("todo.noRunning");
 });
 const showGoalSummary = computed(
   () => isNarrowUi.value && drafts.value.length > 0 && !goalComposerOpen.value && !planning.value,
 );
-const planMobileTitle = computed(() => (drafts.value.length ? "确认规划" : "新建规划"));
+const planMobileTitle = computed(() => (drafts.value.length ? t("todo.confirmPlan") : t("todo.newPlan")));
 const planMobileSubtitle = computed(() =>
-  drafts.value.length ? `${drafts.value.length} 个任务待确认` : "写清目标，华生会拆成可执行任务",
+  drafts.value.length ? t("todo.draftsCount", { count: drafts.value.length }) : t("todo.watsonPlanHint"),
 );
 
 function count(id: string) {

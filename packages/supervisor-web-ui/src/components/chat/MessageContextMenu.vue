@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <Teleport to="body">
     <Transition name="message-menu" :duration="{ enter: 160, leave: 120 }">
       <div
@@ -113,7 +113,7 @@ import { computed, ref, watch } from "vue";
 import { Coins, Copy, GitBranch, Undo2 } from "lucide-vue-next";
 import type { MessageUsage } from "@/api";
 import { MobileDrawer } from "@/components/mobile/ui";
-import UiDialog from "@/components/ui/UiDialog.vue";
+import UiDialog from "@/components/base/UiDialog.vue";
 
 const props = withDefaults(
   defineProps<{

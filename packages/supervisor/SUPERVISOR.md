@@ -77,7 +77,7 @@ packages/supervisor/
 
 ## `prompts/` — 系统 Prompt 片段
 
-`src/agent/system-prompts.ts` 在运行时加载这些片段并拼入 Agent 系统提示。
+`src/core/resource/system-prompts.ts` 在运行时加载这些片段并拼入 Agent 系统提示。
 
 | 文件                         | 用途                            |
 | ---------------------------- | ------------------------------- |

@@ -40,6 +40,10 @@ export default defineConfig({
             { text: "外部 Agent", link: "/supervisor/external-agents" },
             { text: "HTTP API", link: "/supervisor/http-api" },
             { text: "扩展框架", link: "/supervisor/extensions" },
+            {
+              text: "Agent 级扩展运行时提案",
+              link: "/supervisor/agent-extension-runtime-proposal",
+            },
             { text: "仓库扩展", link: "/supervisor/shipped-extensions" },
             { text: "打包工具", link: "/supervisor/builtin-tools" },
             { text: "MCP 集成", link: "/supervisor/mcp" },

@@ -132,7 +132,7 @@ import {
 } from "@/utils/format-time";
 import ChatMessageGroupRow from "./ChatMessageGroupRow.vue";
 import MessageContextMenu from "./MessageContextMenu.vue";
-import AgentAvatar from "../AgentAvatar.vue";
+import AgentAvatar from "../agent/AgentAvatar.vue";
 
 const props = defineProps<{
   sessionId: string;
@@ -326,8 +326,7 @@ function openActions(
     !props.externalAgent && isGroupedAssistantGroup(group) ? (group.usage ?? null) : null;
   contextMenu.showUsage = !props.externalAgent && isGroupedAssistantGroup(group);
   const groupIndex = props.groups.findIndex((item) => item.id === group.id);
-  contextMenu.durationLabel =
-    groupIndex >= 0 ? assistantDurationLabel(groupIndex) : null;
+  contextMenu.durationLabel = groupIndex >= 0 ? assistantDurationLabel(groupIndex) : null;
 }
 
 function closeContextMenu() {

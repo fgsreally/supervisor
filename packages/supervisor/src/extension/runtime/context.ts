@@ -37,6 +37,7 @@ import type { SessionManager } from "../../core/session-manager.js";
 import type { ManagedSessionRuntime } from "../../core/managed-session-runtime.js";
 import type { AgentResource } from "../../agent/runtime-resources.js";
 import { readHarnessTools } from "../../core/harness-compat.js";
+import { touchSessionActivity } from "../../core/session-activity.js";
 import { runWatson } from "../../core/watson.js";
 import type {
   SessionTaskInfo,
@@ -174,6 +175,7 @@ interface ContextSessionOptions {
       }>,
     ): Promise<SessionTodoInfo[]>;
   };
+  activity: { touch: () => void };
   tools: ContextSessionTools;
   appendSystemPrompt: (content: string) => Promise<void>;
   upsertSystemPromptBlock: (id: string, content: string) => Promise<void>;
@@ -285,6 +287,7 @@ interface ContextExtensionHost {
 /** Session-scoped context shared by every extension activated for that session. */
 export class Context {
   readonly session: ContextSession;
+  readonly policies: ExtensionContext["policies"];
   readonly agent: ContextAgent;
   readonly tools: {
     list(): ToolInfo[];
@@ -322,6 +325,7 @@ export class Context {
     args: string[],
     options?: { cwd?: string; timeout?: number; signal?: AbortSignal },
   ) => Promise<ExecResult>;
+  private readonly disabledPolicies: Set<string>;
 
   constructor({ sessionManager, db, sessionRuntime, resource }: ContextDependencies) {
     const session = sessionManager.get(sessionRuntime.id);
@@ -329,6 +333,15 @@ export class Context {
     if (session.projectId == null) throw new Error(`Session ${session.id} has no project`);
 
     const agent = session.agentId == null ? undefined : sessionManager.getAgent(session.agentId);
+    this.disabledPolicies = new Set(
+      Array.isArray(agent?.meta.disabledPolicies)
+        ? agent.meta.disabledPolicies.filter((id): id is string => typeof id === "string")
+        : [],
+    );
+    this.policies = {
+      disable: (id) => this.disabledPolicies.add(id),
+      isDisabled: (id) => this.disabledPolicies.has(id),
+    };
     const projectRow = db.getProject(session.projectId);
     if (!projectRow) throw new Error(`Project ${session.projectId} not found`);
     const harness = nativeHarness(sessionRuntime);
@@ -437,6 +450,7 @@ export class Context {
         list: deps.listTodos,
         replace: deps.setTodos,
       },
+      activity: { touch: () => touchSessionActivity(db, session.id) },
       tools: sessionTools,
       getParent: extensionDb.getParentSession,
       children: extensionDb.getChildSessions,
@@ -731,6 +745,9 @@ export class ContextSession {
   }
   get todos(): ContextSessionOptions["todos"] {
     return this.options.todos;
+  }
+  get activity(): ContextSessionOptions["activity"] {
+    return this.options.activity;
   }
   get tools(): ContextSessionTools {
     return this.options.tools;

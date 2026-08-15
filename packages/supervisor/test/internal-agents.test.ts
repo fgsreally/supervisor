@@ -122,14 +122,13 @@ describe("packaged agents", () => {
     }
   });
 
-  it("loads packaged prompt.md files", () => {
-    expect(loadPackagedAgentPrompt("shadow")).toContain("影子代理");
+  it("loads packaged prompt files", () => {
+    expect(loadPackagedAgentPrompt("shadow")).toContain("Shadow Agent");
     expect(loadPackagedAgentPrompt("intro")).toContain("Intro");
-    expect(loadPackagedAgentPrompt("btw")).toContain("只读侧问代理");
-    expect(loadPackagedAgentPrompt("coding")).toContain("环境变量");
+    expect(loadPackagedAgentPrompt("btw")).toContain("read-only side question agent");
+    expect(loadPackagedAgentPrompt("coding")).toContain("coding agent");
     expect(loadPackagedAgentPrompt("coding")).not.toContain("Available tools");
     expect(loadPackagedAgentPrompt("coding")).not.toContain("多 session");
-    expect(loadPackagedAgentPrompt("coding")).toContain("coding agent");
   });
 
   it("marks all packaged agents built-in with a spawn type", () => {

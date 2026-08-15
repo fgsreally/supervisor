@@ -1,4 +1,4 @@
-import { appendContextFilesToSystemPrompt } from "../agent/context-files.js";
+import { appendContextFilesToSystemPrompt } from "./resource/context-files.js";
 import { parseSessionMeta } from "./session-fields.js";
 import { buildSessionServicesPrompt, parseSessionServicesMeta } from "./session-services.js";
 import type { SessionServicesMeta } from "./project-runtime.js";

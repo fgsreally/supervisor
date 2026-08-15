@@ -90,6 +90,19 @@ describe("Session Store", () => {
     expect(store.sessions).toHaveLength(0);
   });
 
+  it("should restore an optimistically deleted session when the request fails", async () => {
+    vi.mocked(api.deleteSession).mockRejectedValue(new Error("Delete failed"));
+
+    const store = useSessionStore();
+    const session = { id: "1", status: "idle", cwd: "/test" } as any;
+    store.sessions = [session];
+
+    const deletion = store.deleteSession("1");
+    expect(store.sessions).toHaveLength(0);
+    await expect(deletion).rejects.toThrow("Delete failed");
+    expect(store.sessions).toEqual([session]);
+  });
+
   it("should update session meta", async () => {
     const store = useSessionStore();
     store.sessions = [{ id: "1", status: "idle", cwd: "/test", title: "Test", meta: {} } as any];

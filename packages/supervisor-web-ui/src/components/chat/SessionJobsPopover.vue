@@ -1,42 +1,35 @@
-<template>
-  <ResponsivePopover
+﻿<template>
+  <ChatHeaderPopover
     v-if="totalCount"
-    v-model:open="open"
-    title="Jobs"
+    :open="open"
+    @update:open="open = $event"
+    :title="summaryTitle"
     panel-class="jobs-popover"
     :dismiss-on-outside="dismissOnOutside"
+    :count="totalCount"
   >
-    <template #trigger>
-      <ChatHeaderAction
-        :title="summaryTitle"
-        :active="open"
-        :count="totalCount"
-        @click="open = !open"
-      >
-        <Activity />
-      </ChatHeaderAction>
-    </template>
+    <template #icon><Activity /></template>
 
-    <template #default="{ mobile }">
-      <header v-if="!mobile">
+    <template #header>
         <div>
           <strong>Jobs</strong>
-          <span v-if="activeCount">{{ activeCount }} 个进行中</span>
+          <span v-if="activeCount">{{ t("jobs.activeCount", { count: activeCount }) }}</span>
         </div>
-        <button type="button" title="刷新" @click="refresh">
+        <button type="button" :title="t('jobs.refresh')" @click="refresh">
           <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': loading }" />
         </button>
-      </header>
-      <div v-else class="jobs-sheet-toolbar">
-        <span v-if="activeCount">{{ activeCount }} 个进行中</span>
-        <span v-else>运行记录</span>
-        <button type="button" title="刷新" @click="refresh">
+    </template>
+    <template #mobile-header>
+        <span v-if="activeCount">{{ t("jobs.activeCount", { count: activeCount }) }}</span>
+        <span v-else>{{ t("jobs.history") }}</span>
+        <button type="button" :title="t('jobs.refresh')" @click="refresh">
           <RefreshCw class="h-4 w-4" :class="{ 'animate-spin': loading }" />
         </button>
-      </div>
+    </template>
+    <template #default>
 
       <div v-if="schedules.length" class="jobs-section">
-        <div class="jobs-section__title">计划</div>
+        <div class="jobs-section__title">{{ t("jobs.schedules") }}</div>
         <button
           v-for="schedule in schedules"
           :key="`schedule-${schedule.id}`"
@@ -50,9 +43,9 @@
             <span class="job-item__meta">
               {{ formatTime(schedule.nextRunAt) }}
               <template v-if="schedule.intervalMs">
-                · 每 {{ formatInterval(schedule.intervalMs) }}
+                · {{ t("jobs.every", { value: formatInterval(schedule.intervalMs) }) }}
               </template>
-              <template v-else>· 一次性</template>
+              <template v-else>· {{ t("jobs.once") }}</template>
             </span>
           </span>
           <ChevronRight class="h-3.5 w-3.5" />
@@ -60,7 +53,7 @@
       </div>
 
       <div v-if="jobs.length" class="jobs-section">
-        <div class="jobs-section__title">运行记录</div>
+        <div class="jobs-section__title">{{ t("jobs.history") }}</div>
         <div v-for="job in visibleJobs" :key="job.id" class="job-row">
           <button class="job-item" type="button" @click="openJob(job)">
             <span class="job-status" :class="`job-status--${job.status}`" />
@@ -75,13 +68,13 @@
           </button>
 
           <div v-if="expandedId === job.id" class="job-inline-detail">
-            <pre>{{ job.output || formatValue(job.result ?? job.error) || "(暂无输出)" }}</pre>
+            <pre>{{ job.output || formatValue(job.result ?? job.error) || t("jobs.noOutput") }}</pre>
             <form
               v-if="job.capabilities.includes('input') && job.status === 'running'"
               @submit.prevent="send(job.id)"
             >
-              <input v-model="inputs[job.id]" type="text" placeholder="发送到 stdin" />
-              <button type="submit" :disabled="!inputs[job.id]?.trim()">发送</button>
+              <input v-model="inputs[job.id]" type="text" :placeholder="t('jobs.stdinPlaceholder')" />
+              <button type="submit" :disabled="!inputs[job.id]?.trim()">{{ t("jobs.send") }}</button>
             </form>
             <button
               v-if="job.capabilities.includes('cancel') && isActive(job.status)"
@@ -89,13 +82,13 @@
               type="button"
               @click="cancel(job.id)"
             >
-              取消
+              {{ t("jobs.cancel") }}
             </button>
           </div>
         </div>
       </div>
     </template>
-  </ResponsivePopover>
+  </ChatHeaderPopover>
 </template>
 
 <script setup lang="ts">
@@ -109,8 +102,8 @@ import {
   type SessionJob,
   type SessionJobSchedule,
 } from "@/api";
-import ResponsivePopover from "@/components/ui/ResponsivePopover.vue";
-import ChatHeaderAction from "./ChatHeaderAction.vue";
+import { useI18n } from "@/i18n";
+import ChatHeaderPopover from "./ChatHeaderPopover.vue";
 
 export interface JobDetailRequest {
   title: string;
@@ -123,6 +116,7 @@ export interface JobDetailRequest {
 const props = withDefaults(defineProps<{ sessionId: string; dismissOnOutside?: boolean }>(), {
   dismissOnOutside: true,
 });
+const { t } = useI18n();
 const emit = defineEmits<{ detail: [request: JobDetailRequest] }>();
 const jobs = ref<SessionJob[]>([]);
 const schedules = ref<SessionJobSchedule[]>([]);
@@ -147,9 +141,9 @@ const activeCount = computed(
 );
 const totalCount = computed(() => schedules.value.length + visibleJobs.value.length);
 const summaryTitle = computed(() => {
-  const parts = [`${totalCount.value} 个 Job`];
-  if (activeCount.value) parts.push(`${activeCount.value} 个进行中`);
-  if (schedules.value.length) parts.push(`${schedules.value.length} 个计划`);
+  const parts = [t("jobs.totalCount", { count: totalCount.value })];
+  if (activeCount.value) parts.push(t("jobs.activeCount", { count: activeCount.value }));
+  if (schedules.value.length) parts.push(t("jobs.scheduleCount", { count: schedules.value.length }));
   return parts.join(" · ");
 });
 
@@ -175,12 +169,13 @@ function isActive(status: JobStatus): boolean {
 
 /** Jobs tray is for things the user should notice (timers, etc.), not Vite/runtime logs. */
 function isAttentionJob(job: SessionJob): boolean {
-  if (job.kind === "shell" || job.kind === "project-service") return false;
+  if (job.kind === "project-service") return false;
+  if (job.kind === "shell") return job.name === "persistent-bash";
   return true;
 }
 
 function openJob(job: SessionJob): void {
-  const output = job.output || formatValue(job.result ?? job.error) || "(暂无输出)";
+  const output = job.output || formatValue(job.result ?? job.error) || t("jobs.noOutput");
   const lines = output.split(/\r?\n/).length;
   if (output.length <= 600 && lines <= 6) {
     expandedId.value = expandedId.value === job.id ? undefined : job.id;
@@ -190,7 +185,7 @@ function openJob(job: SessionJob): void {
     title: job.label,
     sections: [
       { label: "状态", content: `${kindLabel(job.kind)} · ${statusLabel(job.status)}` },
-      { label: "输出", content: output },
+      { label: t("jobs.output"), content: output },
     ],
     presentation: output.length > 2_000 || lines > 16 ? "panel" : "modal",
     ...(job.kind === "shell" || job.kind === "project-service"
@@ -205,8 +200,8 @@ function openSchedule(schedule: SessionJobSchedule): void {
   emit("detail", {
     title: schedule.label,
     sections: [
-      { label: "下次执行", content: formatTime(schedule.nextRunAt) },
-      { label: "任务内容", content },
+      { label: t("jobs.nextRun"), content: formatTime(schedule.nextRunAt) },
+      { label: t("jobs.prompt"), content },
     ],
     presentation: content.length > 2_000 || content.split(/\r?\n/).length > 16 ? "panel" : "modal",
   });
@@ -228,18 +223,18 @@ async function cancel(id: string): Promise<void> {
 
 function statusLabel(status: JobStatus): string {
   return {
-    queued: "排队中",
-    running: "运行中",
-    waiting: "等待中",
-    succeeded: "已完成",
-    failed: "失败",
-    cancelled: "已取消",
-    interrupted: "已中断",
+    queued: t("jobs.queued"),
+    running: t("jobs.running"),
+    waiting: t("jobs.waiting"),
+    succeeded: t("jobs.succeeded"),
+    failed: t("jobs.failed"),
+    cancelled: t("jobs.cancelled"),
+    interrupted: t("jobs.interrupted"),
   }[status];
 }
 
 function kindLabel(kind: string): string {
-  return { shell: "Bash", timer: "定时器", mcp: "MCP", agent_turn: "Agent" }[kind] ?? kind;
+  return { shell: "Bash", timer: t("jobs.timer"), mcp: "MCP", agent_turn: "Agent" }[kind] ?? kind;
 }
 
 function formatTime(value: number): string {

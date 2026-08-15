@@ -1,4 +1,4 @@
-import { appendContextFilesToSystemPrompt } from "../../../agent/context-files.js";
+import { appendContextFilesToSystemPrompt } from "../../../core/resource/context-files.js";
 import type { ShadowProtocolResult } from "./types.js";
 import { Type } from "typebox";
 

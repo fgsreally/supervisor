@@ -23,6 +23,7 @@ import { resolveUiDistDir } from "./utils/ui-dist.js";
 import { resolveWebPin } from "./utils/web-password.js";
 import { getSupervisorHome, setSupervisorHome } from "./utils/supervisor-home.js";
 import { writeLog } from "./i18n/logs.js";
+import { acquireRuntimeLock, type RuntimeLock } from "./utils/runtime-lock.js";
 import {
   buildDevPublicUrl,
   printExternalAgentAvailability,
@@ -118,11 +119,24 @@ async function run() {
     setDefaultCwd(home);
   }
 
+  const command = cli.matchedCommandName ?? "serve";
+  let runtimeLock: RuntimeLock | undefined;
+  if (command === "serve") {
+    try {
+      runtimeLock = acquireRuntimeLock();
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(message);
+      process.exitCode = 1;
+      return;
+    }
+    process.once("exit", () => runtimeLock?.release());
+  }
+
   const db = new SupervisorDb(resolveDbPath());
   dedupeBuiltinAssistantSessions(db);
   const manager = new SessionManager(db);
   attachPushDispatcher(db, (listener) => manager.onAnySessionOutput(listener));
-  const command = cli.matchedCommandName ?? "serve";
   const cmdArgs = [...parsed.args];
 
   switch (command) {
@@ -149,8 +163,16 @@ async function run() {
       });
       registerWebSocketRoutes(app, webPassword, manager);
       app.listen({ hostname: "0.0.0.0", port });
-      manager.resumePersistedSessionInputs();
-      startDailyWorkScheduler(db);
+      // Do not run recovery, Git scans, or model-backed daily analysis in the
+      // same turn that opens the HTTP listener. Bun can accept the socket
+      // before these synchronous prefixes yield, which previously produced a
+      // listening-but-unresponsive server during development startup.
+      setTimeout(() => {
+        manager.resumePersistedSessionInputs();
+      }, 250);
+      setTimeout(() => {
+        startDailyWorkScheduler(db);
+      }, 5_000);
 
       let tunnelUrl: string | null = null;
       if (wantTunnel) {

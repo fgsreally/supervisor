@@ -1,6 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
-import SessionListContextMenu from "../SessionListContextMenu.vue";
+import SessionListContextMenu from "../session/SessionListContextMenu.vue";
 
 function mountMenu(status: string) {
   return mount(SessionListContextMenu, {

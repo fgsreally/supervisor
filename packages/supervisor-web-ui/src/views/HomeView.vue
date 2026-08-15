@@ -1,14 +1,14 @@
-<template>
+﻿<template>
   <div class="dashboard">
     <header class="dashboard__header">
       <div>
-        <h1>工作概览</h1>
-        <p>跨项目看推进与提交</p>
+        <h1>{{ t("home.title") }}</h1>
+        <p>{{ t("home.subtitle") }}</p>
       </div>
       <button
         type="button"
         class="dashboard__refresh"
-        aria-label="刷新"
+        :aria-label="t('home.refresh')"
         :disabled="loading"
         @click="loadDashboard"
       >
@@ -18,25 +18,25 @@
     <main class="custom-scrollbar">
       <div v-if="loading && !dashboardReady" class="dashboard__loading">
         <Loader2 class="dashboard__spin" aria-hidden="true" />
-        <span>加载工作概览...</span>
+        <span>{{ t("home.loading") }}</span>
       </div>
       <UiEmptyState
         v-else-if="dashboardReady && !projects.length && !visibleSessions.length"
         class="dashboard__empty"
-        title="暂无数据"
-        description="创建项目并开始会话后，这里会汇总项目推进与提交记录。"
+        :title="t('home.emptyTitle')"
+        :description="t('home.emptyDescription')"
       >
         <template #icon><LayoutDashboard /></template>
       </UiEmptyState>
       <template v-else>
-        <section class="status-bar" aria-label="工作状态">
+        <section class="status-bar" :aria-label="t('home.status')">
           <button
             type="button"
             :class="{ active: statusFilter === 'running' }"
             @click="toggleFilter('running')"
           >
             <strong>{{ runningCount }}</strong>
-            <span>进行中</span>
+            <span>{{ t("home.running") }}</span>
           </button>
           <button
             type="button"
@@ -44,7 +44,7 @@
             @click="toggleFilter('attention')"
           >
             <strong>{{ attentionCount }}</strong>
-            <span>需处理</span>
+            <span>{{ t("home.attention") }}</span>
           </button>
           <button
             type="button"
@@ -52,7 +52,7 @@
             @click="toggleFilter('finish')"
           >
             <strong>{{ mergedCount }}</strong>
-            <span>已合并</span>
+            <span>{{ t("home.merged") }}</span>
           </button>
           <button
             type="button"
@@ -60,13 +60,13 @@
             @click="toggleFilter('commits')"
           >
             <strong>{{ totalCommits }}</strong>
-            <span>提交</span>
+            <span>{{ t("home.commits") }}</span>
           </button>
         </section>
 
         <section v-if="attentionSessions.length" class="attention">
           <header class="attention__header">
-            <h2>需关注</h2>
+            <h2>{{ t("home.attention") }}</h2>
             <span>{{ attentionSessions.length }}</span>
           </header>
           <ul class="attention__list">
@@ -79,7 +79,7 @@
                     >{{ projectName(session.projectId) }} · {{ statusLabel(session.status) }}</small
                   >
                 </span>
-                <em>打开</em>
+                <em>{{ t("home.open") }}</em>
               </button>
             </li>
           </ul>
@@ -121,12 +121,14 @@ import {
 } from "@/api";
 import HomeTimeline from "@/components/home/HomeTimeline.vue";
 import ProjectSessionTimeline from "@/components/home/ProjectSessionTimeline.vue";
-import UiEmptyState from "@/components/ui/UiEmptyState.vue";
+import UiEmptyState from "@/components/base/UiEmptyState.vue";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useI18n } from "@/i18n";
 
 type DashboardStatusFilter = "running" | "attention" | "finish" | "commits" | null;
 
 const emit = defineEmits<{ "open-session": [sessionId: string] }>();
+const { t } = useI18n();
 const projects = ref<Project[]>([]);
 const sessions = ref<Session[]>([]);
 const commits = ref<Record<string, WorktreeCommit[]>>({});
@@ -165,22 +167,23 @@ function toggleFilter(next: Exclude<DashboardStatusFilter, null>) {
 }
 
 function projectName(projectId?: string | null) {
-  if (!projectId) return "未关联项目";
-  return projectMap.value.get(projectId)?.name || "未知项目";
+  if (!projectId) return t("home.unassignedProject");
+  return projectMap.value.get(projectId)?.name || t("home.unknownProject");
 }
 
 function statusLabel(status: Session["status"]) {
+  if (status === "active") return t("home.active");
   return (
     (
       {
-        finish: "已合并",
-        finished: "已合并",
-        running: "进行中",
-        blocked: "需处理",
-        error: "异常",
-        idle: "待命",
-        initializing: "准备中",
-        stopped: "已停止",
+        finish: t("home.merged"),
+        finished: t("home.merged"),
+        running: t("home.running"),
+        blocked: t("home.attention"),
+        error: t("home.error"),
+        idle: t("home.idle"),
+        initializing: t("home.initializing"),
+        stopped: t("home.stopped"),
       } as Record<string, string>
     )[status] || status
   );
@@ -210,7 +213,7 @@ async function loadDashboard() {
     );
     commits.value = Object.fromEntries(rows);
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "工作概览加载失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("home.loadFailed"), "error");
   } finally {
     loading.value = false;
     dashboardReady.value = true;
@@ -221,9 +224,9 @@ async function refreshDaily() {
   try {
     await runDailyWork();
     dailyRecords.value = await listDailyWork({ limit: 30 });
-    showUiMessage("近日产出已更新", "success");
+    showUiMessage(t("home.dailyUpdated"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "近日产出更新失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("home.dailyUpdateFailed"), "error");
   } finally {
     dailyLoading.value = false;
   }

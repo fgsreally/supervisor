@@ -100,7 +100,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { confirmHomeTask, updateHomeTask, type Agent, type HomeTask, type Project } from "@/api";
-import UiActionButton from "@/components/UiActionButton.vue";
+import UiActionButton from "@/components/base/UiActionButton.vue";
 import { showUiMessage } from "@/composables/use-ui-message";
 
 interface DraftItem {

@@ -8,7 +8,7 @@
   "files": [
     "dist",
     "agents",
-    "prompts",
+    "resource",
     ".env.example",
     "SUPERVISOR.md"
   ],

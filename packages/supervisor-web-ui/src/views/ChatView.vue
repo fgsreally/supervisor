@@ -606,17 +606,17 @@ import {
   buildBashModal,
   buildExternalInteractionModal,
 } from "../utils/tool-detail";
-import ToolDetailModal from "../components/ToolDetailModal.vue";
-import ToolDetailPanel from "../components/ToolDetailPanel.vue";
-import BtwSplitPanel from "../components/BtwSplitPanel.vue";
-import ChatInputPanel from "../components/ChatInputPanel.vue";
-import ExternalAgentCommandHost from "../components/external-agents/ExternalAgentCommandHost.vue";
-import ChatSessionMenu from "../components/ChatSessionMenu.vue";
-import SessionLogPanel from "../components/SessionLogPanel.vue";
-import SessionFilesPanel from "../components/SessionFilesPanel.vue";
-import SessionFilePreviewPane from "../components/SessionFilePreviewPane.vue";
-import SessionFileTreeSidebar from "../components/SessionFileTreeSidebar.vue";
-import { ResponsiveSplitSurface } from "../components/ui";
+import ToolDetailModal from "../components/tool/ToolDetailModal.vue";
+import ToolDetailPanel from "../components/tool/ToolDetailPanel.vue";
+import BtwSplitPanel from "../components/session/BtwSplitPanel.vue";
+import ChatInputPanel from "../components/chat/ChatInputPanel.vue";
+import ExternalAgentCommandHost from "../components/external-agent/ExternalAgentCommandHost.vue";
+import ChatSessionMenu from "../components/session/ChatSessionMenu.vue";
+import SessionLogPanel from "../components/session/SessionLogPanel.vue";
+import SessionFilesPanel from "../components/session/SessionFilesPanel.vue";
+import SessionFilePreviewPane from "../components/session/SessionFilePreviewPane.vue";
+import SessionFileTreeSidebar from "../components/session/SessionFileTreeSidebar.vue";
+import { ResponsiveSplitSurface } from "../components/base";
 import { fileBasename, isSupervisorRuntimePath } from "../utils/session-file-tree";
 import { useResizableWidth } from "../composables/use-resizable-width";
 import { useMobileViewport } from "../composables/use-mobile-viewport";
@@ -639,11 +639,11 @@ import SessionChangesPopover, {
 import SessionPendingSyncBanner from "../components/chat/SessionPendingSyncBanner.vue";
 import type { SessionGitMeta, SessionGitPendingUpdate } from "@/api";
 import SessionCommitPopover from "../components/chat/SessionCommitPopover.vue";
-import SessionPreviewPanel from "../components/SessionPreviewPanel.vue";
-import SessionAppPreviewBrowser from "../components/SessionAppPreviewBrowser.vue";
-import FloatingPreviewOrb from "../components/FloatingPreviewOrb.vue";
-import SessionBackgroundBashPanel from "../components/SessionBackgroundBashPanel.vue";
-import ToolApprovalDialog from "../components/ToolApprovalDialog.vue";
+import SessionPreviewPanel from "../components/session/SessionPreviewPanel.vue";
+import SessionAppPreviewBrowser from "../components/session/SessionAppPreviewBrowser.vue";
+import FloatingPreviewOrb from "../components/mobile/FloatingPreviewOrb.vue";
+import SessionBackgroundBashPanel from "../components/session/SessionBackgroundBashPanel.vue";
+import ToolApprovalDialog from "../components/tool/ToolApprovalDialog.vue";
 import ToolPermissionCard from "../components/chat/ToolPermissionCard.vue";
 import type { ChatSendPayload } from "@/types/chat-compose";
 import {

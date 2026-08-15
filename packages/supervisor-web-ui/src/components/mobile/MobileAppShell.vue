@@ -25,7 +25,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { Bot, CircleUserRound, ListTodo, MessageSquare } from "lucide-vue-next";
-import type { MainTab } from "@/components/ShellNav.vue";
+import type { MainTab } from "@/components/layout/ShellNav.vue";
 
 export type MobilePrimaryTab = "chat" | "work" | "agents" | "me";
 

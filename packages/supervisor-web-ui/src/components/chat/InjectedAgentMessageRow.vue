@@ -21,7 +21,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useAgentStore, useSessionStore } from "@/store";
-import AgentAvatar from "../AgentAvatar.vue";
+import AgentAvatar from "../agent/AgentAvatar.vue";
 
 const props = defineProps<{ text: string; source: string; queued?: boolean }>();
 const sessions = useSessionStore();

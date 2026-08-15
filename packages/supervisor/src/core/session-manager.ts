@@ -105,8 +105,9 @@ import {
 import { configureSessionLogProjectResolver, sessionLog } from "../utils/session-log.js";
 import { beginSessionTiming, timedSessionStep } from "../utils/session-timing.js";
 import { writeLog } from "../i18n/logs.js";
+import { startSessionActivityScheduler } from "./session-activity.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
-import { loadPromptTemplates } from "../agent/prompt-templates.js";
+import { loadPromptTemplates } from "./resource/prompt-templates.js";
 import { copyMessagesWithInheritance } from "./session-history.js";
 import {
   createSessionCheckpoint,
@@ -167,7 +168,7 @@ import {
 } from "./session-input-queue.js";
 import { loadSkills } from "../agent/skills.js";
 import { listGlobalSkillRoots } from "../agent/skill-dirs.js";
-import { getGlobalPromptsDirectory } from "../agent/prompt-resource.js";
+import { getGlobalPromptsDirectory } from "./resource/prompt-resource.js";
 import { getGlobalExtensionsDirectory } from "../extension/resource.js";
 import { createResourceHandlers } from "../config/resource-handlers.js";
 import { resolveLLMConfig } from "../utils/model-utils.js";
@@ -354,6 +355,7 @@ export class SessionManager {
   private resourcesInitialized = false;
   readonly jobs: JobManager;
   private readonly detachHomeTaskSync: () => void;
+  private readonly stopSessionActivity: () => void;
 
   constructor(db: SupervisorDb) {
     this.db = db;
@@ -367,6 +369,9 @@ export class SessionManager {
         });
       },
     });
+    this.stopSessionActivity = startSessionActivityScheduler(this.db, (id) =>
+      this.publishSessionStatus(id),
+    );
     for (const input of this.db.listPersistedSessionInputs()) {
       this.sessionInputQueues.enqueue(input.sessionId, {
         ...input,
@@ -438,10 +443,9 @@ export class SessionManager {
       services.status === "active";
     if (!activeStatus) return session;
 
-    const jobIds = [
-      services.jobId,
-      ...(services.apps ?? []).map((app) => app.jobId),
-    ].filter((id): id is string => Boolean(id));
+    const jobIds = [services.jobId, ...(services.apps ?? []).map((app) => app.jobId)].filter(
+      (id): id is string => Boolean(id),
+    );
     const endedJobId = jobIds.find((id) => {
       const job = this.jobs.get(id);
       return !job || ["succeeded", "failed", "cancelled", "interrupted"].includes(job.status);
@@ -1027,9 +1031,9 @@ export class SessionManager {
     const row = this.db.insert({
       parent_id: options.parentId ?? null,
       project_id: projectId,
-      // DB-only create: idle until spawn/restore attaches a runtime.
+      // DB-only create: active until the activity policy expires it.
       // `initializing` is reserved for in-flight spawn finalize.
-      status: "idle",
+      status: "active",
       thinking_level: "none",
       cwd: initialCwd,
       agent_id: options.agentId ?? null,
@@ -1154,7 +1158,7 @@ export class SessionManager {
           "system",
           "setup",
         ]);
-        this.db.updateStatus(activeSession.id, "idle");
+        this.db.updateStatus(activeSession.id, "active");
         this.publishSessionStatus(activeSession.id);
         return rowToSession(this.db.get(activeSession.id)!, this.db);
       }
@@ -1196,7 +1200,7 @@ export class SessionManager {
             }
           });
         }
-        this.db.updateStatus(activeSession.id, options.instructions ? "running" : "idle");
+        this.db.updateStatus(activeSession.id, options.instructions ? "running" : "active");
         this.publishSessionStatus(activeSession.id);
         return rowToSession(this.db.get(activeSession.id)!, this.db);
       }
@@ -1303,7 +1307,7 @@ export class SessionManager {
         });
       }
 
-      this.db.updateStatus(activeSession.id, options.instructions ? "running" : "idle");
+      this.db.updateStatus(activeSession.id, options.instructions ? "running" : "active");
       this.publishSessionStatus(activeSession.id);
       sessionLog(
         activeSession.id,
@@ -2225,14 +2229,14 @@ export class SessionManager {
     }
   }
 
-  listImportableExternalSessions(limit?: number) {
-    return this.annotateImportedExternalSessions(listExternalSessions(limit));
+  listImportableExternalSessions(limit?: number, offset?: number) {
+    return this.annotateImportedExternalSessions(listExternalSessions(limit, offset));
   }
 
   private async annotateImportedExternalSessions(
-    pending: Promise<ExternalSessionCandidate[]>,
-  ): Promise<ExternalSessionCandidate[]> {
-    const candidates = await pending;
+    pending: Promise<Awaited<ReturnType<typeof listExternalSessions>>>,
+  ): Promise<Awaited<ReturnType<typeof listExternalSessions>>> {
+    const page = await pending;
     const importedByExternalId = new Map<string, number>();
     for (const session of this.list()) {
       const externalId = session.externalSessionId;
@@ -2241,12 +2245,15 @@ export class SessionManager {
         importedByExternalId.set(externalId, session.id);
       }
     }
-    return candidates.map((candidate) => {
-      const importedSessionId = importedByExternalId.get(candidate.externalSessionId);
-      return importedSessionId == null
-        ? { ...candidate, imported: false }
-        : { ...candidate, imported: true, importedSessionId };
-    });
+    return {
+      ...page,
+      items: page.items.map((candidate) => {
+        const importedSessionId = importedByExternalId.get(candidate.externalSessionId);
+        return importedSessionId == null
+          ? { ...candidate, imported: false }
+          : { ...candidate, imported: true, importedSessionId };
+      }),
+    };
   }
 
   async importExternalSession(options: {
@@ -2758,19 +2765,50 @@ export class SessionManager {
 
     const projectId = session?.projectId ?? null;
     this.db.delete(id);
-    if (session?.projectId != null) removeSessionDirSync(session.projectId, id);
-    removeSessionMediaDirSync(id);
 
-    if (runtime) {
-      await runtime.clear().catch((error: unknown) => {
-        const detail = error instanceof Error ? error.message : String(error);
-        writeLog("error", "runtime.clearOnDeleteFailed", { id, error: detail });
-      });
-      if (restoredForDelete) {
-        await new Promise((resolve) => setTimeout(resolve, 400));
+    // The Session and its messages disappear atomically with the DB delete above. Slow runtime
+    // and filesystem cleanup continues independently; failures are durable work items for Watson.
+    const recordCleanupFailure = (step: string, error: unknown) => {
+      const detail = error instanceof Error ? error.message : String(error);
+      writeLog("error", "runtime.clearOnDeleteFailed", { id, step, error: detail });
+      try {
+        this.db.recordSessionCleanupFailure({
+          sessionId: id,
+          projectId,
+          step,
+          error: detail,
+          context: { restoredForDelete },
+        });
+      } catch (recordError: unknown) {
+        writeLog("error", "runtime.clearOnDeleteFailed", {
+          id,
+          step,
+          error: recordError instanceof Error ? recordError.message : String(recordError),
+        });
       }
-    }
-    void projectId;
+    };
+    void (async () => {
+      if (session?.projectId != null) {
+        try {
+          removeSessionDirSync(session.projectId, id);
+        } catch (error: unknown) {
+          recordCleanupFailure("session_directory", error);
+        }
+      }
+      try {
+        removeSessionMediaDirSync(id);
+      } catch (error: unknown) {
+        recordCleanupFailure("session_media", error);
+      }
+      if (runtime) {
+        try {
+          await runtime.clear();
+        } catch (error: unknown) {
+          recordCleanupFailure("runtime", error);
+        }
+        if (restoredForDelete) await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    })();
   }
 
   // ============ Session Tree Methods ============
@@ -2877,6 +2915,7 @@ export class SessionManager {
   }
 
   async dispose(): Promise<void> {
+    this.stopSessionActivity();
     this.detachHomeTaskSync();
     setSessionUnreadHandler(null);
     await Promise.all([...this.runtimes.keys()].map((id) => this.kill(id).catch(() => {})));

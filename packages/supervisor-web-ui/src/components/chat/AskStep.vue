@@ -39,7 +39,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
 import AskStepOption from "./AskStepOption.vue";
-import ToolActivityBar from "../ToolActivityBar.vue";
+import ToolActivityBar from "../tool/ToolActivityBar.vue";
 import { parseAskQuestions, type AskOption } from "@/utils/ask-tool";
 import * as api from "@/api";
 

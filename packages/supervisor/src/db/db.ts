@@ -388,7 +388,7 @@ export class SupervisorDb {
       ...row,
       project_id: row.project_id ?? null,
       parent_id: row.parent_id ?? null,
-      status: normalizeSessionStatus(row.status ?? "initializing"),
+      status: normalizeSessionStatus(row.status ?? "active"),
       cwd: row.cwd ?? "",
       meta: typeof row.meta === "string" ? row.meta : JSON.stringify(row.meta ?? {}),
       created_at: now,
@@ -974,6 +974,29 @@ export class SupervisorDb {
 
   delete(id: number): void {
     this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+  }
+
+  recordSessionCleanupFailure(input: {
+    sessionId: number;
+    projectId: number | null;
+    step: string;
+    error: string;
+    context?: Record<string, unknown>;
+  }): void {
+    this.db
+      .prepare(
+        `INSERT INTO session_cleanup_failures
+           (session_id, project_id, step, error, context, status, created_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+      )
+      .run(
+        input.sessionId,
+        input.projectId,
+        input.step,
+        input.error,
+        JSON.stringify(input.context ?? {}),
+        Date.now(),
+      );
   }
 
   // ============ Agent Methods ============

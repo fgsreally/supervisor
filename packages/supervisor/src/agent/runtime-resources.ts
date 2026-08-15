@@ -4,7 +4,7 @@ import type { Agent } from "../types.js";
 import type { SourceInfo } from "../utils/source-info.js";
 import type { SupervisorDb } from "../db/db.js";
 import { loadAgentSessionResources } from "./resource-resolver.js";
-import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.js";
+import { expandPromptTemplate, type PromptTemplate } from "../core/resource/prompt-templates.js";
 import { formatSkillsForPrompt, type Skill } from "./skills.js";
 import { stripFrontmatter } from "../utils/frontmatter.js";
 

@@ -41,7 +41,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { ChevronDown } from "lucide-vue-next";
-import FileTypeIcon from "../FileTypeIcon.vue";
+import FileTypeIcon from "../base/FileTypeIcon.vue";
 
 export interface SessionChangedFileView {
   path: string;

@@ -77,7 +77,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { TaskArtifact, TodoItem } from "@/api";
-import MarkdownContent from "../MarkdownContent.vue";
+import MarkdownContent from "../base/MarkdownContent.vue";
 
 const props = defineProps<{
   tasks: TaskArtifact[];

@@ -1,26 +1,19 @@
-<template>
-  <ResponsivePopover
-    v-model:open="open"
+﻿<template>
+  <ChatHeaderPopover
+    :open="open"
+    @update:open="open = $event"
     title="Todo"
     panel-class="todo-popover"
     :dismiss-on-outside="dismissOnOutside"
+    :count="todos.length"
   >
-    <template #trigger>
-      <ChatHeaderAction
-        :title="`Todo · ${todos.length}`"
-        :active="open"
-        :count="todos.length"
-        @click="open = !open"
-      >
-        <ClipboardList />
-      </ChatHeaderAction>
-    </template>
+    <template #icon><ClipboardList /></template>
 
-    <template #default="{ mobile }">
-      <header v-if="!mobile">
+    <template #header>
         Todo <span>{{ completedCount }}/{{ todos.length }}</span>
-      </header>
-      <div v-else class="todo-sheet-meta">{{ completedCount }}/{{ todos.length }}</div>
+    </template>
+    <template #mobile-header>{{ completedCount }}/{{ todos.length }}</template>
+    <template #default>
       <ul>
         <li v-for="todo in todos" :key="`${todo.status}:${todo.title}`">
           <CheckCircle2 v-if="todo.status === 'completed'" class="todo-done" />
@@ -39,15 +32,14 @@
         </li>
       </ul>
     </template>
-  </ResponsivePopover>
+  </ChatHeaderPopover>
 </template>
 
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { CheckCircle2, Circle, ClipboardList, Loader2 } from "lucide-vue-next";
 import type { TodoItem } from "@/api";
-import ResponsivePopover from "@/components/ui/ResponsivePopover.vue";
-import ChatHeaderAction from "./ChatHeaderAction.vue";
+import ChatHeaderPopover from "./ChatHeaderPopover.vue";
 
 const props = withDefaults(defineProps<{ todos: TodoItem[]; dismissOnOutside?: boolean }>(), {
   dismissOnOutside: true,

@@ -12,6 +12,7 @@ import { initVisualViewport } from "./composables/use-visual-viewport";
 import { requestNotificationPermission } from "./composables/use-notifications";
 import { initSessionNotifyWatch } from "./composables/use-session-notify-watch";
 import { initNativeShell } from "./native/bootstrap";
+import { getLocale } from "./i18n";
 
 // Android shell WebView: mark early so page headers can pad below the status bar.
 if (/\bSupervisorShell\//i.test(navigator.userAgent)) {
@@ -22,6 +23,7 @@ initAppTheme();
 void initAppStyle();
 initAppFontScale();
 initVisualViewport();
+document.documentElement.lang = getLocale();
 
 if (import.meta.env.DEV) {
   if ("serviceWorker" in navigator) {

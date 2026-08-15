@@ -13,6 +13,7 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
 
 export type SessionStatus =
   | "initializing"
+  | "active"
   | "running"
   | "blocked"
   | "idle"

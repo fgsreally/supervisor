@@ -39,7 +39,7 @@
 
 <script setup lang="ts">
 import { FolderGit2 } from "lucide-vue-next";
-import AgentAvatar from "@/components/AgentAvatar.vue";
+import AgentAvatar from "@/components/agent/AgentAvatar.vue";
 
 withDefaults(
   defineProps<{

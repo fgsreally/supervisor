@@ -134,7 +134,7 @@ import UserMessageRow from "./UserMessageRow.vue";
 import InjectedAgentMessageRow from "./InjectedAgentMessageRow.vue";
 import AssistantMessageGroup from "./AssistantMessageGroup.vue";
 import LlmErrorCard from "./LlmErrorCard.vue";
-import CompactionBanner from "../CompactionBanner.vue";
+import CompactionBanner from "./CompactionBanner.vue";
 import MessageAssets from "./MessageAssets.vue";
 
 const props = defineProps<{

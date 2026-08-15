@@ -85,8 +85,8 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount } from "vue";
-import ChatFileBubble from "../ChatFileBubble.vue";
-import ChatRichText from "../ChatRichText.vue";
+import ChatFileBubble from "./ChatFileBubble.vue";
+import ChatRichText from "./ChatRichText.vue";
 import type { ChatUserFileAttachment } from "@/types/chat-entry";
 import { sessionMediaUrl } from "@/api";
 import { openImagePreview } from "@/composables/use-image-preview";

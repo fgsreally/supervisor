@@ -417,7 +417,7 @@ export function buildExtensionDeps(deps: {
       } finally {
         const current = db.get(sessionId)?.status;
         if (current === "blocked") {
-          db.updateStatus(sessionId, before === "running" ? "running" : "idle");
+        db.updateStatus(sessionId, before === "running" ? "running" : "active");
         }
         if (reason.trim()) {
           // Kept visible in logs; pausing is intentionally stateful via session status.

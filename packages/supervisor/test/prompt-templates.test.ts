@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expandPromptTemplate, type PromptTemplate } from "../src/agent/prompt-templates.js";
+import { expandPromptTemplate, type PromptTemplate } from "../src/core/resource/prompt-templates.js";
 
 const template: PromptTemplate = {
   name: "answer",

@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import SessionJobsPopover from "../SessionJobsPopover.vue";
+import { setLocale } from "@/i18n";
 
 const { getSessionJobs, cancelSessionJob, sendSessionJobInput } = vi.hoisted(() => ({
   getSessionJobs: vi.fn(),
@@ -17,6 +18,7 @@ vi.mock("@/api", () => ({
 describe("SessionJobsPopover", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setLocale("zh-CN");
     getSessionJobs.mockResolvedValue({
       schedules: [
         {

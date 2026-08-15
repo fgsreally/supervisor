@@ -53,7 +53,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { ChevronLeft, MoreHorizontal } from "lucide-vue-next";
-import WorkflowStageTag from "../WorkflowStageTag.vue";
+import WorkflowStageTag from "@/components/task/WorkflowStageTag.vue";
 import type { SessionUsage } from "@/api";
 
 /** UI-facing session phase (overrides backend idle while streaming / waiting on ask). */

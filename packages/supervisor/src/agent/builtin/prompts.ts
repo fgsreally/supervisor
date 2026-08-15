@@ -5,7 +5,12 @@ import type { PackagedAgentKind } from "./registry.js";
 
 export function getPackagedAgentsDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  const candidates = [join(here, "../../../agents"), join(here, "../agents")];
+  const candidates = [
+    join(here, "../../../resource/agents"),
+    join(here, "../../resource/agents"),
+    join(here, "../../../prompts/agents"),
+    join(here, "../../prompts/agents"),
+  ];
   for (const dir of candidates) {
     if (existsSync(dir)) return dir;
   }
@@ -13,7 +18,7 @@ export function getPackagedAgentsDir(): string {
 }
 
 export function loadBuiltinAgentPrompt(kind: PackagedAgentKind | "assistant" | "watson"): string {
-  const filePath = join(getPackagedAgentsDir(), kind, "prompt.md");
+  const filePath = join(getPackagedAgentsDir(), `${kind}.md`);
   if (!existsSync(filePath)) {
     throw new Error(`Missing packaged agent prompt: ${filePath}`);
   }

@@ -193,6 +193,9 @@ export interface ExtensionSession {
       }>,
     ): Promise<SessionTodoInfo[]>;
   };
+  readonly activity: {
+    touch(): void;
+  };
   readonly tools: {
     beforeUse(handler: ToolGuardHandler, options?: { priority?: number }): () => void;
     afterUse(handler: ToolResultHandler, options?: { priority?: number }): () => void;
@@ -350,6 +353,11 @@ export interface ExtensionContext {
 
   /** 会话域：当前会话身份 + spawn / 消息 / meta 等操作 */
   readonly session: ExtensionSession;
+  /** Hidden strategy controls; strategies themselves are not user-visible extensions. */
+  readonly policies: {
+    disable(id: string): void;
+    isDisabled(id: string): boolean;
+  };
 
   /** Agent 域：当前 agent 身份 + 工具注册 / 查找等操作 */
   readonly agent: ExtensionAgent;

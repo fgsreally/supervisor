@@ -1,4 +1,4 @@
-import type { ToolDetailSection } from "../components/ToolDetailModal.vue";
+import type { ToolDetailSection } from "../components/tool/ToolDetailModal.vue";
 import { toolCallDetail, toolCallSummary, toolDetailLabel, toolResultDetail } from "./tool-display";
 
 export function buildToolModal(

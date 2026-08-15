@@ -1,6 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
-import ChatSessionMenu from "../ChatSessionMenu.vue";
+import ChatSessionMenu from "../session/ChatSessionMenu.vue";
 
 const baseProps = {
   open: true,

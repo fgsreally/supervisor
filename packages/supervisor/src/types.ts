@@ -20,6 +20,7 @@ export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork" | "c
  */
 export type SessionStatus =
   | "initializing"
+  | "active"
   | "running"
   | "blocked"
   | "idle"
@@ -34,6 +35,7 @@ export function normalizeSessionStatus(status: string | null | undefined): Sessi
   if (status === "waiting_user" || status === "needs_model") return "blocked";
   if (
     status === "initializing" ||
+    status === "active" ||
     status === "running" ||
     status === "blocked" ||
     status === "idle" ||

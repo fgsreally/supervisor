@@ -132,10 +132,10 @@ const showHandle = computed(() => sheetMode.value);
 const showHeader = computed(() =>
   Boolean(
     slots.header ||
-      slots["header-actions"] ||
-      props.title ||
-      props.description ||
-      (!sheetMode.value && props.showClose),
+    slots["header-actions"] ||
+    props.title ||
+    props.description ||
+    (!sheetMode.value && props.showClose),
   ),
 );
 

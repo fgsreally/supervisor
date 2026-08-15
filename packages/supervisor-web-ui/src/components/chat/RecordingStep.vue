@@ -20,7 +20,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import ToolActivityBar from "../ToolActivityBar.vue";
+import ToolActivityBar from "../tool/ToolActivityBar.vue";
 
 const props = defineProps<{
   sessionId: string;

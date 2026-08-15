@@ -158,10 +158,10 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ChevronRight, Loader2 } from "lucide-vue-next";
 import type { DisplayGroup, RenderPiece } from "@/utils/flatten-messages";
-import MarkdownContent from "../MarkdownContent.vue";
-import ThinkingBlock from "../ThinkingBlock.vue";
+import MarkdownContent from "../base/MarkdownContent.vue";
+import ThinkingBlock from "./ThinkingBlock.vue";
 import ToolStepRenderer from "./ToolStepRenderer.vue";
-import AgentAvatar from "../AgentAvatar.vue";
+import AgentAvatar from "../agent/AgentAvatar.vue";
 import { viewPreferences } from "@/utils/view-preferences";
 
 const executionOpen = ref(false);

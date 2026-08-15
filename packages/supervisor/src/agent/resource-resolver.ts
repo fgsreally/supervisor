@@ -9,7 +9,7 @@ import type { ExtensionModuleRegistry } from "../extension/registry.js";
 import type { ExtensionContext, ExtensionDefinition, ToolDefinition } from "../extension/index.js";
 import { isPackagedToolId, probePackagedTool } from "../tools/catalog.js";
 import { createDefaultTools } from "../utils/default-tools.js";
-import { loadPromptTemplates, type PromptTemplate } from "./prompt-templates.js";
+import { loadPromptTemplates, type PromptTemplate } from "../core/resource/prompt-templates.js";
 import { loadSkills, type Skill } from "./skills.js";
 import { getProjectSkillsDirectory } from "./skill-dirs.js";
 import type { Agent, ToolsPreset } from "../types.js";
@@ -99,6 +99,7 @@ function createProbeContext(
         setCurrentPath: noopAsync,
       },
       todos: { list: async () => [], replace: async () => [] },
+      activity: { touch: noop },
       getParent: async () => undefined,
       children: async () => [],
       appendEntry: async () => "",
@@ -157,6 +158,7 @@ function createProbeContext(
       setThinkingLevel: noop,
       getThinkingLevel: () => "none" as const,
     }),
+    policies: { disable: noop, isDisabled: () => false },
     tools: {
       list: toolRegistry.list,
       get: toolRegistry.get,

@@ -83,6 +83,24 @@ CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 
+-- Deferred cleanup failures survive Session deletion so Watson can repair them later.
+CREATE TABLE IF NOT EXISTS session_cleanup_failures (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER NOT NULL,
+  project_id INTEGER,
+  step TEXT NOT NULL,
+  error TEXT NOT NULL,
+  context TEXT NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  resolved_at INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_cleanup_failures_status_created
+  ON session_cleanup_failures(status, created_at);
+CREATE INDEX IF NOT EXISTS idx_session_cleanup_failures_session
+  ON session_cleanup_failures(session_id, created_at);
+
 CREATE TABLE IF NOT EXISTS timeline_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   type TEXT NOT NULL,

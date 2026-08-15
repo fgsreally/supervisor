@@ -190,9 +190,9 @@ export const useSessionStore = defineStore("session", () => {
           });
       }
     } catch (err) {
-      if (!quiet || sessions.value.length === 0) {
-        sessionsListError.value = err instanceof Error ? err.message : "Failed to fetch sessions";
-      }
+      // A quiet refresh must not flash loading UI, but its failure still needs
+      // to be observable so callers and the sidebar can explain stale data.
+      sessionsListError.value = err instanceof Error ? err.message : "Failed to fetch sessions";
       throw err;
     } finally {
       if (!quiet) {
@@ -249,36 +249,48 @@ export const useSessionStore = defineStore("session", () => {
 
   async function deleteSession(id: string) {
     root.clearError();
-    try {
-      await api.deleteSession(id);
-      const removedIds = new Set([id]);
-      let changed = true;
-      while (changed) {
-        changed = false;
-        for (const session of sessions.value) {
-          if (
-            session.parentId &&
-            removedIds.has(session.parentId) &&
-            (session.spawnType === "subagent" || session.spawnType === "btw") &&
-            !removedIds.has(session.id)
-          ) {
-            removedIds.add(session.id);
-            changed = true;
-          }
+    const previousSessions = sessions.value;
+    const removedIds = new Set([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const session of sessions.value) {
+        if (
+          session.parentId &&
+          removedIds.has(session.parentId) &&
+          (session.spawnType === "subagent" || session.spawnType === "btw") &&
+          !removedIds.has(session.id)
+        ) {
+          removedIds.add(session.id);
+          changed = true;
         }
       }
-      sessions.value = sessions.value
-        .filter((session) => !removedIds.has(session.id))
-        .map((session) =>
-          session.parentId && removedIds.has(session.parentId)
-            ? { ...session, parentId: null }
-            : session,
-        );
-      for (const removedId of removedIds) {
-        delete messages.value[removedId];
-        delete messageCursors.value[removedId];
-      }
-      persistSessionListCache();
+    }
+    const previousMessages = new Map(
+      [...removedIds]
+        .filter((removedId) => removedId in messages.value)
+        .map((removedId) => [removedId, messages.value[removedId]]),
+    );
+    const previousCursors = new Map(
+      [...removedIds]
+        .filter((removedId) => removedId in messageCursors.value)
+        .map((removedId) => [removedId, messageCursors.value[removedId]]),
+    );
+    sessions.value = sessions.value
+      .filter((session) => !removedIds.has(session.id))
+      .map((session) =>
+        session.parentId && removedIds.has(session.parentId)
+          ? { ...session, parentId: null }
+          : session,
+      );
+    for (const removedId of removedIds) {
+      delete messages.value[removedId];
+      delete messageCursors.value[removedId];
+    }
+    persistSessionListCache();
+
+    try {
+      await api.deleteSession(id);
       void createMessageStorage()
         .then(async (storage) => {
           for (const removedId of removedIds) {
@@ -289,6 +301,15 @@ export const useSessionStore = defineStore("session", () => {
           console.warn("[MessageStorage] deleteSession cache cleanup failed", error);
         });
     } catch (err) {
+      const currentById = new Map(sessions.value.map((session) => [session.id, session]));
+      const previousIds = new Set(previousSessions.map((session) => session.id));
+      sessions.value = [
+        ...previousSessions.map((session) => currentById.get(session.id) ?? session),
+        ...sessions.value.filter((session) => !previousIds.has(session.id)),
+      ];
+      for (const [removedId, value] of previousMessages) messages.value[removedId] = value;
+      for (const [removedId, value] of previousCursors) messageCursors.value[removedId] = value;
+      persistSessionListCache();
       root.setError(err instanceof Error ? err.message : "Failed to delete session");
       throw err;
     }

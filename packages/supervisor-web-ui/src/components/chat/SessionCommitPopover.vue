@@ -1,25 +1,22 @@
-<template>
-  <ResponsivePopover
-    v-model:open="open"
+﻿<template>
+  <ChatHeaderPopover
+    :open="open"
+    @update:open="onOpenChange"
     title="Commit 记录"
     panel-class="commit-popover"
     :dismiss-on-outside="dismissOnOutside"
   >
-    <template #trigger>
-      <ChatHeaderAction title="Commit 记录" :active="open" @click="toggle">
-        <GitCommitHorizontal />
-      </ChatHeaderAction>
+    <template #icon><GitCommitHorizontal /></template>
+    <template #header>
+      <strong>Commit 记录</strong>
+      <Loader2 v-if="loading" class="commit-loading" />
+    </template>
+    <template #mobile-header>
+      <Loader2 v-if="loading" class="commit-loading" />
+      <span v-if="loading">加载中…</span>
     </template>
 
-    <template #default="{ mobile }">
-      <header v-if="!mobile">
-        <strong>Commit 记录</strong>
-        <Loader2 v-if="loading" class="commit-loading" />
-      </header>
-      <div v-else-if="loading" class="commit-drawer-loading">
-        <Loader2 class="commit-loading" />
-        <span>加载中…</span>
-      </div>
+    <template #default>
       <ul v-if="commits.length">
         <li v-for="commit in commits" :key="commit.hash">
           <code>{{ commit.shortHash }}</code>
@@ -31,15 +28,14 @@
       </ul>
       <p v-else-if="!loading">当前 worktree 暂无提交</p>
     </template>
-  </ResponsivePopover>
+  </ChatHeaderPopover>
 </template>
 
 <script setup lang="ts">
 import { ref } from "vue";
 import { GitCommitHorizontal, Loader2 } from "lucide-vue-next";
 import { getSessionCommits, type WorktreeCommit } from "@/api";
-import ResponsivePopover from "@/components/ui/ResponsivePopover.vue";
-import ChatHeaderAction from "./ChatHeaderAction.vue";
+import ChatHeaderPopover from "./ChatHeaderPopover.vue";
 
 const props = withDefaults(defineProps<{ sessionId: string; dismissOnOutside?: boolean }>(), {
   dismissOnOutside: true,
@@ -49,14 +45,18 @@ const loading = ref(false);
 const commits = ref<WorktreeCommit[]>([]);
 
 async function toggle() {
-  open.value = !open.value;
-  if (!open.value) return;
+  open.value = true;
   loading.value = true;
   try {
     commits.value = await getSessionCommits(props.sessionId);
   } finally {
     loading.value = false;
   }
+}
+
+function onOpenChange(value: boolean) {
+  if (value) void toggle();
+  else open.value = false;
 }
 
 function formatTime(value: number) {

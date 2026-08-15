@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getPackagedPromptsDir, renderPromptTemplate } from "../src/agent/system-prompts.js";
+import { getPackagedPromptsDir, renderPromptTemplate } from "../src/core/resource/system-prompts.js";
 
 describe("supervisor: system-prompts", () => {
   it("resolves the packaged prompts directory", () => {

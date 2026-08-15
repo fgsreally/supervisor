@@ -56,7 +56,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { ChevronDown } from "lucide-vue-next";
-import FileTypeIcon from "../FileTypeIcon.vue";
+import FileTypeIcon from "../base/FileTypeIcon.vue";
 
 export interface TurnFileChangesData {
   added?: string[];

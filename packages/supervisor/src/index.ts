@@ -39,13 +39,17 @@ export function startSupervisor(options: SupervisorOptions = {}): {
   };
 }
 
-export { ensureAgentHome, getAgentHomeDir, getSupervisorAgentsRoot } from "./agent/index.js";
-export type { AgentResources, AgentToolInfo, ResourceLayer } from "./agent/resource-resolver.js";
+export { ensureAgentHome, getAgentHomeDir, getSupervisorAgentsRoot } from "./core/agent/index.js";
+export type { AgentResources, AgentToolInfo, ResourceLayer } from "./core/agent/index.js";
 export { SupervisorDb } from "./db/db.js";
-export { createDefaultTools } from "./utils/default-tools.js";
-export { activatePackagedTools, getPackagedToolDir, listPackagedToolIds } from "./tools/index.js";
-export { defineExtension, Type, type Static, type TSchema } from "./extension/index.js";
-export { loadExtension, loadExtensions } from "./extension/index.js";
+export { createDefaultTools } from "./core/tools/index.js";
+export {
+  activatePackagedTools,
+  getPackagedToolDir,
+  listPackagedToolIds,
+} from "./core/tools/index.js";
+export { defineExtension, Type, type Static, type TSchema } from "./core/extensions/index.js";
+export { loadExtension, loadExtensions } from "./core/extensions/index.js";
 export type {
   ExtensionContext,
   ExtensionEvent,
@@ -56,13 +60,13 @@ export type {
   SupervisorProjectFacade,
   SupervisorUiFacade,
   ToolDefinition,
-} from "./extension/index.js";
+} from "./core/extensions/index.js";
 export { createHttpServer } from "./http/http-server.js";
 export { registerWebSocketRoutes } from "./websocket/server.js";
 export { extractMessageSearchFields } from "./db/message-search.js";
-export { copyMessagesWithInheritance } from "./core/session-history.js";
-export type { SessionOutputListener } from "./core/session-manager.js";
-export { SessionManager } from "./core/session-manager.js";
+export { copyMessagesWithInheritance } from "./core/session/index.js";
+export type { SessionOutputListener } from "./core/session/index.js";
+export { SessionManager } from "./core/session/index.js";
 export { JobManager } from "./core/jobs.js";
 export type * from "./core/jobs.js";
 export {
@@ -72,23 +76,23 @@ export {
   type InstallResourceInput,
   type InstallResourceResult,
   type ResourceManagerDeps,
-} from "./resources/resource-manager.js";
+} from "./core/resources/index.js";
 export {
   indexResourceHandlers,
   type ResourceDescriptor,
   type ResourceHandler,
   type ResourceInstallOutput,
   type ResourceInstallRequest,
-} from "./resources/handler.js";
+} from "./core/resources/index.js";
 export {
   AgentResource,
   type AgentResourceCommandInfo,
   type AgentResourceCommandSource,
   type AgentResourceOptions,
-} from "./agent/runtime-resources.js";
-export type { AgentResourceBinding, Resource, ResourceKind } from "./resources/types.js";
-export type { SessionEvent, SessionState } from "./core/session-runtime.js";
-export { SessionRuntime } from "./core/session-runtime.js";
-export { formatSkillsForPrompt, loadSkills, loadSkillsFromDir } from "./agent/skills.js";
+} from "./core/agent/index.js";
+export type { AgentResourceBinding, Resource, ResourceKind } from "./core/resources/index.js";
+export type { SessionEvent, SessionState } from "./core/session/index.js";
+export { SessionRuntime } from "./core/session/index.js";
+export { formatSkillsForPrompt, loadSkills, loadSkillsFromDir } from "./core/agent/index.js";
 export type { TurnFileChanges, TurnRecord } from "./core/turn-file-tracker.js";
 export type * from "./types.js";

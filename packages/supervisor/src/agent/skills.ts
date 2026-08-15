@@ -7,7 +7,7 @@ import type { ResourceDiagnostic } from "../utils/diagnostics.js";
 import { parseFrontmatter } from "../utils/frontmatter.js";
 import { canonicalizePath } from "../utils/paths.js";
 import { createSyntheticSourceInfo, type SourceInfo } from "../utils/source-info.js";
-import { loadPromptTemplate } from "./system-prompts.js";
+import { loadPromptTemplate } from "../core/resource/system-prompts.js";
 
 /** Max name length per spec */
 const MAX_NAME_LENGTH = 64;

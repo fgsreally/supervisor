@@ -1,5 +1,5 @@
 import { dirname, join, resolve } from "node:path";
-import { promptResourceHandler } from "../agent/prompt-resource.js";
+import { promptResourceHandler } from "../core/resource/prompt-resource.js";
 import { getDefaultCwd, resolvePlaygroundPath } from "./default-cwd.js";
 import { skillResourceHandler } from "../agent/skill-resource.js";
 import type { SupervisorDb } from "../db/db.js";

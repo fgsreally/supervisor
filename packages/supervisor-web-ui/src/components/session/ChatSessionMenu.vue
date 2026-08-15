@@ -1,0 +1,952 @@
+<template>
+  <Teleport to="body">
+    <Transition name="chat-menu" :duration="{ enter: 280, leave: 260 }">
+      <div
+        v-if="open"
+        class="chat-session-menu-backdrop fixed inset-0 z-50 flex justify-end"
+        @click.self="emit('close')"
+      >
+        <aside
+          class="chat-session-menu relative w-full max-w-[300px] h-full flex flex-col"
+          @click.stop
+        >
+          <header
+            class="chat-session-menu__header h-14 flex items-center justify-between px-4 border-b shrink-0"
+          >
+            <span class="text-[15px] font-medium">聊天信息</span>
+            <button type="button" class="chat-session-menu__close" @click="emit('close')">
+              <X class="w-5 h-5" />
+            </button>
+          </header>
+
+          <div class="flex-1 overflow-y-auto custom-scrollbar">
+            <section class="px-5 py-5 border-b chat-session-menu__section">
+              <div class="flex flex-wrap gap-4">
+                <div class="flex flex-col items-center gap-1.5 w-14">
+                  <AgentAvatar
+                    v-if="avatarIcon"
+                    class="session-menu-avatar"
+                    :agent-id="avatarAgentId || 'session'"
+                    :agent-name="agentName"
+                    :icon="avatarIcon"
+                  />
+                  <div
+                    v-else
+                    class="w-12 h-12 rounded-md text-white flex items-center justify-center text-lg font-medium"
+                    :style="{ backgroundColor: avatarColor }"
+                  >
+                    {{ avatarLabel }}
+                  </div>
+                  <span class="text-[11px] text-center truncate w-full chat-session-menu__muted">{{
+                    agentName
+                  }}</span>
+                </div>
+              </div>
+              <div class="mt-4 flex items-center gap-2">
+                <span class="text-[12px] chat-session-menu__muted">会话头像</span>
+                <button
+                  v-for="color in SESSION_AVATAR_COLORS"
+                  :key="color"
+                  type="button"
+                  class="h-5 w-5 rounded-md ring-offset-2 transition-transform hover:scale-110"
+                  :class="color === avatarColor ? 'ring-2 ring-[#07c160]' : ''"
+                  :style="{ backgroundColor: color }"
+                  @click="emit('update:avatar', { text: avatarLabel, color })"
+                />
+              </div>
+              <label class="chat-session-menu__name mt-4">
+                <span>聊天标题</span>
+                <input
+                  :value="sessionTitle"
+                  type="text"
+                  :disabled="titleReadonly"
+                  @change="emit('update:title', ($event.target as HTMLInputElement).value)"
+                />
+              </label>
+              <div v-if="cwd" class="chat-session-menu__cwd mt-4">
+                <button
+                  v-if="showOpenCwd"
+                  type="button"
+                  class="chat-session-menu__open-cwd"
+                  title="在本机打开"
+                  :disabled="openingCwd"
+                  @click="onOpenCwd"
+                >
+                  <FolderOpen class="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  class="chat-session-menu__cwd-path"
+                  :class="{ 'is-expanded': cwdExpanded }"
+                  :title="cwdExpanded ? '收起' : '展开完整路径'"
+                  @click="cwdExpanded = !cwdExpanded"
+                >
+                  <code>{{ cwd }}</code>
+                </button>
+              </div>
+              <p v-if="gitBranch" class="mt-2 text-[12px] chat-session-menu__muted break-all">
+                分支：<code class="text-[11px]">{{ gitBranch }}</code>
+              </p>
+              <div v-if="!externalAgent" class="session-usage">
+                <div>
+                  <span>当前 Session 费用</span
+                  ><strong>{{ formatCost(usage?.cost.total ?? 0) }}</strong>
+                </div>
+                <p>
+                  {{ formatTokens(usage?.totalTokens ?? 0) }} tokens ·
+                  {{ usage?.messages ?? 0 }} 条模型回复
+                </p>
+                <small
+                  >输入 {{ formatTokens(usage?.input ?? 0) }} · 输出
+                  {{ formatTokens(usage?.output ?? 0) }} · 缓存
+                  {{ formatTokens((usage?.cacheRead ?? 0) + (usage?.cacheWrite ?? 0)) }}</small
+                >
+              </div>
+              <p v-if="sessionStatus === 'finish'" class="mt-3 text-[13px] text-[#07c160]">
+                会话已完成
+              </p>
+              <p v-else-if="sessionStatus === 'error'" class="mt-3 text-[13px] text-[#fa5151]">
+                合并失败，worktree 已保留
+              </p>
+            </section>
+
+            <button
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('btw')"
+            >
+              <span>顺便问一下</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <button
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('search')"
+            >
+              <span>查找聊天内容</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <button
+              v-if="canCheckpoint"
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('checkpoint')"
+            >
+              <span>创建存档点</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <button
+              v-if="canCheckpoint"
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('rewind')"
+            >
+              <span>时光倒流</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <button
+              v-if="canCheckpoint"
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('commit')"
+            >
+              <span>提交代码变更</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <button
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('log')"
+            >
+              <span>查看日志</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <button
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('files')"
+            >
+              <span>查看工作区文件</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <button
+              v-if="canSync"
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
+              @click="emit('sync')"
+            >
+              <span>同步项目修改</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <button
+              v-if="canComplete"
+              type="button"
+              class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors text-[#576b95]"
+              @click="emit('complete')"
+            >
+              <span>完成会话</span>
+              <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
+            </button>
+
+            <div
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
+              <span class="text-[15px]">消息免打扰</span>
+              <button
+                type="button"
+                role="switch"
+                :aria-checked="muted"
+                class="relative w-11 h-6 rounded-full transition-colors"
+                :class="muted ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
+                @click="emit('update:muted', !muted)"
+              >
+                <span
+                  class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                  :class="muted ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </button>
+            </div>
+
+            <div
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
+              <span class="text-[15px]">显示思考过程</span>
+              <button
+                type="button"
+                role="switch"
+                :aria-checked="showThinking"
+                class="relative w-11 h-6 rounded-full transition-colors"
+                :class="showThinking ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
+                @click="emit('update:showThinking', !showThinking)"
+              >
+                <span
+                  class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                  :class="showThinking ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </button>
+            </div>
+
+            <div
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
+              <span class="text-[15px]">仅显示结论</span>
+              <button
+                type="button"
+                role="switch"
+                aria-label="外部执行仅显示结论"
+                :aria-checked="viewPreferences.collapseExternalAgentDetails"
+                class="relative w-11 h-6 rounded-full transition-colors shrink-0"
+                :class="
+                  viewPreferences.collapseExternalAgentDetails ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'
+                "
+                @click="toggleExternalDetails"
+              >
+                <span
+                  class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                  :class="
+                    viewPreferences.collapseExternalAgentDetails ? 'translate-x-5' : 'translate-x-0'
+                  "
+                />
+              </button>
+            </div>
+
+            <div
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
+              <span class="text-[15px]">分条显示回复</span>
+              <button
+                type="button"
+                role="switch"
+                aria-label="分条显示模型回复"
+                :aria-checked="splitAssistantMessages"
+                class="relative w-11 h-6 rounded-full transition-colors"
+                :class="splitAssistantMessages ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
+                @click="emit('update:splitAssistantMessages', !splitAssistantMessages)"
+              >
+                <span
+                  class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                  :class="splitAssistantMessages ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </button>
+            </div>
+
+            <div
+              v-if="!externalAgent"
+              class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
+            >
+              <span class="text-[15px]">影子代理</span>
+              <button
+                type="button"
+                role="switch"
+                aria-label="启用影子代理"
+                :aria-checked="shadowEnabled"
+                class="relative w-11 h-6 rounded-full transition-colors shrink-0"
+                :class="shadowEnabled ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
+                @click="emit('update:shadowEnabled', !shadowEnabled)"
+              >
+                <span
+                  class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform"
+                  :class="shadowEnabled ? 'translate-x-5' : 'translate-x-0'"
+                />
+              </button>
+            </div>
+
+            <section
+              v-if="!externalAgent"
+              class="px-5 py-4 border-b chat-session-menu__section session-agent-settings"
+            >
+              <div class="text-[15px] mb-3">可用子代理</div>
+              <div class="session-agent-grid">
+                <button
+                  v-for="agent in selectedSpawnAgents"
+                  :key="`spawn-${agent.id}`"
+                  type="button"
+                  class="session-agent-card session-agent-card--selected"
+                  :title="`移除 ${agent.name}`"
+                  @click="toggleSpawned(agent.id)"
+                >
+                  <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
+                  <small>{{ agent.name }}</small>
+                  <span class="session-agent-card__remove"><X /></span>
+                </button>
+                <button
+                  v-if="availableSpawnAgents.length"
+                  type="button"
+                  class="session-agent-card session-agent-card--add"
+                  title="添加子代理"
+                  aria-label="添加子代理"
+                  @click="spawnAgentPickerOpen = true"
+                >
+                  <span class="session-agent-card__add"><Plus /></span>
+                </button>
+              </div>
+            </section>
+
+            <section
+              v-if="childSessions.length"
+              class="border-b chat-session-menu__section session-children"
+            >
+              <div class="session-children__title text-[15px]">子会话</div>
+              <button
+                v-for="child in childSessions"
+                :key="child.id"
+                type="button"
+                class="chat-session-menu__child-row"
+                @click="emit('navigate', child.id)"
+              >
+                <span class="session-children__avatar">子</span>
+                <span class="session-children__copy">
+                  <strong>{{ childSessionName(child) }}</strong>
+                  <small>{{ child.status === "finish" ? "已完成" : "进行中" }}</small>
+                </span>
+                <ChevronRight class="chat-session-menu__chevron" />
+              </button>
+            </section>
+          </div>
+        </aside>
+      </div>
+    </Transition>
+  </Teleport>
+
+  <UiDialog
+    :open="spawnAgentPickerOpen"
+    title="选择子代理"
+    show-close
+    @close="spawnAgentPickerOpen = false"
+  >
+    <div class="session-agent-picker">
+      <button
+        v-for="agent in availableSpawnAgents"
+        :key="`available-${agent.id}`"
+        type="button"
+        @click="addSpawned(agent.id)"
+      >
+        <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
+        <span>{{ agent.name }}</span>
+        <Plus />
+      </button>
+      <p v-if="!availableSpawnAgents.length" class="session-agent-picker__empty">
+        暂无可添加的子代理
+      </p>
+    </div>
+  </UiDialog>
+</template>
+
+<script setup lang="ts">
+import { computed, ref, watch } from "vue";
+import { ChevronRight, FolderOpen, Plus, X } from "lucide-vue-next";
+import { openPath, pathExists, type Session } from "@/api";
+import type { Agent } from "@/api";
+import { SESSION_AVATAR_COLORS, type SessionAvatarValue } from "@/utils/session-avatar";
+import AgentAvatar from "../agent/AgentAvatar.vue";
+import UiDialog from "../base/UiDialog.vue";
+import { useMobileViewport } from "@/composables/use-mobile-viewport";
+import { showUiMessage } from "@/composables/use-ui-message";
+import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
+import type { SessionUsage } from "@/api";
+
+function toggleExternalDetails() {
+  viewPreferences.collapseExternalAgentDetails = !viewPreferences.collapseExternalAgentDetails;
+  saveViewPreferences();
+}
+
+const props = defineProps<{
+  open: boolean;
+  agentName: string;
+  sessionTitle: string;
+  titleReadonly?: boolean;
+  avatarLabel: string;
+  avatarColor: string;
+  avatarIcon?: string | null;
+  avatarAgentId?: string;
+  muted: boolean;
+  showThinking: boolean;
+  splitAssistantMessages: boolean;
+  sessionStatus?: string;
+  /** Session working directory (project root or worktree). */
+  cwd?: string | null;
+  gitBranch?: string | null;
+  canComplete?: boolean;
+  canCheckpoint?: boolean;
+  canSync?: boolean;
+  childSessions: Array<Pick<Session, "id" | "status" | "spawnType" | "title" | "meta">>;
+  configurableAgents: Agent[];
+  shadowEnabled: boolean;
+  spawnedAgentIds: string[];
+  externalAgent?: boolean;
+  usage?: SessionUsage | null;
+}>();
+
+function formatCost(value: number) {
+  return value < 0.01 && value > 0 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`;
+}
+function formatTokens(value: number) {
+  return new Intl.NumberFormat("zh-CN", {
+    notation: value >= 10_000 ? "compact" : "standard",
+  }).format(value);
+}
+
+const emit = defineEmits<{
+  close: [];
+  search: [];
+  log: [];
+  files: [];
+  complete: [];
+  checkpoint: [];
+  rewind: [];
+  commit: [];
+  sync: [];
+  btw: [];
+  navigate: [sessionId: string];
+  "update:muted": [value: boolean];
+  "update:showThinking": [value: boolean];
+  "update:splitAssistantMessages": [value: boolean];
+  "update:avatar": [value: SessionAvatarValue];
+  "update:title": [value: string];
+  "update:shadowEnabled": [value: boolean];
+  "update:spawnedAgents": [value: string[]];
+}>();
+
+const isMobileViewport = useMobileViewport();
+const spawnAgentPickerOpen = ref(false);
+const openingCwd = ref(false);
+const cwdExpanded = ref(false);
+/** null = checking; true/false after /system/path-exists. */
+const cwdLocal = ref<boolean | null>(null);
+const showOpenCwd = computed(() => {
+  if (isMobileViewport.value) return false;
+  if (!props.cwd?.trim()) return false;
+  // Show while checking / if confirmed local; hide only when confirmed missing.
+  return cwdLocal.value !== false;
+});
+const selectedSpawnAgents = computed(() =>
+  props.configurableAgents.filter((agent) => props.spawnedAgentIds.includes(agent.id)),
+);
+const availableSpawnAgents = computed(() =>
+  props.configurableAgents.filter((agent) => !props.spawnedAgentIds.includes(agent.id)),
+);
+
+async function refreshCwdLocal() {
+  if (isMobileViewport.value) {
+    cwdLocal.value = false;
+    return;
+  }
+  const target = props.cwd?.trim();
+  if (!target || !props.open) {
+    cwdLocal.value = null;
+    return;
+  }
+  cwdLocal.value = null;
+  try {
+    const result = await pathExists(target);
+    cwdLocal.value = result.exists;
+  } catch {
+    // Keep icon visible if probe fails (e.g. stale proxy); open will report errors.
+    cwdLocal.value = true;
+  }
+}
+
+async function onOpenCwd() {
+  const target = props.cwd?.trim();
+  if (!target || openingCwd.value || isMobileViewport.value) return;
+  openingCwd.value = true;
+  try {
+    await openPath(target);
+    showUiMessage("已在本机打开工作目录", "success");
+  } catch (error) {
+    cwdLocal.value = false;
+    showUiMessage(error instanceof Error ? error.message : "打开工作目录失败", "error");
+  } finally {
+    openingCwd.value = false;
+  }
+}
+
+watch(
+  () => props.open,
+  (open) => {
+    if (!open) {
+      spawnAgentPickerOpen.value = false;
+      cwdLocal.value = null;
+      cwdExpanded.value = false;
+      return;
+    }
+    void refreshCwdLocal();
+  },
+);
+
+watch(
+  () => props.cwd,
+  () => {
+    cwdExpanded.value = false;
+    void refreshCwdLocal();
+  },
+);
+
+watch(isMobileViewport, () => {
+  void refreshCwdLocal();
+});
+
+function toggleSpawned(agentId: string) {
+  const next = props.spawnedAgentIds.includes(agentId)
+    ? props.spawnedAgentIds.filter((id) => id !== agentId)
+    : [...props.spawnedAgentIds, agentId];
+  emit("update:spawnedAgents", next);
+}
+
+function addSpawned(agentId: string) {
+  if (!props.spawnedAgentIds.includes(agentId)) {
+    emit("update:spawnedAgents", [...props.spawnedAgentIds, agentId]);
+  }
+  spawnAgentPickerOpen.value = false;
+}
+
+function childSessionName(child: Pick<Session, "id" | "title">): string {
+  return child.title?.trim() ? child.title : `子会话 ${child.id}`;
+}
+</script>
+
+<style scoped>
+.session-usage {
+  margin-top: 14px;
+  padding: 11px 12px;
+  border-radius: 9px;
+  background: var(--app-hover);
+}
+.session-usage div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+}
+.session-usage strong {
+  color: #07c160;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.session-usage p,
+.session-usage small {
+  display: block;
+  margin-top: 4px;
+  color: var(--app-text-muted);
+  font-size: 10px;
+}
+.chat-session-menu-backdrop {
+  background: rgb(0 0 0 / 20%);
+}
+
+.chat-session-menu {
+  background: var(--app-popup-bg);
+  color: var(--app-text-primary);
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+}
+
+.session-menu-avatar {
+  width: 48px;
+  height: 48px;
+}
+
+.chat-session-menu__header {
+  border-color: var(--app-border-subtle);
+}
+
+.chat-session-menu__close {
+  padding: 6px;
+  border-radius: 6px;
+  color: var(--app-text-muted);
+  transition:
+    background-color 0.15s,
+    color 0.15s;
+}
+
+.chat-session-menu__close:hover {
+  background: var(--app-hover);
+  color: var(--app-text-primary);
+}
+
+.chat-session-menu__section {
+  border-color: var(--app-border-subtle);
+}
+
+.chat-session-menu__row {
+  border-color: var(--app-border-subtle);
+  display: none;
+}
+
+.chat-session-menu__section:has(> .chat-session-menu__row) {
+  display: none;
+}
+
+.chat-session-menu__row:hover {
+  background: var(--app-popup-hover);
+}
+
+.chat-session-menu__child-row:hover,
+.chat-session-menu__child-row:focus-visible {
+  background: var(--app-popup-hover);
+  outline: none;
+}
+
+.session-children__title {
+  padding: 16px 20px 12px;
+  color: var(--app-text-primary);
+}
+.chat-session-menu__child-row {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 36px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 16px 9px 20px;
+  text-align: left;
+}
+.session-children__avatar {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  border-radius: 7px;
+  color: white;
+  background: #576b95;
+  font-size: 13px;
+}
+.session-children__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+.session-children__copy strong {
+  overflow: hidden;
+  color: var(--app-text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-children__copy small {
+  color: var(--app-text-muted);
+  font-size: 11px;
+}
+
+.chat-session-menu__muted {
+  color: var(--app-text-secondary);
+}
+
+.chat-session-menu__cwd {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 100%;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+}
+
+.chat-session-menu__open-cwd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+  padding: 2px;
+  border: 0;
+  border-radius: 4px;
+  color: var(--app-text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.chat-session-menu__open-cwd:hover:not(:disabled) {
+  color: var(--app-text-primary);
+  background: var(--app-hover-bg, rgb(0 0 0 / 6%));
+}
+
+.chat-session-menu__open-cwd:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.chat-session-menu__cwd-path {
+  min-width: 0;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: inherit;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chat-session-menu__cwd-path code {
+  display: block;
+  overflow: hidden;
+  color: inherit;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-session-menu__cwd-path.is-expanded code {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.chat-session-menu__chevron {
+  color: var(--app-text-muted);
+}
+
+.chat-session-menu__name {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: var(--app-text-secondary);
+  font-size: 12px;
+}
+
+.chat-session-menu__name input {
+  min-width: 0;
+  padding: 7px 9px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 6px;
+  outline: none;
+  color: var(--app-text-primary);
+  background: var(--app-chat-bg);
+}
+
+.session-external-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5640a3;
+  background: rgb(238 234 255 / 94%);
+  border: 1px solid rgb(91 78 180 / 28%);
+}
+
+.session-agent-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px 8px;
+}
+.session-agent-card {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 2px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    background-color 0.15s,
+    transform 0.1s;
+}
+.session-agent-card:hover {
+  background: var(--app-popup-hover);
+}
+.session-agent-card:active {
+  transform: scale(0.97);
+}
+.session-agent-card--add {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  justify-self: start;
+  align-self: start;
+  border-radius: 8px;
+}
+.session-agent-card--add:hover {
+  background: transparent;
+}
+.session-agent-card--add:hover .session-agent-card__add,
+.session-agent-card--add:focus-visible .session-agent-card__add {
+  background: var(--app-popup-hover);
+}
+.session-agent-card :deep(.agent-avatar),
+.session-agent-card__builtin,
+.session-agent-card__add {
+  width: 44px;
+  height: 44px;
+}
+.session-agent-card__builtin {
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: #7d4cff;
+  color: white;
+  font-size: 18px;
+  font-weight: 600;
+}
+.session-agent-card__add {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  border: 1px dashed var(--app-border);
+  border-radius: 8px;
+  color: var(--app-text-muted);
+  transition: background-color 0.15s;
+}
+.session-agent-card__add svg {
+  width: 22px;
+  height: 22px;
+}
+.session-agent-card small {
+  width: 100%;
+  overflow: hidden;
+  color: var(--app-text-secondary);
+  font-size: 11px;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.session-agent-card__remove {
+  position: absolute;
+  top: 1px;
+  right: 5px;
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  border-radius: 50%;
+  color: white;
+  background: #fa5151;
+}
+.session-agent-card__remove svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2.4;
+}
+.session-agent-picker {
+  margin: 4px -10px 0;
+  max-height: min(50vh, 320px);
+  overflow: auto;
+}
+.session-agent-picker button {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 30px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--app-text-primary);
+  text-align: left;
+}
+.session-agent-picker button:hover {
+  background: var(--app-popup-hover);
+}
+.session-agent-picker :deep(.agent-avatar) {
+  width: 30px;
+  height: 30px;
+}
+.session-agent-picker svg {
+  width: 16px;
+  color: #07a65a;
+}
+.session-agent-picker__empty {
+  margin: 8px 0 0;
+  color: var(--app-text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.chat-session-menu__name input:focus {
+  border-color: #07c160;
+  box-shadow: 0 0 0 2px rgb(7 193 96 / 12%);
+}
+
+[role="switch"]:hover,
+[role="switch"]:focus-visible {
+  box-shadow: 0 0 0 3px rgb(7 193 96 / 14%);
+  outline: none;
+}
+
+[role="switch"]:active {
+  transform: scale(0.97);
+}
+
+.chat-menu-enter-active,
+.chat-menu-leave-active {
+  transition: opacity 0.2s ease;
+}
+.chat-menu-enter-active .chat-session-menu {
+  transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chat-menu-leave-active .chat-session-menu {
+  transition: transform 0.22s ease;
+}
+.chat-menu-enter-from,
+.chat-menu-leave-to {
+  opacity: 0;
+}
+.chat-menu-enter-from .chat-session-menu,
+.chat-menu-leave-to .chat-session-menu {
+  transform: translateX(100%);
+}
+
+@media (max-width: 767px) {
+  .chat-session-menu {
+    max-width: none;
+    box-shadow: none;
+  }
+
+  .chat-session-menu__header {
+    height: 48px;
+    padding-inline: 12px;
+  }
+}
+</style>

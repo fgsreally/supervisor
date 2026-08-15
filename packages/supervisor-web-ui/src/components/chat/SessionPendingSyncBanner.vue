@@ -65,7 +65,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { ChevronDown } from "lucide-vue-next";
-import FileTypeIcon from "../FileTypeIcon.vue";
+import FileTypeIcon from "../base/FileTypeIcon.vue";
 import type { SessionGitPendingUpdate } from "@/api";
 
 const props = defineProps<{

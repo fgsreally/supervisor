@@ -1,32 +1,32 @@
-<template>
+﻿<template>
   <div class="active-ui-view">
     <aside class="active-ui-view__list">
       <header class="active-ui-view__header">
         <div>
-          <h1 class="active-ui-view__title">活跃应用</h1>
+          <h1 class="active-ui-view__title">{{ t("activeUi.title") }}</h1>
           <p class="active-ui-view__meta">
-            {{ sessionsLoading ? "加载中..." : `${entries.length} 个入口` }}
+            {{ sessionsLoading ? t("activeUi.loadingApps") : t("activeUi.entryCount", { count: entries.length }) }}
           </p>
         </div>
       </header>
 
       <div v-if="sessionsLoading" class="active-ui-view__state">
         <Loader2 class="active-ui-view__spin" aria-hidden="true" />
-        <span>加载活跃应用...</span>
+        <span>{{ t("activeUi.loadingApps") }}</span>
       </div>
       <UiEmptyState
         v-else-if="entries.length === 0"
         class="active-ui-view__empty-state"
-        title="暂无活跃应用"
-        description="启动带 UI 端口的会话服务后，可在此预览。"
+        :title="t('activeUi.emptyTitle')"
+        :description="t('activeUi.emptyDescription')"
       >
         <template #icon><AppWindow /></template>
       </UiEmptyState>
       <template v-else>
         <div class="active-ui-view__pager">
-          <button type="button" :disabled="page <= 1" @click="page -= 1">上一页</button>
+          <button type="button" :disabled="page <= 1" @click="page -= 1">{{ t("activeUi.previous") }}</button>
           <span>{{ page }} / {{ totalPages }}</span>
-          <button type="button" :disabled="page >= totalPages" @click="page += 1">下一页</button>
+          <button type="button" :disabled="page >= totalPages" @click="page += 1">{{ t("activeUi.next") }}</button>
         </div>
 
         <div class="active-ui-view__items custom-scrollbar">
@@ -40,7 +40,7 @@
           >
             <strong>{{ entry.sessionTitle }}</strong>
             <span>{{ entry.label ?? entry.scriptName }}</span>
-            <small>{{ entry.status === "starting" ? "启动中" : "运行中" }}</small>
+            <small>{{ entry.status === "starting" ? t("activeUi.starting") : t("activeUi.running") }}</small>
           </button>
         </div>
       </template>
@@ -49,13 +49,13 @@
     <section class="active-ui-view__preview">
       <div v-if="sessionsLoading" class="active-ui-view__state active-ui-view__state--preview">
         <Loader2 class="active-ui-view__spin" aria-hidden="true" />
-        <span>加载预览...</span>
+        <span>{{ t("activeUi.loadingPreview") }}</span>
       </div>
       <UiEmptyState
         v-else-if="entries.length === 0"
         class="active-ui-view__empty-state active-ui-view__empty-state--preview"
-        title="暂无预览"
-        description="左侧列表为空时，这里也不会显示预览内容。"
+        :title="t('activeUi.noPreview')"
+        :description="t('activeUi.noPreviewDescription')"
       >
         <template #icon><AppWindow /></template>
       </UiEmptyState>
@@ -66,12 +66,12 @@
             <span>{{ selectedEntry.label ?? selectedEntry.scriptName }}</span>
           </div>
           <button type="button" class="active-ui-view__open-session" @click="openSelectedSession">
-            打开会话
+            {{ t("activeUi.openSession") }}
           </button>
         </header>
         <div v-if="previewLoading" class="active-ui-view__state active-ui-view__state--preview">
           <Loader2 class="active-ui-view__spin" aria-hidden="true" />
-          <span>正在唤醒服务...</span>
+          <span>{{ t("activeUi.waking") }}</span>
         </div>
         <iframe
           v-else
@@ -97,13 +97,15 @@ import { wakeSessionServices } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { toUISession } from "@/utils/ui-session";
 import { useRootStore, useSessionStore } from "@/store";
-import UiEmptyState from "@/components/ui/UiEmptyState.vue";
+import UiEmptyState from "@/components/base/UiEmptyState.vue";
+import { useI18n } from "@/i18n";
 
 const emit = defineEmits<{
   "open-session": [sessionId: string];
 }>();
 
 const PAGE_SIZE = 20;
+const { t } = useI18n();
 const page = ref(1);
 const selectedKey = ref<string | null>(null);
 const previewLoading = ref(false);
@@ -149,7 +151,7 @@ async function selectEntry(entry: ActiveUiEntry) {
       await sessionStore.fetchSession(entry.sessionId);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      showUiMessage(`唤醒服务失败：${message}`, "error");
+      showUiMessage(t("activeUi.wakeFailed", { error: message }), "error");
     } finally {
       previewLoading.value = false;
     }

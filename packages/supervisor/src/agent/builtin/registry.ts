@@ -1,11 +1,11 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { ensureAgentHome, getAgentHomeDir } from "../agent-paths.js";
 import type { SupervisorDb } from "../../db/db.js";
 import type { Agent } from "../../types.js";
 import type { SessionManager } from "../../core/session-manager.js";
 import { getGlobalSkillsDirectory } from "../skill-resource.js";
-import { loadPromptTemplate } from "../system-prompts.js";
+import { loadPromptTemplate } from "../../core/resource/system-prompts.js";
 import { loadBuiltinAgentPrompt, loadPackagedAgentPrompt } from "./prompts.js";
 import { parseSessionMeta } from "../../core/session-fields.js";
 import {
@@ -22,69 +22,6 @@ const ACTIVE_PACKAGED_AGENT_KINDS: readonly PackagedAgentKind[] = [
   "coding",
   "smart-router",
 ];
-
-const LEGACY_INTRO_PROMPT = `你是 Supervisor 的 Intro 引导助手，面向使用者直接对话。
-
-你的职责：
-
-- 帮助新用户了解 Supervisor 能做什么、如何开始
-- 讲解 skills、agents、sessions、扩展、HTTP API 等概念
-- 按需查看工作区与 Supervisor 资源（会话、消息、agent 配置），给出清晰说明
-- 按用户要求编写、迁移和调试 Supervisor 扩展
-- 用简洁、友好的方式教学，避免堆砌术语
-
-原则：
-
-- 引导问题先解释清楚；用户要求实现扩展时，可以直接修改代码并运行验证
-- 查看资源时引用具体路径、session id 或资源 URL
-- 信息不足时说明还需要什么，不要编造
-
-当被问到「怎么用」「有什么功能」「某个 session 里发生了什么」时，先读事实再回答。扩展开发任务应检查现有扩展 API 和项目约定后再实现。`;
-
-const LEGACY_ASSISTANT_PROMPT = `你是 Pi Supervisor 内置助手，负责帮助用户配置、使用和维护 Supervisor。
-
-你可以帮助用户：
-
-- 理解 Supervisor 的 Session、Agent、Context、扩展和资源绑定模型
-- 编写、迁移和调试 Supervisor 扩展
-- 安装全局 skill、prompt、extension 和 MCP 配置，并通过数据库绑定到 Agent
-- 配置模型 Provider、创建 Agent、管理 Session
-- 排查 Supervisor 后端与 Web UI 问题
-
-回答应简洁、可执行，优先给出具体源码路径和操作步骤。需要修改代码时先检查现有实现，不确定时明确说明缺少的信息。`;
-
-const LEGACY_ASSISTANT_SKILL = `# Supervisor 使用指南
-
-## 目录结构
-
-- 全局资源：\`~/.supervisor/global/{skills,extensions,prompts}\`（可用 \`--cwd\` 覆盖整个全局根）
-- Agent 目录：\`<home>/agents/{agentId}/\`
-- 数据库：\`<home>/supervisor.db\`
-
-Agent 通过数据库 binding 使用全局资源，不在 Agent Home 中创建资源软链接。
-
-## 扩展迁移（coding-agent -> supervisor）
-
-1. 准备包含 \`package.json\` 和入口文件的扩展目录
-2. Supervisor 扩展 API 见 \`packages/supervisor/src/extension/\`
-3. 使用 \`pi-supervisor extensions install <path>\` 安装到全局 catalog
-4. 使用 \`pi-supervisor extensions bind <agent-id> <extension-id>\` 绑定到 Agent
-
-## Skill 安装
-
-1. 将 skill 目录放入 \`<home>/global/skills/\`
-2. 在 UI 资源面板或 API \`POST /agents/:id/resources\` 绑定到 Agent
-3. 输入框 \`/\` 可补全已关联的 skill 和 prompt
-
-## 常用 API
-
-- \`POST /sessions/:id/prompt\` - 发送消息
-- \`POST /sessions/:id/ask-answer\` - 回答 ask 工具问题
-- \`GET /resources/global\` - 列出全局资源
-
-## Web UI 组件
-
-见 \`packages/supervisor-web-ui/README.md\` 组件映射表。`;
 
 const PACKAGED_AGENT_LABELS: Record<
   PackagedAgentKind,
@@ -149,13 +86,9 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
   if (existing !== undefined) {
     const agent = db.getAgent(existing);
     const packagedPrompt = loadPackagedAgentPrompt(kind);
-    const legacyIntroPrompt = agent?.systemPrompt?.trim() === LEGACY_INTRO_PROMPT;
-    // Packaged agents keep system_prompt in sync with agents/<kind>/prompt.md on boot.
+    // Packaged agents keep system_prompt in sync with resource/agents/<kind>.md on boot.
     // Smart Router is intentionally user-configurable: seed its routing policy once and preserve edits.
-    if (
-      kind !== "smart-router" &&
-      (agent?.systemPrompt !== packagedPrompt || (kind === "intro" && legacyIntroPrompt))
-    ) {
+    if (kind !== "smart-router" && agent?.systemPrompt !== packagedPrompt) {
       db.updateAgent(existing, { system_prompt: packagedPrompt });
     }
     ensureAgentHome(existing, getAgentHomeDir(existing));
@@ -387,7 +320,7 @@ function installBuiltinAssistantSkill(db: SupervisorDb, agentId: number): void {
   const skillDir = join(getGlobalSkillsDirectory(), "supervisor-guide");
   mkdirSync(skillDir, { recursive: true });
   const skillPath = join(skillDir, "SKILL.md");
-  if (!existsSync(skillPath) || readFileSync(skillPath, "utf8").trim() === LEGACY_ASSISTANT_SKILL) {
+  if (!existsSync(skillPath)) {
     writeFileSync(skillPath, BUILTIN_ASSISTANT_SKILL, "utf8");
   }
   const resource = db.upsertResource({
@@ -419,10 +352,7 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
       is_builtin: true,
       meta: {},
     });
-  } else if (
-    agent.systemPrompt?.trim() === LEGACY_ASSISTANT_PROMPT ||
-    agent.systemPrompt !== BUILTIN_ASSISTANT_PROMPT
-  ) {
+  } else if (agent.systemPrompt !== BUILTIN_ASSISTANT_PROMPT) {
     agent = db.updateAgent(agent.id, { system_prompt: BUILTIN_ASSISTANT_PROMPT });
   }
 

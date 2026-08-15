@@ -28,10 +28,10 @@
     >
       <template #actions>
         <div class="desktop-session-actions">
-          <ChatHeaderAction title="搜索消息" :active="searchOpen" @click="toggleSearch">
+          <ChatHeaderAction :title="t('chat.searchMessages')" :active="searchOpen" @click="toggleSearch">
             <Search />
           </ChatHeaderAction>
-          <ChatHeaderAction title="查看会话日志" :active="logActionActive" @click="toggleLogPanel">
+          <ChatHeaderAction :title="t('chat.viewLog')" :active="logActionActive" @click="toggleLogPanel">
             <ScrollText />
           </ChatHeaderAction>
           <SessionCommitPopover :session-id="session.id" />
@@ -48,7 +48,7 @@
         <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
         <ChatHeaderAction
           v-if="hasServicePreviews"
-          :title="`活跃应用 · ${servicePreviews.length}`"
+            :title="`${t('chat.activeApps')} · ${servicePreviews.length}`"
           :active="previewActionActive"
           :count="servicePreviews.length"
           @click="toggleSessionPreview"
@@ -57,7 +57,7 @@
         </ChatHeaderAction>
         <ChatHeaderAction
           v-if="backgroundBashCount > 0"
-          :title="`后台终端 · ${backgroundBashCount}`"
+            :title="`${t('chat.backgroundTerminal')} · ${backgroundBashCount}`"
           :active="bashTerminalsActionActive"
           :count="backgroundBashCount"
           @click="toggleBackgroundBashPanel"
@@ -66,7 +66,7 @@
         </ChatHeaderAction>
         <ChatHeaderAction
           v-if="hasEvalActivity"
-          title="查看 Eval"
+          :title="t('chat.viewEval')"
           :active="evalActionActive"
           @click="toggleEvalPanel"
         >
@@ -74,7 +74,7 @@
         </ChatHeaderAction>
         <ChatHeaderAction
           class="desktop-only-action"
-          title="查看工作区文件"
+          :title="t('chat.workspaceFiles')"
           :active="filesActionActive"
           @click="toggleFilesPanel"
         >
@@ -90,7 +90,7 @@
             ><ClipboardList
           /></ChatHeaderAction>
           <ChatHeaderAction
-            title="会话工具"
+            :title="t('chat.sessionTools')"
             :active="sessionActionsOpen"
             @click="sessionActionsOpen = true"
           >
@@ -118,7 +118,7 @@
           v-if="!chatViewportReady && !searchOpen"
           class="session-loading session-loading--overlay"
         >
-          <Loader2 /><span>正在加载聊天记录...</span>
+          <Loader2 /><span>{{ t("chat.loadingHistory") }}</span>
         </div>
         <div class="chat-main-row">
           <MessageMinimap
@@ -169,7 +169,7 @@
         </div>
 
         <div v-if="suggestedQuestions.length" class="suggested-questions">
-          <span>你可能还想问</span>
+          <span>{{ t("chat.suggestions") }}</span>
           <button
             v-for="question in suggestedQuestions"
             :key="question"
@@ -213,9 +213,9 @@
             :interrupting="canInterrupt"
             :shadow-running="shadowRunning"
             :placeholder="inputPlaceholder"
-            :empty-state-title="modelMissing ? '需要先配置模型' : undefined"
-            :empty-state-description="modelMissing ? '选择模型后即可继续这段对话' : undefined"
-            :empty-state-action="modelMissing ? '选择模型' : undefined"
+            :empty-state-title="modelMissing ? t('chat.configureModel') : undefined"
+            :empty-state-description="modelMissing ? t('chat.chooseModelContinue') : undefined"
+            :empty-state-action="modelMissing ? t('chat.chooseModel') : undefined"
             @send="sendMessage"
             @interrupt="interruptCurrentTurn"
             @slash="executeCustomSlash"
@@ -515,16 +515,16 @@
         >
           <section class="model-picker-sheet">
             <header>
-              <strong>选择模型</strong
-              ><button type="button" @click="modelPickerOpen = false">取消</button>
+              <strong>{{ t("chat.chooseModel") }}</strong
+              ><button type="button" @click="modelPickerOpen = false">{{ t("chat.cancel") }}</button>
             </header>
             <div class="model-picker-search">
               <Search class="h-4 w-4" />
-              <input v-model="modelSearch" type="search" placeholder="搜索供应商或模型" autofocus />
+              <input v-model="modelSearch" type="search" :placeholder="t('chat.searchProviderModel')" autofocus />
             </div>
             <div class="model-picker-list">
               <div v-if="modelPickerLoading" class="model-picker-empty">
-                <Loader2 class="model-picker-spinner" />正在加载模型
+                <Loader2 class="model-picker-spinner" />{{ t("chat.loadingModels") }}
               </div>
               <details
                 v-for="provider in filteredModelProviders"
@@ -551,7 +551,7 @@
                 v-if="!modelPickerLoading && !filteredModelProviders.length"
                 class="model-picker-empty"
               >
-                {{ modelSearch ? "没有匹配的模型" : "暂无可用模型，请先在“模型”中添加。" }}
+                {{ modelSearch ? t("chat.noMatchingModels") : t("chat.noModelsHint") }}
               </div>
             </div>
           </section>
@@ -666,6 +666,7 @@ import {
   type SessionServicesPreview,
 } from "../utils/session-services";
 import { sessionAvatar, type SessionAvatarValue } from "../utils/session-avatar";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   session: {
@@ -702,6 +703,7 @@ const emit = defineEmits<{
   back: [];
   "view-agent": [agentId: string];
 }>();
+const { t } = useI18n();
 
 const stage = computed(() => parseSessionStage(props.session));
 
@@ -856,14 +858,14 @@ watch(
       title: title?.trim() || "Supervisor",
       subtitle:
         status === "blocked"
-          ? "等待你确认"
+          ? t("chat.awaitingConfirmation")
           : status === "error"
-            ? "出错，需要处理"
+            ? t("chat.errorNeedsAction")
             : streaming
-              ? "思考中"
+              ? t("chat.thinking")
               : status === "running"
-                ? "运行中"
-                : "连接中",
+                ? t("chat.running")
+                : t("chat.connecting"),
       phase:
         status === "blocked" || status === "error"
           ? "waiting"
@@ -965,7 +967,7 @@ const previewActionActive = computed(() => {
 });
 
 function bashTerminalsTabTitle(count = backgroundBashCount.value): string {
-  return count > 0 ? `后台终端 · ${count}` : "后台终端";
+  return count > 0 ? t("chat.backgroundTerminalCount", { count }) : t("chat.backgroundTerminal");
 }
 
 function openBackgroundBashPanel(jobId?: string) {
@@ -1267,7 +1269,7 @@ async function openModelPicker() {
       ),
     );
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "模型加载失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.modelLoadFailed"), "error");
   } finally {
     modelPickerLoading.value = false;
   }
@@ -1279,10 +1281,10 @@ async function selectAgentModel(modelId: string) {
   try {
     await agentStore.updateAgent(props.agentId, { modelId });
     modelPickerOpen.value = false;
-    showUiMessage("模型设置成功", "success");
+    showUiMessage(t("chat.modelSet"), "success");
     await nextTick(() => inputPanelRef.value?.focus());
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "模型设置失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.modelSetFailed"), "error");
   } finally {
     modelPickerSaving.value = false;
   }
@@ -1307,7 +1309,7 @@ async function editQueuedInput(input: api.QueuedSessionInput) {
     await refreshQueuedInputs();
     await nextTick(() => inputPanelRef.value?.focus());
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "取回排队消息失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.fetchQueuedFailed"), "error");
   } finally {
     queuedActionBusyId.value = null;
   }
@@ -1320,7 +1322,7 @@ async function deleteQueuedInput(input: api.QueuedSessionInput) {
     await api.cancelQueuedSessionInput(props.session.id, input.id);
     await refreshQueuedInputs();
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "删除排队消息失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.deleteQueuedFailed"), "error");
   } finally {
     queuedActionBusyId.value = null;
   }
@@ -1337,7 +1339,7 @@ async function submitQueuedInputNow(input: api.QueuedSessionInput) {
     attachToRunningSession();
     void scrollToBottom();
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "立即发送失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.sendNowFailed"), "error");
     await refreshQueuedInputs();
   } finally {
     queuedActionBusyId.value = null;
@@ -1358,19 +1360,19 @@ const canInterrupt = computed(() => isStreaming.value && !isInitializing.value);
 
 const inputPlaceholder = computed(() => {
   if (!chatComposerReady.value) return "";
-  if (modelMissing.value) return "请先为 Agent 配置模型";
-  if (providerDisabled.value) return "模型供应商已禁用，无法发送消息";
-  if (isInitializing.value) return "正在初始化工作区，请稍候，马上就能开始对话…";
-  if (props.session.status === "finish") return "会话已完成";
+  if (modelMissing.value) return t("chat.modelRequired");
+  if (providerDisabled.value) return t("chat.providerDisabled");
+  if (isInitializing.value) return t("chat.initializing");
+  if (props.session.status === "finish") return t("chat.completed");
   if (props.session.status === "error") {
     return chatEntries.value.some((entry) => entry.type === "llm_error")
-      ? "模型调用失败，请点击错误卡片重试"
-      : "会话出错，请查看菜单中的合并状态";
+      ? t("chat.retryModel")
+      : t("chat.sessionError");
   }
-  if (props.session.status === "stopped") return "会话已停止";
-  if (isStreaming.value) return "回复结束后发送";
+  if (props.session.status === "stopped") return t("chat.stopped");
+  if (isStreaming.value) return t("chat.sendAfterReply");
   if (props.session.meta?.shadow?.status) return props.session.meta.shadow.status;
-  return "输入消息";
+  return t("chat.inputMessage");
 });
 
 const gitBranch = computed(() => props.session.gitSessionBranch ?? null);

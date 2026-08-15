@@ -1,60 +1,60 @@
 <template>
-  <section class="provider-model-table rounded-lg overflow-hidden">
-    <div class="px-4 py-3 provider-model-table__header flex items-center justify-between gap-3">
+  <section class="provider-model-table">
+    <div class="provider-model-table__header">
       <div>
-        <div class="text-[14px] font-medium provider-model-table__title">模型</div>
-        <div class="text-[12px] provider-model-table__subtitle mt-0.5">
+        <div class="provider-model-table__title">模型</div>
+        <div class="provider-model-table__subtitle">
           {{ editable ? "增删改查" : "查看模型能力标签与启用状态" }}
         </div>
       </div>
       <button
         v-if="editable"
         type="button"
-        class="shrink-0 px-3 py-1.5 text-[13px] rounded-md bg-[#07c160] text-white hover:bg-[#06ad56]"
+        class="provider-model-table__add"
         @click="openCreate"
       >
         添加模型
       </button>
     </div>
 
-    <div class="overflow-x-auto">
-      <table class="w-full min-w-[640px] text-[13px]">
+    <div class="provider-model-table__scroll">
+      <table class="provider-model-table__grid">
         <thead class="provider-model-table__head">
           <tr>
-            <th class="text-center font-medium px-3 py-2.5 w-16">Provider</th>
-            <th class="text-left font-medium px-4 py-2.5">Model ID</th>
-            <th class="text-left font-medium px-4 py-2.5">名称</th>
-            <th class="text-right font-medium px-4 py-2.5">上下文</th>
-            <th class="text-center font-medium px-3 py-2.5 w-16">图像</th>
-            <th v-if="editable" class="text-right font-medium px-4 py-2.5 w-28">操作</th>
+            <th class="provider-model-table__cell provider-model-table__cell--center">Provider</th>
+            <th class="provider-model-table__cell provider-model-table__cell--left">Model ID</th>
+            <th class="provider-model-table__cell provider-model-table__cell--left">名称</th>
+            <th class="provider-model-table__cell provider-model-table__cell--right">上下文</th>
+            <th class="provider-model-table__cell provider-model-table__cell--center">图像</th>
+            <th v-if="editable" class="provider-model-table__cell provider-model-table__cell--right">操作</th>
           </tr>
         </thead>
         <tbody>
           <tr
             v-for="model in models"
             :key="model.id"
-            class="provider-model-table__row transition-colors"
+            class="provider-model-table__row"
           >
-            <td class="px-3 py-2.5 text-center">
+            <td class="provider-model-table__cell provider-model-table__cell--center">
               <ProviderAvatar
                 :provider-id="provider?.id ?? 'provider'"
                 :provider-name="provider?.name ?? 'Provider'"
                 :icon="provider?.icon ?? null"
-                class="w-7 h-7 mx-auto"
+                class="provider-model-table__avatar"
               />
             </td>
-            <td class="px-4 py-2.5 font-mono provider-model-table__title">{{ model.id }}</td>
-            <td class="px-4 py-2.5 provider-model-table__title">{{ model.name }}</td>
-            <td class="px-4 py-2.5 text-right font-mono provider-model-table__subtitle">
+            <td class="provider-model-table__cell provider-model-table__cell--left provider-model-table__mono provider-model-table__title">{{ model.id }}</td>
+            <td class="provider-model-table__cell provider-model-table__cell--left provider-model-table__title">{{ model.name }}</td>
+            <td class="provider-model-table__cell provider-model-table__cell--right provider-model-table__mono provider-model-table__subtitle">
               {{ formatTokenCount(model.contextWindow) }}
             </td>
-            <td class="px-3 py-2.5 text-center">
+            <td class="provider-model-table__cell provider-model-table__cell--center">
               <ModelMultimodalIcon :supports-multimodal="model.supportsVision" />
             </td>
-            <td v-if="editable" class="px-4 py-2.5 text-right whitespace-nowrap">
+            <td v-if="editable" class="provider-model-table__cell provider-model-table__cell--right provider-model-table__actions">
               <button
                 type="button"
-                class="provider-model-table__link provider-model-table__link--edit mr-3"
+                class="provider-model-table__link provider-model-table__link--edit"
                 @click.stop="openEdit(model)"
               >
                 编辑
@@ -74,7 +74,7 @@
 
     <div
       v-if="models.length === 0"
-      class="px-4 py-10 text-center text-[13px] provider-model-table__subtitle"
+      class="provider-model-table__empty provider-model-table__subtitle"
     >
       暂无模型，请添加
     </div>
@@ -158,11 +158,90 @@ async function removeModel(modelId: string) {
 
 <style scoped>
 .provider-model-table {
+  overflow: hidden;
+  border-radius: var(--app-radius-control);
   background: var(--app-settings-card);
 }
 
 .provider-model-table__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--app-space-3);
+  padding: 0.75rem 1rem;
   background: var(--app-settings-bg);
+}
+
+.provider-model-table__scroll {
+  overflow-x: auto;
+}
+
+.provider-model-table__grid {
+  width: 100%;
+  min-width: 40rem;
+  font-size: var(--app-font-control);
+}
+
+.provider-model-table__cell {
+  padding: 0.625rem 1rem;
+  font-weight: var(--app-font-weight-medium);
+}
+
+.provider-model-table__cell--center {
+  width: 4rem;
+  text-align: center;
+}
+
+.provider-model-table__cell--left {
+  text-align: left;
+}
+
+.provider-model-table__cell--right {
+  text-align: right;
+}
+
+.provider-model-table__avatar {
+  width: 1.75rem;
+  height: 1.75rem;
+  margin: 0 auto;
+}
+
+.provider-model-table__mono {
+  font-family: var(--app-font-mono);
+}
+
+.provider-model-table__actions {
+  white-space: nowrap;
+}
+
+.provider-model-table__actions .provider-model-table__link + .provider-model-table__link {
+  margin-left: 0.75rem;
+}
+
+.provider-model-table__title {
+  font-size: var(--app-font-body);
+}
+
+.provider-model-table__subtitle {
+  font-size: var(--app-font-caption);
+}
+
+.provider-model-table__add {
+  flex-shrink: 0;
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--app-radius-control);
+  color: #fff;
+  background: var(--app-accent);
+  font-size: var(--app-font-control);
+}
+
+.provider-model-table__add:hover {
+  background: var(--app-accent-hover);
+}
+
+.provider-model-table__empty {
+  padding: 2.5rem 1rem;
+  text-align: center;
 }
 
 .provider-model-table__head {
@@ -187,7 +266,7 @@ async function removeModel(modelId: string) {
 }
 
 .provider-model-table__link {
-  transition: color 0.15s;
+  transition: color var(--app-motion-fast);
 }
 
 .provider-model-table__link--edit {

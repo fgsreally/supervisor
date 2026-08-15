@@ -30,14 +30,14 @@ const { busy, busyText } = useUiBusy();
 .ui-busy__panel {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--app-space-2);
   min-width: 140px;
-  padding: 14px 18px;
-  border-radius: 10px;
+  padding: 0.875rem 1.125rem;
+  border-radius: var(--app-radius-panel);
   color: var(--app-text-primary);
   background: var(--app-popup-bg);
   box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
-  font-size: 13px;
+  font-size: var(--app-font-control);
 }
 .ui-busy__spin {
   width: 18px;

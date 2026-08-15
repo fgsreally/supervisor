@@ -38,9 +38,10 @@ function onChange(event: Event): void {
 <style scoped>
 .ui-field {
   width: 100%;
-  padding: 9px 10px;
-  border: 1px solid var(--app-border);
-  border-radius: 6px;
+  min-height: var(--app-control-height);
+  padding: 0.5625rem 0.625rem;
+  border: var(--app-control-border-width) solid var(--app-border);
+  border-radius: var(--app-radius-control);
   background: var(--app-settings-card);
   color: var(--app-text-primary);
   outline: none;
@@ -48,6 +49,6 @@ function onChange(event: Event): void {
 
 .ui-field:focus {
   border-color: var(--app-accent);
-  box-shadow: 0 0 0 2px rgb(7 193 96 / 12%);
+  box-shadow: var(--app-focus-ring);
 }
 </style>

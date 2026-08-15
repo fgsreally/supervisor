@@ -31,16 +31,16 @@ const { message } = useUiMessage();
   left: 50%;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--app-space-2);
   max-width: min(420px, calc(100vw - 32px));
-  padding: 10px 14px;
+  padding: 0.625rem 0.875rem;
   border: 1px solid var(--app-border-subtle);
-  border-radius: 8px;
+  border-radius: var(--app-radius-control);
   color: var(--app-text-primary);
   background: var(--app-popup-bg);
   box-shadow: 0 6px 24px rgb(0 0 0 / 16%);
   transform: translateX(-50%);
-  font-size: 13px;
+  font-size: var(--app-font-control);
 }
 
 .ui-message svg {
@@ -50,10 +50,10 @@ const { message } = useUiMessage();
 }
 
 .ui-message--success svg {
-  color: #07c160;
+  color: var(--app-success);
 }
 .ui-message--error svg {
-  color: #fa5151;
+  color: var(--app-danger);
 }
 .ui-message--info svg {
   color: #576b95;

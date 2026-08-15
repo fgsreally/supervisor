@@ -41,19 +41,19 @@ const emit = defineEmits<{
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  min-height: 34px;
-  padding: 0 14px;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  font-size: 13px;
+  gap: var(--app-space-2);
+  min-height: var(--app-control-height);
+  padding: 0 var(--app-control-padding-inline);
+  border: var(--app-control-border-width) solid transparent;
+  border-radius: var(--app-radius-control);
+  font-size: var(--app-font-control);
   line-height: 1;
   cursor: pointer;
   transition:
-    background-color 0.12s ease,
-    color 0.12s ease,
-    border-color 0.12s ease,
-    opacity 0.12s ease;
+    background-color var(--app-motion-fast),
+    color var(--app-motion-fast),
+    border-color var(--app-motion-fast),
+    opacity var(--app-motion-fast);
 }
 .ui-action-button--block {
   width: 100%;
@@ -63,12 +63,12 @@ const emit = defineEmits<{
   opacity: 0.55;
 }
 .ui-action-button__spin {
-  width: 14px;
-  height: 14px;
+  width: 0.875rem;
+  height: 0.875rem;
   animation: ui-action-spin 0.8s linear infinite;
 }
 .ui-action-button--primary {
-  color: #fff;
+  color: var(--app-button-primary-text, #fff);
   background: var(--app-accent);
 }
 .ui-action-button--primary:hover:not(:disabled) {
@@ -83,8 +83,8 @@ const emit = defineEmits<{
   background: var(--app-hover);
 }
 .ui-action-button--danger {
-  color: #fff;
-  background: #fa5151;
+  color: var(--app-button-danger-text, #fff);
+  background: var(--app-danger);
 }
 .ui-action-button--ghost {
   color: var(--app-text-secondary);

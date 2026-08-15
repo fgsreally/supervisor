@@ -41,10 +41,10 @@ withDefaults(
   color: var(--app-accent);
 }
 .ui-list-status--success {
-  color: #07c160;
+  color: var(--app-success);
 }
 .ui-list-status--error {
-  color: #fa5151;
+  color: var(--app-danger);
 }
 .ui-list-status__spin {
   animation: ui-list-spin 0.8s linear infinite;

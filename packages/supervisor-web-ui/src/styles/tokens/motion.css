@@ -1,0 +1,5 @@
+:root {
+  --app-motion-fast: 120ms ease;
+  --app-motion-normal: 220ms ease;
+  --app-motion-slow: 360ms cubic-bezier(0.22, 1, 0.36, 1);
+}

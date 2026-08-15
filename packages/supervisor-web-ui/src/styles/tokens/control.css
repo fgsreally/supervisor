@@ -1,0 +1,5 @@
+:root {
+  --app-control-padding-inline: 0.875rem;
+  --app-control-border-width: 1px;
+  --app-control-transition: 120ms ease;
+}

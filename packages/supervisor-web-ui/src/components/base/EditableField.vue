@@ -6,13 +6,13 @@
       :type="type"
       :value="stringValue"
       :placeholder="placeholder"
-      class="editable-field-input w-full px-3 py-2 rounded-md border text-[13px] focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
+      class="editable-field-input"
       @input="onInput"
     />
     <select
       v-else-if="type === 'select'"
       :value="stringValue"
-      class="editable-field-input w-full px-3 py-2 rounded-md border text-[13px] focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
+      class="editable-field-input"
       @change="onSelect"
     >
       <option v-for="opt in options" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
@@ -22,7 +22,7 @@
       :value="stringValue"
       :rows="rows ?? 3"
       :placeholder="placeholder"
-      class="editable-field-input w-full px-3 py-2 rounded-md border text-[13px] leading-relaxed resize-y min-h-[4rem] focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
+      class="editable-field-input editable-field-input--textarea"
       @input="onInput"
     />
   </div>
@@ -60,8 +60,25 @@ function onSelect(e: Event) {
 }
 
 .editable-field-input {
-  border-color: var(--app-border);
+  width: 100%;
+  min-height: var(--app-control-height);
+  padding: 0.5rem 0.75rem;
+  border: var(--app-control-border-width) solid var(--app-border);
+  border-radius: var(--app-radius-control);
+  font-size: var(--app-font-control);
+  outline: none;
   background: var(--app-settings-card);
   color: var(--app-text-primary);
+}
+
+.editable-field-input--textarea {
+  min-height: 4rem;
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.editable-field-input:focus {
+  border-color: var(--app-accent);
+  box-shadow: var(--app-focus-ring);
 }
 </style>

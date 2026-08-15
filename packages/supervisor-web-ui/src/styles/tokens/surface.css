@@ -1,0 +1,8 @@
+:root {
+  --app-radius-control: 0.5rem;
+  --app-radius-panel: 0.75rem;
+  --app-radius-pill: 999px;
+  --app-shadow-panel: 0 12px 32px rgb(0 0 0 / 12%);
+  --app-shadow-floating: 0 8px 24px rgb(0 0 0 / 16%);
+  --app-focus-ring: 0 0 0 2px color-mix(in srgb, var(--app-accent) 24%, transparent);
+}

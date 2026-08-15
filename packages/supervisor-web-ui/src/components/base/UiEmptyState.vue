@@ -49,8 +49,8 @@ const emit = defineEmits<{ action: [] }>();
 }
 
 .ui-empty-state--error .ui-empty-state__icon {
-  color: #d94841;
-  background: color-mix(in srgb, #d94841 10%, var(--app-settings-card));
+  color: var(--app-danger);
+  background: color-mix(in srgb, var(--app-danger) 10%, var(--app-settings-card));
 }
 
 .ui-empty-state__icon :deep(svg) {
@@ -85,10 +85,10 @@ const emit = defineEmits<{ action: [] }>();
   margin-top: 22px;
   padding: 0 18px;
   border-radius: 8px;
-  color: #fff;
-  background: #07c160;
-  font-size: 13px;
-  font-weight: 550;
+  color: var(--app-button-primary-text, #fff);
+  background: var(--app-accent);
+  font-size: var(--app-font-control);
+  font-weight: var(--app-font-weight-medium);
   transition:
     filter 0.15s ease,
     transform 0.15s ease;
@@ -108,7 +108,7 @@ const emit = defineEmits<{ action: [] }>();
 }
 
 .ui-empty-state__action:focus-visible {
-  outline: 2px solid color-mix(in srgb, #07c160 45%, transparent);
+  outline: 2px solid color-mix(in srgb, var(--app-accent) 45%, transparent);
   outline-offset: 3px;
 }
 

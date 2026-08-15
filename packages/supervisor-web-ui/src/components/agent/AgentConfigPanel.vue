@@ -2,40 +2,40 @@
   <div v-if="agent" class="agent-config mx-auto w-full max-w-[1040px]">
     <div v-if="loading" class="agent-config-loading">
       <Loader2 class="h-4 w-4 animate-spin" />
-      正在加载 Agent 配置...
+      {{ t("agent.loadingConfig") }}
     </div>
     <template v-else>
       <section class="agent-config-section">
         <div class="agent-config-section__title">
           <div>
-            <h3>基本配置</h3>
-            <p>Agent 的身份与默认运行设置</p>
+            <h3>{{ t("agent.basicConfig") }}</h3>
+            <p>{{ t("agent.identitySettings") }}</p>
           </div>
         </div>
         <dl class="agent-config-list">
           <div class="agent-config-row">
-            <dt>名称</dt>
+            <dt>{{ t("agent.name") }}</dt>
             <dd>{{ agent.name }}</dd>
           </div>
           <div class="agent-config-row">
-            <dt>描述</dt>
+            <dt>{{ t("agent.description") }}</dt>
             <dd>{{ agent.description || "-" }}</dd>
           </div>
           <div class="agent-config-row">
-            <dt>模型</dt>
+            <dt>{{ t("agent.model") }}</dt>
             <dd>
               <ModelTreeSelect
                 class="agent-model-select"
                 :model-value="agent.modelId || ''"
                 :groups="modelGroups"
                 :disabled="savingModel"
-                placeholder="稍后配置"
+                :placeholder="t('agent.configureLater')"
                 @change="changeModel"
               />
             </dd>
           </div>
           <div class="agent-config-row">
-            <dt>Home 目录</dt>
+            <dt>{{ t("agent.homeDirectory") }}</dt>
             <dd class="font-mono text-[12px] break-all">{{ homeDir || "-" }}</dd>
           </div>
         </dl>
@@ -44,10 +44,10 @@
       <section v-if="resolvedTools.length" class="agent-config-section agent-tools-section">
         <div class="agent-tools-header">
           <div>
-            <div class="text-[14px] font-medium">可用工具</div>
-            <p>由该 Agent 绑定的扩展提供，运行时可见性由扩展控制</p>
+            <div class="agent-tools-title">{{ t("agent.availableTools") }}</div>
+            <p>{{ t("agent.toolsDescription") }}</p>
           </div>
-          <span>{{ resolvedTools.length }} 项</span>
+          <span>{{ t("agent.itemCount", { count: resolvedTools.length }) }}</span>
         </div>
         <div class="agent-tools-list">
           <div v-for="tool in resolvedTools" :key="tool.name" class="agent-tool-row">
@@ -61,7 +61,7 @@
                 <span class="font-mono text-[12px]">{{ tool.name }}</span>
                 <span class="agent-config-tool-source">{{ sourceLabel(tool) }}</span>
               </div>
-              <p>{{ tool.description || "该工具暂未提供用途说明" }}</p>
+              <p>{{ tool.description || t("agent.toolDescriptionMissing") }}</p>
             </div>
           </div>
         </div>
@@ -76,6 +76,7 @@ import { Loader2, Puzzle, ShieldCheck, Wrench } from "lucide-vue-next";
 import { useAgentStore, useProviderStore } from "@/store";
 import { getDefaultWorkspaceCwd } from "@/config/workspace";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useI18n } from "@/i18n";
 import type { AgentResources } from "@/api";
 import { providerToUI } from "@/utils/provider-ui";
 import ModelTreeSelect, { type ModelTreeGroup } from "@/components/provider/ModelTreeSelect.vue";
@@ -83,6 +84,7 @@ import ModelTreeSelect, { type ModelTreeGroup } from "@/components/provider/Mode
 const props = defineProps<{ agentId: string }>();
 const agentStore = useAgentStore();
 const providerStore = useProviderStore();
+const { t } = useI18n();
 const agent = computed(() => agentStore.getAgentById(props.agentId));
 const modelGroups = computed<ModelTreeGroup[]>(() =>
   providerStore.providers
@@ -103,8 +105,8 @@ const savingModel = ref(false);
 const loading = ref(false);
 
 function sourceLabel(tool: AgentResources["tools"][number]): string {
-  if (tool.source === "extension") return tool.extensionName || "扩展";
-  return tool.source === "preset" ? "工具集" : "系统";
+  if (tool.source === "extension") return tool.extensionName || t("agent.extension");
+  return tool.source === "preset" ? t("agent.toolset") : t("agent.system");
 }
 
 async function changeModel(modelId: string) {
@@ -116,9 +118,9 @@ async function changeModel(modelId: string) {
   savingModel.value = true;
   try {
     await agentStore.updateAgent(props.agentId, { modelId });
-    showUiMessage("模型已更新", "success");
+    showUiMessage(t("agent.modelUpdated"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "模型更新失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("agent.modelUpdateFailed"), "error");
   } finally {
     savingModel.value = false;
   }

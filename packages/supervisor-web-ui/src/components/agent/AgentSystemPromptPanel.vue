@@ -1,15 +1,15 @@
 <template>
-  <div v-if="agent" class="flex flex-col min-h-0 flex-1">
+  <div v-if="agent" class="system-prompt-panel">
     <div
       v-if="loading"
-      class="flex flex-1 items-center justify-center gap-2 text-[13px] system-prompt-muted"
+      class="system-prompt-loading system-prompt-muted"
     >
-      <Loader2 class="h-4 w-4 animate-spin" />
-      正在加载 System Prompt...
+      <Loader2 class="system-prompt-icon animate-spin" />
+      {{ t("agent.loadingPrompt") }}
     </div>
     <template v-else>
-      <div class="flex items-center justify-between gap-3 mb-2 shrink-0">
-        <span class="system-prompt-label text-[12px]">SYSTEM.md</span>
+      <div class="system-prompt-toolbar">
+        <span class="system-prompt-label">SYSTEM.md</span>
         <InlineEditActions
           :editing="editing"
           @edit="startEdit"
@@ -18,7 +18,7 @@
         />
       </div>
 
-      <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
+      <div class="system-prompt-content">
         <CodeMirrorView
           v-if="editing"
           :content="systemMd"
@@ -29,9 +29,9 @@
         />
         <div
           v-else
-          class="system-prompt-view flex-1 min-h-0 overflow-y-auto custom-scrollbar text-[15px] leading-relaxed"
+          class="system-prompt-view custom-scrollbar"
         >
-          <MarkdownContent :content="systemMd || '（空）'" prose />
+          <MarkdownContent :content="systemMd || t('agent.emptyPrompt')" prose />
         </div>
       </div>
     </template>
@@ -46,12 +46,14 @@ import InlineEditActions from "@/components/base/InlineEditActions.vue";
 import MarkdownContent from "@/components/base/MarkdownContent.vue";
 import { useAgentStore } from "@/store";
 import { getDefaultWorkspaceCwd } from "@/config/workspace";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   agentId: string;
 }>();
 
 const agentStore = useAgentStore();
+const { t } = useI18n();
 const systemMd = ref("");
 const editing = ref(false);
 const snapshot = ref<string | null>(null);
@@ -100,7 +102,47 @@ function onSystemMdChange(content: string) {
 </script>
 
 <style scoped>
+.system-prompt-panel {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.system-prompt-loading {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: var(--app-space-2);
+  font-size: var(--app-font-control);
+}
+
+.system-prompt-icon {
+  width: 1rem;
+  height: 1rem;
+}
+
+.system-prompt-toolbar {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--app-space-3);
+  margin-bottom: var(--app-space-2);
+}
+
+.system-prompt-content {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .system-prompt-label {
+  color: var(--app-text-secondary);
+  font-size: var(--app-font-caption);
   color: var(--app-text-secondary);
 }
 
@@ -109,7 +151,12 @@ function onSystemMdChange(content: string) {
 }
 
 .system-prompt-view {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
   color: var(--app-text-primary);
+  font-size: var(--app-font-body-strong);
+  line-height: 1.625;
 }
 
 .system-prompt-view :deep(.prose),

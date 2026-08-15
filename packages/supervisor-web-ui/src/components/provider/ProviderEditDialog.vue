@@ -20,7 +20,7 @@
             <div class="provider-edit-title">{{ t("provider.basicInfo") }}</div>
 
             <label class="provider-edit-field">
-              <span class="provider-edit-label">名称</span>
+              <span class="provider-edit-label">{{ t("provider.name") }}</span>
               <UiField v-model="draft.name" type="text" />
             </label>
 
@@ -63,7 +63,7 @@
             <div class="provider-edit-title">{{ t("provider.connection") }}</div>
 
             <div class="provider-edit-field">
-              <div class="provider-edit-label text-[13px]">API Type</div>
+              <div class="provider-edit-label">{{ t("provider.apiType") }}</div>
               <div class="provider-edit-protocols">
                 <label
                   v-for="opt in WIRE_PROTOCOLS"
@@ -87,22 +87,22 @@
             </div>
 
             <label class="provider-edit-field">
-              <span class="provider-edit-label">Base URL</span>
+              <span class="provider-edit-label">{{ t("provider.baseUrl") }}</span>
               <UiField
                 v-model="baseUrlInput"
                 type="text"
-                placeholder="留空使用默认端点"
+                :placeholder="t('provider.baseUrlPlaceholder')"
                 class="provider-edit-mono-field"
               />
             </label>
 
             <label class="provider-edit-field">
-              <span class="provider-edit-label">API Key</span>
+              <span class="provider-edit-label">{{ t("provider.apiKey") }}</span>
               <span class="provider-edit-secret-field">
                 <UiField
                   v-model="apiKeyInput"
                   :type="showApiKey ? 'text' : 'password'"
-                  placeholder="留空则保留已有 API Key"
+                  :placeholder="t('provider.apiKeyPlaceholder')"
                   autocomplete="new-password"
                   spellcheck="false"
                   class="provider-edit-mono-field provider-edit-secret-input"
@@ -110,7 +110,7 @@
                 <button
                   type="button"
                   class="provider-edit-secret-toggle"
-                  :title="showApiKey ? '隐藏 API Key' : '显示 API Key'"
+                  :title="showApiKey ? t('provider.hideApiKey') : t('provider.showApiKey')"
                   @click.prevent="showApiKey = !showApiKey"
                 >
                   <EyeOff v-if="showApiKey" class="provider-edit-small-icon" />
@@ -122,8 +122,8 @@
         </div>
 
         <footer class="provider-edit-dialog__footer">
-          <UiActionButton variant="secondary" @click="close"> 取消 </UiActionButton>
-          <UiActionButton variant="primary" :disabled="!canSave || saving" @click="save"> 保存 </UiActionButton>
+          <UiActionButton variant="secondary" @click="close">{{ t("common.cancel") }}</UiActionButton>
+          <UiActionButton variant="primary" :disabled="!canSave || saving" @click="save">{{ t("common.save") }}</UiActionButton>
         </footer>
       </section>
     </div>

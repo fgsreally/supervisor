@@ -2,7 +2,7 @@
   <span
     class="model-multimodal-icon"
     :class="supportsMultimodal ? 'model-multimodal-icon--supported' : 'model-multimodal-icon--unsupported'"
-    :title="supportsMultimodal ? '支持图像输入（多模态）' : '仅文本'"
+    :title="supportsMultimodal ? t('provider.multimodal') : t('provider.textOnly')"
   >
     <Image class="model-multimodal-icon__image" :stroke-width="supportsMultimodal ? 2 : 1.5" />
   </span>
@@ -10,6 +10,9 @@
 
 <script setup lang="ts">
 import { Image } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 defineProps<{
   supportsMultimodal: boolean;

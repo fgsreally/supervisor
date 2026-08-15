@@ -9,8 +9,8 @@
         class="agent-edit-dialog w-full max-w-xl max-h-[90vh] overflow-hidden rounded-lg shadow-xl border flex flex-col"
       >
         <header class="h-14 px-5 border-b flex items-center shrink-0">
-          <h2 class="text-[16px] font-medium flex-1">编辑智能代理</h2>
-          <button type="button" class="agent-edit-close" title="关闭" @click="close">
+          <h2 class="agent-edit-heading">{{ t("agent.editTitle") }}</h2>
+          <button type="button" class="agent-edit-close" :title="t('common.close')" @click="close">
             <X class="w-5 h-5" />
           </button>
         </header>
@@ -24,9 +24,9 @@
               class="w-12 h-12 text-lg"
             />
             <label class="block flex-1 text-[13px]">
-              <span class="agent-edit-label mb-1 block">头像</span>
+              <span class="agent-edit-label">{{ t("agent.avatar") }}</span>
               <div class="flex gap-2">
-                <UiField v-model="draft.icon" type="text" placeholder="图片 URL 或 Iconify ID" />
+                <UiField v-model="draft.icon" type="text" :placeholder="t('agent.avatarPlaceholder')" />
                 <input
                   ref="iconInput"
                   type="file"
@@ -38,7 +38,7 @@
                   type="button"
                   class="agent-edit-upload"
                   :disabled="uploading"
-                  title="上传头像"
+                  :title="t('agent.uploadAvatar')"
                   @click="iconInput?.click()"
                 >
                   <Upload class="w-4 h-4" />
@@ -48,27 +48,27 @@
           </div>
 
           <label class="block text-[13px]">
-            <span class="agent-edit-label mb-1 block">名称</span>
+            <span class="agent-edit-label">{{ t("agent.name") }}</span>
             <UiField v-model="draft.name" type="text" />
           </label>
 
           <label class="block text-[13px]">
-            <span class="agent-edit-label mb-1 block">描述</span>
+            <span class="agent-edit-label">{{ t("agent.description") }}</span>
             <UiField v-model="draft.description" as="textarea" rows="3" class="resize-y" />
           </label>
 
           <template v-if="agent.backendType === 'native'">
             <label class="block text-[13px]">
-              <span class="agent-edit-label mb-1 block">模型</span>
+              <span class="agent-edit-label">{{ t("agent.model") }}</span>
               <ModelTreeSelect
                 v-model="draft.modelId"
                 :groups="modelGroups"
-                placeholder="稍后配置"
+                :placeholder="t('agent.configureLater')"
                 @change="onModelChange"
               />
             </label>
             <label class="block text-[13px]">
-              <span class="agent-edit-label mb-1 block">工具集</span>
+              <span class="agent-edit-label">{{ t("agent.toolset") }}</span>
               <UiField v-model="draft.toolsPreset" as="select">
                 <option value="coding">coding</option>
                 <option value="readonly">readonly</option>
@@ -77,7 +77,7 @@
             </label>
             <AgentPermissionEditor v-model="draft.permissionRules" />
             <section class="text-[13px]">
-              <div class="agent-edit-label mb-2">默认子 Agent</div>
+              <div class="agent-edit-label">{{ t("agent.defaultSubagents") }}</div>
               <div v-if="subagentCandidates.length" class="grid gap-2">
                 <label
                   v-for="child in subagentCandidates"
@@ -88,32 +88,32 @@
                   <span>{{ child.name }}</span>
                 </label>
               </div>
-              <div v-else class="agent-edit-label">暂无可选择的内部 Agent</div>
+              <div v-else class="agent-edit-label">{{ t("agent.noSubagents") }}</div>
             </section>
           </template>
 
           <template v-else>
             <label class="block text-[13px]">
-              <span class="agent-edit-label mb-1 block">启动命令</span>
+              <span class="agent-edit-label">{{ t("agent.command") }}</span>
               <UiField v-model="draft.command" type="text" class="font-mono" />
             </label>
             <label class="block text-[13px]">
-              <span class="agent-edit-label mb-1 block">命令行参数（每行一个）</span>
+              <span class="agent-edit-label">{{ t("agent.arguments") }}</span>
               <UiField
                 v-model="draft.args"
                 as="textarea"
                 rows="5"
                 class="font-mono resize-y"
-                placeholder="--model&#10;sonnet&#10;--allowedTools&#10;Bash(git diff:*) Edit"
+                :placeholder="t('agent.argumentsPlaceholder')"
               />
             </label>
           </template>
         </div>
 
         <footer class="px-5 py-3 border-t flex justify-end gap-2 shrink-0">
-          <UiActionButton variant="secondary" @click="close"> 取消 </UiActionButton>
+          <UiActionButton variant="secondary" @click="close">{{ t("common.cancel") }}</UiActionButton>
           <UiActionButton :disabled="!canSave" :loading="saving" @click="save">
-            保存
+            {{ t("agent.save") }}
           </UiActionButton>
         </footer>
       </section>
@@ -131,11 +131,13 @@ import AgentAvatar from "@/components/agent/AgentAvatar.vue";
 import ModelTreeSelect, { type ModelTreeGroup } from "@/components/provider/ModelTreeSelect.vue";
 import AgentPermissionEditor from "@/components/agent/AgentPermissionEditor.vue";
 import { UiActionButton, UiField } from "@/components/base";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ open: boolean; agentId: string }>();
 const emit = defineEmits<{ close: []; saved: [] }>();
 const agentStore = useAgentStore();
 const providerStore = useProviderStore();
+const { t } = useI18n();
 const saving = ref(false);
 const uploading = ref(false);
 const iconInput = ref<HTMLInputElement | null>(null);

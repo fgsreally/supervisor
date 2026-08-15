@@ -29,7 +29,7 @@
             v-model="draft.id"
             type="text"
             :disabled="mode === 'edit'"
-            placeholder="例如 gpt-4o"
+            :placeholder="t('provider.modelIdPlaceholder')"
             class="provider-model-editor__input provider-model-editor__input--mono"
           />
         </label>
@@ -39,7 +39,7 @@
           <input
             v-model="draft.name"
             type="text"
-            placeholder="可选，默认同 Model ID"
+            :placeholder="t('provider.displayNamePlaceholder')"
             class="provider-model-editor__input"
           />
         </label>

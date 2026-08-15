@@ -1,21 +1,25 @@
 <template>
   <div class="inline-edit-actions">
     <button v-if="!editing" type="button" class="inline-edit-btn" @click="emit('edit')">
-      编辑
+      {{ t("common.edit") }}
     </button>
     <template v-else>
-      <button type="button" class="inline-edit-btn" @click="emit('cancel')">取消</button>
+      <button type="button" class="inline-edit-btn" @click="emit('cancel')">{{ t("common.cancel") }}</button>
       <button type="button" class="inline-edit-btn inline-edit-btn--primary" @click="emit('done')">
-        完成
+        {{ t("common.done") }}
       </button>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useI18n } from "@/i18n";
+
 defineProps<{
   editing: boolean;
 }>();
+
+const { t } = useI18n();
 
 const emit = defineEmits<{
   edit: [];

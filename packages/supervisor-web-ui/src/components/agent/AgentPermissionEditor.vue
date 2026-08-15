@@ -2,9 +2,9 @@
   <section class="permission-editor">
     <div class="permission-editor__heading">
       <div>
-        <div class="permission-editor__title">工具权限</div>
+        <div class="permission-editor__title">{{ t("agent.toolPermissions") }}</div>
         <div class="permission-editor__hint">
-          参数先转换为 project/** 或 external/**；未匹配的调用允许执行。
+          {{ t("agent.permissionHint") }}
         </div>
       </div>
     </div>
@@ -12,7 +12,7 @@
     <div v-for="(group, groupIndex) in groups" :key="group.id" class="permission-group">
       <button type="button" class="permission-group__toggle" @click="toggleGroup(group.id)">
         <span class="font-mono">{{ group.tool }}</span>
-        <span class="permission-group__summary">{{ group.rules.length }} 条规则</span>
+        <span class="permission-group__summary">{{ t("agent.ruleCount", { count: group.rules.length }) }}</span>
         <ChevronDown
           class="h-4 w-4"
           :class="{ 'permission-group__chevron--open': openGroups.has(group.id) }"
@@ -23,7 +23,7 @@
           <div v-for="(rule, ruleIndex) in group.rules" :key="rule.id" class="permission-rule">
             <UiField
               v-model="rule.pattern"
-              placeholder="参数 Glob，例如 external/**"
+              :placeholder="t('agent.globPlaceholder')"
               class="font-mono"
             />
             <UiField v-model="rule.effect" as="select" class="permission-rule__effect">
@@ -31,11 +31,11 @@
               <option value="deny">deny</option>
             </UiField>
             <UiActionButton type="button" variant="secondary" @click="removeRule(groupIndex, ruleIndex)"
-              >删除</UiActionButton
+              >{{ t("agent.removeRule") }}</UiActionButton
             >
           </div>
               <UiActionButton type="button" variant="secondary" @click="addRule(groupIndex)"
-            >添加规则</UiActionButton
+            >{{ t("agent.addRule") }}</UiActionButton
           >
         </div>
       </Transition>
@@ -48,12 +48,14 @@ import { ref, watch } from "vue";
 import { ChevronDown } from "lucide-vue-next";
 import type { AgentPermissionEffect, AgentPermissionRules } from "@/api";
 import { UiActionButton, UiField } from "@/components/base";
+import { useI18n } from "@/i18n";
 
 type RuleDraft = { id: number; pattern: string; effect: AgentPermissionEffect };
 type GroupDraft = { id: number; tool: string; rules: RuleDraft[] };
 
 const props = defineProps<{ modelValue: AgentPermissionRules }>();
 const emit = defineEmits<{ "update:modelValue": [value: AgentPermissionRules] }>();
+const { t } = useI18n();
 let nextId = 1;
 const groups = ref<GroupDraft[]>([]);
 const openGroups = ref(new Set<number>());

@@ -27,11 +27,11 @@
         <button
           class="model-tree-select__backdrop"
           type="button"
-          aria-label="关闭"
+          :aria-label="t('common.close')"
           @click="open = false"
         />
         <div class="model-tree-select__menu" :style="menuStyle">
-          <div class="model-tree-select__caption">选择模型</div>
+          <div class="model-tree-select__caption">{{ t("provider.selectModel") }}</div>
           <section v-for="group in groups" :key="group.id" class="model-tree-select__group">
             <div class="model-tree-select__provider">
               <ProviderAvatar
@@ -58,7 +58,7 @@
             v-if="groups.every((group) => group.models.length === 0)"
             class="model-tree-select__none"
           >
-            暂无可用模型
+            {{ t("provider.noAvailableModels") }}
           </div>
         </div>
       </template>
@@ -70,6 +70,7 @@
 import { computed, nextTick, ref } from "vue";
 import { Check, ChevronDown } from "lucide-vue-next";
 import ProviderAvatar from "./ProviderAvatar.vue";
+import { useI18n } from "@/i18n";
 
 export interface ModelTreeGroup {
   id: string;
@@ -85,9 +86,10 @@ const props = withDefaults(
     placeholder?: string;
     disabled?: boolean;
   }>(),
-  { placeholder: "未配置", disabled: false },
+  { placeholder: "", disabled: false },
 );
 const emit = defineEmits<{ "update:modelValue": [value: string]; change: [value: string] }>();
+const { t } = useI18n();
 const open = ref(false);
 const trigger = ref<HTMLElement | null>(null);
 const menuStyle = ref<Record<string, string>>({});

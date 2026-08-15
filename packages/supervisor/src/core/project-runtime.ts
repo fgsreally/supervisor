@@ -19,6 +19,8 @@ const ProjectRuntimeSpecSchema = Type.Object({
 export interface SessionServiceApp {
   name: string;
   port: number;
+  /** Tool-allocated values for ${PORT1}, ${PORT2}, ... in startCommand. */
+  portEnv?: Record<string, number>;
   path?: string;
   startCommand?: string;
   jobId?: string;

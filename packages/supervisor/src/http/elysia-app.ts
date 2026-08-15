@@ -102,6 +102,7 @@ export class SupervisorElysiaBuilder {
       return this.requestGuard?.(supervisorContext) ?? handler(supervisorContext);
     };
     const parameterNames = [...path.matchAll(/:([A-Za-z0-9_]+)/g)].map((match) => match[1]);
+    if (path.split("/").includes("*")) parameterNames.push("*");
     const module = path.split("/").filter(Boolean)[0] ?? "system";
     const routeHooks = {
       ...hooks,

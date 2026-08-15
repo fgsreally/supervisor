@@ -22,6 +22,7 @@ import type { Agent, Session } from "../../types.js";
 import type { SupervisorDb } from "../../db/db.js";
 import type { SessionExtensionHost } from "../../extension/runtime/index.js";
 import type { ManagedSessionRuntime } from "../managed-session-runtime.js";
+import { writeLog } from "../../i18n/logs.js";
 import type { ExternalInteractionResponse } from "../managed-session-runtime.js";
 import type { SessionState, SlashCommandInfo } from "../session-runtime.js";
 import { resolveSessionPromptImages, type SessionPromptImage } from "../session-media.js";
@@ -187,7 +188,12 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       const message = chunk.trim();
-      if (message) console.error(`[acp:${options.session.id}] ${message}`);
+      if (message)
+        writeLog("error", "runtime.externalProcessError", {
+          backend: "acp",
+          id: options.session.id,
+          error: message,
+        });
     });
 
     try {
@@ -279,7 +285,7 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
       return this.handleCursorCreatePlan(params);
     }
     // Unknown blocking extension methods: cancel so the turn cannot hang forever.
-    console.warn(`[acp:${this.id}] unsupported extension method: ${method}`);
+    writeLog("warn", "runtime.externalUnsupportedMethod", { id: this.id, method });
     return { outcome: { outcome: "cancelled" } };
   }
 
@@ -289,7 +295,11 @@ export class AcpSessionRuntime implements ManagedSessionRuntime {
   ): Promise<void> {
     // Cursor notifications (update_todos / task / generate_image) are informational.
     if (method.startsWith("cursor/")) {
-      console.error(`[acp:${this.id}] ${method} ${JSON.stringify(params).slice(0, 240)}`);
+      writeLog("error", "runtime.externalMethodFailed", {
+        id: this.id,
+        method,
+        params: JSON.stringify(params).slice(0, 240),
+      });
     }
   }
 

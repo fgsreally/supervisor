@@ -15,6 +15,7 @@ import {
   spawnExternalProcess,
 } from "./external-agent-config.js";
 import { sessionLog } from "../../utils/session-log.js";
+import { writeLog } from "../../i18n/logs.js";
 import { beginSessionTiming, timedSessionStep } from "../../utils/session-timing.js";
 import { sessionServicePortEnv } from "../session-services.js";
 
@@ -123,7 +124,12 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
     this.child.stderr.setEncoding("utf8");
     this.child.stderr.on("data", (chunk: string) => {
       const message = chunk.trim();
-      if (message) console.error(`[codex:${this.id}] ${message}`);
+      if (message)
+        writeLog("error", "runtime.externalProcessError", {
+          backend: "codex",
+          id: this.id,
+          error: message,
+        });
     });
     this.child.once("exit", (code, signal) => {
       const error = new Error(`Codex app-server exited (${signal ?? code ?? "unknown"})`);
@@ -133,7 +139,11 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
       this.turnCompletion = undefined;
     });
     this.child.on("error", (error) => {
-      console.error(`[codex:${this.id}] process error:`, error);
+      writeLog("error", "runtime.externalProcessFailed", {
+        backend: "codex",
+        id: this.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
       for (const request of this.pending.values()) request.reject(error);
       this.pending.clear();
       this.turnCompletion?.reject(error);

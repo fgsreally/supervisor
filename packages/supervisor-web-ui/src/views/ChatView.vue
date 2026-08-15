@@ -747,9 +747,9 @@ const sessionChangedFiles = computed<SessionChangedFileView[]>(() => {
 
 const sessionStore = useSessionStore();
 const { width: sidePanelWidth, startResize: startSidePanelResize } = useResizableWidth({
-  defaultWidth: 520,
-  minWidth: 320,
-  maxWidth: 960,
+  defaultWidth: 420,
+  minWidth: 280,
+  maxWidth: 560,
   storageKey: "supervisor:chat-side-panel-width",
   direction: "rtl",
 });
@@ -924,7 +924,10 @@ const showFileTreeSidebar = ref(true);
 
 const contentPanelOpen = computed(() => contentTabs.value.length > 0);
 const contentSplitTabs = computed(() =>
-  contentTabs.value.map((tab) => ({ id: tab.id, title: tab.title })),
+  contentTabs.value.map((tab) => ({
+    id: tab.id,
+    title: tab.title,
+  })),
 );
 const activeContentTab = computed(
   () => contentTabs.value.find((tab) => tab.id === activeContentTabId.value) ?? null,
@@ -2866,8 +2869,8 @@ async function executeCustomSlash(name: string) {
 .chat-panel-host {
   position: relative;
   display: flex;
-  min-width: 320px;
-  max-width: min(72vw, 960px);
+  min-width: 280px;
+  max-width: min(58vw, 560px);
   flex: none;
 }
 

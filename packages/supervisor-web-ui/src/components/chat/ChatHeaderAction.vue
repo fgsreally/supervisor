@@ -13,7 +13,7 @@
     @click="emit('click', $event)"
   >
     <slot />
-    <span v-if="count != null">{{ count }}</span>
+    <span v-if="count != null" class="chat-header-action__count">{{ count }}</span>
   </button>
 </template>
 

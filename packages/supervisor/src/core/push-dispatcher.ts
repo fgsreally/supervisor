@@ -1,5 +1,6 @@
 import type { SupervisorDb } from "../db/db.js";
 import { readSupervisorSettings } from "../utils/supervisor-settings.js";
+import { writeLog } from "../i18n/logs.js";
 
 import { sendPushToDevice, type PushPayload } from "./push-gateway.js";
 import type { PushDeviceInput } from "./push-device-types.js";
@@ -62,7 +63,7 @@ export function attachPushDispatcher(
   onEvent((sessionId, event) => {
     void handleSessionEventForPush(db, dispatcher, sessionId, event).catch((error: unknown) => {
       const detail = error instanceof Error ? error.message : String(error);
-      console.debug(`push dispatch failed [${sessionId}]:`, detail);
+      writeLog("debug", "runtime.pushDispatchFailed", { id: sessionId, error: detail });
     });
   });
 

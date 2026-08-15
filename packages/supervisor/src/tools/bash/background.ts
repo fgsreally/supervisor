@@ -150,7 +150,7 @@ export async function startBackgroundBashSession(options: {
     status: "running",
     executionMode: "background",
     capabilities: ["cancel", "input", "read_output"],
-    metadata: { command, cwd: options.cwd, pid: child.pid },
+    metadata: { command, cwd: options.cwd, pid: child.pid, pidStartedAt: Date.now() },
   });
   const session: ManagedSession = {
     id: job.id,

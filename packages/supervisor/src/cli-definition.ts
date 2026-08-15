@@ -21,6 +21,7 @@ export function createSupervisorCli(): CAC {
       default: false,
     })
     .option("--ui-dir <path>", "Directory of built web UI (defaults to auto-detect dist)")
+    .option("--locale <locale>", "Console language: en or zh-CN (default: system locale)")
     .help();
   cli.command("serve", MODULE_DESCRIPTIONS.serve, { allowUnknownOptions: true });
   cli

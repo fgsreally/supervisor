@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { writeLog } from "../i18n/logs.js";
 
 /**
  * Resolve the built web UI dist directory.
@@ -33,7 +34,5 @@ export function resolveUiDistDir(explicit?: string): string | null {
 }
 
 export function warnMissingUiDist(): void {
-  console.warn(
-    "[ui] Web UI dist not found. Run `pnpm run build:all` (or build pi-supervisor-ui) so phones can load the UI from this port.",
-  );
+  writeLog("warn", "runtime.uiDistMissing");
 }

@@ -97,7 +97,7 @@ const statusLabel = computed(() => {
     case "blocked":
       return "阻塞";
     case "idle":
-      return "空闲";
+      return "激活";
     case "finish":
       return "已完成";
     case "error":

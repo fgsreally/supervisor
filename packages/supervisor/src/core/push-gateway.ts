@@ -2,6 +2,7 @@ import { createSign, createPrivateKey, sign } from "node:crypto";
 
 import type { SupervisorSettings } from "../utils/supervisor-settings.js";
 import { decryptApiKey } from "../utils/encrypt.js";
+import { writeLog } from "../i18n/logs.js";
 
 import type { PushDeviceRow } from "./push-device-types.js";
 
@@ -118,7 +119,7 @@ async function sendFcm(device: PushDeviceRow, payload: PushPayload, settings: Su
     }),
   }).catch((error: unknown) => {
     const detail = error instanceof Error ? error.message : String(error);
-    console.debug(`FCM push failed [${device.device_id}]:`, detail);
+    writeLog("debug", "runtime.pushFcmFailed", { id: device.device_id, error: detail });
   });
 }
 
@@ -143,7 +144,7 @@ async function sendApns(device: PushDeviceRow, payload: PushPayload, settings: S
     jwt = `${unsigned}.${base64Url(signature)}`;
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
-    console.debug(`APNs JWT sign failed:`, detail);
+    writeLog("debug", "runtime.pushApnsJwtFailed", { error: detail });
     return;
   }
 
@@ -167,7 +168,7 @@ async function sendApns(device: PushDeviceRow, payload: PushPayload, settings: S
     body: JSON.stringify(body),
   }).catch((error: unknown) => {
     const detail = error instanceof Error ? error.message : String(error);
-    console.debug(`APNs push failed [${device.device_id}]:`, detail);
+    writeLog("debug", "runtime.pushApnsFailed", { id: device.device_id, error: detail });
   });
 }
 

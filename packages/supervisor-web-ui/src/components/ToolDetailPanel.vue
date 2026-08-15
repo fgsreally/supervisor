@@ -92,7 +92,12 @@ const canKillJob = computed(() => {
 const terminalLines = computed(() => {
   if (watchingJob.value && jobState.value) {
     const job = jobState.value;
-    const metaCommand = typeof job.metadata.command === "string" ? job.metadata.command : "";
+    const metaCommand =
+      typeof job.metadata.resolvedCommand === "string"
+        ? job.metadata.resolvedCommand
+        : typeof job.metadata.command === "string"
+          ? job.metadata.command
+          : "";
     const header = metaCommand
       ? `\x1b[36m$ ${metaCommand}\x1b[0m`
       : `\x1b[36m# ${job.label}\x1b[0m`;

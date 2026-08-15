@@ -4,6 +4,7 @@ import type { SupervisorDb } from "../db/db.js";
 import { listSvCommitsBetween, type SvCommitInfo } from "../utils/git.js";
 import { getSupervisorHome } from "../utils/supervisor-home.js";
 import { generateDailyWorkDigest } from "../utils/utility-llm.js";
+import { writeLog } from "../i18n/logs.js";
 
 export interface DailyWorkProjectSection {
   projectId: number;
@@ -204,7 +205,7 @@ export async function maybeRunDailyWorkCatchUp(db: SupervisorDb): Promise<void> 
     await runDailyWorkAnalysis(db, dayKey);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`[daily-work] failed for ${dayKey}:`, message);
+    writeLog("error", "runtime.dailyWorkFailed", { dayKey, error: message });
   }
 }
 

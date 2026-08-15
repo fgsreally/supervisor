@@ -15,6 +15,7 @@ import type {
 import type { SessionManager } from "./session-manager.js";
 import type { SessionState, SlashCommandInfo } from "./session-runtime.js";
 import type { SessionPromptImage } from "./session-media.js";
+import { writeLog } from "../i18n/logs.js";
 
 export async function loadSessionExtensions(options: {
   runtime: ManagedSessionRuntime;
@@ -74,7 +75,10 @@ export async function loadSessionExtensions(options: {
     options.manager.getExtensionRegistry().getMany(extensionSlugs),
   );
   for (const moduleError of moduleErrors) {
-    console.error(`extension module [${moduleError.slug}]:`, moduleError.error);
+    writeLog("error", "runtime.extensionAttachFailed", {
+      slug: moduleError.slug,
+      error: moduleError.error,
+    });
   }
 
   return extension;

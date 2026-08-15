@@ -17,6 +17,7 @@ import {
   ShadowResultSchema,
 } from "./protocol.js";
 import type { ShadowProtocolResult } from "./types.js";
+import { writeLog } from "../../../i18n/logs.js";
 
 function shouldRunShadow(session: Session): boolean {
   if (session.parentId !== null) return false;
@@ -101,14 +102,14 @@ export async function runShadow(
     });
     const normalized = normalizeShadowSubmitResult(run.result);
     if (!normalized) {
-      console.error(`shadow submit_result invalid [session=${session.id}]`);
+      writeLog("error", "runtime.shadowSubmitInvalid", { id: session.id });
       setShadowRunning(manager, db, session.id, false);
       return;
     }
     result = normalized;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`shadow completion failed [session=${session.id}]:`, message);
+    writeLog("error", "runtime.shadowCompletionFailed", { id: session.id, error: message });
     setShadowRunning(manager, db, session.id, false);
     return;
   }
@@ -143,7 +144,7 @@ export async function runShadow(
       await manager.commitCheckpoint(session.id, checkpoint.id, commitMessage);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`shadow snapshot commit failed [session=${session.id}]:`, message);
+      writeLog("error", "runtime.shadowSnapshotFailed", { id: session.id, error: message });
     }
   }
 

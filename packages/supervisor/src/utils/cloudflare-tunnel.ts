@@ -5,6 +5,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
+import { writeLog } from "../i18n/logs.js";
 
 const START_TIMEOUT_MS = 45_000;
 const URL_RE = /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/;
@@ -22,7 +23,7 @@ async function resolveCloudflaredBin(): Promise<string> {
     binPath = binPath.replace("app.asar", "app.asar.unpacked");
   }
   if (!existsSync(binPath)) {
-    console.log("[tunnel] Downloading cloudflared binary…");
+    writeLog("info", "runtime.tunnel.download");
     await cloudflared.install(binPath);
   }
   if (!existsSync(binPath)) {
@@ -39,7 +40,7 @@ async function resolveCloudflaredBin(): Promise<string> {
  */
 export async function startQuickTunnel(port: number): Promise<QuickTunnel> {
   const binPath = await resolveCloudflaredBin();
-  console.log(`[tunnel] Starting Cloudflare Quick Tunnel → http://127.0.0.1:${port}`);
+  writeLog("info", "runtime.tunnel.start", { port });
 
   return new Promise<QuickTunnel>((resolve, reject) => {
     const proc: ChildProcess = spawn(
@@ -85,7 +86,7 @@ export async function startQuickTunnel(port: number): Promise<QuickTunnel> {
         settled = true;
         clearTimeout(timeout);
         const url = match[0];
-        console.log(`[tunnel] Public URL: ${url}`);
+        writeLog("info", "runtime.tunnel.publicUrl", { url });
         resolve({ url, stop });
       }
     };

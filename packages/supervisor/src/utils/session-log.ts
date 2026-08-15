@@ -1,6 +1,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getSessionDir } from "../core/session-files.js";
+import { translateRawLog, writeLog } from "../i18n/logs.js";
 
 export type SessionLogLevel = "debug" | "info" | "warn" | "error";
 
@@ -83,11 +84,16 @@ export function appendSessionLog(
     ensureLogDir(projectId, sessionId);
     appendFileSync(sessionLogPath(projectId, sessionId), serializeEntry(entry), "utf8");
   } catch (error) {
-    console.error("[session-log] failed to append", {
-      projectId,
-      sessionId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    writeLog(
+      "error",
+      "runtime.sessionLog.appendFailed",
+      {},
+      {
+        projectId,
+        sessionId,
+        error: error instanceof Error ? error.message : String(error),
+      },
+    );
   }
 }
 
@@ -103,15 +109,18 @@ export function sessionLog(
   meta?: Record<string, unknown>,
 ): void {
   const id = Number(sessionId);
-  const prefix = `[session-log ${sessionId}]`;
-  if (level === "error") console.error(prefix, message, meta ?? "");
-  else if (level === "warn") console.warn(prefix, message, meta ?? "");
-  else console.log(prefix, message, meta ?? "");
+  const localizedMessage = translateRawLog(message);
+  writeLog(
+    level === "error" ? "error" : level === "warn" ? "warn" : "info",
+    "runtime.sessionLog.entry",
+    { id: sessionId, message: localizedMessage },
+    meta ?? "",
+  );
 
   if (!Number.isFinite(id)) return;
   const projectId = projectIdResolver?.(id);
   if (projectId == null) return;
-  appendSessionLog(projectId, id, { level, message, tags, meta });
+  appendSessionLog(projectId, id, { level, message: localizedMessage, tags, meta });
 }
 
 function parseJsonlLine(line: string): SessionLogEntry | null {
@@ -199,11 +208,16 @@ export function readSessionLog(
         if (entry && matchesFilter(entry, options)) entries.push(entry);
       }
     } catch (error) {
-      console.error("[session-log] failed to read session.jsonl", {
-        projectId,
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      writeLog(
+        "error",
+        "runtime.sessionLog.readJsonlFailed",
+        {},
+        {
+          projectId,
+          sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
   }
 
@@ -216,11 +230,16 @@ export function readSessionLog(
         if (entry && matchesFilter(entry, options)) entries.push(entry);
       }
     } catch (error) {
-      console.error("[session-log] failed to read extensions.log", {
-        projectId,
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      writeLog(
+        "error",
+        "runtime.sessionLog.readLegacyFailed",
+        {},
+        {
+          projectId,
+          sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
     }
   }
 

@@ -25,7 +25,7 @@ export async function findFreePortInRange(
   );
   for (let port = min; port <= max; port++) {
     if (skip.has(port)) continue;
-    if (await isTcpPortOpen(port)) continue;
+    if (await isLoopbackTcpPortOpen(port)) continue;
     if (await canBindPort(port)) return port;
   }
   return undefined;
@@ -72,10 +72,24 @@ export async function isTcpPortOpen(
   });
 }
 
+/** True when either IPv4 or IPv6 loopback accepts TCP connections on the port. */
+export async function isLoopbackTcpPortOpen(port: number, timeoutMs = 400): Promise<boolean> {
+  if (await isTcpPortOpen(port, "127.0.0.1", timeoutMs)) return true;
+  return isTcpPortOpen(port, "::1", timeoutMs);
+}
+
 /** True when any of the given ports is accepting connections. */
 export async function anyTcpPortOpen(ports: number[], host = "127.0.0.1"): Promise<boolean> {
   for (const port of ports) {
     if (await isTcpPortOpen(port, host)) return true;
+  }
+  return false;
+}
+
+/** True when any port accepts TCP connections on either loopback address. */
+export async function anyLoopbackTcpPortOpen(ports: number[]): Promise<boolean> {
+  for (const port of ports) {
+    if (await isLoopbackTcpPortOpen(port)) return true;
   }
   return false;
 }

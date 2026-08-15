@@ -16,6 +16,7 @@ import {
   type GitChangedFile,
 } from "../utils/git.js";
 import { sessionLog } from "../utils/session-log.js";
+import { writeLog } from "../i18n/logs.js";
 import { maybeRunRollingCompaction } from "./compaction/rolling.js";
 import type { SessionRuntime } from "./session-runtime.js";
 import type {
@@ -262,7 +263,7 @@ export function handleSessionLifecycleAgentEnd(
     await maybeAutoNameSession(sessionId, event, db);
   })().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
-    console.error(`session lifecycle agent_end failed [${sessionId}]:`, message);
+    writeLog("error", "runtime.sessionLifecycleFailed", { id: sessionId, error: message });
   });
 }
 
@@ -380,7 +381,7 @@ export async function finalizeSessionLifecycleGit(
         ].join("\n"),
       }).catch((watsonError: unknown) => {
         const detail = watsonError instanceof Error ? watsonError.message : String(watsonError);
-        console.error(`Watson worktree cleanup failed [${session.id}]:`, detail);
+        writeLog("error", "runtime.shadowCompletionFailed", { id: session.id, error: detail });
       });
       try {
         await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch);

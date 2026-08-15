@@ -12,6 +12,7 @@ import {
   ensureAgentBuiltinExtensionBindings,
   ensureBuiltinExtensionResources,
 } from "../../extension/builtin/ensure.js";
+import { writeLog } from "../../i18n/logs.js";
 
 export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro", "coding", "smart-router"] as const;
 export type PackagedAgentKind = (typeof PACKAGED_AGENT_KINDS)[number];
@@ -315,7 +316,7 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
   for (const kind of ACTIVE_PACKAGED_AGENT_KINDS) {
     const id = ensurePackagedAgent(db, kind);
     if (id === undefined) {
-      console.warn(`[pi-supervisor] No provider configured - skipping packaged agent: ${kind}`);
+      writeLog("warn", "agent.noProviderPackaged", { kind });
     }
   }
 }
@@ -402,7 +403,7 @@ function installBuiltinAssistantSkill(db: SupervisorDb, agentId: number): void {
 export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager): void {
   const provider = pickProvider(db);
   if (!provider) {
-    console.warn("[pi-supervisor] No provider configured - skipping built-in Pi assistant setup");
+    writeLog("warn", "agent.noProviderAssistant");
     return;
   }
 

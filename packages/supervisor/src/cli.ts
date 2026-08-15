@@ -22,6 +22,7 @@ import { startQuickTunnel } from "./utils/cloudflare-tunnel.js";
 import { resolveUiDistDir } from "./utils/ui-dist.js";
 import { resolveWebPin } from "./utils/web-password.js";
 import { getSupervisorHome, setSupervisorHome } from "./utils/supervisor-home.js";
+import { writeLog } from "./i18n/logs.js";
 import {
   buildDevPublicUrl,
   printExternalAgentAvailability,
@@ -37,6 +38,7 @@ const KNOWN_CLI_OPTIONS = new Set([
   "password",
   "tunnel",
   "ui-dir",
+  "locale",
   "h",
   "help",
 ]);
@@ -62,6 +64,7 @@ function _parseExtensionFlags(argv: string[]): Record<string, string | boolean |
 const cli = createSupervisorCli();
 const parsed = cli.parse(process.argv, { run: false });
 const values = parsed.options;
+if (typeof values.locale === "string") process.env.PI_SUPERVISOR_LOCALE = values.locale;
 
 function rawCliValue(name: string): string | undefined {
   const prefix = `--${name}=`;
@@ -185,15 +188,17 @@ async function run() {
       if (subCmd === "install") {
         const source = cmdArgs[1];
         if (!source) {
-          console.error("Usage: pi-supervisor extensions install <npm:/git:/local-path>");
+          writeLog("error", "cli.extensions.install.usage");
           process.exit(1);
         }
         const result = await manager.resources.installResource({ kind: "extension", source });
         const details = result.details ?? {};
-        console.log(`Installed: ${result.resource.slug}`);
-        console.log(`  rootDir: ${String(details.rootDir ?? "")}`);
-        console.log(`  entry:   ${String(details.entryPath ?? "")}`);
-        console.log(`  deps:    ${String(details.installCommand ?? "none")}`);
+        writeLog("info", "cli.extensions.installed", { slug: result.resource.slug });
+        writeLog("info", "cli.extensions.rootDir", { value: String(details.rootDir ?? "") });
+        writeLog("info", "cli.extensions.entry", { value: String(details.entryPath ?? "") });
+        writeLog("info", "cli.extensions.deps", {
+          value: String(details.installCommand ?? "none"),
+        });
         db.close();
         break;
       }
@@ -201,15 +206,17 @@ async function run() {
       if (subCmd === "update") {
         const id = cmdArgs[1];
         if (!id) {
-          console.error("Usage: pi-supervisor extensions update <id>");
+          writeLog("error", "cli.extensions.update.usage");
           process.exit(1);
         }
         const result = await manager.resources.updateResource("extension", id);
         const details = result.details ?? {};
-        console.log(`Updated: ${result.resource.slug}`);
-        console.log(`  rootDir: ${String(details.rootDir ?? "")}`);
-        console.log(`  entry:   ${String(details.entryPath ?? "")}`);
-        console.log(`  deps:    ${String(details.installCommand ?? "none")}`);
+        writeLog("info", "cli.extensions.updated", { slug: result.resource.slug });
+        writeLog("info", "cli.extensions.rootDir", { value: String(details.rootDir ?? "") });
+        writeLog("info", "cli.extensions.entry", { value: String(details.entryPath ?? "") });
+        writeLog("info", "cli.extensions.deps", {
+          value: String(details.installCommand ?? "none"),
+        });
         db.close();
         break;
       }
@@ -217,11 +224,11 @@ async function run() {
       if (subCmd === "uninstall") {
         const id = cmdArgs[1];
         if (!id) {
-          console.error("Usage: pi-supervisor extensions uninstall <id>");
+          writeLog("error", "cli.extensions.uninstall.usage");
           process.exit(1);
         }
         await manager.resources.uninstallResource("extension", id);
-        console.log(`Uninstalled extension: ${id}`);
+        writeLog("info", "cli.extensions.uninstalled", { id });
         db.close();
         break;
       }
@@ -229,13 +236,16 @@ async function run() {
       if (subCmd === "list") {
         const resources = manager.resources.listResources("extension");
         if (resources.length === 0) {
-          console.log("No extensions in resource catalog.");
+          writeLog("info", "cli.extensions.none");
         } else {
           for (const resource of resources) {
             const ver = resource.version ? ` v${resource.version}` : "";
-            console.log(
-              `  ${resource.slug}  ${resource.name ?? resource.slug}${ver}  [${resource.sourcePath}]`,
-            );
+            writeLog("info", "cli.extensions.item", {
+              slug: resource.slug,
+              name: resource.name ?? resource.slug,
+              version: ver,
+              sourcePath: resource.sourcePath,
+            });
           }
         }
         db.close();
@@ -246,16 +256,16 @@ async function run() {
         const agentIdRaw = cmdArgs[1];
         const id = cmdArgs[2];
         if (!agentIdRaw || !id) {
-          console.error("Usage: pi-supervisor extensions bind <agent-id> <id>");
+          writeLog("error", "cli.extensions.bind.usage");
           process.exit(1);
         }
         const agentId = Number(agentIdRaw);
         if (!Number.isFinite(agentId)) {
-          console.error("agent-id must be a number");
+          writeLog("error", "cli.extensions.agentIdNumber");
           process.exit(1);
         }
         manager.resources.bindResource({ agentId, kind: "extension", slug: id });
-        console.log(`Bound extension ${id} to agent ${agentId}`);
+        writeLog("info", "cli.extensions.bound", { id, agentId });
         db.close();
         break;
       }
@@ -264,21 +274,21 @@ async function run() {
         const agentIdRaw = cmdArgs[1];
         const id = cmdArgs[2];
         if (!agentIdRaw || !id) {
-          console.error("Usage: pi-supervisor extensions unbind <agent-id> <id>");
+          writeLog("error", "cli.extensions.unbind.usage");
           process.exit(1);
         }
         const agentId = Number(agentIdRaw);
         if (!Number.isFinite(agentId)) {
-          console.error("agent-id must be a number");
+          writeLog("error", "cli.extensions.agentIdNumber");
           process.exit(1);
         }
         await manager.resources.unbindResource({ agentId, kind: "extension", slug: id });
-        console.log(`Unbound extension ${id} from agent ${agentId}`);
+        writeLog("info", "cli.extensions.unbound", { id, agentId });
         db.close();
         break;
       }
 
-      console.error(`Unknown extensions sub-command: ${subCmd ?? ""}`);
+      writeLog("error", "cli.extensions.unknown", { command: subCmd ?? "" });
       showHelp();
       db.close();
       process.exit(1);
@@ -325,11 +335,11 @@ async function run() {
         });
         const apiKey = typeof answer.apiKey === "string" ? answer.apiKey.trim() : "";
         if (!apiKey) {
-          console.log(`${provider} API key unchanged.`);
+          writeLog("info", "cli.config.apiKeyUnchanged", { provider });
           return;
         }
         writeSupervisorSettings({ [encryptedFields[provider]]: encryptApiKey(apiKey) });
-        console.log(`${provider} API key saved encrypted.`);
+        writeLog("info", "cli.config.apiKeySaved", { provider });
       };
       let section = cmdArgs[0];
 
@@ -350,13 +360,23 @@ async function run() {
 
       const settings = readSupervisorSettings();
       if (section === "show") {
-        console.log(`Browser: ${settings.browserMode ?? "headless"}`);
-        console.log(`Web Search: ${settings.webSearchProvider ?? "duckduckgo"}`);
-        console.log(`Web Fetch: ${settings.webFetchProvider ?? "native"}`);
-        console.log(`Tavily key env: ${settings.tavilyApiKeyEnv ?? "TAVILY_API_KEY"}`);
-        console.log(`Brave key env: ${settings.braveApiKeyEnv ?? "BRAVE_API_KEY"}`);
-        console.log(`Serper key env: ${settings.serperApiKeyEnv ?? "SERPER_API_KEY"}`);
-        console.log(`Firecrawl key env: ${settings.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY"}`);
+        writeLog("info", "cli.config.browser", { value: settings.browserMode ?? "headless" });
+        writeLog("info", "cli.config.webSearch", {
+          value: settings.webSearchProvider ?? "duckduckgo",
+        });
+        writeLog("info", "cli.config.webFetch", { value: settings.webFetchProvider ?? "native" });
+        writeLog("info", "cli.config.tavilyEnv", {
+          value: settings.tavilyApiKeyEnv ?? "TAVILY_API_KEY",
+        });
+        writeLog("info", "cli.config.braveEnv", {
+          value: settings.braveApiKeyEnv ?? "BRAVE_API_KEY",
+        });
+        writeLog("info", "cli.config.serperEnv", {
+          value: settings.serperApiKeyEnv ?? "SERPER_API_KEY",
+        });
+        writeLog("info", "cli.config.firecrawlEnv", {
+          value: settings.firecrawlApiKeyEnv ?? "FIRECRAWL_API_KEY",
+        });
       } else if (section === "web-search") {
         let provider = cmdArgs[1];
         if (!provider) {
@@ -379,7 +399,7 @@ async function run() {
           webSearchProvider: provider as (typeof searchProviders)[number],
         });
         if (provider !== "duckduckgo") await ensureApiKey(provider as CredentialProvider);
-        console.log(`Web Search provider: ${provider}`);
+        writeLog("info", "cli.config.webSearchSet", { provider });
       } else if (section === "web-fetch") {
         let provider = cmdArgs[1];
         if (!provider) {
@@ -399,7 +419,7 @@ async function run() {
         if (provider !== "native") {
           await ensureApiKey(provider.endsWith("firecrawl") ? "firecrawl" : "tavily");
         }
-        console.log(`Web Fetch provider: ${provider}`);
+        writeLog("info", "cli.config.webFetchSet", { provider });
       } else if (section === "browser") {
         let mode = cmdArgs[1];
         if (!mode) {
@@ -416,7 +436,7 @@ async function run() {
           throw new Error(`Invalid browser mode: ${mode ?? ""}`);
         }
         writeSupervisorSettings({ browserMode: mode as (typeof browserModes)[number] });
-        console.log(`Browser mode: ${mode}`);
+        writeLog("info", "cli.config.browserSet", { mode });
       } else {
         throw new Error(`Unknown configuration section: ${section ?? ""}`);
       }
@@ -429,12 +449,16 @@ async function run() {
       if (subCmd === "list") {
         const providers = db.listProviders();
         if (providers.length === 0) {
-          console.log("No providers.");
+          writeLog("info", "cli.providers.none");
         } else {
           for (let i = 0; i < providers.length; i++) {
             const p = providers[i];
             const primaryModel = getPrimaryModelId(db, p.id) ?? "(no model)";
-            console.log(`${i + 1}. ${p.name}  [${primaryModel}]`);
+            writeLog("info", "cli.providers.item", {
+              index: i + 1,
+              name: p.name,
+              model: primaryModel,
+            });
           }
         }
         db.close();
@@ -552,9 +576,7 @@ async function run() {
 
         const existing = db.listProviders().find((provider) => provider.slug === id);
         if (existing) {
-          console.log(
-            `Provider "${id}" already exists. Use \`providers set-key\` to update the key.`,
-          );
+          writeLog("info", "cli.providers.exists", { id });
           db.close();
           break;
         }
@@ -573,12 +595,12 @@ async function run() {
           db.insertModel({ provider_id: providerId, model_id: initialModelId });
         }
 
-        console.log(`Added provider: ${id}`);
+        writeLog("info", "cli.providers.added", { id });
         db.close();
       } else if (subCmd === "set-key") {
         const providers = db.listProviders();
         if (providers.length === 0) {
-          console.log("No providers. Add one first.");
+          writeLog("info", "cli.providers.addKeyFirst");
           db.close();
           break;
         }
@@ -600,15 +622,15 @@ async function run() {
         });
         if (!apiKey) throw new Error("Cancelled.");
         db.updateProvider(provider.id, { api_key: apiKey.trim() });
-        console.log(`Updated key for: ${provider.id}`);
+        writeLog("info", "cli.providers.keyUpdated", { id: provider.id });
         db.close();
       } else if (subCmd === "remove") {
         const selectedProvider = await selectProviderLocal(db);
         db.deleteProvider(selectedProvider.id);
-        console.log(`Removed provider: ${selectedProvider.id}`);
+        writeLog("info", "cli.providers.removed", { id: selectedProvider.id });
         db.close();
       } else {
-        console.error(`Unknown providers sub-command: ${subCmd}`);
+        writeLog("error", "cli.providers.unknown", { command: subCmd });
         showHelp();
         db.close();
         process.exit(1);
@@ -621,7 +643,7 @@ async function run() {
       if (subCmd === "list") {
         const providerId = cmdArgs[1];
         if (!providerId) {
-          console.error("Usage: pi-supervisor models list <provider-id>");
+          writeLog("error", "cli.models.listUsage");
           process.exit(1);
         }
         const provider = db
@@ -629,10 +651,10 @@ async function run() {
           .find((item) => item.slug === providerId || String(item.id) === providerId);
         const models = provider ? db.listModelsByProvider(provider.id) : [];
         if (models.length === 0) {
-          console.log("No models.");
+          writeLog("info", "cli.models.none");
         } else {
           for (const m of models) {
-            console.log(`  ${m.modelId}`);
+            writeLog("info", "cli.models.item", { model: m.modelId });
           }
         }
         db.close();
@@ -646,13 +668,13 @@ async function run() {
         });
         if (!modelId) throw new Error("Cancelled.");
         db.insertModel({ provider_id: selectedProvider.id, model_id: modelId.trim() });
-        console.log(`Added model ${modelId} to ${selectedProvider.name}`);
+        writeLog("info", "cli.models.added", { model: modelId, provider: selectedProvider.name });
         db.close();
       } else if (subCmd === "remove") {
         const selectedProvider = await selectProviderLocal(db);
         const models = db.listModels().filter((m) => m.providerId === selectedProvider.id);
         if (models.length === 0) {
-          console.log("No models to remove.");
+          writeLog("info", "cli.models.noneToRemove");
           db.close();
           break;
         }
@@ -667,10 +689,10 @@ async function run() {
         });
         if (!modelId) throw new Error("Cancelled.");
         db.deleteModel(selectedProvider.id, modelId);
-        console.log(`Removed model ${modelId} from ${selectedProvider.name}`);
+        writeLog("info", "cli.models.removed", { model: modelId, provider: selectedProvider.name });
         db.close();
       } else {
-        console.error(`Unknown models sub-command: ${subCmd}`);
+        writeLog("error", "cli.models.unknown", { command: subCmd });
         showHelp();
         db.close();
         process.exit(1);
@@ -679,7 +701,7 @@ async function run() {
     }
 
     default: {
-      console.error(`Unknown command: ${command}`);
+      writeLog("error", "cli.unknownCommand", { command });
       showHelp();
       db.close();
       process.exit(1);
@@ -688,6 +710,8 @@ async function run() {
 }
 
 run().catch((e) => {
-  console.error(e);
+  writeLog("error", "runtime.unknownError", {
+    error: e instanceof Error ? e.message : String(e),
+  });
   process.exit(1);
 });

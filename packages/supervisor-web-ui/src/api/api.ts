@@ -1432,9 +1432,12 @@ export function buildSessionPreviewUrl(sessionId: string, scriptName: string, pa
   const base = getApiBase();
   const normalized = path.startsWith("/") ? path.slice(1) : path;
   const encoded = encodeURIComponent(scriptName);
-  return normalized
+  const url = normalized
     ? `${base}/sessions/${sessionId}/preview/${encoded}/${normalized}`
     : `${base}/sessions/${sessionId}/preview/${encoded}/`;
+  const password = readStoredPassword();
+  if (!password) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}password=${encodeURIComponent(password)}`;
 }
 
 export interface SessionCheckpoint {

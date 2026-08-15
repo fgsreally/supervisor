@@ -82,6 +82,7 @@ import { listWorkspaceFiles } from "./workspace-files.js";
 import { readSessionWorkspaceFileDiff } from "./session-file-diff.js";
 import { listSessionWorkspaceFiles, readSessionWorkspaceFile } from "./session-workspace-files.js";
 import { readSessionLog } from "../utils/session-log.js";
+import { writeLog } from "../i18n/logs.js";
 import {
   buildSessionServicesDto,
   proxySessionPreviewRequest,
@@ -2665,10 +2666,10 @@ export function createHttpServer(
       return c.json(manager.mergeSessionSlashCommands(commands));
     } catch (e: unknown) {
       // Listing commands must not fail the composer.
-      console.error(
-        `[commands] merge failed for session ${sessionId}:`,
-        e instanceof Error ? e.message : String(e),
-      );
+      writeLog("error", "runtime.commandsMergeFailed", {
+        id: sessionId,
+        error: e instanceof Error ? e.message : String(e),
+      });
       return c.json([]);
     }
   });

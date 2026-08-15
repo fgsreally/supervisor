@@ -57,7 +57,12 @@ async function selectJob(jobId: string) {
   selectedJobId.value = jobId;
   const snapshot = await getSessionJobs(props.sessionId).catch(() => undefined);
   const job = snapshot?.jobs.find((item) => item.id === jobId);
-  const command = typeof job?.metadata.command === "string" ? job.metadata.command : "";
+  const command =
+    typeof job?.metadata.resolvedCommand === "string"
+      ? job.metadata.resolvedCommand
+      : typeof job?.metadata.command === "string"
+        ? job.metadata.command
+        : "";
   selectedTitle.value = command || job?.label || "后台终端";
 }
 

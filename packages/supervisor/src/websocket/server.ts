@@ -1,8 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { type RawData } from "ws";
+import { WebSocket, type RawData } from "ws";
 import type { SessionManager } from "../core/session-manager.js";
 import type { SessionPromptImage } from "../core/session-media.js";
+import {
+  buildPreviewUpstreamUrl,
+  resolveSessionPreviewTarget,
+} from "../core/session-preview-proxy.js";
 import { decryptApiKey } from "../utils/encrypt.js";
 import { formatUnknownError } from "../utils/format-error.js";
 import {
@@ -72,6 +76,7 @@ const DOUBAO_COMPRESSION_GZIP = 0x01;
 
 interface ClientSocket {
   send(data: string | Uint8Array): unknown;
+  close(code?: number, reason?: string): unknown;
 }
 
 interface WebSocketRouteBuilder {
@@ -660,6 +665,93 @@ export function registerWebSocketRoutes(
   manager?: SessionManager,
 ): void {
   const connections = new WeakMap<object, SocketSessionState>();
+  const previewConnections = new WeakMap<
+    object,
+    { upstream: WebSocket; pending: Array<string | Buffer | ArrayBuffer | Uint8Array> }
+  >();
+
+  app.ws("/sessions/:id/preview/:scriptName/*", {
+    beforeHandle(context: {
+      params?: Record<string, string>;
+      query?: Record<string, string | undefined>;
+    }) {
+      if (password && context.query?.password !== password) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+      const sessionId = parseSessionId(context.params?.id);
+      const session = sessionId == null ? undefined : manager?.get(sessionId);
+      if (!session) return new Response("Preview not found", { status: 404 });
+    },
+    open(socket: ClientSocket & {
+      raw: object;
+      data: { params: Record<string, string>; query: Record<string, string>; request: Request };
+    }) {
+      const sessionId = parseSessionId(socket.data.params.id);
+      const session = sessionId == null ? undefined : manager?.get(sessionId);
+      if (!session) {
+        socket.close(1008, "Preview not found");
+        return;
+      }
+      const requestUrl = new URL(socket.data.request.url);
+      const scriptName = decodeURIComponent(socket.data.params.scriptName ?? "");
+      const target = resolveSessionPreviewTarget({
+        session,
+        scriptName,
+        requestPath: requestUrl.pathname,
+      });
+      if (!target) {
+        socket.close(1008, "Preview not available");
+        return;
+      }
+      const upstreamUrl = buildPreviewUpstreamUrl(target, requestUrl);
+      upstreamUrl.protocol = "ws:";
+      const upstream = new WebSocket(upstreamUrl, "vite-hmr");
+      const state = {
+        upstream,
+        pending: [] as Array<string | Buffer | ArrayBuffer | Uint8Array>,
+      };
+      previewConnections.set(socket.raw, state);
+      upstream.binaryType = "arraybuffer";
+      upstream.addEventListener("open", () => {
+        for (const item of state.pending.splice(0)) upstream.send(item);
+      });
+      upstream.addEventListener("message", (event) => {
+        const data = event.data;
+        if (typeof data === "string") socket.send(data);
+        else if (data instanceof ArrayBuffer) socket.send(new Uint8Array(data));
+        else if (ArrayBuffer.isView(data)) {
+          socket.send(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+        }
+      });
+      upstream.addEventListener("close", (event) => {
+        previewConnections.delete(socket.raw);
+        socket.close(event.code || 1000, event.reason || "Preview closed");
+      });
+      upstream.addEventListener("error", () => {
+        previewConnections.delete(socket.raw);
+        socket.close(1011, "Preview WebSocket failed");
+      });
+    },
+    message(socket: ClientSocket & { raw: object }, data: unknown) {
+      const state = previewConnections.get(socket.raw);
+      if (!state) return;
+      const payload = data as string | Buffer | ArrayBuffer | Uint8Array;
+      if (state.upstream.readyState === WebSocket.OPEN) state.upstream.send(payload);
+      else state.pending.push(payload);
+    },
+    close(socket: ClientSocket & { raw: object }) {
+      const state = previewConnections.get(socket.raw);
+      previewConnections.delete(socket.raw);
+      if (
+        state &&
+        (state.upstream.readyState === WebSocket.OPEN ||
+          state.upstream.readyState === WebSocket.CONNECTING)
+      ) {
+        state.upstream.close();
+      }
+    },
+  });
+
   app.ws("/ws", {
     maxPayloadLength: MAX_AUDIO_FRAME_BYTES,
     beforeHandle(context: { query?: Record<string, string | undefined> }) {

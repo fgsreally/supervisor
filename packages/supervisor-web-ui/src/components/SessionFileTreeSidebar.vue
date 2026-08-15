@@ -63,7 +63,12 @@ const files = ref<SessionWorkspaceFileEntry[]>([]);
 const treeNodes = ref<SessionFileTreeNode[]>([]);
 const loading = ref(false);
 const listError = ref<string | null>(null);
-const treePaneWidth = ref(Number(localStorage.getItem("pi-supervisor:file-tree-width")) || 220);
+const treePaneWidth = ref(
+  Math.min(
+    260,
+    Math.max(120, Number(localStorage.getItem("pi-supervisor:file-tree-width-v2")) || 160),
+  ),
+);
 let stopTreeResize: (() => void) | null = null;
 
 function startTreeResize(event: PointerEvent) {
@@ -71,10 +76,10 @@ function startTreeResize(event: PointerEvent) {
   const startX = event.clientX;
   const startWidth = treePaneWidth.value;
   const onMove = (moveEvent: PointerEvent) => {
-    treePaneWidth.value = Math.min(420, Math.max(160, startWidth + (startX - moveEvent.clientX)));
+    treePaneWidth.value = Math.min(260, Math.max(120, startWidth + (startX - moveEvent.clientX)));
   };
   const onUp = () => {
-    localStorage.setItem("pi-supervisor:file-tree-width", String(treePaneWidth.value));
+    localStorage.setItem("pi-supervisor:file-tree-width-v2", String(treePaneWidth.value));
     stopTreeResize?.();
   };
   window.addEventListener("pointermove", onMove);
@@ -131,8 +136,8 @@ onBeforeUnmount(() => {
   display: flex;
   flex: none;
   flex-direction: column;
-  min-width: 160px;
-  max-width: 420px;
+  min-width: 120px;
+  max-width: 260px;
   height: 100%;
   border-left: 1px solid var(--app-border-subtle);
   background: var(--app-settings-bg);

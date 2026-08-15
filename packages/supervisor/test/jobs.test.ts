@@ -1,6 +1,7 @@
 import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { spawn } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { JobManager } from "../src/core/jobs.js";
 import { SupervisorDb } from "../src/db.js";
@@ -70,5 +71,28 @@ describe("JobManager", () => {
     });
     const restarted = new JobManager(db);
     expect(restarted.get(job.id)?.status).toBe("interrupted");
+  });
+
+  it("kills persisted background process trees before marking their jobs interrupted", async () => {
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], {
+      stdio: "ignore",
+    });
+    await new Promise<void>((resolve, reject) => {
+      child.once("spawn", resolve);
+      child.once("error", reject);
+    });
+    const pid = child.pid!;
+    const job = jobs.create(sessionId, {
+      kind: "shell",
+      name: "persistent-bash",
+      status: "running",
+      executionMode: "background",
+      metadata: { pid },
+    });
+
+    const restarted = new JobManager(db);
+
+    expect(restarted.get(job.id)?.status).toBe("interrupted");
+    expect(() => process.kill(pid, 0)).toThrow();
   });
 });

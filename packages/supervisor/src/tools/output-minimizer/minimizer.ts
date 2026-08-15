@@ -1,3 +1,5 @@
+import { translateLog } from "../../i18n/logs.js";
+
 /**
  * Output minimizer for shell tool results.
  *
@@ -471,13 +473,18 @@ export function demoMinimizer(): void {
   for (const { command, output } of testCases) {
     const result = minimizeOutput(command, output);
     const saved = ((1 - result.minimizedLines / result.originalLines) * 100).toFixed(0);
-    console.log(`\n=== ${command} ===`);
-    console.log(`Original: ${result.originalLines} lines`);
+    console.log(translateLog("tool.outputMinimizer.header", { command }));
+    console.log(translateLog("tool.outputMinimizer.original", { lines: result.originalLines }));
     if (result.minimized) {
-      console.log(`Minimized: ${result.minimizedLines} lines (saved ${saved}%)`);
-      console.log(`Result:\n${result.text}`);
+      console.log(
+        translateLog("tool.outputMinimizer.minimized", {
+          lines: result.minimizedLines,
+          saved,
+        }),
+      );
+      console.log(translateLog("tool.outputMinimizer.result", { text: result.text }));
     } else {
-      console.log("No minimization applied (unchanged)");
+      console.log(translateLog("tool.outputMinimizer.unchanged"));
     }
   }
 }

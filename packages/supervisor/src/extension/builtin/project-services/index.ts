@@ -1,11 +1,16 @@
 import { Type, type Static } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
-import { existsSync, readFileSync } from "node:fs";
-import { join as joinPath, resolve as resolvePath } from "node:path";
+import { resolve as resolvePath } from "node:path";
 import type { ExtensionContext, ExtensionDefinition, ExtensionJobFacade } from "../../types.js";
-import type { SessionServiceApp, SessionServicesMeta } from "../../../core/project-runtime.js";
+import {
+  extractPortPlaceholders,
+  type SessionServiceApp,
+  type SessionServicesMeta,
+} from "../../../core/project-runtime.js";
 import {
   hasRegisteredServices,
+  findProjectBinDir,
+  inferProjectInstallCommand,
   isSessionServiceProcessAlive,
   startRegisteredApp,
   startRegisteredSessionServices,
@@ -23,9 +28,8 @@ import {
 } from "../../../core/session-services.js";
 import type { SessionServiceJobHost } from "../../../core/session-registered-services.js";
 import {
-  anyTcpPortOpen,
   findFreePortInRange,
-  isTcpPortOpen,
+  isLoopbackTcpPortOpen,
   SESSION_SERVICE_PREFERRED_PORT_MAX,
   SESSION_SERVICE_PREFERRED_PORT_MIN,
 } from "../../../utils/ports.js";
@@ -33,29 +37,45 @@ import { detectListenPort } from "../../../utils/listen-port.js";
 
 const UPDATE_TOOL = "UpdateService";
 const UPDATE_DESCRIPTION =
-  "增删改本 Session 的本地服务。必须带 action：add 新起一个进程并登记；delete 关掉对应进程并移除；update 关掉旧进程再按新命令启动。不要用 bash 直接跑 vite/dev。未指定 port 时优先使用 4396–4500 中的空闲端口。";
+  "增删改本 Session 的本地服务。必须带 action：add 新起一个进程并登记；delete 关掉对应进程并移除；update 关掉旧进程再按新命令启动。先检查 Session worktree 及其上级目录能否直接复用项目依赖；例如 Node/npm 项目能向上找到可用的 node_modules/.bin 时，不要传 installCommand，工具会跳过安装并直接启动。只有无法从当前目录或上级目录取得依赖时，才传入与项目包管理器匹配的 installCommand。startCommand 必须调用当前项目自身声明的启动脚本，不要直接调用可能从 Supervisor PATH 解析出的裸二进制；必须让服务监听 127.0.0.1 或 0.0.0.0。命令用 ${PORT1}、${PORT2} 等连续编号占位符声明所需端口；调用完成后工具会为每个占位符分配并持久化空闲端口。不要写死端口，也不要用 bash 直接启动长期服务。";
 const UPDATE_PARAMS = Type.Object({
   action: Type.Union([Type.Literal("add"), Type.Literal("delete"), Type.Literal("update")], {
     description: "add 新增 / delete 删除 / update 修改",
   }),
   name: Type.String({ description: "服务名，如 web、api" }),
-  startCommand: Type.Optional(Type.String({ description: "启动命令；add / update 必填" })),
+  startCommand: Type.Optional(
+    Type.String({
+      description:
+        "启动命令；add / update 必填。使用当前项目自身声明的启动脚本，并让服务监听 127.0.0.1 或 0.0.0.0；不要直接调用可能从 Supervisor PATH 解析出的裸二进制。端口使用 ${PORT1}、${PORT2} 等连续编号占位符，工具会在调用后分配空闲端口并替换",
+    }),
+  ),
   port: Type.Optional(
     Type.Number({
-      description: "监听端口；未指定时从 4396–4500 分配空闲端口。add 可不填，update 可改",
+      description: "已弃用；端口由工具根据 startCommand 中的 ${PORT1}、${PORT2} 等占位符自动分配",
     }),
   ),
   path: Type.Optional(Type.String({ description: "URL 路径，默认 /" })),
-  installCommand: Type.Optional(Type.String()),
+  installCommand: Type.Optional(
+    Type.String({
+      description:
+        "可选的依赖安装命令。先检查 Session worktree 及其上级目录；若能直接复用依赖（例如 Node/npm 项目能向上找到可用的 node_modules/.bin），不要传此参数，工具会跳过安装并直接启动。仅在无法取得依赖时传入与锁文件和包管理器匹配的命令",
+    }),
+  ),
   stopCommand: Type.Optional(Type.String()),
   destroyCommand: Type.Optional(Type.String()),
 });
 const APPLY_READY_MS = 90_000;
 
-function hasLocalDevServicesSection(cwd: string): boolean {
-  const path = joinPath(cwd, "AGENTS.md");
-  if (!existsSync(path)) return false;
-  return /##\s*本地开发服务/.test(readFileSync(path, "utf8"));
+function numberedPortPlaceholders(command: string): string[] {
+  return [
+    ...new Set(extractPortPlaceholders(command).filter((name) => /^PORT[1-9]\d*$/.test(name))),
+  ].sort((left, right) => Number(left.slice(4)) - Number(right.slice(4)));
+}
+
+export function validateNumberedPortPlaceholders(command: string): string[] | null {
+  const names = numberedPortPlaceholders(command);
+  if (names.length === 0) return null;
+  return names.every((name, index) => name === `PORT${index + 1}`) ? names : null;
 }
 
 function applyText(text: string): {
@@ -207,6 +227,27 @@ const projectServicesExtension: ExtensionDefinition = {
       await ctx.session.meta.patch({ services });
     };
 
+    const allocateCommandPorts = async (
+      startCommand: string,
+      occupied: Iterable<number>,
+    ): Promise<Record<string, number> | null> => {
+      const names = validateNumberedPortPlaceholders(startCommand);
+      if (!names) return null;
+      const used = new Set(occupied);
+      const allocated: Record<string, number> = {};
+      for (const name of names) {
+        const port = await findFreePortInRange(
+          SESSION_SERVICE_PREFERRED_PORT_MIN,
+          SESSION_SERVICE_PREFERRED_PORT_MAX,
+          used,
+        );
+        if (!port) return null;
+        allocated[name] = port;
+        used.add(port);
+      }
+      return allocated;
+    };
+
     /** Drop meta.services.jobId when the Job is gone or its cwd is outside this Session. */
     const reconcileBoundJob = async (): Promise<void> => {
       const current = await readServices();
@@ -229,11 +270,9 @@ const projectServicesExtension: ExtensionDefinition = {
       const current = await readServices();
       if (!hasRegisteredServices(current)) return;
       const now = Date.now();
-      const ports = (current!.apps ?? []).map((app) => app.port).filter((p) => p > 0);
-      const portsOpen = ports.length > 0 ? await anyTcpPortOpen(ports) : false;
 
       if (isServiceActive(current!.status)) {
-        if (isSessionServiceProcessAlive(sessionId, current) || portsOpen) {
+        if (isSessionServiceProcessAlive(sessionId, current)) {
           await writeServices({
             ...current!,
             status: "active",
@@ -251,8 +290,9 @@ const projectServicesExtension: ExtensionDefinition = {
         });
       }
 
-      // Already serving via bash/adopted job: just mark active, do not spawn a second process.
-      if (portsOpen || isSessionServiceProcessAlive(sessionId, current)) {
+      // Only processes owned by this Session may make a registered service active.
+      // An open port alone may belong to an orphan or an unrelated application.
+      if (isSessionServiceProcessAlive(sessionId, current)) {
         await writeServices({
           ...current!,
           status: "active",
@@ -271,7 +311,7 @@ const projectServicesExtension: ExtensionDefinition = {
           skipInstall: !!current!.installedAt,
           lastActiveAtMs: now,
         });
-        await writeServices(next);
+        await writeServices(await waitForAppsReady(next));
       }
     };
 
@@ -293,9 +333,7 @@ const projectServicesExtension: ExtensionDefinition = {
       }
     });
 
-    ctx.on("message.user", async () => {
-      await wakeServices();
-    });
+    ctx.on("message.user", async () => wakeServices(), { mode: "async" });
 
     ctx.on("session.services_wake", async () => {
       await wakeServices();
@@ -396,6 +434,58 @@ const projectServicesExtension: ExtensionDefinition = {
       return { output, exited: false };
     };
 
+    const waitForAppReady = async (
+      appName: string,
+      started: SessionServiceApp,
+    ): Promise<SessionServiceApp> => {
+      if (!started.jobId) return started;
+
+      let ready = started;
+      const waited = await waitForDetectedPort(started.jobId);
+      if (waited.exited) {
+        throw new Error(
+          `Service ${appName} exited before it became ready. Output:\n${waited.output.slice(-4000) || "(no output)"}`,
+        );
+      }
+      if (waited.port) {
+        const declaredOpen = await isLoopbackTcpPortOpen(started.port);
+        const detectedOpen = await isLoopbackTcpPortOpen(waited.port);
+        if (detectedOpen && (!declaredOpen || started.port !== waited.port)) {
+          ready = { ...started, port: waited.port };
+        }
+      }
+      if (!(await isLoopbackTcpPortOpen(ready.port))) {
+        await stopRegisteredApp({ sessionId, app: started, jobs });
+        throw new Error(
+          `Service ${appName} reported a port, but Supervisor could not connect to 127.0.0.1:${ready.port}. The service was stopped; check its listen address.`,
+        );
+      }
+      return ready;
+    };
+
+    const waitForAppsReady = async (started: SessionServicesMeta): Promise<SessionServicesMeta> => {
+      const readyApps: SessionServiceApp[] = [];
+      try {
+        for (const app of started.apps ?? []) {
+          readyApps.push(await waitForAppReady(app.name, app));
+        }
+      } catch (error) {
+        await Promise.all(
+          (started.apps ?? []).map((app) =>
+            stopRegisteredApp({ sessionId, app, jobs }).catch(() => undefined),
+          ),
+        );
+        throw error;
+      }
+      const first = readyApps.find((app) => app.jobId) ?? readyApps[0];
+      return {
+        ...started,
+        apps: readyApps,
+        jobId: first?.jobId,
+        pid: first?.pid ?? null,
+      };
+    };
+
     const updateService = async (
       params: Static<typeof UPDATE_PARAMS>,
     ): Promise<{
@@ -411,10 +501,14 @@ const projectServicesExtension: ExtensionDefinition = {
       };
       const apps = [...(current.apps ?? [])];
       const existing = apps.find((app) => app.name === name);
+      const installCommand =
+        params.installCommand?.trim() ||
+        current.installCommand ||
+        (findProjectBinDir(cwd()) ? undefined : inferProjectInstallCommand(cwd()));
 
       const patchCommands = (base: SessionServicesMeta): SessionServicesMeta => ({
         ...base,
-        installCommand: params.installCommand?.trim() || base.installCommand,
+        installCommand: installCommand || base.installCommand,
         stopCommand: params.stopCommand?.trim() || base.stopCommand,
         destroyCommand: params.destroyCommand?.trim() || base.destroyCommand,
       });
@@ -426,7 +520,6 @@ const projectServicesExtension: ExtensionDefinition = {
           startCommand: current.startCommand || app.startCommand || "",
           status: "starting",
         });
-        await writeServices(next);
         const started = await startRegisteredApp({
           sessionId,
           cwd: cwd(),
@@ -443,11 +536,17 @@ const projectServicesExtension: ExtensionDefinition = {
             );
           }
           if (waited.port) {
-            const declaredOpen = await isTcpPortOpen(started.port);
-            const detectedOpen = await isTcpPortOpen(waited.port);
+            const declaredOpen = await isLoopbackTcpPortOpen(started.port);
+            const detectedOpen = await isLoopbackTcpPortOpen(waited.port);
             if (detectedOpen && (!declaredOpen || started.port !== waited.port)) {
               ready = { ...started, port: waited.port };
             }
+          }
+          if (!(await isLoopbackTcpPortOpen(ready.port))) {
+            await stopRegisteredApp({ sessionId, app: started, jobs });
+            throw new Error(
+              `服务 ${name} 已输出端口信息，但 Supervisor 无法连接 127.0.0.1:${ready.port}；已停止该服务。请检查启动命令的监听地址。`,
+            );
           }
         }
         return ready;
@@ -457,36 +556,33 @@ const projectServicesExtension: ExtensionDefinition = {
         if (action === "add") {
           if (existing) return applyText(`服务 ${name} 已存在，请用 action=update。`);
           const startCommand = params.startCommand?.trim();
-          let port = params.port;
           if (!startCommand) return applyText("add 需要 startCommand。");
-          if (!port || !Number.isFinite(port) || port <= 0) {
-            port = await findFreePortInRange(
-              SESSION_SERVICE_PREFERRED_PORT_MIN,
-              SESSION_SERVICE_PREFERRED_PORT_MAX,
-              apps.map((app) => app.port),
+          const portEnv = await allocateCommandPorts(
+            startCommand,
+            apps.flatMap((app) => [app.port, ...Object.values(app.portEnv ?? {})]),
+          );
+          if (!portEnv) {
+            return applyText(
+              `startCommand 必须按顺序使用 \${PORT1}、\${PORT2} 等占位符，且 ${SESSION_SERVICE_PREFERRED_PORT_MIN}–${SESSION_SERVICE_PREFERRED_PORT_MAX} 需要有足够的空闲端口。未启动服务。`,
             );
-            if (!port) {
-              return applyText(
-                `${SESSION_SERVICE_PREFERRED_PORT_MIN}–${SESSION_SERVICE_PREFERRED_PORT_MAX} 没有空闲端口，请指定 port。`,
-              );
-            }
           }
+          const port = portEnv.PORT1!;
           const app: SessionServiceApp = {
             name,
             port,
+            portEnv,
             path: params.path?.trim() || "/",
             startCommand,
           };
           const nextList = [...apps, app];
-          if (!current.installedAt && (params.installCommand?.trim() || current.installCommand)) {
+          if (!current.installedAt && installCommand) {
             const pending = patchCommands({
               ...current,
               apps: nextList,
               startCommand: current.startCommand || startCommand,
               status: "starting",
-              installCommand: params.installCommand?.trim() || current.installCommand,
+              installCommand,
             });
-            await writeServices(pending);
             const startedAll = await startRegisteredSessionServices({
               sessionId,
               cwd: cwd(),
@@ -495,16 +591,25 @@ const projectServicesExtension: ExtensionDefinition = {
               skipInstall: false,
               lastActiveAtMs: Date.now(),
             });
-            await writeServices(startedAll);
-            const summary = (startedAll.apps ?? [])
+            const readyServices = await waitForAppsReady(startedAll);
+            await writeServices(readyServices);
+            const summary = (readyServices.apps ?? [])
               .map((item) => `${item.name}:${item.port}`)
               .join(", ");
-            return applyText(`已新增 ${name}。当前服务：${summary || name}`);
+            return applyText(
+              `已新增 ${name}。端口：${Object.entries(portEnv)
+                .map(([key, value]) => `${key}=${value}`)
+                .join(", ")}。当前服务：${summary || name}`,
+            );
           }
           const started = await startAndRegister(app, nextList);
           const nextListReady = nextList.map((item) => (item.name === name ? started : item));
           await writeServices(finalizeServices(patchCommands(current), nextListReady));
-          return applyText(`已新增 ${name}（port ${started.port}）。`);
+          return applyText(
+            `已新增 ${name}。端口：${Object.entries(portEnv)
+              .map(([key, value]) => `${key}=${value}`)
+              .join(", ")}。`,
+          );
         }
 
         if (action === "delete") {
@@ -518,15 +623,53 @@ const projectServicesExtension: ExtensionDefinition = {
         if (!existing) return applyText(`没有名为 ${name} 的服务，请用 action=add。`);
         const startCommand = params.startCommand?.trim() || existing.startCommand;
         if (!startCommand) return applyText("update 需要 startCommand。");
-        const port = params.port && params.port > 0 ? params.port : existing.port;
+        const otherApps = apps.filter((app) => app.name !== name);
+        const portEnv = await allocateCommandPorts(
+          startCommand,
+          otherApps.flatMap((app) => [app.port, ...Object.values(app.portEnv ?? {})]),
+        );
+        if (!portEnv) {
+          return applyText(
+            `startCommand 必须按顺序使用 \${PORT1}、\${PORT2} 等占位符，且 ${SESSION_SERVICE_PREFERRED_PORT_MIN}–${SESSION_SERVICE_PREFERRED_PORT_MAX} 需要有足够的空闲端口。原服务保持不变。`,
+          );
+        }
+        const port = portEnv.PORT1!;
         const path = params.path?.trim() || existing.path || "/";
         await stopRegisteredApp({ sessionId, app: existing, jobs });
-        const updated: SessionServiceApp = { name, port, path, startCommand };
+        const updated: SessionServiceApp = { name, port, portEnv, path, startCommand };
         const nextList = apps.map((app) => (app.name === name ? updated : app));
+        if (!current.installedAt && installCommand) {
+          const pending = patchCommands({
+            ...current,
+            apps: nextList,
+            startCommand,
+            status: "starting",
+            installCommand,
+          });
+          const startedAll = await startRegisteredSessionServices({
+            sessionId,
+            cwd: cwd(),
+            services: pending,
+            jobs,
+            skipInstall: false,
+            lastActiveAtMs: Date.now(),
+          });
+          const readyServices = await waitForAppsReady(startedAll);
+          await writeServices(readyServices);
+          return applyText(
+            `已安装依赖并更新 ${name}。端口：${Object.entries(portEnv)
+              .map(([key, value]) => `${key}=${value}`)
+              .join(", ")}。`,
+          );
+        }
         const started = await startAndRegister(updated, nextList);
         const nextListReady = nextList.map((item) => (item.name === name ? started : item));
         await writeServices(finalizeServices(patchCommands(current), nextListReady));
-        return applyText(`已更新 ${name}（port ${started.port}）。`);
+        return applyText(
+          `已更新 ${name}。端口：${Object.entries(portEnv)
+            .map(([key, value]) => `${key}=${value}`)
+            .join(", ")}。`,
+        );
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
         await writeServices({ ...current, status: "error", error: message });
@@ -544,16 +687,15 @@ const projectServicesExtension: ExtensionDefinition = {
     const watsonUpdateTool: AgentTool<typeof UPDATE_PARAMS> = {
       name: UPDATE_TOOL,
       label: UPDATE_TOOL,
-      description:
-        "登记并启动本 Session 的一个本地服务。创建时用 action=add；传入 name、startCommand。未指定 port 时使用 4396–4500 中的空闲端口。不要用 bash 直接跑 vite/dev。",
+      description: UPDATE_DESCRIPTION,
       parameters: UPDATE_PARAMS,
       execute: async (_toolCallId, params) => updateService(params),
     };
 
     ctx.on(
-      "session.create",
+      "session.prepare",
       async () => {
-        if (!hasRegisteredServices(await readServices()) && hasLocalDevServicesSection(cwd())) {
+        if (!hasRegisteredServices(await readServices())) {
           try {
             await ctx.watson.run({
               mode: "agent",
@@ -561,10 +703,11 @@ const projectServicesExtension: ExtensionDefinition = {
               toolsPreset: "readonly",
               extraTools: [watsonUpdateTool],
               injectSystem:
-                "有启动命令则必须调用 UpdateService，action=add；每个服务调用一次。未指定 port 时不要猜 3000/5173，省略 port，系统会在 4396–4500 分配。不要用 bash 启动长期服务；不要改 AGENTS.md。",
+                "分析当前项目是否有需要启动的本地开发服务。有启动命令则必须调用 UpdateService，action=add；每个服务调用一次。未指定 port 时不要猜 3000/5173，省略 port，系统会在 4396–4500 分配。不要用 bash 启动长期服务；不要改 AGENTS.md。",
               prompt: [
-                "本 Session 刚创建。请阅读项目根目录 AGENTS.md 的「本地开发服务」章节。",
-                "若有启动命令：对每个要跑的服务调用 UpdateService，action=add，传入 name、startCommand（path 可选）。",
+                "本 Session 刚创建。请分析项目中需要长期运行的本地开发服务。",
+                "若项目根目录存在 AGENTS.md 且包含「本地开发服务」，优先采用其中的命令；AGENTS.md 或该章节不存在时，继续检查 package.json、workspace 配置、README、构建工具和项目结构，不得因此跳过分析。",
+                "若有启动命令：对每个要跑的服务调用 UpdateService，action=add，传入 name、startCommand 和可选 path；是否需要 installCommand 按工具描述判断。",
                 "不要填写 port，除非命令里写死了端口；未指定时系统使用 4396–4500。",
                 "没有启动命令则不要调用工具，直接结束。",
                 "不要 commit，不要改 AGENTS.md。",
@@ -595,12 +738,7 @@ const projectServicesExtension: ExtensionDefinition = {
             ],
           };
         }
-        const ports = (current!.apps ?? []).map((app) => app.port).filter((p) => p > 0);
-        const portsOpen = ports.length > 0 ? await anyTcpPortOpen(ports) : false;
-        if (
-          (isServiceActive(current!.status) && isSessionServiceProcessAlive(sessionId, current)) ||
-          portsOpen
-        ) {
+        if (isServiceActive(current!.status) && isSessionServiceProcessAlive(sessionId, current)) {
           const now = Date.now();
           await writeServices({
             ...current!,
@@ -625,12 +763,13 @@ const projectServicesExtension: ExtensionDefinition = {
           skipInstall: params.skipInstall ?? !!current!.installedAt,
           lastActiveAtMs: Date.now(),
         });
-        await writeServices(next);
+        const ready = await waitForAppsReady(next);
+        await writeServices(ready);
         return {
           content: [
             {
               type: "text",
-              text: `服务已启动。入口：${JSON.stringify(next.apps ?? [])}`,
+              text: `服务已启动。入口：${JSON.stringify(ready.apps ?? [])}`,
             },
           ],
         };

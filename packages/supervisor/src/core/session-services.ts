@@ -20,7 +20,7 @@ type SessionMetaStore = {
 export function buildSessionServicesPrompt(services: SessionServicesMeta): string {
   const apps = services.apps ?? [];
   if (!apps.length && !services.startCommand?.trim()) return "";
-  const lines = ["本 Session 已启动的本地服务："];
+  const lines = ["本 Session 已启动的本地服务：", `状态：${services.status}`];
   if (apps.length) {
     for (const app of apps) {
       const start = app.startCommand ?? services.resolvedStartCommand ?? services.startCommand;
@@ -138,6 +138,22 @@ function parseApps(raw: unknown): SessionServiceApp[] {
     apps.push({
       name,
       port,
+      portEnv:
+        row.portEnv && typeof row.portEnv === "object" && !Array.isArray(row.portEnv)
+          ? Object.fromEntries(
+              Object.entries(row.portEnv as Record<string, unknown>).flatMap(([key, value]) => {
+                const parsed =
+                  typeof value === "number"
+                    ? value
+                    : typeof value === "string"
+                      ? Number.parseInt(value, 10)
+                      : NaN;
+                return /^PORT[1-9]\d*$/.test(key) && Number.isInteger(parsed) && parsed > 0
+                  ? [[key, parsed]]
+                  : [];
+              }),
+            )
+          : undefined,
       path: typeof row.path === "string" ? row.path : undefined,
       startCommand: typeof row.startCommand === "string" ? row.startCommand.trim() : undefined,
       jobId: typeof row.jobId === "string" ? row.jobId : undefined,

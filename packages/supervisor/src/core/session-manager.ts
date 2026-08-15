@@ -68,6 +68,7 @@ import {
   parseSessionServicesMeta,
   sessionServicePortEnv,
   scrubStaleSessionRuntimeMeta,
+  stoppedSessionServicesMeta,
 } from "./session-services.js";
 import { runWatson } from "./watson.js";
 import type { CreateHomeTaskOptions, HomeTask, UpdateHomeTaskOptions } from "../types.js";
@@ -103,6 +104,7 @@ import {
 } from "../utils/git.js";
 import { configureSessionLogProjectResolver, sessionLog } from "../utils/session-log.js";
 import { beginSessionTiming, timedSessionStep } from "../utils/session-timing.js";
+import { writeLog } from "../i18n/logs.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "../agent/prompt-templates.js";
 import { copyMessagesWithInheritance } from "./session-history.js";
@@ -361,7 +363,7 @@ export class SessionManager {
       onChildTerminal: (parentId) => {
         void this.scheduleReadyHomeTasks(parentId).catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
-          console.error(`home task schedule failed [${parentId}]:`, message);
+          writeLog("error", "runtime.homeTaskScheduleFailed", { id: parentId, error: message });
         });
       },
     });
@@ -423,6 +425,43 @@ export class SessionManager {
     const row = this.db.get(id);
     if (!row) return undefined;
     return rowToSession(row, this.db);
+  }
+
+  /** Do not expose an active app whose backing service job has already ended. */
+  private reconcileSessionServiceRuntime(session: Session): Session {
+    const services = parseSessionServicesMeta(session.meta);
+    if (!services) return session;
+
+    const activeStatus =
+      services.status === "starting" ||
+      services.status === "running" ||
+      services.status === "active";
+    if (!activeStatus) return session;
+
+    const jobIds = [
+      services.jobId,
+      ...(services.apps ?? []).map((app) => app.jobId),
+    ].filter((id): id is string => Boolean(id));
+    const endedJobId = jobIds.find((id) => {
+      const job = this.jobs.get(id);
+      return !job || ["succeeded", "failed", "cancelled", "interrupted"].includes(job.status);
+    });
+
+    if (endedJobId) {
+      this.clearServiceRuntimeIfJob(session.id, endedJobId);
+      return this._getSession(session.id) ?? session;
+    }
+
+    if (jobIds.length === 0) {
+      this.db.updateMeta(session.id, {
+        services: stoppedSessionServicesMeta(services),
+      });
+      this.publishServicesChange(session.id);
+      this.publishSessionStatus(session.id);
+      return this._getSession(session.id) ?? session;
+    }
+
+    return session;
   }
 
   private _listSessions(filter?: Parameters<SupervisorDb["list"]>[0]): Session[] {
@@ -657,7 +696,7 @@ export class SessionManager {
             void this.recordLlmError(sessionId, formatLlmErrorMessage(llmError)).catch(
               (error: unknown) => {
                 const detail = error instanceof Error ? error.message : String(error);
-                console.error(`recordLlmError failed [${sessionId}]:`, detail);
+                writeLog("error", "runtime.recordLlmErrorFailed", { id: sessionId, error: detail });
               },
             );
           }
@@ -673,7 +712,10 @@ export class SessionManager {
                 });
               } catch (error: unknown) {
                 const detail = error instanceof Error ? error.message : String(error);
-                console.debug(`shadow checkpoint skipped [${sessionId}]:`, detail);
+                writeLog("debug", "runtime.shadowCheckpointSkipped", {
+                  id: sessionId,
+                  error: detail,
+                });
               }
             }
             if (!hasPendingAsks(sessionId)) {
@@ -684,7 +726,7 @@ export class SessionManager {
             }
           })().catch((error: unknown) => {
             const message = error instanceof Error ? error.message : String(error);
-            console.error(`shadow hook failed [${sessionId}]:`, message);
+            writeLog("error", "runtime.shadowHookFailed", { id: sessionId, error: message });
           });
         }
       }
@@ -726,7 +768,7 @@ export class SessionManager {
         await createSessionCheckpoint(this.db, sessionId, { label: "message" });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`message checkpoint failed [${sessionId}]:`, message);
+        writeLog("error", "runtime.messageCheckpointFailed", { id: sessionId, error: message });
       }
     });
   }
@@ -1043,7 +1085,7 @@ export class SessionManager {
     if (options.awaitReady === false) {
       void ready.catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`session runtime start failed [${session.id}]:`, message);
+        writeLog("error", "runtime.sessionRuntimeStartFailed", { id: session.id, error: message });
         sessionLog(session.id, "error", `Runtime start failed: ${message}`, ["system", "runtime"], {
           error: message,
         });
@@ -1398,7 +1440,7 @@ export class SessionManager {
             this.publishSessionStatus(sessionId);
           }
           if (reason.trim())
-            console.debug(`[permission] approval resolved [${sessionId}]: ${reason}`);
+            writeLog("debug", "runtime.permissionResolved", { id: sessionId, reason });
         }
       },
       broadcast: (event) => this.publishSessionEvent(sessionId, event as SessionOutputEvent),
@@ -1444,7 +1486,7 @@ export class SessionManager {
   }
 
   private reportOperationalError(sessionId: number, message: string): void {
-    console.error(`[session ${sessionId}]`, message);
+    writeLog("error", "runtime.sessionError", { id: sessionId, error: message });
     this.publishUiNotify(sessionId, message, "error");
   }
 
@@ -1638,7 +1680,7 @@ export class SessionManager {
       if (!session || session.status === "finish" || session.status === "error") continue;
       void this.drainSessionInputQueue(sessionId).catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
-        console.error(`Persisted Session input failed [${sessionId}]:`, detail);
+        writeLog("error", "runtime.sessionInputFailed", { id: sessionId, error: detail });
       });
     }
   }
@@ -1659,7 +1701,10 @@ export class SessionManager {
       // Failures must not bounce the message back into the queue — that shows
       // as "排队中" forever. Persist the user turn (if needed) + custom error.
       await this.abandonFailedSessionInput(sessionId, next, detail).catch((persistError) => {
-        console.error(`abandonFailedSessionInput failed [${sessionId}]:`, persistError);
+        writeLog("error", "runtime.sessionInputAbandonFailed", {
+          id: sessionId,
+          error: persistError instanceof Error ? persistError.message : String(persistError),
+        });
       });
       throw error;
     } finally {
@@ -1671,7 +1716,7 @@ export class SessionManager {
       ) {
         void this.drainSessionInputQueue(sessionId).catch((error: unknown) => {
           const detail = error instanceof Error ? error.message : String(error);
-          console.error(`Queued Session input failed [${sessionId}]:`, detail);
+          writeLog("error", "runtime.sessionInputQueuedFailed", { id: sessionId, error: detail });
         });
       }
     }
@@ -1991,7 +2036,7 @@ export class SessionManager {
           await this.sendCustomMessage(id, formatGitCommitCustomMessage(commit)).catch(
             (error: unknown) => {
               const detail = error instanceof Error ? error.message : String(error);
-              console.error(`sendCustomMessage failed [${id}]:`, detail);
+              writeLog("error", "runtime.customMessageFailed", { id, error: detail });
             },
           );
         }
@@ -2107,11 +2152,14 @@ export class SessionManager {
   }
 
   list(filter?: Parameters<SupervisorDb["list"]>[0]): Session[] {
-    return this._listSessions(filter);
+    return this._listSessions(filter).map((session) =>
+      this.reconcileSessionServiceRuntime(session),
+    );
   }
 
   get(id: number): Session | undefined {
-    return this._getSession(id);
+    const session = this._getSession(id);
+    return session ? this.reconcileSessionServiceRuntime(session) : undefined;
   }
 
   children(parentId: number): Session[] {
@@ -2261,7 +2309,7 @@ export class SessionManager {
       await this.ensureRuntime(session.id);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`external import runtime start failed [${session.id}]:`, message);
+      writeLog("error", "runtime.externalImportFailed", { id: session.id, error: message });
       sessionLog(session.id, "error", `Runtime start failed: ${message}`, ["system", "runtime"], {
         error: message,
       });
@@ -2716,7 +2764,7 @@ export class SessionManager {
     if (runtime) {
       await runtime.clear().catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
-        console.error(`runtime.clear on delete failed [${id}]:`, detail);
+        writeLog("error", "runtime.clearOnDeleteFailed", { id, error: detail });
       });
       if (restoredForDelete) {
         await new Promise((resolve) => setTimeout(resolve, 400));
@@ -3062,7 +3110,7 @@ export class SessionManager {
     this.db.updateStatus(id, "running");
     void agent.continue?.().catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`retryAfterLlmError continue failed [${id}]:`, message);
+      writeLog("error", "runtime.retryFailed", { id, error: message });
       this.db.updateStatus(id, "error");
       void this.recordLlmError(id, message).catch(() => {});
     });

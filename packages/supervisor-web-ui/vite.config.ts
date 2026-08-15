@@ -7,7 +7,7 @@ import { fileURLToPath } from "url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 const playgroundCwd = path.resolve(repoRoot, "playground");
-const backendTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:3040";
+const backendTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:3042";
 const backendWsTarget = backendTarget.replace(/^http/i, "ws");
 
 function spaAwareProxy() {

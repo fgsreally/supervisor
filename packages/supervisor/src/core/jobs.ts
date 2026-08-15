@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { SupervisorDb } from "../db/db.js";
+import { writeLog } from "../i18n/logs.js";
+import { killProcessTreeSync } from "../utils/process-tree.js";
 
 export type JobStatus =
   | "queued"
@@ -126,6 +128,21 @@ export class JobManager {
 
   constructor(db: SupervisorDb) {
     this.#db = db.db;
+    const unfinishedBackgroundJobs = this.#db
+      .prepare(
+        `SELECT metadata FROM jobs
+         WHERE execution_mode = 'background'
+           AND status IN ('running', 'waiting')`,
+      )
+      .all() as Array<{ metadata: string }>;
+    for (const row of unfinishedBackgroundJobs) {
+      const metadata = parseJson(row.metadata);
+      const pid =
+        metadata && typeof metadata === "object"
+          ? (metadata as Record<string, unknown>).pid
+          : undefined;
+      if (typeof pid === "number") killProcessTreeSync(pid);
+    }
     this.#db
       .prepare(
         "UPDATE jobs SET status = 'interrupted', finished_at = ? WHERE status IN ('queued', 'running', 'waiting')",
@@ -230,7 +247,7 @@ export class JobManager {
         this.#onTerminal?.(next);
       } catch (error: unknown) {
         const detail = error instanceof Error ? error.message : String(error);
-        console.error(`Job terminal handler failed [${id}]:`, detail);
+        writeLog("error", "runtime.jobHandlerFailed", { id, error: detail });
       }
     }
     return next;

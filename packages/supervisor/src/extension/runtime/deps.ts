@@ -8,6 +8,7 @@ import { ensureProjectDir, ensureSessionDir } from "../../core/session-files.js"
 import { DEFAULT_SESSION_INPUT_LEVEL } from "../../core/session-input-queue.js";
 import { execCommand } from "../../utils/exec.js";
 import { appendSessionLog } from "../../utils/session-log.js";
+import { writeLog } from "../../i18n/logs.js";
 import type {
   EventBus,
   ExecResult,
@@ -235,7 +236,7 @@ export function buildExtensionDeps(deps: {
           .prompt(`[Extension:${message.customType}]\n${message.content}`)
           .catch((err: unknown) => {
             const msg = err instanceof Error ? err.message : String(err);
-            console.error(`[ext] sendMessage prompt error:`, msg);
+            writeLog("error", "runtime.extensionMessageFailed", { error: msg });
           });
       }
     },
@@ -420,7 +421,7 @@ export function buildExtensionDeps(deps: {
         }
         if (reason.trim()) {
           // Kept visible in logs; pausing is intentionally stateful via session status.
-          console.debug(`[ext] pausing resolved [${sessionId}]: ${reason}`);
+          writeLog("debug", "runtime.extensionPauseResolved", { id: sessionId, reason });
         }
       }
     },
@@ -661,9 +662,12 @@ export function buildExtensionDeps(deps: {
       meta?: Record<string, unknown>,
     ) => {
       const prefix = `[ext]`;
-      if (level === "error") console.error(prefix, message, meta ?? "");
-      else if (level === "warn") console.warn(prefix, message, meta ?? "");
-      else console.log(prefix, message, meta ?? "");
+      writeLog(
+        level,
+        "runtime.sessionLog.entry",
+        { id: sessionId, message: `${prefix} ${message}` },
+        meta ?? "",
+      );
       appendSessionLog(projectId, sessionId, {
         level,
         message,

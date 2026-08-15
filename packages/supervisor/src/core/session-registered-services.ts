@@ -7,16 +7,18 @@ import {
 } from "./project-runtime.js";
 import { computeServiceSleepAt } from "./session-service-sleep.js";
 import {
-  killProcessTree,
   runShellCommand,
   substitutePortPlaceholders,
   type RunningServiceKey,
   runningChildren,
   childKeyByName,
 } from "./session-service-runtime.js";
+import { killProcessTree } from "../utils/process-tree.js";
 import { allocatePorts } from "../utils/ports.js";
 import { sessionLog } from "../utils/session-log.js";
 import { spawn, type ChildProcess } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 /** Legacy multi-entry shape kept only for parse migration. */
 export interface RegisteredServiceEntry {
@@ -34,6 +36,67 @@ export interface RegisteredServiceEntry {
 
 const MAIN_SERVICE_NAME = "main";
 
+export function findProjectBinDir(cwd: string): string | undefined {
+  let current = cwd;
+  for (;;) {
+    const candidate = join(current, "node_modules", ".bin");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+export function inferProjectInstallCommand(cwd: string): string | undefined {
+  const packageJsonPath = join(cwd, "package.json");
+  if (!existsSync(packageJsonPath)) return undefined;
+
+  let packageJson: Record<string, unknown>;
+  try {
+    packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+  const dependencyFields = ["dependencies", "devDependencies", "optionalDependencies"];
+  const hasDependencies = dependencyFields.some((field) => {
+    const value = packageJson[field];
+    return !!value && typeof value === "object" && Object.keys(value).length > 0;
+  });
+  if (!hasDependencies) return undefined;
+
+  const declared = typeof packageJson.packageManager === "string" ? packageJson.packageManager : "";
+  if (declared.startsWith("pnpm@")) return "pnpm install";
+  if (declared.startsWith("bun@")) return "bun install";
+  if (declared.startsWith("yarn@")) return "yarn install";
+  if (declared.startsWith("npm@")) return "npm install";
+  if (existsSync(join(cwd, "pnpm-lock.yaml"))) return "pnpm install";
+  if (existsSync(join(cwd, "bun.lock")) || existsSync(join(cwd, "bun.lockb"))) {
+    return "bun install";
+  }
+  if (existsSync(join(cwd, "yarn.lock"))) return "yarn install";
+  return "npm install";
+}
+
+export function withProjectPath(cwd: string, source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const projectBin = findProjectBinDir(cwd);
+  const env = { ...source };
+  if (projectBin) {
+    const pathKey = Object.keys(env).find((key) => key.toLowerCase() === "path") ?? "PATH";
+    const currentPath = env[pathKey]?.trim();
+    env[pathKey] = currentPath
+      ? `${projectBin}${process.platform === "win32" ? ";" : ":"}${currentPath}`
+      : projectBin;
+  }
+  if (process.platform === "win32") {
+    const dnsOption = "--dns-result-order=ipv4first";
+    const nodeOptions = env.NODE_OPTIONS?.trim() ?? "";
+    if (!nodeOptions.includes("--dns-result-order")) {
+      env.NODE_OPTIONS = nodeOptions ? `${nodeOptions} ${dnsOption}` : dnsOption;
+    }
+  }
+  return env;
+}
+
 export function hasRegisteredServices(
   services: SessionServicesMeta | null | undefined,
 ): services is SessionServicesMeta {
@@ -42,16 +105,18 @@ export function hasRegisteredServices(
   return Boolean(services.apps?.some((app) => app.startCommand?.trim() || app.port > 0));
 }
 
-export function appStartCommand(
-  app: SessionServiceApp,
-  services: SessionServicesMeta,
-): string {
+export function appStartCommand(app: SessionServiceApp, services: SessionServicesMeta): string {
   return app.startCommand?.trim() || services.startCommand?.trim() || "";
 }
 
 export function appsToPortEnv(apps: SessionServiceApp[] | undefined): Record<string, string> {
   const env: Record<string, string> = {};
   for (const app of apps ?? []) {
+    for (const [name, port] of Object.entries(app.portEnv ?? {})) {
+      if (/^PORT[1-9]\d*$/.test(name) && Number.isInteger(port) && port > 0) {
+        env[name] = String(port);
+      }
+    }
     const upper = app.name.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase();
     if (!upper) continue;
     env[`${upper}_PORT`] = String(app.port);
@@ -191,7 +256,7 @@ export async function stopRegisteredApp(options: {
       "system",
       "services",
     ]);
-    killProcessTree(pid);
+    await killProcessTree(pid);
   }
   runningChildren.delete(key);
   const jobId = options.app.jobId;
@@ -223,7 +288,10 @@ export async function startRegisteredApp(options: {
       item.name === options.app.name ? { ...item, ...options.app } : item,
     ) ?? [options.app],
   });
-  const env: NodeJS.ProcessEnv = { ...process.env, ...portEnv };
+  for (const [name, port] of Object.entries(options.app.portEnv ?? {})) {
+    portEnv[name] = String(port);
+  }
+  const env: NodeJS.ProcessEnv = withProjectPath(options.cwd, { ...process.env, ...portEnv });
   const resolved = substitutePortPlaceholders(startCommand, portEnv);
   const job = await options.jobs.create(options.sessionId, {
     kind: "project-service",
@@ -253,6 +321,9 @@ export async function startRegisteredApp(options: {
     windowsHide: true,
     detached: process.platform !== "win32",
   });
+  await options.jobs.update(job.id, {
+    metadata: { pid: child.pid, pidStartedAt: Date.now() },
+  });
   const key = childKeyByName(options.sessionId, options.app.name);
   runningChildren.set(key, child);
   const append = (chunk: Buffer | string) => {
@@ -271,7 +342,7 @@ export async function startRegisteredApp(options: {
     });
   });
   options.jobs.setCancelHandler(job.id, () => {
-    if (child.pid) killProcessTree(child.pid);
+    return child.pid ? killProcessTree(child.pid) : undefined;
   });
   if (process.platform !== "win32") child.unref();
 
@@ -297,7 +368,7 @@ export async function startRegisteredSessionServices(options: {
   }
 
   const { portEnv, apps } = await resolvePortEnv(options.services);
-  const env: NodeJS.ProcessEnv = { ...process.env, ...portEnv };
+  const env: NodeJS.ProcessEnv = withProjectPath(options.cwd, { ...process.env, ...portEnv });
   const meta: SessionServicesMeta = {
     ...options.services,
     apps: apps.map((app, index) =>
@@ -312,8 +383,11 @@ export async function startRegisteredSessionServices(options: {
 
   try {
     if (!options.skipInstall) {
-      const install = meta.installCommand?.trim();
+      const install =
+        meta.installCommand?.trim() ||
+        (findProjectBinDir(options.cwd) ? undefined : inferProjectInstallCommand(options.cwd));
       if (install) {
+        meta.installCommand = install;
         const resolved = substitutePortPlaceholders(install, portEnv);
         const job = await options.jobs.create(options.sessionId, {
           kind: "project-service",
@@ -461,7 +535,7 @@ export async function stopRegisteredSessionServices(options: {
   const pid = child?.pid ?? services.pid ?? null;
   if (pid) {
     sessionLog(options.sessionId, "info", `Killing service pid=${pid}`, ["system", "services"]);
-    killProcessTree(pid);
+    await killProcessTree(pid);
   }
   runningChildren.delete(key);
   if (services.jobId && options.jobs) {

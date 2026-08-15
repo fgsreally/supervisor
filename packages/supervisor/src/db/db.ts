@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { ensureAgentHome, getAgentHomeDir } from "../agent/index.js";
 import { resolveDbPath } from "../config/resolve-db-path.js";
 import { encryptApiKey, decryptApiKey } from "../utils/encrypt.js";
+import { writeLog } from "../i18n/logs.js";
 import type {
   AgentResourceBinding,
   Resource,
@@ -512,7 +513,7 @@ export class SupervisorDb {
         listener(id, status);
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        console.error(`session status listener failed [${id}]:`, message);
+        writeLog("error", "runtime.sessionStatusListenerFailed", { id, error: message });
       }
     }
   }

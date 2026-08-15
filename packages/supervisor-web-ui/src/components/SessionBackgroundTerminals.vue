@@ -70,7 +70,12 @@ function isLive(job: SessionJob): boolean {
 }
 
 function jobCommand(job: SessionJob): string {
-  const command = typeof job.metadata.command === "string" ? job.metadata.command.trim() : "";
+  const command =
+    typeof job.metadata.resolvedCommand === "string"
+      ? job.metadata.resolvedCommand.trim()
+      : typeof job.metadata.command === "string"
+        ? job.metadata.command.trim()
+        : "";
   return command || job.label || job.name;
 }
 

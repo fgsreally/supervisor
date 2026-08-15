@@ -120,14 +120,14 @@
               <i :style="{ width: `${runProgress}%` }" />
             </div>
             <div class="run-summary__stats">
-              <span><i data-tone="running" />{{ count("running") }} 进行</span>
-              <span><i data-tone="blocked" />{{ count("blocked") }} 阻塞</span>
-              <span><i data-tone="pending" />{{ count("pending") }} 排队</span>
-              <span><i data-tone="done" />{{ count("done") }} 完成</span>
+              <span><i data-tone="running" />{{ count("running") }} {{ t("todo.running") }}</span>
+              <span><i data-tone="blocked" />{{ count("blocked") }} {{ t("todo.blocked") }}</span>
+              <span><i data-tone="pending" />{{ count("pending") }} {{ t("todo.pending") }}</span>
+              <span><i data-tone="done" />{{ count("done") }} {{ t("todo.done") }}</span>
             </div>
           </section>
 
-          <nav class="run-filter-bar" aria-label="任务状态筛选">
+          <nav class="run-filter-bar" :aria-label="t('todo.statusFilter')">
             <button
               v-for="filter in runChipFilters"
               :key="filter.id"
@@ -164,7 +164,7 @@
               </div>
             </section>
           </template>
-          <p v-if="!visibleTasks.length" class="rail-empty">这个状态下暂时没有任务</p>
+          <p v-if="!visibleTasks.length" class="rail-empty">{{ t("todo.noTasksForStatus") }}</p>
         </div>
       </aside>
 
@@ -239,8 +239,8 @@
           <button
             type="button"
             class="plan-icon-btn"
-            title="规划历史"
-            aria-label="规划历史"
+            :title="t('todo.historyTitle')"
+            :aria-label="t('todo.historyTitle')"
             @click="openGoalHistory"
           >
             <History />
@@ -252,11 +252,11 @@
             v-if="showGoalSummary"
             type="button"
             class="goal-summary"
-            aria-label="修改并重新规划"
+            :aria-label="t('todo.modifyPlan')"
             @click="goalComposerOpen = true"
           >
             <div class="goal-summary__main">
-              <span class="goal-summary__label">当前目标</span>
+              <span class="goal-summary__label">{{ t("todo.currentGoal") }}</span>
               <strong>{{ goal }}</strong>
             </div>
             <span class="goal-summary__edit" aria-hidden="true">
@@ -264,7 +264,7 @@
             </span>
           </button>
           <template v-else>
-            <textarea v-model="goal" rows="5" placeholder="描述你想完成的事情，输入 @ 关联项目" />
+            <textarea v-model="goal" rows="5" :placeholder="t('todo.goalPlaceholder')" />
             <div class="goal-box__footer">
               <span class="project-pill"><FolderGit2 />supervisor-web-ui</span>
               <button type="button" class="primary" :disabled="planning" @click="mockPlan">
@@ -283,7 +283,7 @@
         </div>
 
         <div v-if="drafts.length" class="mobile-plan-list" aria-label="规划任务列表">
-          <div class="mobile-plan-section-label">待确认任务 · {{ drafts.length }}</div>
+          <div class="mobile-plan-section-label">{{ t("todo.confirmedTasks", { count: drafts.length }) }}</div>
           <div class="mobile-plan-group">
             <button
               v-for="(task, index) in drafts"
@@ -304,9 +304,9 @@
         </div>
 
         <div v-if="drafts.length" class="plan-actions">
-          <button type="button" class="plan-actions__secondary">仅加入待办</button>
+          <button type="button" class="plan-actions__secondary">{{ t("todo.addOnly") }}</button>
           <button type="button" class="primary plan-actions__main" @click="startPlanExecution">
-            开始执行
+            {{ t("todo.startRun") }}
           </button>
         </div>
       </section>
@@ -314,15 +314,15 @@
       <section class="run-pane" :class="{ 'mobile-hidden': activeTab !== 'run' }">
         <div class="pane-title">
           <div>
-            <h2>执行</h2>
-            <span>{{ runningCount }} 个任务正在进行</span>
+            <h2>{{ t("todo.execution") }}</h2>
+            <span>{{ t("todo.runningTaskCount", { count: runningCount }) }}</span>
           </div>
           <div class="view-switch" aria-label="执行视图">
             <button
               type="button"
               :class="{ active: mobileRunView === 'list' }"
-              title="列表"
-              aria-label="列表"
+              :title="t('todo.list')"
+              :aria-label="t('todo.list')"
               @click="mobileRunView = 'list'"
             >
               <List />
@@ -330,8 +330,8 @@
             <button
               type="button"
               :class="{ active: mobileRunView === 'timeline' }"
-              title="时间轴"
-              aria-label="时间轴"
+              :title="t('todo.timeline')"
+              :aria-label="t('todo.timeline')"
               @click="mobileRunView = 'timeline'"
             >
               <GanttChart />
@@ -369,7 +369,7 @@
             @select="openTask(task)"
           >
             <template v-if="task.dependencies.length" #meta>
-              <span><Link2 />等待 {{ task.dependencies.length }} 项</span>
+              <span><Link2 />{{ t("todo.dependencies", { count: task.dependencies.length }) }}</span>
             </template>
           </TaskCard>
         </div>
@@ -400,7 +400,7 @@
 
     <ResponsiveDialog
       :open="selected != null"
-      :title="selected ? `Task ${selected.id}` : '任务详情'"
+      :title="selected ? `Task ${selected.id}` : t('todo.taskDetails')"
       panel-class="todo-task-dialog"
       @close="selected = null"
     >
@@ -409,7 +409,7 @@
         <p>{{ selected.description }}</p>
         <dl>
           <div>
-            <dt>项目</dt>
+            <dt>{{ t("todo.project") }}</dt>
             <dd>{{ selected.project }}</dd>
           </div>
           <div>
@@ -423,17 +423,17 @@
           class="primary wide"
           @click="viewSession(selected.sessionId)"
         >
-          <Eye />查看会话
+          <Eye />{{ t("todo.viewSession") }}
         </button>
       </div>
     </ResponsiveDialog>
-    <ResponsiveDialog :open="goalHistoryOpen" title="规划历史" @close="goalHistoryOpen = false">
+    <ResponsiveDialog :open="goalHistoryOpen" :title="t('todo.historyTitle')" @close="goalHistoryOpen = false">
       <div class="goal-history">
         <article v-for="event in goalEvents" :key="event.id">
           <time>{{ formatGoalTime(event.createdAt) }}</time>
           <strong>{{ goalObjective(event) }}</strong>
         </article>
-        <p v-if="!goalEvents.length" class="goal-history__empty">暂无规划历史</p>
+        <p v-if="!goalEvents.length" class="goal-history__empty">{{ t("todo.noHistory") }}</p>
       </div>
     </ResponsiveDialog>
   </div>
@@ -662,22 +662,22 @@ const runChipFilters = computed(() => [
 const runRailGroups = computed(() => {
   const tasks = visibleTasks.value;
   if (activeFilter.value !== "all") {
-    return [{ id: "filtered", label: "任务", tasks }];
+    return [{ id: "filtered", label: t("todo.taskDetails"), tasks }];
   }
   return [
     {
       id: "now",
-      label: "此刻",
+      label: t("todo.running"),
       tasks: tasks.filter((t) => t.status === "running" || t.status === "blocked"),
     },
     {
       id: "queue",
-      label: "队列",
+      label: t("todo.queued"),
       tasks: tasks.filter((t) => t.status === "pending"),
     },
     {
       id: "done",
-      label: "已完成",
+      label: t("todo.done"),
       tasks: tasks.filter((t) => t.status === "done"),
     },
   ];
@@ -716,7 +716,12 @@ function agentInfo(name: string): Agent | undefined {
   return agents.value.find((agent) => agent.name === name);
 }
 function statusLabel(s: Status) {
-  return { pending: "待办", running: "进行中", blocked: "阻塞", done: "已完成" }[s];
+  return {
+    pending: t("todo.pending"),
+    running: t("todo.running"),
+    blocked: t("todo.blocked"),
+    done: t("todo.done"),
+  }[s];
 }
 function focusDraft(task: MockTask) {
   focusId.value = task.id;

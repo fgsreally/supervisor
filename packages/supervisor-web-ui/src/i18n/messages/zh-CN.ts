@@ -217,6 +217,8 @@ const messages: TranslationMessages = {
   "provider.selectModel": "选择模型",
   "provider.noAvailableModels": "暂无可用模型",
   "provider.notConfigured": "未配置",
+  "provider.notFound": "未找到供应商",
+  "provider.modelNotFound": "未找到模型",
   "provider.addModel": "添加模型",
   "provider.noModels": "暂无模型，请添加",
   "provider.modelId": "Model ID",
@@ -297,6 +299,10 @@ const messages: TranslationMessages = {
   "agent.removeFailed": "移除失败",
   "agent.addedResource": "已添加 {{name}}",
   "agent.addFailed": "添加失败",
+  "agent.notConfigured": "未配置",
+  "agent.modelNotConfigured": "未配置模型",
+  "agent.resizeResourceSidebar": "调整资源侧边栏宽度",
+  "agent.resizeFileTree": "调整文件树宽度",
 };
 
 export default messages;

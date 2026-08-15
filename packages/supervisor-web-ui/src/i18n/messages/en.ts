@@ -217,6 +217,8 @@ const messages: TranslationMessages = {
   "provider.selectModel": "Select model",
   "provider.noAvailableModels": "No models available",
   "provider.notConfigured": "Not configured",
+  "provider.notFound": "Provider not found",
+  "provider.modelNotFound": "Model not found",
   "provider.addModel": "Add model",
   "provider.noModels": "No models. Add one to get started.",
   "provider.modelId": "Model ID",
@@ -297,6 +299,10 @@ const messages: TranslationMessages = {
   "agent.removeFailed": "Failed to remove",
   "agent.addedResource": "Added {{name}}",
   "agent.addFailed": "Failed to add",
+  "agent.notConfigured": "Not configured",
+  "agent.modelNotConfigured": "Model not configured",
+  "agent.resizeResourceSidebar": "Resize resource sidebar",
+  "agent.resizeFileTree": "Resize file tree",
 };
 
 export default messages;

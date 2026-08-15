@@ -5,7 +5,7 @@
       class="resource-browser-empty flex flex-1 items-center justify-center gap-2 text-[13px]"
     >
       <Loader2 class="h-4 w-4 animate-spin" />
-      正在加载资源...
+      {{ t("agent.loadingResources") }}
     </div>
     <template v-else>
       <!-- Skills and Extensions with files: skill list + file tree -->
@@ -38,7 +38,7 @@
               v-if="skillOrExtItems.length === 0"
               class="resource-browser-empty px-3 py-8 text-[12px] text-center"
             >
-              暂无
+              {{ t("agent.noResources") }}
             </div>
           </div>
           <GlobalResourceBindBar
@@ -54,7 +54,7 @@
           <ResizeHandle
             class="resource-browser-resize-handle"
             orientation="vertical"
-            label="调整资源侧边栏宽度"
+            :label="t('agent.resizeResourceSidebar')"
             @start="startSidebarResize"
           />
         </div>
@@ -78,7 +78,7 @@
           <ResizeHandle
             class="resource-browser-resize-handle"
             orientation="vertical"
-            label="调整文件树宽度"
+            :label="t('agent.resizeFileTree')"
             @start="startTreeResize"
           />
         </div>
@@ -113,7 +113,7 @@
                 :disabled="!!bindingItemId"
                 @click="bindGlobalItem(previewItem)"
               >
-                {{ bindingItemId === previewItem.id ? "添加中..." : "添加到 Agent" }}
+                {{ bindingItemId === previewItem.id ? t("agent.addingResource") : t("agent.addResource") }}
               </button>
             </div>
             <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
@@ -129,7 +129,7 @@
             v-else
             class="resource-browser-empty h-full flex items-center justify-center text-[13px]"
           >
-            选择文件
+            {{ t("agent.selectFile") }}
           </div>
         </div>
       </template>
@@ -162,7 +162,7 @@
               v-if="fileItems.length === 0"
               class="resource-browser-empty px-3 py-8 text-[12px] text-center"
             >
-              暂无
+              {{ t("agent.noResources") }}
             </div>
           </div>
           <GlobalResourceBindBar
@@ -178,7 +178,7 @@
           <ResizeHandle
             class="resource-browser-resize-handle"
             orientation="vertical"
-            label="调整资源侧边栏宽度"
+            :label="t('agent.resizeResourceSidebar')"
             @start="startSidebarResize"
           />
         </div>
@@ -214,7 +214,7 @@
                 :disabled="!!bindingItemId"
                 @click="bindGlobalItem(previewItem)"
               >
-                {{ bindingItemId === previewItem.id ? "添加中..." : "添加到 Agent" }}
+                {{ bindingItemId === previewItem.id ? t("agent.addingResource") : t("agent.addResource") }}
               </button>
             </div>
             <div class="flex-1 min-h-0 overflow-hidden flex flex-col">
@@ -229,7 +229,7 @@
             v-else
             class="resource-browser-empty h-full flex items-center justify-center text-[13px]"
           >
-            选择文件
+            {{ t("agent.selectFile") }}
           </div>
         </div>
       </template>
@@ -264,6 +264,7 @@ import {
 } from "@/utils/resource-utils";
 import { getDefaultWorkspaceCwd } from "@/config/workspace";
 import type { UIResourceItem, UIResourceKind, UISkillItem } from "@/types/ui";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   agentId: string;
@@ -272,6 +273,7 @@ const props = defineProps<{
 
 const agentStore = useAgentStore();
 const resourceStore = useResourceStore();
+const { t } = useI18n();
 const agentItems = ref<UIResourceItem[]>([]);
 const bindingItemId = ref<string | null>(null);
 const loading = ref(false);
@@ -362,9 +364,9 @@ async function bindGlobalItem(item: UIResourceItem) {
     ];
     resetSelection();
     previewItem.value = null;
-    showUiMessage(`已引入 ${item.name}`, "success");
+    showUiMessage(t("agent.importedResource", { name: item.name }), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "引入失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("agent.importFailed"), "error");
   } finally {
     bindingItemId.value = null;
   }

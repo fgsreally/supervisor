@@ -22,7 +22,7 @@
           v-if="isUnavailableNative"
           class="agent-list-item__badge agent-list-item__badge--disabled"
         >
-          未配置
+          {{ t("agent.notConfigured") }}
         </span>
         <span
           v-else-if="!isUnavailableExternal"
@@ -48,6 +48,7 @@ import { useProviderStore } from "@/store";
 import type { Agent } from "@/api";
 import AgentAvatar from "@/components/agent/AgentAvatar.vue";
 import { isExternalAgent } from "@/composables/use-external-agent-actions";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   agent: Agent;
@@ -60,6 +61,7 @@ const emit = defineEmits<{
 }>();
 
 const providerStore = useProviderStore();
+const { t } = useI18n();
 const isUnavailableExternal = computed(
   () => isExternalAgent(props.agent) && props.agent.available === false,
 );
@@ -81,15 +83,15 @@ const modelSummary = computed(() => {
   const model = providerStore.models[props.agent.providerId]?.find(
     (item) => item.id === props.agent.modelId,
   );
-  return `${provider?.name ?? "未找到供应商"} / ${model?.name || model?.modelId || "未找到模型"}`;
+  return `${provider?.name ?? t("provider.notFound")} / ${model?.name || model?.modelId || t("provider.modelNotFound")}`;
 });
 
 const summaryText = computed(() => {
   if (isNotInstalledExternal.value) return "";
   if (isBrokenExternal.value) {
-    return props.agent.unavailableReason || "检测失败";
+    return props.agent.unavailableReason || t("agent.detectFailed");
   }
-  if (isUnavailableNative.value) return "未配置模型";
+  if (isUnavailableNative.value) return t("agent.modelNotConfigured");
   if (isExternalAgent(props.agent) && props.agent.detectedVersion) {
     return props.agent.detectedVersion;
   }

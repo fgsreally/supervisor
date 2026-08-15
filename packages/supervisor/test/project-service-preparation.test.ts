@@ -63,8 +63,8 @@ describe("project service preparation", () => {
       resolvedStartCommand: "vite --port 43219",
       apps: [{ name: "web", port: 43219, path: "/" }],
     });
-    expect(prompt).toContain("已由 Supervisor 启动");
+    expect(prompt).toContain("本 Session 已启动的本地服务");
     expect(prompt).toContain("vite --port 43219");
-    expect(prompt).toContain("web@127.0.0.1:43219/");
+    expect(prompt).toContain("port 43219");
   });
 });

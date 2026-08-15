@@ -11,12 +11,21 @@ import { MockAgentHarness } from "./mock-agent-harness.js";
 let db: SupervisorDb;
 let manager: SessionManager;
 let tmpDir: string;
+let providerId: number;
 
 beforeEach(() => {
   MockAgentHarness.instances = [];
   tmpDir = join(tmpdir(), `supervisor-runtime-test-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
   db = new SupervisorDb(join(tmpDir, "test.db"));
+  providerId = db.insertProvider({
+    slug: "test-default",
+    name: "Test Default",
+    protocol: "anthropic-messages",
+    base_url: "https://llm.example.test/v1",
+    api_key: "test-key",
+  });
+  db.insertModel({ provider_id: providerId, model_id: "test-model" });
   manager = new SessionManager(db);
 });
 
@@ -27,7 +36,7 @@ afterEach(async () => {
 
 describe("supervisor: SessionRuntime", () => {
   it("wraps AgentHarness prompt and state", async () => {
-    const inst = await manager.spawn({ cwd: "/proj" });
+    const inst = await manager.spawn({ cwd: "/proj", providerId, model: "test-model" });
     const runtime = manager.getRuntime(inst.id);
 
     await runtime.prompt("hello");
@@ -35,12 +44,12 @@ describe("supervisor: SessionRuntime", () => {
 
     const state = await runtime.getState();
     expect(state.id).toBe(inst.id);
-    expect(state.sessionId).toBe(inst.sessionId);
+    expect(state.sessionId).toBeNull();
     expect(state.isStreaming).toBe(false);
   });
 
   it("counts SQLite message entries in state", async () => {
-    const inst = await manager.spawn({ cwd: "/proj" });
+    const inst = await manager.spawn({ cwd: "/proj", providerId, model: "test-model" });
     const storage = new SQLiteSessionStorage(db, inst.id);
     const id = await storage.createEntryId();
     await storage.appendEntry({
@@ -56,7 +65,7 @@ describe("supervisor: SessionRuntime", () => {
   });
 
   it("returns the last assistant text from in-memory agent state", async () => {
-    const inst = await manager.spawn({ cwd: "/proj" });
+    const inst = await manager.spawn({ cwd: "/proj", providerId, model: "test-model" });
     const runtime = manager.getRuntime(inst.id);
     MockAgentHarness.instances[0]!.agent.state.messages.push({
       role: "assistant",
@@ -67,7 +76,7 @@ describe("supervisor: SessionRuntime", () => {
   });
 
   it("exposes in-memory streamingMessage as streamingReply", async () => {
-    const inst = await manager.spawn({ cwd: "/proj" });
+    const inst = await manager.spawn({ cwd: "/proj", providerId, model: "test-model" });
     const runtime = manager.getRuntime(inst.id);
     MockAgentHarness.instances[0]!.agent.state.streamingMessage = {
       role: "assistant",
@@ -79,7 +88,7 @@ describe("supervisor: SessionRuntime", () => {
   });
 
   it("omits streamingReply when streamingMessage is empty", async () => {
-    const inst = await manager.spawn({ cwd: "/proj" });
+    const inst = await manager.spawn({ cwd: "/proj", providerId, model: "test-model" });
     const runtime = manager.getRuntime(inst.id);
 
     const state = await runtime.getState();

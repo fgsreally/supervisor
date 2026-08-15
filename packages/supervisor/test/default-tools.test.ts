@@ -5,7 +5,7 @@ describe("supervisor: default tools", () => {
   it("exposes pi coding tools plus grep/find/ls for exploration", () => {
     const names = createDefaultTools(process.cwd(), "coding").map((tool) => tool.name);
 
-    expect(names).toEqual(["read", "bash", "edit", "write", "grep", "find", "ls"]);
+    expect(names).toEqual(["read", "edit", "write", "grep", "find", "ls", "bash"]);
   });
 
   it("exposes read-only exploration tools without bash/edit/write", () => {

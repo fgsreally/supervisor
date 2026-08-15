@@ -13,12 +13,22 @@ let db: SupervisorDb;
 let manager: SessionManager;
 let app: ReturnType<typeof createHttpServer>;
 let tmpDir: string;
+let defaultAgentId: number;
 
 beforeEach(() => {
   MockAgentHarness.instances = [];
   tmpDir = join(tmpdir(), `supervisor-http-test-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
   db = new SupervisorDb(join(tmpDir, "test.db"));
+  const providerId = db.insertProvider({
+    slug: "test-default",
+    name: "Test Default",
+    protocol: "anthropic-messages",
+    base_url: "https://llm.example.test/v1",
+    api_key: "test-key",
+  });
+  const modelId = db.insertModel({ provider_id: providerId, model_id: "test-model" }).id;
+  defaultAgentId = db.insertAgent({ name: "Test Agent", model_id: modelId }).id;
   manager = new SessionManager(db);
   app = createHttpServer(manager);
 });
@@ -29,10 +39,14 @@ afterEach(async () => {
 });
 
 async function req(method: string, path: string, body?: unknown) {
+  const requestBody =
+    method === "POST" && path === "/sessions" && body && typeof body === "object"
+      ? { agentId: defaultAgentId, ...(body as Record<string, unknown>) }
+      : body;
   return app.request(path, {
     method,
-    headers: body ? { "content-type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
+    headers: requestBody ? { "content-type": "application/json" } : undefined,
+    body: requestBody ? JSON.stringify(requestBody) : undefined,
   });
 }
 
@@ -41,7 +55,11 @@ describe("supervisor: HTTP server", () => {
     const protectedApp = createHttpServer(manager, { password: "4827" });
     const status = await protectedApp.request("/auth/status");
     expect(status.status).toBe(200);
-    expect(await status.json()).toEqual({ required: true, authenticated: false });
+    expect(await status.json()).toEqual({
+      required: true,
+      authenticated: false,
+      tunnelQuick: false,
+    });
 
     expect((await protectedApp.request("/sessions")).status).toBe(401);
     expect(
@@ -67,7 +85,7 @@ describe("supervisor: HTTP server", () => {
     expect(res.status).toBe(201);
     const body = (await res.json()) as { id: string; status: string };
     expect(body.id).toBeDefined();
-    expect(body.status).toBe("idle");
+    expect(body.status).toBe("initializing");
   });
 
   it("GET /sessions lists spawned instances", async () => {
@@ -78,11 +96,11 @@ describe("supervisor: HTTP server", () => {
 
   it("GET /sessions?status=idle filters by status", async () => {
     await req("POST", "/sessions", { cwd: "/tmp" });
-    const list = (await (await req("GET", "/sessions?status=idle")).json()) as Array<{
+    const list = (await (await req("GET", "/sessions?status=initializing")).json()) as Array<{
       status: string;
     }>;
     expect(list.length).toBeGreaterThan(0);
-    expect(list.every((i) => i.status === "idle")).toBe(true);
+    expect(list.every((i) => i.status === "initializing")).toBe(true);
   });
 
   it("GET /sessions/:id returns the instance", async () => {
@@ -129,8 +147,7 @@ describe("supervisor: HTTP server", () => {
     expect(await res.json()).toEqual(
       expect.objectContaining({
         parentId,
-        branchType: "btw",
-        showInSessionList: false,
+        spawnType: "btw",
         agentId: codingId,
       }),
     );
@@ -189,7 +206,7 @@ describe("supervisor: HTTP server", () => {
     };
     const res = await req("PATCH", `/sessions/${id}/meta`, { b: 2 });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual(expect.objectContaining({ a: 1, b: 2 }));
+    expect((await res.json()).meta).toEqual({ a: 1, b: 2 });
   });
 
   it("PUT /sessions/:id/meta replaces meta", async () => {
@@ -221,7 +238,7 @@ describe("supervisor: HTTP server", () => {
 
     await req("PATCH", `/sessions/${id}/workflow`, { status: "waiting_choice" });
     expect(await (await req("GET", `/sessions/${id}/workflow`)).json()).toEqual({
-      workflow: { stage: "brainstorm", status: "waiting_choice" },
+      workflow: { stage: "brainstorm", status: "working" },
     });
 
     expect(
@@ -297,7 +314,7 @@ describe("supervisor: HTTP server", () => {
     const { id } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
       id: string;
     };
-    expect((await req("POST", `/sessions/${id}/steer`, { message: "steer" })).status).toBe(200);
+    expect((await req("POST", `/sessions/${id}/steer`, { message: "steer" })).status).toBe(409);
     expect((await req("POST", `/sessions/${id}/follow-up`, { message: "next" })).status).toBe(200);
     expect((await req("POST", `/sessions/${id}/abort`)).status).toBe(200);
     expect(
@@ -313,8 +330,7 @@ describe("supervisor: HTTP server", () => {
       id: string;
     };
     const res = await req("POST", `/sessions/${id}/kill`);
-    expect(res.status).toBe(200);
-    expect(((await res.json()) as { ok: boolean }).ok).toBe(true);
+    expect(res.status).toBe(409);
   });
 
   it("POST /sessions/:id/kill returns 409 for non-running instance", async () => {

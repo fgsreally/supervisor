@@ -16,7 +16,7 @@ describe("ExternalTurnBuffer", () => {
     expect(appended[0]).toMatchObject({
       parentId: "user-1",
       type: "message",
-      message: { role: "assistant", content: "hello" },
+      message: { role: "assistant", content: [{ type: "text", text: "hello" }] },
     });
   });
 

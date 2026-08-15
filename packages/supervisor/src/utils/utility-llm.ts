@@ -3,6 +3,17 @@ import { compact } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { runWatson } from "../core/watson.js";
 import type { LLMConfig } from "./model-utils.js";
+import type { SupervisorSettings } from "./supervisor-settings.js";
+
+/** Read a feature-specific model binding without cross-feature fallback. */
+export function getFeatureModelRef(
+  feature: string,
+  settings: Pick<SupervisorSettings, "featureModels">,
+): { providerId: number; modelId: string } | null {
+  return settings.featureModels?.[feature] ?? null;
+}
+
+export const resolveFeatureModelRef = getFeatureModelRef;
 
 export interface UtilityCompactionResult {
   summary: string;

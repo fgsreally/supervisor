@@ -133,6 +133,9 @@ export class SQLiteSessionStorage implements SessionStorage {
       typeof queuedSource === "string" &&
       queuedSource.startsWith("extension:flow:");
     const persistedMeta: Record<string, unknown> = { ...(options.meta ?? {}) };
+    if (queuedSource !== null && queuedSource !== undefined) {
+      persistedMeta.source = queuedSource;
+    }
     if (hiddenFlowMessage) persistedMeta.hidden = true;
     if (
       entry.type === "message" &&
@@ -240,6 +243,8 @@ export class SQLiteSessionStorage implements SessionStorage {
       meta: Record<string, unknown>;
       isOld: boolean;
       originMsg: string | null;
+      source?: string | null;
+      origin?: string | null;
       createdAt: number;
     }>
   > {
@@ -327,6 +332,8 @@ export function rowToStoredMessage(row: MessageRow): {
   meta: Record<string, unknown>;
   isOld: boolean;
   originMsg: string | null;
+  source?: string | null;
+  origin?: string | null;
   createdAt: number;
 } {
   return {
@@ -334,6 +341,8 @@ export function rowToStoredMessage(row: MessageRow): {
     meta: JSON.parse(row.meta),
     isOld: row.is_old === 1,
     originMsg: row.origin_msg,
+    source: typeof JSON.parse(row.meta).source === "string" ? JSON.parse(row.meta).source : null,
+    origin: row.origin_msg,
     createdAt: row.created_at,
   };
 }
@@ -343,12 +352,16 @@ export function toSessionMessageResponse(stored: {
   meta: Record<string, unknown>;
   isOld: boolean;
   originMsg: string | null;
+  source?: string | null;
+  origin?: string | null;
   createdAt: number;
 }): SessionMessageResponse {
   return {
     ...stored.entry,
     isOld: stored.isOld,
     originMsg: stored.originMsg,
+    source: stored.source ?? null,
+    origin: stored.origin ?? stored.originMsg,
     meta: stored.meta,
     // Payload timestamps win so previously-imported sessions still show real times.
     createdAt: resolveEntryCreatedAt(stored.entry, stored.createdAt),

@@ -45,11 +45,7 @@ import {
   resolveAgentTools,
   skillsToResourceInfo,
 } from "../agent/resource-resolver.js";
-import {
-  ensurePackagedAgents,
-  findPackagedAgentId,
-  loadPackagedAgentPrompt,
-} from "../agent/index.js";
+import { ensurePackagedAgents, findPackagedAgentId } from "../agent/index.js";
 import { attachHomeTaskSessionSync } from "./home-task-sync.js";
 import { listSessionTimers, type SessionTimer } from "./session-timers.js";
 import {
@@ -109,6 +105,7 @@ import { writeLog } from "../i18n/logs.js";
 import { startSessionActivityScheduler } from "./session-activity.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "./resource/prompt-templates.js";
+import { loadPromptTemplate } from "./resource/system-prompts.js";
 import { copyMessagesWithInheritance } from "./session-history.js";
 import {
   createSessionCheckpoint,
@@ -564,7 +561,7 @@ export class SessionManager {
   }
 
   private formatBtwFirstUserPrompt(question: string): string {
-    const guide = loadPackagedAgentPrompt("btw").trim();
+    const guide = loadPromptTemplate("btw-session").trim();
     return `${guide}\n\n---\n\n用户侧问：\n${question.trim()}`;
   }
 
@@ -719,7 +716,7 @@ export class SessionManager {
             );
           }
         } else if (!hasPendingAsks(sessionId)) {
-          this.db.updateStatus(sessionId, "idle");
+          this.db.updateStatus(sessionId, "active");
           this.publishSessionStatus(sessionId);
           void (async () => {
             let shadowCheckpoint;
@@ -909,7 +906,7 @@ export class SessionManager {
           ),
         );
         this.setupRuntime(session.id, runtime);
-        this.db.updateStatus(session.id, "idle");
+        this.db.updateStatus(session.id, "active");
         return runtime;
       }
 
@@ -991,7 +988,7 @@ export class SessionManager {
       }
 
       this.setupRuntime(session.id, runtime);
-      this.db.updateStatus(session.id, "idle");
+      this.db.updateStatus(session.id, "active");
       return runtime;
     } finally {
       doneRestore();
@@ -1096,7 +1093,7 @@ export class SessionManager {
       ...options,
       spawnType: options.parentId ? "subagent" : null,
     });
-    // Mark in-flight spawn so UI/prompt can wait; create() itself stays idle.
+    // Mark in-flight spawn so UI/prompt can wait; create() itself stays active.
     this.db.updateStatus(session.id, "initializing");
 
     const ready = this.finalizeSpawn(session, options, agentInDb).finally(() => {
@@ -1108,15 +1105,25 @@ export class SessionManager {
       void ready.catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         writeLog("error", "runtime.sessionRuntimeStartFailed", { id: session.id, error: message });
-        sessionLog(session.id, "error", `Runtime start failed: ${message}`, ["system", "runtime"], {
-          error: message,
-        });
-        if (this.db.get(session.id)?.status === "initializing") {
-          this.db.updateStatus(session.id, "error");
+        try {
+          sessionLog(
+            session.id,
+            "error",
+            `Runtime start failed: ${message}`,
+            ["system", "runtime"],
+            {
+              error: message,
+            },
+          );
+          if (this.db.get(session.id)?.status === "initializing") {
+            this.db.updateStatus(session.id, "error");
+          }
+          this.db.updateSessionFields(session.id, { errorMsg: message });
+          this.reportOperationalError(session.id, message);
+          this.publishSessionStatus(session.id);
+        } catch {
+          // The owner may dispose the database while a fire-and-forget spawn is unwinding.
         }
-        this.db.updateSessionFields(session.id, { errorMsg: message });
-        this.reportOperationalError(session.id, message);
-        this.publishSessionStatus(session.id);
       });
       return rowToSession(this.db.get(session.id)!, this.db);
     }
@@ -1217,7 +1224,7 @@ export class SessionManager {
             const message = error instanceof Error ? error.message : String(error);
             this.reportOperationalError(activeSession.id, message);
             if (this.db.get(activeSession.id)?.status === "running") {
-              this.db.updateStatus(activeSession.id, "idle");
+              this.db.updateStatus(activeSession.id, "active");
             }
           });
         }
@@ -1324,7 +1331,7 @@ export class SessionManager {
           const message = err instanceof Error ? err.message : String(err);
           this.reportOperationalError(activeSession.id, message);
           if (this.db.get(activeSession.id)?.status === "running") {
-            this.db.updateStatus(activeSession.id, "idle");
+            this.db.updateStatus(activeSession.id, "active");
           }
         });
       }
@@ -1334,7 +1341,7 @@ export class SessionManager {
       sessionLog(
         activeSession.id,
         "info",
-        `Session ready (status=${options.instructions ? "running" : "idle"})`,
+        `Session ready (status=${options.instructions ? "running" : "active"})`,
         ["system", "setup"],
       );
       return rowToSession(this.db.get(activeSession.id)!, this.db);
@@ -1463,7 +1470,7 @@ export class SessionManager {
           return typeof work === "function" ? await work() : await work;
         } finally {
           if (this.db.get(sessionId)?.status === "blocked") {
-            this.db.updateStatus(sessionId, before === "running" ? "running" : "idle");
+            this.db.updateStatus(sessionId, before === "running" ? "running" : "active");
             this.publishSessionStatus(sessionId);
           }
           if (reason.trim())
@@ -1619,7 +1626,9 @@ export class SessionManager {
       throw new Error(`Session ${childSessionId} cannot be continued (status: ${child.status})`);
     }
     if (child.status === "finish" || child.status === "finished") {
-      this.db.updateStatus(childSessionId, "idle");
+      throw new Error(
+        `Session ${childSessionId} is finished; Fork it before submitting more input`,
+      );
     }
 
     const submit = () =>
@@ -1637,7 +1646,7 @@ export class SessionManager {
       const detail = error instanceof Error ? error.message : String(error);
       this.reportOperationalError(childSessionId, detail);
       if (this.db.get(childSessionId)?.status === "running") {
-        this.db.updateStatus(childSessionId, "idle");
+        this.db.updateStatus(childSessionId, "active");
       }
     });
     return "drained";
@@ -3152,7 +3161,7 @@ export class SessionManager {
 
     this.deleteLlmErrorLeaf(id);
     this.retractTrailingEmptyFailedAssistant(id);
-    this.db.updateStatus(id, "idle");
+    this.db.updateStatus(id, "active");
 
     const runtime = await this.getOrRestoreRuntime(id);
     if (!(runtime instanceof SessionRuntime)) {

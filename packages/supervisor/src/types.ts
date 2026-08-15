@@ -350,6 +350,10 @@ export type SessionMessageResponse = SessionTreeEntry & {
   isOld: boolean;
   /** Original user input before slash/template expansion. */
   originMsg: string | null;
+  /** Optional source attribution for injected user messages. */
+  source?: string | null;
+  /** Original expanded user input alias used by storage consumers. */
+  origin?: string | null;
   /** User/orchestrator extensions only. */
   meta: Record<string, unknown>;
   createdAt: number;

@@ -58,6 +58,8 @@ const mocks = vi.hoisted(() => {
     setModel = vi.fn(async (model: { provider: string; id: string }) => {
       this.agent.state.model = model;
     });
+    getModel = vi.fn(() => this.agent.state.model);
+    getThinkingLevel = vi.fn(() => this.agent.state.thinkingLevel);
     setThinkingLevel = vi.fn(async (level: string) => {
       this.agent.state.thinkingLevel = level;
     });

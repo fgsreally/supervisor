@@ -1,5 +1,4 @@
 import type { AgentHarnessEvent } from "@earendil-works/pi-agent-core";
-import { findPackagedAgentId } from "../../../agent/index.js";
 import type { SessionManager } from "../../../core/session-manager.js";
 import {
   DEFAULT_PARENT_MESSAGE_LEVEL,
@@ -48,10 +47,6 @@ function formatHarnessMessages(messages: unknown[]): string {
   return lines.join("\n\n");
 }
 
-function resolveShadowAgentId(db: SupervisorDb): number | null {
-  return findPackagedAgentId(db, "shadow") ?? null;
-}
-
 function setShadowRunning(
   manager: SessionManager,
   db: SupervisorDb,
@@ -84,7 +79,6 @@ export async function runShadow(
   const latestTurn = formatHarnessMessages(event.messages ?? []);
   if (!latestTurn) return;
 
-  const shadowAgentId = resolveShadowAgentId(db);
   const shadowMemory = readShadowMemory(session.projectId, session.id);
 
   setShadowRunning(manager, db, session.id, true);
@@ -119,7 +113,6 @@ export async function runShadow(
   const suggestedQuestions = result.suggestedQuestions ?? [];
   db.updateMeta(session.id, {
     shadow: {
-      agentId: shadowAgentId,
       suggestedQuestions,
       message: result.message,
       interrupt: result.interrupt === true,
@@ -153,7 +146,7 @@ export async function runShadow(
     await manager.submitSessionInput(session.id, {
       message,
       level: result.interrupt ? SESSION_INPUT_INTERRUPT_LEVEL : DEFAULT_PARENT_MESSAGE_LEVEL,
-      source: shadowAgentId != null ? `shadow:${shadowAgentId}` : "shadow",
+      source: "shadow",
     });
   }
 }

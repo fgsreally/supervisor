@@ -66,7 +66,7 @@ describe("supervisor: explicit commit", () => {
   });
 
   it("commitSessionChanges updates meta.git.lastCommit", async () => {
-    const project = db.findOrCreateProjectByCwd(repoDir);
+    const project = db.insertProject({ cwd: join(tmpDir, "project-root"), name: "Project" });
     const session = db.insert({
       project_id: project.id,
       parent_id: null,
@@ -76,7 +76,6 @@ describe("supervisor: explicit commit", () => {
       cwd: repoDir,
       meta: JSON.stringify({}),
     });
-    db.updateSessionGitState(session.id, { worktreeEnabled: true });
 
     writeFileSync(join(repoDir, "feature.txt"), "new work\n");
 
@@ -94,7 +93,7 @@ describe("supervisor: explicit commit", () => {
   });
 
   it("agent_end does not auto-commit dirty worktree", async () => {
-    const project = db.findOrCreateProjectByCwd(repoDir);
+    const project = db.insertProject({ cwd: join(tmpDir, "project-root"), name: "Project" });
     const session = db.insert({
       project_id: project.id,
       parent_id: null,
@@ -104,7 +103,6 @@ describe("supervisor: explicit commit", () => {
       cwd: repoDir,
       meta: JSON.stringify({ name: "Named session" }),
     });
-    db.updateSessionGitState(session.id, { worktreeEnabled: true });
 
     writeFileSync(join(repoDir, "dirty.txt"), "uncommitted\n");
 

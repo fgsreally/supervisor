@@ -116,7 +116,13 @@ export async function commitSessionChanges(
   cwd: string,
   db: Pick<
     SupervisorDb,
-    "get" | "getProject" | "listProviders" | "listModelsByProvider" | "getProvider" | "getModel"
+    | "get"
+    | "getProject"
+    | "updateMeta"
+    | "listProviders"
+    | "listModelsByProvider"
+    | "getProvider"
+    | "getModel"
   >,
   options: CommitSessionOptions = {},
   summaryText?: string,
@@ -161,6 +167,13 @@ export async function commitSessionChanges(
 
   const commit = await commitAll(cwd, message);
   if (!commit) return null;
+
+  const rawMeta = typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta;
+  const previousGit =
+    rawMeta && typeof rawMeta === "object" && "git" in rawMeta && rawMeta.git
+      ? (rawMeta.git as Record<string, unknown>)
+      : {};
+  db.updateMeta(sessionId, { git: { ...previousGit, lastCommit: commit } });
 
   return commit;
 }

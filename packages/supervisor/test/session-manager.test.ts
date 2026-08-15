@@ -12,7 +12,7 @@ import { MockAgentHarness } from "./mock-agent-harness.js";
 import { getProjectDir, getSessionDir } from "../src/core/session-files.js";
 import { ensurePackagedAgents, findPackagedAgentId } from "../src/agent/index.js";
 
-const SPAWN_OPTS = { cwd: "/proj" };
+const SPAWN_OPTS = { cwd: "/proj", providerId: 0, model: "test-model" };
 
 let db: SupervisorDb;
 let manager: SessionManager;
@@ -23,6 +23,15 @@ beforeEach(() => {
   tmpDir = join(tmpdir(), `supervisor-im-test-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
   db = new SupervisorDb(join(tmpDir, "test.db"));
+  const providerId = db.insertProvider({
+    slug: "test-default",
+    name: "Test Default",
+    protocol: "anthropic-messages",
+    base_url: "https://llm.example.test/v1",
+    api_key: "test-key",
+  });
+  db.insertModel({ provider_id: providerId, model_id: SPAWN_OPTS.model });
+  SPAWN_OPTS.providerId = providerId;
   manager = new SessionManager(db);
 });
 
@@ -34,7 +43,7 @@ afterEach(async () => {
 describe("supervisor: SessionManager", () => {
   it("create() inserts a record without starting a harness", () => {
     const inst = manager.create({ cwd: "/proj", meta: { phase: "brainstorm" } });
-    expect(inst.status).toBe("idle");
+    expect(inst.status).toBe("active");
     expect(inst.meta).toEqual({ phase: "brainstorm" });
     expect(MockAgentHarness.instances).toHaveLength(0);
   });
@@ -93,16 +102,16 @@ describe("supervisor: SessionManager", () => {
     expect(live).not.toContain("/old/AGENTS.md");
   });
 
-  it("spawn() creates AgentHarness and marks instance idle when no instructions", async () => {
+  it("spawn() creates AgentHarness and keeps the instance active without instructions", async () => {
     const inst = await manager.spawn(SPAWN_OPTS);
     expect(MockAgentHarness.instances).toHaveLength(1);
-    expect(inst.status).toBe("idle");
+    expect(inst.status).toBe("active");
     expect(manager.isAlive(inst.id)).toBe(true);
   });
 
   it("spawn() keeps a native Agent without a model as blocked", async () => {
     const agent = db.insertAgent({ name: "model pending" });
-    const inst = await manager.spawn({ ...SPAWN_OPTS, agentId: agent.id });
+    const inst = await manager.spawn({ cwd: SPAWN_OPTS.cwd, agentId: agent.id });
 
     expect(inst.status).toBe("blocked");
     expect(inst.errorMsg).toBe("Agent 未配置模型");
@@ -118,8 +127,8 @@ describe("supervisor: SessionManager", () => {
     execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir });
     execFileSync("git", ["commit", "--allow-empty", "-m", "init"], { cwd: repoDir });
 
-    const parent = await manager.spawn({ cwd: repoDir });
-    const child = await manager.spawn({ parentId: parent.id, cwd: parent.cwd });
+    const parent = await manager.spawn({ ...SPAWN_OPTS, cwd: repoDir });
+    const child = await manager.spawn({ ...SPAWN_OPTS, parentId: parent.id, cwd: parent.cwd });
 
     expect(parent.cwd).not.toBe(repoDir);
     expect(child.parentId).toBe(parent.id);
@@ -154,7 +163,13 @@ describe("supervisor: SessionManager", () => {
     const messages = await manager.getMessages(child.id);
     const assistantOutput = messages
       .filter((message) => message.type === "message" && message.message.role === "assistant")
-      .map((message) => String(message.message.content))
+      .flatMap((message) =>
+        Array.isArray(message.message.content)
+          ? message.message.content.map((part) =>
+              typeof part === "object" && part && "text" in part ? String(part.text) : "",
+            )
+          : [String(message.message.content)],
+      )
       .join("\n");
     expect(assistantOutput).toContain("You are running as a delegated subagent");
     expect(assistantOutput).toContain("Delegated task");
@@ -170,11 +185,11 @@ describe("supervisor: SessionManager", () => {
     expect(received.some((event) => event.type === "agent_end")).toBe(true);
   });
 
-  it("status transitions to idle on agent_end event", async () => {
+  it("status returns to active on agent_end event", async () => {
     const inst = await manager.spawn(SPAWN_OPTS);
     MockAgentHarness.instances[0]!.agent.emit({ type: "agent_start" } as AgentEvent);
     MockAgentHarness.instances[0]!.agent.emit({ type: "agent_end" } as AgentEvent);
-    expect(manager.get(inst.id)!.status).toBe("idle");
+    expect(manager.get(inst.id)!.status).toBe("active");
   });
 
   it("status transitions to running on agent_start event", async () => {
@@ -252,7 +267,7 @@ describe("supervisor: SessionManager", () => {
     const state = await manager.getState(inst.id);
     expect(state.id).toBe(inst.id);
     expect(state.cwd).toBe("/proj");
-    expect(state.model.provider).toBe("anthropic");
+    expect(state.model.provider).toBe("test-default");
     expect(state.messageCount).toBe(0);
   });
 
@@ -541,7 +556,7 @@ describe("supervisor: SessionManager", () => {
     const messages = await manager.getSessionMessages(forked.id);
     expect(messages).toHaveLength(1);
     expect(messages[0]?.isOld).toBe(true);
-    expect(messages[0]?.meta).toEqual({});
+    expect(messages[0]?.meta).toEqual({ source: "sidecar-a" });
   });
 
   it("fork() from a user message includes the following assistant turn", async () => {

@@ -163,25 +163,30 @@ describe("supervisor: Web UI API compatibility", () => {
         protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
+      const modelRes = await req("POST", `/providers/${providerId}/models`, {
+        modelId: "test-model",
+        name: "Test Model",
+      });
+      const { id: modelId } = (await modelRes.json()) as { id: number };
 
       // Create agent
       const res = await req("POST", "/agents", {
         name: "Test Agent",
-        providerId,
+        modelId,
         description: "A test agent",
       });
       expect(res.status).toBe(201);
       const body = (await res.json()) as { id: string; name: string; providerId: string };
       expect(body.id).toBeDefined();
       expect(body.name).toBe("Test Agent");
-      expect(body.providerId).toBe(providerId);
+      expect(body.providerId).toBeNull();
     });
 
     it("POST /agents creates an isolated ACP agent without a provider", async () => {
       const res = await req("POST", "/agents", {
         name: "External ACP",
         backendType: "acp",
-        meta: { external: { command: "example", args: ["acp"] } },
+        externalConfig: { command: "example", args: ["acp"] },
       });
       expect(res.status).toBe(201);
       const agent = (await res.json()) as {
@@ -219,7 +224,6 @@ describe("supervisor: Web UI API compatibility", () => {
         protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
-
       const modelRes = await req("POST", `/providers/${providerId}/models`, {
         modelId: "test-model",
         name: "Test Model",
@@ -255,11 +259,16 @@ describe("supervisor: Web UI API compatibility", () => {
         protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
+      const modelRes = await req("POST", `/providers/${providerId}/models`, {
+        modelId: "test-model",
+        name: "Test Model",
+      });
+      const { id: modelId } = (await modelRes.json()) as { id: number };
 
       const agentRes = await req("POST", "/agents", {
         name: "Test Agent",
-        providerId,
-        systemMd: "You are a helpful assistant.",
+        modelId,
+        systemPrompt: "You are a helpful assistant.",
       });
       const { id: agentId } = (await agentRes.json()) as { id: string };
 
@@ -275,10 +284,15 @@ describe("supervisor: Web UI API compatibility", () => {
         protocol: "messages",
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
+      const modelRes = await req("POST", `/providers/${providerId}/models`, {
+        modelId: "test-model",
+        name: "Test Model",
+      });
+      const { id: modelId } = (await modelRes.json()) as { id: number };
 
       const agentRes = await req("POST", "/agents", {
         name: "Test Agent",
-        providerId,
+        modelId,
       });
       const { id: agentId } = (await agentRes.json()) as { id: string };
 
@@ -395,15 +409,15 @@ describe("supervisor: Web UI API compatibility", () => {
       });
       const { id: providerId } = (await providerRes.json()) as { id: string };
 
-      await req("POST", `/providers/${providerId}/models`, {
+      const modelRes = await req("POST", `/providers/${providerId}/models`, {
         modelId: "test-model",
         name: "Test Model",
       });
+      const { id: modelId } = (await modelRes.json()) as { id: number };
 
       await req("POST", "/agents", {
         name: "Bound Agent",
-        providerId: Number(providerId),
-        modelId: "test-model",
+        modelId,
       });
 
       const res = await req("DELETE", `/providers/${providerId}/models/test-model`);

@@ -116,11 +116,9 @@ describe("external CLI runtimes", () => {
         messages.find((entry) => entry.type === "message" && entry.message.role === "assistant"),
       ).toMatchObject({
         type: "message",
-        message: { role: "assistant", content: "codex reply" },
+        message: { role: "assistant", content: [{ type: "text", text: "codex reply" }] },
       });
-      expect(db.get(runtime.id)?.meta).toMatchObject({
-        externalSessionId: "mock-codex-thread",
-      });
+      expect(db.get(runtime.id)?.external_session_id).toBe("mock-codex-thread");
       expect(runtime.getSlashCommands()).toEqual(
         expect.arrayContaining([
           { name: "model", description: "选择 Codex 模型和推理强度", source: "client" },
@@ -270,11 +268,9 @@ describe("external CLI runtimes", () => {
         messages.find((entry) => entry.type === "message" && entry.message.role === "assistant"),
       ).toMatchObject({
         type: "message",
-        message: { role: "assistant", content: "claude reply" },
+        message: { role: "assistant", content: [{ type: "text", text: "claude reply" }] },
       });
-      expect(db.get(runtime.id)?.meta).toMatchObject({
-        externalSessionId: "mock-claude-session",
-      });
+      expect(db.get(runtime.id)?.external_session_id).toBe("mock-claude-session");
       expect(runtime.getSlashCommands()).toEqual([
         { name: "status", description: "" },
         { name: "compact", description: "" },

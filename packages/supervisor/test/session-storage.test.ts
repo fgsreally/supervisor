@@ -91,7 +91,7 @@ describe("supervisor: SQLiteSessionStorage", () => {
       change: "feat-1",
     });
     expect(harnessMetadata.meta).toEqual({ stage: "implement", change: "feat-1" });
-    expect(harnessMetadata.id).toBe(metaSession.id);
+    expect(harnessMetadata.id).toBe(String(metaSession.id));
   });
 
   it("stores is_old separately from payload and meta", async () => {

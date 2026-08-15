@@ -9,7 +9,7 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-const SPAWN_OPTS = { cwd: "/proj" };
+const SPAWN_OPTS = { cwd: "/proj", providerId: 0, model: "test-model" };
 
 async function flushLifecycle(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 200));
@@ -24,6 +24,14 @@ beforeEach(() => {
   tmpDir = join(tmpdir(), `supervisor-input-queue-${Date.now()}`);
   mkdirSync(tmpDir, { recursive: true });
   db = new SupervisorDb(join(tmpDir, "test.db"));
+  SPAWN_OPTS.providerId = db.insertProvider({
+    slug: "test-default",
+    name: "Test Default",
+    protocol: "anthropic-messages",
+    base_url: "https://llm.example.test/v1",
+    api_key: "test-key",
+  });
+  db.insertModel({ provider_id: SPAWN_OPTS.providerId, model_id: SPAWN_OPTS.model });
   manager = new SessionManager(db);
 });
 

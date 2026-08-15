@@ -149,6 +149,8 @@ describe("extension runtime events", () => {
 
   it("attaches completed recordings to tool result message assets", async () => {
     const sessionDir = join(tmpdir(), "supervisor-message-assets-test");
+    mkdirSync(join(sessionDir, "recordings"), { recursive: true });
+    writeFileSync(join(sessionDir, "recordings", "e2e.webm"), "recording");
     const options = createRuntimeOptions();
     options.sessionDir = sessionDir;
     let patchedId = "";
@@ -171,7 +173,7 @@ describe("extension runtime events", () => {
         toolName: "browser",
         content: [{ type: "text", text: "Browser recording saved" }],
         details: {
-          action: "stop_recording",
+          action: "complete",
           path: join(sessionDir, "recordings", "e2e.webm"),
         },
       },
@@ -520,7 +522,7 @@ describe("extension runtime events", () => {
 
     expect(sendToChild).toHaveBeenCalledWith(23, "check the follow-up", {
       source: "spawn_agent:parent:1",
-      background: undefined,
+      background: false,
       urgency: "normal",
     });
     expect(result.details).toMatchObject({

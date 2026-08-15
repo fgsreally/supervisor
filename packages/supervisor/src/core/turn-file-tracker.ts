@@ -125,6 +125,7 @@ export class TurnFileTracker {
   private modified = new Set<string>();
   private deleted = new Set<string>();
   private pending = new Map<string, PendingTool>();
+  private baselinePaths = new Set<string>();
 
   constructor(cwd: string, turnIndex: number) {
     this.cwd = cwd;
@@ -137,6 +138,8 @@ export class TurnFileTracker {
     this.modified.clear();
     this.deleted.clear();
     this.pending.clear();
+    const baseline = readGitWorktreeChanges(this.cwd);
+    this.baselinePaths = new Set([...baseline.added, ...baseline.modified, ...baseline.deleted]);
   }
 
   onToolStart(toolCallId: string, toolName: string, args: unknown): void {
@@ -191,9 +194,10 @@ export class TurnFileTracker {
 
   finishTurn(): TurnRecord {
     const worktree = readGitWorktreeChanges(this.cwd);
-    for (const path of worktree.added) this.added.add(path);
-    for (const path of worktree.modified) this.modified.add(path);
-    for (const path of worktree.deleted) this.deleted.add(path);
+    for (const path of worktree.added) if (!this.baselinePaths.has(path)) this.added.add(path);
+    for (const path of worktree.modified)
+      if (!this.baselinePaths.has(path)) this.modified.add(path);
+    for (const path of worktree.deleted) if (!this.baselinePaths.has(path)) this.deleted.add(path);
     return {
       index: this.turnIndex,
       startedAt: this.startedAt,

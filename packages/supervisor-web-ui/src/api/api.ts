@@ -164,7 +164,7 @@ export interface Session {
   errorMsg?: string | null;
   /** Current workflow stage label (was meta.workflow.stage). */
   stage?: string | null;
-  /** Whether the shadow agent is enabled (was meta.shadowDisabled === false — inverted). */
+  /** Whether Shadow observation is enabled (was meta.shadowDisabled === false — inverted). */
   shadowEnabled?: boolean;
   currentTaskId?: number | null;
   meta: Record<string, unknown>;

@@ -18,7 +18,7 @@ const baseProps = {
 };
 
 describe("ChatSessionMenu", () => {
-  it("only exposes an enable switch for the shadow agent", async () => {
+  it("only exposes an enable switch for Shadow observation", async () => {
     const wrapper = mount(ChatSessionMenu, {
       props: baseProps,
       global: {

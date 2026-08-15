@@ -14,34 +14,19 @@ import {
 } from "../../extension/builtin/ensure.js";
 import { writeLog } from "../../i18n/logs.js";
 
-export const PACKAGED_AGENT_KINDS = ["shadow", "btw", "intro", "coding", "smart-router"] as const;
+export const PACKAGED_AGENT_KINDS = ["coding", "smart-router"] as const;
 export type PackagedAgentKind = (typeof PACKAGED_AGENT_KINDS)[number];
-const ACTIVE_PACKAGED_AGENT_KINDS: readonly PackagedAgentKind[] = [
-  "shadow",
-  "btw",
-  "coding",
-  "smart-router",
-];
+export type PackagedAgentPromptKind = "intro" | PackagedAgentKind;
+const LEGACY_UTILITY_AGENT_NAMES = ["Shadow", "BTW"] as const;
 
 const PACKAGED_AGENT_LABELS: Record<
-  PackagedAgentKind,
+  PackagedAgentPromptKind,
   {
     name: string;
     description: string;
     toolsPreset: "readonly" | "coding" | "none";
   }
 > = {
-  shadow: {
-    name: "Shadow",
-    description: "Silent shadow observer for session memory and lightweight guidance",
-    toolsPreset: "none",
-  },
-  btw: {
-    name: "BTW",
-    description:
-      "BTW 侧问提示词种子（会话复用父 Session 的 Agent，运行时强制 readonly，不再单独作为会话 Agent）",
-    toolsPreset: "readonly",
-  },
   intro: {
     name: "Intro",
     description: "Supervisor guide and extension authoring assistant",
@@ -63,7 +48,10 @@ export function isBuiltinAgent(agent: Pick<Agent, "isBuiltin"> | undefined): boo
   return agent?.isBuiltin === true;
 }
 
-export function findPackagedAgentId(db: SupervisorDb, kind: PackagedAgentKind): number | undefined {
+export function findPackagedAgentId(
+  db: SupervisorDb,
+  kind: PackagedAgentPromptKind,
+): number | undefined {
   const label = PACKAGED_AGENT_LABELS[kind];
   for (const agent of db.listAgents()) {
     if (agent.isBuiltin && agent.name === label.name) return agent.id;
@@ -114,6 +102,47 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
   ensureBuiltinExtensionResources(db);
   ensureAgentBuiltinExtensionBindings(db, agent.id);
   return agent.id;
+}
+
+/** Reassign sessions from utility Agents removed by the Watson/BTW redesign, then delete the rows. */
+function removeLegacyUtilityAgents(db: SupervisorDb): void {
+  const legacyIds = db
+    .listAgents()
+    .filter(
+      (agent) =>
+        agent.isBuiltin && LEGACY_UTILITY_AGENT_NAMES.includes(agent.name as "Shadow" | "BTW"),
+    )
+    .map((agent) => agent.id);
+  if (legacyIds.length === 0) return;
+
+  const replacement =
+    findPackagedAgentId(db, "coding") ??
+    db
+      .listAgents()
+      .find(
+        (agent) =>
+          agent.backendType === "native" &&
+          !LEGACY_UTILITY_AGENT_NAMES.includes(agent.name as "Shadow" | "BTW"),
+      )?.id;
+  if (replacement === undefined) return;
+
+  db.db.transaction(() => {
+    for (const id of legacyIds) {
+      db.db
+        .prepare(
+          `UPDATE sessions
+           SET agent_id = COALESCE(
+             CASE WHEN spawn_type = 'btw'
+               THEN (SELECT parent.agent_id FROM sessions AS parent WHERE parent.id = sessions.parent_id)
+             END,
+             ?
+           )
+           WHERE agent_id = ?`,
+        )
+        .run(replacement, id);
+      db.deleteAgent(id);
+    }
+  })();
 }
 
 function ensureExternalAgent(
@@ -246,12 +275,13 @@ export function ensurePackagedAgents(db: SupervisorDb): void {
         : "curl -fsSL https://mimo.xiaomi.com/install | bash",
     avatar: "/icons/mimo.png",
   });
-  for (const kind of ACTIVE_PACKAGED_AGENT_KINDS) {
+  for (const kind of PACKAGED_AGENT_KINDS) {
     const id = ensurePackagedAgent(db, kind);
     if (id === undefined) {
       writeLog("warn", "agent.noProviderPackaged", { kind });
     }
   }
+  removeLegacyUtilityAgents(db);
 }
 
 const BUILTIN_ASSISTANT_NAME = "Pi 助手";

@@ -49,7 +49,7 @@ describe("supervisor: SupervisorDb", () => {
   });
 
   it("lists all instances, newest first", () => {
-    insertSession(db, {
+    const older = insertSession(db, {
       status: "running",
       created_at: 1000,
       last_active_at: 1000,
@@ -59,6 +59,8 @@ describe("supervisor: SupervisorDb", () => {
       created_at: 2000,
       last_active_at: 2000,
     });
+    db.db.prepare("UPDATE sessions SET last_active_at = ? WHERE id = ?").run(2000, newer.id);
+    db.db.prepare("UPDATE sessions SET last_active_at = ? WHERE id = ?").run(1000, older.id);
     const list = db.list();
     expect(list).toHaveLength(2);
     expect(list[0].id).toBe(newer.id);

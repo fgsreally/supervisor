@@ -123,53 +123,46 @@ describe("packaged agents", () => {
   });
 
   it("loads packaged prompt files", () => {
-    expect(loadPackagedAgentPrompt("shadow")).toContain("Shadow Agent");
     expect(loadPackagedAgentPrompt("intro")).toContain("Intro");
-    expect(loadPackagedAgentPrompt("btw")).toContain("read-only side question agent");
     expect(loadPackagedAgentPrompt("coding")).toContain("coding agent");
     expect(loadPackagedAgentPrompt("coding")).not.toContain("Available tools");
     expect(loadPackagedAgentPrompt("coding")).not.toContain("多 session");
   });
 
-  it("marks all packaged agents built-in with a spawn type", () => {
+  it("creates only real packaged Agents, not Watson/Session utility roles", () => {
     configureModel();
     ensurePackagedAgents(db);
-    const shadowId = findPackagedAgentId(db, "shadow");
     const introId = findPackagedAgentId(db, "intro");
-    const btwId = findPackagedAgentId(db, "btw");
     const codingId = findPackagedAgentId(db, "coding");
     const smartRouterId = findPackagedAgentId(db, "smart-router");
-    expect(shadowId).toBeDefined();
-    expect(introId).toBeDefined();
-    expect(btwId).toBeDefined();
+    expect(introId).toBeUndefined();
+    expect(db.listAgents().some((agent) => agent.name === "Shadow" || agent.name === "BTW")).toBe(
+      false,
+    );
     expect(codingId).toBeDefined();
     expect(smartRouterId).toBeDefined();
 
-    const shadow = db.getAgent(shadowId!);
-    const intro = db.getAgent(introId!);
-    const btw = db.getAgent(btwId!);
     const coding = db.getAgent(codingId!);
     const smartRouter = db.getAgent(smartRouterId!);
-    expect(shadow?.isBuiltin).toBe(true);
-    expect(intro?.isBuiltin).toBe(true);
     expect(coding?.isBuiltin).toBe(true);
-    expect(shadow?.spawnType).toBe("shadow");
-    expect(intro?.spawnType).toBe("intro");
-    expect(coding?.spawnType).toBe("coding");
-    expect(shadow?.meta).toEqual({});
-    expect(intro?.meta).toEqual({});
     expect(coding?.meta).toEqual({});
-    expect(shadow?.toolsPreset).toBe("none");
-    expect(shadow?.homeDir).toBeNull();
-    expect(intro?.toolsPreset).toBe("coding");
     expect(coding?.toolsPreset).toBe("coding");
     expect(smartRouter?.toolsPreset).toBe("readonly");
-    expect(smartRouter?.systemPrompt).toContain("用户可以编辑");
-    expect(btw?.toolsPreset).toBe("readonly");
-    expect(btw?.isBuiltin).toBe(true);
-    expect(isBuiltinAgent(shadow)).toBe(true);
-    expect(isBuiltinAgent(intro)).toBe(true);
+    expect(smartRouter?.systemPrompt).toContain("Users may edit this routing policy");
     expect(isBuiltinAgent(coding)).toBe(true);
+  });
+
+  it("removes legacy Shadow and BTW Agent rows", () => {
+    configureModel();
+    const modelId = db.listModels()[0]!.id;
+    db.insertAgent({ name: "Shadow", model_id: modelId, is_builtin: true, meta: {} });
+    db.insertAgent({ name: "BTW", model_id: modelId, is_builtin: true, meta: {} });
+
+    ensurePackagedAgents(db);
+
+    expect(db.listAgents().some((agent) => agent.name === "Shadow" || agent.name === "BTW")).toBe(
+      false,
+    );
   });
 
   it("preserves a user-edited Smart Router prompt", () => {
@@ -186,11 +179,11 @@ describe("packaged agents", () => {
   it("does not rewrite an existing packaged agent row", () => {
     configureModel();
     ensurePackagedAgents(db);
-    const shadowId = findPackagedAgentId(db, "shadow")!;
-    db.updateAgent(shadowId, { name: "Local Shadow" });
+    const codingId = findPackagedAgentId(db, "coding")!;
+    db.updateAgent(codingId, { name: "Local Coding" });
 
     ensurePackagedAgents(db);
 
-    expect(db.getAgent(shadowId)?.name).toBe("Local Shadow");
+    expect(db.getAgent(codingId)?.name).toBe("Local Coding");
   });
 });

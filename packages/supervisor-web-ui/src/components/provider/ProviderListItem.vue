@@ -18,11 +18,11 @@
     <div class="provider-list-item__content">
       <div class="provider-list-item__heading">
         <span class="provider-list-item__name">{{ provider.name }}</span>
-        <span v-if="provider.slug" class="provider-list-item__builtin-badge">内置</span>
-        <span v-if="!provider.isEnabled" class="provider-list-item__disabled-badge">已禁用</span>
+        <span v-if="provider.slug" class="provider-list-item__builtin-badge">{{ t("provider.builtin") }}</span>
+        <span v-if="!provider.isEnabled" class="provider-list-item__disabled-badge">{{ t("provider.disabled") }}</span>
       </div>
       <div class="provider-list-item__meta">
-        {{ provider.models.length }} 个模型
+        {{ t("provider.modelCount", { count: provider.models.length }) }}
       </div>
     </div>
   </div>
@@ -30,12 +30,14 @@
 
 <script setup lang="ts">
 import type { UIProvider } from "@/types/ui";
+import { useI18n } from "@/i18n";
 import ProviderAvatar from "@/components/provider/ProviderAvatar.vue";
 
 const props = defineProps<{
   provider: UIProvider;
   active?: boolean;
 }>();
+const { t } = useI18n();
 
 defineEmits<{ select: [id: string]; contextmenu: [event: MouseEvent] }>();
 </script>

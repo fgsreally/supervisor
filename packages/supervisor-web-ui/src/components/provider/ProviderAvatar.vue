@@ -1,6 +1,6 @@
 <template>
   <span
-    class="provider-avatar inline-flex items-center justify-center rounded-md shrink-0 shadow-sm"
+    class="provider-avatar"
     :class="[
       resolvedIcon ? 'provider-avatar--icon' : fallbackClass,
       { 'provider-avatar--monochrome': isMonochrome },
@@ -49,9 +49,28 @@ const fallbackClass = computed(() => providerAvatarClass(props.providerId));
 
 <style scoped>
 .provider-avatar--icon {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--app-radius-control);
+  box-shadow: var(--app-shadow-control);
   background: var(--app-settings-card);
   border: 1px solid var(--app-border-subtle);
   color: var(--app-text-primary);
+}
+
+.provider-avatar {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--app-radius-control);
+  box-shadow: var(--app-shadow-control);
 }
 
 .provider-avatar__img {

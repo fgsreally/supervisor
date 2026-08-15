@@ -1,6 +1,6 @@
 <template>
   <span
-    class="agent-avatar inline-flex items-center justify-center rounded-md shrink-0 shadow-sm"
+    class="agent-avatar"
     :class="[
       icon ? 'agent-avatar--image' : fallbackClass,
       { 'agent-avatar--bundled': bundledColor },
@@ -44,8 +44,27 @@ const fallbackClass = computed(() => agentAvatarClass(props.agentId));
 
 <style scoped>
 .agent-avatar--image {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--app-radius-control);
+  box-shadow: var(--app-shadow-control);
   background: var(--app-settings-card);
   border: 1px solid var(--app-border-subtle);
+}
+
+.agent-avatar {
+  display: inline-flex;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--app-radius-control);
+  box-shadow: var(--app-shadow-control);
 }
 
 .agent-avatar--bundled {

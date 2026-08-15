@@ -18,3 +18,12 @@ export type SyncMeta = {
 };
 
 export type MessageStorageKind = "indexeddb" | "capacitor" | "memory";
+
+export type ClientCacheRecord = {
+  scope: string;
+  cacheKey: string;
+  schemaVersion: number;
+  payload: unknown;
+  savedAt: number;
+  syncedAt: number | null;
+};

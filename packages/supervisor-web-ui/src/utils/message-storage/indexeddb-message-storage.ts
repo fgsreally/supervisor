@@ -1,10 +1,11 @@
 import { MessageStorage } from "./message-storage";
-import type { SyncMeta, TurnIndex } from "./types";
+import type { ClientCacheRecord, SyncMeta, TurnIndex } from "./types";
 
 const DB_NAME = "supervisor-session-archive";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_TURNS = "turns";
 const STORE_SYNC = "syncMeta";
+const STORE_CACHE = "clientCache";
 
 function turnKey(sessionId: string, turnId: string): string {
   return `${sessionId}\0${turnId}`;
@@ -39,6 +40,9 @@ export class IndexedDBMessageStorage extends MessageStorage {
         }
         if (!db.objectStoreNames.contains(STORE_SYNC)) {
           db.createObjectStore(STORE_SYNC, { keyPath: "sessionId" });
+        }
+        if (!db.objectStoreNames.contains(STORE_CACHE)) {
+          db.createObjectStore(STORE_CACHE, { keyPath: "id" });
         }
       };
       openReq.onsuccess = () => resolve(openReq.result);
@@ -144,6 +148,31 @@ export class IndexedDBMessageStorage extends MessageStorage {
         if (row.sessionId) ids.add(row.sessionId);
       }
       return [...ids];
+    });
+  }
+
+  private cacheId(scope: string, cacheKey: string): string {
+    return `${scope}\0${cacheKey}`;
+  }
+
+  async getClientCache(scope: string, cacheKey: string): Promise<ClientCacheRecord | null> {
+    return this.withStore(STORE_CACHE, "readonly", async (tx) => {
+      const row = await request(tx.objectStore(STORE_CACHE).get(this.cacheId(scope, cacheKey)));
+      if (!row) return null;
+      const { id: _id, ...record } = row as ClientCacheRecord & { id: string };
+      return record;
+    });
+  }
+
+  async putClientCache(record: ClientCacheRecord): Promise<void> {
+    await this.withStore(STORE_CACHE, "readwrite", async (tx) => {
+      await request(tx.objectStore(STORE_CACHE).put({ ...record, id: this.cacheId(record.scope, record.cacheKey) }));
+    });
+  }
+
+  async deleteClientCache(scope: string, cacheKey: string): Promise<void> {
+    await this.withStore(STORE_CACHE, "readwrite", async (tx) => {
+      await request(tx.objectStore(STORE_CACHE).delete(this.cacheId(scope, cacheKey)));
     });
   }
 }

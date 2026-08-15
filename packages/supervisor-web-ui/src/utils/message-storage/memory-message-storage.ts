@@ -1,5 +1,5 @@
 import { MessageStorage } from "./message-storage";
-import type { SyncMeta, TurnIndex } from "./types";
+import type { ClientCacheRecord, SyncMeta, TurnIndex } from "./types";
 
 /** In-process fallback when IndexedDB / Capacitor SQLite are unavailable. */
 export class MemoryMessageStorage extends MessageStorage {
@@ -8,6 +8,7 @@ export class MemoryMessageStorage extends MessageStorage {
 
   private turns = new Map<string, Map<string, TurnIndex>>();
   private syncMeta = new Map<string, SyncMeta>();
+  private clientCache = new Map<string, ClientCacheRecord>();
 
   async init(): Promise<void> {
     // no-op
@@ -48,5 +49,21 @@ export class MemoryMessageStorage extends MessageStorage {
   async listCachedSessionIds(): Promise<string[]> {
     const ids = new Set<string>([...this.turns.keys(), ...this.syncMeta.keys()]);
     return [...ids];
+  }
+
+  private cacheId(scope: string, cacheKey: string): string {
+    return `${scope}\0${cacheKey}`;
+  }
+
+  async getClientCache(scope: string, cacheKey: string): Promise<ClientCacheRecord | null> {
+    return this.clientCache.get(this.cacheId(scope, cacheKey)) ?? null;
+  }
+
+  async putClientCache(record: ClientCacheRecord): Promise<void> {
+    this.clientCache.set(this.cacheId(record.scope, record.cacheKey), record);
+  }
+
+  async deleteClientCache(scope: string, cacheKey: string): Promise<void> {
+    this.clientCache.delete(this.cacheId(scope, cacheKey));
   }
 }

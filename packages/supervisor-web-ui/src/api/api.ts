@@ -1048,6 +1048,35 @@ export async function listProjects(): Promise<Project[]> {
   return projects.map(mapProject);
 }
 
+export type ClientCacheSyncRequest = {
+  resources: Array<{ key: string; queryKey?: string; savedAt?: number }>;
+};
+
+export type ClientCacheSyncResponse = {
+  resources: Array<{
+    key: string;
+    queryKey?: string;
+    status: "updated" | "unchanged" | "deleted";
+    data?: unknown;
+    syncedAt: number;
+  }>;
+};
+
+export function syncClientCache(request: ClientCacheSyncRequest): Promise<ClientCacheSyncResponse> {
+  return postJson<ClientCacheSyncResponse>("/client-cache/sync", request).then((response) => ({
+    ...response,
+    resources: response.resources.map((resource) => {
+      if (resource.data === undefined) return resource;
+      if (resource.key === "agents") return { ...resource, data: (resource.data as RawAgent[]).map(mapAgent) };
+      if (resource.key === "projects") return { ...resource, data: (resource.data as RawProject[]).map(mapProject) };
+      if (resource.key === "providers") return { ...resource, data: (resource.data as RawProvider[]).map(mapProvider) };
+      if (resource.key === "providers:models") return { ...resource, data: (resource.data as RawModel[]).map(mapModel) };
+      if (resource.key === "sessions") return { ...resource, data: (resource.data as RawSession[]).map(mapSession) };
+      return resource;
+    }),
+  }));
+}
+
 export async function createProject(options: CreateProjectRequest): Promise<Project> {
   const project = await postJson<RawProject>("/projects", options);
   return mapProject(project);

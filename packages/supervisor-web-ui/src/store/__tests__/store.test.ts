@@ -1,6 +1,7 @@
 import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAgentStore, useProviderStore, useRootStore, useSessionStore } from "../index";
+import { resetMessageStorageForTests } from "@/utils/message-storage";
 
 // Mock API module
 vi.mock("@/api", () => ({
@@ -30,6 +31,7 @@ vi.mock("@/api", () => ({
   updateProviderModel: vi.fn(),
   deleteProviderModel: vi.fn(),
   getGlobalResources: vi.fn(),
+  syncClientCache: vi.fn().mockResolvedValue({ resources: [] }),
 }));
 
 import * as api from "@/api";
@@ -37,6 +39,7 @@ import * as api from "@/api";
 describe("Session Store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    resetMessageStorageForTests();
     vi.resetAllMocks();
   });
 
@@ -117,6 +120,7 @@ describe("Session Store", () => {
 describe("Agent Store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    resetMessageStorageForTests();
     vi.resetAllMocks();
   });
 
@@ -166,6 +170,7 @@ describe("Agent Store", () => {
 describe("Provider Store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
+    resetMessageStorageForTests();
     vi.resetAllMocks();
   });
 

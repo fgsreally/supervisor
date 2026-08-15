@@ -4,7 +4,7 @@ import {
   type SQLiteDBConnection,
 } from "@capacitor-community/sqlite";
 import { MessageStorage } from "./message-storage";
-import type { SyncMeta, TurnIndex } from "./types";
+import type { ClientCacheRecord, SyncMeta, TurnIndex } from "./types";
 
 const DB_NAME = "supervisor_session_archive";
 
@@ -45,6 +45,15 @@ export class CapacitorMessageStorage extends MessageStorage {
         updated_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS turns_by_session ON turns(session_id, created_at);
+      CREATE TABLE IF NOT EXISTS client_cache (
+        scope TEXT NOT NULL,
+        cache_key TEXT NOT NULL,
+        schema_version INTEGER NOT NULL,
+        payload TEXT NOT NULL,
+        saved_at INTEGER NOT NULL,
+        synced_at INTEGER,
+        PRIMARY KEY (scope, cache_key)
+      );
     `);
   }
 
@@ -145,5 +154,37 @@ export class CapacitorMessageStorage extends MessageStorage {
       if (id) ids.add(id);
     }
     return [...ids];
+  }
+
+  async getClientCache(scope: string, cacheKey: string): Promise<ClientCacheRecord | null> {
+    const result = await this.requireDb().query(
+      `SELECT * FROM client_cache WHERE scope = ? AND cache_key = ?`,
+      [scope, cacheKey],
+    );
+    const row = result.values?.[0] as
+      | { scope: string; cache_key: string; schema_version: number; payload: string; saved_at: number; synced_at: number | null }
+      | undefined;
+    if (!row) return null;
+    return {
+      scope: row.scope,
+      cacheKey: row.cache_key,
+      schemaVersion: row.schema_version,
+      payload: JSON.parse(row.payload),
+      savedAt: row.saved_at,
+      syncedAt: row.synced_at,
+    };
+  }
+
+  async putClientCache(record: ClientCacheRecord): Promise<void> {
+    await this.requireDb().run(
+      `INSERT OR REPLACE INTO client_cache
+       (scope, cache_key, schema_version, payload, saved_at, synced_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [record.scope, record.cacheKey, record.schemaVersion, JSON.stringify(record.payload), record.savedAt, record.syncedAt],
+    );
+  }
+
+  async deleteClientCache(scope: string, cacheKey: string): Promise<void> {
+    await this.requireDb().run(`DELETE FROM client_cache WHERE scope = ? AND cache_key = ?`, [scope, cacheKey]);
   }
 }

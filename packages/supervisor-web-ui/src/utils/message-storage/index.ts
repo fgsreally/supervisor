@@ -12,4 +12,4 @@ export {
   bootstrapMessageArchives,
   type BootstrapArchiveProgress,
 } from "./bootstrap-message-archives";
-export type { MessageStorageKind, SyncMeta, TurnIndex } from "./types";
+export type { ClientCacheRecord, MessageStorageKind, SyncMeta, TurnIndex } from "./types";

@@ -1,4 +1,4 @@
-import type { MessageStorageKind, SyncMeta, TurnIndex } from "./types";
+import type { ClientCacheRecord, MessageStorageKind, SyncMeta, TurnIndex } from "./types";
 
 /**
  * Local message archive adapter.
@@ -22,6 +22,10 @@ export abstract class MessageStorage {
 
   /** Session ids that have any local cache (for reconcile with remote list). */
   abstract listCachedSessionIds(): Promise<string[]>;
+
+  abstract getClientCache(scope: string, cacheKey: string): Promise<ClientCacheRecord | null>;
+  abstract putClientCache(record: ClientCacheRecord): Promise<void>;
+  abstract deleteClientCache(scope: string, cacheKey: string): Promise<void>;
 
   /**
    * Drop local caches for sessions missing from the remote list

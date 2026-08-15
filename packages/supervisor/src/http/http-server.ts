@@ -185,6 +185,7 @@ const API_PATH_PREFIXES = [
   "/uploaded-icons",
   "/approvals",
   "/watson",
+  "/client-cache",
   "/logs",
 ];
 
@@ -953,6 +954,73 @@ export function createHttpServer(
   });
 
   // ============ Agent Endpoints ============
+
+  // POST /client-cache/sync — read-only canonical snapshots for cache refresh.
+  app.post("/client-cache/sync", async (c) => {
+    const body = await c.req
+      .json<{ resources?: Array<{ key?: unknown; queryKey?: unknown }> }>()
+      .catch((): { resources?: Array<{ key?: unknown; queryKey?: unknown }> } => ({}));
+    const resources = Array.isArray(body.resources) ? body.resources : [];
+    const syncedAt = Date.now();
+    try {
+      type ClientCacheSyncResult = {
+        key: string;
+        queryKey?: string;
+        status: "updated" | "unchanged" | "deleted";
+        data?: unknown;
+        syncedAt: number;
+      };
+      const result: ClientCacheSyncResult[] = (
+        await Promise.all(resources.map(async (item): Promise<ClientCacheSyncResult[]> => {
+        const key = typeof item.key === "string" ? item.key : "";
+        const queryKey = typeof item.queryKey === "string" ? item.queryKey : undefined;
+        if (!key) return [];
+        if (key === "agents") return [{ key, queryKey, status: "updated" as const, data: manager.listAgents(), syncedAt }];
+        if (key === "projects") return [{ key, queryKey, status: "updated" as const, data: manager.listProjects(), syncedAt }];
+        if (key === "providers") return [{ key, queryKey, status: "updated" as const, data: manager.listProviders().map(toProviderResponse), syncedAt }];
+        if (key === "providers:models" && queryKey) {
+          const providerId = parseIntegerId(queryKey);
+          if (providerId === null) return [];
+          return [{ key, queryKey, status: "updated" as const, data: manager.listModelsByProvider(providerId).map(toModelResponse), syncedAt }];
+        }
+        if (key === "resources:global") return [{ key, queryKey, status: "updated" as const, data: manager.resolveGlobalResources(), syncedAt }];
+        if (key === "agent-resources" && queryKey) {
+          const separator = queryKey.indexOf(":");
+          const agentId = parseIntegerId(separator < 0 ? queryKey : queryKey.slice(0, separator));
+          const cwd = separator < 0 ? process.cwd() : queryKey.slice(separator + 1) || process.cwd();
+          if (agentId === null) return [];
+          return [{ key, queryKey, status: "updated" as const, data: await manager.resolveAgentResources(agentId, cwd), syncedAt }];
+        }
+        if (key === "sessions") {
+          let filter: { status?: SessionStatus; parentId?: number | null; projectId?: number } = {};
+          if (queryKey) {
+            try {
+              const query = JSON.parse(queryKey) as Record<string, unknown>;
+              if (typeof query.status === "string") filter.status = query.status as SessionStatus;
+              if (query.parentId === null) filter.parentId = null;
+              else if (typeof query.parentId === "string") filter.parentId = parseIntegerId(query.parentId) ?? undefined;
+              if (typeof query.projectId === "string") filter.projectId = parseIntegerId(query.projectId) ?? undefined;
+            } catch {
+              // Ignore malformed query keys and return the canonical full list.
+            }
+          }
+          const sessions = manager.list(filter);
+          const previews = manager.getLastMessagePreviews(sessions.map((s) => s.id));
+          return [{ key, queryKey, status: "updated" as const, data: sessions.map((s) => ({ ...s, lastMessagePreview: previews.get(s.id) ?? null })), syncedAt }];
+        }
+        if (key === "messages" && queryKey) {
+          const id = parseIntegerId(queryKey);
+          if (id === null) return [];
+          return [{ key, queryKey, status: "updated" as const, data: manager.getSessionMessagesPage(id, { limit: 80, view: "lite" }), syncedAt }];
+        }
+        return [];
+        }))
+      ).flat();
+      return c.json({ resources: result });
+    } catch (error) {
+      return jsonError(c, 500, error instanceof Error ? error.message : String(error));
+    }
+  });
 
   // GET /agents
   app.get("/agents", (c) => {

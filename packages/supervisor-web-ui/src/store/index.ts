@@ -31,6 +31,8 @@ import {
   viewPreferences,
 } from "@/utils/view-preferences";
 import { createMessageStorage } from "@/utils/message-storage";
+import { loadClientResource, invalidateClientResource } from "@/utils/client-data";
+import { cacheKey, writeClientCache } from "@/utils/client-cache";
 import {
   loadSessionListCache,
   projectFromListCache,
@@ -95,7 +97,7 @@ export const useSessionStore = defineStore("session", () => {
   const projects = ref<Project[]>(listCache?.projects.map(projectFromListCache) ?? []);
   const currentSessionId = ref<string | null>(null);
   const messages = ref<Record<string, SessionTreeEntry[]>>({});
-  const messageCursors = ref<Record<string, { oldestRowId: number | null; hasMore: boolean }>>({});
+  const messageCursors = ref<Record<string, { oldestRowId: number | null; newestRowId: number | null; hasMore: boolean }>>({});
   /** Session list fetch error only — not shared with import / agent detect / chat ops. */
   const sessionsListError = ref<string | null>(null);
 
@@ -124,7 +126,15 @@ export const useSessionStore = defineStore("session", () => {
   async function fetchProjects() {
     root.clearError();
     try {
-      projects.value = sortByProjectPreference(await api.listProjects());
+      await loadClientResource<Project[]>({
+        key: "projects",
+        read: api.listProjects,
+        apply: (value) => {
+          projects.value = sortByProjectPreference(value);
+          persistSessionListCache();
+        },
+        loading: (value) => { root.loading.sessions = value; },
+      });
       persistSessionListCache();
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch projects");
@@ -139,6 +149,7 @@ export const useSessionStore = defineStore("session", () => {
       const index = projects.value.findIndex((p) => p.id === project.id);
       if (index >= 0) projects.value[index] = project;
       else projects.value.unshift(project);
+      invalidateClientResource("projects");
       persistSessionListCache();
       return project;
     } catch (err) {
@@ -154,6 +165,7 @@ export const useSessionStore = defineStore("session", () => {
       const index = projects.value.findIndex((p) => p.id === id);
       if (index >= 0) projects.value[index] = project;
       else projects.value.unshift(project);
+      invalidateClientResource("projects");
       persistSessionListCache();
       return project;
     } catch (err) {
@@ -178,7 +190,16 @@ export const useSessionStore = defineStore("session", () => {
       sessionsListError.value = null;
     }
     try {
-      sessions.value = await api.listSessions(hasQuery ? query : undefined);
+      await loadClientResource<Session[]>({
+        key: "sessions",
+        queryKey: hasQuery ? JSON.stringify(query) : undefined,
+        read: () => api.listSessions(hasQuery ? query : undefined),
+        apply: (value) => {
+          sessions.value = value;
+          if (!hasQuery) persistSessionListCache();
+        },
+        loading: (value) => { if (!quiet) root.loading.sessions = value; },
+      });
       sessionsListError.value = null;
       // Full list only: prune local message caches + persist slim list cache.
       if (!hasQuery) {
@@ -204,13 +225,16 @@ export const useSessionStore = defineStore("session", () => {
   async function fetchSession(id: string) {
     root.clearError();
     try {
-      const session = await api.getSession(id);
-      const index = sessions.value.findIndex((s) => s.id === id);
-      if (index >= 0) {
-        sessions.value[index] = session;
-      } else {
-        sessions.value.push(session);
-      }
+      const session = await loadClientResource<Session>({
+        key: "session",
+        queryKey: id,
+        read: () => api.getSession(id),
+        apply: (value) => {
+          const index = sessions.value.findIndex((s) => s.id === id);
+          if (index >= 0) sessions.value[index] = value;
+          else sessions.value.push(value);
+        },
+      });
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch session");
@@ -223,6 +247,7 @@ export const useSessionStore = defineStore("session", () => {
     try {
       const session = await api.createSession(options);
       sessions.value.unshift(session);
+      invalidateClientResource("sessions");
       persistSessionListCache();
       return session;
     } catch (err) {
@@ -291,6 +316,9 @@ export const useSessionStore = defineStore("session", () => {
 
     try {
       await api.deleteSession(id);
+      invalidateClientResource("sessions");
+      invalidateClientResource("session", id);
+      invalidateClientResource("messages", id);
       void createMessageStorage()
         .then(async (storage) => {
           for (const removedId of removedIds) {
@@ -327,6 +355,8 @@ export const useSessionStore = defineStore("session", () => {
       const updated = await api.updateSessionMeta(id, serverMeta);
       const session = getSessionById.value(id);
       if (session) Object.assign(session, updated);
+      invalidateClientResource("sessions");
+      invalidateClientResource("session", id);
       return updated;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to update session meta");
@@ -341,21 +371,36 @@ export const useSessionStore = defineStore("session", () => {
   }
 
   async function fetchSessionMessages(id: string) {
-    root.loading.messages = true;
     root.clearError();
     try {
-      const page = await api.getSessionMessagesPage(id, { limit: 80, view: "lite" });
-      messages.value[id] = page.messages;
-      messageCursors.value[id] = {
-        oldestRowId: page.oldestRowId,
-        hasMore: page.hasMore,
-      };
+      const page = await loadClientResource<api.SessionMessagesPage>({
+        key: "messages",
+        queryKey: id,
+        read: () => api.getSessionMessagesPage(id, { limit: 80, view: "lite" }),
+        apply: (value) => {
+          const previous = messages.value[id] ?? [];
+          const seen = new Set(previous.map((entry) => entry.id));
+          messages.value[id] = previous.length
+            ? [...previous, ...value.messages.filter((entry) => !seen.has(entry.id))]
+            : value.messages;
+          const previousCursor = messageCursors.value[id];
+          messageCursors.value[id] = {
+            oldestRowId:
+              previousCursor?.oldestRowId == null
+                ? value.oldestRowId
+                : value.oldestRowId == null
+                  ? previousCursor.oldestRowId
+                  : Math.min(previousCursor.oldestRowId, value.oldestRowId),
+            newestRowId: value.newestRowId ?? previousCursor?.newestRowId ?? null,
+            hasMore: previousCursor ? previousCursor.hasMore && value.hasMore : value.hasMore,
+          };
+        },
+        loading: (value) => { root.loading.messages = value; },
+      });
       return page.messages;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch messages");
       throw err;
-    } finally {
-      root.loading.messages = false;
     }
   }
 
@@ -377,8 +422,15 @@ export const useSessionStore = defineStore("session", () => {
       messages.value[id] = [...older, ...existing];
       messageCursors.value[id] = {
         oldestRowId: page.oldestRowId,
+        newestRowId: page.newestRowId,
         hasMore: page.hasMore,
       };
+      void writeClientCache(cacheKey("messages", id), {
+        messages: messages.value[id] ?? [],
+        oldestRowId: page.oldestRowId,
+        newestRowId: page.newestRowId,
+        hasMore: page.hasMore,
+      });
       return page;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch older messages");
@@ -616,10 +668,14 @@ export const useAgentStore = defineStore("agent", () => {
 
   // Actions
   async function fetchAgents() {
-    root.loading.agents = true;
     root.clearError();
     try {
-      agents.value = await api.listAgents();
+      await loadClientResource<Agent[]>({
+        key: "agents",
+        read: api.listAgents,
+        apply: (value) => { agents.value = value; },
+        loading: (value) => { root.loading.agents = value; },
+      });
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch agents");
       throw err;
@@ -633,6 +689,7 @@ export const useAgentStore = defineStore("agent", () => {
     root.clearError();
     try {
       agents.value = await api.detectExternalAgents();
+      invalidateClientResource("agents");
       return agents.value;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to detect external agents");
@@ -698,6 +755,7 @@ export const useAgentStore = defineStore("agent", () => {
     try {
       const agent = await api.createAgent(options);
       agents.value.push(agent);
+      invalidateClientResource("agents");
       return agent;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create agent");
@@ -713,6 +771,7 @@ export const useAgentStore = defineStore("agent", () => {
       if (index >= 0) {
         agents.value[index] = agent;
       }
+      invalidateClientResource("agents");
       return agent;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to update agent");
@@ -726,6 +785,7 @@ export const useAgentStore = defineStore("agent", () => {
       await api.deleteAgent(id);
       agents.value = agents.value.filter((a) => a.id !== id);
       delete agentResources.value[id];
+      invalidateClientResource("agents");
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to delete agent");
       throw err;
@@ -733,12 +793,15 @@ export const useAgentStore = defineStore("agent", () => {
   }
 
   async function fetchAgentResources(id: string, cwd?: string) {
-    root.loading.resources = true;
     root.clearError();
     try {
-      const resources = await api.getAgentResources(id, cwd);
-      agentResources.value[id] = resources;
-      return resources;
+      return await loadClientResource<api.AgentResources>({
+        key: "agent-resources",
+        queryKey: `${id}:${cwd ?? ""}`,
+        read: () => api.getAgentResources(id, cwd),
+        apply: (value) => { agentResources.value[id] = value; },
+        loading: (value) => { root.loading.resources = value; },
+      });
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch agent resources");
       throw err;
@@ -868,11 +931,14 @@ export const useProviderStore = defineStore("provider", () => {
 
   // Actions
   async function fetchProviders() {
-    root.loading.providers = true;
     root.clearError();
     try {
-      const list = await api.listProviders();
-      providers.value = list;
+      await loadClientResource<Provider[]>({
+        key: "providers",
+        read: api.listProviders,
+        apply: (value) => { providers.value = value; },
+        loading: (value) => { root.loading.providers = value; },
+      });
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch providers");
       throw err;
@@ -891,6 +957,7 @@ export const useProviderStore = defineStore("provider", () => {
       } else {
         providers.value.push(provider);
       }
+      invalidateClientResource("providers");
       return provider;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch provider");
@@ -903,6 +970,7 @@ export const useProviderStore = defineStore("provider", () => {
     try {
       const provider = await api.createProvider(options);
       providers.value.push(provider);
+      invalidateClientResource("providers");
       return provider;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create provider");
@@ -918,6 +986,7 @@ export const useProviderStore = defineStore("provider", () => {
       if (index >= 0) {
         providers.value[index] = provider;
       }
+      invalidateClientResource("providers");
       return provider;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to update provider");
@@ -931,6 +1000,7 @@ export const useProviderStore = defineStore("provider", () => {
       await api.deleteProvider(id);
       providers.value = providers.value.filter((p) => p.id !== id);
       delete models.value[id];
+      invalidateClientResource("providers");
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to delete provider");
       throw err;
@@ -940,9 +1010,12 @@ export const useProviderStore = defineStore("provider", () => {
   async function fetchModels(providerId: string) {
     root.clearError();
     try {
-      const list = await api.listProviderModels(providerId);
-      models.value[providerId] = list;
-      return list;
+      return await loadClientResource<Model[]>({
+        key: "providers:models",
+        queryKey: providerId,
+        read: () => api.listProviderModels(providerId),
+        apply: (value) => { models.value[providerId] = value; },
+      });
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch models");
       throw err;
@@ -1058,13 +1131,17 @@ export const useResourceStore = defineStore("resource", () => {
 
   // Actions
   async function fetchGlobalResources() {
-    root.loading.resources = true;
     root.clearError();
     try {
-      const resources = await api.getGlobalResources();
-      globalResources.value = resources;
-      resourceItems.value = layerFromApi(resources);
-      return resources;
+      return await loadClientResource<ResourceLayer>({
+        key: "resources:global",
+        read: api.getGlobalResources,
+        apply: (value) => {
+          globalResources.value = value;
+          resourceItems.value = layerFromApi(value);
+        },
+        loading: (value) => { root.loading.resources = value; },
+      });
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch resources");
       throw err;

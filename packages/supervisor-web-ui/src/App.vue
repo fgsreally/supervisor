@@ -432,6 +432,7 @@ const instancePickerMode = ref<"required" | "manage" | null>(
 const showInstancePicker = computed(() => instancePickerMode.value !== null);
 const instancePickerDismissible = computed(() => instancePickerMode.value === "manage");
 let appDataLoaded = false;
+let lastLoadedTab: MainTab | null = null;
 
 function openInstancePicker() {
   instancePickerMode.value = "manage";
@@ -461,6 +462,11 @@ function applyRoute() {
     else if (route.path === "/providers/new") providerPage.value = "add";
     else providerPage.value = "detail";
   } else if (tab === "resources") activeResourceId.value = id ?? activeResourceId.value;
+
+  if (tab !== lastLoadedTab) {
+    lastLoadedTab = tab;
+    void loadTabData(tab);
+  }
 
   if (!isMobile.value) return;
 
@@ -523,46 +529,53 @@ onMounted(() => {
   document.addEventListener("visibilitychange", onVisibilityChange);
 });
 
-function onStartupReady() {
-  appReady.value = true;
-  void loadAppData();
+async function onStartupReady() {
+  if (await loadAppData()) {
+    appReady.value = true;
+  }
 }
 
-async function loadAppData() {
-  if (appDataLoaded) return;
+async function loadAppData(): Promise<boolean> {
+  if (appDataLoaded) return true;
   appDataLoaded = true;
-  await Promise.all([
-    sessionStore.fetchProjects(),
-    sessionStore.fetchSessions(),
-    agentStore.detectExternalAgents(),
-    providerStore.fetchProviders().then(() => {
-      for (const p of providerStore.providers) {
-        void providerStore.fetchModels(p.id);
-      }
-    }),
-    resourceStore.fetchGlobalResources(),
-  ])
+  const initialTab = tabFromRoute(route);
+  lastLoadedTab = initialTab;
+  return await loadTabData(initialTab)
     .then(() => {
       if (route.path === "/" || route.path === "") {
         void router.replace("/chat");
       } else {
         applyRoute();
-        if (mainTab.value === "providers" && !activeProviderId.value) {
-          const first = providerStore.providers[0];
-          if (first) {
-            activeProviderId.value = first.id;
-            void providerStore.fetchModels(first.id);
-          }
-        }
-        if (mainTab.value === "resources" && !activeResourceId.value) {
-          activeResourceId.value = resourceStore.resourceItems[0]?.id ?? null;
-        }
       }
+      return true;
     })
     .catch((error) => {
       appDataLoaded = false;
       console.error(error);
+      return false;
     });
+}
+
+async function loadTabData(tab: MainTab): Promise<boolean> {
+  try {
+    if (tab === "chat") {
+      await Promise.all([sessionStore.fetchProjects(), sessionStore.fetchSessions()]);
+    } else if (tab === "contacts") {
+      await agentStore.fetchAgents();
+      void agentStore.detectExternalAgents().catch(() => undefined);
+    } else if (tab === "providers") {
+      await providerStore.fetchProviders();
+      if (!activeProviderId.value) activeProviderId.value = providerStore.providers[0]?.id ?? null;
+      if (activeProviderId.value) await providerStore.fetchModels(activeProviderId.value);
+    } else if (tab === "resources") {
+      await resourceStore.fetchGlobalResources();
+      if (!activeResourceId.value) activeResourceId.value = resourceStore.resourceItems[0]?.id ?? null;
+    }
+    return true;
+  } catch (error) {
+    console.error(error);
+    return false;
+  }
 }
 
 onBeforeUnmount(() => {

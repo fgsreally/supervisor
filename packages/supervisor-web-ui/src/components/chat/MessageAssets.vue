@@ -12,7 +12,7 @@
         v-else-if="kind(asset) === 'image'"
         type="button"
         class="asset-media-btn"
-        :title="`预览 ${label(asset)}`"
+        :title="t('imagePreview.open', { label: label(asset) })"
         @click="openPreview(asset)"
       >
         <img class="asset-media" :src="url(asset)" :alt="label(asset)" />
@@ -28,8 +28,10 @@
 <script setup lang="ts">
 import type { MessageAsset } from "@/types/chat-entry";
 import { openImagePreview } from "@/composables/use-image-preview";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ sessionId: string; assets: MessageAsset[] }>();
+const { t } = useI18n();
 
 function url(asset: MessageAsset): string {
   return `/sessions/${encodeURIComponent(props.sessionId)}/assets/${asset.scope}/${asset.path

@@ -8,7 +8,7 @@
         @click="open = !open"
       >
         <ChevronDown class="changes-header__chevron" :class="{ 'is-open': open }" />
-        <span>{{ files.length }} 个文件</span>
+        <span>{{ t("session.files.count", { count: files.length }) }}</span>
       </button>
     </div>
     <div class="changes-body" :class="{ 'is-open': open }">
@@ -41,6 +41,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { ChevronDown } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import FileTypeIcon from "../base/FileTypeIcon.vue";
 
 export interface SessionChangedFileView {
@@ -50,6 +51,7 @@ export interface SessionChangedFileView {
 }
 
 const props = defineProps<{ files: SessionChangedFileView[] }>();
+const { t } = useI18n();
 const open = ref(true);
 
 watch(

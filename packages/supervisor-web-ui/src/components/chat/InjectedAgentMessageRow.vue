@@ -13,19 +13,21 @@
     <div class="injected-content">
       <small>{{ senderName }}</small>
       <p>{{ text }}</p>
-      <span v-if="queued">等待处理</span>
+      <span v-if="queued">{{ t("chat.queued.waiting") }}</span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "@/i18n";
 import { useAgentStore, useSessionStore } from "@/store";
 import AgentAvatar from "../agent/AgentAvatar.vue";
 
 const props = defineProps<{ text: string; source: string; queued?: boolean }>();
 const sessions = useSessionStore();
 const agents = useAgentStore();
+const { t } = useI18n();
 
 const sourceId = computed(() => props.source.split(":").at(-1) ?? "");
 const sourceSession = computed(() =>
@@ -38,7 +40,7 @@ const sourceAgent = computed(() => {
   return agents.agents.find((item) => item.id === id);
 });
 const senderName = computed(
-  () => sourceAgent.value?.name ?? sourceSession.value?.title ?? "代理消息",
+  () => sourceAgent.value?.name ?? sourceSession.value?.title ?? t("chat.agentMessage"),
 );
 const agentId = computed(() => sourceAgent.value?.id ?? sourceSession.value?.agentId ?? "");
 const avatarIcon = computed(

@@ -4,13 +4,15 @@
     <div>
       <small>Shadow</small>
       <p>{{ text }}</p>
-      <span v-if="queued">等待主 Agent 处理</span>
+      <span v-if="queued">{{ t("chat.shadowWaiting") }}</span>
     </div>
   </div>
 </template>
 <script setup lang="ts">
 import { Sparkles } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 defineProps<{ text: string; queued?: boolean }>();
+const { t } = useI18n();
 </script>
 <style scoped>
 .shadow-message-row {

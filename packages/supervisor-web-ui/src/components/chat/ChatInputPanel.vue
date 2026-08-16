@@ -219,8 +219,8 @@ let mobileMediaQuery: MediaQueryList | null = null;
 let onMobileMediaChange: (() => void) | null = null;
 
 const composerPlaceholder = computed(() => {
-  if (isMobile.value) return "按住说话";
-  return props.placeholder ?? "输入消息";
+  if (isMobile.value) return t("chat.input.holdToSpeak");
+  return props.placeholder ?? t("chat.input.placeholder");
 });
 
 const voice = useVoiceRecognition(

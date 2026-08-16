@@ -44,6 +44,9 @@ import {
   type WorkspaceFileEntry,
 } from "../../utils/chat-autocomplete";
 import type { SlashCommandCatalog } from "../../utils/slash-command-source";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -75,7 +78,7 @@ const props = withDefaults(
     skillTrigger: "slash",
     disabled: false,
     editorHeight: 88,
-    placeholder: "输入消息",
+    placeholder: t("chat.input.placeholder"),
   },
 );
 

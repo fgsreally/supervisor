@@ -13,7 +13,7 @@
           <header
             class="chat-session-menu__header h-14 flex items-center justify-between px-4 border-b shrink-0"
           >
-            <span class="text-[15px] font-medium">聊天信息</span>
+            <span class="text-[15px] font-medium">{{ t("session.menu.title") }}</span>
             <button type="button" class="chat-session-menu__close" @click="emit('close')">
               <X class="w-5 h-5" />
             </button>
@@ -43,7 +43,7 @@
                 </div>
               </div>
               <div class="mt-4 flex items-center gap-2">
-                <span class="text-[12px] chat-session-menu__muted">会话头像</span>
+                <span class="text-[12px] chat-session-menu__muted">{{ t("session.menu.avatar") }}</span>
                 <button
                   v-for="color in SESSION_AVATAR_COLORS"
                   :key="color"
@@ -55,7 +55,7 @@
                 />
               </div>
               <label class="chat-session-menu__name mt-4">
-                <span>聊天标题</span>
+                <span>{{ t("session.menu.titleLabel") }}</span>
                 <input
                   :value="sessionTitle"
                   type="text"
@@ -68,7 +68,7 @@
                   v-if="showOpenCwd"
                   type="button"
                   class="chat-session-menu__open-cwd"
-                  title="在本机打开"
+                  :title="t('session.menu.openLocal')"
                   :disabled="openingCwd"
                   @click="onOpenCwd"
                 >
@@ -78,35 +78,33 @@
                   type="button"
                   class="chat-session-menu__cwd-path"
                   :class="{ 'is-expanded': cwdExpanded }"
-                  :title="cwdExpanded ? '收起' : '展开完整路径'"
+                  :title="cwdExpanded ? t('session.menu.collapsePath') : t('session.menu.expandPath')"
                   @click="cwdExpanded = !cwdExpanded"
                 >
                   <code>{{ cwd }}</code>
                 </button>
               </div>
               <p v-if="gitBranch" class="mt-2 text-[12px] chat-session-menu__muted break-all">
-                分支：<code class="text-[11px]">{{ gitBranch }}</code>
+                {{ t("session.menu.branch") }}：<code class="text-[11px]">{{ gitBranch }}</code>
               </p>
               <div v-if="!externalAgent" class="session-usage">
                 <div>
-                  <span>当前 Session 费用</span
+                  <span>{{ t("session.menu.sessionCost") }}</span
                   ><strong>{{ formatCost(usage?.cost.total ?? 0) }}</strong>
                 </div>
                 <p>
                   {{ formatTokens(usage?.totalTokens ?? 0) }} tokens ·
-                  {{ usage?.messages ?? 0 }} 条模型回复
+                  {{ t("session.menu.modelReplies", { count: usage?.messages ?? 0 }) }}
                 </p>
                 <small
-                  >输入 {{ formatTokens(usage?.input ?? 0) }} · 输出
-                  {{ formatTokens(usage?.output ?? 0) }} · 缓存
-                  {{ formatTokens((usage?.cacheRead ?? 0) + (usage?.cacheWrite ?? 0)) }}</small
+                  >{{ t("session.menu.tokenBreakdown", { input: formatTokens(usage?.input ?? 0), output: formatTokens(usage?.output ?? 0), cache: formatTokens((usage?.cacheRead ?? 0) + (usage?.cacheWrite ?? 0)) }) }}</small
                 >
               </div>
               <p v-if="sessionStatus === 'finish'" class="mt-3 text-[13px] text-[#07c160]">
-                会话已完成
+                {{ t("session.menu.completed") }}
               </p>
               <p v-else-if="sessionStatus === 'error'" class="mt-3 text-[13px] text-[#fa5151]">
-                合并失败，worktree 已保留
+                {{ t("session.menu.mergeFailed") }}
               </p>
             </section>
 
@@ -115,7 +113,7 @@
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
               @click="emit('btw')"
             >
-              <span>顺便问一下</span>
+              <span>{{ t("session.menu.btw") }}</span>
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
@@ -124,7 +122,7 @@
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
               @click="emit('search')"
             >
-              <span>查找聊天内容</span>
+              <span>{{ t("session.menu.search") }}</span>
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
@@ -134,7 +132,7 @@
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
               @click="emit('checkpoint')"
             >
-              <span>创建存档点</span>
+              <span>{{ t("session.menu.checkpoint") }}</span>
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
@@ -144,7 +142,7 @@
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
               @click="emit('rewind')"
             >
-              <span>时光倒流</span>
+              <span>{{ t("session.menu.rewind") }}</span>
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
@@ -154,7 +152,7 @@
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
               @click="emit('commit')"
             >
-              <span>提交代码变更</span>
+              <span>{{ t("session.menu.commit") }}</span>
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
@@ -163,7 +161,7 @@
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
               @click="emit('log')"
             >
-              <span>查看日志</span>
+              <span>{{ t("session.menu.logs") }}</span>
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
@@ -172,7 +170,7 @@
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
               @click="emit('files')"
             >
-              <span>查看工作区文件</span>
+              <span>{{ t("session.menu.files") }}</span>
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
@@ -182,7 +180,7 @@
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors"
               @click="emit('sync')"
             >
-              <span>同步项目修改</span>
+              <span>{{ t("session.menu.sync") }}</span>
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
@@ -192,14 +190,14 @@
               class="chat-session-menu__row w-full flex items-center justify-between px-5 py-3.5 text-[15px] border-b transition-colors text-[#576b95]"
               @click="emit('complete')"
             >
-              <span>完成会话</span>
+              <span>{{ t("session.menu.complete") }}</span>
               <ChevronRight class="w-4 h-4 chat-session-menu__chevron" />
             </button>
 
             <div
               class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
             >
-              <span class="text-[15px]">消息免打扰</span>
+              <span class="text-[15px]">{{ t("session.menu.muted") }}</span>
               <button
                 type="button"
                 role="switch"
@@ -218,7 +216,7 @@
             <div
               class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
             >
-              <span class="text-[15px]">显示思考过程</span>
+              <span class="text-[15px]">{{ t("session.menu.showThinking") }}</span>
               <button
                 type="button"
                 role="switch"
@@ -237,11 +235,11 @@
             <div
               class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
             >
-              <span class="text-[15px]">仅显示结论</span>
+              <span class="text-[15px]">{{ t("session.menu.conclusionOnly") }}</span>
               <button
                 type="button"
                 role="switch"
-                aria-label="外部执行仅显示结论"
+                :aria-label="t('session.menu.conclusionOnly')"
                 :aria-checked="viewPreferences.collapseExternalAgentDetails"
                 class="relative w-11 h-6 rounded-full transition-colors shrink-0"
                 :class="
@@ -261,11 +259,11 @@
             <div
               class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
             >
-              <span class="text-[15px]">分条显示回复</span>
+              <span class="text-[15px]">{{ t("session.menu.splitReplies") }}</span>
               <button
                 type="button"
                 role="switch"
-                aria-label="分条显示模型回复"
+                :aria-label="t('session.menu.splitReplies')"
                 :aria-checked="splitAssistantMessages"
                 class="relative w-11 h-6 rounded-full transition-colors"
                 :class="splitAssistantMessages ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
@@ -282,11 +280,11 @@
               v-if="!externalAgent"
               class="px-5 py-3.5 flex items-center justify-between border-b chat-session-menu__section"
             >
-              <span class="text-[15px]">影子代理</span>
+              <span class="text-[15px]">{{ t("session.menu.shadowAgent") }}</span>
               <button
                 type="button"
                 role="switch"
-                aria-label="启用影子代理"
+                :aria-label="t('session.menu.enableShadow')"
                 :aria-checked="shadowEnabled"
                 class="relative w-11 h-6 rounded-full transition-colors shrink-0"
                 :class="shadowEnabled ? 'bg-[#07c160]' : 'bg-[#e5e5e5]'"
@@ -303,14 +301,14 @@
               v-if="!externalAgent"
               class="px-5 py-4 border-b chat-session-menu__section session-agent-settings"
             >
-              <div class="text-[15px] mb-3">可用子代理</div>
+              <div class="text-[15px] mb-3">{{ t("session.menu.availableAgents") }}</div>
               <div class="session-agent-grid">
                 <button
                   v-for="agent in selectedSpawnAgents"
                   :key="`spawn-${agent.id}`"
                   type="button"
                   class="session-agent-card session-agent-card--selected"
-                  :title="`移除 ${agent.name}`"
+                  :title="t('session.menu.removeAgent', { name: agent.name })"
                   @click="toggleSpawned(agent.id)"
                 >
                   <AgentAvatar :agent-id="agent.id" :agent-name="agent.name" :icon="agent.avatar" />
@@ -321,8 +319,8 @@
                   v-if="availableSpawnAgents.length"
                   type="button"
                   class="session-agent-card session-agent-card--add"
-                  title="添加子代理"
-                  aria-label="添加子代理"
+                  :title="t('session.menu.addAgent')"
+                  :aria-label="t('session.menu.addAgent')"
                   @click="spawnAgentPickerOpen = true"
                 >
                   <span class="session-agent-card__add"><Plus /></span>
@@ -334,7 +332,7 @@
               v-if="childSessions.length"
               class="border-b chat-session-menu__section session-children"
             >
-              <div class="session-children__title text-[15px]">子会话</div>
+              <div class="session-children__title text-[15px]">{{ t("session.menu.childSessions") }}</div>
               <button
                 v-for="child in childSessions"
                 :key="child.id"
@@ -342,10 +340,10 @@
                 class="chat-session-menu__child-row"
                 @click="emit('navigate', child.id)"
               >
-                <span class="session-children__avatar">子</span>
+                <span class="session-children__avatar">{{ t("session.menu.childShort") }}</span>
                 <span class="session-children__copy">
                   <strong>{{ childSessionName(child) }}</strong>
-                  <small>{{ child.status === "finish" ? "已完成" : "进行中" }}</small>
+                  <small>{{ child.status === "finish" ? t("session.menu.completed") : t("session.menu.inProgress") }}</small>
                 </span>
                 <ChevronRight class="chat-session-menu__chevron" />
               </button>
@@ -358,7 +356,7 @@
 
   <UiDialog
     :open="spawnAgentPickerOpen"
-    title="选择子代理"
+    :title="t('session.menu.selectAgent')"
     show-close
     @close="spawnAgentPickerOpen = false"
   >
@@ -374,7 +372,7 @@
         <Plus />
       </button>
       <p v-if="!availableSpawnAgents.length" class="session-agent-picker__empty">
-        暂无可添加的子代理
+        {{ t("session.menu.noAvailableAgents") }}
       </p>
     </div>
   </UiDialog>
@@ -394,7 +392,7 @@ import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
 import type { SessionUsage } from "@/api";
 import { useI18n } from "@/i18n";
 
-const { locale } = useI18n();
+const { locale, t } = useI18n();
 
 function toggleExternalDetails() {
   viewPreferences.collapseExternalAgentDetails = !viewPreferences.collapseExternalAgentDetails;
@@ -503,10 +501,10 @@ async function onOpenCwd() {
   openingCwd.value = true;
   try {
     await openPath(target);
-    showUiMessage("已在本机打开工作目录", "success");
+    showUiMessage(t("session.menu.openedLocal"), "success");
   } catch (error) {
     cwdLocal.value = false;
-    showUiMessage(error instanceof Error ? error.message : "打开工作目录失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("session.menu.openLocalFailed"), "error");
   } finally {
     openingCwd.value = false;
   }
@@ -552,7 +550,7 @@ function addSpawned(agentId: string) {
 }
 
 function childSessionName(child: Pick<Session, "id" | "title">): string {
-  return child.title?.trim() ? child.title : `子会话 ${child.id}`;
+  return child.title?.trim() ? child.title : t("session.menu.childName", { id: child.id });
 }
 </script>
 

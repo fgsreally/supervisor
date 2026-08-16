@@ -1,7 +1,7 @@
 ﻿<template>
   <ResponsiveDialog
     :open="open"
-    :title="mode === 'search' ? '搜索 Skill' : '导入 Skill'"
+    :title="mode === 'search' ? t('resource.searchSkill') : t('resource.importSkill')"
     width="md"
     :size="mode === 'search' ? 'tall' : 'auto'"
     :dismiss-on-backdrop="!installingId"
@@ -16,7 +16,7 @@
               v-model="query"
               type="text"
               class="skill-install-input w-full rounded-md pl-8 pr-8 py-2 text-[13px]"
-              placeholder="搜索 skills.sh，例如 typescript / react"
+              :placeholder="t('resource.skillSearchPlaceholder')"
               :disabled="installingId !== null"
             />
             <Loader2
@@ -34,7 +34,7 @@
             class="flex-1 flex items-center justify-center text-[13px] skill-install-muted"
           >
             <Loader2 class="w-4 h-4 animate-spin mr-2" />
-            搜索中…
+            {{ t("common.searching") }}
           </div>
 
           <ul
@@ -55,7 +55,7 @@
               <button
                 type="button"
                 class="skill-install-icon-btn shrink-0"
-                :title="`安装 ${hit.name}`"
+                :title="t('resource.installNamed', { name: hit.name })"
                 :disabled="installingId !== null"
                 @click="installFromHit(hit)"
               >
@@ -69,19 +69,19 @@
             v-else-if="searched"
             class="flex-1 flex items-center justify-center text-[13px] skill-install-muted"
           >
-            未找到匹配的 Skill
+            {{ t("resource.noMatchingSkill") }}
           </div>
           <div
             v-else
             class="flex-1 flex items-center justify-center text-[13px] skill-install-muted text-center px-6"
           >
-            输入关键词搜索 skills.sh 公开目录
+            {{ t("resource.skillSearchHint") }}
           </div>
         </template>
 
         <template v-else>
           <label class="block text-[13px]">
-            <span class="skill-install-muted mb-1.5 block">源地址</span>
+            <span class="skill-install-muted mb-1.5 block">{{ t("resource.source") }}</span>
             <input
               ref="linkInputRef"
               v-model="link"
@@ -93,7 +93,7 @@
             />
           </label>
           <p class="text-[11px] skill-install-muted leading-relaxed">
-            支持 skills.sh 简写（owner/repo@skill）、GitHub 链接或本地目录。
+            {{ t("resource.skillImportHint") }}
           </p>
           <p v-if="linkError" class="text-[12px] skill-install-error">{{ linkError }}</p>
           <div class="flex justify-end">
@@ -105,7 +105,7 @@
             >
               <Loader2 v-if="installingId === '__link__'" class="w-4 h-4 animate-spin" />
               <Download v-else class="w-4 h-4" />
-              {{ installingId === "__link__" ? "安装中…" : "安装" }}
+              {{ installingId === "__link__" ? t("resource.installing") : t("resource.install") }}
             </button>
           </div>
         </template>
@@ -120,11 +120,13 @@ import { Download, Loader2, Search } from "lucide-vue-next";
 import { installSkill, searchSkills, type SkillsShSearchHit } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import ResponsiveDialog from "@/components/base/ResponsiveDialog/index.vue";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   open: boolean;
   mode: "search" | "link";
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   close: [];
@@ -211,7 +213,7 @@ async function installFromHit(hit: SkillsShSearchHit) {
   searchError.value = null;
   try {
     const resource = await installSkill(`${hit.source}@${hit.name}`, hit.name);
-    showUiMessage(`已安装 ${hit.name}`, "success");
+    showUiMessage(t("resource.installedNamed", { name: hit.name }), "success");
     emit("installed", resource.slug);
     emit("close");
   } catch (err) {
@@ -228,7 +230,7 @@ async function installFromLink() {
   linkError.value = null;
   try {
     const resource = await installSkill(source);
-    showUiMessage(`已安装 ${resource.slug}`, "success");
+    showUiMessage(t("resource.installedNamed", { name: resource.slug }), "success");
     emit("installed", resource.slug);
     emit("close");
   } catch (err) {

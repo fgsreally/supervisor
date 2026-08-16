@@ -30,26 +30,26 @@
 
         <div class="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-4 text-[14px]">
           <div>
-            <div class="resource-detail-subtitle text-[13px] mb-1">类型</div>
+            <div class="resource-detail-subtitle text-[13px] mb-1">{{ t("resource.type") }}</div>
             <div class="resource-detail-title">{{ kindLabel }}</div>
           </div>
 
           <div v-if="resourcePath">
-            <div class="resource-detail-subtitle text-[13px] mb-1">路径</div>
+            <div class="resource-detail-subtitle text-[13px] mb-1">{{ t("resource.path") }}</div>
             <div class="text-[11px] font-mono truncate resource-detail-path">
               {{ resourcePath }}
             </div>
           </div>
 
           <div>
-            <div class="resource-detail-subtitle text-[13px] mb-1">描述</div>
+            <div class="resource-detail-subtitle text-[13px] mb-1">{{ t("resource.description") }}</div>
             <div class="resource-detail-desc text-[13px] leading-relaxed whitespace-pre-wrap">
-              {{ resource.description || "—" }}
+              {{ resource.description || t("common.empty") }}
             </div>
           </div>
 
           <div v-if="isSkill">
-            <div class="resource-detail-subtitle text-[13px] mb-2">文件</div>
+            <div class="resource-detail-subtitle text-[13px] mb-2">{{ t("resource.files") }}</div>
             <div
               class="max-h-64 overflow-y-auto custom-scrollbar border rounded p-1 resource-detail-tree-wrap"
             >
@@ -75,8 +75,8 @@
             <UiActionButton
               variant="secondary"
               class="resource-detail-save shrink-0"
-              title="保存"
-              aria-label="保存"
+              :title="t('common.save')"
+              :aria-label="t('common.save')"
               :loading="saving"
               :disabled="saving || !dirty"
               @click="saveContent"
@@ -91,7 +91,7 @@
             <button
               type="button"
               class="list-header-btn list-header-btn--danger shrink-0"
-              title="从全局库删除"
+              :title="t('resource.removeFromGlobal')"
               :disabled="deleting"
               @click="removeResource"
             >
@@ -130,6 +130,7 @@ import { uninstallCatalogResource, upsertResourceContent, type CatalogResourceKi
 import { useResourceStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
+import { useI18n } from "@/i18n";
 import { getResourceById } from "@/utils/resources-ui";
 import {
   getSkillFileLanguage,
@@ -146,6 +147,7 @@ const props = defineProps<{
 const emit = defineEmits<{ back: []; deleted: [] }>();
 
 const resourceStore = useResourceStore();
+const { t } = useI18n();
 
 const resource = computed(() =>
   props.resourceId ? getResourceById(resourceStore.resourceItems, props.resourceId) : undefined,
@@ -249,9 +251,9 @@ const kindLabel = computed(() => {
     case "prompts":
       return "Template";
     case "mcp":
-      return "MCP 配置";
+      return t("resource.mcpConfig");
     default:
-      return "—";
+      return t("common.empty");
   }
 });
 
@@ -286,11 +288,11 @@ async function saveContent() {
     });
     await resourceStore.fetchGlobalResources();
     saveState.value = "saved";
-    showUiMessage("已保存", "success");
+    showUiMessage(t("common.saved"), "success");
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : String(err);
     saveState.value = "changed";
-    showUiMessage(actionError.value || "保存失败", "error");
+    showUiMessage(actionError.value || t("common.saveFailed"), "error");
   } finally {
     saving.value = false;
   }
@@ -301,8 +303,8 @@ async function removeResource() {
   const kind = catalogKind();
   if (!r || !kind || (kind !== "prompt" && kind !== "mcp")) return;
   const ok = await requestUiDeleteConfirm({
-    title: "删除资源",
-    message: `确定删除 ${r.name}？`,
+    title: t("resource.delete"),
+    message: t("resource.deleteConfirm", { name: r.name }),
   });
   if (!ok) return;
   deleting.value = true;
@@ -310,7 +312,7 @@ async function removeResource() {
   try {
     await uninstallCatalogResource(kind, r.name);
     await resourceStore.fetchGlobalResources();
-    showUiMessage("已删除", "success");
+    showUiMessage(t("common.deleted"), "success");
     emit("deleted");
   } catch (err) {
     actionError.value = err instanceof Error ? err.message : String(err);

@@ -1041,6 +1041,18 @@ const messages: TranslationMessages = {
   "agent.globalResourcePath": "Global resource directory: ",
   "agent.createSuccess": "Agent created",
   "agent.createFailed": "Failed to create Agent",
+  "common.saving": "Saving…",
+  "common.saveFailed": "Save failed",
+  "provider.presets": "Quick presets",
+  "provider.namePlaceholder": "e.g. OpenAI",
+  "provider.enableHint": "Allow bound Agents to use this model provider",
+  "provider.baseUrlDefaultPlaceholder": "Leave blank to use the default endpoint",
+  "provider.apiKeyCreatePlaceholder": "Enter provider API key",
+  "provider.apiKeyKeepPlaceholder": "Leave blank to keep the existing API key",
+  "provider.manageModels": "Manage models",
+  "provider.modelsSaved": "Model list saved",
+  "provider.created": "Provider created",
+  "provider.saved": "Provider saved",
 };
 
 export default messages;

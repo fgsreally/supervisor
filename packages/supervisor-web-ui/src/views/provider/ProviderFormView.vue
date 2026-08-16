@@ -21,10 +21,10 @@
     <div class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4">
       <template v-if="!modelsOnly">
         <section class="provider-form-card rounded-lg border p-4 space-y-4">
-          <div class="text-[14px] font-medium provider-form-title">基本信息</div>
+          <div class="text-[14px] font-medium provider-form-title">{{ t("provider.basicInfo") }}</div>
 
           <div v-if="isNew" class="provider-form-field">
-            <div class="provider-form-subtitle text-[13px] md:pt-2">快速预设</div>
+            <div class="provider-form-subtitle text-[13px] md:pt-2">{{ t("provider.presets") }}</div>
             <div class="flex flex-wrap gap-2 min-w-0">
               <button
                 v-for="preset in PROVIDER_PRESETS"
@@ -46,17 +46,17 @@
           </div>
 
           <label class="provider-form-field text-[13px]">
-            <span class="provider-form-subtitle md:pt-2">名称</span>
+            <span class="provider-form-subtitle md:pt-2">{{ t("provider.name") }}</span>
             <input
               v-model="draft.name"
               type="text"
-              placeholder="例如 OpenAI"
+              :placeholder="t('provider.namePlaceholder')"
               class="provider-form-input w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
             />
           </label>
 
           <div class="provider-form-field">
-            <div class="provider-form-subtitle text-[13px] md:pt-2">图标</div>
+            <div class="provider-form-subtitle text-[13px] md:pt-2">{{ t("provider.icon") }}</div>
             <div class="flex items-center min-w-0">
               <input
                 ref="iconInput"
@@ -69,7 +69,7 @@
                 type="button"
                 class="provider-form-avatar-upload relative w-14 h-14 rounded-md overflow-hidden"
                 :disabled="uploading"
-                title="上传图标"
+                :title="t('provider.uploadIcon')"
                 @click="iconInput?.click()"
               >
                 <ProviderAvatar
@@ -90,17 +90,17 @@
           </div>
 
           <label v-if="!isNew" class="provider-form-field text-[13px]">
-            <span class="provider-form-subtitle md:pt-2">启用</span>
+            <span class="provider-form-subtitle md:pt-2">{{ t("provider.enabled") }}</span>
             <span class="provider-form-switch-row">
               <input v-model="draft.isEnabled" type="checkbox" class="sr-only" />
               <span class="provider-form-toggle" aria-hidden="true"><span /></span>
-              <span class="provider-form-title">允许绑定的智能代理使用此模型供应商</span>
+              <span class="provider-form-title">{{ t("provider.enableHint") }}</span>
             </span>
           </label>
         </section>
 
         <section class="provider-form-card rounded-lg border p-4 space-y-4">
-          <div class="text-[14px] font-medium provider-form-title">连接配置</div>
+          <div class="text-[14px] font-medium provider-form-title">{{ t("provider.connection") }}</div>
 
           <div class="provider-form-field">
             <div class="provider-form-subtitle text-[13px] md:pt-2">Wire Protocol</div>
@@ -131,7 +131,7 @@
             <input
               v-model="baseUrlInput"
               type="text"
-              placeholder="留空使用默认端点"
+              :placeholder="t('provider.baseUrlDefaultPlaceholder')"
               class="provider-form-input w-full px-3 py-2 border rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
             />
           </label>
@@ -142,7 +142,7 @@
               <input
                 v-model="apiKeyInput"
                 :type="showApiKey ? 'text' : 'password'"
-                :placeholder="isNew ? '输入供应商 API Key' : '留空则保留已有 API Key'"
+                :placeholder="isNew ? t('provider.apiKeyCreatePlaceholder') : t('provider.apiKeyKeepPlaceholder')"
                 autocomplete="new-password"
                 spellcheck="false"
                 class="provider-form-input w-full pl-3 pr-10 py-2 border rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
@@ -150,7 +150,7 @@
               <button
                 type="button"
                 class="provider-form-secret-toggle absolute inset-y-0 right-0 w-10 flex items-center justify-center"
-                :title="showApiKey ? '隐藏 API Key' : '显示 API Key'"
+                :title="showApiKey ? t('provider.hideApiKey') : t('provider.showApiKey')"
                 @click.prevent="showApiKey = !showApiKey"
               >
                 <EyeOff v-if="showApiKey" class="w-4 h-4" />
@@ -178,7 +178,7 @@
         class="provider-form-cancel-btn px-4 py-2 rounded-md border text-[13px]"
         @click="emit('cancel')"
       >
-        取消
+        {{ t("common.cancel") }}
       </button>
       <button
         type="button"
@@ -186,7 +186,7 @@
         :disabled="!canSave || saving"
         @click="save"
       >
-        {{ saving ? "保存中…" : modelsOnly ? "完成" : "保存" }}
+        {{ saving ? t("common.saving") : modelsOnly ? t("common.done") : t("common.save") }}
       </button>
     </footer>
   </div>
@@ -203,6 +203,7 @@ import { useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
 import { uploadIcon } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   providerId?: string | null;
@@ -210,6 +211,7 @@ const props = defineProps<{
   modelsOnly?: boolean;
   requiredSetup?: boolean;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   cancel: [];
@@ -226,8 +228,8 @@ const showApiKey = ref(false);
 const selectedPresetId = ref<string | null>(null);
 
 const title = computed(() => {
-  if (props.modelsOnly) return "管理模型";
-  return isNew.value ? "添加模型供应商" : "编辑模型供应商";
+  if (props.modelsOnly) return t("provider.manageModels");
+  return isNew.value ? t("provider.add") : t("provider.edit");
 });
 
 function emptyDraft(): UIProvider {
@@ -380,7 +382,7 @@ async function save() {
       if (!id || !canSave.value) return;
       await syncModels(id, draft.value.models);
       emit("saved", id);
-      showUiMessage("模型列表已保存", "success");
+      showUiMessage(t("provider.modelsSaved"), "success");
       return;
     }
 
@@ -401,7 +403,7 @@ async function save() {
       });
       await syncModels(created.id, payload.models);
       emit("saved", created.id);
-      showUiMessage("供应商创建成功", "success");
+      showUiMessage(t("provider.created"), "success");
     } else {
       const patch: import("@/api").UpdateProviderRequest = {
         name: payload.name,
@@ -414,10 +416,10 @@ async function save() {
       await providerStore.updateProvider(payload.id, patch);
       await syncModels(payload.id, payload.models);
       emit("saved", payload.id);
-      showUiMessage("供应商保存成功", "success");
+      showUiMessage(t("provider.saved"), "success");
     }
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "保存失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("common.saveFailed"), "error");
   } finally {
     saving.value = false;
   }

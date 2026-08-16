@@ -1041,6 +1041,18 @@ const messages: TranslationMessages = {
   "agent.globalResourcePath": "\u5168\u5c40\u8d44\u6e90\u76ee\u5f55\uff1a",
   "agent.createSuccess": "\u667a\u80fd\u4ee3\u7406\u521b\u5efa\u6210\u529f",
   "agent.createFailed": "\u667a\u80fd\u4ee3\u7406\u521b\u5efa\u5931\u8d25",
+  "common.saving": "\u4fdd\u5b58\u4e2d\u2026",
+  "common.saveFailed": "\u4fdd\u5b58\u5931\u8d25",
+  "provider.presets": "\u5feb\u901f\u9884\u8bbe",
+  "provider.namePlaceholder": "\u4f8b\u5982 OpenAI",
+  "provider.enableHint": "\u5141\u8bb8\u7ed1\u5b9a\u7684 Agent \u4f7f\u7528\u6b64\u6a21\u578b\u4f9b\u5e94\u5546",
+  "provider.baseUrlDefaultPlaceholder": "\u7559\u7a7a\u4f7f\u7528\u9ed8\u8ba4\u7aef\u70b9",
+  "provider.apiKeyCreatePlaceholder": "\u8f93\u5165\u4f9b\u5e94\u5546 API Key",
+  "provider.apiKeyKeepPlaceholder": "\u7559\u7a7a\u5219\u4fdd\u7559\u5df2\u6709 API Key",
+  "provider.manageModels": "\u7ba1\u7406\u6a21\u578b",
+  "provider.modelsSaved": "\u6a21\u578b\u5217\u8868\u5df2\u4fdd\u5b58",
+  "provider.created": "\u4f9b\u5e94\u5546\u521b\u5efa\u6210\u529f",
+  "provider.saved": "\u4f9b\u5e94\u5546\u4fdd\u5b58\u6210\u529f",
 };
 
 export default messages;

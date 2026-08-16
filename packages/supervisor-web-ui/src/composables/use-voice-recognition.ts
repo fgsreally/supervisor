@@ -44,10 +44,30 @@ const DEFAULT_BAR_COUNT = 4;
 const DEFAULT_IDLE_HEIGHT = 4;
 const DEFAULT_MIN_HEIGHT = 4;
 const DEFAULT_MAX_HEIGHT = 15;
-const SILENCE_THRESHOLD = 0.025;
+const SILENCE_THRESHOLD = 0.08;
 /** 官方双向流式建议单包约 200ms（16kHz PCM16 mono = 6400 bytes） */
 const TARGET_PCM_BYTES = 6400;
 const SETTINGS_CACHE_MS = 30_000;
+
+function unwrapSpeechError(message: string): string {
+  const raw = message.trim();
+  try {
+    const parsed = JSON.parse(raw) as { error?: unknown };
+    if (typeof parsed?.error === "string" && parsed.error.trim()) return parsed.error.trim();
+  } catch {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        const parsed = JSON.parse(raw.slice(start, end + 1)) as { error?: unknown };
+        if (typeof parsed?.error === "string" && parsed.error.trim()) return parsed.error.trim();
+      } catch {
+        /* keep */
+      }
+    }
+  }
+  return message;
+}
 
 let cachedSettings: { at: number; value: SupervisorSettings } | null = null;
 
@@ -160,9 +180,16 @@ export function useVoiceRecognition(
     dispatchPcm(frame.buffer);
   }
 
+  function sendPcm(buffer: ArrayBuffer) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    // Send a Uint8Array view. The Node Elysia adapter crashes on ArrayBuffer.includes
+    // and swallows JSON frames whose payload happens to contain "ping".
+    socket.send(new Uint8Array(buffer));
+  }
+
   function dispatchPcm(buffer: ArrayBuffer) {
     if (sendAudioToSocket && socket?.readyState === WebSocket.OPEN) {
-      socket.send(buffer);
+      sendPcm(buffer);
       return;
     }
     pcmQueue.push(buffer);
@@ -175,7 +202,7 @@ export function useVoiceRecognition(
 
   function flushPcmQueue() {
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    for (const buffer of pcmQueue) socket.send(buffer);
+    for (const buffer of pcmQueue) sendPcm(buffer);
     pcmQueue = [];
   }
 
@@ -316,7 +343,9 @@ export function useVoiceRecognition(
           }
         } else if (message.type === "speech.error") {
           window.clearTimeout(timeout);
-          const error = new Error(message.payload?.message ?? t("voice.recognitionFailed"));
+          const error = new Error(
+            unwrapSpeechError(message.payload?.message ?? t("voice.recognitionFailed")),
+          );
           reject(error);
           handlers.onError?.(error.message);
           cleanup();
@@ -367,35 +396,27 @@ export function useVoiceRecognition(
   }
 
   function startWaveformMonitor() {
-    const timeData = new Uint8Array(analyser?.fftSize ?? 512);
+    const freqData = new Uint8Array(analyser?.frequencyBinCount ?? 256);
     const tick = () => {
       if (!recording.value) return;
 
-      let volume = 0;
-      if (analyser) {
-        analyser.getByteTimeDomainData(timeData);
+      if (analyser) analyser.getByteFrequencyData(freqData);
+      const usable = freqData.subarray(2);
+      let energy = 0;
+      const next = Array.from({ length: barCount }, (_, index) => {
+        const start = Math.floor((index / barCount) * usable.length);
+        const end = Math.max(start + 1, Math.floor(((index + 1) / barCount) * usable.length));
         let sum = 0;
-        for (let index = 0; index < timeData.length; index++) {
-          const sample = (timeData[index]! - 128) / 128;
-          sum += sample * sample;
-        }
-        volume = Math.min(1, Math.sqrt(sum / timeData.length) * 12);
-      }
-
-      if (volume < SILENCE_THRESHOLD) {
-        waveformBars.value = Array.from({ length: barCount }, () => idleHeight);
-        waveformRaf = requestAnimationFrame(tick);
-        return;
-      }
-
-      const now = performance.now();
-      const amplitude = volume * 0.92;
-
-      waveformBars.value = Array.from({ length: barCount }, (_, index) => {
-        const wobble = Math.sin(now / 105 + index * 0.45);
-        const level = idleHeight + (0.5 + wobble * 0.5) * amplitude * (maxHeight - idleHeight);
-        return Math.round(Math.max(minHeight, Math.min(maxHeight, level)));
+        for (let sample = start; sample < end; sample++) sum += usable[sample] ?? 0;
+        const avg = sum / Math.max(1, end - start) / 255;
+        energy += avg;
+        return Math.round(Math.max(minHeight, Math.min(maxHeight, idleHeight + avg * (maxHeight - idleHeight))));
       });
+
+      waveformBars.value =
+        energy / barCount < SILENCE_THRESHOLD
+          ? Array.from({ length: barCount }, () => idleHeight)
+          : next;
       waveformRaf = requestAnimationFrame(tick);
     };
     cancelAnimationFrame(waveformRaf);

@@ -1,5 +1,5 @@
 <template>
-  <div class="chat-input-shell shrink-0">
+  <div class="chat-input-shell shrink-0" :class="{ 'chat-input-shell--holding': holdRecording }">
     <div class="chat-input-hold-stage">
       <div
         v-if="holdRecording"
@@ -62,7 +62,7 @@
               :skill-trigger="skillTrigger"
               :disabled="disabled"
               :placeholder="composerPlaceholder"
-              @send="emit('send', { text, images: pendingImages })"
+              @send="requestSend"
               @paste-image="addPendingImage"
             />
           </div>
@@ -74,7 +74,7 @@
             :shadow-running="shadowRunning"
             :hold-recording="holdRecording"
             @action="onToolbarAction"
-            @send="emit('send', { text, images: pendingImages })"
+            @send="requestSend"
             @interrupt="emit('interrupt')"
           />
           <input
@@ -126,6 +126,7 @@ const props = defineProps<{
   workspaceId: string;
   agentId?: string;
   disabled?: boolean;
+  sendDisabled?: boolean;
   interrupting?: boolean;
   shadowRunning?: boolean;
   placeholder?: string;
@@ -190,8 +191,16 @@ const text = computed({
 });
 
 const canSend = computed(
-  () => (!!text.value.trim() || pendingImages.value.length > 0) && !props.disabled,
+  () =>
+    (!!text.value.trim() || pendingImages.value.length > 0) &&
+    !props.disabled &&
+    !props.sendDisabled,
 );
+
+function requestSend() {
+  if (props.disabled || props.sendDisabled) return;
+  emit("send", { text: text.value, images: pendingImages.value });
+}
 
 const isNarrow = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
 const isMobile = ref(isNarrow);
@@ -249,6 +258,7 @@ const voice = useVoiceRecognition(
       if (holdRecording.value) {
         holdRecording.value = false;
         willCancel.value = false;
+        unbindHoldWindowListeners();
         text.value = voiceBaseText.value;
       } else {
         toolbarVoiceActive.value = false;
@@ -290,6 +300,37 @@ function isInsideHoldZone(clientX: number, clientY: number): boolean {
   );
 }
 
+function bindHoldWindowListeners() {
+  window.addEventListener("pointermove", onHoldWindowPointerMove, { capture: true });
+  window.addEventListener("pointerup", onHoldWindowPointerUp, { capture: true });
+}
+
+function unbindHoldWindowListeners() {
+  window.removeEventListener("pointermove", onHoldWindowPointerMove, { capture: true });
+  window.removeEventListener("pointerup", onHoldWindowPointerUp, { capture: true });
+}
+
+function updateHoldCancelFromPoint(clientX: number, clientY: number) {
+  willCancel.value = !isInsideHoldZone(clientX, clientY);
+}
+
+function releaseHoldFromPoint(clientX: number, clientY: number) {
+  if (!holdRecording.value) return;
+  if (isInsideHoldZone(clientX, clientY)) void finishHoldAndSend();
+  else cancelHoldRecording();
+}
+
+function onHoldWindowPointerMove(event: PointerEvent) {
+  if (holdPointerId !== event.pointerId || !holdRecording.value) return;
+  event.preventDefault();
+  updateHoldCancelFromPoint(event.clientX, event.clientY);
+}
+
+function onHoldWindowPointerUp(event: PointerEvent) {
+  if (holdPointerId !== event.pointerId) return;
+  onHoldPointerUp(event);
+}
+
 function onHoldPointerDown(event: PointerEvent) {
   if (!isMobile.value || props.disabled || holdRecording.value || voice.recording.value) return;
   if (event.pointerType === "mouse") return;
@@ -314,22 +355,29 @@ function onHoldPointerDown(event: PointerEvent) {
     voiceBaseText.value = text.value;
     holdRecording.value = true;
     willCancel.value = false;
+    bindHoldWindowListeners();
     void voice.start();
   }, HOLD_LONG_PRESS_MS);
 }
 
 function onHoldPointerMove(event: PointerEvent) {
   if (holdPointerId !== event.pointerId) return;
-  if (!holdRecording.value) return;
-  willCancel.value = !isInsideHoldZone(event.clientX, event.clientY);
+  if (!holdRecording.value) {
+    if (!isInsideHoldZone(event.clientX, event.clientY)) clearLongPressTimer();
+    return;
+  }
+  event.preventDefault();
+  updateHoldCancelFromPoint(event.clientX, event.clientY);
 }
 
 async function finishHoldAndSend() {
-  const transcript = await voice.stop();
+  if (!holdRecording.value) return;
   holdRecording.value = false;
   willCancel.value = false;
+  unbindHoldWindowListeners();
   releaseHoldPointerCapture();
   holdPointerId = null;
+  const transcript = await voice.stop();
 
   const chunk = transcript.trim();
   if (!chunk) {
@@ -338,14 +386,20 @@ async function finishHoldAndSend() {
   }
   const sep = voiceBaseText.value && !/\s$/.test(voiceBaseText.value) ? " " : "";
   const finalText = voiceBaseText.value + sep + chunk;
+  if (props.disabled || props.sendDisabled) {
+    text.value = finalText;
+    return;
+  }
   emit("send", { text: finalText, images: pendingImages.value });
 }
 
 function cancelHoldRecording() {
+  if (!holdRecording.value) return;
   voice.abort();
   holdRecording.value = false;
   willCancel.value = false;
   text.value = voiceBaseText.value;
+  unbindHoldWindowListeners();
   releaseHoldPointerCapture();
   holdPointerId = null;
 }
@@ -356,11 +410,7 @@ function onHoldPointerUp(event: PointerEvent) {
   clearLongPressTimer();
 
   if (holdRecording.value) {
-    if (willCancel.value) {
-      cancelHoldRecording();
-    } else {
-      void finishHoldAndSend();
-    }
+    releaseHoldFromPoint(event.clientX, event.clientY);
     return;
   }
 
@@ -373,7 +423,7 @@ function onHoldPointerCancel(event: PointerEvent) {
   if (holdPointerId !== event.pointerId) return;
   clearLongPressTimer();
   if (holdRecording.value) {
-    cancelHoldRecording();
+    updateHoldCancelFromPoint(event.clientX, event.clientY);
     return;
   }
   releaseHoldPointerCapture();
@@ -483,6 +533,7 @@ watch(
 
 onBeforeUnmount(() => {
   clearLongPressTimer();
+  unbindHoldWindowListeners();
   if (mobileMediaQuery && onMobileMediaChange) {
     mobileMediaQuery.removeEventListener("change", onMobileMediaChange);
   }
@@ -612,8 +663,13 @@ defineExpose({ focus, clearAfterSend, addPendingImage });
   background: var(--app-chat-bg);
 }
 
+.chat-input-shell--holding {
+  touch-action: none;
+}
+
 .chat-input-hold-stage {
   position: relative;
+  z-index: 4;
 }
 
 .chat-input-island {
@@ -627,7 +683,7 @@ defineExpose({ focus, clearAfterSend, addPendingImage });
 }
 
 .chat-input-island--holding {
-  overflow: hidden;
+  overflow: visible;
   border-color: transparent;
   background: transparent;
   touch-action: none;
@@ -653,6 +709,7 @@ defineExpose({ focus, clearAfterSend, addPendingImage });
   font-size: 12px;
   line-height: 1.2;
   color: var(--app-text-secondary, #888);
+  text-shadow: 0 0 12px var(--app-chat-bg);
   user-select: none;
   pointer-events: none;
 }
@@ -662,31 +719,72 @@ defineExpose({ focus, clearAfterSend, addPendingImage });
 }
 
 .hold-voice-button {
+  --hold-voice-glow: var(--app-accent, #07c160);
   display: flex;
   flex: 1;
   align-items: center;
   justify-content: center;
+  position: relative;
   width: 100%;
   min-height: 100%;
-  border-radius: 10px;
-  background: var(--app-accent, #07c160);
   color: #fff;
   user-select: none;
   touch-action: none;
-  transition: background-color 0.12s ease;
 }
 
 .hold-voice-button--cancel {
-  background: #fa5151;
+  --hold-voice-glow: #fa5151;
+}
+
+.hold-voice-button::before {
+  content: "";
+  position: fixed;
+  left: 50%;
+  bottom: 0;
+  z-index: 0;
+  width: 240vw;
+  height: min(85vh, 720px);
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 95% 75% at 50% 100%,
+    color-mix(in srgb, var(--hold-voice-glow) 38%, transparent) 0%,
+    color-mix(in srgb, var(--hold-voice-glow) 18%, transparent) 32%,
+    color-mix(in srgb, var(--hold-voice-glow) 7%, transparent) 58%,
+    transparent 78%
+  );
+  filter: blur(56px);
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  animation: hold-voice-breathe 3.2s ease-in-out infinite;
 }
 
 .hold-voice-button__bars {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 2px;
   width: min(82%, 340px);
   height: 36px;
+}
+
+@keyframes hold-voice-breathe {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: translateX(-50%) scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: translateX(-50%) scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hold-voice-button::before {
+    animation: none;
+  }
 }
 
 .hold-voice-button__bar {

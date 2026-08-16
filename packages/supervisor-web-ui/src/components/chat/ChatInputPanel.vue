@@ -7,7 +7,7 @@
         :class="{ 'hold-voice-hint--cancel': willCancel }"
         aria-live="polite"
       >
-        {{ willCancel ? "松手取消" : "松手发送" }}
+        {{ willCancel ? t("chat.input.releaseCancel") : t("chat.input.releaseSend") }}
       </div>
       <div
         ref="composerHoldZoneRef"
@@ -44,7 +44,7 @@
               {{ emptyStateAction }}
             </button>
           </div>
-          <ResizeHandle orientation="horizontal" label="调整输入区高度" @start="startResize" />
+          <ResizeHandle orientation="horizontal" :label="t('chat.input.resize')" @start="startResize" />
           <ChatPendingImages :images="pendingImages" @remove="removePendingImage" />
           <div class="chat-input-editor-wrap flex-1 min-h-0 relative">
             <ChatComposer
@@ -103,6 +103,7 @@ import { isNativeApp } from "../../composables/use-native-app";
 import { pickChatImage } from "../../composables/use-native-camera";
 import { useVoiceRecognition } from "../../composables/use-voice-recognition";
 import type { ChatSendPayload, PendingChatImage } from "@/types/chat-compose";
+import { useI18n } from "@/i18n";
 import {
   promptsFromAgentResources,
   skillsFromAgentResources,
@@ -141,6 +142,7 @@ const emit = defineEmits<{
   "empty-action": [];
   btw: [];
 }>();
+const { t } = useI18n();
 
 const agentStore = useAgentStore();
 const sessionStore = useSessionStore();
@@ -462,7 +464,7 @@ async function refreshSessionCommands(force = false) {
       }
     } catch (error) {
       if (/(^|\s)\/[^\s]*$/.test(props.modelValue)) {
-        showUiMessage(error instanceof Error ? error.message : "斜杠命令列表加载失败", "error");
+        showUiMessage(error instanceof Error ? error.message : t("chat.input.commandsLoadFailed"), "error");
       }
     } finally {
       commandRefreshInFlight = null;
@@ -514,7 +516,7 @@ function onToolbarAction(action: ChatToolbarAction) {
             if (file) addPendingImage(file);
           })
           .catch((error: unknown) => {
-            showUiMessage(error instanceof Error ? error.message : "无法打开相机", "error");
+            showUiMessage(error instanceof Error ? error.message : t("chat.input.cameraFailed"), "error");
           });
       } else {
         imageInputRef.value?.click();
@@ -544,7 +546,7 @@ function appendTranscript(transcript: string) {
 function addPendingImage(file: File) {
   if (!file.type.startsWith("image/")) return;
   if (!props.sessionId) {
-    showUiMessage("请先打开会话再添加图片", "error");
+    showUiMessage(t("chat.input.openSessionFirst"), "error");
     return;
   }
   const sessionId = props.sessionId;
@@ -565,7 +567,7 @@ function addPendingImage(file: File) {
       text.value += `${separator}${label}`;
       void nextTick(() => composerRef.value?.focus());
     } catch (error) {
-      showUiMessage(error instanceof Error ? error.message : "图片上传失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("chat.input.uploadFailed"), "error");
     }
   })();
 }

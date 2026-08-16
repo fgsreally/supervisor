@@ -2,18 +2,18 @@
   <ChatHeaderPopover
     :open="open"
     @update:open="onOpenChange"
-    title="Commit 记录"
+    :title="t('session.commit.title')"
     panel-class="commit-popover"
     :dismiss-on-outside="dismissOnOutside"
   >
     <template #icon><GitCommitHorizontal /></template>
     <template #header>
-      <strong>Commit 记录</strong>
+      <strong>{{ t("session.commit.title") }}</strong>
       <Loader2 v-if="loading" class="commit-loading" />
     </template>
     <template #mobile-header>
       <Loader2 v-if="loading" class="commit-loading" />
-      <span v-if="loading">加载中…</span>
+      <span v-if="loading">{{ t("common.loading") }}</span>
     </template>
 
     <template #default>
@@ -26,7 +26,7 @@
           </div>
         </li>
       </ul>
-      <p v-else-if="!loading">当前 worktree 暂无提交</p>
+      <p v-else-if="!loading">{{ t("session.commit.empty") }}</p>
     </template>
   </ChatHeaderPopover>
 </template>
@@ -36,6 +36,8 @@ import { ref } from "vue";
 import { GitCommitHorizontal, Loader2 } from "lucide-vue-next";
 import { getSessionCommits, type WorktreeCommit } from "@/api";
 import ChatHeaderPopover from "./ChatHeaderPopover.vue";
+import { useI18n } from "@/i18n";
+const { t } = useI18n();
 
 const props = withDefaults(defineProps<{ sessionId: string; dismissOnOutside?: boolean }>(), {
   dismissOnOutside: true,

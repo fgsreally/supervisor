@@ -247,6 +247,8 @@ const messages: TranslationMessages = {
   "project.create.hint": "创建后会用「项目描述」功能模型启动临时 Coding Agent，只读整理描述写入项目。",
   "project.create.submit": "创建项目",
   "project.create.browseFailed": "打开文件夹选择失败",
+  "session.commit.title": "Commit 记录",
+  "session.commit.empty": "当前 worktree 暂无提交",
   "chat.message.replyFailed": "回复失败",
   "chat.message.retrying": "重试中…",
   "chat.message.retry": "重试",

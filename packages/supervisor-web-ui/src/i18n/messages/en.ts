@@ -247,6 +247,8 @@ const messages: TranslationMessages = {
   "project.create.hint": "After creation, a temporary Coding Agent uses the project description model to write a read-only summary into the project.",
   "project.create.submit": "Create project",
   "project.create.browseFailed": "Failed to open folder picker",
+  "session.commit.title": "Commit history",
+  "session.commit.empty": "No commits in the current worktree",
   "chat.message.replyFailed": "Reply failed",
   "chat.message.retrying": "Retrying…",
   "chat.message.retry": "Retry",

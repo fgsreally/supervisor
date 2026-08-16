@@ -17,6 +17,7 @@ import {
 import { initSessionNotifyWatch } from "../composables/use-session-notify-watch";
 import { initPendingShare } from "../composables/use-pending-share";
 import { initNativeLocalNotifications } from "./local-notifications";
+import { translate as t } from "@/i18n";
 
 let pushInitialized = false;
 
@@ -30,7 +31,7 @@ export async function initNativeShell(): Promise<void> {
   await initPendingShare();
   initLiveStatusSessionWatch();
   if (isBackgroundConnectionEnabled()) {
-    await startBackgroundConnection("Supervisor", "后台保持连接");
+    await startBackgroundConnection("Supervisor", t("mobile.backgroundConnection"));
   }
 }
 

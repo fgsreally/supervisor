@@ -87,7 +87,9 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
   if (entry.type === "custom" && entry.customType === "llm_error") {
     const data = entry.data ?? {};
     const text =
-      typeof data.text === "string" && data.text.trim() ? data.text.trim() : "模型调用失败，请重试";
+      typeof data.text === "string" && data.text.trim()
+        ? data.text.trim()
+        : t("sessionEntries.modelCallFailed");
     return {
       ...base,
       id: entry.id,
@@ -108,7 +110,7 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
         ? data.text.trim()
         : typeof data.message === "string"
           ? data.message.trim()
-          : "系统事件";
+          : t("sessionEntries.systemEvent");
     // Legacy path: some external-agent failures were stored as custom_message.
     // Render them as llm_error cards so they match LobeChat-style error bubbles.
     if (looksLikeLlmFailureNotice(text)) {
@@ -379,3 +381,4 @@ export function mergeStreamingToolsIntoPersistedEntries(
 
   return merged;
 }
+import { translate as t } from "@/i18n";

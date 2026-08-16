@@ -1,6 +1,7 @@
 import { Capacitor } from "@capacitor/core";
 
 import { navigateToSessionFromNotification } from "@/utils/notification-navigate";
+import { translate as t } from "@/i18n";
 
 const CHANNEL_ID = "session-events";
 let initialized = false;
@@ -28,8 +29,8 @@ async function ensureChannel(
   try {
     await local.createChannel({
       id: CHANNEL_ID,
-      name: "会话提醒",
-      description: "会话完成、等待确认或出错时提醒",
+      name: t("notification.channelName"),
+      description: t("notification.channelDescription"),
       importance: 5,
       visibility: 1,
       vibration: true,

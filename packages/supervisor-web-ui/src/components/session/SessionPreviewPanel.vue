@@ -1,21 +1,21 @@
 <template>
   <div class="session-preview-panel">
     <header v-if="showHeader && !embedded" class="session-preview-panel__header">
-      <div class="session-preview-panel__title">{{ title }}</div>
+      <div class="session-preview-panel__title">{{ resolvedTitle }}</div>
       <button
         v-if="showClose"
         type="button"
         class="session-preview-panel__close"
-        title="关闭预览"
+        :title="t('session.preview.close')"
         @click="emit('close')"
       >
         <X class="h-4 w-4" />
       </button>
     </header>
 
-    <div v-if="loading" class="session-preview-panel__state">正在唤醒服务...</div>
+    <div v-if="loading" class="session-preview-panel__state">{{ t("session.preview.loading") }}</div>
     <div v-else-if="previews.length === 0" class="session-preview-panel__state">
-      暂无 UI 预览页面
+      {{ t("session.preview.empty") }}
     </div>
     <template v-else>
       <div v-if="previews.length > 1" class="session-preview-panel__tabs">
@@ -45,6 +45,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { X } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import type { SessionServicesPreview } from "@/utils/session-services";
 
 const props = withDefaults(
@@ -59,7 +60,6 @@ const props = withDefaults(
   }>(),
   {
     loading: false,
-    title: "项目页面",
     showHeader: true,
     showClose: false,
     embedded: false,
@@ -70,6 +70,8 @@ const emit = defineEmits<{
   close: [];
   "update:modelValue": [value: string];
 }>();
+const { t } = useI18n();
+const resolvedTitle = computed(() => props.title ?? t("session.preview.title"));
 
 function previewKey(preview: SessionServicesPreview): string {
   return `${preview.name}:${preview.port}`;

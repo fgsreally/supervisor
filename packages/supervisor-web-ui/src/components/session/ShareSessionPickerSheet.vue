@@ -1,17 +1,17 @@
 <template>
   <MobileDrawer
     :open="open"
-    ariaLabel="选择会话"
-    title="选择会话"
+    :ariaLabel="t('session.share.title')"
+    :title="t('session.share.title')"
     size="auto"
     :resizable="false"
     show-footer
-    footer-cancel-text="取消"
+    :footer-cancel-text="t('common.cancel')"
     body-class="share-session-picker__body"
     @close="onCancel"
   >
     <div class="share-session-picker">
-      <p class="share-session-picker__hint">将分享的图片添加到会话输入框</p>
+      <p class="share-session-picker__hint">{{ t("session.share.hint") }}</p>
       <button
         v-for="session in sessions"
         :key="session.id"
@@ -35,6 +35,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "@/i18n";
 import { useSessionStore } from "@/store";
 import {
   cancelPendingShareSession,
@@ -46,6 +47,7 @@ import MobileDrawer from "../mobile/ui/MobileDrawer.vue";
 import SessionAvatar from "./SessionAvatar.vue";
 
 const sessionStore = useSessionStore();
+const { t } = useI18n();
 const open = usePendingShareNeedsSession();
 const highlightId = usePendingShareHighlightSessionId();
 

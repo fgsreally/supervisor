@@ -1,10 +1,10 @@
 <template>
   <MobileDrawer
     v-model:open="openModel"
-    ariaLabel="项目页面"
+    :ariaLabel="t('session.preview.title')"
     size="tall"
     :resizable="true"
-    title="项目页面"
+    :title="t('session.preview.title')"
   >
     <SessionPreviewPanel
       :previews="previews"
@@ -18,6 +18,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "@/i18n";
 import MobileDrawer from "../mobile/ui/MobileDrawer.vue";
 import SessionPreviewPanel from "./SessionPreviewPanel.vue";
 import type { SessionServicesPreview } from "@/utils/session-services";
@@ -27,6 +28,7 @@ const props = defineProps<{
   previews: SessionServicesPreview[];
   loading?: boolean;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   "update:open": [value: boolean];

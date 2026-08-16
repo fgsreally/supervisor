@@ -4,14 +4,14 @@
       class="session-file-tree-sidebar__resize"
       role="separator"
       aria-orientation="vertical"
-      aria-label="调整文件树宽度"
+      :aria-label="t('session.files.resize')"
       @pointerdown="startTreeResize"
     />
     <div class="session-file-tree-sidebar__header">
       <button
         type="button"
         class="session-file-tree-sidebar__icon-btn"
-        title="折叠文件树"
+        :title="t('session.files.collapse')"
         @click="$emit('close')"
       >
         <PanelRightClose class="w-4 h-4" />
@@ -19,12 +19,12 @@
       <button
         type="button"
         class="session-file-tree-sidebar__icon-btn"
-        title="刷新"
+        :title="t('common.refresh')"
         @click="refresh"
       >
         <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
       </button>
-      <div class="session-file-tree-sidebar__title min-w-0 flex-1">工作区文件</div>
+      <div class="session-file-tree-sidebar__title min-w-0 flex-1">{{ t("session.files.workspace") }}</div>
     </div>
     <SessionFileTreePane
       class="session-file-tree-sidebar__tree"
@@ -42,11 +42,14 @@
 
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from "vue";
+import { useI18n } from "@/i18n";
 import { PanelRightClose, RefreshCw } from "lucide-vue-next";
 import { getSessionFiles, type SessionWorkspaceFileEntry } from "@/api";
 import type { SessionChangedFileView } from "../chat/SessionChangesPopover.vue";
 import SessionFileTreePane from "./SessionFileTreePane.vue";
 import { buildSessionFileTree, type SessionFileTreeNode } from "@/utils/session-file-tree";
+
+const { t } = useI18n();
 
 const props = defineProps<{
   sessionId: string;
@@ -101,7 +104,7 @@ async function refresh() {
   } catch (e: unknown) {
     files.value = [];
     treeNodes.value = [];
-    listError.value = e instanceof Error ? e.message : "加载文件树失败";
+    listError.value = e instanceof Error ? e.message : t("session.file.treeLoadFailed");
   } finally {
     loading.value = false;
   }

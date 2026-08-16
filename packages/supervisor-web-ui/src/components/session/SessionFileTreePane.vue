@@ -4,12 +4,12 @@
       class="px-3 py-2 text-[11px] shrink-0 flex items-center gap-2"
       style="color: var(--app-text-muted); border-bottom: 1px solid var(--app-border-subtle)"
     >
-      <span class="flex-1 min-w-0 truncate">{{ fileCount }} 个文件</span>
+      <span class="flex-1 min-w-0 truncate">{{ t("session.files.count", { count: fileCount }) }}</span>
       <button
         v-if="showRefresh"
         type="button"
         class="session-file-tree-pane__icon-btn"
-        title="刷新"
+        :title="t('common.refresh')"
         @click="$emit('refresh')"
       >
         <RefreshCw class="w-3.5 h-3.5" :class="loading ? 'animate-spin' : ''" />
@@ -21,7 +21,7 @@
         class="py-10 text-center text-[13px]"
         style="color: var(--app-text-muted)"
       >
-        加载中…
+        {{ t("common.loading") }}
       </div>
       <div
         v-else-if="listError"
@@ -35,7 +35,7 @@
         class="py-10 text-center text-[13px]"
         style="color: var(--app-text-muted)"
       >
-        暂无文件
+        {{ t("session.files.empty") }}
       </div>
       <BaseTree v-else v-model="localNodes" :indent="14" :default-open="defaultOpen">
         <template #default="{ node, stat }">
@@ -87,12 +87,15 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "@/i18n";
 import { BaseTree } from "@he-tree/vue";
 import "@he-tree/vue/style/default.css";
 import { ChevronRight, RefreshCw } from "lucide-vue-next";
 import type { SessionChangedFileView } from "../chat/SessionChangesPopover.vue";
 import FileTypeIcon from "../base/FileTypeIcon.vue";
 import { changeStatusLabel, type SessionFileTreeNode } from "@/utils/session-file-tree";
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{

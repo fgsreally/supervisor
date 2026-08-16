@@ -112,13 +112,13 @@ describe("AgentExtensionRuntime", () => {
       }),
     );
 
-    await runtime.attach(first, "created");
-    await runtime.attach(second, "restored");
+    await runtime.attach(first, "create");
+    await runtime.attach(second, "restore");
 
     expect(setup).toHaveBeenCalledTimes(1);
     expect(sessionSetup.mock.calls).toEqual([
-      [1, "created"],
-      [2, "restored"],
+      [1, "create"],
+      [2, "restore"],
     ]);
 
     await runtime.detach(1);
@@ -151,8 +151,8 @@ describe("AgentExtensionRuntime", () => {
       }),
     );
 
-    await runtime.attach(first, "created");
-    await runtime.attach(second, "restored");
+    await runtime.attach(first, "create");
+    await runtime.attach(second, "restore");
     expect(
       firstHost.getAllTools().find((tool) => tool.name === "session_identity")?.description,
     ).toBe("Session 11");

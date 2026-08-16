@@ -159,7 +159,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
     cwd: string,
     db: SupervisorDb,
     manager: SessionManager,
-    setupReason: SessionSetupReason = "restored",
+    setupReason: SessionSetupReason = "restore",
   ): Promise<void> {
     const session = this.getSession();
     // The built-in Pi assistant is deliberately global and has no project-scoped
@@ -215,7 +215,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
       await this._extension.clear();
       this._extension = null;
     }
-    await this.initExtensions(agentId, agentName, cwd, db, manager, "reload");
+    await this.initExtensions(agentId, agentName, cwd, db, manager, "restore");
   }
 
   /**

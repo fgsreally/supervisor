@@ -13,7 +13,7 @@ export default defineAgentExtension({
   setup(ctx) {
     ctx.agent.on("session.setup", async (session, reason) => {
       // session 就是旧 ExtensionContext.session。
-      // reason: created | restored | extension_reload
+      // reason: create | restore
     });
   },
 });
@@ -29,7 +29,7 @@ export default defineAgentExtension({
 ## API 数据结构
 
 ```ts
-type SessionSetupReason = "created" | "restored" | "extension_reload";
+type SessionSetupReason = "create" | "restore";
 type ExtensionCleanup = () => void | Promise<void>;
 
 interface AgentExtensionDefinition {
@@ -132,9 +132,9 @@ interface ExtensionSession {
 `session.setup` 只针对已加载的 Session，不会遍历或唤醒数据库中的 idle、finished、stopped 历史 Session。
 
 ```text
-新建 Session runtime       → reason = created
-恢复已有 Session runtime  → reason = restored
-Agent 扩展重载            → reason = extension_reload
+新建 Session runtime       → reason = create
+恢复已有 Session runtime  → reason = restore
+Agent 扩展重载            → reason = restore
 ```
 
 Session 初始化顺序：

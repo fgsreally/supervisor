@@ -119,7 +119,7 @@ describe("supervisor: SessionManager", () => {
     await expect(manager.prompt(inst.id, "hello")).rejects.toThrow(/blocked|未配置模型/i);
   });
 
-  it("spawn() does not create a git worktree when parentId is set", async () => {
+  it("spawn() creates an isolated git worktree when parentId is set", async () => {
     const repoDir = join(tmpDir, "repo");
     mkdirSync(repoDir, { recursive: true });
     execFileSync("git", ["init"], { cwd: repoDir });
@@ -132,7 +132,7 @@ describe("supervisor: SessionManager", () => {
 
     expect(parent.cwd).not.toBe(repoDir);
     expect(child.parentId).toBe(parent.id);
-    expect(child.cwd).toBe(parent.cwd);
+    expect(child.cwd).not.toBe(parent.cwd);
   });
 
   it("runs an external Agent as a delegated child and normalizes its output", async () => {
@@ -342,6 +342,19 @@ describe("supervisor: SessionManager", () => {
     const inst = manager.create({ meta: { old: true } });
     manager.setMeta(inst.id, { new: true });
     expect(manager.get(inst.id)!.meta).toEqual({ new: true });
+  });
+
+  it("setSessionData updates table fields without changing meta", () => {
+    const inst = manager.create({ cwd: "/proj", meta: { keep: true } });
+    const updated = manager.setSessionData(inst.id, {
+      title: "Updated",
+      unread: 3,
+      pinned: true,
+    });
+    expect(updated.title).toBe("Updated");
+    expect(updated.unread).toBe(3);
+    expect(updated.pinned).toBe(true);
+    expect(updated.meta).toEqual({ keep: true });
   });
 
   it("persists stage and emits stage changes", async () => {

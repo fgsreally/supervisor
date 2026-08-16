@@ -104,10 +104,8 @@ import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
 
 function sessionSetupReason(options: SpawnSessionOptions): SessionSetupReason {
-  if (options.spawnType === "fork") return "fork";
-  if (options.spawnType === "btw") return "btw";
-  if (options.parentId != null) return "spawn";
-  return "created";
+  void options;
+  return "create";
 }
 import {
   commitAll,
@@ -978,7 +976,7 @@ export class SessionManager {
             session,
             agent,
             (next) => this.createExternalRuntime(next, agent),
-            "restored",
+            "restore",
           ),
         );
         this.setupRuntime(session.id, runtime);
@@ -1504,7 +1502,7 @@ export class SessionManager {
         db: this.db,
         manager: this,
         resource,
-        setupReason: "reload",
+        setupReason: "restore",
       });
       if (!host) continue;
       runtime.attachExtension?.(host);
@@ -2716,6 +2714,13 @@ export class SessionManager {
   /** Promote known column keys (title, avatar, pinned, ...) onto the sessions row. */
   updateSessionFields(id: number, patch: SessionFieldsPatch): void {
     this.db.updateSessionFields(id, patch);
+  }
+
+  setSessionData(id: number, patch: Record<string, unknown>): Session {
+    this.db.updateSessionData(id, patch);
+    const session = this.get(id);
+    if (!session) throw new Error(`Session ${id} not found`);
+    return session;
   }
 
   /** Mark all unread messages as read and clear session.unread. */

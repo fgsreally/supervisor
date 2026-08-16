@@ -8,7 +8,6 @@ import type {
   ExtensionSession,
   SessionExtensionDefinition,
   SessionRemoveReason,
-  SessionSetupContext,
   SessionSetupReason,
   ToolDefinition,
   ToolInfo,
@@ -21,7 +20,6 @@ interface SetupHandler {
   handler: (
     session: ExtensionSession,
     reason: SessionSetupReason,
-    context?: SessionSetupContext,
   ) => void | ExtensionCleanup | Promise<void | ExtensionCleanup>;
 }
 
@@ -97,6 +95,12 @@ export class AgentExtensionRuntime {
         },
         get model() {
           return self.representative.agent.model;
+        },
+        get data() {
+          return self.representative.agent.data;
+        },
+        get meta() {
+          return self.representative.agent.meta;
         },
         on(event, handler) {
           if (event !== "session.setup" && event !== "session.remove") {
@@ -261,9 +265,7 @@ export class AgentExtensionRuntime {
     });
   }
 
-  async attach(context: Context, setup: SessionSetupContext | SessionSetupReason): Promise<void> {
-    const setupContext: SessionSetupContext =
-      typeof setup === "string" ? { reason: setup } : setup;
+  async attach(context: Context, reason: SessionSetupReason): Promise<void> {
     this.representative = context;
     await this.detach(context.session.id);
     const scope: SessionScope = { context, cleanups: [], owners: new Set() };
@@ -286,7 +288,7 @@ export class AgentExtensionRuntime {
         scope.owners.add(entry.owner);
         const cleanup = await this.registration.run({ owner: entry.owner, scope }, () =>
           context.runExtension(entry.owner, () =>
-            entry.handler(context.session, setupContext.reason, setupContext),
+            entry.handler(context.session, reason),
           ),
         );
         if (cleanup) scope.cleanups.push(cleanup);

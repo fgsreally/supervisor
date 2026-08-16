@@ -35,7 +35,7 @@ import type { SessionManager } from "./session-manager.js";
 import type { SessionState, SlashCommandInfo } from "./session-runtime.js";
 import type { SessionPromptImage } from "./session-media.js";
 import { writeLog } from "../i18n/logs.js";
-import type { SessionSetupContext, SessionSetupReason } from "../extension/types.js";
+import type { SessionSetupReason } from "../extension/types.js";
 
 const agentExtensionRuntimes = new WeakMap<SessionManager, Map<number, AgentExtensionRuntime>>();
 
@@ -85,7 +85,6 @@ export async function loadSessionExtensions(options: {
   manager: SessionManager;
   resource: AgentResource;
   setupReason?: SessionSetupReason;
-  setupContext?: SessionSetupContext;
 }): Promise<SessionExtensionHost | null> {
   const session = options.manager.get(options.runtime.id);
   if (session?.projectId == null) return null;
@@ -177,27 +176,7 @@ export async function loadSessionExtensions(options: {
     await agentRuntime.load(sessionActivityPolicy, { policy: true });
   }
 
-  const storedForkSource =
-    session.meta.forkSource &&
-    typeof session.meta.forkSource === "object" &&
-    !Array.isArray(session.meta.forkSource)
-      ? (session.meta.forkSource as Record<string, unknown>)
-      : undefined;
-  await agentRuntime.attach(
-    context,
-    options.setupContext ?? {
-      reason: options.setupReason ?? "restored",
-      ...(typeof storedForkSource?.sessionId === "number"
-        ? { sourceSessionId: storedForkSource.sessionId }
-        : {}),
-      ...(typeof storedForkSource?.entryId === "string"
-        ? { sourceEntryId: storedForkSource.entryId }
-        : {}),
-      ...(typeof storedForkSource?.gitRef === "string" && typeof storedForkSource?.gitHead === "string"
-        ? { gitSnapshot: { ref: storedForkSource.gitRef, head: storedForkSource.gitHead } }
-        : {}),
-    },
-  );
+  await agentRuntime.attach(context, options.setupReason ?? "restore");
   extension.addScopeCleanup(() => agentRuntime.detach(options.runtime.id));
 
   return extension;

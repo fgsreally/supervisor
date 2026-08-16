@@ -1,5 +1,4 @@
 import type { ExtensionContext, ExtensionDefinition } from "../../types.js";
-import { parseSessionMeta } from "../../../core/session-fields.js";
 import type { SessionRow } from "../../../types.js";
 import {
   commitAll,
@@ -171,11 +170,7 @@ const gitExtension: ExtensionDefinition = {
   async setup(ctx) {
     const sessionId = ctx.session.id;
     const projectCwd = ctx.project.cwd;
-    const projectRow = ctx.db.queryOne<{ id: number }>(
-      "SELECT project_id as id FROM sessions WHERE id = ?",
-      [sessionId],
-    );
-    const projectId = projectRow?.id;
+    const projectId = ctx.session.projectId;
 
     const resolveGit = () =>
       resolveSessionGitContext({
@@ -298,29 +293,23 @@ const gitExtension: ExtensionDefinition = {
       });
     }
 
-    const row = ctx.db.queryOne<Pick<SessionRow, "is_builtin" | "parent_id" | "spawn_type" | "meta">>(
-      "SELECT is_builtin, parent_id, spawn_type, meta FROM sessions WHERE id = ?",
-      [sessionId],
-    );
-    if (
-      row &&
-      shouldCreateWorktree({
-        isBuiltin: !!row.is_builtin,
-        parentId: row.parent_id,
-        spawnType: row.spawn_type,
-      })
-    ) {
+    const sessionData = await ctx.session.data.get();
+    const sessionMeta = await ctx.session.meta.get();
+    if (shouldCreateWorktree({
+      isBuiltin: sessionData.isBuiltin,
+      parentId: sessionData.parentId,
+      spawnType: sessionData.spawnType,
+    })) {
       try {
         sessionLog(sessionId, "info", "Creating session worktree", ["system", "git", "worktree"]);
         const repoRoot = ensureProjectGitRootSync(projectCwd);
-        const sessionMeta = parseSessionMeta(row?.meta);
         const forkSource =
           sessionMeta.forkSource &&
           typeof sessionMeta.forkSource === "object" &&
           !Array.isArray(sessionMeta.forkSource)
             ? (sessionMeta.forkSource as { gitRef?: unknown })
             : undefined;
-        if (row?.spawn_type === "fork" && typeof forkSource?.gitRef !== "string") {
+        if (sessionData.spawnType === "fork" && typeof forkSource?.gitRef !== "string") {
           throw new Error("The selected message has no Git snapshot");
         }
         const gitMeta = await createSessionWorktree(

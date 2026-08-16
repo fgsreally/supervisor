@@ -55,6 +55,31 @@ function createProbeContext(
     db: new ContextDb(undefined),
     session: new ContextSession({
       id: 0,
+      record: {
+        id: 0,
+        projectId: null,
+        parentId: null,
+        status: "idle",
+        thinkingLevel: "none",
+        cwd: process.cwd(),
+        leafId: null,
+        agentId: null,
+        spawnType: null,
+        creationMethod: "user",
+        title: null,
+        systemPrompt: null,
+        avatar: null,
+        isBuiltin: false,
+        pinned: false,
+        muted: false,
+        unread: 0,
+        externalSessionId: null,
+        errorMsg: null,
+        stage: null,
+        shadowEnabled: false,
+        createdAt: new Date(0),
+        lastActiveAt: new Date(0),
+      },
       getCwd: () => process.cwd(),
       setCwd: noopAsync,
       dir: process.cwd(),
@@ -81,6 +106,18 @@ function createProbeContext(
         stats: async () => ({ total: 0, user: 0, assistant: 0, tool: 0, custom: 0 }),
         contextUsage: async () => ({ tokens: null, contextWindow: 0, percent: null }),
       },
+      data: {
+        get: async () => ({
+          id: 0, projectId: null, parentId: null, status: "idle", thinkingLevel: "none",
+          cwd: process.cwd(), leafId: null, agentId: null, spawnType: null, creationMethod: "user",
+          title: null, systemPrompt: null, avatar: null, isBuiltin: false, pinned: false, muted: false,
+          unread: 0, externalSessionId: null, errorMsg: null, stage: null, shadowEnabled: false,
+          createdAt: new Date(0), lastActiveAt: new Date(0),
+        }),
+        set: async () => {
+          throw new Error("session data is unavailable while probing resources");
+        },
+      },
       meta: { get: async () => ({}), set: noopAsync, patch: async () => ({}) },
       workflow: {
         get: async () => null,
@@ -102,7 +139,14 @@ function createProbeContext(
       activity: { touch: noop },
       checkpoint: async () => undefined,
       rewindToEntry: async () => undefined,
-      project: { cwd: process.cwd(), dir: process.cwd(), getDir: async () => process.cwd() },
+      agent: null,
+      project: {
+        data: {
+          get: async () => ({ id: 0, name: "probe", description: null, cwd: process.cwd(), homeDir: process.cwd(), createdAt: new Date(0), updatedAt: new Date(0) }),
+          set: async () => { throw new Error("project data is unavailable while probing resources"); },
+        },
+        cwd: process.cwd(), dir: process.cwd(), getDir: async () => process.cwd(),
+      },
       inject: { schedule: noop, clear: noop, reattach: noop },
       getParent: async () => undefined,
       children: async () => [],
@@ -164,6 +208,11 @@ function createProbeContext(
       setModel: noopAsync,
       setThinkingLevel: noop,
       getThinkingLevel: () => "none" as const,
+      data: {
+        get: async () => ({ id: 0, name: "probe", description: null, avatar: null, providerId: null, backendType: "native" as const, modelId: null, systemPrompt: null, toolsPreset: null, homeDir: null, isBuiltin: false, externalConfig: null, permissionRules: {}, createdAt: new Date(0), updatedAt: new Date(0) }),
+        set: async () => { throw new Error("agent data is unavailable while probing resources"); },
+      },
+      meta: { get: async () => ({}), set: noopAsync, patch: async () => ({}) },
     }),
     policies: { disable: noop, isDisabled: () => false },
     tools: {
@@ -189,7 +238,13 @@ function createProbeContext(
       setCancelHandler: noop,
       setInputHandler: noop,
     },
-    project: { cwd: process.cwd(), dir: process.cwd(), getDir: async () => process.cwd() },
+    project: {
+      data: {
+        get: async () => ({ id: 0, name: "probe", description: null, cwd: process.cwd(), homeDir: process.cwd(), createdAt: new Date(0), updatedAt: new Date(0) }),
+        set: async () => { throw new Error("project data is unavailable while probing resources"); },
+      },
+      cwd: process.cwd(), dir: process.cwd(), getDir: async () => process.cwd(),
+    },
     ui: {
       broadcast: noop,
       requestApproval: async () => ({ action: "approve" as const }),

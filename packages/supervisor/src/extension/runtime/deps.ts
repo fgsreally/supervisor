@@ -23,6 +23,7 @@ import type {
   SessionWorkflowState,
   SubagentStatusSnapshot,
   SessionInfo,
+  SessionData,
   SpawnSessionRequest,
   SpawnSessionResult,
   ToolInfo,
@@ -434,6 +435,19 @@ export function buildExtensionDeps(deps: {
       return manager.updateMeta(sessionId, patch);
     },
 
+    getSessionData: async () => {
+      const current = manager.get(sessionId);
+      if (!current) throw new Error(`Session ${sessionId} not found`);
+      const { meta: _meta, currentTask: _currentTask, ...data } = current;
+      return data satisfies SessionData;
+    },
+
+    setSessionData: async (patch: Partial<SessionData>) => {
+      const current = manager.setSessionData(sessionId, patch as Record<string, unknown>);
+      const { meta: _meta, currentTask: _currentTask, ...data } = current;
+      return data satisfies SessionData;
+    },
+
     getWorkflow: async () => manager.getWorkflow(sessionId),
 
     setWorkflow: async (patch: WorkflowStatePatch) => manager.setWorkflow(sessionId, patch),
@@ -727,6 +741,8 @@ type RuntimeDeps = {
   pausing: <T>(reason: string, work: Promise<T> | (() => Promise<T>)) => Promise<T>;
   setSessionMeta: (meta: Record<string, unknown>) => Promise<void>;
   patchSessionMeta: (patch: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  getSessionData: () => Promise<SessionData>;
+  setSessionData: (patch: Partial<SessionData>) => Promise<SessionData>;
   getWorkflow: () => Promise<SessionWorkflowState | null>;
   setWorkflow: (patch: WorkflowStatePatch) => Promise<SessionWorkflowState>;
   clearWorkflow: () => Promise<void>;

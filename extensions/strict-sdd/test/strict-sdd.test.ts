@@ -65,7 +65,7 @@ describe("strict-sdd extension", () => {
 
   it("never activates a workflow inside a child Session", async () => {
     const registerTool = vi.fn();
-    let setupSession: ((session: unknown, reason: "created") => Promise<void>) | undefined;
+    let setupSession: ((session: unknown, reason: "create") => Promise<void>) | undefined;
     await extension.setup({
       agent: {
         on: (_event: string, handler: typeof setupSession) => {
@@ -74,7 +74,7 @@ describe("strict-sdd extension", () => {
         registerTool,
       },
     } as never);
-    await setupSession?.({ isChild: true }, "created");
+    await setupSession?.({ isChild: true }, "create");
     expect(registerTool).not.toHaveBeenCalled();
   });
 
@@ -88,7 +88,7 @@ describe("strict-sdd extension", () => {
     const handlers = new Map<string, (event: any) => Promise<void>>();
     let workflow = { stage: "mockup", status: "working" };
     let meta: Record<string, unknown> = {};
-    let setupSession: ((session: unknown, reason: "created") => Promise<void>) | undefined;
+    let setupSession: ((session: unknown, reason: "create") => Promise<void>) | undefined;
     const session = {
       id: 1,
       dir: sessionDir,
@@ -124,7 +124,7 @@ describe("strict-sdd extension", () => {
     };
 
     await extension.setup(context as never);
-    await setupSession?.(session, "created");
+    await setupSession?.(session, "create");
     const complete = tools.get("workflow_complete_stage")!;
     await expect(complete.execute({})).rejects.toThrow("mockup.html");
     await artifacts.write("specs/auth/mockup.html", "<html></html>");

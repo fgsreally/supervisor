@@ -8,7 +8,17 @@ import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Static, TSchema } from "typebox";
 import type { CreateJobInput, JobRecord, UpdateJobInput } from "../core/jobs.js";
 import type { WatsonRunResult } from "../core/watson.js";
-import type { SessionTaskKind, SessionTodoStatus } from "../types.js";
+import type {
+  AgentBackendType,
+  AgentExternalConfig,
+  SessionAvatar,
+  SessionCreationMethod,
+  SessionStatus,
+  SessionTaskKind,
+  SessionTodoStatus,
+  ToolsPreset,
+} from "../types.js";
+import type { SessionBranchType } from "../core/session-history.js";
 
 /**
  * Thin session-stage view, replacing the former meta.workflow { stage, status }.
@@ -51,20 +61,7 @@ export interface SessionTodoInfo {
 // ============================================================================
 
 export type ExtensionCleanup = () => void | Promise<void>;
-export type SessionSetupReason =
-  | "created"
-  | "restored"
-  | "reload"
-  | "spawn"
-  | "btw"
-  | "fork";
-
-export interface SessionSetupContext {
-  reason: SessionSetupReason;
-  sourceSessionId?: number;
-  sourceEntryId?: string;
-  gitSnapshot?: { ref: string; head: string };
-}
+export type SessionSetupReason = "create" | "restore";
 
 export type SessionRemoveReason = "delete" | "achieve" | "replace" | "shutdown";
 
@@ -175,19 +172,118 @@ export interface ExtensionSessionMessages {
   contextUsage: ExtensionDatabase["getContextUsage"];
 }
 
+export interface SessionData {
+  id: number;
+  projectId: number | null;
+  parentId: number | null;
+  status: SessionStatus;
+  thinkingLevel: "none" | "low" | "medium" | "high";
+  cwd: string;
+  leafId: string | null;
+  agentId: number | null;
+  spawnType: SessionBranchType | null;
+  creationMethod: SessionCreationMethod;
+  title: string | null;
+  systemPrompt: string | null;
+  avatar: SessionAvatar | null;
+  isBuiltin: boolean;
+  pinned: boolean;
+  muted: boolean;
+  unread: number;
+  externalSessionId: string | null;
+  errorMsg: string | null;
+  stage: string | null;
+  shadowEnabled: boolean;
+  createdAt: Date;
+  lastActiveAt: Date;
+}
+
+export interface AgentData {
+  id: number;
+  name: string;
+  description: string | null;
+  avatar: string | null;
+  providerId: number | null;
+  backendType: AgentBackendType;
+  modelId: number | null;
+  systemPrompt: string | null;
+  toolsPreset: ToolsPreset | null;
+  homeDir: string | null;
+  isBuiltin: boolean;
+  externalConfig: AgentExternalConfig | null;
+  permissionRules: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ProjectData {
+  id: number;
+  name: string;
+  description: string | null;
+  cwd: string;
+  homeDir: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SessionDataFacade {
+  get(): Promise<SessionData>;
+  set(patch: Partial<SessionData>): Promise<SessionData>;
+}
+
+export interface SessionMetaFacade {
+  get(): Promise<Record<string, unknown>>;
+  set(meta: Record<string, unknown>): Promise<void>;
+  patch(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
+}
+
+export interface AgentDataFacade {
+  get(): Promise<AgentData>;
+  set(patch: Partial<AgentData>): Promise<AgentData>;
+}
+
+export interface AgentMetaFacade {
+  get(): Promise<Record<string, unknown>>;
+  set(meta: Record<string, unknown>): Promise<void>;
+  patch(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
+}
+
+export interface ProjectDataFacade {
+  get(): Promise<ProjectData>;
+  set(patch: Partial<ProjectData>): Promise<ProjectData>;
+}
+
 export interface ExtensionSession {
   readonly id: number;
+  readonly projectId: number | null;
+  readonly parentId: number | null;
+  readonly status: SessionStatus;
+  readonly thinkingLevel: "none" | "low" | "medium" | "high";
   readonly cwd: string;
+  readonly leafId: string | null;
+  readonly agentId: number | null;
+  readonly spawnType: SessionBranchType | null;
+  readonly creationMethod: SessionCreationMethod;
+  readonly title: string | null;
+  readonly systemPrompt: string | null;
+  readonly avatar: SessionAvatar | null;
+  readonly isBuiltin: boolean;
+  readonly pinned: boolean;
+  readonly muted: boolean;
+  readonly unread: number;
+  readonly externalSessionId: string | null;
+  readonly errorMsg: string | null;
+  readonly stage: string | null;
+  readonly shadowEnabled: boolean;
+  readonly createdAt: Date;
+  readonly lastActiveAt: Date;
   readonly dir: string;
   readonly isMain: boolean;
   readonly isChild: boolean;
   readonly signal: AbortSignal | undefined;
   readonly messages: ExtensionSessionMessages;
-  readonly meta: {
-    get(): Promise<Record<string, unknown>>;
-    set(meta: Record<string, unknown>): Promise<void>;
-    patch(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
-  };
+  readonly data: SessionDataFacade;
+  readonly meta: SessionMetaFacade;
   readonly workflow: {
     get(): Promise<SessionWorkflowState | null>;
     set(patch: WorkflowStatePatch): Promise<SessionWorkflowState>;
@@ -224,6 +320,9 @@ export interface ExtensionSession {
   };
   checkpoint(label?: string): Promise<unknown>;
   rewindToEntry(entryId: string): Promise<void>;
+  readonly agent: AgentDataFacade | null;
+  setMeta(meta: Record<string, unknown>): Promise<void>;
+  patchMeta(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
   /** Project belonging to this Session. */
   readonly project: SupervisorProjectFacade;
   /** Session-scoped prompt injection. */
@@ -341,12 +440,13 @@ export interface ExtensionAgent {
 }
 
 export interface AgentExtensionAgent extends Omit<ExtensionAgent, "activate" | "deactivate"> {
+  readonly data: AgentDataFacade;
+  readonly meta: AgentMetaFacade;
   on(
     event: "session.setup",
     handler: (
       session: ExtensionSession,
       reason: SessionSetupReason,
-      context?: SessionSetupContext,
     ) => void | ExtensionCleanup | Promise<void | ExtensionCleanup>,
   ): void;
   on(
@@ -576,6 +676,7 @@ export interface TurnFlowFacade {
 }
 
 export interface SupervisorProjectFacade {
+  readonly data: ProjectDataFacade;
   readonly cwd: string;
   readonly dir: string;
   getDir(): Promise<string>;

@@ -319,15 +319,22 @@ export class SupervisorDb {
     });
   }
 
-  updateProject(id: number, patch: { name?: string; description?: string | null }): Project {
+  updateProject(
+    id: number,
+    patch: { name?: string; description?: string | null; cwd?: string; homeDir?: string },
+  ): Project {
     const project = this.getProject(id);
     if (!project) throw new Error(`Project ${id} not found`);
     const name =
       typeof patch.name === "string" && patch.name.trim() ? patch.name.trim() : project.name;
     const description = patch.description === undefined ? project.description : patch.description;
+    const cwd = patch.cwd ?? project.cwd;
+    const homeDir = patch.homeDir ?? project.homeDir;
     this.db
-      .prepare("UPDATE projects SET name = ?, description = ?, updated_at = ? WHERE id = ?")
-      .run(name, description, Date.now(), id);
+      .prepare(
+        "UPDATE projects SET name = ?, description = ?, cwd = ?, home_dir = ?, updated_at = ? WHERE id = ?",
+      )
+      .run(name, description, cwd, homeDir, Date.now(), id);
     return this.getProject(id)!;
   }
 
@@ -730,6 +737,47 @@ export class SupervisorDb {
     if (patch.stage !== undefined) put("stage", patch.stage);
     if (patch.shadowEnabled !== undefined) put("shadow_enabled", patch.shadowEnabled ? 1 : 0);
     if (patch.projectId !== undefined) put("project_id", patch.projectId);
+    if (sets.length === 0) return;
+    sets.push("last_active_at = ?");
+    params.push(Date.now(), id);
+    this.db.prepare(`UPDATE sessions SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  }
+
+  updateSessionData(id: number, patch: Record<string, unknown>): void {
+    const columns: Record<string, string> = {
+      projectId: "project_id",
+      parentId: "parent_id",
+      status: "status",
+      thinkingLevel: "thinking_level",
+      cwd: "cwd",
+      leafId: "leaf_id",
+      agentId: "agent_id",
+      spawnType: "spawn_type",
+      creationMethod: "created_by",
+      title: "title",
+      systemPrompt: "system_prompt",
+      avatar: "avatar",
+      isBuiltin: "is_builtin",
+      pinned: "pinned",
+      muted: "muted",
+      unread: "unread",
+      externalSessionId: "external_session_id",
+      errorMsg: "error_msg",
+      stage: "stage",
+      shadowEnabled: "shadow_enabled",
+      createdAt: "created_at",
+      lastActiveAt: "last_active_at",
+    };
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    for (const [key, column] of Object.entries(columns)) {
+      if (!(key in patch) || key === "id") continue;
+      let value = patch[key];
+      if (value instanceof Date) value = value.getTime();
+      if (typeof value === "boolean") value = value ? 1 : 0;
+      sets.push(`${column} = ?`);
+      params.push(value);
+    }
     if (sets.length === 0) return;
     sets.push("last_active_at = ?");
     params.push(Date.now(), id);

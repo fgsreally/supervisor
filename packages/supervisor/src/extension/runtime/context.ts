@@ -44,6 +44,11 @@ import type {
   SessionTaskInfo,
   SessionTodoInfo,
   SessionWorkflowState,
+  SessionDataFacade,
+  SessionMetaFacade,
+  SessionData,
+  AgentDataFacade,
+  AgentMetaFacade,
   WorkflowStatePatch,
 } from "../types.js";
 import type { SessionTaskKind, SessionTodoStatus } from "../../types.js";
@@ -135,6 +140,7 @@ export interface ContextSessionTools {
 }
 
 interface ContextSessionOptions {
+  record: SessionData;
   id: number;
   getCwd: () => string;
   setCwd: (path: string) => Promise<void>;
@@ -148,7 +154,8 @@ interface ContextSessionOptions {
   abort: () => void;
   waitForIdle: () => Promise<void>;
   messages: ContextSessionMessages;
-  meta: ContextSessionMeta;
+  data: SessionDataFacade;
+  meta: SessionMetaFacade;
   workflow: {
     get(): Promise<SessionWorkflowState | null>;
     set(patch: WorkflowStatePatch): Promise<SessionWorkflowState>;
@@ -180,6 +187,7 @@ interface ContextSessionOptions {
   };
   activity: { touch: () => void };
   project: ExtensionContext["project"];
+  agent: AgentDataFacade | null;
   inject: ExtensionContext["inject"];
   tools: ContextSessionTools;
   on<K extends ExtensionEvent["type"]>(
@@ -263,6 +271,8 @@ interface ContextAgentOptions {
   setModel: (provider: string, modelId: string) => Promise<void>;
   setThinkingLevel: (level: "none" | "low" | "medium" | "high") => void;
   getThinkingLevel: () => "none" | "low" | "medium" | "high";
+  data: AgentDataFacade;
+  meta: AgentMetaFacade;
 }
 
 type ContextDbOptions = ExtensionSqliteDatabase | undefined;
@@ -317,7 +327,7 @@ export class Context {
   };
   readonly jobs: import("../types.js").ExtensionJobFacade;
   readonly db: ContextDb;
-  readonly project: { readonly cwd: string; readonly dir: string; getDir(): Promise<string> };
+  readonly project: ExtensionContext["project"];
   readonly ui: {
     broadcast(event: BroadcastEvent): void;
     requestApproval(request: ApprovalRequest): Promise<ApprovalResult>;
@@ -424,6 +434,22 @@ export class Context {
 
     const sessionState = { cwd: session.cwd };
     const projectFacade: ExtensionContext["project"] = {
+      data: {
+        get: async () => {
+          const project = db.getProject(session.projectId!);
+          if (!project) throw new Error(`Project ${session.projectId} not found`);
+          return project;
+        },
+        set: async (patch) => {
+          const project = db.updateProject(session.projectId!, {
+            name: patch.name,
+            description: patch.description,
+            cwd: patch.cwd,
+            homeDir: patch.homeDir,
+          });
+          return project;
+        },
+      },
       cwd: projectRow.cwd,
       dir: getProjectDir(session.projectId),
       getDir: deps.getProjectDir,
@@ -435,8 +461,55 @@ export class Context {
         this.services.inject.reattach(variant, content, options),
     };
 
+    const agentData = agent
+      ? {
+          get: async () => {
+            const current = db.getAgent(agent.id);
+            if (!current) throw new Error(`Agent ${agent.id} not found`);
+            const { meta: _meta, ...data } = current;
+            return data;
+          },
+          set: async (patch: Partial<import("../types.js").AgentData>) => {
+            const current = db.updateAgent(agent.id, {
+              name: patch.name,
+              description: patch.description,
+              avatar: patch.avatar,
+              backend_type: patch.backendType,
+              model_id: patch.modelId,
+              system_prompt: patch.systemPrompt,
+              tools_preset: patch.toolsPreset,
+              home_dir: patch.homeDir,
+              is_builtin:
+                patch.isBuiltin === undefined ? undefined : patch.isBuiltin ? 1 : 0,
+              external_config: patch.externalConfig
+                ? JSON.stringify(patch.externalConfig)
+                : patch.externalConfig,
+              permission_rules:
+                patch.permissionRules === undefined
+                  ? undefined
+                  : JSON.stringify(patch.permissionRules),
+            });
+            const { meta: _meta, ...data } = current;
+            return data;
+          },
+        }
+      : undefined;
+    const agentMeta = agent
+      ? {
+          get: async () => db.getAgent(agent.id)?.meta ?? {},
+          set: async (meta: Record<string, unknown>) => {
+            db.setAgentMeta(agent.id, meta);
+          },
+          patch: async (patch: Record<string, unknown>) => db.updateAgentMeta(agent.id, patch),
+        }
+      : undefined;
+
     const sessionOptions: ContextSessionOptions = {
       id: session.id,
+      record: (() => {
+        const { meta: _meta, currentTask: _currentTask, ...data } = session;
+        return data;
+      })(),
       getCwd: () => sessionState.cwd,
       setCwd: async (path: string) => {
         db.updateCwd(session.id, path);
@@ -470,6 +543,10 @@ export class Context {
         stats: extensionDb.getMessageStats,
         contextUsage: extensionDb.getContextUsage,
       },
+      data: {
+        get: deps.getSessionData,
+        set: deps.setSessionData,
+      },
       meta: {
         get: extensionDb.getSessionMeta,
         set: deps.setSessionMeta,
@@ -493,6 +570,7 @@ export class Context {
       },
       activity: { touch: () => touchSessionActivity(db, session.id) },
       project: projectFacade,
+      agent: agentData ?? null,
       inject: injectFacade,
       tools: sessionTools,
       on: (event, handler, options) => this.on(event, handler, options),
@@ -557,6 +635,19 @@ export class Context {
       setModel: deps.setModel,
       setThinkingLevel: deps.setThinkingLevel,
       getThinkingLevel: deps.getThinkingLevel,
+      data: agentData ?? {
+        get: async () => {
+          throw new Error("Agent data is unavailable");
+        },
+        set: async () => {
+          throw new Error("Agent data is unavailable");
+        },
+      },
+      meta: agentMeta ?? {
+        get: async () => ({}),
+        set: async () => {},
+        patch: async () => ({}),
+      },
     };
 
     this.session = new ContextSession(sessionOptions);
@@ -782,8 +873,35 @@ export class ContextSession {
   constructor(private readonly options: ContextSessionOptions) {}
 
   get id(): number {
-    return this.options.id;
+    return this.options.record.id;
   }
+  get projectId() { return this.options.record.projectId; }
+  get parentId() { return this.options.record.parentId; }
+  get status() { return this.options.record.status; }
+  get thinkingLevel() { return this.options.record.thinkingLevel; }
+  get leafId() { return this.options.record.leafId; }
+  get agentId() { return this.options.record.agentId; }
+  get spawnType() { return this.options.record.spawnType; }
+  get creationMethod() { return this.options.record.creationMethod; }
+  get title() { return this.options.record.title; }
+  get systemPrompt() { return this.options.record.systemPrompt; }
+  get avatar() { return this.options.record.avatar; }
+  get isBuiltin() { return this.options.record.isBuiltin; }
+  get pinned() { return this.options.record.pinned; }
+  get muted() { return this.options.record.muted; }
+  get unread() { return this.options.record.unread; }
+  get externalSessionId() { return this.options.record.externalSessionId; }
+  get errorMsg() { return this.options.record.errorMsg; }
+  get stage() { return this.options.record.stage; }
+  get shadowEnabled() { return this.options.record.shadowEnabled; }
+  get createdAt() { return this.options.record.createdAt; }
+  get lastActiveAt() { return this.options.record.lastActiveAt; }
+  get agent() { return this.options.agent; }
+  get data() { return this.options.data; }
+  get meta() { return this.options.meta; }
+  setMeta(meta: Record<string, unknown>) { return this.options.meta.set(meta); }
+  patchMeta(patch: Record<string, unknown>) { return this.options.meta.patch(patch); }
+
   get cwd(): string {
     return this.options.getCwd();
   }
@@ -820,9 +938,6 @@ export class ContextSession {
     options?: ExtensionEventHandlerOptions,
   ): void {
     this.options.on(event, handler, options);
-  }
-  get meta(): ContextSessionMeta {
-    return this.options.meta;
   }
   get workflow(): ContextSessionOptions["workflow"] {
     return this.options.workflow;
@@ -927,6 +1042,9 @@ export class ContextSession {
 /** Current agent identity and agent-domain operations. */
 export class ContextAgent {
   constructor(private readonly options: ContextAgentOptions) {}
+
+  get data() { return this.options.data; }
+  get meta() { return this.options.meta; }
 
   get id(): number {
     return this.options.id;

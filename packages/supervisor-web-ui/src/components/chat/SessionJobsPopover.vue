@@ -12,7 +12,7 @@
 
     <template #header>
         <div>
-          <strong>Jobs</strong>
+          <strong>{{ t("jobs.title") }}</strong>
           <span v-if="activeCount">{{ t("jobs.activeCount", { count: activeCount }) }}</span>
         </div>
         <button type="button" :title="t('jobs.refresh')" @click="refresh">
@@ -184,7 +184,7 @@ function openJob(job: SessionJob): void {
   emit("detail", {
     title: job.label,
     sections: [
-      { label: "状态", content: `${kindLabel(job.kind)} · ${statusLabel(job.status)}` },
+      { label: t("jobs.status"), content: `${kindLabel(job.kind)} · ${statusLabel(job.status)}` },
       { label: t("jobs.output"), content: output },
     ],
     presentation: output.length > 2_000 || lines > 16 ? "panel" : "modal",
@@ -247,16 +247,19 @@ function formatTime(value: number): string {
 }
 
 function formatInterval(value: number): string {
-  if (value % 3_600_000 === 0) return `${value / 3_600_000} 小时`;
-  if (value % 60_000 === 0) return `${value / 60_000} 分钟`;
-  return `${value / 1000} 秒`;
+  if (value % 3_600_000 === 0) return t("jobs.hours", { count: value / 3_600_000 });
+  if (value % 60_000 === 0) return t("jobs.minutes", { count: value / 60_000 });
+  return t("jobs.seconds", { count: value / 1000 });
 }
 
 function formatDuration(job: SessionJob): string {
   const duration = Math.max(0, (job.finishedAt ?? Date.now()) - (job.startedAt ?? job.createdAt));
-  if (duration < 1_000) return "<1秒";
-  if (duration < 60_000) return `${Math.floor(duration / 1_000)}秒`;
-  return `${Math.floor(duration / 60_000)}分${Math.floor((duration % 60_000) / 1_000)}秒`;
+  if (duration < 1_000) return t("jobs.lessThanSecond");
+  if (duration < 60_000) return t("jobs.durationSeconds", { count: Math.floor(duration / 1_000) });
+  return t("jobs.durationMinutesSeconds", {
+    minutes: Math.floor(duration / 60_000),
+    seconds: Math.floor((duration % 60_000) / 1_000),
+  });
 }
 
 function formatValue(value: unknown): string {

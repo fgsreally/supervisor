@@ -1,8 +1,8 @@
 <template>
   <div class="bg-bash-panel" :class="{ 'bg-bash-panel--embedded': embedded }">
     <header v-if="!embedded" class="bg-bash-panel__header">
-      <span>后台终端{{ count ? ` · ${count}` : "" }}</span>
-      <button type="button" title="关闭" @click="$emit('close')"><X /></button>
+      <span>{{ t("session.background.title") }}{{ count ? ` · ${count}` : "" }}</span>
+      <button type="button" :title="t('common.close')" @click="$emit('close')"><X /></button>
     </header>
     <div class="bg-bash-panel__body">
       <SessionBackgroundTerminals
@@ -15,7 +15,7 @@
         <ToolDetailPanel
           embedded
           :title="selectedTitle"
-          :sections="[{ label: '输出', content: '正在读取…' }]"
+          :sections="[{ label: t('session.background.output'), content: t('log.loading') }]"
           terminal="bash"
           :job-id="selectedJobId"
           :session-id="sessionId"
@@ -24,7 +24,7 @@
         />
       </div>
       <div v-else class="bg-bash-panel__empty">
-        {{ count ? "选择一个后台终端查看输出" : "暂无运行中的后台终端" }}
+        {{ count ? t("session.background.select") : t("session.background.empty") }}
       </div>
     </div>
   </div>
@@ -36,6 +36,7 @@ import { computed, ref, watch } from "vue";
 import { getSessionJobs } from "@/api";
 import SessionBackgroundTerminals from "./SessionBackgroundTerminals.vue";
 import ToolDetailPanel from "../tool/ToolDetailPanel.vue";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   sessionId: string;
@@ -43,11 +44,12 @@ const props = defineProps<{
   /** Prefill selection when opening from chat tool card. */
   initialJobId?: string;
 }>();
+const { t } = useI18n();
 
 defineEmits<{ close: [] }>();
 
 const selectedJobId = ref<string | null>(props.initialJobId ?? null);
-const selectedTitle = ref("后台终端");
+const selectedTitle = ref("");
 const count = ref(0);
 
 const hasSelection = computed(() => Boolean(selectedJobId.value));
@@ -63,7 +65,7 @@ async function selectJob(jobId: string) {
       : typeof job?.metadata.command === "string"
         ? job.metadata.command
         : "";
-  selectedTitle.value = command || job?.label || "后台终端";
+  selectedTitle.value = command || job?.label || t("session.background.title");
 }
 
 function onJobEnded(jobId: string) {

@@ -10,7 +10,7 @@
         class="bg-terminals__chevron"
         :class="{ 'bg-terminals__chevron--open': expanded }"
       />
-      <span>{{ terminals.length }} 个后台终端</span>
+      <span>{{ t("session.background.count", { count: terminals.length }) }}</span>
     </button>
     <ul v-if="expanded" class="bg-terminals__list">
       <li v-for="job in terminals" :key="job.id" class="bg-terminals__item">
@@ -27,11 +27,11 @@
           v-if="canCancel(job)"
           type="button"
           class="bg-terminals__kill"
-          title="结束"
+          :title="t('session.background.stop')"
           :disabled="killingId === job.id"
           @click.stop="kill(job.id)"
         >
-          结束
+          {{ t("session.background.stop") }}
         </button>
       </li>
     </ul>
@@ -44,10 +44,12 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { cancelSessionJob, getSessionJobs, type SessionJob } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { useSessionStore } from "@/store";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   sessionId: string;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   open: [jobId: string];
@@ -106,11 +108,11 @@ async function kill(jobId: string) {
   try {
     await cancelSessionJob(props.sessionId, jobId);
     void sessionStore.fetchSession(props.sessionId);
-    showUiMessage("已结束后台进程", "success");
+    showUiMessage(t("session.background.stopped"), "success");
     await refresh();
     emit("changed");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "结束失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("session.background.stopFailed"), "error");
   } finally {
     killingId.value = null;
   }

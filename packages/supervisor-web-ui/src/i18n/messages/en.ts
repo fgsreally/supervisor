@@ -897,6 +897,23 @@ const messages: TranslationMessages = {
   "session.files.empty": "No files",
   "session.files.resize": "Resize file tree",
   "session.files.browse": "Browse files",
+  "session.background.count": "{{count}} background terminals",
+  "session.background.stop": "Stop",
+  "session.background.stopped": "Background process stopped",
+  "session.background.stopFailed": "Failed to stop process",
+  "session.background.title": "Background terminal",
+  "session.background.output": "Output",
+  "session.background.select": "Select a background terminal to view its output",
+  "session.background.empty": "No background terminals are running",
+  "jobs.title": "Jobs",
+  "jobs.hours": "{{count}}h",
+  "jobs.minutes": "{{count}}m",
+  "jobs.seconds": "{{count}}s",
+  "jobs.lessThanSecond": "<1s",
+  "jobs.durationSeconds": "{{count}}s",
+  "jobs.durationMinutesSeconds": "{{minutes}}m {{seconds}}s",
+  "todo.title": "Todo",
+  "todo.dependenciesLabel": "Dependencies: ",
 };
 
 export default messages;

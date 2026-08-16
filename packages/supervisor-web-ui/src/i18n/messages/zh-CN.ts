@@ -897,6 +897,23 @@ const messages: TranslationMessages = {
   "session.files.empty": "\u6682\u65e0\u6587\u4ef6",
   "session.files.resize": "\u8c03\u6574\u6587\u4ef6\u6811\u5bbd\u5ea6",
   "session.files.browse": "\u6d4f\u89c8\u6587\u4ef6",
+  "session.background.count": "{{count}} \u4e2a\u540e\u53f0\u7ec8\u7aef",
+  "session.background.stop": "\u7ed3\u675f",
+  "session.background.stopped": "\u5df2\u7ed3\u675f\u540e\u53f0\u8fdb\u7a0b",
+  "session.background.stopFailed": "\u7ed3\u675f\u5931\u8d25",
+  "session.background.title": "\u540e\u53f0\u7ec8\u7aef",
+  "session.background.output": "\u8f93\u51fa",
+  "session.background.select": "\u9009\u62e9\u4e00\u4e2a\u540e\u53f0\u7ec8\u7aef\u67e5\u770b\u8f93\u51fa",
+  "session.background.empty": "\u6682\u65e0\u8fd0\u884c\u4e2d\u7684\u540e\u53f0\u7ec8\u7aef",
+  "jobs.title": "\u4efb\u52a1",
+  "jobs.hours": "{{count}} \u5c0f\u65f6",
+  "jobs.minutes": "{{count}} \u5206\u949f",
+  "jobs.seconds": "{{count}} \u79d2",
+  "jobs.lessThanSecond": "\u5c0f\u4e8e 1 \u79d2",
+  "jobs.durationSeconds": "{{count}} \u79d2",
+  "jobs.durationMinutesSeconds": "{{minutes}} \u5206\u949f {{seconds}} \u79d2",
+  "todo.title": "\u5f85\u529e",
+  "todo.dependenciesLabel": "\u4f9d\u8d56\uff1a",
 };
 
 export default messages;

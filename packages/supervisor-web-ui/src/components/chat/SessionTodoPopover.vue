@@ -2,7 +2,7 @@
   <ChatHeaderPopover
     :open="open"
     @update:open="open = $event"
-    title="Todo"
+    :title="t('todo.title')"
     panel-class="todo-popover"
     :dismiss-on-outside="dismissOnOutside"
     :count="todos.length"
@@ -10,7 +10,7 @@
     <template #icon><ClipboardList /></template>
 
     <template #header>
-        Todo <span>{{ completedCount }}/{{ todos.length }}</span>
+        {{ t("todo.title") }} <span>{{ completedCount }}/{{ todos.length }}</span>
     </template>
     <template #mobile-header>{{ completedCount }}/{{ todos.length }}</template>
     <template #default>
@@ -26,7 +26,7 @@
               {{ todo.title }}
             </span>
             <small v-if="todo.dependsOn?.length" class="todo-item-deps">
-              依赖：{{ todo.dependsOn.join("、") }}
+              {{ t("todo.dependenciesLabel") }}{{ todo.dependsOn.join("、") }}
             </small>
           </span>
         </li>
@@ -40,10 +40,12 @@ import { computed, ref } from "vue";
 import { CheckCircle2, Circle, ClipboardList, Loader2 } from "lucide-vue-next";
 import type { TodoItem } from "@/api";
 import ChatHeaderPopover from "./ChatHeaderPopover.vue";
+import { useI18n } from "@/i18n";
 
 const props = withDefaults(defineProps<{ todos: TodoItem[]; dismissOnOutside?: boolean }>(), {
   dismissOnOutside: true,
 });
+const { t } = useI18n();
 const open = ref(false);
 const completedCount = computed(
   () =>

@@ -13,7 +13,7 @@
     "build:ui": "pnpm --filter pi-supervisor-ui run build",
     "build:mobile": "pnpm --filter pi-supervisor-mobile run sync",
     "build:all": "pnpm run build:ui && pnpm run build",
-    "dev": "concurrently -k -n server,web -c blue,magenta \"pnpm --filter pi-supervisor run serve:dev\" \"pnpm --filter pi-supervisor-ui run dev\"",
+    "dev": "concurrently -n server,web -c blue,magenta \"pnpm --filter pi-supervisor run serve:dev\" \"pnpm --filter pi-supervisor-ui run dev\"",
     "dev:android": "concurrently -k -n server,android -c blue,green \"pnpm --filter pi-supervisor run serve:dev\" \"pnpm --filter pi-supervisor-mobile run dev:android\"",
     "dev:ios": "concurrently -k -n server,ios -c blue,cyan \"pnpm --filter pi-supervisor run serve:dev\" \"pnpm --filter pi-supervisor-mobile run dev:ios\"",
     "dev:supervisor": "pnpm run build && pnpm --filter pi-supervisor run serve:playground",

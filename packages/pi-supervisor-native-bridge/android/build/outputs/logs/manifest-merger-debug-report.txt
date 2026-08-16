@@ -1,0 +1,66 @@
+-- Merging decision tree log ---
+manifest
+ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:2:1-24:12
+INJECTED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:2:1-24:12
+	package
+		INJECTED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml
+	xmlns:android
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:2:11-69
+uses-permission#android.permission.FOREGROUND_SERVICE
+ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:3:5-77
+	android:name
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:3:22-74
+uses-permission#android.permission.FOREGROUND_SERVICE_DATA_SYNC
+ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:4:5-87
+	android:name
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:4:22-84
+uses-permission#android.permission.POST_NOTIFICATIONS
+ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:5:5-77
+	android:name
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:5:22-74
+uses-permission#android.permission.POST_PROMOTED_NOTIFICATIONS
+ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:6:5-86
+	android:name
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:6:22-83
+uses-permission#android.permission.CAMERA
+ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:7:5-65
+	android:name
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:7:22-62
+uses-feature#android.hardware.camera
+ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:8:5-85
+	android:required
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:8:58-82
+	android:name
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:8:19-57
+application
+ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:10:5-23:19
+service#com.supervisor.nativebridge.SupervisorForegroundService
+ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:11:9-14:56
+	android:exported
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:13:13-37
+	android:foregroundServiceType
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:14:13-53
+	android:name
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:12:13-83
+activity#com.supervisor.nativebridge.QrCaptureActivity
+ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:16:9-22:63
+	android:screenOrientation
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:19:13-49
+	android:stateNotNeeded
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:20:13-42
+	android:windowSoftInputMode
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:22:13-60
+	android:exported
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:18:13-37
+	android:theme
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:21:13-72
+	android:name
+		ADDED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml:17:13-73
+uses-sdk
+INJECTED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml reason: use-sdk injection requested
+INJECTED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml
+INJECTED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml
+	android:targetSdkVersion
+		INJECTED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml
+	android:minSdkVersion
+		INJECTED from D:\myproject\supervisor-workspace\supervisor\packages\supervisor-mobile\node_modules\pi-supervisor-native-bridge\android\src\main\AndroidManifest.xml

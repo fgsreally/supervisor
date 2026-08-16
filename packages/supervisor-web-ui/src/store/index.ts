@@ -33,6 +33,7 @@ import {
 import { createMessageStorage } from "@/utils/message-storage";
 import { loadClientResource, invalidateClientResource } from "@/utils/client-data";
 import { cacheKey, writeClientCache } from "@/utils/client-cache";
+import { translate as t } from "@/i18n";
 import {
   loadSessionListCache,
   projectFromListCache,
@@ -632,7 +633,7 @@ export const useAgentStore = defineStore("agent", () => {
   const getAgentsByCategory = computed(() => {
     const groups: Array<{ label: string; agents: typeof agents.value }> = [
       {
-        label: "内置",
+        label: t("agent.category.builtin"),
         agents: agents.value.filter(
           (a) =>
             a.isBuiltin &&
@@ -641,11 +642,11 @@ export const useAgentStore = defineStore("agent", () => {
         ),
       },
       {
-        label: "外部",
+        label: t("agent.category.external"),
         agents: agents.value.filter((a) => a.backendType !== "native"),
       },
       {
-        label: "自定义",
+        label: t("agent.category.custom"),
         agents: agents.value.filter((a) => !a.isBuiltin && a.backendType === "native"),
       },
     ];

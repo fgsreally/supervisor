@@ -2,7 +2,7 @@
   <div class="todo-shell">
     <header class="todo-head">
       <div class="todo-head__brand plan-desktop-only">
-        <h1>Todo</h1>
+        <h1>{{ t("todo.title") }}</h1>
         <span>{{ headStatus }}</span>
       </div>
       <div class="todo-mode-switch plan-desktop-only" role="tablist" :aria-label="t('todo.mode')">
@@ -173,34 +173,34 @@
           v-if="activeTab === 'plan'"
           bare
           fill
-          title="顺序图"
+          :title="t('todo.sequence')"
           :tasks="drafts"
           :selected-id="focusId"
           :agents="agents"
-          empty-text="写好目标并开始规划后，顺序关系会显示在这里"
+          :empty-text="t('todo.sequenceEmpty')"
           @select="selectDraft"
         />
         <TodoSequenceDiagram
           v-else-if="runView === 'graph'"
           bare
           fill
-          title="执行关系"
+          :title="t('todo.executionGraph')"
           :tasks="execution"
           :selected-id="focusId"
           :agents="agents"
-          empty-text="暂无执行中的任务"
+          :empty-text="t('todo.executionEmpty')"
           @select="selectExecution"
         />
         <div v-else class="canvas-timeline">
           <header class="canvas-timeline__head">
-            <strong>时间轴</strong>
-            <span>{{ execution.length }} 个任务</span>
+            <strong>{{ t("todo.timeline") }}</strong>
+            <span>{{ t("todo.taskCount", { count: execution.length }) }}</span>
           </header>
           <div class="execution-timeline">
             <article v-for="(task, index) in execution" :key="task.id" @click="openTask(task)">
               <div class="time">
                 <strong>{{ taskEventTime(task.id, index) }}</strong>
-                <span>今天</span>
+                <span>{{ t("todo.today") }}</span>
               </div>
               <div class="rail"><i :data-status="task.status" /></div>
               <div class="event">
@@ -268,7 +268,7 @@
             <div class="goal-box__footer">
               <span class="project-pill"><FolderGit2 />supervisor-web-ui</span>
               <button type="button" class="primary" :disabled="planning" @click="mockPlan">
-                <Sparkles />{{ planning ? "正在整理…" : "开始规划" }}
+                <Sparkles />{{ planning ? t("todo.planning") : t("todo.startPlanning") }}
               </button>
             </div>
             <button
@@ -277,12 +277,12 @@
               class="goal-box__collapse"
               @click="goalComposerOpen = false"
             >
-              收起
+              {{ t("todo.collapse") }}
             </button>
           </template>
         </div>
 
-        <div v-if="drafts.length" class="mobile-plan-list" aria-label="规划任务列表">
+        <div v-if="drafts.length" class="mobile-plan-list" :aria-label="t('todo.planTaskList')">
           <div class="mobile-plan-section-label">{{ t("todo.confirmedTasks", { count: drafts.length }) }}</div>
           <div class="mobile-plan-group">
             <button
@@ -317,7 +317,7 @@
             <h2>{{ t("todo.execution") }}</h2>
             <span>{{ t("todo.runningTaskCount", { count: runningCount }) }}</span>
           </div>
-          <div class="view-switch" aria-label="执行视图">
+          <div class="view-switch" :aria-label="t('todo.runView')">
             <button
               type="button"
               :class="{ active: mobileRunView === 'list' }"
@@ -377,7 +377,7 @@
           <article v-for="(task, index) in execution" :key="task.id" @click="openTask(task)">
             <div class="time">
               <strong>{{ taskEventTime(task.id, index) }}</strong>
-              <span>今天</span>
+                <span>{{ t("todo.today") }}</span>
             </div>
             <div class="rail"><i :data-status="task.status" /></div>
             <div class="event">
@@ -400,7 +400,7 @@
 
     <ResponsiveDialog
       :open="selected != null"
-      :title="selected ? `Task ${selected.id}` : t('todo.taskDetails')"
+      :title="selected ? t('todo.taskTitle', { id: selected.id }) : t('todo.taskDetails')"
       panel-class="todo-task-dialog"
       @close="selected = null"
     >
@@ -413,7 +413,7 @@
             <dd>{{ selected.project }}</dd>
           </div>
           <div>
-            <dt>Agent</dt>
+            <dt>{{ t("todo.agent") }}</dt>
             <dd>{{ selected.agent }}</dd>
           </div>
         </dl>
@@ -478,8 +478,8 @@ interface MockTask {
 }
 
 const emit = defineEmits<{ "open-session": [sessionId: string] }>();
-const { t } = useI18n();
-const goal = ref("优化 Supervisor 的 Todo，让规划、依赖和执行状态更清晰");
+const { t, locale } = useI18n();
+const goal = ref(t("todo.defaultGoal"));
 const planning = ref(false);
 const goalComposerOpen = ref(false);
 const isNarrowUi = ref(false);
@@ -497,8 +497,8 @@ const goalHistoryOpen = ref(false);
 const drafts = ref<MockTask[]>([
   {
     id: 1,
-    title: "梳理 Todo 数据模型",
-    description: "检查现有 Todo 的存储与调度逻辑，整理单表任务模型及兼容迁移方案。",
+    title: t("todo.demo.draft1.title"),
+    description: t("todo.demo.draft1.description"),
     project: "supervisor",
     agent: "Codex",
     dependencies: [],
@@ -506,8 +506,8 @@ const drafts = ref<MockTask[]>([
   },
   {
     id: 2,
-    title: "重构任务接口",
-    description: "调整 HTTP API 和调度器，支持草稿确认、批次执行和可关闭的自动调度。",
+    title: t("todo.demo.draft2.title"),
+    description: t("todo.demo.draft2.description"),
     project: "supervisor",
     agent: "Codex",
     dependencies: [],
@@ -515,8 +515,8 @@ const drafts = ref<MockTask[]>([
   },
   {
     id: 3,
-    title: "重做 Todo 交互",
-    description: "实现规划区、执行区、任务详情与依赖关系的双向高亮。",
+    title: t("todo.demo.draft3.title"),
+    description: t("todo.demo.draft3.description"),
     project: "supervisor-web-ui",
     agent: "Claude Code",
     dependencies: [1],
@@ -524,8 +524,8 @@ const drafts = ref<MockTask[]>([
   },
   {
     id: 4,
-    title: "联调与响应式验证",
-    description: "连接真实接口并验证任务状态同步、Session 跳转及窄屏体验。",
+    title: t("todo.demo.draft4.title"),
+    description: t("todo.demo.draft4.description"),
     project: "supervisor-web-ui",
     agent: "Codex",
     dependencies: [2],
@@ -533,8 +533,8 @@ const drafts = ref<MockTask[]>([
   },
   {
     id: 5,
-    title: "联调与验证",
-    description: "连接接口与界面，验证依赖调度、Session 跳转和响应式布局。",
+    title: t("todo.demo.draft5.title"),
+    description: t("todo.demo.draft5.description"),
     project: "supervisor-web-ui",
     agent: "Codex",
     dependencies: [3, 4],
@@ -545,8 +545,8 @@ const drafts = ref<MockTask[]>([
 const execution = ref<MockTask[]>([
   {
     id: 11,
-    title: "统一助手模型设置",
-    description: "设置页只保留 featureModels.assistant，并完成旧配置兼容。",
+    title: t("todo.demo.exec11.title"),
+    description: t("todo.demo.exec11.description"),
     project: "supervisor-web-ui",
     agent: "Codex",
     dependencies: [],
@@ -555,8 +555,8 @@ const execution = ref<MockTask[]>([
   },
   {
     id: 12,
-    title: "Watson Runner 日志",
-    description: "读取 agent home logs 并按时间倒序展示。",
+    title: t("todo.demo.exec12.title"),
+    description: t("todo.demo.exec12.description"),
     project: "supervisor",
     agent: "Codex",
     dependencies: [],
@@ -565,8 +565,8 @@ const execution = ref<MockTask[]>([
   },
   {
     id: 13,
-    title: "移动端 Session 详情",
-    description: "调整移动端详情页信息密度和主要操作位置。",
+    title: t("todo.demo.exec13.title"),
+    description: t("todo.demo.exec13.description"),
     project: "supervisor-web-ui",
     agent: "Claude Code",
     dependencies: [11],
@@ -574,17 +574,17 @@ const execution = ref<MockTask[]>([
   },
   {
     id: 14,
-    title: "项目脚本启动异常",
-    description: "项目脚本已创建，但当前没有配置可用于该项目的 Agent。",
+    title: t("todo.demo.exec14.title"),
+    description: t("todo.demo.exec14.description"),
     project: "supervisor",
-    agent: "未分配",
+    agent: t("todo.demo.unassigned"),
     dependencies: [],
     status: "blocked",
   },
   {
     id: 15,
-    title: "迁移旧版模型配置",
-    description: "把历史功能模型配置归并到统一助手模型，并保留安全回退。",
+    title: t("todo.demo.exec15.title"),
+    description: t("todo.demo.exec15.description"),
     project: "supervisor",
     agent: "Codex",
     dependencies: [11, 12],
@@ -592,8 +592,8 @@ const execution = ref<MockTask[]>([
   },
   {
     id: 16,
-    title: "补充设置页回归测试",
-    description: "覆盖模型读取、保存、旧配置迁移与异常提示。",
+    title: t("todo.demo.exec16.title"),
+    description: t("todo.demo.exec16.description"),
     project: "supervisor-web-ui",
     agent: "Claude Code",
     dependencies: [15],
@@ -601,8 +601,8 @@ const execution = ref<MockTask[]>([
   },
   {
     id: 17,
-    title: "联调移动端任务详情",
-    description: "验证详情弹层、Session 跳转与依赖任务切换。",
+    title: t("todo.demo.exec17.title"),
+    description: t("todo.demo.exec17.description"),
     project: "supervisor-web-ui",
     agent: "Codex",
     dependencies: [13, 15],
@@ -611,8 +611,8 @@ const execution = ref<MockTask[]>([
   },
   {
     id: 18,
-    title: "发布前验收",
-    description: "汇总设置、日志与移动端改动，完成发布检查。",
+    title: t("todo.demo.exec18.title"),
+    description: t("todo.demo.exec18.description"),
     project: "supervisor-web-ui",
     agent: "Codex",
     dependencies: [14, 16, 17],
@@ -704,7 +704,7 @@ function count(id: string) {
 function taskEventTime(taskId: number, index: number) {
   const event = [...taskEvents.value].reverse().find((item) => Number(item.entityId) === taskId);
   if (event) {
-    return new Intl.DateTimeFormat("zh-CN", {
+    return new Intl.DateTimeFormat(locale.value, {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
@@ -769,10 +769,10 @@ async function openGoalHistory() {
   goalHistoryOpen.value = true;
 }
 function goalObjective(event: TimelineEvent) {
-  return typeof event.data.objective === "string" ? event.data.objective : "未命名规划";
+  return typeof event.data.objective === "string" ? event.data.objective : t("todo.unnamedPlan");
 }
 function formatGoalTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(locale.value, {
     month: "numeric",
     day: "numeric",
     hour: "2-digit",

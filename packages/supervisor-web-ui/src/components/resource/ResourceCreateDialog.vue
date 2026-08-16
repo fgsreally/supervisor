@@ -10,27 +10,27 @@
       >
         <header class="h-14 px-5 border-b flex items-center shrink-0">
           <h2 class="text-[16px] font-medium flex-1">
-            {{ kind === "mcp" ? "新建 MCP 配置" : "新建 Template" }}
+            {{ kind === "mcp" ? t("resource.createMcpConfig") : t("resource.createTemplate") }}
           </h2>
-          <button type="button" class="resource-create-close" title="关闭" @click="close">
+          <button type="button" class="resource-create-close" :title="t('common.close')" @click="close">
             <X class="w-5 h-5" />
           </button>
         </header>
 
         <div class="p-5 overflow-y-auto custom-scrollbar space-y-4 flex-1 min-h-0 flex flex-col">
           <label class="block text-[13px]">
-            <span class="resource-create-label mb-1 block">名称</span>
+            <span class="resource-create-label mb-1 block">{{ t("common.name") }}</span>
             <input
               v-model="name"
               type="text"
               class="resource-create-input w-full px-3 py-2 rounded-md border text-[13px] font-mono"
-              placeholder="请输入名称"
+              :placeholder="t('resource.namePlaceholder')"
               :disabled="saving"
             />
           </label>
 
           <div class="flex-1 min-h-[240px] flex flex-col border rounded-md overflow-hidden">
-            <div class="px-3 py-1.5 text-[12px] border-b resource-create-editor-label">内容</div>
+            <div class="px-3 py-1.5 text-[12px] border-b resource-create-editor-label">{{ t("common.content") }}</div>
             <ResourceContentView
               v-model:content="content"
               :kind="kind === 'mcp' ? 'mcp' : 'prompts'"
@@ -48,7 +48,7 @@
             class="resource-create-btn resource-create-btn--ghost"
             @click="close"
           >
-            取消
+            {{ t("common.cancel") }}
           </button>
           <button
             type="button"
@@ -56,7 +56,7 @@
             :disabled="saving || !name.trim()"
             @click="save"
           >
-            {{ saving ? "保存中..." : "创建" }}
+            {{ saving ? t("common.saving") : t("common.create") }}
           </button>
         </footer>
       </section>
@@ -70,11 +70,13 @@ import { X } from "lucide-vue-next";
 import ResourceContentView from "./ResourceContentView.vue";
 import { upsertResourceContent } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   open: boolean;
   kind: "prompt" | "mcp";
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   close: [];
@@ -82,14 +84,14 @@ const emit = defineEmits<{
 }>();
 
 const DEFAULT_PROMPT = `---
-description: 可复用的 Template
-argument-hint: <主题> [补充要求]
+description: Reusable Template
+argument-hint: <topic> [additional requirements]
 ---
 # Template
 
-请围绕 $1 完成任务。
+Complete the task around $1.
 
-用户传入的全部参数：$ARGUMENTS
+All user-provided arguments: $ARGUMENTS
 `;
 
 const DEFAULT_MCP = `{
@@ -141,7 +143,7 @@ async function save() {
       name: nextName,
       content: content.value,
     });
-    showUiMessage(`${props.kind === "mcp" ? "MCP" : "Template"} 已创建`, "success");
+    showUiMessage(t("resource.createdNamed", { kind: props.kind === "mcp" ? "MCP" : "Template" }), "success");
     emit("created", nextSlug);
     close();
   } catch (err) {

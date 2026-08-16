@@ -16,7 +16,7 @@
         class="resources-panel__title text-[17px] font-medium mb-3"
         style="color: var(--app-text-primary)"
       >
-        资源
+        {{ t("resource.title") }}
       </div>
       <div class="flex gap-1">
         <button
@@ -37,14 +37,14 @@
       style="background: var(--app-list-header-bg); border-color: var(--app-border-subtle)"
     >
       <span class="text-[12px] shrink-0" style="color: var(--app-text-muted)">
-        共{{ filteredItems.length }}个
+        {{ t("resource.itemCount", { count: filteredItems.length }) }}
       </span>
       <div v-if="showAction" class="flex items-center gap-0.5 shrink-0">
         <template v-if="kind === 'skills'">
           <button
             type="button"
             class="list-header-btn"
-            title="搜索 Skill"
+            :title="t('resource.searchSkill')"
             @click="openSkillDialog('search')"
           >
             <Search class="w-5 h-5" />
@@ -52,7 +52,7 @@
           <button
             type="button"
             class="list-header-btn"
-            title="导入 Skill"
+            :title="t('resource.importSkill')"
             @click="openSkillDialog('link')"
           >
             <Link class="w-5 h-5" />
@@ -81,7 +81,7 @@
         class="px-4 py-8 text-center text-[13px]"
         style="color: var(--app-text-muted)"
       >
-        暂无资源
+        {{ t("resource.empty") }}
       </div>
     </div>
 
@@ -115,6 +115,7 @@ import ExtensionInstallDialog from "./ExtensionInstallDialog.vue";
 import { useResourceStore } from "@/store";
 import { getResourcesByKind } from "@/utils/resources-ui";
 import type { UIResourceKind } from "@/types/ui";
+import { useI18n } from "@/i18n";
 
 defineProps<{
   activeId: string | null;
@@ -124,6 +125,7 @@ defineProps<{
 const emit = defineEmits<{ select: [id: string] }>();
 
 const resourceStore = useResourceStore();
+const { t } = useI18n();
 const kind = ref<UIResourceKind>("skills");
 const createOpen = ref(false);
 const skillOpen = ref(false);
@@ -148,9 +150,9 @@ const showAction = computed(
 );
 
 const actionTitle = computed(() => {
-  if (kind.value === "mcp") return "新建 MCP";
-  if (kind.value === "extensions") return "安装扩展";
-  return "新建 Template";
+  if (kind.value === "mcp") return t("resource.createMcp");
+  if (kind.value === "extensions") return t("resource.installExtension");
+  return t("resource.createTemplate");
 });
 
 const createKind = computed<"prompt" | "mcp">(() => (kind.value === "mcp" ? "mcp" : "prompt"));

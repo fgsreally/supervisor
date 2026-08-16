@@ -1,6 +1,6 @@
 <template>
   <div class="extension-install-box mt-2 pt-2 border-t border-[var(--app-border-subtle)]">
-    <div class="text-[10px] font-medium mb-1.5 extension-install-box__label">安装/卸载扩展</div>
+    <div class="text-[10px] font-medium mb-1.5 extension-install-box__label">{{ t("resource.extensionInstallManage") }}</div>
     <input
       v-model="source"
       type="text"
@@ -15,7 +15,7 @@
       :disabled="installing || !source.trim()"
       @click="install"
     >
-      {{ installing ? "安装中..." : "安装到全局库" }}
+      {{ installing ? t("resource.installing") : t("resource.installToGlobal") }}
     </button>
 
     <div v-if="installError" class="extension-install-box__error mt-1.5 text-[11px]">
@@ -38,7 +38,7 @@
           :disabled="uninstallingId === item.id"
           @click="uninstall(item.id)"
         >
-          {{ uninstallingId === item.id ? "..." : "卸载" }}
+          {{ uninstallingId === item.id ? t("common.loading") : t("resource.uninstall") }}
         </button>
       </li>
     </ul>
@@ -55,11 +55,13 @@ import {
   type ExtensionResourceInfo,
 } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useI18n } from "@/i18n";
 
 const emit = defineEmits<{
   installed: [id: string];
   uninstalled: [id: string];
 }>();
+const { t } = useI18n();
 
 const source = ref("");
 const installing = ref(false);
@@ -86,7 +88,7 @@ async function install() {
     const result: ExtensionInstallResult = await installExtension(s);
     source.value = "";
     await refresh();
-    showUiMessage(`已安装扩展 ${result.id}`, "success");
+    showUiMessage(t("resource.extensionInstalled", { id: result.id }), "success");
     emit("installed", result.id);
   } catch (err) {
     installError.value = err instanceof Error ? err.message : String(err);
@@ -100,7 +102,7 @@ async function uninstall(id: string) {
   try {
     await uninstallExtension(id);
     await refresh();
-    showUiMessage(`已卸载扩展 ${id}`, "success");
+    showUiMessage(t("resource.extensionUninstalled", { id }), "success");
     emit("uninstalled", id);
   } catch (err) {
     installError.value = err instanceof Error ? err.message : String(err);

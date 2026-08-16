@@ -53,15 +53,18 @@ import { computed } from "vue";
 import { MobileDrawer } from "@/components/mobile/ui";
 import { useMobileViewport } from "@/composables/use-mobile-viewport";
 
-const props = defineProps<{
-  open: boolean;
-  x: number;
-  y: number;
-  status?: string;
-  pinned?: boolean;
-  protectedSession?: boolean;
-  canFork?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    open: boolean;
+    x: number;
+    y: number;
+    status?: string;
+    pinned?: boolean;
+    protectedSession?: boolean;
+    canFork?: boolean;
+  }>(),
+  { canFork: true },
+);
 
 const emit = defineEmits<{
   close: [];

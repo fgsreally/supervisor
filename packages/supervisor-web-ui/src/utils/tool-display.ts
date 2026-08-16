@@ -6,6 +6,7 @@ import {
   parseAskQuestions,
   parseAskResultFromToolResult,
 } from "./ask-tool";
+import { translate as t } from "@/i18n";
 
 export type CodingToolName = "read" | "write" | "edit" | "bash" | "spawn_agent" | string;
 
@@ -36,7 +37,7 @@ export function toolCallSummary(name: string, args: Record<string, unknown> | un
     case "read": {
       const path = String(args.path ?? "");
       const skillName = skillNameFromReadPath(path);
-      if (skillName) return `加载技能 ${skillName}`;
+      if (skillName) return t("tool.loadSkill", { name: skillName });
       return `read ${path}`;
     }
     case "write":
@@ -53,29 +54,31 @@ export function toolCallSummary(name: string, args: Record<string, unknown> | un
     case "spawn_agent":
       return `spawn ${args.agentId ?? "subagent"}`;
     case "ProjectServiceSetup":
-      return "注册应用";
+      return t("tool.registerApp");
     case "ProjectServiceStart":
-      return "启动应用";
+      return t("tool.startApp");
     case "ProjectServiceStop":
-      return "停止应用";
+      return t("tool.stopApp");
     case "ProjectServiceDestroy":
-      return "销毁应用";
+      return t("tool.destroyApp");
     case "skill": {
       const skillName = String(args.name ?? "skill");
       const path = typeof args.path === "string" ? args.path.trim() : "";
-      return path ? `访问技能资源 ${skillName}/${path}` : `激活技能 ${skillName}`;
+      return path
+        ? t("tool.accessSkillResource", { name: skillName, path })
+        : t("tool.activateSkill", { name: skillName });
     }
     case "TimerCreate":
-      return `安排定时任务：${String(args.prompt ?? "").slice(0, 36)}`;
+      return t("tool.createTimer", { prompt: String(args.prompt ?? "").slice(0, 36) });
     case "TimerList":
-      return "查看当前定时安排";
+      return t("tool.listTimers");
     case "TimerDelete":
-      return "取消定时任务";
+      return t("tool.deleteTimer");
     default: {
       if (isAskToolName(name)) {
         const questions = parseAskQuestions(args);
         const prompt = questions[0]?.prompt?.trim();
-        if (!prompt) return "向你提问";
+        if (!prompt) return t("tool.askYou");
         return prompt.length > 40 ? `${prompt.slice(0, 37)}...` : prompt;
       }
       return name;
@@ -90,51 +93,53 @@ export function toolResultSummary(
   const text = content?.find((c) => c.type === "text")?.text ?? "";
   if (name.toLowerCase().includes("eval")) {
     const lineCount = text.split("\n").filter((line) => line.trim()).length;
-    return `完成 · ${lineCount} 行输出`;
+    return t("tool.completedOutput", { count: lineCount });
   }
   switch (name) {
     case "read": {
       const lines = text ? text.split("\n").length : 0;
-      return lines > 0 ? `已读取 · ${lines} 行` : "已读取";
+      return lines > 0 ? t("tool.readOutput", { count: lines }) : t("tool.read");
     }
     case "write":
-      return "已写入文件";
+      return t("tool.written");
     case "edit": {
       if (text.startsWith("Error")) return text.split("\n")[0];
       const plus = (text.match(/^\+/gm) ?? []).length;
       const minus = (text.match(/^-/gm) ?? []).length;
-      if (plus || minus) return `已修改 · +${plus} / -${minus}`;
-      return "已应用修改";
+      if (plus || minus) return t("tool.editedStats", { plus, minus });
+      return t("tool.edited");
     }
     case "bash": {
       const exitMatch = text.match(/exit code:\s*(\d+)/i);
       const exit = exitMatch ? exitMatch[1] : "0";
       const lineCount = text.split("\n").filter((l) => l.trim()).length;
-      return exit === "0" ? `完成 · ${lineCount} 行输出` : `退出码 ${exit}`;
+      return exit === "0"
+        ? t("tool.completedOutput", { count: lineCount })
+        : t("tool.exitCode", { code: exit });
     }
     case "spawn_agent":
-      return "子代理已启动";
+      return t("tool.subagentStarted");
     case "skill":
-      return "技能资源已加载";
+      return t("tool.skillLoaded");
     case "TimerCreate":
-      return "已安排";
+      return t("tool.timerCreated");
     case "TimerList": {
       try {
         const parsed = JSON.parse(text) as unknown[];
-        return `${parsed.length} 项`;
+        return t("tool.timerCount", { count: parsed.length });
       } catch {
-        return "已查看";
+        return t("tool.timerListed");
       }
     }
     case "TimerDelete":
-      return "已取消";
+      return t("tool.timerDeleted");
     default: {
       if (isAskToolName(name)) {
         const details = parseAskResultFromToolResult({ content: content ?? [] });
-        if (details?.cancelled) return "已取消";
-        return askResultSummary(details) || "已回答";
+        if (details?.cancelled) return t("ask.cancelled");
+        return askResultSummary(details) || t("ask.answered");
       }
-      return "完成";
+      return t("tool.completed");
     }
   }
 }
@@ -196,18 +201,18 @@ export function toolResultDetail(
 export function toolDetailLabel(name: string): string {
   switch (name) {
     case "read":
-      return "读取详情";
+      return t("tool.detail.read");
     case "write":
-      return "写入内容";
+      return t("tool.detail.write");
     case "edit":
-      return "diff / 详情";
+      return t("tool.detail.edit");
     case "bash":
-      return "终端输出";
+      return t("tool.detail.bash");
     case "spawn_agent":
-      return "子代理信息";
+      return t("tool.detail.subagent");
     case "skill":
-      return "技能内容";
+      return t("tool.detail.skill");
     default:
-      return "详情";
+      return t("tool.detail.default");
   }
 }

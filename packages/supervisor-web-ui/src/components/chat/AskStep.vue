@@ -3,7 +3,7 @@
     <template v-if="showPending && questions.length">
       <div v-for="q in questions" :key="q.id" class="ask-step__block">
         <p class="ask-step__prompt">{{ q.prompt }}</p>
-        <p class="ask-step__meta">单选</p>
+        <p class="ask-step__meta">{{ t("chat.ask.singleChoice") }}</p>
         <div class="ask-step__list" role="radiogroup" :aria-label="q.prompt">
           <AskStepOption
             :question="q"
@@ -19,7 +19,7 @@
         :disabled="!canConfirm || submitting"
         @click="submitAnswers"
       >
-        {{ submitting ? "提交中…" : "确认" }}
+        {{ submitting ? t("chat.ask.submitting") : t("chat.ask.confirm") }}
       </button>
     </template>
 
@@ -32,7 +32,7 @@
       :is-error="isError"
     />
 
-    <p v-else-if="isError" class="ask-step__muted">提问失败</p>
+    <p v-else-if="isError" class="ask-step__muted">{{ t("chat.ask.failed") }}</p>
   </div>
 </template>
 
@@ -42,6 +42,7 @@ import AskStepOption from "./AskStepOption.vue";
 import ToolActivityBar from "../tool/ToolActivityBar.vue";
 import { parseAskQuestions, type AskOption } from "@/utils/ask-tool";
 import * as api from "@/api";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   sessionId: string;
@@ -53,6 +54,7 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{ answered: [] }>();
+const { t } = useI18n();
 
 const submitting = ref(false);
 const selections = reactive<Record<string, string>>({});

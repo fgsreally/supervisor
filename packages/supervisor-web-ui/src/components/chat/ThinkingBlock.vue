@@ -17,6 +17,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { Brain, ChevronDown } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   content: string;
@@ -24,10 +25,11 @@ const props = defineProps<{
 }>();
 
 const expanded = ref(false);
+const { t } = useI18n();
 
 const preview = computed(() => {
   const oneLine = props.content.replace(/\s+/g, " ").trim();
-  if (!oneLine) return props.streaming ? "思考中…" : "…";
+  if (!oneLine) return props.streaming ? t("chat.thinking") : "…";
   return oneLine.length > 56 ? `${oneLine.slice(0, 53)}…` : oneLine;
 });
 </script>

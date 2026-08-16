@@ -51,7 +51,7 @@
               @click="executionOpen = !executionOpen"
             >
               <ChevronRight :class="{ 'external-details__chevron--open': executionOpen }" />
-              <span>执行过程（{{ collapsedExecutionPieces.length }} 项）</span>
+              <span>{{ t("chat.executionSummary", { count: collapsedExecutionPieces.length }) }}</span>
             </button>
             <div
               class="external-details__collapse"
@@ -139,7 +139,7 @@
 
           <div v-if="showThinking" class="assistant-loading">
             <Loader2 class="w-4 h-4 animate-spin shrink-0" />
-            <span>思考中…</span>
+            <span>{{ t("chat.thinking") }}</span>
           </div>
         </div>
       </div>
@@ -148,7 +148,7 @@
         class="chat-msg-duration"
         :class="{ 'chat-msg-duration--pinned': durationPinned }"
       >
-        耗时 {{ durationLabel }}
+        {{ t("chat.duration", { duration: durationLabel }) }}
       </span>
     </div>
   </div>
@@ -157,6 +157,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from "vue";
 import { ChevronRight, Loader2 } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import type { DisplayGroup, RenderPiece } from "@/utils/flatten-messages";
 import MarkdownContent from "../base/MarkdownContent.vue";
 import ThinkingBlock from "./ThinkingBlock.vue";
@@ -165,6 +166,7 @@ import AgentAvatar from "../agent/AgentAvatar.vue";
 import { viewPreferences } from "@/utils/view-preferences";
 
 const executionOpen = ref(false);
+const { t } = useI18n();
 
 const props = defineProps<{
   sessionId: string;

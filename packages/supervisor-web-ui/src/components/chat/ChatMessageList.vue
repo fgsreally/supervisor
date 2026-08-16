@@ -6,13 +6,13 @@
   >
     <div v-if="loadingOlder" class="chat-load-older">
       <Loader2 class="w-4 h-4 animate-spin" />
-      <span>加载更早消息…</span>
+      <span>{{ t("chat.loadOlder") }}</span>
     </div>
     <div
       v-else-if="scrollReady && hasOlder && !searchOpen"
       class="chat-load-older chat-load-older--hint"
     >
-      <span>上滑加载更早消息</span>
+      <span>{{ t("chat.loadOlderHint") }}</span>
     </div>
     <div class="chat-virtual-spacer" :style="{ height: `${rowVirtualizer.getTotalSize()}px` }">
       <div
@@ -88,7 +88,7 @@
             }"
           >
             <Loader2 class="w-4 h-4 animate-spin shrink-0" />
-            <span>思考中…</span>
+            <span>{{ t("chat.thinking") }}</span>
           </div>
         </div>
       </div>
@@ -115,6 +115,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, reactive, ref, type ComponentPublicInstance } from "vue";
+import { useI18n } from "@/i18n";
 import { useVirtualizer } from "@tanstack/vue-virtual";
 import { Loader2 } from "lucide-vue-next";
 import type { ChatCompactionEntry } from "@/types/chat-entry";
@@ -156,6 +157,7 @@ const props = defineProps<{
   loadingOlder?: boolean;
   scrollReady?: boolean;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   "load-older": [];

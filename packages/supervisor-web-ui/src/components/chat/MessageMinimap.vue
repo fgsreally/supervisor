@@ -1,8 +1,8 @@
 <template>
   <aside
     class="message-minimap"
-    aria-label="历史消息导航"
-    title="滚轮查看更早消息"
+    :aria-label="t('chat.minimap.label')"
+    :title="t('chat.minimap.title')"
     @pointerleave="onPointerLeave"
     @wheel.prevent="onWheel"
   >
@@ -27,6 +27,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useI18n } from "@/i18n";
 import type { TurnIndex } from "@/utils/message-storage";
 
 const props = defineProps<{
@@ -34,6 +35,7 @@ const props = defineProps<{
   /** Currently focused / visible turn id (optional highlight). */
   activeTurnId?: string | null;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   select: [userEntryId: string];

@@ -6,7 +6,7 @@
         <button
           type="button"
           class="queued-inputs-bar__btn"
-          title="回到输入区修改"
+          :title="t('chat.queued.edit')"
           :disabled="busyId === input.id"
           @click="emit('edit', input)"
         >
@@ -15,7 +15,7 @@
         <button
           type="button"
           class="queued-inputs-bar__btn queued-inputs-bar__btn--submit"
-          title="打断当前并立即发送"
+          :title="t('chat.queued.sendNow')"
           :disabled="busyId === input.id"
           @click="emit('submit', input)"
         >
@@ -24,7 +24,7 @@
         <button
           type="button"
           class="queued-inputs-bar__btn queued-inputs-bar__btn--delete"
-          title="删除"
+          :title="t('common.delete')"
           :disabled="busyId === input.id"
           @click="emit('delete', input)"
         >
@@ -37,6 +37,7 @@
 
 <script setup lang="ts">
 import { Pencil, SendHorizontal, Trash2 } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import type { QueuedSessionInput } from "@/api";
 
 defineProps<{
@@ -49,6 +50,7 @@ const emit = defineEmits<{
   submit: [input: QueuedSessionInput];
   delete: [input: QueuedSessionInput];
 }>();
+const { t } = useI18n();
 </script>
 
 <style scoped>

@@ -5,7 +5,7 @@
       <button
         type="button"
         class="pending-images__remove"
-        title="移除"
+        :title="t('common.remove')"
         @click="emit('remove', img.id)"
       >
         <X class="w-3 h-3" />
@@ -16,6 +16,7 @@
 
 <script setup lang="ts">
 import { X } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import type { PendingChatImage } from "@/types/chat-compose";
 
 defineProps<{
@@ -23,6 +24,7 @@ defineProps<{
 }>();
 
 const emit = defineEmits<{ remove: [id: string] }>();
+const { t } = useI18n();
 </script>
 
 <style scoped>

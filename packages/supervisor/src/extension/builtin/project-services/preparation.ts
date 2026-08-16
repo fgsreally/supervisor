@@ -15,17 +15,17 @@ export type ProjectServicePreparation = Static<typeof ProjectServicePreparationS
 
 export function buildProjectServicePreparationPrompt(port: number): string {
   return [
-    "请为当前 coding Session 探查本地开发服务。",
-    "先完整阅读项目根目录及适用的 AGENTS.md，重点查看“本地开发服务”；再按需阅读 README、package.json、workspace 配置、锁文件和已有启动脚本。",
-    "只读探查：不要编辑文件，不要安装依赖，不要执行安装或启动命令。",
-    "判断项目是否存在应长期运行、可供预览或 API 调试的本地服务。普通脚本、测试和一次性命令不算服务。",
-    "本 Session 已预留一个空闲端口。若存在服务，startCommand 必须明确使用 ${PORT} 占位符，并在需要时设置 host=0.0.0.0；禁止使用 3000、5173 等固定默认端口。",
-    "只登记一个主服务和一个入口。installCommand、stopCommand、destroyCommand 没有可靠命令时返回空字符串；不要臆造命令。",
-    "若没有长期服务，detected=false，其余字符串返回空字符串。",
-    "appPath 使用以 / 开头的预览路径，通常为 /；appName 使用简短名称，如 web 或 api。",
-    "最后调用 submit_result，除此之外不要用文本兜底。",
+    "Inspect local development services for the current coding Session.",
+    "Read the project root and applicable AGENTS.md files completely, focusing on the `## 本地开发服务` section; then inspect README, package.json, workspace configuration, lockfiles, and existing start scripts as needed.",
+    "This is a read-only investigation: do not edit files, install dependencies, or run install/start commands.",
+    "Determine whether the project has a long-running service suitable for preview or API debugging. Ordinary scripts, tests, and one-off commands are not services.",
+    "This Session has one free port reserved. If a service exists, startCommand must explicitly use the ${PORT} placeholder and set host=0.0.0.0 when needed; never use fixed defaults such as 3000 or 5173.",
+    "Register exactly one primary service and one entry point. Return empty strings for installCommand, stopCommand, or destroyCommand when no reliable command exists; do not invent commands.",
+    "If there is no long-running service, set detected=false and return empty strings for all other fields.",
+    "Use an appPath beginning with /, usually /; use a short appName such as web or api.",
+    "Call submit_result last and do not provide a text fallback.",
     "",
-    `预留端口：${port}（仅用于理解；返回的 startCommand 仍须写成 \${PORT}）`,
+    `Reserved port: ${port} (for understanding only; the returned startCommand must still use \${PORT})`,
   ].join("\n");
 }
 

@@ -37,28 +37,28 @@ import { detectListenPort } from "../../../utils/listen-port.js";
 
 const UPDATE_TOOL = "UpdateService";
 const UPDATE_DESCRIPTION =
-  "增删改本 Session 的本地服务。必须带 action：add 新起一个进程并登记；delete 关掉对应进程并移除；update 关掉旧进程再按新命令启动。先检查 Session worktree 及其上级目录能否直接复用项目依赖；例如 Node/npm 项目能向上找到可用的 node_modules/.bin 时，不要传 installCommand，工具会跳过安装并直接启动。只有无法从当前目录或上级目录取得依赖时，才传入与项目包管理器匹配的 installCommand。startCommand 必须调用当前项目自身声明的启动脚本，不要直接调用可能从 Supervisor PATH 解析出的裸二进制；必须让服务监听 127.0.0.1 或 0.0.0.0。命令用 ${PORT1}、${PORT2} 等连续编号占位符声明所需端口；调用完成后工具会为每个占位符分配并持久化空闲端口。不要写死端口，也不要用 bash 直接启动长期服务。";
+  "Add, delete, or update local services for this Session. The action is required: add starts and registers a process; delete stops and removes one; update stops the old process and starts the new command. First check whether dependencies can be reused from the Session worktree or a parent directory. For example, if a Node/npm project can find a usable node_modules/.bin above the worktree, omit installCommand and the tool will skip installation. Only provide a package-manager-matched installCommand when dependencies cannot be reused. startCommand must invoke a start script declared by the project, not a bare binary resolved from Supervisor PATH; the service must listen on 127.0.0.1 or 0.0.0.0. Declare ports with consecutive placeholders such as ${PORT1} and ${PORT2}; the tool allocates and persists free ports after the call. Never hard-code ports or start a long-running service directly with bash.";
 const UPDATE_PARAMS = Type.Object({
   action: Type.Union([Type.Literal("add"), Type.Literal("delete"), Type.Literal("update")], {
-    description: "add 新增 / delete 删除 / update 修改",
+    description: "add a service / delete a service / update a service",
   }),
-  name: Type.String({ description: "服务名，如 web、api" }),
+  name: Type.String({ description: "Service name, such as web or api" }),
   startCommand: Type.Optional(
     Type.String({
       description:
-        "启动命令；add / update 必填。使用当前项目自身声明的启动脚本，并让服务监听 127.0.0.1 或 0.0.0.0；不要直接调用可能从 Supervisor PATH 解析出的裸二进制。端口使用 ${PORT1}、${PORT2} 等连续编号占位符，工具会在调用后分配空闲端口并替换",
+        "Start command; required for add/update. Use a start script declared by the project and listen on 127.0.0.1 or 0.0.0.0; do not invoke a bare binary resolved from Supervisor PATH. Declare ports with consecutive placeholders such as ${PORT1} and ${PORT2}; the tool allocates and replaces them after the call.",
     }),
   ),
   port: Type.Optional(
     Type.Number({
-      description: "已弃用；端口由工具根据 startCommand 中的 ${PORT1}、${PORT2} 等占位符自动分配",
+      description: "Deprecated; the tool allocates ports from ${PORT1}, ${PORT2}, and similar placeholders in startCommand.",
     }),
   ),
-  path: Type.Optional(Type.String({ description: "URL 路径，默认 /" })),
+  path: Type.Optional(Type.String({ description: "URL path, default /" })),
   installCommand: Type.Optional(
     Type.String({
       description:
-        "可选的依赖安装命令。先检查 Session worktree 及其上级目录；若能直接复用依赖（例如 Node/npm 项目能向上找到可用的 node_modules/.bin），不要传此参数，工具会跳过安装并直接启动。仅在无法取得依赖时传入与锁文件和包管理器匹配的命令",
+        "Optional dependency installation command. First check the Session worktree and parent directories; if dependencies can be reused (for example, a Node/npm project can find node_modules/.bin above it), omit this parameter and the tool will start directly. Provide a lockfile- and package-manager-matched command only when dependencies cannot be reused.",
     }),
   ),
   stopCommand: Type.Optional(Type.String()),
@@ -702,14 +702,14 @@ const projectServicesExtension: ExtensionDefinition = {
           toolsPreset: "readonly",
           extraTools: [watsonUpdateTool],
           injectSystem:
-            "分析当前项目是否有需要启动的本地开发服务。有启动命令则必须调用 UpdateService，action=add；每个服务调用一次。未指定 port 时不要猜 3000/5173，省略 port，系统会在 4396–4500 分配。不要用 bash 启动长期服务；不要改 AGENTS.md。",
+            "Analyze whether the current project has local development services that should start. If a start command exists, call UpdateService with action=add once per service. Do not guess 3000/5173 when no port is specified; omit port and the system will allocate one in 4396–4500. Do not start long-running services with bash or modify AGENTS.md.",
           prompt: [
-            "本 Session 刚创建。请分析项目中需要长期运行的本地开发服务。",
-            "若项目根目录存在 AGENTS.md 且包含「本地开发服务」，优先采用其中的命令；AGENTS.md 或该章节不存在时，继续检查 package.json、workspace 配置、README、构建工具和项目结构，不得因此跳过分析。",
-            "若有启动命令：对每个要跑的服务调用 UpdateService，action=add，传入 name、startCommand 和可选 path；是否需要 installCommand 按工具描述判断。",
-            "不要填写 port，除非命令里写死了端口；未指定时系统使用 4396–4500。",
-            "没有启动命令则不要调用工具，直接结束。",
-            "不要 commit，不要改 AGENTS.md。",
+            "This Session was just created. Analyze the project's long-running local development services.",
+            "If the project root has AGENTS.md with `## 本地开发服务`, prefer its commands. If AGENTS.md or that section is absent, continue by checking package.json, workspace configuration, README, build tools, and project structure; do not skip analysis.",
+            "For each service with a start command, call UpdateService with action=add and provide name, startCommand, and optional path. Decide whether installCommand is needed from the tool description.",
+            "Do not provide port unless the command hard-codes one; otherwise the system uses 4396–4500.",
+            "If there is no start command, do not call the tool and finish.",
+            "Do not commit or modify AGENTS.md.",
           ].join("\n"),
         });
       } catch (error: unknown) {
@@ -721,7 +721,7 @@ const projectServicesExtension: ExtensionDefinition = {
     ctx.agent.registerTool({
       name: "ProjectServiceStart",
       description:
-        "按已登记命令后台启动项目服务。仅当配置未变、服务已停时使用。增删改请用 UpdateService。",
+        "Start the registered project services in the background. Use only when the configuration is unchanged and the service is stopped. Use UpdateService for add/delete/update operations.",
       parameters: Type.Object({
         skipInstall: Type.Optional(Type.Boolean()),
       }),
@@ -775,7 +775,7 @@ const projectServicesExtension: ExtensionDefinition = {
     ctx.agent.registerTool({
       name: "ProjectServiceStop",
       description:
-        "停止本 session 已登记的项目服务（系统托管进程）。用户要求停止或重启时用这个，不要 taskkill。",
+        "Stop the project services registered for this Session (system-managed processes). Use this when the user asks to stop or restart them; do not use taskkill.",
       parameters: Type.Object({}),
       execute: async () => {
         const current = await readServices();
@@ -814,7 +814,7 @@ const projectServicesExtension: ExtensionDefinition = {
 
     ctx.agent.registerTool({
       name: "ProjectServiceList",
-      description: "列出已登记的项目服务及运行状态。",
+      description: "List registered project services and their runtime status.",
       parameters: Type.Object({}),
       execute: async () => {
         const current = await readServices();

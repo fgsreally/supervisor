@@ -4,6 +4,7 @@ import router from "@/router";
 import { useSessionStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { isNativeApp } from "@/composables/use-native-app";
+import { translate } from "@/i18n";
 
 interface ShareItem {
   uri: string;
@@ -75,7 +76,7 @@ async function openSessionPickerForShare(): Promise<void> {
     stagingShareFiles.value = [];
     pendingShareNeedsSession.value = false;
     pendingShareHighlightSessionId.value = null;
-    showUiMessage("请先创建会话再接收分享图片", "error");
+    showUiMessage(translate("share.createSessionFirst"), "error");
     return;
   }
 
@@ -102,7 +103,7 @@ async function ingestPendingShare(payload?: PendingSharePayload | null): Promise
 
   await native.clearPendingShare().catch(() => undefined);
   if (!files.length) {
-    showUiMessage("无法读取分享的图片", "error");
+    showUiMessage(translate("share.readFailed"), "error");
     return;
   }
 

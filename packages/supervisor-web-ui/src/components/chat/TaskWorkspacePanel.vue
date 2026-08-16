@@ -1,21 +1,21 @@
 <template>
-  <aside class="task-workspace" aria-label="Todo">
+  <aside class="task-workspace" :aria-label="t('task.todo')">
     <header v-if="!mobile" class="task-workspace__header">
       <div>
         <div class="task-workspace__eyebrow">Todo</div>
-        <div class="task-workspace__title">{{ selectedTask?.title ?? "当前任务" }}</div>
+        <div class="task-workspace__title">{{ selectedTask?.title ?? t("task.current") }}</div>
       </div>
       <button
         class="task-workspace__close"
         type="button"
-        aria-label="关闭任务视窗"
+        :aria-label="t('task.closeWorkspace')"
         @click="emit('close')"
       >
         ×
       </button>
     </header>
 
-    <nav v-if="entries.length > 1" class="task-workspace__tabs" aria-label="Todo 与 Goal">
+    <nav v-if="entries.length > 1" class="task-workspace__tabs" :aria-label="t('task.todoGoal')">
       <button
         v-for="task in entries"
         :key="task.path"
@@ -62,7 +62,7 @@
             {{ todo.title }}
           </span>
           <small v-if="todo.dependsOn?.length" class="task-workspace__todo-deps">
-            依赖：{{ todo.dependsOn.join("、") }}
+            {{ t("task.dependencies", { value: todo.dependsOn.join("、") }) }}
           </small>
           <small v-if="todo.sessionId" class="task-workspace__todo-session">
             Session {{ todo.sessionId }}
@@ -76,6 +76,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "@/i18n";
 import type { TaskArtifact, TodoItem } from "@/api";
 import MarkdownContent from "../base/MarkdownContent.vue";
 
@@ -85,6 +86,7 @@ const props = defineProps<{
   selectedPath: string | null;
   mobile?: boolean;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   close: [];
@@ -126,16 +128,20 @@ const markdownBody = computed(
 );
 
 function typeLabel(type: TaskEntry["type"]): string {
-  return { goal: "Goal", plan: "Plan", todo: "Todo" }[type];
+  return {
+    goal: t("task.goal"),
+    plan: t("task.plan"),
+    todo: t("task.todo"),
+  }[type];
 }
 
 function statusLabel(status: string): string {
   return (
     {
-      active: "进行中",
-      planning: "规划中",
-      paused: "已暂停",
-      blocked: "受阻",
+      active: t("task.status.active"),
+      planning: t("task.status.planning"),
+      paused: t("task.status.paused"),
+      blocked: t("task.status.blocked"),
     }[status] ?? status
   );
 }

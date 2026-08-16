@@ -13,15 +13,15 @@
           v-if="rewindable"
           type="button"
           class="message-rewind"
-          title="回到这一步"
-          aria-label="回到这一步"
+          :title="t('chat.rewindToStep')"
+          :aria-label="t('chat.rewindToStep')"
           @click="emit('rewind')"
         >
           <Undo2 class="h-3 w-3" />
         </button>
         <span class="chat-msg-time chat-msg-time--user">{{ timeLabel }}</span>
       </div>
-      <span v-if="deliveryState === 'failed'" class="chat-msg-delivery failed"> 发送失败 </span>
+      <span v-if="deliveryState === 'failed'" class="chat-msg-delivery failed"> {{ t("chat.sendFailed") }} </span>
       <ChatFileBubble v-if="file" :file="file" class="relative" />
       <div
         v-else
@@ -43,7 +43,7 @@
             :key="image.mediaId || `${image.name}-${index}`"
             type="button"
             class="user-message-images__thumb-btn"
-            :title="`预览 ${image.name}`"
+            :title="t('imagePreview.open', { label: image.name })"
             @click.stop="openPreview(index)"
           >
             <img
@@ -58,7 +58,7 @@
             :key="`missing-${image.name}-${index}`"
             class="user-message-images__missing"
           >
-            {{ image.name }} 缺失
+            {{ t("chat.imageMissing", { name: image.name }) }}
           </span>
         </div>
         <div v-if="slashCommand" class="relative z-10 slash-message">
@@ -91,6 +91,7 @@ import type { ChatUserFileAttachment } from "@/types/chat-entry";
 import { sessionMediaUrl } from "@/api";
 import { openImagePreview } from "@/composables/use-image-preview";
 import { FileText, Plug, Sparkles, Terminal, Undo2 } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   sessionId: string;
@@ -108,6 +109,7 @@ const emit = defineEmits<{
   rewind: [];
   "open-actions": [payload: { mode: "menu" | "sheet"; x: number; y: number }];
 }>();
+const { t } = useI18n();
 
 const images = computed(() => props.images ?? []);
 const previewableImages = computed(() =>

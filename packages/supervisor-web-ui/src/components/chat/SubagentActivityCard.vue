@@ -11,7 +11,7 @@
     <p v-if="description" class="subagent-description">{{ description }}</p>
     <div class="subagent-stream">
       <Loader2 v-if="livePending" class="subagent-spinner" />
-      <span>{{ preview || (livePending ? "正在处理…" : "暂无输出") }}</span>
+      <span>{{ preview || (livePending ? t("subagent.processing") : t("subagent.noOutput")) }}</span>
     </div>
   </button>
 </template>
@@ -19,6 +19,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { Bot, ChevronRight, Loader2 } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import * as api from "@/api";
 import { useSessionStore } from "@/store";
 import { messageTextContent } from "@/utils/message-content";
@@ -32,6 +33,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ open: [] }>();
 const store = useSessionStore();
+const { t } = useI18n();
 const preview = ref("");
 const streamActive = ref(false);
 let cleanup: (() => void) | null = null;
@@ -39,7 +41,7 @@ let cleanup: (() => void) | null = null;
 const child = computed(() =>
   props.childSessionId ? store.sessions.find((item) => item.id === props.childSessionId) : null,
 );
-const title = computed(() => props.agentName || child.value?.title || "子代理");
+const title = computed(() => props.agentName || child.value?.title || t("subagent.title"));
 const livePending = computed(
   () => props.pending || streamActive.value || child.value?.status === "running",
 );
@@ -47,7 +49,7 @@ const statusTone = computed(() =>
   props.isError ? "error" : livePending.value ? "running" : "idle",
 );
 const statusLabel = computed(() =>
-  props.isError ? "失败" : livePending.value ? "执行中" : "已完成",
+  props.isError ? t("common.failed") : livePending.value ? t("subagent.running") : t("common.completed"),
 );
 
 function updatePreviewFromPage(messages: api.SessionTreeEntry[]) {

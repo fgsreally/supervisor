@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteLocationNormalized } from "vue-router";
+import { handleHotUpdate, routes } from "vue-router/auto-routes";
 
 export type AppRouteTab =
   | "chat"
@@ -35,7 +36,7 @@ export function idFromRoute(route: Pick<RouteLocationNormalized, "path">): strin
 }
 
 export function modelIdFromRoute(route: RouteLocationNormalized): string | undefined {
-  const value = route.params.modelId;
+  const value = (route.params as Record<string, unknown>).modelId;
   return typeof value === "string" ? value : undefined;
 }
 
@@ -44,34 +45,13 @@ const router = createRouter({
   routes: [
     { path: "/", redirect: "/chat" },
     { path: "/home", redirect: "/dashboard" },
-    { path: "/todo", name: "todo", component: { template: "<div />" } },
-    { path: "/dashboard", name: "dashboard", component: { template: "<div />" } },
     { path: "/active-ui", redirect: "/chat" },
-    { path: "/chat/:sessionId?", name: "chat", component: { template: "<div />" } },
-    { path: "/contacts/new", name: "contact-new", component: { template: "<div />" } },
-    { path: "/contacts/:agentId?", name: "contacts", component: { template: "<div />" } },
-    {
-      path: "/providers/:providerId/models/new",
-      name: "provider-model-new",
-      component: { template: "<div />" },
-    },
-    {
-      path: "/providers/:providerId/models/:modelId",
-      name: "provider-model",
-      component: { template: "<div />" },
-    },
-    { path: "/providers/new", name: "provider-new", component: { template: "<div />" } },
-    { path: "/providers/:providerId?", name: "providers", component: { template: "<div />" } },
-    { path: "/resources/:resourceId?", name: "resources", component: { template: "<div />" } },
-    { path: "/settings/services", name: "settings-services", component: { template: "<div />" } },
-    {
-      path: "/settings/diagnostics",
-      name: "settings-diagnostics",
-      component: { template: "<div />" },
-    },
-    { path: "/settings", name: "settings", component: { template: "<div />" } },
-    { path: "/search", name: "search", component: { template: "<div />" } },
+    ...routes,
   ],
 });
+
+if (import.meta.hot) {
+  handleHotUpdate(router);
+}
 
 export default router;

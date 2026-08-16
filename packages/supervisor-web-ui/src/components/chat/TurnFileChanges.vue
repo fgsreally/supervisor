@@ -10,7 +10,7 @@
     <div class="turn-files-collapse" :class="{ 'is-open': expanded }">
       <div class="turn-files-list">
         <div v-if="files.added?.length" class="turn-files-group">
-          <span class="turn-files-label turn-files-label--added">新增</span>
+          <span class="turn-files-label turn-files-label--added">{{ t("common.added") }}</span>
           <button
             v-for="f in files.added"
             :key="f"
@@ -23,7 +23,7 @@
           </button>
         </div>
         <div v-if="files.modified?.length" class="turn-files-group">
-          <span class="turn-files-label turn-files-label--modified">修改</span>
+          <span class="turn-files-label turn-files-label--modified">{{ t("common.modified") }}</span>
           <button
             v-for="f in files.modified"
             :key="f"
@@ -36,7 +36,7 @@
           </button>
         </div>
         <div v-if="files.deleted?.length" class="turn-files-group">
-          <span class="turn-files-label turn-files-label--deleted">删除</span>
+          <span class="turn-files-label turn-files-label--deleted">{{ t("common.delete") }}</span>
           <button
             v-for="f in files.deleted"
             :key="f"
@@ -56,6 +56,7 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
 import { ChevronDown } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import FileTypeIcon from "../base/FileTypeIcon.vue";
 
 export interface TurnFileChangesData {
@@ -69,13 +70,14 @@ const props = defineProps<{
 }>();
 
 const expanded = ref(false);
+const { t } = useI18n();
 
 const totalCount = computed(() => {
   const f = props.files;
   return (f.added?.length ?? 0) + (f.modified?.length ?? 0) + (f.deleted?.length ?? 0);
 });
 
-const badgeText = computed(() => `文件变更 ${totalCount.value} 个`);
+const badgeText = computed(() => t("chat.fileChanges", { count: totalCount.value }));
 
 function openFile(path: string) {
   window.dispatchEvent(new CustomEvent("supervisor:open-file", { detail: { path } }));

@@ -4,8 +4,8 @@
     class="voice-button"
     :class="{ 'voice-button--active': voice.recording.value }"
     :disabled="disabled || holdRecording"
-    :aria-label="voice.recording.value ? '结束语音输入' : '开始语音输入'"
-    :title="voice.recording.value ? '结束语音输入' : '开始语音输入'"
+    :aria-label="voice.recording.value ? t('voice.stopInput') : t('voice.startInput')"
+    :title="voice.recording.value ? t('voice.stopInput') : t('voice.startInput')"
     @mousedown.prevent
     @click="onToggleClick"
   >
@@ -24,6 +24,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { Mic } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import type { VoiceRecognitionController } from "../../composables/use-voice-recognition";
 
 const TOOLBAR_BAR_COUNT = 4;
@@ -33,6 +34,7 @@ const props = defineProps<{
   disabled?: boolean;
   holdRecording?: boolean;
 }>();
+const { t } = useI18n();
 
 const toolbarBars = computed(() => {
   const bars = props.voice.waveformBars.value;

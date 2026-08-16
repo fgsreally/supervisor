@@ -5,7 +5,7 @@
       <div class="min-w-0 flex-1">
         <div class="tool-permission-card__title">{{ approval.title }}</div>
         <pre v-if="approval.body" class="tool-permission-card__body">{{ approval.body }}</pre>
-        <div class="tool-permission-card__source">权限审批</div>
+        <div class="tool-permission-card__source">{{ t("approval.permission") }}</div>
       </div>
     </header>
 
@@ -17,7 +17,7 @@
         :disabled="submitting !== null"
         @click="resolve('reject')"
       >
-        拒绝
+        {{ t("approval.reject") }}
       </button>
       <button
         v-if="approval.actions.includes('approve_session')"
@@ -26,7 +26,7 @@
         :disabled="submitting !== null"
         @click="resolve('approve_session')"
       >
-        本次会话允许
+        {{ t("approval.approveSession") }}
       </button>
       <button
         v-if="approval.actions.includes('approve')"
@@ -35,7 +35,7 @@
         :disabled="submitting !== null"
         @click="resolve('approve')"
       >
-        仅本次允许
+        {{ t("approval.approveOnce") }}
       </button>
     </div>
   </section>
@@ -44,6 +44,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { ShieldAlert } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import * as api from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 
@@ -53,6 +54,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ resolved: [] }>();
 const submitting = ref<"approve" | "approve_session" | "reject" | null>(null);
+const { t } = useI18n();
 
 async function resolve(action: "approve" | "approve_session" | "reject") {
   if (submitting.value) return;
@@ -61,7 +63,7 @@ async function resolve(action: "approve" | "approve_session" | "reject") {
     await api.resolveSessionApproval(props.sessionId, props.approval.approvalId, { action });
     emit("resolved");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "审批提交失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("approval.submitFailed"), "error");
   } finally {
     submitting.value = null;
   }

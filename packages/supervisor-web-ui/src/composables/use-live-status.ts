@@ -3,6 +3,7 @@ import type { LiveStatusPayload, LiveStatusPhase } from "pi-supervisor-native-br
 
 import { useSessionStore } from "@/store";
 import { isNativeApp } from "./use-native-app";
+import { translate as t } from "@/i18n";
 
 let supervisorNative: typeof import("pi-supervisor-native-bridge").SupervisorNative | null = null;
 
@@ -71,16 +72,16 @@ function phaseForStatus(status: string | undefined | null, streaming = false): L
 }
 
 function subtitleForStatus(status: string | undefined | null, streaming = false): string {
-  if (status === "blocked") return "等待你确认";
-  if (status === "error") return "出错，需要处理";
-  if (streaming) return "思考中";
-  if (status === "running") return "运行中";
-  if (status === "initializing") return "连接中";
-  return "已完成";
+  if (status === "blocked") return t("live.waitingConfirmation");
+  if (status === "error") return t("live.errorNeedsAction");
+  if (streaming) return t("live.thinking");
+  if (status === "running") return t("live.running");
+  if (status === "initializing") return t("live.connecting");
+  return t("live.completed");
 }
 
 function truncateTitle(title: string, max = 12): string {
-  const value = title.trim() || "会话";
+  const value = title.trim() || t("common.session");
   if (value.length <= max) return value;
   return `${value.slice(0, max - 1)}…`;
 }
@@ -101,10 +102,10 @@ function counts() {
 
 /** Build chip text within ~7 characters for the status-bar Live Update chip. */
 function buildChip(active: number, total: number, allComplete: boolean): string {
-  if (allComplete) return "完成";
-  if (total <= 0) return "进行中";
+  if (allComplete) return t("live.done");
+  if (total <= 0) return t("live.inProgress");
   const ratio = `${active}/${total}`;
-  return ratio.length <= 7 ? ratio : `${active}进行`;
+  return ratio.length <= 7 ? ratio : t("live.activeShort", { count: active });
 }
 
 /** Aggregate view priority: waiting > error > just-finished highlight > progress > all done. */
@@ -123,15 +124,19 @@ function buildPayload(): LiveStatusPayload | null {
   // 1. Sessions blocked on the user preempt everything: fastest path back to the app.
   if (waiting > 0) {
     const [sessionId, first] = waitingEntries[0];
-    const rest = running > 0 ? ` · 另有 ${running} 个进行中` : "";
+    const rest = running > 0 ? t("live.otherRunning", { count: running }) : "";
     return {
       sessionId,
       title:
-        waiting === 1 ? `${truncateTitle(first.title, 10)} · 待确认` : `${waiting} 个会话待确认`,
+        waiting === 1
+          ? t("live.sessionWaitingTitle", { title: truncateTitle(first.title, 10) })
+          : t("live.sessionsWaitingTitle", { count: waiting }),
       subtitle:
-        waiting === 1 ? `需要你确认后才能继续${rest}` : `请尽快处理${rest} · 共 ${total} 个会话`,
+        waiting === 1
+          ? t("live.sessionWaitingSubtitle", { rest })
+          : t("live.sessionsWaitingSubtitle", { rest, total }),
       phase: "waiting",
-      chip: waiting === 1 ? "待确认" : `${waiting}待确认`,
+      chip: waiting === 1 ? t("live.waitingChip") : t("live.waitingCountChip", { count: waiting }),
       ...base,
       allComplete: false,
     };
@@ -140,16 +145,18 @@ function buildPayload(): LiveStatusPayload | null {
   // 2. Failed sessions also need the user, slightly lower priority than confirmations.
   if (error > 0) {
     const [sessionId, first] = errorEntries[0];
-    const rest = running > 0 ? ` · 另有 ${running} 个进行中` : "";
+    const rest = running > 0 ? t("live.otherRunning", { count: running }) : "";
     return {
       sessionId,
-      title: error === 1 ? `${truncateTitle(first.title, 10)} · 出错` : `${error} 个会话出错`,
+      title: error === 1
+        ? t("live.sessionErrorTitle", { title: truncateTitle(first.title, 10) })
+        : t("live.sessionsErrorTitle", { count: error }),
       subtitle:
         error === 1
-          ? `运行出错，需要你处理${rest}`
-          : `运行出错，请逐个处理${rest} · 共 ${total} 个会话`,
+          ? t("live.sessionErrorSubtitle", { rest })
+          : t("live.sessionsErrorSubtitle", { rest, total }),
       phase: "waiting",
-      chip: error === 1 ? "出错" : `${error}出错`,
+      chip: error === 1 ? t("live.errorChip") : t("live.errorCountChip", { count: error }),
       ...base,
       allComplete: false,
     };
@@ -162,11 +169,13 @@ function buildPayload(): LiveStatusPayload | null {
     const only = doneEntries.length === 1 ? doneEntries[0][1] : null;
     return {
       sessionId: doneEntries[0]?.[0] ?? "aggregate",
-      title: only ? `${truncateTitle(only.title, 10)} · 已完成` : "全部任务已完成",
+      title: only
+        ? t("live.sessionDoneTitle", { title: truncateTitle(only.title, 10) })
+        : t("live.allDoneTitle"),
       subtitle:
         total === 1
-          ? `「${truncateTitle(only?.title || "会话")}」本轮对话已结束`
-          : `进行中 0 · 已完成 ${completed} · 共 ${total} 个会话`,
+          ? t("live.sessionDoneSubtitle", { title: truncateTitle(only?.title || t("common.session")) })
+          : t("live.allDoneSubtitle", { completed, total }),
       phase: "idle",
       chip,
       activeCount: 0,
@@ -184,8 +193,8 @@ function buildPayload(): LiveStatusPayload | null {
   ) {
     return {
       sessionId: recentDone.sessionId,
-      title: `${truncateTitle(recentDone.title, 10)} · 已完成`,
-      subtitle: `进行中 ${active} · 已完成 ${completed}/${total}`,
+      title: t("live.sessionDoneTitle", { title: truncateTitle(recentDone.title, 10) }),
+      subtitle: t("live.progressSubtitle", { active, completed, total }),
       phase: "idle",
       chip,
       ...base,
@@ -199,7 +208,7 @@ function buildPayload(): LiveStatusPayload | null {
     return {
       sessionId: runningEntries[0][0],
       title: truncateTitle(primaryRunning?.title || "Supervisor", 16),
-      subtitle: `${primaryRunning?.subtitle || "进行中"} · 共 1 个任务`,
+      subtitle: t("live.singleRunningSubtitle", { subtitle: primaryRunning?.subtitle || t("live.inProgress") }),
       phase: primaryRunning?.phase ?? "thinking",
       chip,
       ...base,
@@ -211,7 +220,11 @@ function buildPayload(): LiveStatusPayload | null {
     return {
       sessionId: runningEntries[0][0],
       title: truncateTitle(primaryRunning?.title || "Supervisor", 16),
-      subtitle: `${primaryRunning?.subtitle || "进行中"} · 已完成 ${completed}/${total}`,
+      subtitle: t("live.progressSubtitle", {
+        active: primaryRunning?.subtitle || t("live.inProgress"),
+        completed,
+        total,
+      }),
       phase: primaryRunning?.phase ?? "thinking",
       chip,
       ...base,
@@ -221,17 +234,17 @@ function buildPayload(): LiveStatusPayload | null {
 
   const phaseHints = runningEntries
     .slice(0, 2)
-    .map(([, entry]) => entry.subtitle || "进行中")
+    .map(([, entry]) => entry.subtitle || t("live.inProgress"))
     .join(" · ");
-  const more = runningEntries.length > 2 ? ` 等 ${active} 个` : "";
+  const more = runningEntries.length > 2 ? t("live.moreRunning", { count: active }) : "";
 
   return {
     sessionId: runningEntries[0]?.[0] ?? "aggregate",
-    title: `${active} 个任务进行中`,
+    title: t("live.tasksRunningTitle", { count: active }),
     subtitle:
       completed > 0
-        ? `${phaseHints}${more} · 已完成 ${completed}/${total}`
-        : `${phaseHints}${more} · 共 ${total} 个任务`,
+        ? t("live.multipleProgressSubtitle", { phases: `${phaseHints}${more}`, completed, total })
+        : t("live.multipleRunningSubtitle", { phases: `${phaseHints}${more}`, total }),
     phase: primaryRunning?.phase ?? "thinking",
     chip,
     ...base,
@@ -279,7 +292,7 @@ function applyTrackedState(options: {
     ...existing,
     title: options.title || existing.title,
     state: "done",
-    subtitle: "已完成",
+    subtitle: t("live.completed"),
     phase: "idle",
   });
 }
@@ -324,7 +337,7 @@ export async function endLiveStatus(sessionId: string): Promise<void> {
   applyTracked({
     sessionId,
     title: tracked.get(sessionId)?.title ?? "Supervisor",
-    subtitle: "已完成",
+    subtitle: t("live.completed"),
     phase: "idle",
     running: false,
   });

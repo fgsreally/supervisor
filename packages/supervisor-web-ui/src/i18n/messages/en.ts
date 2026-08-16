@@ -1024,6 +1024,23 @@ const messages: TranslationMessages = {
   "todo.demo.exec17.description": "Verify detail overlays, Session navigation, and switching between dependent tasks.",
   "todo.demo.exec18.title": "Pre-release acceptance",
   "todo.demo.exec18.description": "Consolidate settings, logs, and mobile changes and complete the release checklist.",
+  "provider.enabled": "Enabled",
+  "provider.configuration": "Configuration",
+  "provider.default": "(default)",
+  "provider.models": "Models",
+  "provider.modelConfig": "Model configuration",
+  "provider.contextLimit": "Context limit",
+  "provider.visionInput": "Supports image input",
+  "provider.textInputOnly": "Text input only",
+  "provider.addModelToBind": "Add a model before binding it to an Agent",
+  "provider.linkedAgents": "Agents using this model provider",
+  "provider.noLinkedAgents": "No Agents bound",
+  "agent.create": "Create",
+  "agent.namePlaceholder": "e.g. Documentation assistant",
+  "agent.resourceLinkHint": "After creation, link resources from the global library in the Skills / Extensions / Template pages.",
+  "agent.globalResourcePath": "Global resource directory: ",
+  "agent.createSuccess": "Agent created",
+  "agent.createFailed": "Failed to create Agent",
 };
 
 export default messages;

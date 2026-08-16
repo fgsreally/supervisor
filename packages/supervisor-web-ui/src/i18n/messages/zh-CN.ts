@@ -1024,6 +1024,23 @@ const messages: TranslationMessages = {
   "todo.demo.exec17.description": "\u9a8c\u8bc1\u8be6\u60c5\u5f39\u5c42\u3001Session \u8df3\u8f6c\u4e0e\u4f9d\u8d56\u4efb\u52a1\u5207\u6362\u3002",
   "todo.demo.exec18.title": "\u53d1\u5e03\u524d\u9a8c\u6536",
   "todo.demo.exec18.description": "\u6c47\u603b\u8bbe\u7f6e\u3001\u65e5\u5fd7\u4e0e\u79fb\u52a8\u7aef\u6539\u52a8\uff0c\u5b8c\u6210\u53d1\u5e03\u68c0\u67e5\u3002",
+  "provider.enabled": "\u5df2\u542f\u7528",
+  "provider.configuration": "\u914d\u7f6e",
+  "provider.default": "\uff08\u9ed8\u8ba4\uff09",
+  "provider.models": "\u6a21\u578b",
+  "provider.modelConfig": "\u6a21\u578b\u914d\u7f6e",
+  "provider.contextLimit": "\u4e0a\u4e0b\u6587\u4e0a\u9650",
+  "provider.visionInput": "\u652f\u6301\u56fe\u50cf\u8f93\u5165",
+  "provider.textInputOnly": "\u4ec5\u652f\u6301\u6587\u672c\u8f93\u5165",
+  "provider.addModelToBind": "\u6dfb\u52a0\u6a21\u578b\u540e\u624d\u80fd\u7ed1\u5b9a\u5230 Agent",
+  "provider.linkedAgents": "\u4f7f\u7528\u6b64\u6a21\u578b\u4f9b\u5e94\u5546\u7684\u667a\u80fd\u4ee3\u7406",
+  "provider.noLinkedAgents": "\u6682\u65e0 Agent \u7ed1\u5b9a",
+  "agent.create": "\u521b\u5efa",
+  "agent.namePlaceholder": "\u4f8b\u5982 \u6587\u6863\u52a9\u624b",
+  "agent.resourceLinkHint": "\u521b\u5efa\u540e\u53ef\u5728 Skills / Extensions / Template \u9875\u4ece\u5168\u5c40\u5e93\u5173\u8054\u8d44\u6e90\u3002",
+  "agent.globalResourcePath": "\u5168\u5c40\u8d44\u6e90\u76ee\u5f55\uff1a",
+  "agent.createSuccess": "\u667a\u80fd\u4ee3\u7406\u521b\u5efa\u6210\u529f",
+  "agent.createFailed": "\u667a\u80fd\u4ee3\u7406\u521b\u5efa\u5931\u8d25",
 };
 
 export default messages;

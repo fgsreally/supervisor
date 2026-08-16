@@ -15,27 +15,27 @@
           {{ model.modelId }}
         </p>
       </div>
-      <button type="button" class="model-detail-btn" @click="emit('edit')">编辑</button>
+      <button type="button" class="model-detail-btn" @click="emit('edit')">{{ t("common.edit") }}</button>
       <button type="button" class="model-detail-btn model-detail-btn--danger" @click="remove">
-        删除
+        {{ t("common.delete") }}
       </button>
     </header>
 
     <div class="model-detail-scroll custom-scrollbar flex flex-1 justify-center overflow-y-auto">
       <div class="model-detail-content w-full max-w-5xl">
         <section class="model-detail-section">
-          <h2 class="model-detail-title text-[14px] font-medium mb-5">模型配置</h2>
+          <h2 class="model-detail-title text-[14px] font-medium mb-5">{{ t("provider.modelConfig") }}</h2>
           <dl class="model-detail-grid">
             <div>
               <dt class="model-detail-muted">Model ID</dt>
               <dd class="model-detail-title font-mono break-all">{{ model.modelId }}</dd>
             </div>
             <div>
-              <dt class="model-detail-muted">显示名称</dt>
+              <dt class="model-detail-muted">{{ t("provider.displayName") }}</dt>
               <dd class="model-detail-title">{{ model.name || model.modelId }}</dd>
             </div>
             <div>
-              <dt class="model-detail-muted">上下文上限</dt>
+              <dt class="model-detail-muted">{{ t("provider.contextLimit") }}</dt>
               <dd class="model-detail-title font-mono">
                 {{ formatTokenCount(model.contextWindow) }}
               </dd>
@@ -44,11 +44,11 @@
         </section>
 
         <section class="model-detail-section">
-          <h2 class="model-detail-title text-[14px] font-medium mb-5">能力</h2>
+          <h2 class="model-detail-title text-[14px] font-medium mb-5">{{ t("provider.capabilities") }}</h2>
           <div class="flex items-center gap-3 text-[13px]">
             <ModelMultimodalIcon :supports-multimodal="model.supportsVision" />
             <span class="model-detail-title">
-              {{ model.supportsVision ? "支持图像输入" : "仅支持文本输入" }}
+              {{ model.supportsVision ? t("provider.visionInput") : t("provider.textInputOnly") }}
             </span>
           </div>
         </section>
@@ -63,14 +63,16 @@ import ProviderAvatar from "../../components/provider/ProviderAvatar.vue";
 import type { Model, Provider } from "@/api";
 import { formatTokenCount } from "@/utils/format-tokens";
 import { requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ provider: Provider; model: Model }>();
 const emit = defineEmits<{ edit: []; deleted: [] }>();
+const { t } = useI18n();
 
 async function remove() {
   const confirmed = await requestUiDeleteConfirm({
-    title: "删除模型",
-    message: `确定删除模型 ${props.model.modelId}？`,
+    title: t("provider.deleteModel"),
+    message: t("provider.deleteModelConfirm", { id: props.model.modelId }),
   });
   if (!confirmed) return;
   emit("deleted");

@@ -12,16 +12,16 @@
         <ChevronLeft class="w-5 h-5" />
       </button>
       <div class="flex-1 min-w-0">
-        <div class="text-[16px] font-medium agent-form-title">添加智能代理</div>
+        <div class="text-[16px] font-medium agent-form-title">{{ t("agent.add") }}</div>
       </div>
       <button
         type="button"
         class="agent-form-cancel-btn shrink-0 px-3 py-1.5 rounded-md border text-[13px]"
         @click="emit('cancel')"
       >
-        取消
+        {{ t("common.cancel") }}
       </button>
-      <UiActionButton :disabled="!canSave" :loading="saving" @click="save">创建</UiActionButton>
+      <UiActionButton :disabled="!canSave" :loading="saving" @click="save">{{ t("agent.create") }}</UiActionButton>
     </div>
 
     <div class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6">
@@ -34,12 +34,12 @@
             class="w-12 h-12 text-lg"
           />
           <label class="block flex-1 text-[13px]">
-            <span class="agent-form-label mb-1 block">头像</span>
+            <span class="agent-form-label mb-1 block">{{ t("agent.avatar") }}</span>
             <div class="flex gap-2">
               <input
                 v-model="draft.icon"
                 type="text"
-                placeholder="图片 URL"
+                :placeholder="t('agent.avatarPlaceholder')"
                 class="agent-form-input flex-1 min-w-0 px-3 py-2 rounded-md"
               />
               <input
@@ -53,7 +53,7 @@
                 type="button"
                 class="agent-form-upload"
                 :disabled="uploading"
-                title="上传头像"
+                :title="t('agent.uploadAvatar')"
                 @click="iconInput?.click()"
               >
                 <Upload class="w-4 h-4" />
@@ -62,17 +62,17 @@
           </label>
         </div>
         <label class="block text-[13px]">
-          <span class="agent-form-label mb-1 block">名称</span>
+          <span class="agent-form-label mb-1 block">{{ t("agent.name") }}</span>
           <input
             v-model="draft.name"
             type="text"
-            placeholder="例如 文档助手"
+            :placeholder="t('agent.namePlaceholder')"
             class="agent-form-input w-full px-3 py-2 rounded-md"
           />
         </label>
 
         <label class="block text-[13px]">
-          <span class="agent-form-label mb-1 block">描述</span>
+          <span class="agent-form-label mb-1 block">{{ t("agent.description") }}</span>
           <textarea
             v-model="draft.description"
             rows="2"
@@ -81,18 +81,18 @@
         </label>
 
         <label class="block text-[13px]">
-          <span class="agent-form-label mb-1 block">模型</span>
+          <span class="agent-form-label mb-1 block">{{ t("agent.model") }}</span>
           <ModelTreeSelect
             v-model="draft.modelId"
             :groups="modelGroups"
-            placeholder="稍后配置"
+            :placeholder="t('agent.configureLater')"
             @change="onModelChange"
           />
         </label>
 
         <AgentPermissionEditor v-model="draft.permissionRules" />
         <section class="text-[13px]">
-          <div class="agent-form-label mb-2">默认子 Agent</div>
+          <div class="agent-form-label mb-2">{{ t("agent.defaultSubagents") }}</div>
           <div v-if="subagentCandidates.length" class="grid grid-cols-1 gap-2 sm:grid-cols-2">
             <label
               v-for="agent in subagentCandidates"
@@ -109,14 +109,14 @@
               <span class="min-w-0 truncate">{{ agent.name }}</span>
             </label>
           </div>
-          <div v-else class="agent-form-hint">暂无可选择的内部 Agent</div>
+          <div v-else class="agent-form-hint">{{ t("agent.noSubagents") }}</div>
         </section>
       </section>
 
       <p class="mx-auto mt-4 max-w-xl text-[12px] agent-form-hint leading-relaxed">
-        <span class="block">创建后可在 Skills / Extensions / Template 页从全局库关联资源。</span>
+        <span class="block">{{ t("agent.resourceLinkHint") }}</span>
         <span class="mt-1 block"
-          >全局资源目录：<code class="font-mono">~/.pi/supervisor/global/</code></span
+          >{{ t("agent.globalResourcePath") }}<code class="font-mono">~/.pi/supervisor/global/</code></span
         >
       </p>
     </div>
@@ -139,8 +139,10 @@ import ModelTreeSelect, { type ModelTreeGroup } from "../../components/provider/
 import AgentPermissionEditor from "../../components/agent/AgentPermissionEditor.vue";
 import UiActionButton from "../../components/base/UiActionButton.vue";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useI18n } from "@/i18n";
 
 defineProps<{ showBack?: boolean }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{ cancel: []; saved: [id: string] }>();
 
@@ -243,10 +245,10 @@ async function save() {
       permissionRules: draft.value.permissionRules,
       meta: { subagentIds: draft.value.subagentIds },
     });
-    showUiMessage("智能代理创建成功", "success");
+    showUiMessage(t("agent.createSuccess"), "success");
     emit("saved", agent.id);
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "智能代理创建失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("agent.createFailed"), "error");
   } finally {
     saving.value = false;
   }

@@ -27,7 +27,7 @@
             {{ provider.name }}
           </div>
           <div class="truncate font-mono mt-0.5 provider-detail-subtitle">
-            {{ provider.models.length }} 个模型
+            {{ t("provider.modelCount", { count: provider.models.length }) }}
           </div>
         </div>
         <label class="provider-detail-enable shrink-0">
@@ -38,7 +38,7 @@
             @change="emit('toggle-enabled', ($event.target as HTMLInputElement).checked)"
           />
           <span class="provider-detail-toggle" aria-hidden="true"><span /></span>
-          <span>{{ provider.isEnabled ? "已启用" : "已禁用" }}</span>
+          <span>{{ provider.isEnabled ? t("provider.enabled") : t("provider.disabled") }}</span>
         </label>
       </div>
       <button
@@ -46,7 +46,7 @@
         class="provider-detail-btn provider-detail-btn--control shrink-0 px-3 py-1.5 rounded-md border"
         @click="emit('edit')"
       >
-        编辑
+        {{ t("common.edit") }}
       </button>
     </div>
 
@@ -54,7 +54,7 @@
       <div class="provider-detail-content w-full max-w-[1040px]">
         <section class="provider-detail-section">
           <div class="provider-detail-config-heading">
-            <div class="font-medium provider-detail-title provider-detail-title--section">配置</div>
+            <div class="font-medium provider-detail-title provider-detail-title--section">{{ t("provider.configuration") }}</div>
           </div>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 provider-detail-body">
             <div>
@@ -64,7 +64,7 @@
             <div>
               <div class="provider-detail-subtitle mb-1">Base URL</div>
               <div class="provider-detail-title font-mono break-all">
-                {{ provider.baseUrl || "（默认）" }}
+                {{ provider.baseUrl || t("provider.default") }}
               </div>
             </div>
           </div>
@@ -73,14 +73,14 @@
         <section class="provider-detail-section">
           <div class="pb-4 border-b provider-detail-divider flex items-center gap-3">
             <div class="font-medium provider-detail-title provider-detail-title--section flex-1">
-              模型
+              {{ t("provider.models") }}
               <span class="ml-2 font-normal provider-detail-subtitle">
                 {{ provider.models.length }}
               </span>
             </div>
             <button type="button" class="provider-detail-add-btn" @click="emit('add-model')">
               <Plus class="w-4 h-4" />
-              <span>添加模型</span>
+              <span>{{ t("provider.addModel") }}</span>
             </button>
           </div>
           <ul v-if="provider.models.length" class="divide-y border-b provider-detail-divider">
@@ -104,7 +104,7 @@
                 <button
                   type="button"
                   class="provider-detail-row-action"
-                  title="编辑模型"
+                  :title="t('provider.editModel')"
                   @click="emit('edit-model', model.id)"
                 >
                   <Pencil class="w-4 h-4" />
@@ -112,7 +112,7 @@
                 <button
                   type="button"
                   class="provider-detail-row-action provider-detail-row-action--danger"
-                  title="删除模型"
+                  :title="t('provider.deleteModel')"
                   @click="removeModel(model.id)"
                 >
                   <Trash2 class="w-4 h-4" />
@@ -122,8 +122,8 @@
           </ul>
           <div v-else class="provider-detail-empty-models">
             <Cpu class="w-8 h-8" />
-            <div class="provider-detail-title provider-detail-title--section">暂无模型</div>
-            <div class="provider-detail-subtitle">添加模型后才能绑定到智能代理</div>
+            <div class="provider-detail-title provider-detail-title--section">{{ t("provider.noModels") }}</div>
+            <div class="provider-detail-subtitle">{{ t("provider.addModelToBind") }}</div>
           </div>
         </section>
 
@@ -131,7 +131,7 @@
           <div
             class="pb-4 border-b provider-detail-divider font-medium provider-detail-title provider-detail-title--section"
           >
-            使用此模型供应商的智能代理
+            {{ t("provider.linkedAgents") }}
             <span class="ml-2 font-normal provider-detail-subtitle">{{ linkedAgents.length }}</span>
           </div>
           <ul v-if="linkedAgents.length" class="divide-y provider-detail-divider">
@@ -162,7 +162,7 @@
             </li>
           </ul>
           <div v-else class="py-8 provider-detail-subtitle provider-detail-body text-center">
-            暂无 Agent 绑定
+            {{ t("provider.noLinkedAgents") }}
           </div>
         </section>
       </div>
@@ -180,6 +180,7 @@ import { useAgentStore } from "@/store";
 import { agentAvatarClass } from "../../utils/avatar-class";
 import { formatTokenCount } from "../../utils/format-tokens";
 import { requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   provider: UIProvider;
@@ -198,6 +199,7 @@ const emit = defineEmits<{
 }>();
 
 const agentStore = useAgentStore();
+const { t } = useI18n();
 
 const linkedAgents = computed(() => {
   const visibleAgentIds = new Set(
@@ -215,7 +217,7 @@ const protocolLabel = computed(
 );
 
 async function removeModel(modelId: string) {
-  if (!(await requestUiDeleteConfirm({ title: "删除模型", message: `确定删除模型 ${modelId}？` }))) {
+  if (!(await requestUiDeleteConfirm({ title: t("provider.deleteModel"), message: t("provider.deleteModelConfirm", { id: modelId }) }))) {
     return;
   }
   emit("delete-model", modelId);

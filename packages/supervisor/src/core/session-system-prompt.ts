@@ -8,6 +8,8 @@ const SNAPSHOT_MARKERS = [
   "<!-- ext-sys:",
   "本 Session 已启动的本地服务",
   "本 Session 尚未启动本地服务",
+  "Local services started for this Session",
+  "No local services started for this Session",
 ];
 
 /** True when `sessions.system_prompt` looks like a frozen compose snapshot, not spawn extra. */

@@ -20,7 +20,7 @@ type SessionMetaStore = {
 export function buildSessionServicesPrompt(services: SessionServicesMeta): string {
   const apps = services.apps ?? [];
   if (!apps.length && !services.startCommand?.trim()) return "";
-  const lines = ["本 Session 已启动的本地服务：", `状态：${services.status}`];
+  const lines = ["Local services started for this Session:", `Status: ${services.status}`];
   if (apps.length) {
     for (const app of apps) {
       const start = app.startCommand ?? services.resolvedStartCommand ?? services.startCommand;
@@ -32,7 +32,7 @@ export function buildSessionServicesPrompt(services: SessionServicesMeta): strin
     lines.push(`- start: \`${services.resolvedStartCommand ?? services.startCommand}\``);
   }
   lines.push(
-    "增删改这些服务必须调用 UpdateService（action 为 add / delete / update），不要用 bash 直接启动或关掉。",
+    "To add, delete, or update these services, always call UpdateService with action add, delete, or update. Do not start or stop them directly with bash.",
   );
   return lines.join("\n");
 }

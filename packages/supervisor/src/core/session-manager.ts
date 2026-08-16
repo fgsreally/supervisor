@@ -636,7 +636,7 @@ export class SessionManager {
 
   private formatBtwFirstUserPrompt(question: string): string {
     const guide = loadPromptTemplate("btw-session").trim();
-    return `${guide}\n\n---\n\n用户侧问：\n${question.trim()}`;
+    return `${guide}\n\n---\n\nUser's side question:\n${question.trim()}`;
   }
 
   async resolveAgentResources(agentId: number, cwd: string) {

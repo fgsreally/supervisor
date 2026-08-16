@@ -392,6 +392,9 @@ import { useMobileViewport } from "@/composables/use-mobile-viewport";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
 import type { SessionUsage } from "@/api";
+import { useI18n } from "@/i18n";
+
+const { locale } = useI18n();
 
 function toggleExternalDetails() {
   viewPreferences.collapseExternalAgentDetails = !viewPreferences.collapseExternalAgentDetails;
@@ -429,7 +432,7 @@ function formatCost(value: number) {
   return value < 0.01 && value > 0 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`;
 }
 function formatTokens(value: number) {
-  return new Intl.NumberFormat("zh-CN", {
+  return new Intl.NumberFormat(locale.value, {
     notation: value >= 10_000 ? "compact" : "standard",
   }).format(value);
 }

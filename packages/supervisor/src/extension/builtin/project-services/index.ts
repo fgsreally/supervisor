@@ -9,8 +9,6 @@ import {
 } from "../../../core/project-runtime.js";
 import {
   hasRegisteredServices,
-  findProjectBinDir,
-  inferProjectInstallCommand,
   isSessionServiceProcessAlive,
   startRegisteredApp,
   startRegisteredSessionServices,
@@ -23,6 +21,7 @@ import {
   computeServiceSleepAt,
 } from "../../../core/session-service-sleep.js";
 import {
+  collectReservedServicePorts,
   parseSessionServicesMeta,
   stoppedSessionServicesMeta,
 } from "../../../core/session-services.js";
@@ -30,6 +29,7 @@ import type { SessionServiceJobHost } from "../../../core/session-registered-ser
 import {
   findFreePortInRange,
   isLoopbackTcpPortOpen,
+  preferredServicePortHint,
   SESSION_SERVICE_PREFERRED_PORT_MAX,
   SESSION_SERVICE_PREFERRED_PORT_MIN,
 } from "../../../utils/ports.js";
@@ -37,7 +37,7 @@ import { detectListenPort } from "../../../utils/listen-port.js";
 
 const UPDATE_TOOL = "UpdateService";
 const UPDATE_DESCRIPTION =
-  "Add, delete, or update local services for this Session. The action is required: add starts and registers a process; delete stops and removes one; update stops the old process and starts the new command. First check whether dependencies can be reused from the Session worktree or a parent directory. For example, if a Node/npm project can find a usable node_modules/.bin above the worktree, omit installCommand and the tool will skip installation. Only provide a package-manager-matched installCommand when dependencies cannot be reused. startCommand must invoke a start script declared by the project, not a bare binary resolved from Supervisor PATH; the service must listen on 127.0.0.1 or 0.0.0.0. Declare ports with consecutive placeholders such as ${PORT1} and ${PORT2}; the tool allocates and persists free ports after the call. Never hard-code ports or start a long-running service directly with bash.";
+  "Add, delete, or update local services for this Session. The action is required: add starts and registers a process; delete stops and removes one; update stops the old process and starts the new command. Decide yourself whether the project needs an installCommand (any language or package manager); the tool only runs the command you provide and does not infer one. startCommand must invoke a start script declared by the project, not a bare binary resolved from Supervisor PATH; the service must listen on 127.0.0.1 or 0.0.0.0. Declare ports with consecutive placeholders such as ${PORT1} and ${PORT2}; the tool allocates and persists free ports after the call. Never hard-code ports or start a long-running service directly with bash.";
 const UPDATE_PARAMS = Type.Object({
   action: Type.Union([Type.Literal("add"), Type.Literal("delete"), Type.Literal("update")], {
     description: "add a service / delete a service / update a service",
@@ -58,7 +58,7 @@ const UPDATE_PARAMS = Type.Object({
   installCommand: Type.Optional(
     Type.String({
       description:
-        "Optional dependency installation command. First check the Session worktree and parent directories; if dependencies can be reused (for example, a Node/npm project can find node_modules/.bin above it), omit this parameter and the tool will start directly. Provide a lockfile- and package-manager-matched command only when dependencies cannot be reused.",
+        "Optional dependency installation command. Provide it only when you decide a fresh install is needed; omit it to start without installing. The tool does not infer a package manager.",
     }),
   ),
   stopCommand: Type.Optional(Type.String()),
@@ -112,7 +112,7 @@ function extensionJobsAsHost(jobs: ExtensionJobFacade): SessionServiceJobHost {
     async get(id) {
       const job = await jobs.get(id);
       if (!job) return undefined;
-      return { id: job.id, status: job.status, metadata: job.metadata };
+      return { id: job.id, status: job.status, output: job.output, metadata: job.metadata };
     },
     async cancel(id) {
       return jobs.cancel(id);
@@ -233,13 +233,19 @@ const projectServicesExtension: ExtensionDefinition = {
     ): Promise<Record<string, number> | null> => {
       const names = validateNumberedPortPlaceholders(startCommand);
       if (!names) return null;
-      const used = new Set(occupied);
+      const reserved = collectReservedServicePorts(
+        ctx.db.query<{ id: number; meta: string }>("SELECT id, meta FROM sessions", []),
+        sessionId,
+      );
+      const used = new Set([...occupied, ...reserved]);
       const allocated: Record<string, number> = {};
+      const startAt = preferredServicePortHint(sessionId);
       for (const name of names) {
         const port = await findFreePortInRange(
           SESSION_SERVICE_PREFERRED_PORT_MIN,
           SESSION_SERVICE_PREFERRED_PORT_MAX,
           used,
+          startAt,
         );
         if (!port) return null;
         allocated[name] = port;
@@ -418,66 +424,44 @@ const projectServicesExtension: ExtensionDefinition = {
       mode: "sync",
     });
 
-    const waitForDetectedPort = async (
-      jobId: string,
-    ): Promise<{ port?: number; output: string; exited: boolean }> => {
-      const started = Date.now();
-      let output = "";
-      while (Date.now() - started < APPLY_READY_MS) {
-        const job = await ctx.jobs.get(jobId);
-        output = typeof job?.output === "string" ? job.output : "";
-        const port = detectListenPort(output);
-        if (port) return { port, output, exited: false };
-        if (job && job.status !== "running" && job.status !== "waiting") {
-          return { output, exited: true };
-        }
-        await sleep(300);
-      }
-      return { output, exited: false };
-    };
-
     const waitForAppReady = async (
       appName: string,
       started: SessionServiceApp,
     ): Promise<SessionServiceApp> => {
       if (!started.jobId) return started;
 
-      let ready = started;
-      const waited = await waitForDetectedPort(started.jobId);
-      if (waited.exited) {
-        throw new Error(
-          `Service ${appName} exited before it became ready. Output:\n${waited.output.slice(-4000) || "(no output)"}`,
+      const deadline = Date.now() + APPLY_READY_MS;
+      let output = "";
+      while (Date.now() < deadline) {
+        const job = await ctx.jobs.get(started.jobId);
+        output = typeof job?.output === "string" ? job.output : "";
+        const detected = detectListenPort(output);
+        const candidates = [started.port, detected].filter(
+          (port): port is number => Number.isInteger(port) && port > 0,
         );
-      }
-      if (waited.port) {
-        const declaredOpen = await isLoopbackTcpPortOpen(started.port);
-        const detectedOpen = await isLoopbackTcpPortOpen(waited.port);
-        if (detectedOpen && (!declaredOpen || started.port !== waited.port)) {
-          ready = { ...started, port: waited.port };
+        for (const port of candidates) {
+          if (await isLoopbackTcpPortOpen(port)) {
+            return port === started.port ? started : { ...started, port };
+          }
         }
+        // Windows pnpm/npx .cmd often exits while Vite stays up as a grandchild.
+        // Never treat the wrapper job ending as "service dead", and never kill it.
+        if (/Missing script|command not found|ENOENT/i.test(output)) {
+          throw new Error(
+            `Service ${appName} failed to start. Output:\n${output.slice(-4000)}`,
+          );
+        }
+        await sleep(300);
       }
-      if (!(await isLoopbackTcpPortOpen(ready.port))) {
-        await stopRegisteredApp({ sessionId, app: started, jobs });
-        throw new Error(
-          `Service ${appName} reported a port, but Supervisor could not connect to 127.0.0.1:${ready.port}. The service was stopped; check its listen address.`,
-        );
-      }
-      return ready;
+      throw new Error(
+        `Service ${appName} did not become reachable on 127.0.0.1:${started.port}. Output:\n${output.slice(-4000) || "(no output)"}`,
+      );
     };
 
     const waitForAppsReady = async (started: SessionServicesMeta): Promise<SessionServicesMeta> => {
       const readyApps: SessionServiceApp[] = [];
-      try {
-        for (const app of started.apps ?? []) {
-          readyApps.push(await waitForAppReady(app.name, app));
-        }
-      } catch (error) {
-        await Promise.all(
-          (started.apps ?? []).map((app) =>
-            stopRegisteredApp({ sessionId, app, jobs }).catch(() => undefined),
-          ),
-        );
-        throw error;
+      for (const app of started.apps ?? []) {
+        readyApps.push(await waitForAppReady(app.name, app));
       }
       const first = readyApps.find((app) => app.jobId) ?? readyApps[0];
       return {
@@ -503,10 +487,7 @@ const projectServicesExtension: ExtensionDefinition = {
       };
       const apps = [...(current.apps ?? [])];
       const existing = apps.find((app) => app.name === name);
-      const installCommand =
-        params.installCommand?.trim() ||
-        current.installCommand ||
-        (findProjectBinDir(cwd()) ? undefined : inferProjectInstallCommand(cwd()));
+      const installCommand = params.installCommand?.trim() || current.installCommand;
 
       const patchCommands = (base: SessionServicesMeta): SessionServicesMeta => ({
         ...base,
@@ -529,29 +510,7 @@ const projectServicesExtension: ExtensionDefinition = {
           app,
           jobs,
         });
-        let ready = started;
-        if (started.jobId) {
-          const waited = await waitForDetectedPort(started.jobId);
-          if (waited.exited) {
-            throw new Error(
-              `服务 ${name} 在就绪前退出。输出：\n${waited.output.slice(-4000) || "(no output)"}`,
-            );
-          }
-          if (waited.port) {
-            const declaredOpen = await isLoopbackTcpPortOpen(started.port);
-            const detectedOpen = await isLoopbackTcpPortOpen(waited.port);
-            if (detectedOpen && (!declaredOpen || started.port !== waited.port)) {
-              ready = { ...started, port: waited.port };
-            }
-          }
-          if (!(await isLoopbackTcpPortOpen(ready.port))) {
-            await stopRegisteredApp({ sessionId, app: started, jobs });
-            throw new Error(
-              `服务 ${name} 已输出端口信息，但 Supervisor 无法连接 127.0.0.1:${ready.port}；已停止该服务。请检查启动命令的监听地址。`,
-            );
-          }
-        }
-        return ready;
+        return waitForAppReady(name, started);
       };
 
       try {
@@ -706,7 +665,7 @@ const projectServicesExtension: ExtensionDefinition = {
           prompt: [
             "This Session was just created. Analyze the project's long-running local development services.",
             "If the project root has AGENTS.md with `## 本地开发服务`, prefer its commands. If AGENTS.md or that section is absent, continue by checking package.json, workspace configuration, README, build tools, and project structure; do not skip analysis.",
-            "For each service with a start command, call UpdateService with action=add and provide name, startCommand, and optional path. Decide whether installCommand is needed from the tool description.",
+            "For each service with a start command, call UpdateService with action=add and provide name, startCommand, and optional path. Inspect the project yourself and decide whether installCommand is needed; do not assume a Node package manager.",
             "Do not provide port unless the command hard-codes one; otherwise the system uses 4396–4500.",
             "If there is no start command, do not call the tool and finish.",
             "Do not commit or modify AGENTS.md.",

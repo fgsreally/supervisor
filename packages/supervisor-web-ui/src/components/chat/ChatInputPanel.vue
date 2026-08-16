@@ -303,11 +303,15 @@ function isInsideHoldZone(clientX: number, clientY: number): boolean {
 function bindHoldWindowListeners() {
   window.addEventListener("pointermove", onHoldWindowPointerMove, { capture: true });
   window.addEventListener("pointerup", onHoldWindowPointerUp, { capture: true });
+  window.addEventListener("touchmove", onHoldWindowTouchMove, { capture: true, passive: false });
+  window.addEventListener("touchend", onHoldWindowTouchEnd, { capture: true });
 }
 
 function unbindHoldWindowListeners() {
   window.removeEventListener("pointermove", onHoldWindowPointerMove, { capture: true });
   window.removeEventListener("pointerup", onHoldWindowPointerUp, { capture: true });
+  window.removeEventListener("touchmove", onHoldWindowTouchMove, { capture: true });
+  window.removeEventListener("touchend", onHoldWindowTouchEnd, { capture: true });
 }
 
 function updateHoldCancelFromPoint(clientX: number, clientY: number) {
@@ -331,6 +335,29 @@ function onHoldWindowPointerUp(event: PointerEvent) {
   onHoldPointerUp(event);
 }
 
+function onHoldWindowTouchMove(event: TouchEvent) {
+  if (!holdRecording.value) return;
+  const touch = event.touches[0] ?? event.changedTouches[0];
+  if (!touch) return;
+  event.preventDefault();
+  updateHoldCancelFromPoint(touch.clientX, touch.clientY);
+}
+
+function onHoldWindowTouchEnd(event: TouchEvent) {
+  if (event.touches.length > 0) return;
+  const touch = event.changedTouches[0];
+  if (!touch) return;
+  if (!holdRecording.value) {
+    if (holdPointerId != null) {
+      clearLongPressTimer();
+      unbindHoldWindowListeners();
+      holdPointerId = null;
+    }
+    return;
+  }
+  releaseHoldFromPoint(touch.clientX, touch.clientY);
+}
+
 function onHoldPointerDown(event: PointerEvent) {
   if (!isMobile.value || props.disabled || holdRecording.value || voice.recording.value) return;
   if (event.pointerType === "mouse") return;
@@ -345,7 +372,7 @@ function onHoldPointerDown(event: PointerEvent) {
 
   event.preventDefault();
   holdPointerId = event.pointerId;
-  composerHoldZoneRef.value?.setPointerCapture(event.pointerId);
+  bindHoldWindowListeners();
 
   clearLongPressTimer();
   longPressTimer = setTimeout(() => {
@@ -355,7 +382,6 @@ function onHoldPointerDown(event: PointerEvent) {
     voiceBaseText.value = text.value;
     holdRecording.value = true;
     willCancel.value = false;
-    bindHoldWindowListeners();
     void voice.start();
   }, HOLD_LONG_PRESS_MS);
 }
@@ -414,7 +440,7 @@ function onHoldPointerUp(event: PointerEvent) {
     return;
   }
 
-  releaseHoldPointerCapture();
+  unbindHoldWindowListeners();
   holdPointerId = null;
   composerRef.value?.focus();
 }
@@ -426,7 +452,7 @@ function onHoldPointerCancel(event: PointerEvent) {
     updateHoldCancelFromPoint(event.clientX, event.clientY);
     return;
   }
-  releaseHoldPointerCapture();
+  unbindHoldWindowListeners();
   holdPointerId = null;
 }
 

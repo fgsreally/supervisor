@@ -316,6 +316,31 @@ export function parseSessionServicesMeta(
   return migrateLegacyEntries(row);
 }
 
+/** Ports already claimed in other Sessions' meta.services. */
+export function collectReservedServicePorts(
+  rows: Array<{ id: number; meta: string }>,
+  exceptSessionId?: number,
+): number[] {
+  const ports: number[] = [];
+  for (const row of rows) {
+    if (row.id === exceptSessionId) continue;
+    let meta: Record<string, unknown> = {};
+    try {
+      meta = JSON.parse(row.meta || "{}") as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    const services = parseSessionServicesMeta(meta);
+    for (const app of services?.apps ?? []) {
+      if (Number.isInteger(app.port) && app.port > 0) ports.push(app.port);
+      for (const port of Object.values(app.portEnv ?? {})) {
+        if (Number.isInteger(port) && port > 0) ports.push(port);
+      }
+    }
+  }
+  return [...new Set(ports)];
+}
+
 /** Port env derived from apps for agent shells / external runtimes. */
 export function sessionServicePortEnv(
   meta: Record<string, unknown> | undefined | null,

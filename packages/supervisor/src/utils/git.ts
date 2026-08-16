@@ -544,6 +544,10 @@ export async function listSvCommitsBetween(
   return commits;
 }
 
+function isSupervisorWorktreePath(worktreePath: string): boolean {
+  return worktreePath.replace(/\\/g, "/").includes("/.supervisor/worktrees/");
+}
+
 export async function removeSessionWorktree(
   repoRoot: string,
   worktreePath: string,
@@ -555,6 +559,16 @@ export async function removeSessionWorktree(
     await runGit(repoRoot, ["worktree", "remove", worktreePath, "--force"]);
   } catch (error) {
     removeError = error;
+  }
+  if (existsSync(worktreePath)) {
+    await runGit(repoRoot, ["worktree", "prune"]).catch(() => undefined);
+    if (isSupervisorWorktreePath(worktreePath)) {
+      try {
+        rmSync(worktreePath, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
+      } catch (error) {
+        removeError = error;
+      }
+    }
   }
   // Path gone (or never registered) counts as success; leftover path must surface.
   if (existsSync(worktreePath)) {

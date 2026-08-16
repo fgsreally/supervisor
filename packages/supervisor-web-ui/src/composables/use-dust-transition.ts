@@ -127,9 +127,24 @@ export function useDustTransitionHooks(options?: { duration?: number; step?: num
       return;
     }
 
-    // CSS mode: never call done() here — let translateX/opacity CSS finish
-    // (used by pin/unpin moves that don't go through withDustRemove).
-    if (!advanced.value) return;
+    // CSS mode still needs a fallback: grid parents can swallow transitionend
+    // and leave an invisible full-height row.
+    if (!advanced.value) {
+      const safetyTimer = window.setTimeout(() => {
+        forceCollapsed(el);
+        done();
+      }, 400);
+      el.addEventListener(
+        "animationend",
+        () => {
+          window.clearTimeout(safetyTimer);
+          forceCollapsed(el);
+          done();
+        },
+        { once: true },
+      );
+      return;
+    }
 
     let finished = false;
     const finish = () => {

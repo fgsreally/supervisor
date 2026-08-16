@@ -17,7 +17,7 @@ import { killProcessTree } from "../utils/process-tree.js";
 import { allocatePorts } from "../utils/ports.js";
 import { sessionLog } from "../utils/session-log.js";
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 /** Legacy multi-entry shape kept only for parse migration. */
@@ -45,36 +45,6 @@ export function findProjectBinDir(cwd: string): string | undefined {
     if (parent === current) return undefined;
     current = parent;
   }
-}
-
-export function inferProjectInstallCommand(cwd: string): string | undefined {
-  const packageJsonPath = join(cwd, "package.json");
-  if (!existsSync(packageJsonPath)) return undefined;
-
-  let packageJson: Record<string, unknown>;
-  try {
-    packageJson = JSON.parse(readFileSync(packageJsonPath, "utf8")) as Record<string, unknown>;
-  } catch {
-    return undefined;
-  }
-  const dependencyFields = ["dependencies", "devDependencies", "optionalDependencies"];
-  const hasDependencies = dependencyFields.some((field) => {
-    const value = packageJson[field];
-    return !!value && typeof value === "object" && Object.keys(value).length > 0;
-  });
-  if (!hasDependencies) return undefined;
-
-  const declared = typeof packageJson.packageManager === "string" ? packageJson.packageManager : "";
-  if (declared.startsWith("pnpm@")) return "pnpm install";
-  if (declared.startsWith("bun@")) return "bun install";
-  if (declared.startsWith("yarn@")) return "yarn install";
-  if (declared.startsWith("npm@")) return "npm install";
-  if (existsSync(join(cwd, "pnpm-lock.yaml"))) return "pnpm install";
-  if (existsSync(join(cwd, "bun.lock")) || existsSync(join(cwd, "bun.lockb"))) {
-    return "bun install";
-  }
-  if (existsSync(join(cwd, "yarn.lock"))) return "yarn install";
-  return "npm install";
 }
 
 export function withProjectPath(cwd: string, source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
@@ -173,6 +143,7 @@ export interface SessionServiceJobHost {
     | {
         id: string;
         status: string;
+        output?: string;
         metadata?: Record<string, unknown>;
       }
     | undefined
@@ -192,7 +163,7 @@ export function jobManagerAsHost(jobs: JobManager): SessionServiceJobHost {
     async get(id) {
       const job = jobs.get(id);
       if (!job) return undefined;
-      return { id: job.id, status: job.status, metadata: job.metadata };
+      return { id: job.id, status: job.status, output: job.output, metadata: job.metadata };
     },
     async cancel(id) {
       return jobs.cancel(id);
@@ -383,9 +354,7 @@ export async function startRegisteredSessionServices(options: {
 
   try {
     if (!options.skipInstall) {
-      const install =
-        meta.installCommand?.trim() ||
-        (findProjectBinDir(options.cwd) ? undefined : inferProjectInstallCommand(options.cwd));
+      const install = meta.installCommand?.trim();
       if (install) {
         meta.installCommand = install;
         const resolved = substitutePortPlaceholders(install, portEnv);

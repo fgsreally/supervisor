@@ -2,6 +2,7 @@ import net from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   findFreePortInRange,
+  preferredServicePortHint,
   SESSION_SERVICE_PREFERRED_PORT_MAX,
   SESSION_SERVICE_PREFERRED_PORT_MIN,
 } from "../src/utils/ports.js";
@@ -41,6 +42,17 @@ describe("supervisor: preferred service ports", () => {
     const port = address.port;
     expect(await findFreePortInRange(port, port, [])).toBeUndefined();
     expect(await findFreePortInRange(port, port, [port])).toBeUndefined();
+  });
+
+  it("hints different preferred ports for nearby session ids", () => {
+    expect(preferredServicePortHint(136)).not.toBe(preferredServicePortHint(137));
+    expect(preferredServicePortHint(136)).toBeGreaterThanOrEqual(SESSION_SERVICE_PREFERRED_PORT_MIN);
+    expect(preferredServicePortHint(136)).toBeLessThanOrEqual(SESSION_SERVICE_PREFERRED_PORT_MAX);
+  });
+
+  it("starts scanning at startAt when that port is free", async () => {
+    const port = await findFreePortInRange(4396, 4500, [], 4490);
+    expect(port).toBeGreaterThanOrEqual(4490);
   });
 
   it("returns a bindable port after the occupant is released", async () => {

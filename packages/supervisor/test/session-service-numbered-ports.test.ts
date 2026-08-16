@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import {
   appsToPortEnv,
   findProjectBinDir,
-  inferProjectInstallCommand,
   withProjectPath,
 } from "../src/core/session-registered-services.js";
-import { parseSessionServicesMeta } from "../src/core/session-services.js";
+import {
+  collectReservedServicePorts,
+  parseSessionServicesMeta,
+} from "../src/core/session-services.js";
 import { substitutePortPlaceholders } from "../src/core/session-service-runtime.js";
 import { validateNumberedPortPlaceholders } from "../src/extension/builtin/project-services/index.js";
 
@@ -20,6 +20,36 @@ describe("numbered session service ports", () => {
     ]);
     expect(validateNumberedPortPlaceholders("server --port ${PORT2}")).toBeNull();
     expect(validateNumberedPortPlaceholders("server --port 5173")).toBeNull();
+  });
+
+  it("collects ports reserved by other sessions", () => {
+    expect(
+      collectReservedServicePorts(
+        [
+          {
+            id: 136,
+            meta: JSON.stringify({
+              services: {
+                status: "active",
+                startCommand: "pnpm dev --port ${PORT1}",
+                apps: [{ name: "web", port: 4396, portEnv: { PORT1: 4396 }, path: "/" }],
+              },
+            }),
+          },
+          {
+            id: 137,
+            meta: JSON.stringify({
+              services: {
+                status: "idle",
+                startCommand: "pnpm dev --port ${PORT1}",
+                apps: [{ name: "dev", port: 4428, portEnv: { PORT1: 4428 }, path: "/" }],
+              },
+            }),
+          },
+        ],
+        137,
+      ),
+    ).toEqual([4396]);
   });
 
   it("persists numbered ports and substitutes them on later starts", () => {
@@ -52,18 +82,5 @@ describe("numbered session service ports", () => {
     const existingPath = join("supervisor", "node_modules", ".bin");
     const env = withProjectPath(cwd, { Path: existingPath });
     expect(env.Path).toBe(`${projectBin}${delimiter}${existingPath}`);
-  });
-
-  it("infers dependency installation from the project package manager", () => {
-    const cwd = mkdtempSync(join(tmpdir(), "supervisor-install-command-"));
-    try {
-      writeFileSync(
-        join(cwd, "package.json"),
-        JSON.stringify({ packageManager: "pnpm@10.0.0", devDependencies: { vite: "^8.0.0" } }),
-      );
-      expect(inferProjectInstallCommand(cwd)).toBe("pnpm install");
-    } finally {
-      rmSync(cwd, { recursive: true, force: true });
-    }
   });
 });

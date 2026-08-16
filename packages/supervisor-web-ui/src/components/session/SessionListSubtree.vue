@@ -1,5 +1,10 @@
 <template>
-  <DustTransitionGroup name="session-list" tag="div" content-class="session-list-subtree">
+  <DustTransitionGroup
+    v-if="children.length"
+    name="session-list"
+    tag="div"
+    content-class="session-list-subtree"
+  >
     <div
       v-for="(child, idx) in children"
       :key="child.id"

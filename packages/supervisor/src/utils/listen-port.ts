@@ -3,7 +3,7 @@ export function detectListenPort(output: string): number | undefined {
   const patterns = [
     /Local:\s+https?:\/\/[^:\s]+:(\d{2,5})/i,
     /https?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]):(\d{2,5})/i,
-    /(?:listening|ready).*?(?:on\s+)?(?:port\s+)?(\d{2,5})/i,
+    /listening(?:\s+on)?(?:\s+port)?\s+(\d{2,5})/i,
   ];
   for (const pattern of patterns) {
     const match = pattern.exec(output);

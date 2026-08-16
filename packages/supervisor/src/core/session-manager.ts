@@ -65,6 +65,7 @@ import {
   parseSessionServicesMeta,
   sessionServicePortEnv,
   scrubStaleSessionRuntimeMeta,
+  stopSessionProjectServices,
   stoppedSessionServicesMeta,
 } from "./session-services.js";
 import { runWatson } from "./watson.js";
@@ -111,6 +112,7 @@ import {
   commitAll,
   commitGitSnapshot,
   ensureGitRepositorySync,
+  removeSessionWorktree,
   resolveSessionGitContext,
 } from "../utils/git.js";
 import { configureSessionLogProjectResolver, sessionLog } from "../utils/session-log.js";
@@ -2855,28 +2857,59 @@ export class SessionManager {
       }
     }
 
-    let runtime = this.runtimes.get(id);
-    let restoredForDelete = false;
-    if (
-      !runtime?.extension &&
-      session &&
-      session.status !== "finish" &&
-      session.status !== "finished" &&
-      session.status !== "stopped"
-    ) {
+    const runtime = this.runtimes.get(id);
+    if (session) {
       try {
-        runtime = await this.getOrRestoreRuntime(id);
-        restoredForDelete = true;
-      } catch {
-        runtime = undefined;
+        await stopSessionProjectServices({
+          sessionId: id,
+          cwd: session.cwd,
+          services: parseSessionServicesMeta(session.meta),
+          jobs: this.jobs,
+          mode: "destroy",
+        });
+      } catch (error: unknown) {
+        writeLog("error", "runtime.clearOnDeleteFailed", {
+          id,
+          step: "services",
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
     }
 
     if (runtime?.extension) {
-      await runtime.extension.emit({
-        type: "session.before_delete",
-        sessionId: id,
-      } as ExtensionEvent);
+      try {
+        await runtime.extension.emit({
+          type: "session.before_delete",
+          sessionId: id,
+        } as ExtensionEvent);
+      } catch (error: unknown) {
+        writeLog("error", "runtime.clearOnDeleteFailed", {
+          id,
+          step: "before_delete",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    } else if (session) {
+      try {
+        const project =
+          session.projectId != null ? this.db.getProject(session.projectId) : undefined;
+        const git = resolveSessionGitContext({
+          sessionId: id,
+          cwd: session.cwd,
+          projectCwd: project?.cwd,
+        });
+        if (git) {
+          await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch, {
+            forceBranch: true,
+          });
+        }
+      } catch (error: unknown) {
+        writeLog("error", "runtime.clearOnDeleteFailed", {
+          id,
+          step: "worktree",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     if (runtime) {
@@ -2901,7 +2934,7 @@ export class SessionManager {
           projectId,
           step,
           error: detail,
-          context: { restoredForDelete },
+          context: {},
         });
       } catch (recordError: unknown) {
         writeLog("error", "runtime.clearOnDeleteFailed", {
@@ -2930,7 +2963,6 @@ export class SessionManager {
         } catch (error: unknown) {
           recordCleanupFailure("runtime", error);
         }
-        if (restoredForDelete) await new Promise((resolve) => setTimeout(resolve, 400));
       }
     })();
   }

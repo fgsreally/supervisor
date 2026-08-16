@@ -15,7 +15,7 @@
             @click="emit('copy')"
           >
             <Copy class="message-context-menu__icon" />
-            <span>复制</span>
+            <span>{{ t("chat.message.copy") }}</span>
           </button>
 
           <button
@@ -25,7 +25,7 @@
             @click="openUsage"
           >
             <Coins class="message-context-menu__icon" />
-            <span>查看用量</span>
+            <span>{{ t("chat.message.viewUsage") }}</span>
           </button>
 
           <button
@@ -35,7 +35,7 @@
             @click="emit('rewind')"
           >
             <Undo2 class="message-context-menu__icon" />
-            <span>回到这里</span>
+            <span>{{ t("chat.message.rewindHere") }}</span>
           </button>
 
           <div
@@ -51,7 +51,7 @@
             @click="emit('fork')"
           >
             <GitBranch class="message-context-menu__icon" />
-            <span>从此消息分支</span>
+            <span>{{ t("chat.message.forkHere") }}</span>
           </button>
         </div>
       </div>
@@ -59,50 +59,50 @@
 
     <MobileDrawer
       :open="open && mode === 'sheet' && !usageOpen"
-      ariaLabel="消息操作"
+      :ariaLabel="t('chat.message.actions')"
       size="auto"
       show-footer
       @close="emit('close')"
     >
       <div class="message-sheet__actions">
-        <button v-if="canCopy" type="button" @click="emit('copy')">复制</button>
-        <button v-if="showUsage" type="button" @click="openUsage">查看用量</button>
-        <button v-if="canRewind" type="button" @click="emit('rewind')">回到这里</button>
-        <button v-if="canFork" type="button" @click="emit('fork')">从此消息分支</button>
+        <button v-if="canCopy" type="button" @click="emit('copy')">{{ t("chat.message.copy") }}</button>
+        <button v-if="showUsage" type="button" @click="openUsage">{{ t("chat.message.viewUsage") }}</button>
+        <button v-if="canRewind" type="button" @click="emit('rewind')">{{ t("chat.message.rewindHere") }}</button>
+        <button v-if="canFork" type="button" @click="emit('fork')">{{ t("chat.message.forkHere") }}</button>
       </div>
     </MobileDrawer>
 
-    <UiDialog :open="usageOpen" title="本条用量" show-close @close="closeUsage">
+    <UiDialog :open="usageOpen" :title="t('chat.message.usageTitle')" show-close @close="closeUsage">
       <div class="message-usage-dialog">
         <div class="message-usage-dialog__cost">
-          <span>费用</span>
-          <strong>{{ usage ? formatCost(usage.cost.total) : "暂无记录" }}</strong>
+          <span>{{ t("chat.message.cost") }}</span>
+          <strong>{{ usage ? formatCost(usage.cost.total) : t("chat.message.noRecord") }}</strong>
         </div>
         <div v-if="durationLabel" class="message-usage-dialog__row">
-          <span>耗时</span>
+          <span>{{ t("chat.message.durationLabel") }}</span>
           <strong>{{ durationLabel }}</strong>
         </div>
         <template v-if="usage">
           <div class="message-usage-dialog__grid">
             <div>
-              <span>输入</span>
+              <span>{{ t("chat.message.input") }}</span>
               <strong>{{ formatTokens(usage.input) }}</strong>
             </div>
             <div>
-              <span>输出</span>
+              <span>{{ t("chat.message.output") }}</span>
               <strong>{{ formatTokens(usage.output) }}</strong>
             </div>
             <div>
-              <span>缓存</span>
+              <span>{{ t("chat.message.cache") }}</span>
               <strong>{{ formatTokens(usage.cacheRead + usage.cacheWrite) }}</strong>
             </div>
           </div>
           <div class="message-usage-dialog__row">
-            <span>合计 tokens</span>
+            <span>{{ t("chat.message.totalTokens") }}</span>
             <strong>{{ formatTokens(usage.totalTokens) }}</strong>
           </div>
         </template>
-        <p v-else class="message-usage-dialog__empty">暂无用量记录</p>
+        <p v-else class="message-usage-dialog__empty">{{ t("chat.message.noUsage") }}</p>
       </div>
     </UiDialog>
   </Teleport>
@@ -114,6 +114,8 @@ import { Coins, Copy, GitBranch, Undo2 } from "lucide-vue-next";
 import type { MessageUsage } from "@/api";
 import { MobileDrawer } from "@/components/mobile/ui";
 import UiDialog from "@/components/base/UiDialog.vue";
+import { useI18n } from "@/i18n";
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{

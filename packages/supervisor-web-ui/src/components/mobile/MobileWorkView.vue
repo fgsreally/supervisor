@@ -2,12 +2,12 @@
   <div class="mobile-work" data-tour-page="work">
     <header class="mobile-work__header m-mobile-header">
       <span aria-hidden="true" />
-      <h1 class="m-mobile-header__title">工作</h1>
-      <div class="mobile-work__actions" aria-label="工作视图">
+      <h1 class="m-mobile-header__title">{{ t("mobile.work") }}</h1>
+      <div class="mobile-work__actions" :aria-label="t('mobile.workView')">
         <button
           type="button"
           :class="{ active: mode === 'todo' }"
-          aria-label="任务"
+          :aria-label="t('todo.title')"
           @click="emit('navigate', '/todo')"
         >
           <ListTodo />
@@ -15,7 +15,7 @@
         <button
           type="button"
           :class="{ active: mode === 'dashboard' }"
-          aria-label="概览"
+          :aria-label="t('mobile.overview')"
           @click="emit('navigate', '/dashboard')"
         >
           <LayoutDashboard />
@@ -28,8 +28,10 @@
 
 <script setup lang="ts">
 import { LayoutDashboard, ListTodo } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 
 defineProps<{ mode: "todo" | "dashboard" }>();
+const { t } = useI18n();
 const emit = defineEmits<{ navigate: [route: "/todo" | "/dashboard"] }>();
 </script>
 

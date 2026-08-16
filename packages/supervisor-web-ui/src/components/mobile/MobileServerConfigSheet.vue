@@ -1,25 +1,25 @@
 <template>
-  <MobileSheet v-model:open="open" :title="editingId ? '编辑服务器' : '添加服务器'">
+  <MobileSheet v-model:open="open" :title="editingId ? t('mobile.editServer') : t('mobile.addServer')">
     <div class="mobile-server-config">
       <MobileField
-        label="服务器地址"
-        hint="例如 https://xxx.trycloudflare.com 或 http://192.168.1.10:3030"
+        :label="t('mobile.serverAddress')"
+        :hint="t('mobile.serverAddressHint')"
       >
         <MobileInput v-model="serverUrl" placeholder="https://..." autocomplete="url" />
       </MobileField>
-      <MobileField label="显示名称" hint="可选，默认使用主机名">
-        <MobileInput v-model="serverName" placeholder="家里的电脑" />
+      <MobileField :label="t('mobile.displayName')" :hint="t('mobile.displayNameHint')">
+        <MobileInput v-model="serverName" :placeholder="t('mobile.homeComputer')" />
       </MobileField>
-      <MobileField label="访问 PIN" hint="与 Supervisor 启动时显示的 6 位 PIN 一致">
+      <MobileField :label="t('mobile.accessPin')" :hint="t('mobile.accessPinHint')">
         <MobileInput v-model="serverPin" type="password" inputmode="numeric" maxlength="6" />
       </MobileField>
-      <MobileField label="后台保持连接" hint="Android 显示常驻通知，尽量维持 SSE/WebSocket">
+      <MobileField :label="t('mobile.backgroundConnection')" :hint="t('mobile.backgroundConnectionHint')">
         <MobileSwitch v-model="backgroundEnabled" />
       </MobileField>
       <div class="mobile-server-config__actions">
-        <MobileButton variant="secondary" @click="open = false">取消</MobileButton>
+        <MobileButton variant="secondary" @click="open = false">{{ t("common.cancel") }}</MobileButton>
         <MobileButton variant="primary" :loading="testing" @click="save">
-          保存并连接
+          {{ t("mobile.saveAndConnect") }}
         </MobileButton>
       </div>
     </div>
@@ -44,8 +44,10 @@ import MobileField from "./ui/MobileField.vue";
 import MobileInput from "./ui/MobileInput.vue";
 import MobileSheet from "./ui/MobileSheet.vue";
 import MobileSwitch from "./ui/MobileSwitch.vue";
+import { useI18n } from "@/i18n";
 
 const open = defineModel<boolean>("open", { default: false });
+const { t } = useI18n();
 
 const props = defineProps<{
   initialUrl?: string;
@@ -86,11 +88,11 @@ async function save() {
   const pin = serverPin.value.trim();
   const name = serverName.value.trim() || displayNameForUrl(url);
   if (!url) {
-    showUiMessage("请填写服务器地址", "error");
+    showUiMessage(t("mobile.serverAddressRequired"), "error");
     return;
   }
   if (!pin) {
-    showUiMessage("请填写访问 PIN", "error");
+    showUiMessage(t("mobile.accessPinRequired"), "error");
     return;
   }
   testing.value = true;
@@ -105,16 +107,16 @@ async function save() {
     setBackgroundConnectionEnabled(backgroundEnabled.value);
     await api.healthCheck();
     if (backgroundEnabled.value) {
-      await startBackgroundConnection("Supervisor", "已连接");
+      await startBackgroundConnection("Supervisor", t("mobile.connected"));
     } else {
       await stopBackgroundConnection();
     }
-    showUiMessage("服务器连接已保存", "success");
+    showUiMessage(t("mobile.serverSaved"), "success");
     open.value = false;
     emit("saved");
     window.location.reload();
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "无法连接服务器", "error");
+    showUiMessage(error instanceof Error ? error.message : t("mobile.serverConnectFailed"), "error");
   } finally {
     testing.value = false;
   }

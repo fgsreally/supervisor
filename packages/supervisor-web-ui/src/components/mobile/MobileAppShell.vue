@@ -4,7 +4,7 @@
       <slot />
     </main>
 
-    <nav v-if="showNav" class="mobile-tabbar" data-tour-tabbar aria-label="主导航">
+    <nav v-if="showNav" class="mobile-tabbar" data-tour-tabbar :aria-label="t('mobile.mainNavigation')">
       <button
         v-for="item in items"
         :key="item.id"
@@ -26,6 +26,7 @@
 import { computed } from "vue";
 import { Bot, CircleUserRound, ListTodo, MessageSquare } from "lucide-vue-next";
 import type { MainTab } from "@/components/layout/ShellNav.vue";
+import { useI18n } from "@/i18n";
 
 export type MobilePrimaryTab = "chat" | "work" | "agents" | "me";
 
@@ -33,17 +34,18 @@ const props = defineProps<{
   tab: MainTab;
   showNav?: boolean;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   navigate: [route: "/chat" | "/todo" | "/contacts" | "/settings", direction: "forward" | "back"];
 }>();
 
-const items = [
-  { id: "chat" as const, label: "聊天", route: "/chat" as const, icon: MessageSquare },
-  { id: "work" as const, label: "工作", route: "/todo" as const, icon: ListTodo },
-  { id: "agents" as const, label: "智能代理", route: "/contacts" as const, icon: Bot },
-  { id: "me" as const, label: "我的", route: "/settings" as const, icon: CircleUserRound },
-];
+const items = computed(() => [
+  { id: "chat" as const, label: t("mobile.chat"), route: "/chat" as const, icon: MessageSquare },
+  { id: "work" as const, label: t("mobile.work"), route: "/todo" as const, icon: ListTodo },
+  { id: "agents" as const, label: t("mobile.agents"), route: "/contacts" as const, icon: Bot },
+  { id: "me" as const, label: t("mobile.me"), route: "/settings" as const, icon: CircleUserRound },
+]);
 
 const activeTab = computed<MobilePrimaryTab>(() => {
   if (props.tab === "todo" || props.tab === "dashboard") return "work";
@@ -54,9 +56,9 @@ const activeTab = computed<MobilePrimaryTab>(() => {
   return "chat";
 });
 
-function onTabClick(item: (typeof items)[number]) {
-  const activeIndex = items.findIndex((entry) => entry.id === activeTab.value);
-  const nextIndex = items.findIndex((entry) => entry.id === item.id);
+function onTabClick(item: (typeof items.value)[number]) {
+  const activeIndex = items.value.findIndex((entry) => entry.id === activeTab.value);
+  const nextIndex = items.value.findIndex((entry) => entry.id === item.id);
   if (nextIndex === -1 || nextIndex === activeIndex) return;
   emit("navigate", item.route, nextIndex > activeIndex ? "forward" : "back");
 }

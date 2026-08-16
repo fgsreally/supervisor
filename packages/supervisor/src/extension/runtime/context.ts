@@ -49,6 +49,7 @@ import type {
   SessionData,
   AgentDataFacade,
   AgentMetaFacade,
+  AgentData,
   WorkflowStatePatch,
 } from "../types.js";
 import type { SessionTaskKind, SessionTodoStatus } from "../../types.js";
@@ -440,15 +441,16 @@ export class Context {
           if (!project) throw new Error(`Project ${session.projectId} not found`);
           return project;
         },
-        set: async (patch) => {
+        set: async (data) => {
           const project = db.updateProject(session.projectId!, {
-            name: patch.name,
-            description: patch.description,
-            cwd: patch.cwd,
-            homeDir: patch.homeDir,
+            name: data.name,
+            description: data.description,
+            cwd: data.cwd,
+            homeDir: data.homeDir,
           });
           return project;
         },
+        patch: async (patch) => db.updateProject(session.projectId!, patch),
       },
       cwd: projectRow.cwd,
       dir: getProjectDir(session.projectId),
@@ -466,10 +468,29 @@ export class Context {
           get: async () => {
             const current = db.getAgent(agent.id);
             if (!current) throw new Error(`Agent ${agent.id} not found`);
-            const { meta: _meta, ...data } = current;
-            return data;
+            const { meta: _meta, ...resultData } = current;
+            return resultData;
           },
-          set: async (patch: Partial<import("../types.js").AgentData>) => {
+          set: async (data: AgentData) => {
+            const current = db.updateAgent(agent.id, {
+              name: data.name,
+              description: data.description,
+              avatar: data.avatar,
+              backend_type: data.backendType,
+              model_id: data.modelId,
+              system_prompt: data.systemPrompt,
+              tools_preset: data.toolsPreset,
+              home_dir: data.homeDir,
+              is_builtin: data.isBuiltin ? 1 : 0,
+              external_config: data.externalConfig
+                ? JSON.stringify(data.externalConfig)
+                : null,
+              permission_rules: JSON.stringify(data.permissionRules),
+            });
+            const { meta: _meta, ...resultData } = current;
+            return resultData;
+          },
+          patch: async (patch: Partial<AgentData>) => {
             const current = db.updateAgent(agent.id, {
               name: patch.name,
               description: patch.description,
@@ -481,16 +502,19 @@ export class Context {
               home_dir: patch.homeDir,
               is_builtin:
                 patch.isBuiltin === undefined ? undefined : patch.isBuiltin ? 1 : 0,
-              external_config: patch.externalConfig
-                ? JSON.stringify(patch.externalConfig)
-                : patch.externalConfig,
+              external_config:
+                patch.externalConfig === undefined
+                  ? undefined
+                  : patch.externalConfig
+                    ? JSON.stringify(patch.externalConfig)
+                    : null,
               permission_rules:
                 patch.permissionRules === undefined
                   ? undefined
                   : JSON.stringify(patch.permissionRules),
             });
-            const { meta: _meta, ...data } = current;
-            return data;
+            const { meta: _meta, ...resultData } = current;
+            return resultData;
           },
         }
       : undefined;
@@ -546,6 +570,7 @@ export class Context {
       data: {
         get: deps.getSessionData,
         set: deps.setSessionData,
+        patch: deps.patchSessionData,
       },
       meta: {
         get: extensionDb.getSessionMeta,
@@ -640,6 +665,9 @@ export class Context {
           throw new Error("Agent data is unavailable");
         },
         set: async () => {
+          throw new Error("Agent data is unavailable");
+        },
+        patch: async () => {
           throw new Error("Agent data is unavailable");
         },
       },

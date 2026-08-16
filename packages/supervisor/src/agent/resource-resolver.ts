@@ -117,6 +117,9 @@ function createProbeContext(
         set: async () => {
           throw new Error("session data is unavailable while probing resources");
         },
+        patch: async () => {
+          throw new Error("session data is unavailable while probing resources");
+        },
       },
       meta: { get: async () => ({}), set: noopAsync, patch: async () => ({}) },
       workflow: {
@@ -144,6 +147,7 @@ function createProbeContext(
         data: {
           get: async () => ({ id: 0, name: "probe", description: null, cwd: process.cwd(), homeDir: process.cwd(), createdAt: new Date(0), updatedAt: new Date(0) }),
           set: async () => { throw new Error("project data is unavailable while probing resources"); },
+          patch: async () => { throw new Error("project data is unavailable while probing resources"); },
         },
         cwd: process.cwd(), dir: process.cwd(), getDir: async () => process.cwd(),
       },
@@ -211,6 +215,7 @@ function createProbeContext(
       data: {
         get: async () => ({ id: 0, name: "probe", description: null, avatar: null, providerId: null, backendType: "native" as const, modelId: null, systemPrompt: null, toolsPreset: null, homeDir: null, isBuiltin: false, externalConfig: null, permissionRules: {}, createdAt: new Date(0), updatedAt: new Date(0) }),
         set: async () => { throw new Error("agent data is unavailable while probing resources"); },
+        patch: async () => { throw new Error("agent data is unavailable while probing resources"); },
       },
       meta: { get: async () => ({}), set: noopAsync, patch: async () => ({}) },
     }),
@@ -242,6 +247,7 @@ function createProbeContext(
       data: {
         get: async () => ({ id: 0, name: "probe", description: null, cwd: process.cwd(), homeDir: process.cwd(), createdAt: new Date(0), updatedAt: new Date(0) }),
         set: async () => { throw new Error("project data is unavailable while probing resources"); },
+        patch: async () => { throw new Error("project data is unavailable while probing resources"); },
       },
       cwd: process.cwd(), dir: process.cwd(), getDir: async () => process.cwd(),
     },

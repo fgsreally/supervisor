@@ -228,7 +228,8 @@ export interface ProjectData {
 
 export interface SessionDataFacade {
   get(): Promise<SessionData>;
-  set(patch: Partial<SessionData>): Promise<SessionData>;
+  set(data: SessionData): Promise<SessionData>;
+  patch(patch: Partial<SessionData>): Promise<SessionData>;
 }
 
 export interface SessionMetaFacade {
@@ -239,7 +240,8 @@ export interface SessionMetaFacade {
 
 export interface AgentDataFacade {
   get(): Promise<AgentData>;
-  set(patch: Partial<AgentData>): Promise<AgentData>;
+  set(data: AgentData): Promise<AgentData>;
+  patch(patch: Partial<AgentData>): Promise<AgentData>;
 }
 
 export interface AgentMetaFacade {
@@ -250,7 +252,8 @@ export interface AgentMetaFacade {
 
 export interface ProjectDataFacade {
   get(): Promise<ProjectData>;
-  set(patch: Partial<ProjectData>): Promise<ProjectData>;
+  set(data: ProjectData): Promise<ProjectData>;
+  patch(patch: Partial<ProjectData>): Promise<ProjectData>;
 }
 
 export interface ExtensionSession {

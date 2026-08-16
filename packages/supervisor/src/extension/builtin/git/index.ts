@@ -1,5 +1,6 @@
 import type { ExtensionContext, ExtensionDefinition } from "../../types.js";
 import type { SessionRow } from "../../../types.js";
+import { parseSessionMeta } from "../../../core/session-fields.js";
 import {
   commitAll,
   createSessionWorktree,

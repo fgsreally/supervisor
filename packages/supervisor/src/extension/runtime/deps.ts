@@ -442,10 +442,19 @@ export function buildExtensionDeps(deps: {
       return data satisfies SessionData;
     },
 
-    setSessionData: async (patch: Partial<SessionData>) => {
+    setSessionData: async (fullData: SessionData) => {
+      const current = manager.setSessionData(
+        sessionId,
+        fullData as unknown as Record<string, unknown>,
+      );
+      const { meta: _meta, currentTask: _currentTask, ...resultData } = current;
+      return resultData satisfies SessionData;
+    },
+
+    patchSessionData: async (patch: Partial<SessionData>) => {
       const current = manager.setSessionData(sessionId, patch as Record<string, unknown>);
-      const { meta: _meta, currentTask: _currentTask, ...data } = current;
-      return data satisfies SessionData;
+      const { meta: _meta, currentTask: _currentTask, ...resultData } = current;
+      return resultData satisfies SessionData;
     },
 
     getWorkflow: async () => manager.getWorkflow(sessionId),
@@ -742,7 +751,8 @@ type RuntimeDeps = {
   setSessionMeta: (meta: Record<string, unknown>) => Promise<void>;
   patchSessionMeta: (patch: Record<string, unknown>) => Promise<Record<string, unknown>>;
   getSessionData: () => Promise<SessionData>;
-  setSessionData: (patch: Partial<SessionData>) => Promise<SessionData>;
+  setSessionData: (data: SessionData) => Promise<SessionData>;
+  patchSessionData: (patch: Partial<SessionData>) => Promise<SessionData>;
   getWorkflow: () => Promise<SessionWorkflowState | null>;
   setWorkflow: (patch: WorkflowStatePatch) => Promise<SessionWorkflowState>;
   clearWorkflow: () => Promise<void>;

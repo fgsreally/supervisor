@@ -2,7 +2,7 @@
   <div class="plan-confirm">
     <header class="plan-confirm__header">
       <div>
-        <h2>确认规划</h2>
+        <h2>{{ t("home.plan.title") }}</h2>
         <p>
           {{ root.title }}
           <span v-if="rootProjectName"> · {{ rootProjectName }}</span>
@@ -10,18 +10,17 @@
       </div>
       <div class="plan-confirm__actions">
         <button type="button" class="plan-confirm__ghost" :disabled="busy" @click="emit('close')">
-          返回看板
+          {{ t("home.plan.back") }}
         </button>
         <UiActionButton :loading="confirming" :disabled="busy || !drafts.length" @click="onConfirm">
-          确认实现
+          {{ t("home.plan.confirm") }}
         </UiActionButton>
       </div>
     </header>
 
     <div class="plan-confirm__body custom-scrollbar">
       <p class="plan-confirm__hint">
-        检查依赖（串行门禁 / 可并行）、项目、Agent 与子
-        Agent。确认后将进入任务面板并按依赖开始执行。
+        {{ t("home.plan.hint") }}
       </p>
 
       <article v-for="(item, index) in drafts" :key="item.id" class="plan-item">
@@ -31,15 +30,15 @@
         </header>
 
         <label>
-          <span>执行指令</span>
+          <span>{{ t("home.plan.command") }}</span>
           <textarea v-model="item.description" rows="3" />
         </label>
 
         <div class="plan-item__grid">
           <label>
-            <span>项目</span>
+            <span>{{ t("home.plan.project") }}</span>
             <select v-model.number="item.projectId">
-              <option :value="null">未绑定</option>
+              <option :value="null">{{ t("home.plan.unbound") }}</option>
               <option v-for="project in projects" :key="project.id" :value="Number(project.id)">
                 {{ project.name }}
               </option>
@@ -49,7 +48,7 @@
           <label>
             <span>Agent</span>
             <select v-model.number="item.agentId">
-              <option :value="null">默认 Agent</option>
+              <option :value="null">{{ t("home.plan.defaultAgent") }}</option>
               <option v-for="agent in agents" :key="agent.id" :value="Number(agent.id)">
                 {{ agent.name }}
               </option>
@@ -58,7 +57,7 @@
         </div>
 
         <label>
-          <span>依赖（完成后才执行本项）</span>
+          <span>{{ t("home.plan.dependencies") }}</span>
           <div class="plan-item__deps">
             <label v-for="other in drafts.filter((row) => row.id !== item.id)" :key="other.id">
               <input
@@ -68,12 +67,12 @@
               />
               <span>{{ other.title }}</span>
             </label>
-            <span v-if="drafts.length <= 1" class="plan-item__muted">无其他工作项</span>
+            <span v-if="drafts.length <= 1" class="plan-item__muted">{{ t("home.plan.noOtherTasks") }}</span>
           </div>
         </label>
 
         <label>
-          <span>子 Agent</span>
+          <span>{{ t("home.plan.subagents") }}</span>
           <div class="plan-item__deps">
             <label v-for="agent in agents" :key="`sub-${item.id}-${agent.id}`">
               <input
@@ -89,7 +88,7 @@
               />
               <span>{{ agent.name }}</span>
             </label>
-            <span v-if="!agents.length" class="plan-item__muted">暂无 Agent</span>
+            <span v-if="!agents.length" class="plan-item__muted">{{ t("home.plan.noAgents") }}</span>
           </div>
         </label>
       </article>
@@ -102,6 +101,7 @@ import { computed, ref, watch } from "vue";
 import { confirmHomeTask, updateHomeTask, type Agent, type HomeTask, type Project } from "@/api";
 import UiActionButton from "@/components/base/UiActionButton.vue";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useI18n } from "@/i18n";
 
 interface DraftItem {
   id: number;
@@ -120,6 +120,7 @@ const props = defineProps<{
   agents: Agent[];
   busy?: boolean;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   close: [];
@@ -167,11 +168,11 @@ function toggleSubagent(item: DraftItem, agentId: number, checked: boolean) {
 }
 
 function parallelLabel(item: DraftItem): string {
-  if (item.dependsOn.length === 0) return "可并行启动";
+  if (item.dependsOn.length === 0) return t("home.plan.parallel");
   const names = item.dependsOn
     .map((id) => drafts.value.find((row) => row.id === id)?.title ?? `#${id}`)
-    .join("、");
-  return `等待：${names}`;
+    .join(t("common.listSeparator"));
+  return t("home.plan.waiting", { names });
 }
 
 async function persistDrafts() {
@@ -191,10 +192,10 @@ async function onConfirm() {
   try {
     await persistDrafts();
     const result = await confirmHomeTask(props.root.id);
-    showUiMessage("已确认，开始按依赖执行", "success");
+    showUiMessage(t("home.plan.confirmed"), "success");
     emit("confirmed", result);
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "确认执行失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("home.plan.confirmFailed"), "error");
   } finally {
     confirming.value = false;
   }

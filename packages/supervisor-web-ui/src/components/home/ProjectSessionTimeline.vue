@@ -2,7 +2,7 @@
   <section class="timeline">
     <header>
       <div>
-        <h2>项目时间轴</h2>
+        <h2>{{ t("home.projectTimeline.title") }}</h2>
         <p v-if="filterHint">{{ filterHint }}</p>
       </div>
       <div class="filters">
@@ -18,13 +18,13 @@
     </header>
     <div v-if="loading" class="timeline__loading">
       <Loader2 class="timeline__spin" aria-hidden="true" />
-      <span>加载项目时间轴...</span>
+      <span>{{ t("home.projectTimeline.loading") }}</span>
     </div>
     <UiEmptyState
       v-else-if="!visibleEvents.length"
       class="timeline__empty"
-      title="暂无项目事件"
-      description="会话创建、合并或状态变化会显示在这里。"
+      :title="t('home.projectTimeline.emptyTitle')"
+      :description="t('home.projectTimeline.emptyDescription')"
     >
       <template #icon><GitCommitHorizontal /></template>
     </UiEmptyState>
@@ -55,7 +55,7 @@
       </div>
       <div class="scroll custom-scrollbar">
         <div class="canvas">
-          <div class="axis-label">项目</div>
+          <div class="axis-label">{{ t("home.projectTimeline.project") }}</div>
           <div class="axis">
             <span
               v-for="tick in ticks"
@@ -69,7 +69,7 @@
               <i :style="{ background: projectColor(project.id) }" />
               <div>
                 <strong>{{ project.name }}</strong
-                ><small>{{ laneEvents(project.id).length }} 个事件</small>
+                ><small>{{ t("home.projectTimeline.events", { count: laneEvents(project.id).length }) }}</small>
               </div>
             </aside>
             <div class="track">
@@ -102,8 +102,8 @@
                       >{{ commit.subject }}</span
                     >
                   </template>
-                  <span v-else class="empty">暂无独立提交</span>
-                  <span class="popover__action">打开会话</span>
+                  <span v-else class="empty">{{ t("home.projectTimeline.noCommits") }}</span>
+                  <span class="popover__action">{{ t("home.projectTimeline.openSession") }}</span>
                 </span>
               </button>
             </div>
@@ -119,6 +119,7 @@ import { computed, ref, watch } from "vue";
 import { GitCommitHorizontal, Loader2 } from "lucide-vue-next";
 import type { Project, Session, TimelineEvent, WorktreeCommit } from "@/api";
 import UiEmptyState from "@/components/base/UiEmptyState.vue";
+import { useI18n } from "@/i18n";
 
 type StatusFilter = "running" | "attention" | "finish" | "commits" | null;
 
@@ -130,6 +131,7 @@ const props = defineProps<{
   loading?: boolean;
   statusFilter?: StatusFilter;
 }>();
+const { t, locale } = useI18n();
 const emit = defineEmits<{ "open-session": [id: string] }>();
 const visibleIds = ref(new Set<string>());
 watch(
@@ -144,13 +146,13 @@ const sessionMap = computed(() => new Map(props.sessions.map((s) => [s.id, s])))
 const filterHint = computed(() => {
   switch (props.statusFilter) {
     case "running":
-      return "已筛选：进行中";
+      return t("home.projectTimeline.filterRunning");
     case "attention":
-      return "已筛选：需处理 / 异常";
+      return t("home.projectTimeline.filterAttention");
     case "finish":
-      return "已筛选：已合并";
+      return t("home.projectTimeline.filterFinished");
     case "commits":
-      return "已筛选：有提交的会话";
+      return t("home.projectTimeline.filterCommits");
     default:
       return "";
   }
@@ -192,7 +194,7 @@ const ticks = computed(() =>
     return {
       at,
       x: index * 20,
-      label: new Intl.DateTimeFormat("zh-CN", { month: "numeric", day: "numeric" }).format(at),
+      label: new Intl.DateTimeFormat(locale.value, { month: "numeric", day: "numeric" }).format(at),
     };
   }),
 );
@@ -242,31 +244,35 @@ function pointStyle(event: TimelineEvent) {
 }
 function sessionTitle(id: string) {
   const s = sessionMap.value.get(id);
-  return s?.title || `Session ${id}`;
+  return s?.title || t("home.projectTimeline.session", { id });
 }
 function statusLabel(status: TimelineEvent["status"]) {
   return (
     (
       {
-        finish: "已合并",
-        finished: "已合并",
-        running: "进行中",
-        blocked: "需处理",
-        error: "异常",
-        idle: "待命",
-        initializing: "准备中",
-        stopped: "已停止",
+        finish: t("home.projectTimeline.statusFinished"),
+        finished: t("home.projectTimeline.statusFinished"),
+        running: t("home.projectTimeline.statusRunning"),
+        blocked: t("home.projectTimeline.statusAttention"),
+        error: t("home.projectTimeline.statusError"),
+        idle: t("home.projectTimeline.statusIdle"),
+        initializing: t("home.projectTimeline.statusInitializing"),
+        stopped: t("home.projectTimeline.statusStopped"),
       } as Record<string, string>
     )[status || "idle"] ||
     status ||
-    "待命"
+    t("home.projectTimeline.statusIdle")
   );
 }
 function eventLabel(event: TimelineEvent) {
-  return event.kind === "created" ? "创建" : event.kind === "synced" ? "同步" : "状态变化";
+  return event.kind === "created"
+    ? t("home.projectTimeline.eventCreated")
+    : event.kind === "synced"
+      ? t("home.projectTimeline.eventSynced")
+      : t("home.projectTimeline.eventStatusChanged");
 }
 function formatTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(locale.value, {
     month: "numeric",
     day: "numeric",
   }).format(new Date(value));

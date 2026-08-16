@@ -1,11 +1,11 @@
 <template>
   <section class="sequence" :class="{ 'sequence--fill': fill, 'sequence--bare': bare }">
     <header v-if="!bare">
-      <strong>{{ title }}</strong>
-      <span>{{ tasks.length }} 个任务 · 拖拽平移 / 滚轮缩放</span>
+      <strong>{{ sequenceTitle }}</strong>
+      <span>{{ t("todo.sequenceHint", { count: tasks.length }) }}</span>
     </header>
     <div v-if="!tasks.length" class="sequence-empty">
-      <p>{{ emptyText }}</p>
+      <p>{{ sequenceEmptyText }}</p>
     </div>
     <div v-else class="sequence-flow-wrap">
       <VueFlow
@@ -70,6 +70,7 @@ import TaskCard from "@/components/task/TaskCard.vue";
 import type { Agent } from "@/api";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
+import { useI18n } from "@/i18n";
 
 export interface SequenceTask {
   id: number;
@@ -82,6 +83,7 @@ export interface SequenceTask {
 }
 
 const emit = defineEmits<{ select: [id: number] }>();
+const { t } = useI18n();
 const props = withDefaults(
   defineProps<{
     agents?: Agent[];
@@ -96,12 +98,13 @@ const props = withDefaults(
     agents: () => [],
     tasks: () => [],
     selectedId: null,
-    title: "顺序图",
-    emptyText: "规划完成后，任务关系会显示在这里",
     fill: false,
     bare: false,
   },
 );
+
+const sequenceTitle = computed(() => props.title ?? t("todo.sequence"));
+const sequenceEmptyText = computed(() => props.emptyText ?? t("todo.sequenceEmpty"));
 
 const flowId = `todo-seq-${Math.random().toString(36).slice(2, 9)}`;
 const hoveredNodeId = ref<string | null>(null);
@@ -123,12 +126,12 @@ const { fitView } = useVueFlow({
   maxZoom: 2,
 });
 
-const statusLabels: Record<string, string> = {
-  pending: "待办",
-  running: "进行中",
-  blocked: "阻塞",
-  done: "已完成",
-};
+const statusLabels = computed<Record<string, string>>(() => ({
+  pending: t("todo.pending"),
+  running: t("todo.running"),
+  blocked: t("todo.blocked"),
+  done: t("todo.done"),
+}));
 
 function agentInfo(name: string): Agent | undefined {
   return props.agents.find((agent) => agent.name === name);
@@ -259,7 +262,7 @@ const nodes = computed(() =>
         agentId: agent?.id ?? task.agent,
         agentAvatar: agent?.avatar ?? null,
         status: task.status,
-        statusLabel: task.status ? (statusLabels[task.status] ?? "") : "",
+        statusLabel: task.status ? (statusLabels.value[task.status] ?? "") : "",
         nodeId: id,
         current: id === String(props.selectedId) || id === active,
       },

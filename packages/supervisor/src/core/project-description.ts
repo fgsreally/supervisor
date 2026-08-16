@@ -15,16 +15,16 @@ export function buildProjectDescriptionInstructions(
   project: Pick<Project, "name" | "cwd">,
 ): string {
   return [
-    "你是临时项目分析助手。请只读探索当前工作目录，整理一份便于后续智能分配任务的项目描述。",
+    "You are a temporary project analysis assistant. Explore the current working directory in read-only mode and produce a project description that helps assign future tasks.",
     "",
-    "要求：",
-    "1. 使用只读工具（列目录、读 README/package.json/pyproject.toml/Cargo.toml/go.mod 等关键文件）。不要修改任何文件。",
-    "2. 描述用中文，结构清晰，控制在 200-600 字。",
-    "3. 覆盖：项目用途、技术栈、主要目录/模块、构建或运行方式（若能判断）、适合分配任务时需注意的约束。",
-    "4. 最终回复只输出项目描述正文，不要寒暄，不要用代码块包裹全文。",
+    "Requirements:",
+    "1. Use read-only tools (list directories and inspect key files such as README, package.json, pyproject.toml, Cargo.toml, and go.mod). Do not modify files.",
+    "2. Write the description in Chinese, with clear structure, in 200-600 Chinese characters.",
+    "3. Cover the project purpose, technology stack, major directories/modules, build or run commands when identifiable, and constraints relevant to future task assignment.",
+    "4. Return only the project description body. Do not add a greeting or wrap the full response in a code block.",
     "",
-    `项目名：${project.name}`,
-    `路径：${project.cwd}`,
+    `Project name: ${project.name}`,
+    `Path: ${project.cwd}`,
   ].join("\n");
 }
 

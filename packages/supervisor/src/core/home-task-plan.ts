@@ -179,25 +179,25 @@ export function buildTodoPlanPrompt(input: {
   const agentLines = input.agents.map((agent) => `- id=${agent.id} name=${agent.name}`).join("\n");
 
   return [
-    "将用户 Todo 拆成可执行工作项依赖图。完成后必须调用 submit_result，result 形如：",
+    "Break the user's Todo into an executable dependency graph of work items. You must call submit_result when finished; the result has this shape:",
     '{"items":[{"key":"a","title":"...","prompt":"...","dependsOnKeys":[],"projectId":1,"agentId":2,"subagentIds":[3]}]}',
-    "规则：",
-    "- 2 到 12 个工作项",
-    "- key 在本次结果内唯一，dependsOnKeys 引用其他 key；无环",
-    "- 无依赖的项可并行；有依赖则为串行门禁",
-    "- prompt 必须是子 agent 可直接开干的完整指令",
-    "- projectId / agentId / subagentIds 尽量从下列候选中选择；不确定时 projectId 用根项目，agentId 可省略",
+    "Rules:",
+    "- Produce 2 to 12 work items.",
+    "- Keys must be unique within this result; dependsOnKeys must reference other keys and contain no cycles.",
+    "- Items without dependencies may run in parallel; dependencies are sequential gates.",
+    "- Each prompt must be a complete instruction that a child Agent can execute directly.",
+    "- Prefer projectId, agentId, and subagentIds from the candidates below; use the root project when unsure and omit agentId when appropriate.",
     "",
-    `Todo 标题: ${input.title.slice(0, 200)}`,
-    `Todo 说明: ${input.description.slice(0, 2000)}`,
-    `根项目: ${
+    `Todo title: ${input.title.slice(0, 200)}`,
+    `Todo description: ${input.description.slice(0, 2000)}`,
+    `Root project: ${
       input.project
         ? `id=${input.project.id} name=${input.project.name} cwd=${input.project.cwd}`
-        : "(未绑定)"
+        : "(unbound)"
     }`,
-    "可选项目:",
-    projectLines || "(无)",
-    "可选 Agent:",
-    agentLines || "(无)",
+    "Available projects:",
+    projectLines || "(none)",
+    "Available Agents:",
+    agentLines || "(none)",
   ].join("\n");
 }

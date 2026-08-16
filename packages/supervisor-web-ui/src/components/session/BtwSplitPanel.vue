@@ -1,12 +1,12 @@
 <template>
   <aside class="btw-panel">
     <header v-if="!mobile" class="btw-panel__header">
-      <div><strong>顺便问一下</strong><span>不影响主对话</span></div>
-      <button type="button" title="关闭" @click="emit('close')"><X /></button>
+      <div><strong>{{ t("btw.title") }}</strong><span>{{ t("btw.subtitle") }}</span></div>
+      <button type="button" :title="t('btw.close')" @click="emit('close')"><X /></button>
     </header>
 
     <div v-if="sessions.length" class="btw-panel__history">
-      <button :class="{ active: !activeId }" type="button" @click="startDraft">新问题</button>
+      <button :class="{ active: !activeId }" type="button" @click="startDraft">{{ t("btw.newQuestion") }}</button>
       <button
         v-for="session in sessions.slice(0, 5)"
         :key="session.id"
@@ -19,7 +19,7 @@
     </div>
 
     <div class="btw-panel__messages">
-      <div v-if="loading" class="btw-panel__empty"><Loader2 class="spin" />正在加载</div>
+      <div v-if="loading" class="btw-panel__empty"><Loader2 class="spin" />{{ t("btw.loading") }}</div>
       <template v-else-if="displayMessages.length">
         <div v-for="item in displayMessages" :key="item.id" class="btw-message" :class="item.role">
           <span>{{ item.text }}</span>
@@ -27,7 +27,7 @@
       </template>
       <div v-else class="btw-panel__empty">
         <MessageCircleQuestion />
-        <strong>问一个不打断当前任务的问题</strong>
+        <strong>{{ t("btw.empty") }}</strong>
       </div>
     </div>
 
@@ -36,7 +36,7 @@
         v-model="draft"
         rows="2"
         :disabled="sending"
-        placeholder="输入一个顺便想问的问题"
+        :placeholder="t('btw.placeholder')"
         @keydown.enter.exact.prevent="send"
       />
       <button type="submit" :disabled="!draft.trim() || sending">
@@ -53,10 +53,12 @@ import type { Session, SessionTreeEntry } from "@/api";
 import * as api from "@/api";
 import { useSessionStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ parentId: string; sessions: Session[]; mobile?: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 const sessionStore = useSessionStore();
+const { t } = useI18n();
 const activeId = ref<string | null>(null);
 const draft = ref("");
 const loading = ref(false);
@@ -96,7 +98,7 @@ function entryText(entry: SessionTreeEntry & { origin?: string | null }): string
 }
 
 function sessionName(session: Session): string {
-  return session.title?.trim() ? session.title : "侧问";
+  return session.title?.trim() ? session.title : t("btw.fallback");
 }
 
 function startDraft() {
@@ -145,7 +147,7 @@ async function send() {
     });
     pendingQuestion.value = null;
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "侧问发送失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("btw.sendFailed"), "error");
   } finally {
     sending.value = false;
   }

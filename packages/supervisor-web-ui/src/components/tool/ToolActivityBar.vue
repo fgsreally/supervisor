@@ -21,10 +21,10 @@
         @click.stop="$emit('navigate')"
       >
         <ArrowRightCircle class="w-3 h-3" />
-        查看子代理
+        {{ t("tool.viewSubagent") }}
       </button>
       <Loader2 v-if="pending" class="tool-activity-bar__status animate-spin" />
-      <Eye v-else-if="clickable" class="tool-activity-bar__status" title="查看详情" />
+      <Eye v-else-if="clickable" class="tool-activity-bar__status" :title="t('tool.viewDetails')" />
     </div>
   </div>
 </template>
@@ -50,6 +50,7 @@ import {
 } from "lucide-vue-next";
 import { isSkillReadPath, toolCallSummary } from "../../utils/tool-display";
 import { isAskToolName } from "../../utils/ask-tool";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   toolName: string;
@@ -59,6 +60,7 @@ const props = defineProps<{
   pending?: boolean;
   isError?: boolean;
 }>();
+const { t } = useI18n();
 
 defineEmits<{ open: []; navigate: [] }>();
 
@@ -75,7 +77,7 @@ const statusClass = computed(() => {
 
 const summary = computed(() => {
   const call = toolCallSummary(props.toolName, props.callArgs);
-  if (props.isError) return `${call} · 失败`;
+  if (props.isError) return `${call} · ${t("tool.failed")}`;
   return call;
 });
 

@@ -1,8 +1,8 @@
 <template>
   <MobileDrawer
     :open="open"
-    title="项目设置"
-    ariaLabel="项目设置"
+    :title="t('project.settings')"
+    :ariaLabel="t('project.settings')"
     variant="adaptive"
     size="auto"
     width="sm"
@@ -14,7 +14,7 @@
   >
     <div class="form-dialog__body">
       <div class="form-dialog__field">
-        <label class="form-dialog__label" for="project-settings-name">项目名</label>
+        <label class="form-dialog__label" for="project-settings-name">{{ t("project.name") }}</label>
         <div class="form-dialog__row">
           <input
             id="project-settings-name"
@@ -29,28 +29,28 @@
             :disabled="busy || parsing || !nameDirty"
             @click="saveName"
           >
-            保存
+            {{ t("common.save") }}
           </UiActionButton>
         </div>
       </div>
 
       <div class="form-dialog__field">
-        <span class="form-dialog__label">路径</span>
+        <span class="form-dialog__label">{{ t("project.path") }}</span>
         <div class="form-dialog__value" :title="cwd">{{ cwd || "—" }}</div>
       </div>
 
       <div class="form-dialog__field">
         <div class="form-dialog__row">
-          <p class="form-dialog__hint form-dialog__grow">初始化 Git 与 AGENTS.md</p>
+          <p class="form-dialog__hint form-dialog__grow">{{ t("project.initHint") }}</p>
           <UiActionButton
             variant="secondary"
             :loading="parsing"
             :disabled="busy"
-            title="解析并初始化项目"
+            :title="t('project.parseTitle')"
             @click="emit('parse')"
           >
             <WatsonIcon class="h-3.5 w-3.5" />
-            解析
+            {{ t("project.parse") }}
           </UiActionButton>
         </div>
       </div>
@@ -63,6 +63,7 @@ import { computed, ref, watch } from "vue";
 import { MobileDrawer } from "@/components/mobile/ui";
 import UiActionButton from "@/components/base/UiActionButton.vue";
 import WatsonIcon from "@/components/base/WatsonIcon.vue";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   open: boolean;
@@ -71,6 +72,7 @@ const props = defineProps<{
   busy?: boolean;
   parsing?: boolean;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   close: [];

@@ -3,24 +3,24 @@
     <section class="agent-config-section">
       <div class="agent-config-section__title">
         <div>
-          <h3>基本配置</h3>
-          <p>外部 Agent 的运行方式与本机可用性</p>
+          <h3>{{ t("external.basicConfig") }}</h3>
+          <p>{{ t("external.description") }}</p>
         </div>
       </div>
       <dl class="agent-config-list">
         <div class="agent-config-row">
-          <dt>运行后端</dt>
+          <dt>{{ t("external.backend") }}</dt>
           <dd>{{ backendLabel }}</dd>
         </div>
         <div class="agent-config-row">
-          <dt>启动命令</dt>
+          <dt>{{ t("external.command") }}</dt>
           <dd class="external-inline-value">
             <span class="external-inline-text">{{ displayCommand }}</span>
             <button
               type="button"
               class="external-agent-edit-icon"
-              title="修改启动命令"
-              aria-label="修改启动命令"
+              :title="t('external.editCommand')"
+              :aria-label="t('external.editCommand')"
               @click="openEditor"
             >
               <Wrench class="w-4 h-4" />
@@ -28,13 +28,13 @@
           </dd>
         </div>
         <div class="agent-config-row">
-          <dt>可用性</dt>
+          <dt>{{ t("external.availability") }}</dt>
           <dd class="external-inline-value">
             <template v-if="agent.available !== false">
               <span v-if="versionLabel" class="external-inline-text">{{ versionLabel }}</span>
               <Check
                 class="external-availability-icon external-availability-icon--ok"
-                aria-label="可用"
+                :aria-label="t('external.available')"
               />
             </template>
             <template v-else-if="isNotInstalled">
@@ -46,23 +46,23 @@
                 @click.prevent="installInBackground"
               >
                 <Loader2 v-if="installing" class="w-3 h-3 animate-spin" />
-                <span>帮我安装</span>
+                <span>{{ t("external.install") }}</span>
               </a>
-              <span v-else class="external-inline-text">未安装</span>
+              <span v-else class="external-inline-text">{{ t("external.notInstalled") }}</span>
             </template>
             <template v-else>
               <span class="external-inline-text external-availability-error">
-                {{ agent.unavailableReason || "检测失败" }}
+                {{ agent.unavailableReason || t("external.detectFailed") }}
               </span>
               <X
                 class="external-availability-icon external-availability-icon--error"
-                aria-label="不可用"
+                :aria-label="t('external.unavailable')"
               />
             </template>
           </dd>
         </div>
         <div v-if="detectCommandLabel" class="agent-config-row">
-          <dt>检测命令</dt>
+          <dt>{{ t("external.detectCommand") }}</dt>
           <dd>{{ detectCommandLabel }}</dd>
         </div>
       </dl>
@@ -78,14 +78,14 @@
           class="external-command-dialog w-full max-w-lg overflow-hidden rounded-lg border shadow-xl"
         >
           <header class="h-12 px-4 border-b flex items-center shrink-0">
-            <h2 class="text-[15px] font-medium flex-1">修改启动命令</h2>
-            <button type="button" class="external-command-close" title="关闭" @click="closeEditor">
+            <h2 class="text-[15px] font-medium flex-1">{{ t("external.commandEditor") }}</h2>
+            <button type="button" class="external-command-close" :title="t('common.close')" @click="closeEditor">
               <X class="w-5 h-5" />
             </button>
           </header>
           <div class="p-4 space-y-3">
             <label class="block text-[13px]">
-              <span class="external-command-label mb-1 block">命令</span>
+              <span class="external-command-label mb-1 block">{{ t("external.command") }}</span>
               <UiField
                 v-model="draft.command"
                 type="text"
@@ -94,7 +94,7 @@
               />
             </label>
             <label class="block text-[13px]">
-              <span class="external-command-label mb-1 block">参数（每行一个）</span>
+              <span class="external-command-label mb-1 block">{{ t("external.args") }}</span>
               <UiField
                 v-model="draft.args"
                 as="textarea"
@@ -104,13 +104,13 @@
               />
             </label>
             <p class="text-[12px] external-command-hint">
-              实际启动为：<code>{{ previewLine }}</code>
+              {{ t("external.preview") }}<code>{{ previewLine }}</code>
             </p>
           </div>
           <footer class="px-4 py-3 border-t flex justify-end gap-2">
-            <UiActionButton variant="secondary" @click="closeEditor">取消</UiActionButton>
+            <UiActionButton variant="secondary" @click="closeEditor">{{ t("common.cancel") }}</UiActionButton>
             <UiActionButton :disabled="!canSave" :loading="saving" @click="save">
-              保存
+              {{ t("common.save") }}
             </UiActionButton>
           </footer>
         </section>
@@ -127,11 +127,13 @@ import { useAgentStore } from "@/store";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { installExternalAgent } from "@/composables/use-external-agent-actions";
 import { UiActionButton, UiField } from "../base";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ agent: Agent }>();
 const emit = defineEmits<{ saved: [] }>();
 
 const agentStore = useAgentStore();
+const { t } = useI18n();
 const editorOpen = ref(false);
 const saving = ref(false);
 const installing = ref(false);
@@ -252,11 +254,11 @@ async function save() {
         args: mergeAcpArgs(previewArgs.value),
       },
     });
-    showUiMessage("启动命令已更新", "success");
+    showUiMessage(t("external.updated"), "success");
     emit("saved");
     editorOpen.value = false;
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "保存失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("external.saveFailed"), "error");
   } finally {
     saving.value = false;
   }

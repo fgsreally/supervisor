@@ -548,7 +548,7 @@ const projectHeaderRefs = new Map<string, HTMLElement>();
 const highlightedProjectName = computed(
   () =>
     sessionStore.projects.find((project) => project.id === highlightedProjectId.value)?.name ??
-    "对应项目在下方",
+    t("session.list.projectBelow"),
 );
 
 function setProjectHeaderRef(projectId: string, element: unknown) {
@@ -654,7 +654,7 @@ const searchResults = computed(() => {
       const titleMatch = session.title.toLowerCase().includes(q);
       const description =
         messageMatches.value.get(session.id) ??
-        (titleMatch ? session.lastMessagePreview || session.meta.description || "标题匹配" : "");
+        (titleMatch ? session.lastMessagePreview || session.meta.description || t("session.list.titleMatch") : "");
       return {
         session,
         description,
@@ -802,18 +802,18 @@ async function confirmDeleteProject() {
   const project = sessionStore.projects.find((item) => item.id === target.projectId);
   if (!project) return;
   const ok = await requestUiDeleteConfirm({
-    title: "删除项目",
-    message: `这会删除项目下的所有会话和对应目录。请输入项目名“${project.name}”确认。`,
-    confirmText: "删除项目",
+    title: t("session.list.deleteProjectTitle"),
+    message: t("session.list.deleteProjectMessage", { name: project.name }),
+    confirmText: t("session.list.deleteProject"),
     expectedText: project.name,
   });
   if (!ok) return;
   try {
     await apiDeleteProject(project.id, project.name);
     await Promise.all([sessionStore.fetchProjects(), sessionStore.fetchSessions()]);
-    showUiMessage("项目已删除", "success");
+    showUiMessage(t("session.list.projectDeleted"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "删除项目失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("session.list.deleteProjectFailed"), "error");
   }
 }
 
@@ -843,7 +843,7 @@ async function refreshProjectGitInfo(projectId: string) {
   try {
     projectGitInfo.value = await getProjectGitInfo(projectId);
   } catch (error) {
-    projectGitError.value = error instanceof Error ? error.message : "读取 Git 分支失败";
+    projectGitError.value = error instanceof Error ? error.message : t("session.list.readGitFailed");
   } finally {
     projectGitLoading.value = false;
   }
@@ -862,9 +862,9 @@ async function renameProject(name: string) {
   projectBusy.value = true;
   try {
     await sessionStore.updateProject(projectId, { name });
-    showUiMessage("项目名已更新", "success");
+    showUiMessage(t("session.list.projectRenamed"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "项目名更新失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("session.list.renameProjectFailed"), "error");
   } finally {
     projectBusy.value = false;
   }
@@ -877,7 +877,7 @@ async function runProjectGitCheckout(branch: string) {
   try {
     const result = await checkoutProjectGit(target.projectId, branch);
     const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-    showUiMessage(detail || `已切换到 ${branch}`, "success");
+    showUiMessage(detail || t("session.list.switchedBranch", { branch }), "success");
     await refreshProjectGitInfo(target.projectId);
   } catch (error) {
     showUiMessage(formatProjectGitError(error, "checkout"), "error");
@@ -896,7 +896,7 @@ async function runProjectGit(action: "pull" | "push") {
         ? await pullProjectGit(target.projectId)
         : await pushProjectGit(target.projectId);
     const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-    showUiMessage(detail || (action === "pull" ? "Git Pull 完成" : "Git Push 完成"), "success");
+    showUiMessage(detail || t(action === "pull" ? "session.list.gitPullDone" : "session.list.gitPushDone"), "success");
     projectGit.value = null;
   } catch (error) {
     showUiMessage(formatProjectGitError(error, action), "error");
@@ -907,7 +907,7 @@ async function runProjectGit(action: "pull" | "push") {
 
 function formatProjectGitError(error: unknown, action: "pull" | "push" | "checkout"): string {
   const fallback =
-    action === "pull" ? "Git Pull 失败" : action === "push" ? "Git Push 失败" : "切换分支失败";
+    action === "pull" ? t("session.list.gitPullFailed") : action === "push" ? t("session.list.gitPushFailed") : t("session.list.checkoutFailed");
   if (!(error instanceof Error)) return fallback;
   const match = error.message.match(/\{[\s\S]*\}/);
   if (match) {
@@ -948,10 +948,10 @@ async function createProjectFromDialog(cwd: string) {
     rememberCwd(cwd);
     projectCreateOpen.value = false;
     setProjectCollapsed(project.id, false);
-    showUiMessage("项目已创建，正在解析", "success");
+    showUiMessage(t("session.list.projectCreatedParsing"), "success");
     projectSettingsId.value = project.id;
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "创建项目失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("session.list.createProjectFailed"), "error");
   } finally {
     projectCreating.value = false;
   }
@@ -966,14 +966,14 @@ async function parseCurrentProject() {
     const index = sessionStore.projects.findIndex((project) => project.id === result.project.id);
     if (index >= 0) sessionStore.projects[index] = result.project;
     else sessionStore.projects.unshift(result.project);
-    if (result.status === "ready") showUiMessage("项目解析完成", "success");
+    if (result.status === "ready") showUiMessage(t("session.list.projectParsed"), "success");
     else if (result.status === "skipped") {
-      showUiMessage(result.error || "未配置「助手模型」", "error");
+      showUiMessage(result.error || t("session.list.assistantNotConfigured"), "error");
     } else {
-      showUiMessage(result.error || "解析失败", "error");
+      showUiMessage(result.error || t("session.list.parseFailed"), "error");
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "项目解析失败";
+    const message = error instanceof Error ? error.message : t("session.list.parseFailed");
     showUiMessage(message, "error");
     await sessionStore.fetchProjects().catch(() => undefined);
   } finally {
@@ -1066,7 +1066,7 @@ function togglePinnedSession() {
 
   if (isAdvancedAnimationEnabled()) {
     setSessionViewFlag("pinnedSessionIds", target.sessionId, willPin);
-    showUiMessage(pinned ? "已取消置顶" : "已置顶", "success");
+    showUiMessage(pinned ? t("session.list.unpinned") : t("session.list.pinned"), "success");
     return;
   }
 
@@ -1077,7 +1077,7 @@ function togglePinnedSession() {
     unpinLeaveIds.value = new Set([...unpinLeaveIds.value, target.sessionId]);
     scheduleUnpinLeaveFallback(target.sessionId);
   }
-  showUiMessage(pinned ? "已取消置顶" : "已置顶", "success");
+  showUiMessage(pinned ? t("session.list.unpinned") : t("session.list.pinned"), "success");
 }
 
 let pinLeaveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1105,8 +1105,8 @@ async function confirmDeleteSession() {
   if (!target) return;
   if (sessionStore.sessions.find((session) => session.id === target.sessionId)?.isBuiltin) return;
   const ok = await requestUiDeleteConfirm({
-    title: "删除会话",
-    message: "确定删除该会话？子会话也会一并删除。",
+    title: t("session.list.deleteSessionTitle"),
+    message: t("session.list.deleteSessionMessage"),
   });
   if (!ok) return;
   try {
@@ -1125,10 +1125,10 @@ async function confirmDeleteSession() {
     const row = queryDustTarget(`[data-session-id="${CSS.escape(target.sessionId)}"]`);
     emit("delete", target.sessionId);
     await withDustRemove(row, () => sessionStore.deleteSession(target.sessionId));
-    showUiMessage("会话已删除", "success");
+    showUiMessage(t("session.list.sessionDeleted"), "success");
   } catch (error) {
     emit("select", target.sessionId);
-    showUiMessage(error instanceof Error ? error.message : "删除失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("session.list.deleteFailed"), "error");
   }
 }
 
@@ -1140,19 +1140,19 @@ async function achieveSession() {
   if (session?.isBuiltin) return;
   const prompt =
     session?.creationMethod === "spawn_agent"
-      ? "完成该子代理会话？完成后会从会话列表隐藏，不会提交或合并代码。"
-      : "完成并归档该会话？系统会提交剩余修改并合并到项目默认分支。";
+      ? t("session.list.completeSubagentMessage")
+      : t("session.list.completeSessionMessage");
   const ok = await requestUiConfirm({
-    title: "完成会话",
+    title: t("session.list.completeSessionTitle"),
     message: prompt,
-    confirmText: "完成",
+    confirmText: t("session.list.complete"),
   });
   if (!ok) return;
   try {
     await sessionStore.completeSession(target.sessionId);
-    showUiMessage("会话已归档", "success");
+    showUiMessage(t("session.list.sessionArchived"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "归档失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("session.list.archiveFailed"), "error");
   }
 }
 
@@ -1161,16 +1161,16 @@ async function syncSession() {
   closeContextMenu();
   if (!target) return;
   const ok = await requestUiConfirm({
-    title: "同步项目修改",
-    message: "将合并项目最新修改，并重新安装依赖和启动服务。当前会话需要先提交已有修改。",
-    confirmText: "同步",
+    title: t("session.list.syncTitle"),
+    message: t("session.list.syncMessage"),
+    confirmText: t("session.list.sync"),
   });
   if (!ok) return;
   try {
-    await withUiBusy("正在同步项目修改…", () => sessionStore.syncSession(target.sessionId));
-    showUiMessage("同步完成，服务已重新启动", "success");
+    await withUiBusy(t("session.list.syncing"), () => sessionStore.syncSession(target.sessionId));
+    showUiMessage(t("session.list.syncDone"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "同步失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("session.list.syncFailed"), "error");
   }
 }
 
@@ -1218,12 +1218,12 @@ async function onAgentPicked(agentId: string) {
   const projectId = agentPickerWorkspaceId.value;
   closeAgentPicker();
   if (!projectId) {
-    showUiMessage("请先在项目下添加会话", "error");
+    showUiMessage(t("session.list.addSessionFirst"), "error");
     return;
   }
   const project = sessionStore.projects.find((item) => item.id === projectId);
   if (!project) {
-    showUiMessage("项目不存在", "error");
+    showUiMessage(t("session.list.projectNotFound"), "error");
     return;
   }
   rememberCwd(project.cwd);

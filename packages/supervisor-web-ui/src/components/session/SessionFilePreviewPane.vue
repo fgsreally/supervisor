@@ -9,7 +9,7 @@
       style="color: var(--app-text-muted)"
     >
       <Loader2 class="w-5 h-5 animate-spin" />
-      <span>读取中…</span>
+      <span>{{ t("log.loading") }}</span>
     </div>
     <div
       v-else-if="previewError && !path"
@@ -23,7 +23,7 @@
       class="flex-1 flex flex-col items-center justify-center gap-3 text-[13px] px-4 text-center"
       style="color: var(--app-text-muted)"
     >
-      选择文件以预览内容
+      {{ t("session.file.selectPreview") }}
     </div>
     <template v-else>
       <div
@@ -43,7 +43,7 @@
           </template>
         </nav>
         <span v-if="preview" class="text-[11px] shrink-0" style="color: var(--app-text-muted)">
-          {{ formatSize(preview.size) }}<template v-if="preview.truncated"> · 已截断</template>
+          {{ formatSize(preview.size) }}<template v-if="preview.truncated"> · {{ t("session.file.truncated") }}</template>
         </span>
         <div v-if="canShowDiff" class="preview-mode-toggle shrink-0">
           <button
@@ -61,7 +61,7 @@
             :disabled="!canShowContent"
             @click="previewMode = 'content'"
           >
-            内容
+            {{ t("session.file.content") }}
           </button>
         </div>
       </div>
@@ -70,7 +70,7 @@
         class="px-3 md:px-4 py-1.5 text-[11px] shrink-0"
         style="color: var(--app-text-muted); border-bottom: 1px solid var(--app-border-subtle)"
       >
-        变更已提交，当前无未提交 diff
+        {{ t("session.file.committedNoDiff") }}
       </div>
       <div class="session-file-preview-pane__scroll flex-1 min-h-0 overflow-auto custom-scrollbar">
         <div
@@ -78,7 +78,7 @@
           class="py-12 text-center text-[13px]"
           style="color: var(--app-text-muted)"
         >
-          读取中…
+          {{ t("log.loading") }}
         </div>
         <div
           v-else-if="previewError && !showDiffPanel"
@@ -97,14 +97,14 @@
           class="py-12 text-center text-[13px] px-4"
           style="color: var(--app-text-muted)"
         >
-          文件已删除，请查看 Diff
+          {{ t("session.file.deletedViewDiff") }}
         </div>
         <div
           v-else-if="fileDiff?.status === 'binary' && !preview"
           class="py-12 text-center text-[13px] px-4"
           style="color: var(--app-text-muted)"
         >
-          二进制文件，暂不支持 diff 预览
+          {{ t("session.file.binaryNoDiff") }}
         </div>
         <template v-else-if="preview">
           <img
@@ -124,7 +124,7 @@
             class="py-12 text-center text-[13px]"
             style="color: var(--app-text-muted)"
           >
-            正在解析办公文档…
+            {{ t("session.file.parsingOffice") }}
           </div>
           <div
             v-else-if="officeError"
@@ -148,14 +148,14 @@
             class="py-12 text-center text-[13px] px-4"
             style="color: var(--app-text-muted)"
           >
-            暂不支持旧版 Office 格式（.doc / .ppt / .xls），请转换为 .docx / .pptx / .xlsx 后预览
+            {{ t("session.file.legacyOffice") }}
           </div>
           <div
             v-else
             class="py-12 text-center text-[13px] px-4"
             style="color: var(--app-text-muted)"
           >
-            二进制文件，暂不支持预览（{{ formatSize(preview.size) }}）
+            {{ t("session.file.binaryNoPreview", { size: formatSize(preview.size) }) }}
           </div>
         </template>
       </div>
@@ -177,6 +177,9 @@ import HighlightedCodeBlock from "../base/HighlightedCodeBlock.vue";
 import InlineFileDiffView from "@/components/session/InlineFileDiffView.vue";
 import MarkdownContent from "../base/MarkdownContent.vue";
 import { docxBase64ToHtml, pptxBase64ToHtml, xlsxBase64ToHtml } from "@/utils/office-file-preview";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const props = defineProps<{
   sessionId: string;
@@ -296,7 +299,7 @@ async function setOfficePreview(file: SessionFileContent) {
     !file.content
   ) {
     if (file.kind === "docx" || file.kind === "pptx" || file.kind === "xlsx") {
-      officeError.value = file.truncated ? "文件过大，无法预览" : "无法读取办公文档内容";
+      officeError.value = file.truncated ? t("session.file.tooLarge") : t("session.file.officeReadFailed");
     }
     return;
   }

@@ -12,7 +12,7 @@
         type="button"
         class="p-1.5 rounded-md md:hidden"
         style="color: var(--app-text-secondary)"
-        title="文件目录"
+        :title="t('session.files.directory')"
         @click="treeDrawerOpen = true"
       >
         <FolderTree class="w-5 h-5" />
@@ -26,7 +26,7 @@
         <ChevronLeft class="w-5 h-5" />
       </button>
       <div class="flex-1 min-w-0">
-        <div class="text-[16px] font-medium" style="color: var(--app-text-primary)">工作区文件</div>
+        <div class="text-[16px] font-medium" style="color: var(--app-text-primary)">{{ t('session.files.workspace') }}</div>
         <div
           v-if="cwd"
           class="text-[11px] truncate font-mono"
@@ -40,7 +40,7 @@
         type="button"
         class="p-1.5 rounded-md"
         style="color: var(--app-text-secondary)"
-        title="刷新"
+        :title="t('common.refresh')"
         @click="refresh"
       >
         <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
@@ -63,7 +63,7 @@
           class="px-3 py-2 text-[11px] shrink-0"
           style="color: var(--app-text-muted); border-bottom: 1px solid var(--app-border-subtle)"
         >
-          {{ fileCount }} 个文件
+          {{ t('session.files.count', { count: fileCount }) }}
         </div>
         <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-1 py-1">
           <div
@@ -71,7 +71,7 @@
             class="py-10 text-center text-[13px]"
             style="color: var(--app-text-muted)"
           >
-            加载中…
+            {{ t('common.loading') }}
           </div>
           <div
             v-else-if="listError"
@@ -85,7 +85,7 @@
             class="py-10 text-center text-[13px]"
             style="color: var(--app-text-muted)"
           >
-            暂无文件
+            {{ t('session.files.empty') }}
           </div>
           <BaseTree v-else v-model="treeNodes" :indent="14" :default-open="false">
             <template #default="{ node, stat }">
@@ -140,7 +140,7 @@
         class="session-files-panel__resize-handle"
         role="separator"
         aria-orientation="vertical"
-        aria-label="调整文件树宽度"
+        :aria-label="t('session.files.resize')"
         @pointerdown="startTreeResize"
       />
 
@@ -151,7 +151,7 @@
           style="color: var(--app-text-muted)"
         >
           <Loader2 class="w-5 h-5 animate-spin" />
-          <span>读取中…</span>
+          <span>{{ t('log.loading') }}</span>
         </div>
         <div
           v-else-if="previewError && !selectedPath"
@@ -165,14 +165,14 @@
           class="flex-1 flex flex-col items-center justify-center gap-3 text-[13px] px-4 text-center"
           style="color: var(--app-text-muted)"
         >
-          <span>选择文件以预览内容</span>
+          <span>{{ t('session.file.selectPreview') }}</span>
           <button
             v-if="mobile"
             type="button"
             class="session-files-panel__browse-btn"
             @click="treeDrawerOpen = true"
           >
-            浏览文件
+            {{ t('session.files.browse') }}
           </button>
         </div>
         <template v-else>
@@ -184,7 +184,7 @@
               v-if="mobile"
               type="button"
               class="session-files-panel__toolbar-btn shrink-0"
-              title="文件目录"
+              :title="t('session.files.directory')"
               @click="treeDrawerOpen = true"
             >
               <FolderTree class="w-4 h-4" />
@@ -205,13 +205,13 @@
               v-if="mobile"
               type="button"
               class="session-files-panel__toolbar-btn shrink-0"
-              title="刷新"
+              :title="t('common.refresh')"
               @click="refresh"
             >
               <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
             </button>
             <span v-if="preview" class="text-[11px] shrink-0" style="color: var(--app-text-muted)">
-              {{ formatSize(preview.size) }}<template v-if="preview.truncated"> · 已截断</template>
+              {{ formatSize(preview.size) }}<template v-if="preview.truncated"> · {{ t('session.file.truncated') }}</template>
             </span>
             <div v-if="canShowDiff" class="preview-mode-toggle shrink-0">
               <button
@@ -229,7 +229,7 @@
                 :disabled="!canShowContent"
                 @click="previewMode = 'content'"
               >
-                内容
+                {{ t('session.file.content') }}
               </button>
             </div>
           </div>
@@ -238,7 +238,7 @@
             class="px-3 md:px-4 py-1.5 text-[11px] shrink-0"
             style="color: var(--app-text-muted); border-bottom: 1px solid var(--app-border-subtle)"
           >
-            变更已提交，当前无未提交 diff
+              {{ t('session.file.committedNoDiff') }}
           </div>
           <div
             class="session-files-panel__preview-scroll flex-1 min-h-0 overflow-auto custom-scrollbar"
@@ -248,7 +248,7 @@
               class="py-12 text-center text-[13px]"
               style="color: var(--app-text-muted)"
             >
-              读取中…
+              {{ t('log.loading') }}
             </div>
             <div
               v-else-if="previewError && !showDiffPanel"
@@ -267,14 +267,14 @@
               class="py-12 text-center text-[13px] px-4"
               style="color: var(--app-text-muted)"
             >
-              文件已删除，请查看 Diff
+              {{ t('session.file.deletedViewDiff') }}
             </div>
             <div
               v-else-if="fileDiff?.status === 'binary' && !preview"
               class="py-12 text-center text-[13px] px-4"
               style="color: var(--app-text-muted)"
             >
-              二进制文件，暂不支持 diff 预览
+              {{ t('session.file.binaryNoDiff') }}
             </div>
             <template v-else-if="preview">
               <img
@@ -294,7 +294,7 @@
                 class="py-12 text-center text-[13px]"
                 style="color: var(--app-text-muted)"
               >
-                正在解析办公文档…
+                {{ t('session.file.parsingOffice') }}
               </div>
               <div
                 v-else-if="officeError"
@@ -318,15 +318,14 @@
                 class="py-12 text-center text-[13px] px-4"
                 style="color: var(--app-text-muted)"
               >
-                暂不支持旧版 Office 格式（.doc / .ppt / .xls），请转换为 .docx / .pptx / .xlsx
-                后预览
+                {{ t('session.file.legacyOffice') }}
               </div>
               <div
                 v-else
                 class="py-12 text-center text-[13px] px-4"
                 style="color: var(--app-text-muted)"
               >
-                二进制文件，暂不支持预览（{{ formatSize(preview.size) }}）
+                {{ t('session.file.binaryNoPreview', { size: formatSize(preview.size) }) }}
               </div>
             </template>
           </div>
@@ -354,6 +353,7 @@ import FileTypeIcon from "../base/FileTypeIcon.vue";
 import HighlightedCodeBlock from "../base/HighlightedCodeBlock.vue";
 import InlineFileDiffView from "@/components/session/InlineFileDiffView.vue";
 import MarkdownContent from "../base/MarkdownContent.vue";
+import { useI18n } from "@/i18n";
 import { docxBase64ToHtml, pptxBase64ToHtml, xlsxBase64ToHtml } from "@/utils/office-file-preview";
 
 interface FileTreeNode {
@@ -369,6 +369,8 @@ const props = defineProps<{
   mobile?: boolean;
   changedFiles?: SessionChangedFileView[];
 }>();
+
+const { t } = useI18n();
 
 defineEmits<{ close: [] }>();
 
@@ -585,7 +587,7 @@ async function setOfficePreview(file: SessionFileContent) {
     !file.content
   ) {
     if (file.kind === "docx" || file.kind === "pptx" || file.kind === "xlsx") {
-      officeError.value = file.truncated ? "文件过大，无法预览" : "无法读取办公文档内容";
+      officeError.value = file.truncated ? t("session.file.tooLarge") : t("session.file.officeReadFailed");
     }
     return;
   }
@@ -695,7 +697,7 @@ function normalizeRequestedPath(rawPath: string): string | null {
 function openRequestedPath(rawPath: string) {
   const path = normalizeRequestedPath(rawPath);
   if (!path) {
-    previewError.value = `文件不在当前会话工作区：${rawPath}`;
+    previewError.value = t("session.file.outsideWorkspace", { path: rawPath });
     return;
   }
   selectedPath.value = path;
@@ -751,7 +753,7 @@ async function refresh() {
   } catch (e: unknown) {
     files.value = [];
     treeNodes.value = [];
-    listError.value = e instanceof Error ? e.message : "加载文件树失败";
+    listError.value = e instanceof Error ? e.message : t("session.file.treeLoadFailed");
   } finally {
     loading.value = false;
     syncMobileTreeDrawer();

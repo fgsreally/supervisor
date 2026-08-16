@@ -1,5 +1,6 @@
 import { onBeforeUnmount, ref, type Ref } from "vue";
 import { getSupervisorSettings, type SupervisorSettings } from "@/api";
+import { translate as t } from "@/i18n";
 
 interface WsEvent {
   channel?: string;
@@ -200,19 +201,19 @@ export function useVoiceRecognition(
           ? "local"
           : (settings.speechRecognitionMode ?? "local");
       if (mode === "local" && !settings.localSpeechConfigured) {
-        throw new Error("请先在设置中安装本地语音模型");
+        throw new Error(t("voice.installLocalModelFirst"));
       }
       if (mode === "doubao" && !settings.doubaoSpeechConfigured) {
-        throw new Error("请先在设置中配置豆包语音识别凭证");
+        throw new Error(t("voice.configureDoubaoFirst"));
       }
       if (mode === "qwen" && !settings.speechApiKeyConfigured) {
-        throw new Error("请先在设置中配置 DashScope API Key");
+        throw new Error(t("voice.configureDashScopeFirst"));
       }
       sendAudioToSocket = false;
       await connect(settings.speechRecognitionLanguage ?? "zh-CN");
     } catch (error) {
       cleanup();
-      handlers.onError?.(error instanceof Error ? error.message : "无法启动语音识别");
+      handlers.onError?.(error instanceof Error ? error.message : t("voice.startFailed"));
     }
   }
 
@@ -224,7 +225,7 @@ export function useVoiceRecognition(
       webkitSpeechRecognition?: new () => SpeechRecognitionLike;
     };
     const Constructor = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
-    if (!Constructor) throw new Error("当前浏览器不支持本地语音识别");
+    if (!Constructor) throw new Error(t("voice.browserUnsupported"));
     recognition = new Constructor();
     recognition.continuous = true;
     recognition.interimResults = true;
@@ -241,7 +242,7 @@ export function useVoiceRecognition(
     };
     recognition.onerror = (event) => {
       if (event.error === "aborted" || event.error === "no-speech") return;
-      handlers.onError?.(`本地语音识别失败：${event.error ?? "未知错误"}`);
+      handlers.onError?.(t("voice.localFailed", { error: event.error ?? t("voice.unknownError") }));
     };
     recognition.onend = () => {
       if (recording.value && !browserStopRequested && !aborting) {
@@ -272,7 +273,7 @@ export function useVoiceRecognition(
     try {
       await startBrowserRecognition(browserLanguage);
     } catch (error) {
-      handlers.onError?.(error instanceof Error ? error.message : "无法重启语音识别");
+      handlers.onError?.(error instanceof Error ? error.message : t("voice.restartFailed"));
       cleanup();
       handlers.onEnd?.();
     }
@@ -286,7 +287,7 @@ export function useVoiceRecognition(
       const ws = new WebSocket(url);
       ws.binaryType = "arraybuffer";
       socket = ws;
-      const timeout = window.setTimeout(() => reject(new Error("语音服务连接超时")), 20_000);
+      const timeout = window.setTimeout(() => reject(new Error(t("voice.connectionTimeout"))), 20_000);
       ws.onopen = () => {
         ws.send(JSON.stringify({ channel: "speech", type: "speech.start", payload: { language } }));
       };
@@ -315,16 +316,16 @@ export function useVoiceRecognition(
           }
         } else if (message.type === "speech.error") {
           window.clearTimeout(timeout);
-          const error = new Error(message.payload?.message ?? "语音识别失败");
+          const error = new Error(message.payload?.message ?? t("voice.recognitionFailed"));
           reject(error);
           handlers.onError?.(error.message);
           cleanup();
         }
       };
-      ws.onerror = () => reject(new Error("无法连接 Supervisor WebSocket"));
+      ws.onerror = () => reject(new Error(t("voice.websocketFailed")));
       ws.onclose = () => {
         window.clearTimeout(timeout);
-        if (recording.value && !aborting) handlers.onError?.("语音连接已断开");
+        if (recording.value && !aborting) handlers.onError?.(t("voice.connectionClosed"));
         cleanup(false);
         if (!aborting) {
           resolveStop(partialText.value.trim());
@@ -335,7 +336,7 @@ export function useVoiceRecognition(
   }
 
   async function startAudioCapture() {
-    if (!navigator.mediaDevices?.getUserMedia) throw new Error("当前浏览器不支持录音");
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error(t("voice.recordingUnsupported"));
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: true,

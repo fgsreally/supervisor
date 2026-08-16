@@ -104,6 +104,34 @@ pnpm docs:build
 - 全局档位：`html[data-font-scale=small|standard|large]`，根 rem 见 `styles/font-scale.css`（桌面 ≥768px：13/16/18px；移动：16/18/20px）。
 - 入口：移动「我」页、PC「设置 → 界面」。
 
+### 组件实现
+
+一套 UI，两端皮肤。禁止再加 `components/mobile` 或对外 `MobileXxx` 组件。
+
+响应式组件目录：
+
+```
+components/<domain>/<Name>/
+  index.vue    # 对外入口，按端选择；禁止业务直引 pc/mobile
+  pc.vue
+  mobile.vue
+  frame.vue    # 可选，共享逻辑
+```
+
+两端无差异则保持单文件。覆盖层优先复用上一节的 `Responsive*` / `Ui*`，不要为移动端再造一套 primitive。
+
+**自动引入**（`unplugin-auto-import` + `unplugin-vue-components`）：
+
+- 隐式：`vue` / `vue-router` / `pinia` / `@vueuse/core` / `useI18n`
+- 组件只扫 `components/base`（排除 `pc.vue` / `mobile.vue` / `frame.vue`）
+- 业务域组件显式 import，例如 `@/components/chat/ChatView.vue`
+
+**Hook**：通用 DOM / 媒体查询 / 存储 / 事件用 VueUse（`onClickOutside`、`useMediaQuery`、`useLocalStorage`、`useEventListener`…）。产品语义才自写 composable（`use-ui-message`、`use-native-*`、分栏拖拽等）。新代码先搜 VueUse；旧手搓 hook 改到再换。
+
+**路由**：`src/pages/` 即路由表（`unplugin-vue-router`）。禁止再手写 `routes: []`。重定向（`/`、`/home`、`/active-ui`）只补在 `src/router/index.ts`。`App.vue` 只做壳 + `<RouterView>`；页面在 `src/pages/` 组装视图。
+
+文件夹域划分见 `docs/web-ui/component-architecture.md`。写操作反馈、字号、表单承载见本节上文，不在组件里另起一套。
+
 ## Git 约定
 
 - 不修改上游 `CHANGELOG.md`

@@ -29,8 +29,8 @@
   "scripts": {
     "clean": "shx rm -rf dist",
     "dev": "tsdown --watch",
-    "serve:dev": "cross-env PI_SUPERVISOR_DEV=1 PI_SUPERVISOR_UI_PORT=5163 bun --watch --no-clear-screen --watch-path=src src/cli.ts serve --port 3042 --cwd ../../playground --password 123456",
-    "serve:playground": "bun src/cli.ts serve --port 3040 --cwd ../../playground --password 123456",
+    "serve:dev": "cross-env PI_SUPERVISOR_DEV=1 PI_SUPERVISOR_UI_PORT=5163 node --watch --watch-path=src --import jiti/register src/cli.ts serve --port 3042 --cwd ../../playground --password 123456",
+    "serve:playground": "node --import jiti/register src/cli.ts serve --port 3040 --cwd ../../playground --password 123456",
     "build": "tsdown && shx cp -r src/db/sql dist/sql && shx cp -r src/db/migrations dist/migrations && shx mkdir -p dist/i18n && shx cp -r src/i18n/locales dist/i18n/locales",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest --run --config vitest.config.ts",
@@ -46,10 +46,12 @@
     "@earendil-works/pi-agent-core": "^0.74.0",
     "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@elysia/node": "^1.4.6",
     "@elysia/openapi": "^1.4.15",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@injaneity/pi-computer-use": "^0.4.3",
     "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^11.10.0",
     "boxen": "^8.0.1",
     "cac": "^7.0.0",
     "cloudflared": "^0.7.1",
@@ -79,11 +81,7 @@
     "unrun": "^0.3.1",
     "vitest": "^3.2.4"
   },
-  "optionalDependencies": {
-    "better-sqlite3": "^11.10.0"
-  },
   "engines": {
-    "bun": ">=1.2.0",
     "node": ">=20.6.0"
   }
 }

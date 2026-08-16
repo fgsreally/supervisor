@@ -277,7 +277,7 @@ const supervisorAdminExtension: ExtensionDefinition = {
                 type: "module",
                 main: "./index.ts",
                 peerDependencies: { "pi-supervisor": "^0.1.0" },
-                engines: { bun: ">=1.2.0" },
+                engines: { node: ">=20.6.0" },
               },
               null,
               2,

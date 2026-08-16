@@ -15,7 +15,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { useOutsideDismiss } from "@/composables/use-outside-dismiss";
+import { onClickOutside } from "@vueuse/core";
 import type { ResponsivePopoverProps } from "./types";
 
 const props = withDefaults(defineProps<ResponsivePopoverProps>(), { dismissOnOutside: true });
@@ -30,7 +30,9 @@ function toggle() {
   emit("update:open", !props.open);
 }
 
-useOutsideDismiss(root, close, () => props.open && props.dismissOnOutside);
+onClickOutside(root, () => {
+  if (props.open && props.dismissOnOutside) close();
+});
 </script>
 
 <style scoped>

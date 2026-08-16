@@ -151,6 +151,7 @@ export interface Session {
   showInSessionList: boolean;
   createdAt: string; // ISO date
   lastActiveAt: string; // ISO date
+  lastMessageAt?: string;
   /** Session title (was meta.name). */
   title?: string | null;
   systemPrompt?: string | null;
@@ -172,6 +173,7 @@ export interface Session {
   currentTask: string | null;
   /** UI-specific: last message preview */
   lastMessagePreview?: string;
+  lastMessageAt?: string;
 }
 
 export interface TaskArtifact {
@@ -797,6 +799,7 @@ interface RawSession {
   meta: Record<string, unknown>;
   currentTask?: Session["currentTask"];
   lastMessagePreview?: string;
+  lastMessageAt?: string;
 }
 
 function mapSession(raw: RawSession): Session {

@@ -138,7 +138,7 @@
   "startup.mobile.dev": "手机  同一 WiFi → 在浏览器打开，然后输入 PIN",
   "startup.mobile": "手机  同一 WiFi",
   "startup.firewall": "Windows 防火墙可能拦截端口。请以管理员身份运行：netsh advfirewall firewall add rule name=\"Supervisor Dev\" dir=in action=allow protocol=TCP localport={{ports}}",
-  "startup.tip": "提示：使用 pnpm dev（不要使用 dev:supervisor），手机需要端口 {{port}}",
+  "startup.tip": "提示：使用 pnpm run dev:web（不要使用 dev:supervisor），手机需要端口 {{port}}",
   "startup.uiMissing": "未找到 UI 构建产物——运行 pnpm run build:ui 以使用单端口服务",
   "startup.tunnelRestart": "隧道地址会在重启后变化。",
   "startup.tunnelStarting": "  正在启动 Cloudflare Quick Tunnel…",

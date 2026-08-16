@@ -1,6 +1,6 @@
 # HTTP API 参考
 
-实现：`packages/supervisor/src/http/http-server.ts`（Elysia + Bun）。默认端口 3030。响应 JSON；错误形如 `{ error: string }`。
+实现：`packages/supervisor/src/http/http-server.ts`（Elysia + Node）。默认端口 3030。响应 JSON；错误形如 `{ error: string }`。
 
 运行时接口契约由 `@elysia/openapi` 从实际路由 schema 生成：OpenAPI JSON 位于 `/openapi/json`，交互文档位于 `/openapi`。路径参数由统一路由层声明，新增或修改接口参数时应直接修改 Elysia schema，不维护第二份接口目录。
 

@@ -25,7 +25,8 @@ pnpm install
 | ------------------------- | -------------------------------------------- |
 | `pnpm run build`          | 构建 supervisor 包（tsdown → `dist/`）       |
 | `pnpm run serve`          | 启动 HTTP 服务（默认 :3030，playground cwd） |
-| `pnpm run dev`            | 启动 Web UI 开发服务器（Vite，:5173）        |
+| `pnpm run dev:server`     | 启动 Supervisor API 开发服务（:3042）        |
+| `pnpm run dev:web`        | 启动 Web UI 开发服务器（Vite，:5163）        |
 | `pnpm run dev:supervisor` | 构建并 watch / playground serve              |
 | `pnpm run lint`           | oxlint                                       |
 | `pnpm run format`         | oxfmt                                        |

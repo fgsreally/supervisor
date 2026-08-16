@@ -1,3 +1,4 @@
+export { default as FloatingPreviewOrb } from "./FloatingPreviewOrb.vue";
 export { default as SessionAgentPicker } from "./SessionAgentPicker.vue";
 export { default as SessionAvatar } from "./SessionAvatar.vue";
 export { default as SessionListContextMenu } from "./SessionListContextMenu.vue";

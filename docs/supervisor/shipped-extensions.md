@@ -6,9 +6,9 @@
 
 ```bash
 pnpm run build
-bun packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
-bun packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
-bun packages/supervisor/dist/cli.mjs extensions list
+node packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
+node packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
+node packages/supervisor/dist/cli.mjs extensions list
 ```
 
 也可用 HTTP：`POST /extensions/install` 等，见 [HTTP API](/supervisor/http-api)。

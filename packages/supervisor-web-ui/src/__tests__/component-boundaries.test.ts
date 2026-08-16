@@ -23,7 +23,6 @@ describe("component directory boundaries", () => {
       "external-agent",
       "home",
       "layout",
-      "mobile",
       "onboarding",
       "project",
       "provider",

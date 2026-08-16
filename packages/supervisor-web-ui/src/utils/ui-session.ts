@@ -26,7 +26,9 @@ export function toUISession(session: Session): UISession {
     showInSessionList: session.showInSessionList,
     agentId: session.agentId,
     status: session.status,
+    createdAt: session.createdAt,
     lastActiveAt: session.lastActiveAt,
+    lastMessageAt: session.lastMessageAt,
     title,
     isBuiltin: !!session.isBuiltin || session.meta?.builtin === true,
     avatar: avatar ?? undefined,
@@ -74,6 +76,10 @@ function parseActivityTime(value: string | undefined): number {
   return Number.isFinite(ms) ? ms : 0;
 }
 
+export function sessionListTime(session: UISession): string {
+  return session.lastMessageAt || session.createdAt;
+}
+
 /** Latest activity for a session subtree (self + descendants). */
 export function sessionRecentActivity(session: UISession, all: UISession[]): number {
   const childrenByParent = new Map<string, UISession[]>();
@@ -84,13 +90,13 @@ export function sessionRecentActivity(session: UISession, all: UISession[]): num
     childrenByParent.set(candidate.parentId, list);
   }
 
-  let max = parseActivityTime(session.lastActiveAt);
+  let max = parseActivityTime(sessionListTime(session));
   const stack = [session.id];
   while (stack.length > 0) {
     const id = stack.pop();
     if (!id) continue;
     for (const child of childrenByParent.get(id) ?? []) {
-      max = Math.max(max, parseActivityTime(child.lastActiveAt));
+      max = Math.max(max, parseActivityTime(sessionListTime(child)));
       stack.push(child.id);
     }
   }
@@ -102,5 +108,6 @@ export function compareSessionsByRecentActivity(
   right: UISession,
   all: UISession[],
 ): number {
-  return sessionRecentActivity(right, all) - sessionRecentActivity(left, all);
+  return sessionRecentActivity(right, all) - sessionRecentActivity(left, all)
+    || parseActivityTime(right.createdAt) - parseActivityTime(left.createdAt);
 }

@@ -218,6 +218,7 @@
             :workspace-id="workspaceId"
             :agent-id="agentId"
             :disabled="inputDisabled"
+            :send-disabled="isInitializing"
             :interrupting="canInterrupt"
             :shadow-running="shadowRunning"
             :placeholder="inputPlaceholder"
@@ -665,7 +666,7 @@ import type { SessionGitMeta, SessionGitPendingUpdate } from "@/api";
 import SessionCommitPopover from "../components/chat/SessionCommitPopover.vue";
 import SessionPreviewPanel from "../components/session/SessionPreviewPanel.vue";
 import SessionAppPreviewBrowser from "../components/session/SessionAppPreviewBrowser.vue";
-import FloatingPreviewOrb from "../components/mobile/FloatingPreviewOrb.vue";
+import FloatingPreviewOrb from "../components/session/FloatingPreviewOrb.vue";
 import SessionBackgroundBashPanel from "../components/session/SessionBackgroundBashPanel.vue";
 import ToolApprovalDialog from "../components/tool/ToolApprovalDialog.vue";
 import ToolPermissionCard from "../components/chat/ToolPermissionCard.vue";
@@ -1381,7 +1382,6 @@ const inputDisabled = computed(
     !chatComposerReady.value ||
     modelMissing.value ||
     providerDisabled.value ||
-    isInitializing.value ||
     terminalStatuses.has(props.session.status),
 );
 
@@ -2543,17 +2543,17 @@ async function openBashDetail(
 
 function openCompactionDetail(entry: ChatCompactionEntry) {
   const sections: { label: string; content: string; markdown?: boolean }[] = [
-    { label: "压缩摘要", content: entry.summary, markdown: true },
+    { label: t("chat.compaction.summary"), content: entry.summary, markdown: true },
   ];
   if (entry.details?.readFiles?.length) {
     sections.push({
-      label: "read-files（CompactionEntry.details）",
+      label: t("chat.compaction.readFiles"),
       content: entry.details.readFiles.join("\n"),
     });
   }
   if (entry.details?.modifiedFiles?.length) {
     sections.push({
-      label: "modified-files（CompactionEntry.details）",
+      label: t("chat.compaction.modifiedFiles"),
       content: entry.details.modifiedFiles.join("\n"),
     });
   }
@@ -2759,7 +2759,7 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
 
 const sendMessage = async (payload: ChatSendPayload) => {
   const text = payload.text.trim();
-  if ((!text && !payload.images.length) || inputDisabled.value) return;
+  if ((!text && !payload.images.length) || inputDisabled.value || isInitializing.value) return;
   suggestedQuestions.value = [];
 
   if (!payload.images.length && externalCommandHostRef.value?.handleCommand(text)) {

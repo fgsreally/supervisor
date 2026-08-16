@@ -1,3 +1,4 @@
+import { node } from "@elysia/node";
 import { openapi } from "@elysia/openapi";
 import { Elysia, t } from "elysia";
 
@@ -78,7 +79,7 @@ function createContext(context: ElysiaRequestContext): SupervisorHttpContext {
 }
 
 export class SupervisorElysiaBuilder {
-  readonly app = new Elysia().use(
+  readonly app = new Elysia({ adapter: node() }).use(
     openapi({
       path: "/openapi",
       documentation: {

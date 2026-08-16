@@ -126,7 +126,7 @@
 
 ## 组件使用约束
 
-- 页面必须使用 `MobileButton`、`MobileIconButton`、`MobileField`、`MobileInput`、`MobileTextarea`、`MobileSelect`、`MobileSwitch`、`MobileListRow` 等基础组件。
-- 组件输出稳定的 `.m-*` 类名，视觉统一由移动 CSS 控制。
+- 页面使用 `UiActionButton`、`UiField`、原生 input（可继续用 `.m-input` 等 class）和 `Responsive*` / `SheetDrawer` 弹层，不要再造一套 mobile primitive。
+- 视觉统一由 `styles/mobile/` 的 `.m-*` 类名控制。
 - 移动页面不得新增硬编码颜色、字号、圆角或阴影；确需新增语义时先补 token。
 - 写操作继续使用 `showUiMessage`、`requestUiConfirm`、`withUiBusy` 和 `UiListStatus`，不创建第二套业务反馈 API。

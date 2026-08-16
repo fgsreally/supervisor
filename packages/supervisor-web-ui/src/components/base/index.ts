@@ -1,3 +1,4 @@
+export { default as SheetDrawer } from "./SheetDrawer.vue";
 export { default as UiDialog } from "./UiDialog.vue";
 export { default as UiField } from "./UiField.vue";
 export { default as UiEmptyState } from "./UiEmptyState.vue";

@@ -67,13 +67,21 @@ export function syncClientResource<T>(options: ResourceOptions<T>): Promise<void
       options.apply(value);
       retryCounts.delete(id);
     })
-    .catch((error) => {
-      options.onError?.(error);
-      const retry = Math.min((retryCounts.get(id) ?? 0) + 1, 5);
-      retryCounts.set(id, retry);
-      globalThis.setTimeout(() => {
-        void syncClientResource(options);
-      }, Math.min(30_000, 1_000 * 2 ** retry));
+    .catch(async (error) => {
+      try {
+        const value = await options.read();
+        if ((generations.get(id) ?? 0) !== generation) return;
+        await writeClientCache(id, value);
+        options.apply(value);
+        retryCounts.delete(id);
+      } catch {
+        options.onError?.(error);
+        const retry = Math.min((retryCounts.get(id) ?? 0) + 1, 5);
+        retryCounts.set(id, retry);
+        globalThis.setTimeout(() => {
+          void syncClientResource(options);
+        }, Math.min(30_000, 1_000 * 2 ** retry));
+      }
     })
     .finally(() => {
       inflight.delete(id);

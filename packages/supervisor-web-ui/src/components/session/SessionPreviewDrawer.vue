@@ -1,5 +1,5 @@
 <template>
-  <MobileDrawer
+  <SheetDrawer
     v-model:open="openModel"
     :ariaLabel="t('session.preview.title')"
     size="tall"
@@ -13,13 +13,13 @@
       :show-close="false"
       v-model="activeKey"
     />
-  </MobileDrawer>
+  </SheetDrawer>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useI18n } from "@/i18n";
-import MobileDrawer from "../mobile/ui/MobileDrawer.vue";
+import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import SessionPreviewPanel from "./SessionPreviewPanel.vue";
 import type { SessionServicesPreview } from "@/utils/session-services";
 

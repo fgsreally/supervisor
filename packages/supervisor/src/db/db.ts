@@ -683,8 +683,8 @@ export class SupervisorDb {
     if (!row) throw new Error(`Session ${id} not found`);
     const merged = { ...JSON.parse(row.meta), ...patch };
     this.db
-      .prepare("UPDATE sessions SET meta = ?, last_active_at = ? WHERE id = ?")
-      .run(JSON.stringify(merged), Date.now(), id);
+      .prepare("UPDATE sessions SET meta = ? WHERE id = ?")
+      .run(JSON.stringify(merged), id);
     return merged;
   }
 
@@ -968,9 +968,7 @@ export class SupervisorDb {
   }
 
   setMeta(id: number, meta: Record<string, unknown>): void {
-    this.db
-      .prepare("UPDATE sessions SET meta = ?, last_active_at = ? WHERE id = ?")
-      .run(JSON.stringify(meta), Date.now(), id);
+    this.db.prepare("UPDATE sessions SET meta = ? WHERE id = ?").run(JSON.stringify(meta), id);
   }
 
   updateMessageMeta(
@@ -1470,16 +1468,22 @@ export class SupervisorDb {
   }
 
   getLastMessagePreview(sessionId: number): string | null {
-    return this.getLastMessagePreviews([sessionId]).get(sessionId) ?? null;
+    return this.getLastMessageSummaries([sessionId]).get(sessionId)?.preview ?? null;
   }
 
   getLastMessagePreviews(sessionIds: number[]): Map<number, string> {
+    const out = new Map<number, string>();
+    for (const [id, row] of this.getLastMessageSummaries(sessionIds)) out.set(id, row.preview);
+    return out;
+  }
+
+  getLastMessageSummaries(sessionIds: number[]): Map<number, { preview: string; createdAt: number }> {
     const unique = [...new Set(sessionIds.filter((id) => Number.isInteger(id) && id > 0))];
     if (unique.length === 0) return new Map();
     const placeholders = unique.map(() => "?").join(", ");
     const rows = this.db
       .prepare(
-        `SELECT m.session_id, m.search_text
+        `SELECT m.session_id, m.search_text, m.created_at
          FROM messages m
          INNER JOIN (
            SELECT session_id, MAX(created_at) AS max_created
@@ -1490,10 +1494,12 @@ export class SupervisorDb {
          ) latest ON m.session_id = latest.session_id AND m.created_at = latest.max_created
          WHERE m.search_text IS NOT NULL AND m.search_text != ''`,
       )
-      .all(...unique) as Array<{ session_id: number; search_text: string }>;
-    const out = new Map<number, string>();
+      .all(...unique) as Array<{ session_id: number; search_text: string; created_at: number }>;
+    const out = new Map<number, { preview: string; createdAt: number }>();
     for (const row of rows) {
-      if (!out.has(row.session_id)) out.set(row.session_id, row.search_text);
+      if (!out.has(row.session_id)) {
+        out.set(row.session_id, { preview: row.search_text, createdAt: row.created_at });
+      }
     }
     return out;
   }

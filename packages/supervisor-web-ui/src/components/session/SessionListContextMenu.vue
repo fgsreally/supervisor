@@ -26,7 +26,7 @@
       </div>
     </div>
 
-    <MobileDrawer
+    <SheetDrawer
       :open="open && isMobile"
       :ariaLabel="t('session.menu.actions')"
       size="auto"
@@ -44,14 +44,14 @@
           {{ action.label }}
         </button>
       </div>
-    </MobileDrawer>
+    </SheetDrawer>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "@/i18n";
-import { MobileDrawer } from "@/components/mobile/ui";
+import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import { useMobileViewport } from "@/composables/use-mobile-viewport";
 
 const props = withDefaults(

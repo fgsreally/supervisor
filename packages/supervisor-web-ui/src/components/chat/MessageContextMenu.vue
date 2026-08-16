@@ -57,7 +57,7 @@
       </div>
     </Transition>
 
-    <MobileDrawer
+    <SheetDrawer
       :open="open && mode === 'sheet' && !usageOpen"
       :ariaLabel="t('chat.message.actions')"
       size="auto"
@@ -70,7 +70,7 @@
         <button v-if="canRewind" type="button" @click="emit('rewind')">{{ t("chat.message.rewindHere") }}</button>
         <button v-if="canFork" type="button" @click="emit('fork')">{{ t("chat.message.forkHere") }}</button>
       </div>
-    </MobileDrawer>
+    </SheetDrawer>
 
     <UiDialog :open="usageOpen" :title="t('chat.message.usageTitle')" show-close @close="closeUsage">
       <div class="message-usage-dialog">
@@ -112,7 +112,7 @@
 import { computed, ref, watch } from "vue";
 import { Coins, Copy, GitBranch, Undo2 } from "lucide-vue-next";
 import type { MessageUsage } from "@/api";
-import { MobileDrawer } from "@/components/mobile/ui";
+import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import UiDialog from "@/components/base/UiDialog.vue";
 import { useI18n } from "@/i18n";
 const { t } = useI18n();

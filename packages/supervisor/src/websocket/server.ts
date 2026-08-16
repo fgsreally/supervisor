@@ -539,7 +539,14 @@ class SpeechConnection {
   }
 
   private fail(message: string): void {
-    sendJson(this.client, { channel: "speech", type: "speech.error", payload: { message } });
+    let text = message;
+    try {
+      const parsed = JSON.parse(message) as { error?: unknown };
+      if (typeof parsed?.error === "string" && parsed.error.trim()) text = parsed.error;
+    } catch {
+      /* keep provider text */
+    }
+    sendJson(this.client, { channel: "speech", type: "speech.error", payload: { message: text } });
   }
 }
 
@@ -772,7 +779,10 @@ export function registerWebSocketRoutes(
       if (!state) return;
       try {
         if (Buffer.isBuffer(data) || data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
-          state.speech.append(Buffer.from(data as ArrayBuffer));
+          const view = ArrayBuffer.isView(data)
+            ? Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+            : Buffer.from(data as ArrayBuffer);
+          state.speech.append(view);
           return;
         }
         const message = (typeof data === "string" ? JSON.parse(data) : data) as ClientMessage;
@@ -787,6 +797,9 @@ export function registerWebSocketRoutes(
               payload: { message: error instanceof Error ? error.message : String(error) },
             });
           });
+        } else if (message.channel === "speech" && message.type === "speech.audio") {
+          const pcm = message.payload?.pcm;
+          if (typeof pcm === "string" && pcm) state.speech.append(Buffer.from(pcm, "base64"));
         } else if (message.channel === "speech" && message.type === "speech.stop") {
           state.speech.stop();
         } else if (message.channel === "session") {

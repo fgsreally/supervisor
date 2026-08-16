@@ -138,7 +138,7 @@
   "startup.mobile.dev": "Mobile  same WiFi → open in browser, then enter PIN",
   "startup.mobile": "Mobile  same WiFi",
   "startup.firewall": "Windows Firewall may block the port. Run as administrator: netsh advfirewall firewall add rule name=\"Supervisor Dev\" dir=in action=allow protocol=TCP localport={{ports}}",
-  "startup.tip": "Tip: use pnpm dev (not dev:supervisor) — phone needs port {{port}}",
+  "startup.tip": "Tip: use pnpm run dev:web (not dev:supervisor) — phone needs port {{port}}",
   "startup.uiMissing": "UI dist missing — run pnpm run build:ui for single-port serve",
   "startup.tunnelRestart": "Tunnel URL changes on restart.",
   "startup.tunnelStarting": "  Starting Cloudflare Quick Tunnel…",

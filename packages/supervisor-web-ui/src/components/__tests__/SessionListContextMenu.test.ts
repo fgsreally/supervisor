@@ -6,7 +6,7 @@ function mountMenu(status: string) {
   return mount(SessionListContextMenu, {
     props: { open: true, x: 0, y: 0, status },
     global: {
-      stubs: { Teleport: true, MobileDrawer: true },
+      stubs: { Teleport: true, SheetDrawer: true },
     },
   });
 }

@@ -97,6 +97,22 @@ function toProviderResponse(p: Provider): Omit<Provider, "apiKey"> & { apiKey: n
   return { ...p, apiKey: null };
 }
 
+function withLastMessageSummary<T extends { id: number; createdAt: Date | string | number }>(
+  session: T,
+  summaries: Map<number, { preview: string; createdAt: number }>,
+) {
+  const summary = summaries.get(session.id);
+  const createdAtMs =
+    session.createdAt instanceof Date
+      ? session.createdAt.getTime()
+      : new Date(session.createdAt).getTime();
+  return {
+    ...session,
+    lastMessagePreview: summary?.preview ?? null,
+    lastMessageAt: new Date(summary?.createdAt ?? createdAtMs).toISOString(),
+  };
+}
+
 function parseProtocolBody(body: Record<string, unknown>): string | undefined {
   const raw = body.protocol ?? body.apiType;
   return typeof raw === "string" ? raw : undefined;
@@ -1005,8 +1021,8 @@ export function createHttpServer(
             }
           }
           const sessions = manager.list(filter);
-          const previews = manager.getLastMessagePreviews(sessions.map((s) => s.id));
-          return [{ key, queryKey, status: "updated" as const, data: sessions.map((s) => ({ ...s, lastMessagePreview: previews.get(s.id) ?? null })), syncedAt }];
+          const summaries = manager.getLastMessageSummaries(sessions.map((s) => s.id));
+          return [{ key, queryKey, status: "updated" as const, data: sessions.map((s) => withLastMessageSummary(s, summaries)), syncedAt }];
         }
         if (key === "messages" && queryKey) {
           const id = parseIntegerId(queryKey);
@@ -1675,13 +1691,8 @@ export function createHttpServer(
       ...(parentId !== undefined ? { parentId } : {}),
       ...(projectId !== undefined && projectId !== null ? { projectId } : {}),
     });
-    const previews = manager.getLastMessagePreviews(sessions.map((s) => s.id));
-    return c.json(
-      sessions.map((s) => ({
-        ...s,
-        lastMessagePreview: previews.get(s.id) ?? null,
-      })),
-    );
+    const summaries = manager.getLastMessageSummaries(sessions.map((s) => s.id));
+    return c.json(sessions.map((s) => withLastMessageSummary(s, summaries)));
   });
 
   // GET /sessions/:id
@@ -1690,10 +1701,8 @@ export function createHttpServer(
     if (id === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, "not found");
-    return c.json({
-      ...session,
-      lastMessagePreview: manager.getLastMessagePreview(session.id),
-    });
+    const summaries = manager.getLastMessageSummaries([session.id]);
+    return c.json(withLastMessageSummary(session, summaries));
   });
 
   // GET /sessions/:id/log — structured session + extension logs for UI

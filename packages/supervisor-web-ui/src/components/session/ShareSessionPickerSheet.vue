@@ -1,5 +1,5 @@
 <template>
-  <MobileDrawer
+  <SheetDrawer
     :open="open"
     :ariaLabel="t('session.share.title')"
     :title="t('session.share.title')"
@@ -30,7 +30,7 @@
         <span class="share-session-picker__title">{{ session.title || session.id }}</span>
       </button>
     </div>
-  </MobileDrawer>
+  </SheetDrawer>
 </template>
 
 <script setup lang="ts">
@@ -43,7 +43,7 @@ import {
   usePendingShareHighlightSessionId,
   usePendingShareNeedsSession,
 } from "@/composables/use-pending-share";
-import MobileDrawer from "../mobile/ui/MobileDrawer.vue";
+import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import SessionAvatar from "./SessionAvatar.vue";
 
 const sessionStore = useSessionStore();

@@ -16,13 +16,14 @@ import { ChevronLeft, MoreHorizontal } from "lucide-vue-next";
 import WorkflowStageTag from "@/components/task/WorkflowStageTag.vue";
 import type { SessionUsage } from "@/api";
 import { useI18n } from "@/i18n";
-export type ChatHeaderStatus = "initializing" | "running" | "blocked" | "idle" | "error" | "stopped" | "finish";
+export type ChatHeaderStatus = "initializing" | "running" | "blocked" | "active" | "idle" | "error" | "stopped" | "finish";
 const props = defineProps<{ title: string; titleReadonly?: boolean; agentName?: string | null; agentId?: string; externalAgent?: boolean; statusKey: ChatHeaderStatus | string; showBack?: boolean; stage?: string | null; usage?: SessionUsage | null }>();
 const emit = defineEmits<{ back: []; "view-agent": [agentId: string]; "open-menu": [] }>();
 const { t } = useI18n();
 function formatCost(value: number) { return value > 0 && value < 0.01 ? `$${value.toFixed(4)}` : `$${value.toFixed(2)}`; }
-const statusLabel = computed(() => { const key = `chat.status.${props.statusKey}`; return ["initializing", "running", "blocked", "idle", "finish", "error", "stopped"].includes(props.statusKey) ? t(key) : props.statusKey; });
-const statusBadgeClass = computed(() => { switch (props.statusKey) { case "initializing": return "status-blue animate-pulse"; case "running": return "status-yellow animate-pulse"; case "blocked": return "status-orange"; case "idle": case "finish": return "status-green"; case "error": return "status-red"; case "stopped": return "status-gray"; default: return "status-gray"; } });
+const KNOWN_STATUS = ["initializing", "running", "blocked", "active", "idle", "finish", "error", "stopped"] as const;
+const statusLabel = computed(() => { const key = `chat.status.${props.statusKey}`; return (KNOWN_STATUS as readonly string[]).includes(props.statusKey) ? t(key) : props.statusKey; });
+const statusBadgeClass = computed(() => { switch (props.statusKey) { case "initializing": return "status-blue animate-pulse"; case "running": return "status-yellow animate-pulse"; case "blocked": return "status-orange"; case "active": case "finish": return "status-green"; case "error": return "status-red"; case "idle": case "stopped": return "status-gray"; default: return "status-gray"; } });
 </script>
 
 <style scoped>

@@ -34,7 +34,7 @@ pnpm run serve
 也可用 CLI 显式指定工作目录：
 
 ```bash
-bun packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground
+node packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground
 ```
 
 健康检查：`GET http://localhost:3030/healthz` 应返回 `{ "ok": true }`。
@@ -44,7 +44,7 @@ bun packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground
 另开终端：
 
 ```bash
-pnpm run dev
+pnpm run dev:web
 ```
 
 浏览器打开 `http://localhost:5173`。Vite 将 API 代理到 `http://localhost:3030`，无需配置 CORS。
@@ -72,7 +72,7 @@ curl -X POST http://localhost:3030/providers \
 也可使用交互式 CLI：
 
 ```bash
-bun packages/supervisor/dist/cli.mjs providers add
+node packages/supervisor/dist/cli.mjs providers add
 ```
 
 ## 6. 配置 Agent
@@ -111,8 +111,8 @@ curl -X POST http://localhost:3030/sessions/<session-id>/prompt \
 仓库内提供 `extensions/native`、`extensions/hindsight`、`extensions/strict-sdd`。安装到全局 catalog 后绑定到 Agent：
 
 ```bash
-bun packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
-bun packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
+node packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
+node packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
 ```
 
 详见 [仓库扩展](/supervisor/shipped-extensions)。
@@ -122,7 +122,7 @@ bun packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
 ### 端口冲突
 
 ```bash
-bun packages/supervisor/dist/cli.mjs serve --port 3031 --cwd playground
+node packages/supervisor/dist/cli.mjs serve --port 3031 --cwd playground
 ```
 
 ### Web UI 无法连接后端

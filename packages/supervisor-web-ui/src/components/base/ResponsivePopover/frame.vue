@@ -12,7 +12,7 @@
       <slot :mobile="false" />
     </section>
 
-    <MobileDrawer
+    <SheetDrawer
       :open="open && isMobile"
       :ariaLabel="title"
       size="auto"
@@ -20,14 +20,14 @@
       @close="close"
     >
       <slot :mobile="true" />
-    </MobileDrawer>
+    </SheetDrawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { MobileDrawer } from "@/components/mobile/ui";
-import { useOutsideDismiss } from "@/composables/use-outside-dismiss";
+import { onClickOutside } from "@vueuse/core";
+import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import { useMobileViewport } from "@/composables/use-mobile-viewport";
 
 const props = withDefaults(
@@ -55,7 +55,9 @@ function toggle() {
   emit("update:open", !props.open);
 }
 
-useOutsideDismiss(root, close, () => props.open && props.dismissOnOutside && !isMobile.value);
+onClickOutside(root, () => {
+  if (props.open && props.dismissOnOutside && !isMobile.value) close();
+});
 </script>
 
 <style scoped>

@@ -74,7 +74,7 @@ export function formatOutboundHandshakeError(error: unknown, label: string, hint
 
 /**
  * Client WebSocket that performs the HTTP upgrade itself.
- * Bun's built-in `WebSocket` / `ws` shim lowercases headers and hides non-101
+ * Built-in `WebSocket` / `ws` shims lowercase headers and hide non-101
  * status codes behind "Expected 101 status code".
  */
 export function createOutboundWebSocket(

@@ -5,7 +5,7 @@ describe("CAC CLI definition", () => {
   it("parses module commands and global options", () => {
     const cli = createSupervisorCli();
     const parsed = cli.parse(
-      ["bun", "pi-supervisor", "extensions", "bind", "1", "supervisor-admin"],
+      ["node", "pi-supervisor", "extensions", "bind", "1", "supervisor-admin"],
       { run: false },
     );
     expect(cli.matchedCommandName).toBe("extensions");

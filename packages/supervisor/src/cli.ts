@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 import prompts from "prompts";
 import { createSupervisorCli } from "./cli-definition.js";
 import { BUILT_IN_PROVIDERS } from "./config/built-in-providers.js";
@@ -164,9 +164,9 @@ async function run() {
       registerWebSocketRoutes(app, webPassword, manager);
       app.listen({ hostname: "0.0.0.0", port });
       // Do not run recovery, Git scans, or model-backed daily analysis in the
-      // same turn that opens the HTTP listener. Bun can accept the socket
-      // before these synchronous prefixes yield, which previously produced a
-      // listening-but-unresponsive server during development startup.
+      // same turn that opens the HTTP listener. Accepting the socket before
+      // these prefixes yield previously produced a listening-but-unresponsive
+      // server during development startup.
       setTimeout(() => {
         manager.resumePersistedSessionInputs();
       }, 250);

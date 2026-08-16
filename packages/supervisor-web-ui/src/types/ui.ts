@@ -17,7 +17,9 @@ export interface UISession {
   showInSessionList: boolean;
   agentId?: string | null;
   status: SessionStatus;
+  createdAt: string;
   lastActiveAt: string;
+  lastMessageAt?: string;
   /** Session title (was meta.name). */
   title: string;
   /** Builtin/internal session (was meta.builtin). */

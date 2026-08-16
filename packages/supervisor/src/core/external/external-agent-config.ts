@@ -77,7 +77,7 @@ export function resolveExternalAgentInstallShellCommand(command: string): string
   if (!trimmed) return trimmed;
   if (platform() !== "win32") return trimmed;
   if (/^\s*powershell(\.exe)?\b/i.test(trimmed)) return trimmed;
-  if (/^\s*(npm|npx|pnpm|yarn|bun|cmd)(\.exe|\.cmd|\.bat)?\b/i.test(trimmed)) return trimmed;
+  if (/^\s*(npm|npx|pnpm|yarn|cmd)(\.exe|\.cmd|\.bat)?\b/i.test(trimmed)) return trimmed;
   if (/\birm\b|\biex\b/i.test(trimmed)) {
     return `powershell -ep Bypass -c ${JSON.stringify(trimmed)}`;
   }
@@ -148,7 +148,6 @@ function extraUserBinDirs(): string[] {
       join(home, ".local", "bin"),
       join(appData, "npm"),
       join(localAppData, "pnpm"),
-      join(home, ".bun", "bin"),
       join(localAppData, "Programs", "cursor", "resources", "app", "bin"),
       // Cursor CLI (`agent` / `cursor-agent`) install dir on Windows.
       join(localAppData, "cursor-agent"),
@@ -160,7 +159,6 @@ function extraUserBinDirs(): string[] {
     join(home, ".local", "bin"),
     join(home, ".volta", "bin"),
     join(home, ".npm-global", "bin"),
-    join(home, ".bun", "bin"),
     join(home, ".mimocode", "bin"),
     "/usr/local/bin",
     "/opt/homebrew/bin",

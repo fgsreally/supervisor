@@ -59,7 +59,7 @@
       </div>
     </div>
 
-    <MobileDrawer
+    <SheetDrawer
       :open="open && isMobile"
       ariaLabel="Git"
       size="auto"
@@ -116,14 +116,14 @@
           Git Push
         </button>
       </div>
-    </MobileDrawer>
+    </SheetDrawer>
   </Teleport>
 </template>
 
 <script setup lang="ts">
 import { ArrowDownToLine, ArrowUpFromLine, Check, GitBranch } from "lucide-vue-next";
 import { useI18n } from "@/i18n";
-import { MobileDrawer } from "@/components/mobile/ui";
+import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import { useMobileViewport } from "@/composables/use-mobile-viewport";
 
 defineProps<{

@@ -1,5 +1,5 @@
 <template>
-  <MobileDrawer :open="open" :ariaLabel="t('chat.sessionTools.title')" size="auto" show-footer @close="emit('close')">
+  <SheetDrawer :open="open" :ariaLabel="t('chat.sessionTools.title')" size="auto" show-footer @close="emit('close')">
     <div class="chat-session-tools__grid">
       <button type="button" @click="emit('search')"><Search /><span>{{ t('chat.sessionTools.search') }}</span></button>
       <button type="button" @click="emit('logs')"><ScrollText /><span>{{ t('chat.sessionTools.logs') }}</span></button>
@@ -8,12 +8,12 @@
       </button>
       <button type="button" @click="emit('files')"><FolderTree /><span>{{ t('chat.sessionTools.files') }}</span></button>
     </div>
-  </MobileDrawer>
+  </SheetDrawer>
 </template>
 
 <script setup lang="ts">
 import { ClipboardList, FolderTree, ScrollText, Search } from "lucide-vue-next";
-import { MobileDrawer } from "@/components/mobile/ui";
+import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import { useI18n } from "@/i18n";
 
 defineProps<{ open: boolean; showTasks?: boolean }>();

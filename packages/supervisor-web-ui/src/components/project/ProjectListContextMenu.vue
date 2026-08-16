@@ -21,7 +21,7 @@
       </div>
     </div>
 
-    <MobileDrawer
+    <SheetDrawer
       :open="open && isMobile"
       :ariaLabel="t('project.actions')"
       size="auto"
@@ -33,12 +33,12 @@
           {{ t("project.delete") }}
         </button>
       </div>
-    </MobileDrawer>
+    </SheetDrawer>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { MobileDrawer } from "@/components/mobile/ui";
+import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import { useMobileViewport } from "@/composables/use-mobile-viewport";
 import { useI18n } from "@/i18n";
 

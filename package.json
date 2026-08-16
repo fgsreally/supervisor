@@ -13,12 +13,13 @@
     "build:ui": "pnpm --filter pi-supervisor-ui run build",
     "build:mobile": "pnpm --filter pi-supervisor-mobile run sync",
     "build:all": "pnpm run build:ui && pnpm run build",
-    "dev": "concurrently -n server,web -c blue,magenta \"pnpm --filter pi-supervisor run serve:dev\" \"pnpm --filter pi-supervisor-ui run dev\"",
+    "dev:server": "pnpm --filter pi-supervisor run serve:dev",
+    "dev:web": "pnpm --filter pi-supervisor-ui run dev",
     "dev:android": "concurrently -k -n server,android -c blue,green \"pnpm --filter pi-supervisor run serve:dev\" \"pnpm --filter pi-supervisor-mobile run dev:android\"",
     "dev:ios": "concurrently -k -n server,ios -c blue,cyan \"pnpm --filter pi-supervisor run serve:dev\" \"pnpm --filter pi-supervisor-mobile run dev:ios\"",
     "dev:supervisor": "pnpm run build && pnpm --filter pi-supervisor run serve:playground",
     "playground": "pnpm run build && pnpm --filter pi-supervisor run serve:playground",
-    "serve:tunnel": "pnpm run build:all && bun packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground --password 123456 --tunnel",
+    "serve:tunnel": "pnpm run build:all && node packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground --password 123456 --tunnel",
     "lint": "oxlint .",
     "lint:fix": "oxlint --fix .",
     "typecheck": "pnpm --filter \"./packages/*\" --if-present run typecheck",
@@ -26,7 +27,7 @@
     "format:check": "oxfmt --check .",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run format:check",
     "test": "pnpm --filter \"./packages/*\" --if-present run test",
-    "serve": "bun packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground --password 123456",
+    "serve": "node packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground --password 123456",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"
@@ -42,13 +43,15 @@
     "vitepress": "^1.6.4"
   },
   "engines": {
-    "bun": ">=1.2.0",
     "node": ">=20.6.0"
   },
   "pnpm": {
     "onlyBuiltDependencies": [
       "better-sqlite3"
     ],
+    "patchedDependencies": {
+      "@elysia/node@1.4.6": "patches/@elysia__node.patch"
+    },
     "ignoredOptionalDependencies": [
       "@anthropic-ai/claude-agent-sdk-darwin-arm64",
       "@anthropic-ai/claude-agent-sdk-darwin-x64",

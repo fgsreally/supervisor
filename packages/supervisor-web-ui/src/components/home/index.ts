@@ -1,3 +1,4 @@
+export { default as WorkShell } from "./WorkShell/index.vue";
 export { default as HomeTaskBoard } from "./HomeTaskBoard.vue";
 export { default as HomeTaskComposer } from "./HomeTaskComposer.vue";
 export { default as HomeTimeline } from "./HomeTimeline.vue";

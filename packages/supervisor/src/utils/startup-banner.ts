@@ -1,10 +1,14 @@
 import boxen from "boxen";
+import { createRequire } from "node:module";
 import pc from "picocolors";
-import qrcodeTerminal from "qrcode-terminal";
 import { platform } from "node:os";
 import { getLanIPv4 } from "./cloudflare-tunnel.js";
 import type { AgentWithSystemMd } from "../types.js";
 import { translateLog } from "../i18n/logs.js";
+
+const qrcodeTerminal = createRequire(import.meta.url)("qrcode-terminal") as {
+  generate(url: string, options: { small?: boolean }, cb: (qr: string) => void): void;
+};
 
 export interface StartupBannerOptions {
   port: number;

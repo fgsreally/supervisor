@@ -20,7 +20,7 @@ index.html → src/main.ts → App.vue
   └── Mobile：底栏导航
 ```
 
-路由见 [路由](/web-ui/routes)。`/search` 重定向到 `/chat`。
+路由见 [路由](/web-ui/routes)。
 
 ## 主要功能
 

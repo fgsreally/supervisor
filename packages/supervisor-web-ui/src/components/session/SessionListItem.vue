@@ -65,7 +65,7 @@
             <WorkflowStageTag v-if="stage" :stage="stage" compact />
           </div>
           <span class="text-[10px] shrink-0 session-time">{{
-            formatListTime(session.lastActiveAt)
+            formatListTime(sessionListTime(session))
           }}</span>
         </div>
         <div class="flex min-w-0 items-center justify-between gap-2 mt-0.5 overflow-hidden">
@@ -87,8 +87,8 @@ import { computed, onBeforeUnmount } from "vue";
 import type { UISession } from "@/types/ui";
 import { branchDotColor } from "../../utils/session-branch";
 import { formatListTime } from "../../utils/format-time";
+import { sessionListTime } from "@/utils/ui-session";
 import { parseSessionStage } from "../../utils/workflow";
-import { parseSessionServicesFromMeta, sessionHasProjectServices } from "../../utils/session-services";
 import WorkflowStageTag from "@/components/task/WorkflowStageTag.vue";
 import SessionAvatar from "./SessionAvatar.vue";
 import { useAgentStore } from "@/store";
@@ -219,25 +219,6 @@ const preview = computed(() =>
 );
 
 const statusDotClass = computed(() => {
-  const services = parseSessionServicesFromMeta(props.session.meta);
-  const agentRunning = props.session.status === "running";
-  const agentBlocked = props.session.status === "blocked";
-  const agentInitializing = props.session.status === "initializing";
-
-  if (sessionHasProjectServices(props.session.meta) && services) {
-    let serviceClass = "session-status-dot session-status-dot--stopped";
-    if (services.status === "running" || services.status === "active")
-      serviceClass = "session-status-dot session-status-dot--idle";
-    else if (services.status === "starting")
-      serviceClass = "session-status-dot session-status-dot--initializing";
-    else if (services.status === "error")
-      serviceClass = "session-status-dot session-status-dot--error";
-    if (agentRunning) return `${serviceClass} session-status-dot--agent-running`;
-    if (agentBlocked) return `${serviceClass} session-status-dot--agent-blocked`;
-    if (agentInitializing) return `${serviceClass} session-status-dot--agent-initializing`;
-    return serviceClass;
-  }
-
   switch (props.session.status) {
     case "initializing":
       return "session-status-dot session-status-dot--initializing";
@@ -245,10 +226,10 @@ const statusDotClass = computed(() => {
       return "session-status-dot session-status-dot--running";
     case "blocked":
       return "session-status-dot session-status-dot--waiting-user";
-    case "idle":
-      return "session-status-dot session-status-dot--idle";
     case "active":
       return "session-status-dot session-status-dot--idle";
+    case "idle":
+      return "session-status-dot session-status-dot--stopped";
     case "error":
       return "session-status-dot session-status-dot--error";
     case "finish":

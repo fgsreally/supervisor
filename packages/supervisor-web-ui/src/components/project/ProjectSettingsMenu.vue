@@ -1,5 +1,5 @@
 <template>
-  <MobileDrawer
+  <SheetDrawer
     :open="open"
     :title="t('project.settings')"
     :ariaLabel="t('project.settings')"
@@ -55,12 +55,12 @@
         </div>
       </div>
     </div>
-  </MobileDrawer>
+  </SheetDrawer>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { MobileDrawer } from "@/components/mobile/ui";
+import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import UiActionButton from "@/components/base/UiActionButton.vue";
 import WatsonIcon from "@/components/base/WatsonIcon.vue";
 import { useI18n } from "@/i18n";

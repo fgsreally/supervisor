@@ -4,6 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 import { fileURLToPath } from "url";
+import { autoImportPlugin, componentsPlugin, vueRouterPlugin } from "./vite.unplugins";
 
 const repoRoot = path.resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 const playgroundCwd = path.resolve(repoRoot, "playground");
@@ -14,19 +15,36 @@ function spaAwareProxy() {
   return {
     target: backendTarget,
     changeOrigin: true,
-    bypass(req: { headers: { accept?: string } }) {
-      return req.headers.accept?.includes("text/html") ? "/index.html" : undefined;
+    bypass(req: { headers: { accept?: string }; url?: string }) {
+      return shouldBypassFrontend(req.url ?? "", req.headers.accept);
     },
   };
 }
 
-function apiProxy() {
-  return { target: backendTarget, changeOrigin: true };
+function shouldBypassFrontend(url: string, accept?: string): string | undefined {
+  const path = url.split("?")[0] ?? url;
+  if (accept?.includes("text/html")) return "/index.html";
+  if (
+    path.startsWith("/@") ||
+    path.startsWith("/src/") ||
+    path.startsWith("/pages/") ||
+    path.startsWith("/node_modules/") ||
+    path.startsWith("/assets/")
+  ) {
+    return url;
+  }
+  if (/\.(vue|ts|tsx|js|mjs|css|map|svg|png|jpe?g|gif|webp|woff2?|ico)(\?|$)/i.test(path)) {
+    return url;
+  }
+  return undefined;
 }
 
 export default defineConfig({
   plugins: [
+    vueRouterPlugin,
     vue(),
+    autoImportPlugin,
+    componentsPlugin,
     tailwindcss(),
     VitePWA({
       // 仅用于 PWA 安装与推送通知，不缓存静态资源
@@ -77,39 +95,11 @@ export default defineConfig({
     // 允许局域网 IP + 隧道域名；勿只白名单域名（会挡手机扫码）
     allowedHosts: true,
     proxy: {
-      "/auth": apiProxy(),
-      "/sessions": apiProxy(),
-      "/external-sessions": apiProxy(),
-      "/agents": apiProxy(),
-      "/providers": {
-        ...spaAwareProxy(),
-      },
-      "/projects": apiProxy(),
-      "/home": {
-        ...spaAwareProxy(),
-      },
-      "/healthz": apiProxy(),
-      "/settings": {
-        ...spaAwareProxy(),
-      },
-      "/system": apiProxy(),
       "/ws": {
         target: backendWsTarget,
         ws: true,
       },
-      "/messages": apiProxy(),
-      "/workspace": apiProxy(),
-      "/resources": {
-        ...spaAwareProxy(),
-      },
-      "/extensions": {
-        ...spaAwareProxy(),
-      },
-      "/skills": apiProxy(),
-      "/upload": apiProxy(),
-      "/uploaded-icons": apiProxy(),
-      "/devices": apiProxy(),
-      "/public": apiProxy(),
+      "^/.*": spaAwareProxy(),
     },
   },
 });

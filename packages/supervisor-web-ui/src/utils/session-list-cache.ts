@@ -7,7 +7,7 @@ import type {
   SessionStatus,
 } from "@/api";
 
-const STORAGE_KEY = "pi-supervisor:session-list-cache:v1";
+const STORAGE_KEY = "pi-supervisor:session-list-cache:v2";
 
 /** Fields needed to paint the chat session list — never persist meta / prompts / cwd. */
 export type CachedSessionListItem = {
@@ -21,6 +21,7 @@ export type CachedSessionListItem = {
   showInSessionList: boolean;
   createdAt: string;
   lastActiveAt: string;
+  lastMessageAt?: string;
   title?: string | null;
   avatar?: SessionAvatar | null;
   isBuiltin?: boolean;
@@ -35,7 +36,7 @@ export type CachedProjectListItem = {
 };
 
 export type SessionListCachePayload = {
-  version: 1;
+  version: 2;
   savedAt: number;
   sessions: CachedSessionListItem[];
   projects: CachedProjectListItem[];
@@ -53,6 +54,7 @@ function toCachedSession(session: Session): CachedSessionListItem {
     showInSessionList: session.showInSessionList,
     createdAt: session.createdAt,
     lastActiveAt: session.lastActiveAt,
+    lastMessageAt: session.lastMessageAt,
     title: session.title ?? null,
     avatar: session.avatar ?? null,
     isBuiltin: session.isBuiltin,
@@ -80,6 +82,7 @@ export function sessionFromListCache(item: CachedSessionListItem): Session {
     showInSessionList: item.showInSessionList,
     createdAt: item.createdAt,
     lastActiveAt: item.lastActiveAt,
+    lastMessageAt: item.lastMessageAt,
     title: item.title ?? null,
     avatar: item.avatar ?? null,
     isBuiltin: item.isBuiltin,
@@ -109,7 +112,7 @@ export function loadSessionListCache(): SessionListCachePayload | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as SessionListCachePayload;
     if (
-      parsed?.version !== 1 ||
+      parsed?.version !== 2 ||
       !Array.isArray(parsed.sessions) ||
       !Array.isArray(parsed.projects)
     ) {
@@ -124,7 +127,7 @@ export function loadSessionListCache(): SessionListCachePayload | null {
 export function saveSessionListCache(sessions: Session[], projects: Project[]): void {
   if (typeof localStorage === "undefined") return;
   const payload: SessionListCachePayload = {
-    version: 1,
+    version: 2,
     savedAt: Date.now(),
     sessions: sessions.map(toCachedSession),
     projects: projects.map(toCachedProject),

@@ -1,0 +1,50 @@
+diff --git a/dist/index.mjs b/dist/index.mjs
+index 9f35dbb..fddfe0a 100644
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -119,7 +119,7 @@ function createWebSocketAdapter() {
+             }
+           },
+           async message(ws, message) {
+-            if (message.includes("ping")) {
++            if (typeof message === "string" && message === "ping") {
+               try {
+                 return void ws.pong(message);
+               } catch (error) {
+@@ -206,7 +206,10 @@ function createWebSocketAdapter() {
+       },
+       message(ws, message) {
+         const context = ws.context;
+-        context.message(ws, message.text());
++        context.message(
++          ws,
++          typeof message.rawData === "string" ? message.text() : message.uint8Array(),
++        );
+       },
+       close(ws, detail) {
+         const context = ws.context;
+diff --git a/dist/cjs/index.js b/dist/cjs/index.js
+index e87389c..b0d6954 100644
+--- a/dist/cjs/index.js
++++ b/dist/cjs/index.js
+@@ -136,7 +136,7 @@ function createWebSocketAdapter() {
+             }
+           },
+           async message(ws, message) {
+-            if (message.includes("ping")) {
++            if (typeof message === "string" && message === "ping") {
+               try {
+                 return void ws.pong(message);
+               } catch (error) {
+@@ -223,7 +223,10 @@ function createWebSocketAdapter() {
+       },
+       message(ws, message) {
+         const context = ws.context;
+-        context.message(ws, message.text());
++        context.message(
++          ws,
++          typeof message.rawData === "string" ? message.text() : message.uint8Array(),
++        );
+       },
+       close(ws, detail) {
+         const context = ws.context;

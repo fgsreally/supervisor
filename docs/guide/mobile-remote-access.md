@@ -9,7 +9,7 @@ pnpm run dev:server   # API
 pnpm run dev:web      # 浏览器前端（另开终端）
 ```
 
-一条命令并行启动 API + Vite。开发脚本暂用 `--cwd playground`：
+两个终端分别启动 API 与 Vite。开发脚本暂用 `--cwd playground`：
 
 - 全局根 = `playground/`（db、public、agents、projects、global 都在这里）
 - 数据库 = `playground/supervisor.db`

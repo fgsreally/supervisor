@@ -4,15 +4,15 @@ Vue 3 + Vite 前端，连接 `pi-supervisor` HTTP API，提供聊天、Agent 管
 
 ## 开发
 
-仓库根目录一条命令同时起后端 + Vite（无需先 build）：
+仓库根目录两个终端分别起后端与 Vite（无需先 build）：
 
 ```bash
-cd supervisor
-pnpm dev
+pnpm run dev:server
+pnpm run dev:web
 ```
 
-- API：`http://localhost:3030`（bun 直接跑源码）
-- UI：`http://localhost:5163`（Vite，API 代理到 3030）
+- API：`http://localhost:3042`（Node 直接跑源码）
+- UI：`http://localhost:5163`（Vite，API 代理到 3042）
 - 开发暂用 `--cwd playground`：db / public / agents / projects 都在 `playground/`
 - 终端二维码指向局域网 Vite 地址（如 `http://192.168.x.x:5163`）
 

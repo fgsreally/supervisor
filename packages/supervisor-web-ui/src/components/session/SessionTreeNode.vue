@@ -105,7 +105,7 @@ const statusColor = computed(() => {
     case "blocked":
       return "bg-orange-500";
     case "idle":
-      return "bg-green-500";
+      return "bg-gray-400";
     case "active":
       return "bg-green-500";
     case "error":

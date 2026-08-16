@@ -1,5 +1,5 @@
 <template>
-  <MobileDrawer
+  <SheetDrawer
     :open="open"
     :ariaLabel="title || ariaLabel || 'Dialog'"
     :title="title"
@@ -24,15 +24,15 @@
     <template v-if="$slots.footer" #footer>
       <slot name="footer" />
     </template>
-  </MobileDrawer>
+  </SheetDrawer>
 </template>
 
 <script setup lang="ts">
-import MobileDrawer, {
-  type MobileDrawerSize,
-  type MobileDrawerVariant,
-  type MobileDrawerWidth,
-} from "@/components/mobile/ui/MobileDrawer.vue";
+import SheetDrawer, {
+  type SheetDrawerSize,
+  type SheetDrawerVariant,
+  type SheetDrawerWidth,
+} from "@/components/base/SheetDrawer.vue";
 
 export interface ResponsiveDialogProps {
   open: boolean;
@@ -43,9 +43,9 @@ export interface ResponsiveDialogProps {
   dismissOnBackdrop?: boolean;
   panelClass?: string;
   bodyClass?: string;
-  size?: MobileDrawerSize;
-  variant?: MobileDrawerVariant;
-  width?: MobileDrawerWidth;
+  size?: SheetDrawerSize;
+  variant?: SheetDrawerVariant;
+  width?: SheetDrawerWidth;
   modalBreakpoint?: number;
 }
 

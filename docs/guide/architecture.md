@@ -4,7 +4,7 @@ Pi Supervisor 由两个包组成：
 
 ```
 ┌────────────────────────────┐        ┌──────────────────────────┐
-│  supervisor-web-ui (Vue)   │        │  supervisor (Bun)         │
+│  supervisor-web-ui (Vue)   │        │  supervisor (Node)        │
 │  ─────────────────────────  │  HTTP  │  ──────────────────────  │
 │  Pinia store               │ ←────→ │  Elysia HTTP API         │
 │  api/api.ts                │  SSE   │  SessionManager          │

@@ -14,16 +14,10 @@ The web UI keeps components grouped by responsibility:
 Each domain exposes a local `index.ts`. Consumers may import a domain entry or a component
 through that domain's directory; they should not import a PC/mobile implementation directly.
 
-Responsive components use this structure:
-
-    Component/
-    ├── index.vue   # public selector
-    ├── pc.vue      # desktop implementation
-    └── mobile.vue  # mobile implementation
-
-`index.vue` chooses the platform implementation. Shared behavior belongs in a sibling
-`frame.vue` or composable. A component with no platform-specific behavior remains a single
-`.vue` file.
+There is no `components/mobile` domain. Implementation rules live in the repository root
+`AGENTS.md` under 「组件实现」: one UI, two skins; responsive folders use `index.vue` /
+`pc.vue` / `mobile.vue` / optional `frame.vue`; a component with no platform-specific
+behavior remains a single `.vue` file.
 
 The repository test `src/__tests__/component-boundaries.test.ts` protects the domain
 directories and the responsive entrypoint convention.

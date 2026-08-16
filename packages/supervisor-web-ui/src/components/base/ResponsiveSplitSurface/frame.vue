@@ -1,5 +1,5 @@
 <template>
-  <MobileDrawer
+  <SheetDrawer
     :open="open && isMobile"
     :ariaLabel="ariaLabel"
     size="tall"
@@ -7,7 +7,7 @@
     @close="emit('close')"
   >
     <slot :mobile="true" />
-  </MobileDrawer>
+  </SheetDrawer>
   <Transition name="chat-panel" :duration="{ enter: 360, leave: 280 }">
     <div
       v-if="open && !isMobile"
@@ -38,7 +38,7 @@
               <span
                 v-if="tab.closable !== false"
                 class="responsive-split__tab-close"
-                title="关闭"
+                :title="t('common.close')"
                 @click.stop="closeTab(tab.id)"
               >
                 <X class="responsive-split__tab-close-icon" />
@@ -58,9 +58,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { X } from "lucide-vue-next";
-import { MobileDrawer } from "@/components/mobile/ui";
+import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import ResizeHandle from "@/components/base/ResizeHandle.vue";
 import { useMobileViewport } from "@/composables/use-mobile-viewport";
+import { useI18n } from "@/i18n";
 
 export type SplitSurfaceTab = {
   id: string;
@@ -86,11 +87,13 @@ export interface ResponsiveSplitSurfaceProps {
  */
 const props = withDefaults(defineProps<ResponsiveSplitSurfaceProps>(), {
   width: 520,
-  resizeLabel: "调整分屏宽度",
   tabs: undefined,
   activeTabId: null,
   platform: "auto",
 });
+
+const { t } = useI18n();
+const resizeLabel = computed(() => props.resizeLabel ?? t("common.resizePanel"));
 
 const emit = defineEmits<{
   close: [];

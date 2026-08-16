@@ -6,7 +6,7 @@
   >
     <header class="mobile-me__header m-mobile-header">
       <span aria-hidden="true" />
-      <h1 class="m-mobile-header__title">我的</h1>
+      <h1 class="m-mobile-header__title">{{ t("mobile.me.title") }}</h1>
       <span aria-hidden="true" />
     </header>
 
@@ -54,6 +54,7 @@ import { useAppFontScale, type AppFontScale } from "@/composables/use-app-font-s
 import { isNativeApp } from "@/composables/use-native-app";
 import { saveViewPreferences, viewPreferences } from "@/utils/view-preferences";
 import { displayNameForUrl, getActiveSupervisorInstance } from "@/utils/mobile-server-config";
+import { useI18n } from "@/i18n";
 
 type ItemId =
   | "providers"
@@ -67,9 +68,10 @@ type ItemId =
   | "diagnostics";
 
 const showNativeServer = computed(() => isNativeApp());
+const { t } = useI18n();
 const activeServerLabel = computed(() => {
   const active = getActiveSupervisorInstance();
-  if (!active) return "扫码或填写地址，连接多个实例";
+  if (!active) return t("mobile.me.serverHint");
   return active.name || displayNameForUrl(active.url);
 });
 
@@ -83,17 +85,17 @@ const { isDark, toggleDark } = useAppTheme();
 const { fontScale, setFontScale } = useAppFontScale();
 
 const appearanceDescription = computed(() =>
-  isDark.value ? "当前暗色，点击切换为亮色" : "当前亮色，点击切换为暗色",
+  isDark.value ? t("mobile.me.darkMode") : t("mobile.me.lightMode"),
 );
 const fontScaleDescription = computed(() => {
-  if (fontScale.value === "small") return "当前：小";
-  if (fontScale.value === "large") return "当前：大";
-  return "当前：标准";
+  if (fontScale.value === "small") return t("mobile.me.fontSmall");
+  if (fontScale.value === "large") return t("mobile.me.fontLarge");
+  return t("mobile.me.fontStandard");
 });
 const advancedAnimationsDescription = computed(() =>
   viewPreferences.advancedAnimations
-    ? "已开启：列表移除/恢复使用粒子效果"
-    : "已关闭：点击开启粒子消散动画",
+    ? t("mobile.me.animationsOn")
+    : t("mobile.me.animationsOff"),
 );
 const AppearanceIcon = computed(() => (isDark.value ? MoonStar : Sun));
 
@@ -101,21 +103,21 @@ const groups = computed(() => {
   const preferenceItems = [
     {
       id: "appearance" as const,
-      label: "外观",
+      label: t("mobile.me.appearance"),
       description: appearanceDescription.value,
       icon: AppearanceIcon.value,
       color: "#7b61c9",
     },
     {
       id: "fontScale" as const,
-      label: "字号",
+      label: t("mobile.me.fontSize"),
       description: fontScaleDescription.value,
       icon: BookOpenCheck,
       color: "#0ea5e9",
     },
     {
       id: "advancedAnimations" as const,
-      label: "高级动画",
+      label: t("mobile.me.advancedAnimations"),
       description: advancedAnimationsDescription.value,
       icon: Sparkles,
       color: "#f59e0b",
@@ -124,7 +126,7 @@ const groups = computed(() => {
       ? [
           {
             id: "server" as const,
-            label: "服务器",
+            label: t("mobile.me.server"),
             description: activeServerLabel.value,
             icon: Server,
             color: "#576b95",
@@ -133,50 +135,50 @@ const groups = computed(() => {
       : []),
     {
       id: "settings" as const,
-      label: "服务设置",
-      description: "助手模型、语音与网页服务",
+      label: t("mobile.me.settings"),
+      description: t("mobile.me.settingsDescription"),
       icon: Settings,
       color: "#3b82f6",
     },
   ];
   return [
     {
-      title: "能力管理",
+      title: t("mobile.me.capabilities"),
       items: [
         {
           id: "providers" as const,
-          label: "模型供应商",
-          description: "管理可供智能代理使用的模型",
+          label: t("mobile.me.providers"),
+          description: t("mobile.me.providersDescription"),
           icon: Cloud,
           color: "#576b95",
         },
         {
           id: "resources" as const,
-          label: "资源中心",
-          description: "管理能力、扩展、模板与连接",
+          label: t("mobile.me.resources"),
+          description: t("mobile.me.resourcesDescription"),
           icon: Boxes,
           color: "#07c160",
         },
       ],
     },
     {
-      title: "使用偏好",
+      title: t("mobile.me.preferences"),
       items: preferenceItems,
     },
     {
-      title: "帮助与诊断",
+      title: t("mobile.me.helpDiagnostics"),
       items: [
         {
           id: "tutorial" as const,
-          label: "使用教程",
-          description: "了解聊天、任务和智能代理",
+          label: t("mobile.me.tutorial"),
+          description: t("mobile.me.tutorialDescription"),
           icon: BookOpenCheck,
           color: "#d97706",
         },
         {
           id: "diagnostics" as const,
-          label: "高级与诊断",
-          description: "运行状态、日志和技术配置",
+          label: t("mobile.me.diagnostics"),
+          description: t("mobile.me.diagnosticsDescription"),
           icon: FileSearch,
           color: "#8b8b8b",
         },

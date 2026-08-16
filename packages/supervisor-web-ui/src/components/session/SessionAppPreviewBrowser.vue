@@ -11,8 +11,8 @@
       <button
         type="button"
         class="session-app-preview-browser__back"
-        title="返回会话"
-        aria-label="返回会话"
+        :title="t('session.preview.backToSession')"
+        :aria-label="t('session.preview.backToSession')"
         @click="emit('close')"
       >
         <ChevronLeft class="h-5 w-5" />
@@ -23,9 +23,9 @@
       </div>
     </header>
 
-    <div v-if="loading" class="session-app-preview-browser__state">正在唤醒服务...</div>
+    <div v-if="loading" class="session-app-preview-browser__state">{{ t("session.preview.loading") }}</div>
     <div v-else-if="previews.length === 0" class="session-app-preview-browser__state">
-      暂无 UI 预览页面
+      {{ t("session.preview.empty") }}
     </div>
     <div v-else class="session-app-preview-browser__body">
       <iframe
@@ -53,6 +53,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { ChevronLeft } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import type { SessionServicesPreview } from "@/utils/session-services";
 
 const props = withDefaults(
@@ -71,6 +72,7 @@ const emit = defineEmits<{
   close: [];
   "update:modelValue": [value: string];
 }>();
+const { t } = useI18n();
 
 function previewKey(preview: SessionServicesPreview): string {
   return `${preview.name}:${preview.port}`;
@@ -102,7 +104,7 @@ const currentIndex = computed(() =>
 
 const currentTitle = computed(() => {
   const preview = props.previews[currentIndex.value];
-  if (!preview) return "应用预览";
+  if (!preview) return t("session.preview.appTitle");
   return preview.label ?? preview.name;
 });
 

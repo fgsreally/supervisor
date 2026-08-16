@@ -513,6 +513,11 @@ export interface ShadowRunningEvent {
   timestamp: number;
 }
 
+export interface ShadowAnalysisEvent {
+  type: "shadow_analysis";
+  timestamp: number;
+}
+
 /** Operational toast from backend (not an LLM error card). */
 export interface UiNotifyEvent {
   type: "ui_notify";
@@ -549,6 +554,7 @@ export type SessionStreamEvent =
   | AgentEvent
   | ShadowSuggestionsEvent
   | ShadowRunningEvent
+  | ShadowAnalysisEvent
   | UiNotifyEvent
   | SessionStatusEvent
   | SessionServicesEvent
@@ -802,8 +808,7 @@ function mapSession(raw: RawSession): Session {
     creationMethod:
       raw.creationMethod ??
       (raw.spawnType === "subagent" ? "spawn_agent" : (raw.spawnType ?? "user")),
-    showInSessionList:
-      raw.spawnType === null || raw.spawnType === "fork",
+    showInSessionList: raw.spawnType === null || raw.spawnType === "fork",
     currentTask: raw.currentTask ?? null,
   };
 }
@@ -1070,11 +1075,16 @@ export function syncClientCache(request: ClientCacheSyncRequest): Promise<Client
     ...response,
     resources: response.resources.map((resource) => {
       if (resource.data === undefined) return resource;
-      if (resource.key === "agents") return { ...resource, data: (resource.data as RawAgent[]).map(mapAgent) };
-      if (resource.key === "projects") return { ...resource, data: (resource.data as RawProject[]).map(mapProject) };
-      if (resource.key === "providers") return { ...resource, data: (resource.data as RawProvider[]).map(mapProvider) };
-      if (resource.key === "providers:models") return { ...resource, data: (resource.data as RawModel[]).map(mapModel) };
-      if (resource.key === "sessions") return { ...resource, data: (resource.data as RawSession[]).map(mapSession) };
+      if (resource.key === "agents")
+        return { ...resource, data: (resource.data as RawAgent[]).map(mapAgent) };
+      if (resource.key === "projects")
+        return { ...resource, data: (resource.data as RawProject[]).map(mapProject) };
+      if (resource.key === "providers")
+        return { ...resource, data: (resource.data as RawProvider[]).map(mapProvider) };
+      if (resource.key === "providers:models")
+        return { ...resource, data: (resource.data as RawModel[]).map(mapModel) };
+      if (resource.key === "sessions")
+        return { ...resource, data: (resource.data as RawSession[]).map(mapSession) };
       return resource;
     }),
   }));

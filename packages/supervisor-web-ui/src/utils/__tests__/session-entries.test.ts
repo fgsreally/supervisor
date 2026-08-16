@@ -54,6 +54,26 @@ describe("sessionTreeEntryToChatEntry", () => {
     });
   });
 
+  it("maps Shadow analysis custom entries to notice timeline items", () => {
+    const entry = sessionTreeEntryToChatEntry({
+      id: "shadow-analysis-1",
+      parentId: "u1",
+      type: "custom",
+      customType: "shadow_analysis",
+      data: { text: "The current change may need a regression test." },
+      isOld: false,
+      meta: {},
+      createdAt: 43,
+    } as import("@/api").SessionTreeEntry);
+
+    expect(entry).toEqual({
+      id: "shadow-analysis-1",
+      type: "notice",
+      content: "The current change may need a regression test.",
+      createdAt: 43,
+    });
+  });
+
   it("ignores harness metadata entries such as thinking_level_change", () => {
     const entry = sessionTreeEntryToChatEntry({
       id: "tl1",

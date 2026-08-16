@@ -1,16 +1,15 @@
 import type { AgentHarnessEvent } from "@earendil-works/pi-agent-core";
 import type { SessionManager } from "../../../core/session-manager.js";
-import {
-  DEFAULT_PARENT_MESSAGE_LEVEL,
-  SESSION_INPUT_INTERRUPT_LEVEL,
-} from "../../../core/session-input-queue.js";
+import { SESSION_INPUT_INTERRUPT_LEVEL } from "../../../core/session-input-queue.js";
 import { parseSessionMeta } from "../../../core/session-fields.js";
 import { runWatson } from "../../../core/watson.js";
+import { SHADOW_ANALYSIS_MESSAGE_TYPE } from "../../../core/session-notice.js";
 import type { SupervisorDb } from "../../../db/db.js";
 import type { Session, SessionCheckpoint } from "../../../types.js";
 import { applyShadowMemoryUpdate, readShadowMemory } from "./memory.js";
 import {
   formatShadowRunPrompt,
+  getShadowSubmitResultDescription,
   getShadowSystemPrompt,
   normalizeShadowSubmitResult,
   ShadowResultSchema,
@@ -91,6 +90,7 @@ export async function runShadow(
       kind: "shadow",
       toolsPreset: "none",
       resultSchema: ShadowResultSchema,
+      resultToolDescription: getShadowSubmitResultDescription(),
       systemPrompt: getShadowSystemPrompt(session.cwd),
       prompt: formatShadowRunPrompt(shadowMemory, latestTurn),
     });
@@ -114,9 +114,8 @@ export async function runShadow(
   db.updateMeta(session.id, {
     shadow: {
       suggestedQuestions,
-      message: result.message,
-      interrupt: result.interrupt === true,
-      status: result.status,
+      lastAlert: result.alert,
+      lastAnalysis: result.analysis,
       title: result.title,
       commitMessage: result.commitMessage,
       memory: result.shadowMemory,
@@ -141,12 +140,17 @@ export async function runShadow(
     }
   }
 
-  const message = result.message?.trim();
-  if (message) {
+  const alert = result.alert?.trim();
+  if (alert) {
     await manager.submitSessionInput(session.id, {
-      message,
-      level: result.interrupt ? SESSION_INPUT_INTERRUPT_LEVEL : DEFAULT_PARENT_MESSAGE_LEVEL,
-      source: "shadow",
+      message: alert,
+      level: SESSION_INPUT_INTERRUPT_LEVEL,
+      source: "shadow:alert",
     });
+  }
+  const analysis = result.analysis?.trim();
+  if (analysis) {
+    await manager.sendCustomMessage(session.id, analysis, SHADOW_ANALYSIS_MESSAGE_TYPE);
+    manager.publishShadowAnalysis(session.id);
   }
 }

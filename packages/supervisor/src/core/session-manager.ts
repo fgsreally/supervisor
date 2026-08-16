@@ -237,6 +237,11 @@ export type ShadowRunningEvent = {
   timestamp: number;
 };
 
+export type ShadowAnalysisEvent = {
+  type: "shadow_analysis";
+  timestamp: number;
+};
+
 /** Operational notify for the Web UI (toast). Does not change session status. */
 export type UiNotifyEvent = {
   type: "ui_notify";
@@ -256,6 +261,7 @@ export type SessionOutputEvent =
   | AgentHarnessEvent
   | ShadowSuggestionsEvent
   | ShadowRunningEvent
+  | ShadowAnalysisEvent
   | UiNotifyEvent
   | SessionStatusEvent
   | { type: "approval.pending"; [key: string]: unknown };
@@ -364,7 +370,10 @@ export class SessionManager {
   /** Runtime restores for existing Sessions; creation-time initialization uses pendingSpawns. */
   private readonly pendingRuntimeRestores = new Map<number, Promise<ManagedSessionRuntime>>();
   private readonly systemPromptOverlays = new Map<number, SystemPromptOverlay>();
-  private readonly uiMenus = new Map<number, Map<string, { owner: string; menu: UiMenuDefinition }>>();
+  private readonly uiMenus = new Map<
+    number,
+    Map<string, { owner: string; menu: UiMenuDefinition }>
+  >();
   private readonly extensionRegistry = new ExtensionModuleRegistry();
   private readonly resourceHandlers: ReturnType<typeof createResourceHandlers>;
   private readonly resourceManager: ResourceManager;
@@ -1564,6 +1573,16 @@ export class SessionManager {
     const event: ShadowRunningEvent = {
       type: "shadow_running",
       running,
+      timestamp: Date.now(),
+    };
+    for (const listener of this.outputListeners.get(sessionId) ?? []) {
+      listener(sessionId, event);
+    }
+  }
+
+  publishShadowAnalysis(sessionId: number): void {
+    const event: ShadowAnalysisEvent = {
+      type: "shadow_analysis",
       timestamp: Date.now(),
     };
     for (const listener of this.outputListeners.get(sessionId) ?? []) {
@@ -3117,9 +3136,13 @@ export class SessionManager {
    * Append a timeline-only custom message (not sent to the LLM).
    * Same idea as extension `ctx.session.sendCustomMessage`.
    */
-  async sendCustomMessage(sessionId: number, content: string): Promise<string> {
+  async sendCustomMessage(
+    sessionId: number,
+    content: string,
+    customType?: string,
+  ): Promise<string> {
     const storage = new SQLiteSessionStorage(this.db, sessionId);
-    return appendCustomMessage(storage, content);
+    return appendCustomMessage(storage, content, customType);
   }
 
   private async recordLlmError(sessionId: number, content: string): Promise<void> {

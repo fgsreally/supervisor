@@ -3,8 +3,8 @@ export interface ShadowProtocolResult {
     action: "append" | "replace";
     content: string;
   };
-  message?: string;
-  interrupt?: boolean;
+  alert?: string;
+  analysis?: string;
   suggestedQuestions?: string[];
   status?: string;
   title?: string;

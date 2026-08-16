@@ -28,6 +28,14 @@ export function loadBuiltinAgentPrompt(
   return readFileSync(filePath, "utf-8").trim();
 }
 
+export function loadBuiltinShadowResource(name: string): string {
+  const filePath = join(getPackagedAgentsDir(), "..", "shadow", name);
+  if (!existsSync(filePath)) {
+    throw new Error(`Missing packaged Shadow resource: ${filePath}`);
+  }
+  return readFileSync(filePath, "utf-8").trim();
+}
+
 export function loadPackagedAgentPrompt(kind: PackagedAgentPromptKind): string {
   return loadBuiltinAgentPrompt(kind);
 }

@@ -6,15 +6,15 @@ import {
   formatShadowRunPrompt,
   getShadowSystemPrompt,
   normalizeShadowSubmitResult,
+  ShadowResultSchema,
 } from "../src/extension/builtin/shadow/protocol.js";
+import { Check } from "typebox/schema";
 
 describe("shadow Watson submit_result protocol", () => {
   it("normalizes every supported field", () => {
     const result = normalizeShadowSubmitResult({
       shadowMemory: { action: "append", content: "remember <this>" },
-      message: "check the requirement",
-      interrupt: true,
-      status: "Fixing the payment callback; regression tests are still running.",
+      alert: "The payment callback is failing.",
       suggestedQuestions: ["What should I test next?", "Can this be deployed safely?", ""],
       title: "Shadow redesign",
       commitMessage: "feat: checkpoint shadow redesign",
@@ -22,9 +22,8 @@ describe("shadow Watson submit_result protocol", () => {
 
     expect(result).toEqual({
       shadowMemory: { action: "append", content: "remember <this>" },
-      message: "check the requirement",
-      interrupt: true,
-      status: "Fixing the payment callback; regression tests are still running.",
+      alert: "The payment callback is failing.",
+      analysis: undefined,
       suggestedQuestions: ["What should I test next?", "Can this be deployed safely?"],
       title: "Shadow redesign",
       commitMessage: "feat: checkpoint shadow redesign",
@@ -34,44 +33,43 @@ describe("shadow Watson submit_result protocol", () => {
   it("accepts empty objects and JSON strings", () => {
     expect(normalizeShadowSubmitResult({})).toEqual({
       shadowMemory: undefined,
-      message: undefined,
-      interrupt: false,
+      alert: undefined,
+      analysis: undefined,
       suggestedQuestions: undefined,
-      status: undefined,
       title: undefined,
       commitMessage: undefined,
     });
     expect(normalizeShadowSubmitResult("")).toEqual({});
-    expect(normalizeShadowSubmitResult('{"interrupt":false}')).toEqual({
-      shadowMemory: undefined,
-      message: undefined,
-      interrupt: false,
-      suggestedQuestions: undefined,
-      status: undefined,
-      title: undefined,
-      commitMessage: undefined,
+    expect(normalizeShadowSubmitResult('{"analysis":"User-visible note"}')).toMatchObject({
+      analysis: "User-visible note",
     });
   });
 
-  it("rejects non-object payloads and only interrupts on true", () => {
-    expect(normalizeShadowSubmitResult("nothing to report")).toBeNull();
-    expect(normalizeShadowSubmitResult([])).toBeNull();
-    expect(normalizeShadowSubmitResult({ interrupt: "true" })?.interrupt).toBe(false);
-    expect(normalizeShadowSubmitResult({ interrupt: true })?.interrupt).toBe(true);
+  it("enforces mutually exclusive alert and analysis fields", () => {
+    expect(Check(ShadowResultSchema, { alert: "urgent" })).toBe(true);
+    expect(Check(ShadowResultSchema, { analysis: "note" })).toBe(true);
+    expect(Check(ShadowResultSchema, { alert: "urgent", analysis: "note" })).toBe(false);
+    expect(normalizeShadowSubmitResult({ alert: "urgent", analysis: "note" })).toBeNull();
+    expect(normalizeShadowSubmitResult({ alert: "   " })).toMatchObject({ alert: undefined });
   });
 
-  it("hardcodes Watson prompts and requires submit_result", () => {
+  it("rejects non-object payloads", () => {
+    expect(normalizeShadowSubmitResult("nothing to report")).toBeNull();
+    expect(normalizeShadowSubmitResult([])).toBeNull();
+  });
+
+  it("loads English prompt resources and injects runtime context", () => {
     const system = getShadowSystemPrompt();
+    expect(system).toContain("Shadow");
     expect(system).toContain("submit_result");
-    expect(system).not.toContain("<shadow");
-    expect(system).toContain("空对象");
+    expect(system).toContain("alert");
+    expect(system).toContain("analysis");
 
     const prompt = formatShadowRunPrompt("memo", "[user] hi");
-    expect(prompt).toContain("submit_result");
     expect(prompt).toContain("## Shadow memory");
     expect(prompt).toContain("memo");
     expect(prompt).toContain("[user] hi");
-    expect(prompt).not.toContain("<shadow-memory");
+    expect(prompt).not.toContain("{{shadowMemory}}");
   });
 
   it("injects AGENTS.md from the session working directory", () => {

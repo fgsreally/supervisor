@@ -98,7 +98,9 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
   }
   if (
     entry.type === "custom" &&
-    (entry.customType === "custom_message" || entry.customType === "session_notice")
+    (entry.customType === "custom_message" ||
+      entry.customType === "session_notice" ||
+      entry.customType === "shadow_analysis")
   ) {
     const data = entry.data ?? {};
     const text =

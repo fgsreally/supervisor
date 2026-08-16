@@ -26,6 +26,7 @@ interface WatsonRunBase {
   systemPrompt?: string;
   injectSystem?: string;
   resultSchema?: TSchema;
+  resultToolDescription?: string;
 }
 
 export interface WatsonSimpleOptions extends WatsonRunBase {
@@ -90,11 +91,16 @@ function usageLog(message: AssistantMessage | undefined): string {
   return ` input=${usage.input} output=${usage.output} cacheRead=${usage.cacheRead} cacheWrite=${usage.cacheWrite} totalTokens=${usage.totalTokens}`;
 }
 
-function createSubmitResultTool(capture: { value?: unknown }, schema: TSchema): AgentTool {
+function createSubmitResultTool(
+  capture: { value?: unknown },
+  schema: TSchema,
+  description?: string,
+): AgentTool {
   return {
     name: "submit_result",
     label: "Submit Result",
-    description: "Submit the final structured result. This must be the final tool call.",
+    description:
+      description ?? "Submit the final structured result. This must be the final tool call.",
     parameters: Type.Object({ result: schema }),
     async execute(_id, params): Promise<AgentToolResult<unknown>> {
       const result = (params as { result?: unknown }).result;
@@ -165,7 +171,7 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
     if (options.mode === "simple") {
       const capture: { value?: unknown } = {};
       const submitTool = options.resultSchema
-        ? createSubmitResultTool(capture, options.resultSchema)
+        ? createSubmitResultTool(capture, options.resultSchema, options.resultToolDescription)
         : undefined;
       const message = await completeSimple(
         llm.model,
@@ -197,7 +203,9 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
       const tools = [
         ...createDefaultTools(cwd, options.toolsPreset ?? "coding"),
         ...(options.extraTools ?? []),
-        ...(options.resultSchema ? [createSubmitResultTool(capture, options.resultSchema)] : []),
+        ...(options.resultSchema
+          ? [createSubmitResultTool(capture, options.resultSchema, options.resultToolDescription)]
+          : []),
       ];
       const systemPrompt = [
         options.systemPrompt ?? defaultWatsonSystemPrompt(options.kind, structured),

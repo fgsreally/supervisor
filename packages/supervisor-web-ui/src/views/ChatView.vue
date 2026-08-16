@@ -28,10 +28,18 @@
     >
       <template #actions>
         <div class="desktop-session-actions">
-          <ChatHeaderAction :title="t('chat.searchMessages')" :active="searchOpen" @click="toggleSearch">
+          <ChatHeaderAction
+            :title="t('chat.searchMessages')"
+            :active="searchOpen"
+            @click="toggleSearch"
+          >
             <Search />
           </ChatHeaderAction>
-          <ChatHeaderAction :title="t('chat.viewLog')" :active="logActionActive" @click="toggleLogPanel">
+          <ChatHeaderAction
+            :title="t('chat.viewLog')"
+            :active="logActionActive"
+            @click="toggleLogPanel"
+          >
             <ScrollText />
           </ChatHeaderAction>
           <SessionCommitPopover :session-id="session.id" />
@@ -48,7 +56,7 @@
         <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
         <ChatHeaderAction
           v-if="hasServicePreviews"
-            :title="`${t('chat.activeApps')} · ${servicePreviews.length}`"
+          :title="`${t('chat.activeApps')} · ${servicePreviews.length}`"
           :active="previewActionActive"
           :count="servicePreviews.length"
           @click="toggleSessionPreview"
@@ -57,7 +65,7 @@
         </ChatHeaderAction>
         <ChatHeaderAction
           v-if="backgroundBashCount > 0"
-            :title="`${t('chat.backgroundTerminal')} · ${backgroundBashCount}`"
+          :title="`${t('chat.backgroundTerminal')} · ${backgroundBashCount}`"
           :active="bashTerminalsActionActive"
           :count="backgroundBashCount"
           @click="toggleBackgroundBashPanel"
@@ -524,11 +532,18 @@
           <section class="model-picker-sheet">
             <header>
               <strong>{{ t("chat.chooseModel") }}</strong
-              ><button type="button" @click="modelPickerOpen = false">{{ t("chat.cancel") }}</button>
+              ><button type="button" @click="modelPickerOpen = false">
+                {{ t("chat.cancel") }}
+              </button>
             </header>
             <div class="model-picker-search">
               <Search class="h-4 w-4" />
-              <input v-model="modelSearch" type="search" :placeholder="t('chat.searchProviderModel')" autofocus />
+              <input
+                v-model="modelSearch"
+                type="search"
+                :placeholder="t('chat.searchProviderModel')"
+                autofocus
+              />
             </div>
             <div class="model-picker-list">
               <div v-if="modelPickerLoading" class="model-picker-empty">
@@ -690,7 +705,12 @@ const props = defineProps<{
     cwd?: string | null;
     meta?: {
       subagentIds?: number[];
-      shadow?: { suggestedQuestions?: string[]; status?: string; running?: boolean };
+      shadow?: {
+        suggestedQuestions?: string[];
+        lastAlert?: string;
+        lastAnalysis?: string;
+        running?: boolean;
+      };
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
       workflow?: { stage: string; status: string };
       changedFiles?: SessionChangedFileView[];
@@ -1381,7 +1401,6 @@ const inputPlaceholder = computed(() => {
   }
   if (props.session.status === "stopped") return t("chat.stopped");
   if (isStreaming.value) return t("chat.sendAfterReply");
-  if (props.session.meta?.shadow?.status) return props.session.meta.shadow.status;
   return t("chat.inputMessage");
 });
 
@@ -1751,6 +1770,10 @@ function subscribeShadowSuggestions(sessionId: string) {
       }
       if (payload.event.type === "shadow_running") {
         shadowRunning.value = payload.event.running;
+        return;
+      }
+      if (payload.event.type === "shadow_analysis") {
+        void applySessionMessages(sessionId);
         return;
       }
       if (payload.event.type !== "shadow_suggestions") return;
@@ -2763,7 +2786,10 @@ const sendMessage = async (payload: ChatSendPayload) => {
         await reloadMessagesFromServer(props.session.id);
         await sessionStore.fetchSessions();
       } catch (error) {
-        showUiMessage(error instanceof Error ? error.message : t("chat.slashCommandFailed"), "error");
+        showUiMessage(
+          error instanceof Error ? error.message : t("chat.slashCommandFailed"),
+          "error",
+        );
       }
       return;
     }

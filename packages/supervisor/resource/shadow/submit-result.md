@@ -1,0 +1,1 @@
+Submit the final structured Shadow result. This must be the final tool call. The `result` argument must be a JSON object matching the supplied schema. Do not put the result only in normal assistant text.

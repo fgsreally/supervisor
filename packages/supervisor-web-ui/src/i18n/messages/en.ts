@@ -132,6 +132,8 @@ const messages: TranslationMessages = {
   "chat.input.emoji": "Emoji",
   "chat.input.skill": "Slash commands (/goal /plan /skill /Prompt)",
   "chat.input.attach": "Send file",
+  "chat.autocomplete.hint": "↑↓ Select · Tab/Enter Confirm · Esc Close · @@ Other projects",
+  "chat.autocomplete.template": "template",
   "chat.status.initializing": "Initializing",
   "chat.status.running": "Generating",
   "chat.status.blocked": "Blocked",

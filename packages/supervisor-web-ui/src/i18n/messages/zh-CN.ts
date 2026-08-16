@@ -132,6 +132,8 @@ const messages: TranslationMessages = {
   "chat.input.emoji": "表情",
   "chat.input.skill": "斜杠命令（/goal /plan /技能 /Prompt）",
   "chat.input.attach": "发送文件",
+  "chat.autocomplete.hint": "↑↓ 选择 · Tab/Enter 确认 · Esc 关闭 · @@ 其它项目",
+  "chat.autocomplete.template": "模板",
   "chat.status.initializing": "正在初始化",
   "chat.status.running": "生成中",
   "chat.status.blocked": "阻塞",

@@ -125,7 +125,7 @@ const answers = reactive<Record<string, string>>({});
 
 const interactionId = computed(() => String(props.args?.interactionId ?? ""));
 const kind = computed(() => (props.args?.kind === "question" ? "question" : "approval"));
-const title = computed(() => String(props.args?.title ?? "外部 Agent 请求交互"));
+const title = computed(() => String(props.args?.title ?? t("chat.external.defaultTitle")));
 const summary = computed(() => externalInteractionSummary(props.args));
 const requestUrl = computed(() => {
   const request = props.args?.request;
@@ -135,7 +135,9 @@ const requestUrl = computed(() => {
 });
 const backendLabel = computed(() => {
   const backend = String(props.args?.backend ?? "external").toUpperCase();
-  return props.pending && kind.value === "approval" ? `${backend} · 点击查看详情` : backend;
+  return props.pending && kind.value === "approval"
+    ? t("chat.external.clickForDetails", { backend })
+    : backend;
 });
 const questions = computed(
   () => (Array.isArray(props.args?.questions) ? props.args.questions : []) as Question[],
@@ -145,9 +147,9 @@ const canSubmitAnswers = computed(() =>
 );
 const resultLabel = computed(() => {
   const text = props.result?.find((item) => item.type === "text")?.text ?? "";
-  if (text.includes("approve")) return "已允许";
-  if (text.includes("answer")) return "已回答";
-  return text ? "已处理" : "等待外部 Agent 继续";
+  if (text.includes("approve")) return t("chat.external.approved");
+  if (text.includes("answer")) return t("chat.external.answered");
+  return text ? t("chat.external.processed") : t("chat.external.waiting");
 });
 
 function onCardClick() {

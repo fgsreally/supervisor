@@ -5,27 +5,27 @@
         class="codex-model-dialog"
         role="dialog"
         aria-modal="true"
-        aria-label="选择 Codex 模型"
+        :aria-label="t('codex.selectModel')"
       >
         <header>
-          <h2>选择 Codex 模型</h2>
-          <button type="button" @click="close">关闭</button>
+          <h2>{{ t("codex.selectModel") }}</h2>
+          <button type="button" @click="close">{{ t("common.close") }}</button>
         </header>
 
-        <p v-if="loading" class="muted">正在从 Codex 获取模型列表…</p>
+        <p v-if="loading" class="muted">{{ t("codex.loadingModels") }}</p>
         <p v-else-if="error" class="error">{{ error }}</p>
         <template v-else>
           <label>
-            模型
+            {{ t("codex.model") }}
             <select v-model="selectedModel">
               <option v-for="model in models" :key="model.id" :value="model.model">
-                {{ model.displayName || model.model }}{{ model.isDefault ? "（默认）" : "" }}
+                {{ model.displayName || model.model }}{{ model.isDefault ? ` (${t("common.default")})` : "" }}
               </option>
             </select>
           </label>
           <p class="muted">{{ activeModel?.description }}</p>
           <label v-if="efforts.length">
-            推理强度
+            {{ t("codex.reasoningEffort") }}
             <select v-model="selectedEffort">
               <option
                 v-for="effort in efforts"
@@ -37,9 +37,9 @@
             </select>
           </label>
           <footer>
-            <button type="button" @click="close">取消</button>
+            <button type="button" @click="close">{{ t("common.cancel") }}</button>
             <button type="button" :disabled="saving || !selectedModel" @click="save">
-              {{ saving ? "应用中…" : "应用" }}
+              {{ saving ? t("codex.applying") : t("codex.apply") }}
             </button>
           </footer>
         </template>
@@ -54,9 +54,9 @@
       >
         <header>
           <h2>{{ commandTitle }}</h2>
-          <button type="button" @click="closeCommand">关闭</button>
+          <button type="button" @click="closeCommand">{{ t("common.close") }}</button>
         </header>
-        <p v-if="commandLoading" class="muted">正在从 Codex 获取信息…</p>
+        <p v-if="commandLoading" class="muted">{{ t("codex.loadingCommand") }}</p>
         <p v-else-if="commandError" class="error">{{ commandError }}</p>
         <template v-else>
           <div v-if="commandChoices.length" class="command-choices">
@@ -72,7 +72,7 @@
             </button>
           </div>
           <pre v-else-if="commandResult" class="command-result">{{ commandResult }}</pre>
-          <p v-else class="muted">命令已完成。</p>
+          <p v-else class="muted">{{ t("codex.commandDone") }}</p>
         </template>
       </section>
     </div>
@@ -82,8 +82,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import * as api from "@/api";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ sessionId: string }>();
+const { t } = useI18n();
 const emit = defineEmits<{ insert: [text: string] }>();
 const open = ref(false);
 const loading = ref(false);

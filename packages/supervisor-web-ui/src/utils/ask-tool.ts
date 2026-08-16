@@ -119,7 +119,7 @@ export function normalizeAskToolResult(result: unknown): {
     ? (record.content as Array<{ type: string; text: string }>)
     : undefined;
   const text =
-    contentFromResult?.find((p) => p.type === "text")?.text?.trim() || summary || "已回答";
+    contentFromResult?.find((p) => p.type === "text")?.text?.trim() || summary || t("ask.answered");
   return {
     content: [{ type: "text", text }],
     ...(details ? { details } : {}),
@@ -162,7 +162,7 @@ export function parseAskResultFromToolResult(result: {
 
 export function askResultSummary(details: AskResultDetails | null): string {
   if (!details) return "";
-  if (details.cancelled) return "已取消";
+  if (details.cancelled) return t("ask.cancelled");
   if (!details.answers?.length) return "";
   return details.answers.map((a) => a.label).join(" · ");
 }
@@ -193,9 +193,10 @@ export function findPendingAskInDisplayGroups(
       const questions = parseAskQuestions(piece.callArgs);
       return {
         toolCallId: piece.callId,
-        prompt: questions[0]?.prompt ?? "请选择一项",
+        prompt: questions[0]?.prompt ?? t("ask.selectOne"),
       };
     }
   }
   return null;
 }
+import { translate as t } from "@/i18n";

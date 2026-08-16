@@ -96,5 +96,6 @@ export function externalInteractionSummary(callArgs?: Record<string, unknown>): 
   const detail = typeof callArgs?.detail === "string" ? callArgs.detail.trim() : "";
   if (detail) return detail.split("\n").find(Boolean) ?? detail;
   const title = typeof callArgs?.title === "string" ? callArgs.title.trim() : "";
-  return title || "点击查看请求详情";
+  return title || t("chat.external.viewRequestDetails");
 }
+import { translate as t } from "@/i18n";

@@ -7,7 +7,7 @@ export function formatListTime(dateStr: string): string {
   }
   const yesterday = new Date(now);
   yesterday.setDate(yesterday.getDate() - 1);
-  if (date.toDateString() === yesterday.toDateString()) return "昨天";
+  if (date.toDateString() === yesterday.toDateString()) return t("time.yesterday");
   return date.toLocaleDateString([], { month: "2-digit", day: "2-digit" });
 }
 
@@ -32,15 +32,15 @@ export function formatChatDateDivider(date: Date | number | string, now = new Da
   const today = startOfDay(now);
   const yesterday = today - 86_400_000;
 
-  if (day === today) return "今天";
-  if (day === yesterday) return "昨天";
+  if (day === today) return t("time.today");
+  if (day === yesterday) return t("time.yesterday");
 
   const month = value.getMonth() + 1;
   const dateNum = value.getDate();
   if (value.getFullYear() === now.getFullYear()) {
-    return `${month}月${dateNum}日`;
+    return t("time.monthDay", { month, day: dateNum });
   }
-  return `${value.getFullYear()}年${month}月${dateNum}日`;
+  return t("time.yearMonthDay", { year: value.getFullYear(), month, day: dateNum });
 }
 
 export function sameCalendarDay(a: Date | number | string, b: Date | number | string): boolean {
@@ -57,9 +57,12 @@ export function sameCalendarDay(a: Date | number | string, b: Date | number | st
 /** LLM turn duration shown on assistant message hover. */
 export function formatMessageDuration(ms: number): string {
   const duration = Math.max(0, Math.round(ms));
-  if (duration < 1_000) return "<1秒";
-  if (duration < 60_000) return `${Math.floor(duration / 1_000)}秒`;
+  if (duration < 1_000) return t("time.lessThanSecond");
+  if (duration < 60_000) return t("time.seconds", { count: Math.floor(duration / 1_000) });
   const minutes = Math.floor(duration / 60_000);
   const seconds = Math.floor((duration % 60_000) / 1_000);
-  return seconds > 0 ? `${minutes}分${seconds}秒` : `${minutes}分`;
+  return seconds > 0
+    ? t("time.minutesSeconds", { minutes, seconds })
+    : t("time.minutes", { count: minutes });
 }
+import { translate as t } from "@/i18n";

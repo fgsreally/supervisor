@@ -1,13 +1,13 @@
-const STAGE_LABELS: Record<string, string> = {
-  brainstorm: "需求探索",
-  design: "技术设计",
-  spec: "规格",
-  mockup: "小样",
-  planning: "规划",
-  test: "测试",
-  vertical: "逐项交付",
-  implement: "实现验证",
-  archive: "归档",
+const STAGE_KEYS: Record<string, string> = {
+  brainstorm: "workflow.stage.brainstorm",
+  design: "workflow.stage.design",
+  spec: "workflow.stage.spec",
+  mockup: "workflow.stage.mockup",
+  planning: "workflow.stage.planning",
+  test: "workflow.stage.test",
+  vertical: "workflow.stage.vertical",
+  implement: "workflow.stage.implement",
+  archive: "workflow.stage.archive",
 };
 
 /**
@@ -29,5 +29,7 @@ export function parseSessionStage(session: {
 }
 
 export function workflowStageLabel(stage: string): string {
-  return STAGE_LABELS[stage] ?? stage;
+  const key = STAGE_KEYS[stage];
+  return key ? t(key) : stage;
 }
+import { translate as t } from "@/i18n";

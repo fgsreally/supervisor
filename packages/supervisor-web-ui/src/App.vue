@@ -3,7 +3,7 @@
     class="app-root flex h-full w-full overflow-hidden font-sans"
     style="background: var(--app-shell-bg)"
   >
-    <MobileInstanceListView
+    <InstanceListView
       v-if="showInstancePicker"
       :allow-dismiss="instancePickerDismissible"
       @connected="onInstanceConnected"
@@ -74,7 +74,7 @@
                 :active-id="activeResourceId"
                 @select="selectResource"
               />
-              <ResizeHandle orientation="vertical" label="调整面板宽度" @start="startListResize" />
+              <ResizeHandle orientation="vertical" :label="t('common.resizePanel')" @start="startListResize" />
             </div>
 
             <main
@@ -149,7 +149,7 @@
         </div>
       </template>
 
-      <MobileAppShell
+      <AppShell
         v-else
         :tab="mainTab"
         :show-nav="mobileShowPrimaryNav"
@@ -157,7 +157,7 @@
       >
         <div class="flex-1 flex flex-col min-w-0 min-h-0 h-full overflow-hidden">
           <SearchView v-if="route.path === '/search'" />
-          <MobilePrimaryTabPager
+          <PrimaryTabPager
             ref="mobileTabPagerRef"
             v-else-if="mobileShowPrimaryNav"
             :active-tab="mobilePrimaryTabKey"
@@ -173,7 +173,7 @@
               />
             </template>
             <template #work>
-              <MobileWorkView
+              <WorkShell
                 :mode="mobileWorkMode"
                 data-tour-page="work"
                 @navigate="navigateMobilePath"
@@ -188,7 +188,7 @@
                   class="flex-1 min-w-0 h-full"
                   @open-session="openSessionFromHome"
                 />
-              </MobileWorkView>
+              </WorkShell>
             </template>
             <template #agents>
               <ContactsPanel
@@ -199,13 +199,13 @@
               />
             </template>
             <template #me>
-              <MobileMeView
+              <MePanel
                 @navigate="navigateMobilePath"
                 @tutorial="introTour?.start()"
                 @manage-servers="openInstancePicker"
               />
             </template>
-          </MobilePrimaryTabPager>
+          </PrimaryTabPager>
           <SettingsPanel
             v-else-if="mainTab === 'settings'"
             :key="settingsPanelMode"
@@ -305,7 +305,7 @@
             />
           </template>
         </div>
-      </MobileAppShell>
+      </AppShell>
     </template>
 
     <GlobalSearchModal :open="searchOpen" @close="searchOpen = false" @navigate="selectSession" />
@@ -357,7 +357,7 @@ import ChatView from "./views/ChatView.vue";
 import HomeView from "./views/HomeView.vue";
 import TodoView from "./views/TodoView.vue";
 import SearchView from "./views/SearchView.vue";
-import AddToHomeScreenHint from "./components/mobile/AddToHomeScreenHint.vue";
+import AddToHomeScreenHint from "./components/layout/AddToHomeScreenHint.vue";
 import GlobalSearchModal from "./components/search/GlobalSearchModal.vue";
 import ShareSessionPickerSheet from "./components/session/ShareSessionPickerSheet.vue";
 import UiMessageHost from "./components/base/UiMessageHost.vue";
@@ -366,16 +366,17 @@ import UiConfirmHost from "./components/base/UiConfirmHost.vue";
 import UiBusyHost from "./components/base/UiBusyHost.vue";
 import StartupGate from "./components/layout/StartupGate.vue";
 import IntroTour from "./components/onboarding/IntroTour.vue";
-import MobileAppShell from "./components/mobile/MobileAppShell.vue";
-import MobileInstanceListView from "./components/mobile/MobileInstanceListView.vue";
-import MobileMeView from "./components/mobile/MobileMeView.vue";
-import MobileWorkView from "./components/mobile/MobileWorkView.vue";
+import AppShell from "./components/layout/AppShell/index.vue";
+import InstanceListView from "./components/settings/InstanceListView.vue";
+import MePanel from "./components/settings/MePanel.vue";
+import WorkShell from "./components/home/WorkShell/index.vue";
 import { isNativeApp } from "./composables/use-native-app";
 import { hasConfiguredSupervisorInstance } from "./utils/mobile-server-config";
-import MobilePrimaryTabPager, {
+import PrimaryTabPager, {
   type MobilePrimaryTabKey,
-} from "./components/mobile/MobilePrimaryTabPager.vue";
+} from "./components/layout/PrimaryTabPager.vue";
 import { showUiMessage } from "./composables/use-ui-message";
+import { useI18n } from "@/i18n";
 import { useSessionStore, useAgentStore, useProviderStore, useResourceStore } from "./store";
 import { providerToUI } from "./utils/provider-ui";
 import { getDefaultWorkspaceCwd } from "./config/workspace";
@@ -387,6 +388,8 @@ import "./styles/mobile/chat-density.css";
 import "./styles/mobile/typography.css";
 import "./styles/font-scale.css";
 import "./styles/type-scale.css";
+
+const { t } = useI18n();
 
 const { width: chatListWidth, startResize: startListResize } = useResizableWidth({
   // Session list needs room for avatar + title + preview; bump key to drop old narrow caches.
@@ -413,7 +416,7 @@ const activeResourceId = ref<string | null>(null);
 const isMobile = ref(false);
 const mobilePage = ref<"list" | "detail">("list");
 const mobileWorkMode = ref<"todo" | "dashboard">("todo");
-const mobileTabPagerRef = ref<InstanceType<typeof MobilePrimaryTabPager> | null>(null);
+const mobileTabPagerRef = ref<InstanceType<typeof PrimaryTabPager> | null>(null);
 const searchOpen = ref(false);
 const modelEditorOpen = ref(false);
 const modelEditorSaving = ref(false);
@@ -809,9 +812,9 @@ async function saveModelFromDialog(model: NonNullable<typeof activeProviderModel
     });
     modelEditorOpen.value = false;
     await providerStore.fetchModels(activeProviderId.value);
-    showUiMessage("模型保存成功", "success");
+    showUiMessage(t("provider.modelSaved"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "模型保存失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("provider.modelSaveFailed"), "error");
   } finally {
     modelEditorSaving.value = false;
   }

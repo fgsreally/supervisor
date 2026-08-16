@@ -8,6 +8,7 @@
  */
 
 import type { AgentEvent } from "@earendil-works/pi-agent-core";
+import { translate } from "@/i18n";
 
 // ============ Base Types (from supervisor types) ============
 
@@ -846,7 +847,7 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
     const err = await res.text().catch(() => "Unknown error");
     const trimmed = err.trim();
     if (trimmed === "NOT_FOUND" || res.status === 404) {
-      throw new Error("接口不存在，请重启后端服务后再试");
+      throw new Error(translate("api.notFound"));
     }
     try {
       const parsed = JSON.parse(err) as { error?: string; message?: string };
@@ -854,7 +855,7 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
       if (typeof message === "string" && message.trim()) {
         const lower = message.trim().toLowerCase();
         if (lower === "not found" || lower === "not_found") {
-          throw new Error("接口不存在，请重启后端服务后再试");
+          throw new Error(translate("api.notFound"));
         }
         throw new Error(message);
       }
@@ -866,7 +867,7 @@ async function fetchJson<T>(path: string, options?: RequestInit): Promise<T> {
   }
   const contentType = res.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) {
-    throw new Error(`接口 ${path} 返回了非 JSON 响应，请确认后端服务和开发代理已启动`);
+    throw new Error(translate("api.nonJson", { path }));
   }
   return res.json() as Promise<T>;
 }
@@ -961,7 +962,7 @@ export async function getAuthStatus(): Promise<{
   // upgraded independently: an older server has no auth endpoint and therefore
   // must be treated as password protection disabled.
   if (response.status === 404) return { required: false, authenticated: true };
-  if (!response.ok) throw new Error("无法检查登录状态");
+  if (!response.ok) throw new Error(translate("api.authStatusFailed"));
   const body = (await response.json()) as {
     required: boolean;
     authenticated: boolean;

@@ -391,6 +391,7 @@ const messages: TranslationMessages = {
   "mobile.openCount": "打开{{label}}，{{count}} 个",
   "project.actions": "项目操作",
   "project.delete": "删除项目",
+  "task.dependencyGraph": "任务依赖图",
   "tool.killProcess": "结束此后台进程",
   "tool.ending": "结束中…",
   "tool.end": "结束",

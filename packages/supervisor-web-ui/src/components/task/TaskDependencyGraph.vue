@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootRef" class="task-dependency-graph" aria-label="任务依赖图">
+  <div ref="rootRef" class="task-dependency-graph" :aria-label="t('task.dependencyGraph')">
     <VueFlow
       :id="flowId"
       class="dependency-flow"
@@ -60,6 +60,7 @@ import TaskCard from "@/components/task/TaskCard.vue";
 import type { Agent } from "@/api";
 import "@vue-flow/core/dist/style.css";
 import "@vue-flow/core/dist/theme-default.css";
+import { useI18n } from "@/i18n";
 
 interface DependencyTask {
   id: number;
@@ -80,6 +81,7 @@ const props = withDefaults(
   { agents: () => [] },
 );
 const emit = defineEmits<{ select: [id: number] }>();
+const { t } = useI18n();
 
 const flowId = `task-dep-${Math.random().toString(36).slice(2, 9)}`;
 const rootRef = ref<HTMLElement | null>(null);
@@ -113,12 +115,12 @@ const layout = computed(() => {
   };
 });
 
-const statusLabels: Record<string, string> = {
-  pending: "待办",
-  running: "进行中",
-  blocked: "阻塞",
-  done: "已完成",
-};
+const statusLabels = computed<Record<string, string>>(() => ({
+  pending: t("todo.pending"),
+  running: t("todo.running"),
+  blocked: t("todo.blocked"),
+  done: t("todo.done"),
+}));
 
 function agentInfo(name?: string): Agent | undefined {
   if (!name) return undefined;
@@ -135,7 +137,7 @@ function columnNodes(tasks: DependencyTask[], x: number) {
     data: {
       ...task,
       nodeId: String(task.id),
-      statusLabel: statusLabels[task.status] ?? "",
+      statusLabel: statusLabels.value[task.status] ?? "",
     },
     style: { width: `${layout.value.nodeWidth}px` },
     class: nodeClass(String(task.id)),
@@ -183,7 +185,7 @@ const nodes = computed(() => [
       ...props.current,
       current: true,
       nodeId: String(props.current.id),
-      statusLabel: statusLabels[props.current.status] ?? "",
+      statusLabel: statusLabels.value[props.current.status] ?? "",
     },
     style: { width: `${layout.value.nodeWidth}px` },
     class: nodeClass(String(props.current.id)) || "sequence-node--current",

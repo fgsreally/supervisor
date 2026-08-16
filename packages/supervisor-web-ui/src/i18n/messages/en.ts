@@ -391,6 +391,7 @@ const messages: TranslationMessages = {
   "mobile.openCount": "Open {{label}}, {{count}} items",
   "project.actions": "Project actions",
   "project.delete": "Delete project",
+  "task.dependencyGraph": "Task dependency graph",
   "tool.killProcess": "End background process",
   "tool.ending": "Ending…",
   "tool.end": "End",

@@ -470,19 +470,6 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
-  async function cloneSession(id: string) {
-    root.clearError();
-    try {
-      const session = await api.cloneSession(id);
-      sessions.value.unshift(session);
-      persistSessionListCache();
-      return session;
-    } catch (err) {
-      root.setError(err instanceof Error ? err.message : "Failed to clone session");
-      throw err;
-    }
-  }
-
   async function createBtwSession(id: string) {
     root.clearError();
     try {
@@ -611,7 +598,6 @@ export const useSessionStore = defineStore("session", () => {
     messageCursors,
     sendPrompt,
     forkSession,
-    cloneSession,
     createBtwSession,
     killSession,
     completeSession,

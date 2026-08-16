@@ -29,13 +29,12 @@ export function resolveCreationMethod(row: SessionRow): SessionCreationMethod {
     value === "user" ||
     value === "spawn_agent" ||
     value === "btw" ||
-    value === "fork" ||
-    value === "clone"
+    value === "fork"
   ) {
     return value;
   }
   if (row.spawn_type === "subagent" || row.spawn_type === "spawn") return "spawn_agent";
-  if (row.spawn_type === "btw" || row.spawn_type === "fork" || row.spawn_type === "clone") {
+  if (row.spawn_type === "btw" || row.spawn_type === "fork") {
     return row.spawn_type;
   }
   return "user";

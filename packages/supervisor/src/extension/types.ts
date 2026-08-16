@@ -51,7 +51,22 @@ export interface SessionTodoInfo {
 // ============================================================================
 
 export type ExtensionCleanup = () => void | Promise<void>;
-export type SessionSetupReason = "created" | "restored" | "extension_reload";
+export type SessionSetupReason =
+  | "created"
+  | "restored"
+  | "reload"
+  | "spawn"
+  | "btw"
+  | "fork";
+
+export interface SessionSetupContext {
+  reason: SessionSetupReason;
+  sourceSessionId?: number;
+  sourceEntryId?: string;
+  gitSnapshot?: { ref: string; head: string };
+}
+
+export type SessionRemoveReason = "delete" | "achieve" | "replace" | "shutdown";
 
 export interface SessionExtensionDefinition {
   /** 扩展名称（用于标识和日志） */
@@ -207,6 +222,8 @@ export interface ExtensionSession {
   readonly activity: {
     touch(): void;
   };
+  checkpoint(label?: string): Promise<unknown>;
+  rewindToEntry(entryId: string): Promise<void>;
   /** Project belonging to this Session. */
   readonly project: SupervisorProjectFacade;
   /** Session-scoped prompt injection. */
@@ -329,6 +346,14 @@ export interface AgentExtensionAgent extends Omit<ExtensionAgent, "activate" | "
     handler: (
       session: ExtensionSession,
       reason: SessionSetupReason,
+      context?: SessionSetupContext,
+    ) => void | ExtensionCleanup | Promise<void | ExtensionCleanup>,
+  ): void;
+  on(
+    event: "session.remove",
+    handler: (
+      session: ExtensionSession,
+      reason: SessionRemoveReason,
     ) => void | ExtensionCleanup | Promise<void | ExtensionCleanup>,
   ): void;
 }
@@ -559,6 +584,30 @@ export interface SupervisorProjectFacade {
 export interface SupervisorUiFacade {
   broadcast(event: BroadcastEvent): void;
   requestApproval(request: ApprovalRequest): Promise<ApprovalResult>;
+  registerMenu(menu: UiMenuDefinition): () => void;
+}
+
+export type UiMenuSurface = "session" | "message";
+
+export interface UiMenuContext {
+  sessionId: number;
+  entryId?: string;
+}
+
+export interface UiMenuResult {
+  message?: string;
+  refresh?: boolean;
+  action?: "select-agent-for-fork";
+}
+
+export interface UiMenuDefinition {
+  id: string;
+  surface: UiMenuSurface;
+  label: string;
+  icon?: string;
+  order?: number;
+  visible?: (context: UiMenuContext) => boolean | Promise<boolean>;
+  action: (context: UiMenuContext) => UiMenuResult | void | Promise<UiMenuResult | void>;
 }
 
 // ============================================================================

@@ -30,7 +30,7 @@ export interface SessionWithUiState extends Session {
 }
 
 /** Session branch types */
-export type SessionBranchType = "subagent" | "fork" | "clone" | "btw";
+export type SessionBranchType = "subagent" | "fork" | "btw";
 
 // ============ Agent UI Extensions ============
 

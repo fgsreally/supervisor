@@ -133,6 +133,7 @@ import {
 import ChatMessageGroupRow from "./ChatMessageGroupRow.vue";
 import MessageContextMenu from "./MessageContextMenu.vue";
 import AgentAvatar from "../agent/AgentAvatar.vue";
+import * as api from "@/api";
 
 const props = defineProps<{
   sessionId: string;
@@ -307,7 +308,7 @@ function isActionableGroup(group: DisplayGroup): boolean {
   );
 }
 
-function openActions(
+async function openActions(
   group: DisplayGroup,
   payload: { mode: "menu" | "sheet"; x: number; y: number },
 ) {
@@ -320,7 +321,14 @@ function openActions(
   contextMenu.entryId = group.id;
   contextMenu.copyText = copyText;
   contextMenu.canRewind = props.rewindableEntryIds.includes(group.id);
-  contextMenu.canFork = true;
+  contextMenu.canFork = false;
+  void api
+    .listSessionUiMenus(props.sessionId, "message", group.id)
+    .then((menus) => {
+      if (contextMenu.entryId !== group.id) return;
+      contextMenu.canFork = menus.some((menu) => menu.id === "git.fork-message");
+    })
+    .catch(() => undefined);
   contextMenu.canCopy = copyText.length > 0;
   contextMenu.usage =
     !props.externalAgent && isGroupedAssistantGroup(group) ? (group.usage ?? null) : null;

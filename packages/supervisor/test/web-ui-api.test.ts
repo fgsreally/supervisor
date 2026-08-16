@@ -462,20 +462,4 @@ describe("supervisor: Web UI API compatibility", () => {
     });
   });
 
-  describe("Session tree", () => {
-    it("GET /sessions/:id/tree returns tree structure", async () => {
-      const parentRes = await req("POST", "/sessions", { cwd: "/tmp" });
-      const { id: parentId } = (await parentRes.json()) as { id: string };
-
-      const childRes = await req("POST", "/sessions", { cwd: "/tmp", parentId });
-      const { id: childId } = (await childRes.json()) as { id: string };
-
-      const res = await req("GET", `/sessions/${parentId}/tree`);
-      expect(res.status).toBe(200);
-      const tree = (await res.json()) as { session: { id: string }; children: unknown[] };
-      expect(tree.session.id).toBe(parentId);
-      expect(tree.children.length).toBeGreaterThan(0);
-      expect(JSON.stringify(tree.children)).toContain(childId);
-    });
-  });
 });

@@ -74,10 +74,7 @@ function shouldCreateWorktree(input: {
   parentId: number | null;
   spawnType: string | null;
 }): boolean {
-  if (input.isBuiltin) return false;
-  const needsOwnWorktree = input.spawnType === "fork" || input.spawnType === "clone";
-  if (input.parentId != null && !needsOwnWorktree) return false;
-  return true;
+  return !input.isBuiltin;
 }
 
 type SessionGit = {
@@ -187,6 +184,57 @@ const gitExtension: ExtensionDefinition = {
         projectCwd,
       });
 
+    const unregisterForkSessionMenu = ctx.ui.registerMenu({
+      id: "git.fork-session",
+      surface: "session",
+      label: "Fork 新会话",
+      order: 100,
+      visible: async () => true,
+      action: () => ({ action: "select-agent-for-fork" as const }),
+    });
+    const unregisterForkMessageMenu = ctx.ui.registerMenu({
+      id: "git.fork-message",
+      surface: "message",
+      label: "从此处 Fork",
+      order: 100,
+      visible: async ({ entryId }) => Boolean(entryId),
+      action: () => ({ action: "select-agent-for-fork" as const }),
+    });
+    const unregisterCheckpointMenu = ctx.ui.registerMenu({
+      id: "git.checkpoint",
+      surface: "session",
+      label: "创建存档点",
+      order: 110,
+      visible: async () => true,
+      action: async () => {
+        await ctx.session.checkpoint();
+        return { refresh: true };
+      },
+    });
+    const unregisterAchieveMenu = ctx.ui.registerMenu({
+      id: "git.achieve",
+      surface: "session",
+      label: "完成并归档",
+      order: 120,
+      visible: async () => true,
+      action: async () => {
+        await ctx.session.finish();
+        return { refresh: true };
+      },
+    });
+    const unregisterRewindMenu = ctx.ui.registerMenu({
+      id: "git.rewind-message",
+      surface: "message",
+      label: "回到这条消息",
+      order: 110,
+      visible: async ({ entryId }) => Boolean(entryId),
+      action: async ({ entryId }) => {
+        if (!entryId) throw new Error("Message entry is required");
+        await ctx.session.rewindToEntry(entryId);
+        return { refresh: true };
+      },
+    });
+
     // task-management loads before git. Only compose auto-commit when both extensions are active.
     if (ctx.tools.get("TodoList")) {
       let completedTodoKeys = new Set(
@@ -250,8 +298,8 @@ const gitExtension: ExtensionDefinition = {
       });
     }
 
-    const row = ctx.db.queryOne<Pick<SessionRow, "is_builtin" | "parent_id" | "spawn_type">>(
-      "SELECT is_builtin, parent_id, spawn_type FROM sessions WHERE id = ?",
+    const row = ctx.db.queryOne<Pick<SessionRow, "is_builtin" | "parent_id" | "spawn_type" | "meta">>(
+      "SELECT is_builtin, parent_id, spawn_type, meta FROM sessions WHERE id = ?",
       [sessionId],
     );
     if (
@@ -265,7 +313,21 @@ const gitExtension: ExtensionDefinition = {
       try {
         sessionLog(sessionId, "info", "Creating session worktree", ["system", "git", "worktree"]);
         const repoRoot = ensureProjectGitRootSync(projectCwd);
-        const gitMeta = await createSessionWorktree(repoRoot, String(sessionId));
+        const sessionMeta = parseSessionMeta(row?.meta);
+        const forkSource =
+          sessionMeta.forkSource &&
+          typeof sessionMeta.forkSource === "object" &&
+          !Array.isArray(sessionMeta.forkSource)
+            ? (sessionMeta.forkSource as { gitRef?: unknown })
+            : undefined;
+        if (row?.spawn_type === "fork" && typeof forkSource?.gitRef !== "string") {
+          throw new Error("The selected message has no Git snapshot");
+        }
+        const gitMeta = await createSessionWorktree(
+          repoRoot,
+          String(sessionId),
+          typeof forkSource?.gitRef === "string" ? forkSource.gitRef : undefined,
+        );
         await ctx.session.setCwd(gitMeta.worktreePath);
         sessionLog(
           sessionId,
@@ -296,7 +358,19 @@ const gitExtension: ExtensionDefinition = {
           );
         }
         const oldHead = await getHeadHash(git.repoRoot);
-        const targetBranch = await resolveMergeTargetBranch(git.repoRoot);
+        const parent = ctx.db.queryOne<Pick<SessionRow, "cwd"> & { parent_id: number | null }>(
+          "SELECT cwd, parent_id FROM sessions WHERE id = ?",
+          [sessionId],
+        );
+        const parentGit =
+          parent?.parent_id == null
+            ? null
+            : resolveSessionGitContext({
+                sessionId: parent.parent_id,
+                cwd: parent.cwd,
+                projectCwd,
+              });
+        const targetBranch = parentGit?.branch ?? (await resolveMergeTargetBranch(git.repoRoot));
         await mergeSessionBranch(git.repoRoot, git.branch, targetBranch);
         const newHead = await getHeadHash(git.repoRoot);
         const files = await listChangedFilesBetween(git.repoRoot, oldHead, newHead);
@@ -344,7 +418,13 @@ const gitExtension: ExtensionDefinition = {
       { priority: 100, mode: "sync" },
     );
 
-    return () => {};
+    return () => {
+      unregisterForkSessionMenu();
+      unregisterForkMessageMenu();
+      unregisterCheckpointMenu();
+      unregisterRewindMenu();
+      unregisterAchieveMenu();
+    };
   },
 };
 

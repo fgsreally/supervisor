@@ -60,6 +60,7 @@ const props = defineProps<{
   status?: string;
   pinned?: boolean;
   protectedSession?: boolean;
+  canFork?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -90,7 +91,7 @@ const actions = computed(() => {
     items.push({ id: "fork", label: "Fork 新会话" });
   }
   items.push({ id: "delete", label: "删除", danger: true });
-  return items;
+  return props.canFork === false ? items.filter((item) => item.id !== "fork") : items;
 });
 
 function runAction(id: ActionId) {

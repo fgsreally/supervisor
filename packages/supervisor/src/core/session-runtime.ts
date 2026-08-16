@@ -215,7 +215,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
       await this._extension.clear();
       this._extension = null;
     }
-    await this.initExtensions(agentId, agentName, cwd, db, manager, "extension_reload");
+    await this.initExtensions(agentId, agentName, cwd, db, manager, "reload");
   }
 
   /**

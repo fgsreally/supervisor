@@ -285,6 +285,7 @@ export async function listLocalBranches(repoRoot: string): Promise<string[]> {
 export async function createSessionWorktree(
   repoRoot: string,
   sessionId: string,
+  startRef?: string | null,
 ): Promise<CreatedSessionWorktree> {
   const branch = sessionBranchName(sessionId);
   const worktreePath = sessionWorktreePath(repoRoot, sessionId);
@@ -305,7 +306,7 @@ export async function createSessionWorktree(
   if (branchExists) {
     await runGit(repoRoot, ["worktree", "add", worktreePath, branch]);
   } else {
-    await runGit(repoRoot, ["worktree", "add", "-b", branch, worktreePath, startBranch]);
+    await runGit(repoRoot, ["worktree", "add", "-b", branch, worktreePath, startRef ?? startBranch]);
   }
   return {
     repoRoot,

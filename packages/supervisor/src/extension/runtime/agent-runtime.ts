@@ -7,6 +7,8 @@ import type {
   ExtensionCommandDefinition,
   ExtensionSession,
   SessionExtensionDefinition,
+  SessionRemoveReason,
+  SessionSetupContext,
   SessionSetupReason,
   ToolDefinition,
   ToolInfo,
@@ -19,7 +21,17 @@ interface SetupHandler {
   handler: (
     session: ExtensionSession,
     reason: SessionSetupReason,
+    context?: SessionSetupContext,
   ) => void | ExtensionCleanup | Promise<void | ExtensionCleanup>;
+}
+
+interface RemoveHandler {
+  owner: string;
+  policy: boolean;
+  handler: (
+    session: ExtensionSession,
+    reason: SessionRemoveReason,
+  ) => void | Promise<void>;
 }
 
 interface LoadedAgentExtension {
@@ -38,6 +50,7 @@ export class AgentExtensionRuntime {
   private representative: Context;
   private readonly registration = new AsyncLocalStorage<{ owner: string; scope?: SessionScope }>();
   private readonly handlers: SetupHandler[] = [];
+  private readonly removeHandlers: RemoveHandler[] = [];
   private readonly loaded = new Map<string, LoadedAgentExtension>();
   private readonly tools = new Map<
     string,
@@ -86,13 +99,23 @@ export class AgentExtensionRuntime {
           return self.representative.agent.model;
         },
         on(event, handler) {
-          if (event !== "session.setup") throw new Error(`Unsupported Agent event: ${event}`);
+          if (event !== "session.setup" && event !== "session.remove") {
+            throw new Error(`Unsupported Agent event: ${event}`);
+          }
           const owner = self.requireRegistration().owner;
-          self.handlers.push({
-            owner,
-            policy: owner.startsWith("policy:"),
-            handler,
-          });
+          if (event === "session.setup") {
+            self.handlers.push({
+              owner,
+              policy: owner.startsWith("policy:"),
+              handler: handler as SetupHandler["handler"],
+            });
+          } else {
+            self.removeHandlers.push({
+              owner,
+              policy: owner.startsWith("policy:"),
+              handler: handler as RemoveHandler["handler"],
+            });
+          }
         },
         registerTool(definition) {
           const registration = self.requireRegistration();
@@ -238,7 +261,9 @@ export class AgentExtensionRuntime {
     });
   }
 
-  async attach(context: Context, reason: SessionSetupReason): Promise<void> {
+  async attach(context: Context, setup: SessionSetupContext | SessionSetupReason): Promise<void> {
+    const setupContext: SessionSetupContext =
+      typeof setup === "string" ? { reason: setup } : setup;
     this.representative = context;
     await this.detach(context.session.id);
     const scope: SessionScope = { context, cleanups: [], owners: new Set() };
@@ -260,7 +285,9 @@ export class AgentExtensionRuntime {
       for (const entry of handlers) {
         scope.owners.add(entry.owner);
         const cleanup = await this.registration.run({ owner: entry.owner, scope }, () =>
-          context.runExtension(entry.owner, () => entry.handler(context.session, reason)),
+          context.runExtension(entry.owner, () =>
+            entry.handler(context.session, setupContext.reason, setupContext),
+          ),
         );
         if (cleanup) scope.cleanups.push(cleanup);
       }
@@ -270,11 +297,23 @@ export class AgentExtensionRuntime {
     }
   }
 
+  async remove(session: ExtensionSession, reason: SessionRemoveReason): Promise<void> {
+    const handlers = [...this.removeHandlers].sort(
+      (left, right) => Number(right.policy) - Number(left.policy),
+    );
+    for (const entry of handlers) {
+      await this.registration.run({ owner: entry.owner }, () =>
+        entry.handler(session, reason),
+      );
+    }
+  }
+
   async detach(sessionId: number): Promise<void> {
     const scope = this.sessions.get(sessionId);
     if (!scope) return;
     this.sessions.delete(sessionId);
     try {
+      await this.remove(scope.context.session, "shutdown");
       for (const cleanup of scope.cleanups.reverse()) await cleanup();
     } finally {
       for (const owner of scope.owners) scope.context.removeExtensionResources(owner);
@@ -286,6 +325,7 @@ export class AgentExtensionRuntime {
     for (const extension of [...this.loaded.values()].reverse()) await extension.cleanup?.();
     this.loaded.clear();
     this.handlers.length = 0;
+    this.removeHandlers.length = 0;
     this.tools.clear();
     this.commands.clear();
   }

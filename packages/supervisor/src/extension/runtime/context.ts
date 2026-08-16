@@ -15,6 +15,7 @@ import type {
   ExtensionDatabase,
   ExtensionEvent,
   ExtensionEventHandlerOptions,
+  UiMenuDefinition,
   ExtensionToolCallResult,
   ExtensionSqliteDatabase,
   ExtensionSqliteStatement,
@@ -223,6 +224,8 @@ interface ContextSessionOptions {
     options?: { timeoutMs?: number; maxChars?: number },
   ) => Promise<SessionResultSummary>;
   finish: (sessionId?: number) => Promise<void>;
+  checkpoint: (label?: string) => Promise<unknown>;
+  rewindToEntry: (entryId: string) => Promise<void>;
   fork: (entryId: string, options?: { position?: "before" | "at" }) => Promise<SessionInfo>;
   switchTo: (sessionId: number) => Promise<void>;
   navigateTree: (
@@ -299,6 +302,7 @@ interface ContextExtensionHost {
 
 /** Session-scoped context shared by every extension activated for that session. */
 export class Context {
+  private readonly sessionManager: SessionManager;
   readonly session: ContextSession;
   readonly policies: ExtensionContext["policies"];
   readonly agent: ContextAgent;
@@ -317,6 +321,7 @@ export class Context {
   readonly ui: {
     broadcast(event: BroadcastEvent): void;
     requestApproval(request: ApprovalRequest): Promise<ApprovalResult>;
+    registerMenu(menu: UiMenuDefinition): () => void;
   };
   readonly events: EventBus;
   readonly flow;
@@ -342,6 +347,7 @@ export class Context {
   private readonly disabledPolicies: Set<string>;
 
   constructor({ sessionManager, db, sessionRuntime, resource }: ContextDependencies) {
+    this.sessionManager = sessionManager;
     const session = sessionManager.get(sessionRuntime.id);
     if (!session) throw new Error(`Session ${sessionRuntime.id} not found`);
     if (session.projectId == null) throw new Error(`Session ${session.id} has no project`);
@@ -505,6 +511,10 @@ export class Context {
         return deps.getSessionResultSummary(targetSessionId, { maxChars: options?.maxChars });
       },
       finish: (targetSessionId) => deps.finishSession(targetSessionId ?? session.id),
+      checkpoint: (label) => sessionManager.createCheckpoint(session.id, label ? { label } : undefined),
+      rewindToEntry: async (entryId) => {
+        await sessionManager.rewindToEntry(session.id, entryId);
+      },
       fork: deps.fork,
       switchTo: deps.switchSession,
       navigateTree: deps.navigateTree,
@@ -608,6 +618,11 @@ export class Context {
     this.ui = {
       broadcast: deps.broadcast,
       requestApproval: (request) => this.services.uiApproval.requestApproval(request),
+      registerMenu: (menu) => {
+        const owner = this.requireActiveExtension();
+        const registered = this.sessionManager.registerUiMenu(this.session.id, owner, menu);
+        return this.trackExtensionCleanup(registered);
+      },
     };
     this.events = deps.eventBus;
     this.flow = {
@@ -885,6 +900,12 @@ export class ContextSession {
   }
   finish(sessionId?: number): Promise<void> {
     return this.options.finish(sessionId);
+  }
+  checkpoint(label?: string): Promise<unknown> {
+    return this.options.checkpoint(label);
+  }
+  rewindToEntry(entryId: string): Promise<void> {
+    return this.options.rewindToEntry(entryId);
   }
   fork(entryId: string, options?: { position?: "before" | "at" }): Promise<SessionInfo> {
     return this.options.fork(entryId, options);

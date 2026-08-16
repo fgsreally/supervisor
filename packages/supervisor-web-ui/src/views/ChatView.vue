@@ -506,6 +506,14 @@
       @update:spawned-agents="onSpawnedAgentsChange"
     />
 
+    <SessionAgentPicker
+      :open="forkEntryId != null"
+      :project-id="workspaceId ?? null"
+      :projects="sessionStore.projects"
+      @close="forkEntryId = null"
+      @select="onForkAgentPicked"
+    />
+
     <Teleport to="body">
       <Transition name="chat-overlay" :duration="{ enter: 200, leave: 160 }">
         <div
@@ -612,6 +620,7 @@ import BtwSplitPanel from "../components/session/BtwSplitPanel.vue";
 import ChatInputPanel from "../components/chat/ChatInputPanel.vue";
 import ExternalAgentCommandHost from "../components/external-agent/ExternalAgentCommandHost.vue";
 import ChatSessionMenu from "../components/session/ChatSessionMenu.vue";
+import SessionAgentPicker from "../components/session/SessionAgentPicker.vue";
 import SessionLogPanel from "../components/session/SessionLogPanel.vue";
 import SessionFilesPanel from "../components/session/SessionFilesPanel.vue";
 import SessionFilePreviewPane from "../components/session/SessionFilePreviewPane.vue";
@@ -885,6 +894,7 @@ const activeTurn = ref<{
   assistantActivitySeen: boolean;
 } | null>(null);
 const sessionMenuOpen = ref(false);
+const forkEntryId = ref<string | null>(null);
 const sessionUsage = ref<api.SessionUsage | null>(null);
 const modelPickerOpen = ref(false);
 const btwPanelOpen = ref(false);
@@ -1861,7 +1871,21 @@ async function rewindToMessage(entryId: string) {
 
 async function forkFromMessage(entryId: string) {
   try {
-    const forked = await sessionStore.forkSession(props.session.id, { entryId });
+    const result = await api.executeSessionUiMenu(props.session.id, "git.fork-message", entryId);
+    if (result.action !== "select-agent-for-fork") return;
+  } catch (error) {
+    showUiMessage(error instanceof Error ? error.message : "Fork failed", "error");
+    return;
+  }
+  forkEntryId.value = entryId;
+}
+
+async function onForkAgentPicked(agentId: string) {
+  const entryId = forkEntryId.value;
+  forkEntryId.value = null;
+  if (!entryId) return;
+  try {
+    const forked = await sessionStore.forkSession(props.session.id, { entryId, agentId });
     emit("navigate", forked.id);
     showUiMessage(t("chat.branchCreated"), "success");
   } catch (error) {

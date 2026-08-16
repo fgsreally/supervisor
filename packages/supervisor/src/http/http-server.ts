@@ -3065,6 +3065,12 @@ export function createHttpServer(
         label: typeof body.label === "string" ? body.label : undefined,
         customInstructions:
           typeof body.customInstructions === "string" ? body.customInstructions : undefined,
+        agentId:
+          body.agentId === undefined || body.agentId === null
+            ? undefined
+            : typeof body.agentId === "number"
+              ? body.agentId
+              : parseIntegerId(String(body.agentId)),
       });
       return c.json(session, 201);
     } catch (e: unknown) {
@@ -3073,28 +3079,38 @@ export function createHttpServer(
     }
   });
 
-  // GET /sessions/:id/tree — get session tree
-  app.get("/sessions/:id/tree", (c) => {
+  // GET /sessions/:id/ui-menus — extension-provided session/message actions
+  app.get("/sessions/:id/ui-menus", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const surface = c.req.query("surface");
+    if (surface !== "session" && surface !== "message") {
+      return jsonError(c, 400, "surface must be session or message");
+    }
     try {
-      const id = parseIntegerId(c.req.param("id"));
-      if (id === null) return jsonError(c, 400, "invalid session id");
-      return c.json(manager.getTree(id));
+      return c.json(
+        await manager.listUiMenus(id, surface, c.req.query("entryId") || undefined),
+      );
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      return jsonError(c, 404, message);
+      return jsonError(c, 404, e instanceof Error ? e.message : String(e));
     }
   });
 
-  // POST /sessions/:id/clone — clone session
-  app.post("/sessions/:id/clone", async (c) => {
+  // POST /sessions/:id/ui-menus/:menuId — execute an extension UI action
+  app.post("/sessions/:id/ui-menus/:menuId", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
     try {
-      const id = parseIntegerId(c.req.param("id"));
-      if (id === null) return jsonError(c, 400, "invalid session id");
-      const session = await manager.clone(id);
-      return c.json(session, 201);
+      return c.json(
+        (await manager.executeUiMenu(
+          id,
+          c.req.param("menuId"),
+          typeof body.entryId === "string" ? body.entryId : undefined,
+        )) ?? { ok: true },
+      );
     } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : String(e);
-      return jsonError(c, 409, message);
+      return jsonError(c, 409, e instanceof Error ? e.message : String(e));
     }
   });
 

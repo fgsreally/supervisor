@@ -9,7 +9,7 @@ export interface SupervisorHarnessMetadata extends SessionMetadata {
 }
 
 export type ToolsPreset = "coding" | "readonly" | "none";
-export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork" | "clone";
+export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork";
 
 /**
  * Session lifecycle status.
@@ -346,7 +346,7 @@ export interface MessageSearchHit {
 
 /** API / storage view: pi session entry + supervisor columns. */
 export type SessionMessageResponse = SessionTreeEntry & {
-  /** Copied from parent session via fork/clone. */
+  /** Copied from parent session via fork. */
   isOld: boolean;
   /** Original user input before slash/template expansion. */
   originMsg: string | null;

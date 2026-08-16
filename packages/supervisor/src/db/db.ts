@@ -475,7 +475,7 @@ export class SupervisorDb {
     }
     if (filter?.showInSessionList !== undefined) {
       sql += filter.showInSessionList
-        ? " AND (spawn_type IS NULL OR spawn_type IN ('fork', 'clone'))"
+        ? " AND (spawn_type IS NULL OR spawn_type = 'fork')"
         : " AND spawn_type IN ('subagent', 'btw')";
     }
     sql += " ORDER BY last_active_at DESC, created_at DESC";

@@ -84,8 +84,8 @@ export interface LocalSpeechModelStatus {
   progress: number;
   error?: string;
 }
-export type SessionBranchType = "subagent" | "fork" | "clone" | "btw";
-export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork" | "clone";
+export type SessionBranchType = "subagent" | "fork" | "btw";
+export type SessionCreationMethod = "user" | "spawn_agent" | "btw" | "fork";
 
 // ============ Domain Types ============
 
@@ -378,7 +378,7 @@ export interface SessionTreeEntry {
   id: string;
   parentId: string | null;
   type: "system" | "message" | "toolResult" | "compaction" | "custom";
-  /** Copied from parent session via fork/clone */
+  /** Copied from parent session via fork */
   isOld: boolean;
   /** User/orchestrator extensions only */
   meta: Record<string, unknown>;
@@ -495,12 +495,6 @@ export interface CompactResult {
     removedMessages: number;
     newSummaryEntryId: string;
   };
-}
-
-export interface SessionTreeNode {
-  id: string;
-  parentId: string | null;
-  children: SessionTreeNode[];
 }
 
 // ============ SSE Event Types ============
@@ -681,8 +675,17 @@ export interface CreateProviderRequest {
 
 export interface ForkSessionRequest {
   entryId?: string;
+  agentId?: string;
   label?: string;
   customInstructions?: string;
+}
+
+export interface UiMenuItem {
+  id: string;
+  surface: "session" | "message";
+  label: string;
+  icon?: string;
+  order?: number;
 }
 
 export interface SetSystemMdRequest {
@@ -800,7 +803,7 @@ function mapSession(raw: RawSession): Session {
       raw.creationMethod ??
       (raw.spawnType === "subagent" ? "spawn_agent" : (raw.spawnType ?? "user")),
     showInSessionList:
-      raw.spawnType === null || raw.spawnType === "fork" || raw.spawnType === "clone",
+      raw.spawnType === null || raw.spawnType === "fork",
     currentTask: raw.currentTask ?? null,
   };
 }
@@ -1963,21 +1966,30 @@ export async function getSessionTodos(id: string): Promise<TodoItem[]> {
   return fetchJson<TodoItem[]>(`/sessions/${id}/todos`);
 }
 
-/** Get the hierarchical tree structure of a session. */
-export async function getSessionTree(id: string): Promise<SessionTreeNode[]> {
-  return fetchJson<SessionTreeNode[]>(`/sessions/${id}/tree`);
-}
-
 /** Fork a session from a specific entry point. */
 export async function forkSession(id: string, options?: ForkSessionRequest): Promise<Session> {
   const session = await postJson<RawSession>(`/sessions/${id}/fork`, options ?? {});
   return mapSession(session);
 }
 
-/** Clone a session completely. */
-export async function cloneSession(id: string): Promise<Session> {
-  const session = await postJson<RawSession>(`/sessions/${id}/clone`, {});
-  return mapSession(session);
+export function listSessionUiMenus(
+  id: string,
+  surface: UiMenuItem["surface"],
+  entryId?: string,
+): Promise<UiMenuItem[]> {
+  const query = new URLSearchParams({ surface });
+  if (entryId) query.set("entryId", entryId);
+  return fetchJson<UiMenuItem[]>(`/sessions/${id}/ui-menus?${query.toString()}`);
+}
+
+export function executeSessionUiMenu(
+  id: string,
+  menuId: string,
+  entryId?: string,
+): Promise<{ action?: "select-agent-for-fork"; message?: string; refresh?: boolean }> {
+  return postJson(`/sessions/${id}/ui-menus/${encodeURIComponent(menuId)}`, {
+    ...(entryId ? { entryId } : {}),
+  });
 }
 
 /** Create a child that inherits a frozen context snapshot without copying messages. */

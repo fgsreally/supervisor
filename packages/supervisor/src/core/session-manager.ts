@@ -74,7 +74,16 @@ import {
   submitApprovalResolution,
   UiApprovalService,
 } from "../extension/runtime/index.js";
-import type { ApprovalRequest, ApprovalResult, ExtensionEvent } from "../extension/index.js";
+import type {
+  ApprovalRequest,
+  ApprovalResult,
+  ExtensionEvent,
+  UiMenuContext,
+  UiMenuDefinition,
+  UiMenuSurface,
+  UiMenuResult,
+  SessionSetupReason,
+} from "../extension/index.js";
 import { normalizeSessionStage } from "./session-workflow.js";
 import {
   type AskAnswer,
@@ -93,6 +102,13 @@ import {
 } from "./session-system-prompt.js";
 import type { SupervisorDb } from "../db/db.js";
 import { createDefaultTools } from "../utils/default-tools.js";
+
+function sessionSetupReason(options: SpawnSessionOptions): SessionSetupReason {
+  if (options.spawnType === "fork") return "fork";
+  if (options.spawnType === "btw") return "btw";
+  if (options.parentId != null) return "spawn";
+  return "created";
+}
 import {
   commitAll,
   commitGitSnapshot,
@@ -110,6 +126,7 @@ import { copyMessagesWithInheritance } from "./session-history.js";
 import {
   createSessionCheckpoint,
   listSessionCheckpoints,
+  parseCheckpoints,
   rewindSessionToCheckpoint,
 } from "./session-history.js";
 import { commitSessionChanges } from "./session-lifecycle.js";
@@ -347,6 +364,7 @@ export class SessionManager {
   /** Runtime restores for existing Sessions; creation-time initialization uses pendingSpawns. */
   private readonly pendingRuntimeRestores = new Map<number, Promise<ManagedSessionRuntime>>();
   private readonly systemPromptOverlays = new Map<number, SystemPromptOverlay>();
+  private readonly uiMenus = new Map<number, Map<string, { owner: string; menu: UiMenuDefinition }>>();
   private readonly extensionRegistry = new ExtensionModuleRegistry();
   private readonly resourceHandlers: ReturnType<typeof createResourceHandlers>;
   private readonly resourceManager: ResourceManager;
@@ -354,6 +372,55 @@ export class SessionManager {
   readonly jobs: JobManager;
   private readonly detachHomeTaskSync: () => void;
   private readonly stopSessionActivity: () => void;
+
+  registerUiMenu(sessionId: number, owner: string, menu: UiMenuDefinition): () => void {
+    const menus = this.uiMenus.get(sessionId) ?? new Map();
+    this.uiMenus.set(sessionId, menus);
+    const key = `${owner}:${menu.id}`;
+    menus.set(key, { owner, menu });
+    return () => {
+      const current = this.uiMenus.get(sessionId);
+      current?.delete(key);
+      if (current && current.size === 0) this.uiMenus.delete(sessionId);
+    };
+  }
+
+  async listUiMenus(
+    sessionId: number,
+    surface: UiMenuSurface,
+    entryId?: string,
+  ): Promise<Array<Pick<UiMenuDefinition, "id" | "surface" | "label" | "icon" | "order">>> {
+    const context: UiMenuContext = { sessionId, ...(entryId ? { entryId } : {}) };
+    const result: Array<Pick<UiMenuDefinition, "id" | "surface" | "label" | "icon" | "order">> = [];
+    for (const { menu } of this.uiMenus.get(sessionId)?.values() ?? []) {
+      if (menu.surface !== surface) continue;
+      if (menu.visible && !(await menu.visible(context))) continue;
+      result.push({
+        id: menu.id,
+        surface: menu.surface,
+        label: menu.label,
+        ...(menu.icon ? { icon: menu.icon } : {}),
+        ...(menu.order !== undefined ? { order: menu.order } : {}),
+      });
+    }
+    return result.sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
+  }
+
+  async executeUiMenu(
+    sessionId: number,
+    menuId: string,
+    entryId?: string,
+  ): Promise<UiMenuResult | void> {
+    const entry = [...(this.uiMenus.get(sessionId)?.values() ?? [])].find(
+      ({ menu }) => menu.id === menuId,
+    );
+    if (!entry) throw new Error(`UI menu ${menuId} not found`);
+    const context: UiMenuContext = { sessionId, ...(entryId ? { entryId } : {}) };
+    if (entry.menu.visible && !(await entry.menu.visible(context))) {
+      throw new Error(`UI menu ${menuId} is not available`);
+    }
+    return entry.menu.action(context);
+  }
 
   constructor(db: SupervisorDb) {
     this.db = db;
@@ -1212,7 +1279,7 @@ export class SessionManager {
             activeSession,
             agentInDb,
             (next) => this.createExternalRuntime(next, agentInDb),
-            "created",
+            sessionSetupReason(options),
           ),
         );
         sessionLog(activeSession.id, "info", "External runtime ready", ["system", "runtime"], {
@@ -1301,7 +1368,7 @@ export class SessionManager {
         activeSession.cwd,
         this.db,
         this,
-        "created",
+        sessionSetupReason(options),
       );
       const refreshedAfterExtensions = this.get(activeSession.id)!;
       runtime.syncWorkingDirectory(refreshedAfterExtensions.cwd);
@@ -1428,7 +1495,7 @@ export class SessionManager {
         db: this.db,
         manager: this,
         resource,
-        setupReason: "extension_reload",
+        setupReason: "reload",
       });
       if (!host) continue;
       runtime.attachExtension?.(host);
@@ -2794,6 +2861,7 @@ export class SessionManager {
       this.sessionToolConfigs.delete(id);
     }
     this.systemPromptOverlays.delete(id);
+    this.uiMenus.delete(id);
 
     const projectId = session?.projectId ?? null;
     this.db.delete(id);
@@ -2871,20 +2939,42 @@ export class SessionManager {
   async fork(
     id: number,
     entryId: string,
-    options?: { label?: string; customInstructions?: string; position?: "before" | "at" },
+    options?: {
+      label?: string;
+      customInstructions?: string;
+      position?: "before" | "at";
+      agentId?: number | null;
+    },
   ): Promise<Session> {
     const session = this.db.get(id);
     if (!session) throw new Error(`Session ${id} not found`);
 
     const project = session.project_id == null ? undefined : this.db.getProject(session.project_id);
     const parentAgentId = (session as { agentId?: number | null }).agentId ?? session.agent_id;
+    const agentId = options?.agentId ?? parentAgentId;
+    if (agentId != null && !this.db.getAgent(agentId)) {
+      throw new Error(`Agent ${agentId} not found`);
+    }
+    const checkpoints = parseCheckpoints(
+      typeof session.meta === "string" ? JSON.parse(session.meta) : session.meta,
+    );
+    const checkpoint = checkpoints.find((item) => item.entryId === entryId);
     const createOptions: SpawnSessionOptions = {
       projectId: session.project_id,
       parentId: id,
       cwd: project?.cwd ?? session.cwd,
-      agentId: this.resolveAgentIdForChildSession(parentAgentId),
+      agentId,
       spawnType: "fork",
       title: options?.label ?? null,
+      meta: {
+        forkSource: {
+          sessionId: id,
+          entryId,
+          ...(checkpoint?.gitRef && checkpoint.gitHead
+            ? { gitRef: checkpoint.gitRef, gitHead: checkpoint.gitHead }
+            : {}),
+        },
+      },
     };
     let newSession = this.create(createOptions);
     newSession = await prepareSessionLifecycleSpawn(this.db, newSession, createOptions);
@@ -2903,45 +2993,6 @@ export class SessionManager {
     return this._getSession(newSession.id)!;
   }
 
-  async clone(id: number): Promise<Session> {
-    const session = this.db.get(id);
-    if (!session) throw new Error(`Session ${id} not found`);
-
-    const parentAgentId = (session as { agentId?: number | null }).agentId ?? session.agent_id;
-    // Create a new session as a child
-    const newSession = this.create({
-      projectId: session.project_id,
-      parentId: id,
-      cwd: session.cwd,
-      agentId: this.resolveAgentIdForChildSession(parentAgentId),
-      spawnType: "clone",
-    });
-
-    const messages = await this.getSessionMessages(id);
-    const storage = new SQLiteSessionStorage(this.db, newSession.id);
-    await copyMessagesWithInheritance(storage, messages);
-
-    return this._getSession(newSession.id)!;
-  }
-
-  getTree(id: number): unknown {
-    const session = this.db.get(id);
-    if (!session) throw new Error(`Session ${id} not found`);
-
-    // Build tree recursively
-    const buildNode = (nodeId: number): { session: Session; children: unknown[] } => {
-      const node = this.db.get(nodeId);
-      if (!node) return { session: null as unknown as Session, children: [] };
-      const children = this.children(nodeId);
-      return {
-        session: node as any as Session,
-        children: children.map((child) => buildNode(child.id)),
-      };
-    };
-
-    return buildNode(id);
-  }
-
   isAlive(id: number): boolean {
     return this.runtimes.has(id);
   }
@@ -2957,6 +3008,7 @@ export class SessionManager {
     this.globalOutputListeners.clear();
     this.sessionToolConfigs.clear();
     this.systemPromptOverlays.clear();
+    this.uiMenus.clear();
     this.db.close();
   }
 

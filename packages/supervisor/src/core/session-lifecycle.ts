@@ -235,7 +235,7 @@ export async function prepareSessionLifecycleSpawn(
     undefined;
   const isBuiltin = options.isBuiltin === true || session.isBuiltin;
 
-  const needsOwnWorktree = options.spawnType === "fork" || options.spawnType === "clone";
+  const needsOwnWorktree = options.spawnType === "fork";
   if ((options?.parentId && !needsOwnWorktree) || isBuiltin) {
     if (initialName) {
       db.updateSessionFields(session.id, { title: initialName, isBuiltin });

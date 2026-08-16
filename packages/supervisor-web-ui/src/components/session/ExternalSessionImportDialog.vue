@@ -1,15 +1,15 @@
 ﻿<template>
   <ResponsiveDialog
     :open="open"
-    title="从外部引入"
-    description="选择最近活跃的 Codex 或 Claude Code 对话"
+    :title="t('session.import.title')"
+    :description="t('session.import.description')"
     width="md"
     size="tall"
     :dismiss-on-backdrop="!importingKey"
     @close="onClose"
   >
     <template #header-actions>
-      <button type="button" title="刷新" :disabled="loading || !!importingKey" @click="load">
+      <button type="button" :title="t('common.refresh')" :disabled="loading || !!importingKey" @click="load">
         <RefreshCw :class="{ 'animate-spin': loading }" />
       </button>
     </template>
@@ -24,7 +24,7 @@
           <input
             v-model="filterQuery"
             type="search"
-            placeholder="筛选标题、路径或来源"
+            :placeholder="t('session.import.filterPlaceholder')"
             class="external-import__search w-full rounded-md py-1.5 pl-8 pr-2 text-[13px] focus:outline-none"
           />
         </div>
@@ -42,10 +42,10 @@
         </div>
       </div>
 
-      <div v-if="loading && !sessions.length" class="external-import__state">正在读取外部对话…</div>
+      <div v-if="loading && !sessions.length" class="external-import__state">{{ t("session.import.loading") }}</div>
       <div v-else-if="error" class="external-import__state external-import__error">{{ error }}</div>
-      <div v-else-if="!sessions.length" class="external-import__state">没有找到可引入的对话</div>
-      <div v-else-if="!filteredSessions.length" class="external-import__state">没有匹配的对话</div>
+      <div v-else-if="!sessions.length" class="external-import__state">{{ t("session.import.empty") }}</div>
+      <div v-else-if="!filteredSessions.length" class="external-import__state">{{ t("session.import.noMatch") }}</div>
       <div v-else class="external-import__list-wrap">
         <ul class="external-import__list custom-scrollbar">
           <li v-for="session in filteredSessions" :key="sessionKey(session)">
@@ -57,7 +57,7 @@
                 'external-import__item--busy': importingKey === sessionKey(session),
               }"
               :disabled="!!importingKey"
-              :title="session.imported ? '已引入，点击可重新导入（覆盖旧会话）' : undefined"
+              :title="session.imported ? t('session.import.importedHint') : undefined"
               @click="onSelect(session)"
             >
               <span class="external-import__badge shrink-0">{{
@@ -79,7 +79,7 @@
           </li>
           <li v-if="hasMore" class="external-import__more">
             <button type="button" :disabled="loadingMore" @click="loadMore">
-              {{ loadingMore ? "正在加载…" : "加载更早的对话" }}
+              {{ loadingMore ? t("session.import.loadingMore") : t("session.import.loadEarlier") }}
             </button>
           </li>
         </ul>
@@ -97,6 +97,7 @@ import { showUiMessage } from "@/composables/use-ui-message";
 import ResponsiveDialog from "@/components/base/ResponsiveDialog/index.vue";
 import { useSessionStore } from "@/store";
 import UiListStatus, { type UiListStatusKind } from "@/components/base/UiListStatus.vue";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ open: boolean }>();
 const emit = defineEmits<{
@@ -105,6 +106,7 @@ const emit = defineEmits<{
 }>();
 
 const sessionStore = useSessionStore();
+const { t } = useI18n();
 const sessions = ref<ExternalSessionCandidate[]>([]);
 const loading = ref(false);
 const loadingMore = ref(false);
@@ -117,7 +119,7 @@ const importingKey = ref<string | null>(null);
 const rowResults = ref<Record<string, "success" | "error">>({});
 
 const filterOptions = [
-  { value: "all" as const, label: "全部" },
+  { value: "all" as const, label: t("common.all") },
   { value: "codex" as const, label: "Codex" },
   { value: "claude" as const, label: "Claude Code" },
 ];
@@ -149,9 +151,9 @@ function rowStatus(session: ExternalSessionCandidate): UiListStatusKind {
 
 function rowStatusTitle(session: ExternalSessionCandidate): string | undefined {
   const status = rowStatus(session);
-  if (status === "loading") return "正在引入…";
-  if (status === "success") return session.imported ? "已引入（可点选重新导入）" : "引入成功";
-  if (status === "error") return "引入失败";
+  if (status === "loading") return t("session.import.importing");
+  if (status === "success") return session.imported ? t("session.import.importedHint") : t("session.import.success");
+  if (status === "error") return t("session.import.failed");
   return undefined;
 }
 
@@ -164,7 +166,7 @@ async function load() {
     hasMore.value = page.hasMore;
     nextOffset.value = page.nextOffset;
   } catch (value) {
-    error.value = value instanceof Error ? value.message : "读取外部对话失败";
+    error.value = value instanceof Error ? value.message : t("session.import.loadFailed");
   } finally {
     loading.value = false;
   }
@@ -179,7 +181,7 @@ async function loadMore() {
     hasMore.value = page.hasMore;
     nextOffset.value = page.nextOffset;
   } catch (value) {
-    showUiMessage(value instanceof Error ? value.message : "读取外部对话失败", "error");
+    showUiMessage(value instanceof Error ? value.message : t("session.import.loadFailed"), "error");
   } finally {
     loadingMore.value = false;
   }
@@ -215,9 +217,9 @@ async function onSelect(session: ExternalSessionCandidate) {
   if (importingKey.value) return;
   if (session.imported) {
     const ok = await requestUiConfirm({
-      title: "重新导入外部对话",
-      message: `该对话已导入为会话 #${session.importedSessionId ?? "?"}。重新导入将删除旧会话并覆盖，是否继续？`,
-      confirmText: "重新导入",
+      title: t("session.import.reimportTitle"),
+      message: t("session.import.reimportMessage", { id: session.importedSessionId ?? "?" }),
+      confirmText: t("session.import.reimport"),
       danger: true,
     });
     if (!ok) return;
@@ -239,12 +241,12 @@ async function onSelect(session: ExternalSessionCandidate) {
         : item,
     );
     rowResults.value = { ...rowResults.value, [key]: "success" };
-    showUiMessage(session.imported ? "外部对话已重新导入" : "外部对话已引入", "success");
+    showUiMessage(session.imported ? t("session.import.reimported") : t("session.import.imported"), "success");
     emit("imported", imported.id);
     emit("close");
   } catch (value) {
     rowResults.value = { ...rowResults.value, [key]: "error" };
-    showUiMessage(value instanceof Error ? value.message : "引入外部对话失败", "error");
+    showUiMessage(value instanceof Error ? value.message : t("session.import.importFailed"), "error");
   } finally {
     importingKey.value = null;
   }

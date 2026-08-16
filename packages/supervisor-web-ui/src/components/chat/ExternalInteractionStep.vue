@@ -25,7 +25,7 @@
       rel="noopener noreferrer"
       @click.stop
     >
-      在浏览器中继续
+      {{ t("chat.external.continueInBrowser") }}
     </a>
 
     <template v-if="kind === 'question' && pending">
@@ -47,7 +47,7 @@
           v-model="answers[question.id]"
           :type="question.isSecret ? 'password' : 'text'"
           class="external-interaction__input"
-          :placeholder="question.isSecret ? '输入敏感信息' : '输入回答'"
+          :placeholder="question.isSecret ? t('chat.external.secretPlaceholder') : t('chat.external.answerPlaceholder')"
           @click.stop
         />
       </div>
@@ -57,7 +57,7 @@
         :disabled="submitting || !canSubmitAnswers"
         @click.stop="submitAnswers"
       >
-        提交回答
+        {{ t("chat.external.submitAnswer") }}
       </button>
     </template>
 
@@ -68,7 +68,7 @@
         :disabled="submitting"
         @click.stop="decide('deny')"
       >
-        拒绝
+        {{ t("chat.external.reject") }}
       </button>
       <button
         type="button"
@@ -76,7 +76,7 @@
         :disabled="submitting"
         @click.stop="decide('approve_session')"
       >
-        本次会话允许
+        {{ t("chat.external.approveSession") }}
       </button>
       <button
         type="button"
@@ -84,7 +84,7 @@
         :disabled="submitting"
         @click.stop="decide('approve')"
       >
-        仅本次允许
+        {{ t("chat.external.approveOnce") }}
       </button>
     </div>
 
@@ -97,6 +97,7 @@ import { computed, reactive, ref } from "vue";
 import { MessageCircleQuestion, ShieldAlert } from "lucide-vue-next";
 import { respondToExternalInteraction, type ExternalInteractionResponse } from "@/api";
 import { externalInteractionSummary } from "@/utils/external-interaction-display";
+import { useI18n } from "@/i18n";
 
 interface QuestionOption {
   label: string;
@@ -118,6 +119,7 @@ const props = defineProps<{
   pending?: boolean;
 }>();
 const emit = defineEmits<{ resolved: []; "open-detail": [] }>();
+const { t } = useI18n();
 const submitting = ref(false);
 const answers = reactive<Record<string, string>>({});
 

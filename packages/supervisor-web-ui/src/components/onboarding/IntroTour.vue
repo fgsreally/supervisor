@@ -12,7 +12,7 @@
       >
         <header>
           <span>{{ current.eyebrow }}</span>
-          <button type="button" title="退出教程" aria-label="退出教程" @click="close">
+          <button type="button" :title="t('onboarding.close')" :aria-label="t('onboarding.close')" @click="close">
             <X />
           </button>
         </header>
@@ -20,7 +20,7 @@
         <p>{{ current.content }}</p>
 
         <div v-if="current.kind === 'overview'" class="intro-chapters">
-          <p class="intro-chapters-label">点选章节，只看该部分演示；或点下方按钮按顺序走完。</p>
+          <p class="intro-chapters-label">{{ t("onboarding.chapterHint") }}</p>
           <div class="intro-chapters-list">
             <button
               v-for="ch in chapters"
@@ -39,19 +39,19 @@
         </div>
 
         <div v-if="current.kind === 'nav'" class="intro-action-hint">
-          <MousePointer2 />请点击高亮的“{{ current.navLabel }}”
+          <MousePointer2 />{{ t("onboarding.clickTarget", { label: current.navLabel }) }}
         </div>
         <div v-else-if="current.kind === 'finish'" class="intro-finish-note">
           {{
             isMobile
-              ? "以后可在「我的 → 使用教程」重新开始。"
-              : "以后需要帮助时，点击侧栏蓝色教程图标即可重新开始。"
+              ? t("onboarding.mobileFinishNote")
+              : t("onboarding.desktopFinishNote")
           }}
         </div>
 
         <footer v-if="current.kind !== 'nav'">
           <button v-if="mode === 'chapter'" type="button" class="intro-skip" @click="returnToMenu">
-            返回章节
+            {{ t("onboarding.returnChapters") }}
           </button>
           <button
             v-else-if="current.kind !== 'finish'"
@@ -59,7 +59,7 @@
             class="intro-skip"
             @click="close"
           >
-            暂时跳过
+            {{ t("onboarding.skip") }}
           </button>
           <button type="button" class="intro-next" @click="next">
             {{ nextButtonLabel }}
@@ -82,6 +82,9 @@ import {
   Users,
   X,
 } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 type ChapterId = "chat" | "todo" | "agents" | "resources" | "work" | "me";
 
@@ -279,17 +282,17 @@ const mobileStages: Stage[] = [
 ];
 
 const desktopChapters: Chapter[] = [
-  { id: "chat", label: "聊天", desc: "会话与协作入口", icon: MessageSquare },
-  { id: "todo", label: "Todo / 计划", desc: "目标拆解与执行", icon: ListTodo },
-  { id: "agents", label: "智能代理", desc: "模型、工具与权限", icon: Users },
-  { id: "resources", label: "资源", desc: "Skills / 扩展 / MCP", icon: FolderOpen },
+  { id: "chat", label: t("onboarding.chat"), desc: t("onboarding.chatDesc"), icon: MessageSquare },
+  { id: "todo", label: t("onboarding.todoPlan"), desc: t("onboarding.todoDesc"), icon: ListTodo },
+  { id: "agents", label: t("onboarding.agents"), desc: t("onboarding.agentsDesc"), icon: Users },
+  { id: "resources", label: t("onboarding.resources"), desc: t("onboarding.resourcesDesc"), icon: FolderOpen },
 ];
 
 const mobileChapters: Chapter[] = [
-  { id: "chat", label: "聊天", desc: "会话与协作入口", icon: MessageSquare },
-  { id: "work", label: "工作", desc: "任务与看板", icon: ListTodo },
-  { id: "agents", label: "智能代理", desc: "角色与能力", icon: Bot },
-  { id: "me", label: "我的", desc: "模型、资源与设置", icon: UserRound },
+  { id: "chat", label: t("onboarding.chat"), desc: t("onboarding.chatDesc"), icon: MessageSquare },
+  { id: "work", label: t("onboarding.work"), desc: t("onboarding.workDesc"), icon: ListTodo },
+  { id: "agents", label: t("onboarding.agents"), desc: t("onboarding.agentsDesc"), icon: Bot },
+  { id: "me", label: t("onboarding.me"), desc: t("onboarding.meDesc"), icon: UserRound },
 ];
 
 const open = ref(false);
@@ -307,9 +310,9 @@ const chapters = computed(() => (isMobile.value ? mobileChapters : desktopChapte
 const isLast = computed(() => index.value >= activeStages.value.length - 1);
 
 const nextButtonLabel = computed(() => {
-  if (current.value.kind === "finish") return "完成";
-  if (mode.value === "chapter" && isLast.value) return "完成本章";
-  return current.value.nextLabel || "下一步";
+  if (current.value.kind === "finish") return t("onboarding.finish");
+  if (mode.value === "chapter" && isLast.value) return t("onboarding.finishChapter");
+  return current.value.nextLabel || t("onboarding.next");
 });
 
 const focusStyle = computed(() => ({

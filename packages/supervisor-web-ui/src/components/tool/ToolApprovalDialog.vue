@@ -14,14 +14,14 @@
           >{{ approval.body }}</pre>
         <div v-else class="px-5 py-4">
           <p class="tool-approval-body mb-3 text-[13px]">
-            Plan 已完成，打开右侧分屏查看完整内容后决定是否执行。
+            {{ t("approval.planReady") }}
           </p>
           <button
             type="button"
             class="tool-approval-view-plan rounded-md border px-3 py-2 text-[13px]"
             @click="emit('view-plan')"
           >
-            分屏查看 Plan
+            {{ t("approval.viewPlan") }}
           </button>
         </div>
         <div v-if="approval.actions.includes('revise')" class="px-5 pb-4">
@@ -29,7 +29,7 @@
             v-model="feedback"
             rows="3"
             class="tool-approval-feedback w-full rounded-md border p-3 text-[13px] resize-y"
-            placeholder="请输入修改意见"
+            :placeholder="t('approval.feedbackPlaceholder')"
           />
         </div>
         <footer class="px-5 py-3 border-t flex flex-wrap justify-end gap-2">
@@ -40,7 +40,7 @@
             :disabled="submitting !== null"
             @click="resolve('reject')"
           >
-            拒绝
+            {{ t("approval.reject") }}
           </UiActionButton>
           <UiActionButton
             v-if="approval.actions.includes('approve')"
@@ -49,7 +49,7 @@
             :disabled="submitting !== null"
             @click="resolve('approve')"
           >
-            允许一次
+            {{ t("approval.approveOnce") }}
           </UiActionButton>
           <UiActionButton
             v-if="approval.actions.includes('revise')"
@@ -58,7 +58,7 @@
             :disabled="submitting !== null || !feedback.trim()"
             @click="resolve('revise')"
           >
-            要求修改
+            {{ t("approval.revise") }}
           </UiActionButton>
           <UiActionButton
             v-if="approval.actions.includes('approve_session')"
@@ -66,7 +66,7 @@
             :disabled="submitting !== null"
             @click="resolve('approve_session')"
           >
-            本 Session 允许
+            {{ t("approval.approveSession") }}
           </UiActionButton>
         </footer>
       </section>
@@ -79,11 +79,13 @@ import { ref } from "vue";
 import * as api from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import UiActionButton from "@/components/base/UiActionButton.vue";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ sessionId: string; approval: api.ApprovalPendingEvent }>();
 const emit = defineEmits<{ resolved: []; "view-plan": [] }>();
 const submitting = ref<"approve" | "approve_session" | "reject" | "revise" | null>(null);
 const feedback = ref("");
+const { t } = useI18n();
 
 async function resolve(action: "approve" | "approve_session" | "reject" | "revise") {
   if (submitting.value) return;
@@ -96,7 +98,7 @@ async function resolve(action: "approve" | "approve_session" | "reject" | "revis
     );
     emit("resolved");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "审批提交失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("approval.submitFailed"), "error");
   } finally {
     submitting.value = null;
   }

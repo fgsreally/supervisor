@@ -9,7 +9,7 @@
             ref="inputRef"
             v-model="query"
             type="text"
-            placeholder="搜索所有聊天消息..."
+            :placeholder="t('search.allMessages')"
             class="global-search-input"
             @keydown.enter="doSearch"
           />
@@ -21,9 +21,9 @@
         <!-- Filters -->
         <div class="global-search-filters">
           <select v-model="roleFilter" class="global-search-select">
-            <option value="">所有角色</option>
-            <option value="user">用户</option>
-            <option value="assistant">助手</option>
+            <option value="">{{ t("search.allRoles") }}</option>
+            <option value="user">{{ t("search.user") }}</option>
+            <option value="assistant">{{ t("search.assistant") }}</option>
           </select>
           <button
             type="button"
@@ -31,14 +31,14 @@
             :disabled="!query.trim()"
             @click="doSearch"
           >
-            搜索
+            {{ t("search.search") }}
           </button>
         </div>
 
         <!-- Loading -->
         <div v-if="loading" class="global-search-loading">
           <Loader2 class="global-search-icon global-search-icon--loading animate-spin" />
-          <span>搜索中...</span>
+          <span>{{ t("search.searching") }}</span>
         </div>
 
         <!-- Results -->
@@ -57,7 +57,7 @@
               <span class="global-search-role-badge" :class="roleBadgeClass(hit.role)">
                 {{ roleLabel(hit.role) }}
               </span>
-              <span v-if="hit.isOld" class="global-search-old-badge">已归档</span>
+              <span v-if="hit.isOld" class="global-search-old-badge">{{ t("search.archived") }}</span>
             </div>
             <div class="global-search-snippet">{{ hit.snippet }}</div>
           </div>
@@ -66,7 +66,7 @@
         <!-- Empty state -->
         <div v-else-if="searched" class="global-search-empty">
           <Search class="global-search-icon global-search-icon--empty" style="color: var(--app-text-muted)" />
-          <span>未找到匹配的消息</span>
+          <span>{{ t("search.noMatchingMessages") }}</span>
         </div>
       </div>
     </div>
@@ -78,6 +78,7 @@ import { ref, nextTick, watch } from "vue";
 import { Loader2, Search, X } from "lucide-vue-next";
 import { searchMessages, type MessageSearchHit } from "@/api";
 import { useSessionStore } from "@/store";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   open: boolean;
@@ -96,6 +97,7 @@ const searched = ref(false);
 const inputRef = ref<HTMLInputElement | null>(null);
 
 const sessionStore = useSessionStore();
+const { t } = useI18n();
 
 watch(
   () => props.open,
@@ -113,7 +115,7 @@ watch(
 function roleLabel(role: string | null): string {
   if (role === "user") return "用户";
   if (role === "assistant") return "助手";
-  return role ?? "未知";
+  return role ?? t("search.unknownRole");
 }
 
 function roleBadgeClass(role: string | null): string {

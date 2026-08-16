@@ -11,7 +11,7 @@
         :style="{ left: `${x}px`, top: `${y}px` }"
         @mousedown.stop
       >
-        <div v-if="loading" class="project-git-menu__hint">读取分支…</div>
+        <div v-if="loading" class="project-git-menu__hint">{{ t("project.git.loading") }}</div>
         <div v-else-if="error" class="project-git-menu__hint project-git-menu__hint--error">
           {{ error }}
         </div>
@@ -35,7 +35,7 @@
               <span class="truncate">{{ branch }}</span>
             </button>
           </div>
-          <div v-else class="project-git-menu__hint">暂无本地分支</div>
+          <div v-else class="project-git-menu__hint">{{ t("project.git.empty") }}</div>
         </template>
         <hr class="project-git-menu__divider" />
         <button
@@ -67,7 +67,7 @@
       @close="emit('close')"
     >
       <div class="project-git-sheet">
-        <div v-if="loading" class="project-git-menu__hint">读取分支…</div>
+        <div v-if="loading" class="project-git-menu__hint">{{ t("project.git.loading") }}</div>
         <div v-else-if="error" class="project-git-menu__hint project-git-menu__hint--error">
           {{ error }}
         </div>
@@ -94,7 +94,7 @@
               <span class="truncate">{{ branch }}</span>
             </button>
           </div>
-          <div v-else class="project-git-menu__hint">暂无本地分支</div>
+          <div v-else class="project-git-menu__hint">{{ t("project.git.empty") }}</div>
         </template>
         <hr class="project-git-menu__divider" />
         <button
@@ -122,6 +122,7 @@
 
 <script setup lang="ts">
 import { ArrowDownToLine, ArrowUpFromLine, Check, GitBranch } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import { MobileDrawer } from "@/components/mobile/ui";
 import { useMobileViewport } from "@/composables/use-mobile-viewport";
 
@@ -144,6 +145,7 @@ const emit = defineEmits<{
 }>();
 
 const isMobile = useMobileViewport();
+const { t } = useI18n();
 </script>
 
 <style scoped>

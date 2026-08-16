@@ -1,7 +1,7 @@
 <template>
   <div class="inline-file-diff">
     <div v-if="truncated" class="inline-file-diff__notice">
-      Diff 已截断，仅显示前 {{ lines.length }} 行
+      {{ t("session.file.diffTruncated", { count: lines.length }) }}
     </div>
     <table class="inline-file-diff__table">
       <tbody>
@@ -26,6 +26,9 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 import type { SessionFileDiffLine } from "@/api";
 
 defineProps<{

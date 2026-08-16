@@ -28,7 +28,7 @@
 
     <MobileDrawer
       :open="open && isMobile"
-      ariaLabel="会话操作"
+      :ariaLabel="t('session.menu.actions')"
       size="auto"
       show-footer
       @close="emit('close')"
@@ -50,6 +50,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "@/i18n";
 import { MobileDrawer } from "@/components/mobile/ui";
 import { useMobileViewport } from "@/composables/use-mobile-viewport";
 
@@ -76,24 +77,25 @@ const emit = defineEmits<{
 }>();
 
 const isMobile = useMobileViewport();
+const { t } = useI18n();
 
 type ActionId = "pin" | "sync" | "achieve" | "fork" | "delete";
 
 const actions = computed(() => {
   if (props.protectedSession) return [];
   const items: Array<{ id: ActionId; label: string; danger?: boolean }> = [
-    { id: "pin", label: props.pinned ? "取消置顶" : "置顶" },
+    { id: "pin", label: props.pinned ? t("session.menu.unpin") : t("session.menu.pin") },
   ];
   if (props.status !== "finish" && props.status !== "finished") {
     items.push(
-      { id: "fork", label: "Fork 新会话" },
-      { id: "sync", label: "同步项目修改" },
-      { id: "achieve", label: "完成并归档" },
+      { id: "fork", label: t("session.menu.fork") },
+      { id: "sync", label: t("session.menu.sync") },
+      { id: "achieve", label: t("session.menu.achieve") },
     );
   } else {
-    items.push({ id: "fork", label: "Fork 新会话" });
+    items.push({ id: "fork", label: t("session.menu.fork") });
   }
-  items.push({ id: "delete", label: "删除", danger: true });
+  items.push({ id: "delete", label: t("common.delete"), danger: true });
   return props.canFork === false ? items.filter((item) => item.id !== "fork") : items;
 });
 

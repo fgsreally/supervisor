@@ -16,7 +16,7 @@
       v-if="showPlaceholder"
       class="absolute left-3.5 top-2 text-[14px] leading-relaxed pointer-events-none select-none z-10 chat-placeholder"
     >
-      {{ placeholder }}
+      {{ placeholderText }}
     </p>
 
     <div ref="editorHost" class="chat-composer-editor flex-1 min-h-0 h-full" />
@@ -78,9 +78,10 @@ const props = withDefaults(
     skillTrigger: "slash",
     disabled: false,
     editorHeight: 88,
-    placeholder: t("chat.input.placeholder"),
   },
 );
+
+const placeholderText = computed(() => props.placeholder ?? t("chat.input.placeholder"));
 
 const emit = defineEmits<{
   "update:modelValue": [value: string];

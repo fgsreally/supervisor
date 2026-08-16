@@ -2,14 +2,14 @@
   <div class="home-timeline">
     <header class="home-timeline__header">
       <div>
-        <h2>近日产出</h2>
-        <p>按日期回看分析与提交明细</p>
+        <h2>{{ t("home.daily.title") }}</h2>
+        <p>{{ t("home.daily.subtitle") }}</p>
       </div>
       <button
         type="button"
         class="home-timeline__refresh"
         :disabled="loading"
-        aria-label="刷新近日产出"
+        :aria-label="t('common.refresh')"
         @click="emit('refresh')"
       >
         <RefreshCw :class="{ spin: loading }" />
@@ -17,7 +17,7 @@
     </header>
 
     <div v-if="!records.length && !loading" class="home-timeline__empty">
-      暂无每日分析记录。配置「当日工作分析」模型后，会自动汇总前一天的提交。
+      {{ t("home.daily.empty") }}
     </div>
 
     <ol v-else class="home-timeline__list">
@@ -32,8 +32,8 @@
           <span class="home-timeline__main">
             <strong>{{ formatDay(record.dayKey) }}</strong>
             <small>
-              {{ commitCount(record) }} 个提交
-              <template v-if="record.usedModel"> · AI</template>
+              {{ t("home.daily.commits", { count: commitCount(record) }) }}
+              <template v-if="record.usedModel"> · {{ t("common.ai") }}</template>
             </small>
           </span>
           <span class="home-timeline__preview" v-if="openDay !== record.dayKey">{{
@@ -66,11 +66,13 @@
 import { computed, ref, watch } from "vue";
 import { ChevronDown, RefreshCw } from "lucide-vue-next";
 import type { DailyWorkRecord } from "@/api";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   records: DailyWorkRecord[];
   loading?: boolean;
 }>();
+const { t, locale } = useI18n();
 
 const emit = defineEmits<{ refresh: [] }>();
 const openDay = ref<string | null>(null);
@@ -101,7 +103,7 @@ function commitCount(record: DailyWorkRecord): number {
 function formatDay(dayKey: string) {
   const date = new Date(`${dayKey}T00:00:00`);
   if (Number.isNaN(date.getTime())) return dayKey;
-  return new Intl.DateTimeFormat("zh-CN", {
+  return new Intl.DateTimeFormat(locale.value, {
     month: "numeric",
     day: "numeric",
     weekday: "short",

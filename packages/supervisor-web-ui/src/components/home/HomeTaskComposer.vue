@@ -11,11 +11,11 @@
           @mousedown.stop
         >
           <header>
-            <h2 id="home-composer-title">添加任务</h2>
+            <h2 id="home-composer-title">{{ t("home.task.add") }}</h2>
             <button
               type="button"
               class="home-composer-dialog__icon"
-              title="关闭"
+              :title="t('common.close')"
               @click="emit('close')"
             >
               <X class="h-5 w-5" />
@@ -24,17 +24,17 @@
 
           <div class="home-composer-dialog__body">
             <label>
-              <span>标题</span>
+              <span>{{ t("home.task.title") }}</span>
               <input
                 v-model="title"
                 type="text"
-                placeholder="任务标题"
+                :placeholder="t('home.task.titlePlaceholder')"
                 @keydown.enter.prevent="submit"
               />
             </label>
 
             <label>
-              <span>紧急度</span>
+              <span>{{ t("home.task.priority") }}</span>
               <div class="home-composer-priority">
                 <button
                   v-for="item in priorityOptions"
@@ -53,7 +53,7 @@
             </label>
 
             <label>
-              <span>描述（输入 @ 选择项目）</span>
+              <span>{{ t("home.task.description") }}</span>
               <div class="home-composer__body-wrap">
                 <div ref="editorHost" class="home-composer__editor" />
                 <div v-if="mentionOpen" class="home-composer__mention">
@@ -69,7 +69,7 @@
                     <small>{{ project.cwd }}</small>
                   </button>
                   <div v-if="!filteredProjects.length" class="home-composer__mention-empty">
-                    无匹配项目
+                    {{ t("home.task.noProjects") }}
                   </div>
                 </div>
               </div>
@@ -78,7 +78,7 @@
 
           <footer>
             <button type="button" class="home-composer-dialog__cancel" @click="emit('close')">
-              取消
+              {{ t("common.cancel") }}
             </button>
             <button
               type="button"
@@ -86,7 +86,7 @@
               :disabled="!canSubmit || busy"
               @click="submit"
             >
-              {{ busy ? "创建中…" : "创建到待办" }}
+              {{ busy ? t("home.task.creating") : t("home.task.create") }}
             </button>
           </footer>
         </div>
@@ -106,12 +106,14 @@ import {
   homeTaskInputTheme,
   resolveProjectFromText,
 } from "@/codemirror/home-task-input-tags";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   open: boolean;
   projects: Project[];
   busy?: boolean;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   close: [];
@@ -125,12 +127,12 @@ const emit = defineEmits<{
   ];
 }>();
 
-const priorityOptions: Array<{ value: HomeTaskPriority; label: string }> = [
-  { value: "urgent", label: "紧急" },
-  { value: "high", label: "高" },
-  { value: "normal", label: "普通" },
-  { value: "low", label: "低" },
-];
+const priorityOptions = computed<Array<{ value: HomeTaskPriority; label: string }>>(() => [
+  { value: "urgent", label: t("home.task.priorityUrgent") },
+  { value: "high", label: t("home.task.priorityHigh") },
+  { value: "normal", label: t("home.task.priorityNormal") },
+  { value: "low", label: t("home.task.priorityLow") },
+]);
 
 const title = ref("");
 const description = ref("");
@@ -184,7 +186,7 @@ function createEditor() {
       extensions: [
         homeTaskInputTheme(),
         homeProjectTagExtension(() => props.projects),
-        cmPlaceholder("补充说明，可用 @项目名 关联项目"),
+        cmPlaceholder(t("home.task.descriptionPlaceholder")),
         EditorView.lineWrapping,
         EditorView.updateListener.of((update) => {
           if (!update.docChanged && !update.selectionSet) return;

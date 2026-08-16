@@ -10,7 +10,7 @@
           v-if="column.id === 'todo'"
           type="button"
           class="home-board__add"
-          title="添加任务"
+          :title="t('home.task.add')"
           @click="emit('create')"
         >
           <Plus class="h-4 w-4" />
@@ -47,14 +47,14 @@
             <li v-for="child in childrenOf(task.id)" :key="child.id">
               <span :data-status="child.status">{{ child.status }}</span>
               <strong>{{ child.title }}</strong>
-              <em v-if="child.dependsOn?.length">依赖 {{ child.dependsOn.length }} 项</em>
+              <em v-if="child.dependsOn?.length">{{ t("home.task.dependencies", { count: child.dependsOn.length }) }}</em>
               <button
                 v-if="child.sessionId"
                 type="button"
                 class="home-task-card__btn"
                 @click.stop="emit('open-session', child)"
               >
-                打开会话
+                {{ t("home.task.openSession") }}
               </button>
             </li>
           </ul>
@@ -66,7 +66,7 @@
               :disabled="busyId === task.id"
               @click.stop="emit('plan', task)"
             >
-              规划
+              {{ t("home.task.plan") }}
             </button>
             <button
               v-if="task.phase === 'awaiting_confirm'"
@@ -74,7 +74,7 @@
               class="home-task-card__btn"
               @click.stop="emit('review', task)"
             >
-              确认
+              {{ t("home.task.confirm") }}
             </button>
             <button
               v-if="childrenOf(task.id).length"
@@ -82,7 +82,7 @@
               class="home-task-card__btn"
               @click.stop="expandedId = expandedId === task.id ? null : task.id"
             >
-              {{ expandedId === task.id ? "收起" : "展开" }}
+              {{ expandedId === task.id ? t("common.collapse") : t("common.expand") }}
             </button>
             <button
               v-if="task.sessionId"
@@ -90,11 +90,11 @@
               class="home-task-card__btn"
               @click.stop="emit('open-session', task)"
             >
-              打开会话
+              {{ t("home.task.openSession") }}
             </button>
           </div>
         </TaskCard>
-        <div v-if="!tasksIn(column.statuses).length" class="home-board__empty">暂无</div>
+        <div v-if="!tasksIn(column.statuses).length" class="home-board__empty">{{ t("common.empty") }}</div>
       </div>
     </div>
   </div>
@@ -105,6 +105,7 @@ import { computed, ref } from "vue";
 import { Plus } from "lucide-vue-next";
 import type { Agent, HomeTask, HomeTaskStatus, Project } from "@/api";
 import TaskCard from "@/components/task/TaskCard.vue";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   tasks: HomeTask[];
@@ -112,6 +113,7 @@ const props = defineProps<{
   agents?: Agent[];
   busyId?: number | null;
 }>();
+const { t } = useI18n();
 
 const emit = defineEmits<{
   create: [];
@@ -123,12 +125,12 @@ const emit = defineEmits<{
 
 const expandedId = ref<number | null>(null);
 
-const columns: Array<{ id: string; label: string; statuses: HomeTaskStatus[] }> = [
-  { id: "todo", label: "待办", statuses: ["backlog", "todo"] },
-  { id: "doing", label: "进行中", statuses: ["in_progress"] },
-  { id: "blocked", label: "阻塞 / 错误", statuses: ["blocked", "error"] },
-  { id: "done", label: "已完成", statuses: ["done"] },
-];
+const columns = computed<Array<{ id: string; label: string; statuses: HomeTaskStatus[] }>>(() => [
+  { id: "todo", label: t("todo.pending"), statuses: ["backlog", "todo"] },
+  { id: "doing", label: t("todo.running"), statuses: ["in_progress"] },
+  { id: "blocked", label: t("home.task.blockedError"), statuses: ["blocked", "error"] },
+  { id: "done", label: t("todo.done"), statuses: ["done"] },
+]);
 
 const roots = computed(() => props.tasks.filter((task) => task.parentId == null));
 
@@ -152,11 +154,11 @@ function canPlan(task: HomeTask): boolean {
 }
 
 function phaseLabel(task: HomeTask): string {
-  if (task.phase === "planning") return "规划中";
-  if (task.phase === "awaiting_confirm") return "待确认";
-  if (task.phase === "executing") return "执行中";
-  if (task.phase === "done") return "已完成";
-  if (task.phase === "error") return "失败";
+  if (task.phase === "planning") return t("home.task.planning");
+  if (task.phase === "awaiting_confirm") return t("home.task.awaitingConfirm");
+  if (task.phase === "executing") return t("home.task.executing");
+  if (task.phase === "done") return t("todo.done");
+  if (task.phase === "error") return t("home.task.failed");
   return "";
 }
 
@@ -180,12 +182,12 @@ function agentAvatar(task: HomeTask): string | null {
 
 function statusLabel(status: HomeTaskStatus): string {
   return {
-    backlog: "待办",
-    todo: "待办",
-    in_progress: "进行中",
-    blocked: "阻塞",
-    done: "已完成",
-    error: "失败",
+    backlog: t("todo.pending"),
+    todo: t("todo.pending"),
+    in_progress: t("todo.running"),
+    blocked: t("todo.blocked"),
+    done: t("todo.done"),
+    error: t("home.task.failed"),
   }[status];
 }
 </script>

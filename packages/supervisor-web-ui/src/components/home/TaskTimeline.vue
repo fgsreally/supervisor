@@ -1,22 +1,22 @@
 <template>
-  <section class="task-timeline" aria-label="任务时间轴">
+  <section class="task-timeline" :aria-label="t('home.timeline.title')">
     <header>
       <div>
-        <h3>执行时间轴</h3>
-        <p>{{ tasks.length }} 个任务 · {{ laneCount }} 个执行阶段</p>
+        <h3>{{ t("home.timeline.execution") }}</h3>
+        <p>{{ t("home.timeline.summary", { tasks: tasks.length, lanes: laneCount }) }}</p>
       </div>
       <div class="task-timeline__legend">
-        <span><i class="is-ready" />可开始</span>
-        <span><i class="is-waiting" />等待依赖</span>
+        <span><i class="is-ready" />{{ t("home.timeline.ready") }}</span>
+        <span><i class="is-waiting" />{{ t("home.timeline.waiting") }}</span>
       </div>
     </header>
     <div v-if="!tasks.length" class="task-timeline__empty">
-      添加任务后，这里会显示并行与依赖关系
+      {{ t("home.timeline.empty") }}
     </div>
     <div v-else class="task-timeline__scroll custom-scrollbar">
       <div class="task-timeline__grid" :style="gridStyle">
         <div v-for="lane in laneCount" :key="lane" class="task-timeline__lane-head">
-          阶段 {{ lane }}
+          {{ t("home.timeline.stage", { lane }) }}
         </div>
         <template v-for="row in rows" :key="row.task.id">
           <div class="task-timeline__name" :title="row.task.title">{{ row.task.title }}</div>
@@ -38,8 +38,10 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { HomeTask, Project } from "@/api";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{ tasks: HomeTask[]; projects: Project[] }>();
+const { t } = useI18n();
 
 const rows = computed(() => {
   const depths = new Map<number, number>();
@@ -66,7 +68,7 @@ const gridStyle = computed(() => ({
 
 function projectName(task: HomeTask): string {
   return (
-    props.projects.find((project) => Number(project.id) === task.projectId)?.name ?? "未选项目"
+    props.projects.find((project) => Number(project.id) === task.projectId)?.name ?? t("home.timeline.noProject")
   );
 }
 

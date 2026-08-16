@@ -1,17 +1,19 @@
 <template>
   <div v-if="visible" class="a2hs-hint" role="status">
     <div class="a2hs-hint__message">
-      <span>可从浏览器菜单添加到主屏幕，像 App 一样打开。</span>
-      <button type="button" @click="dismiss">知道了</button>
+      <span>{{ t("mobile.addToHome") }}</span>
+      <button type="button" @click="dismiss">{{ t("mobile.gotIt") }}</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useI18n } from "@/i18n";
 
 const STORAGE_KEY = "pi-supervisor-a2hs-dismissed-v2";
 const visible = ref(false);
+const { t } = useI18n();
 
 function isStandalone(): boolean {
   return (

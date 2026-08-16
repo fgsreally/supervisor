@@ -16,21 +16,21 @@
           class="project-list-menu__delete w-full px-4 py-2 text-left text-[13px]"
           @click="emit('delete')"
         >
-          删除项目
+          {{ t("project.delete") }}
         </button>
       </div>
     </div>
 
     <MobileDrawer
       :open="open && isMobile"
-      ariaLabel="项目操作"
+      :ariaLabel="t('project.actions')"
       size="auto"
       show-footer
       @close="emit('close')"
     >
       <div class="project-list-sheet">
         <button type="button" class="project-list-sheet__danger" @click="emit('delete')">
-          删除项目
+          {{ t("project.delete") }}
         </button>
       </div>
     </MobileDrawer>
@@ -40,10 +40,12 @@
 <script setup lang="ts">
 import { MobileDrawer } from "@/components/mobile/ui";
 import { useMobileViewport } from "@/composables/use-mobile-viewport";
+import { useI18n } from "@/i18n";
 
 defineProps<{ open: boolean; x: number; y: number }>();
 const emit = defineEmits<{ close: []; delete: [] }>();
 const isMobile = useMobileViewport();
+const { t } = useI18n();
 </script>
 
 <style scoped>

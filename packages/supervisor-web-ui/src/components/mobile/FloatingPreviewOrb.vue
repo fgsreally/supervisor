@@ -26,6 +26,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, unref, watch, type Ref } from "vue";
 import { useDraggablePoint } from "@/composables/use-draggable-point";
+import { useI18n } from "@/i18n";
 
 const props = withDefaults(
   defineProps<{
@@ -45,19 +46,21 @@ const props = withDefaults(
     open: false,
     count: 0,
     defaultSide: "left",
-    label: "应用预览",
+    label: "",
   },
 );
 
 const emit = defineEmits<{
   toggle: [];
 }>();
+const { t } = useI18n();
 
 const containerEl = ref<HTMLElement | null>(null);
 const countLabel = computed(() => (props.count > 99 ? "99+" : String(props.count)));
-const closeTitle = computed(() => `关闭${props.label}`);
-const openTitle = computed(() => `打开${props.label}（${props.count}）`);
-const openAriaLabel = computed(() => `打开${props.label}，${props.count} 个`);
+const label = computed(() => props.label || t("mobile.appPreview"));
+const closeTitle = computed(() => `${t("common.close")}${label.value}`);
+const openTitle = computed(() => t("mobile.openLabel", { label: label.value, count: props.count }));
+const openAriaLabel = computed(() => t("mobile.openCount", { label: label.value, count: props.count }));
 
 const { pointX, pointY, dragging, startDrag, consumeClick, clampToContainer } = useDraggablePoint({
   containerRef: containerEl,

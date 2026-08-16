@@ -100,6 +100,8 @@ const messages: TranslationMessages = {
   "chat.sessionTools.logs": "日志",
   "chat.sessionTools.tasks": "任务",
   "chat.sessionTools.files": "文件",
+  "chat.search.placeholder": "搜索聊天记录",
+  "chat.search.count": "{{count}} 条",
   "nav.chat": "聊天",
   "nav.todo": "Todo / 计划",
   "nav.dashboard": "工作概览",

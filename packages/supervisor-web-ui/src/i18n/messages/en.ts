@@ -100,6 +100,8 @@ const messages: TranslationMessages = {
   "chat.sessionTools.logs": "Logs",
   "chat.sessionTools.tasks": "Tasks",
   "chat.sessionTools.files": "Files",
+  "chat.search.placeholder": "Search chat history",
+  "chat.search.count": "{{count}} matches",
   "nav.chat": "Chat",
   "nav.todo": "Todo / Plan",
   "nav.dashboard": "Overview",

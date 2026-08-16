@@ -212,7 +212,7 @@ function onPointerMove(event: PointerEvent) {
   hover.value = {
     top: rect.top + tickCenter,
     left: rect.right + 8,
-    summary: truncateSummary(turn.summary || "（无摘要）"),
+    summary: truncateSummary(turn.summary || t("chat.noSummary")),
     turnId: turn.turnId,
     cursorY,
   };

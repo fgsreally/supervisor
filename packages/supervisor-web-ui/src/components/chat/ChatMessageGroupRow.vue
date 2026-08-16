@@ -9,7 +9,7 @@
         class="text-[12px] px-3 py-1 rounded-full"
         style="color: var(--app-text-secondary); background: var(--app-hover)"
       >
-        以下为本会话新消息
+        {{ t("chat.newMessages") }}
       </span>
     </div>
 
@@ -117,6 +117,9 @@
 </template>
 
 <script setup lang="ts">
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 import { computed } from "vue";
 import { Terminal } from "lucide-vue-next";
 import type { ChatCompactionEntry, ChatUserFileAttachment } from "@/types/chat-entry";

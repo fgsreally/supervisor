@@ -1,5 +1,6 @@
 import type { ChatEntry } from "@/types/chat-entry";
 import type { TurnIndex } from "@/utils/message-storage";
+import { translate as t } from "@/i18n";
 
 const SUMMARY_MAX = 120;
 
@@ -22,17 +23,17 @@ function summarizeUserContent(content: unknown): string {
     const hasImage = content.some(
       (part) => !!part && typeof part === "object" && (part as { type?: string }).type === "image",
     );
-    if (hasImage) return "[图片]";
+    if (hasImage) return t("sessionTurns.image");
     const file = content.find(
       (part) => !!part && typeof part === "object" && (part as { type?: string }).type === "file",
     ) as { name?: string } | undefined;
-    if (file?.name) return `[文件] ${file.name}`.slice(0, SUMMARY_MAX);
+    if (file?.name) return `${t("sessionTurns.filePrefix")} ${file.name}`.slice(0, SUMMARY_MAX);
   }
   if (content && typeof content === "object" && "type" in content) {
     const part = content as { type?: string; name?: string };
-    if (part.type === "file" && part.name) return `[文件] ${part.name}`.slice(0, SUMMARY_MAX);
+    if (part.type === "file" && part.name) return `${t("sessionTurns.filePrefix")} ${part.name}`.slice(0, SUMMARY_MAX);
   }
-  return "(空消息)";
+  return t("sessionTurns.empty");
 }
 
 /**
@@ -48,7 +49,7 @@ export function chatEntriesToTurns(sessionId: string, entries: ChatEntry[]): Tur
       sessionId,
       turnId: entry.id,
       userEntryId: entry.id,
-      summary: summarizeUserContent(entry.message.content) || "(空消息)",
+      summary: summarizeUserContent(entry.message.content) || t("sessionTurns.empty"),
       createdAt: entry.createdAt ?? 0,
       roleHint: "user",
     });

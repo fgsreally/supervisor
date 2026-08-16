@@ -1,6 +1,7 @@
 import JSZip from "jszip";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
+import { translate as t } from "@/i18n";
 
 function base64ToArrayBuffer(base64: string): ArrayBuffer {
   const binary = atob(base64);
@@ -20,7 +21,7 @@ function escapeHtml(text: string): string {
 /** Convert DOCX base64 to sanitized-ish HTML via mammoth. */
 export async function docxBase64ToHtml(base64: string): Promise<string> {
   const result = await mammoth.convertToHtml({ arrayBuffer: base64ToArrayBuffer(base64) });
-  return result.value || "<p>（文档无可见文本）</p>";
+  return result.value || `<p>${t("office.noVisibleText")}</p>`;
 }
 
 /** Extract slide text from PPTX and render as simple HTML sections. */
@@ -35,7 +36,7 @@ export async function pptxBase64ToHtml(base64: string): Promise<string> {
     });
 
   if (slideNames.length === 0) {
-    return "<p>（未找到幻灯片内容）</p>";
+    return `<p>${t("office.noSlides")}</p>`;
   }
 
   const parts: string[] = [];
@@ -47,8 +48,8 @@ export async function pptxBase64ToHtml(base64: string): Promise<string> {
     const body =
       texts.length > 0
         ? texts.map((line) => `<p>${escapeHtml(line)}</p>`).join("")
-        : "<p class='office-preview__muted'>（本页无文本）</p>";
-    parts.push(`<section class="office-preview__slide"><h3>幻灯片 ${i + 1}</h3>${body}</section>`);
+        : `<p class='office-preview__muted'>${t("office.noSlideText")}</p>`;
+    parts.push(`<section class="office-preview__slide"><h3>${t("office.slide", { count: i + 1 })}</h3>${body}</section>`);
   }
   return parts.join("");
 }
@@ -57,7 +58,7 @@ export async function pptxBase64ToHtml(base64: string): Promise<string> {
 export async function xlsxBase64ToHtml(base64: string): Promise<string> {
   const workbook = XLSX.read(base64ToArrayBuffer(base64), { type: "array" });
   const names = workbook.SheetNames ?? [];
-  if (names.length === 0) return "<p>（工作簿为空）</p>";
+  if (names.length === 0) return `<p>${t("office.emptyWorkbook")}</p>`;
 
   const maxSheets = 8;
   const parts: string[] = [];
@@ -70,7 +71,7 @@ export async function xlsxBase64ToHtml(base64: string): Promise<string> {
     );
   }
   if (names.length > maxSheets) {
-    parts.push(`<p class="office-preview__muted">仅预览前 ${maxSheets} 个工作表…</p>`);
+    parts.push(`<p class="office-preview__muted">${t("office.moreSheets", { count: maxSheets })}</p>`);
   }
   return parts.join("");
 }

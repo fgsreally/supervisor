@@ -169,7 +169,7 @@
           <label class="settings-field">
             <span>{{ t("settings.searchService") }}</span>
             <select v-model="form.webSearchProvider">
-              <option value="duckduckgo">DuckDuckGo HTML（免费）</option>
+              <option value="duckduckgo">{{ t("settings.searchDuckDuckGo") }}</option>
               <option value="tavily">Tavily Search</option>
               <option value="brave">Brave Search</option>
               <option value="serper">Serper Google Search</option>
@@ -179,11 +179,11 @@
           <label class="settings-field">
             <span>{{ t("settings.fetchService") }}</span>
             <select v-model="form.webFetchProvider">
-              <option value="native">原生 Fetch（默认）</option>
-              <option value="native-then-tavily">原生失败后使用 Tavily</option>
-              <option value="native-then-firecrawl">原生失败后使用 Firecrawl</option>
-              <option value="tavily">仅 Tavily Extract</option>
-              <option value="firecrawl">仅 Firecrawl Scrape</option>
+              <option value="native">{{ t("settings.fetchNative") }}</option>
+              <option value="native-then-tavily">{{ t("settings.fetchNativeThenTavily") }}</option>
+              <option value="native-then-firecrawl">{{ t("settings.fetchNativeThenFirecrawl") }}</option>
+              <option value="tavily">{{ t("settings.fetchTavilyOnly") }}</option>
+              <option value="firecrawl">{{ t("settings.fetchFirecrawlOnly") }}</option>
             </select>
           </label>
           <div class="service-list">
@@ -287,7 +287,7 @@
                         v-else-if="model.error"
                         class="local-model-item__error"
                         :title="model.error"
-                        >失败</span
+                        >{{ t("settings.failed") }}</span
                       >
                     </span>
                   </span>
@@ -303,17 +303,19 @@
         </template>
         <template v-else>
           <label class="form-dialog__field">
-            <span class="form-dialog__label">API Key</span>
+            <span class="form-dialog__label">{{ t("settings.apiKey") }}</span>
             <input
               v-model.trim="draftApiKey"
               type="password"
               autocomplete="new-password"
-              :placeholder="activeMeta.configured ? '已配置，留空则保持不变' : '输入 API Key'"
+              :placeholder="
+                activeMeta.configured ? t('settings.apiKeyKeep') : t('settings.apiKeyPlaceholder')
+              "
             />
           </label>
           <label v-if="isWebService" class="form-dialog__field">
-            <span class="form-dialog__label">环境变量名（可选）</span>
-            <input v-model.trim="draftEnvName" placeholder="也可以从环境变量读取" />
+            <span class="form-dialog__label">{{ t("settings.envNameOptional") }}</span>
+            <input v-model.trim="draftEnvName" :placeholder="t('settings.envNamePlaceholder')" />
           </label>
         </template>
         <p
@@ -333,7 +335,7 @@
             target="_blank"
             rel="noreferrer"
           >
-            <ExternalLink class="h-4 w-4" />创建 API Key
+            <ExternalLink class="h-4 w-4" />{{ t("settings.createApiKey") }}
           </a>
           <UiActionButton
             variant="secondary"
@@ -341,12 +343,12 @@
             @click="testActiveKey"
           >
             <FlaskConical class="h-4 w-4" />
-            测试
+            {{ t("settings.test") }}
           </UiActionButton>
           <UiActionButton v-if="activeMeta.configured" variant="danger" @click="clearActiveKey">
-            清除密钥
+            {{ t("settings.clearKey") }}
           </UiActionButton>
-          <UiActionButton :loading="saving" @click="saveService">保存</UiActionButton>
+          <UiActionButton :loading="saving" @click="saveService">{{ t("settings.save") }}</UiActionButton>
         </div>
       </template>
     </ResponsiveDialog>
@@ -393,22 +395,24 @@ import {
   type UtilityFeature,
 } from "../../api/api";
 
+const { locale, t, setLocale } = useI18n();
+
 /** 与后端 LOCAL_SPEECH_MODELS 对齐；接口失败时仍展示可选列表 */
 const DEFAULT_LOCAL_SPEECH_MODELS: LocalSpeechModelStatus[] = [
   {
     id: "zh-en-bilingual",
-    name: "sherpa-onnx 中英双语",
-    description: "流式 Zipformer，中英文实时识别",
-    sizeLabel: "约 250MB",
+    name: t("settings.localModel.bilingual.name"),
+    description: t("settings.localModel.bilingual.description"),
+    sizeLabel: t("settings.localModel.bilingual.size"),
     installed: false,
     installing: false,
     progress: 0,
   },
   {
     id: "zh-int8",
-    name: "sherpa-onnx 中文 Int8",
-    description: "量化中文流式模型，体积更小",
-    sizeLabel: "约 160MB",
+    name: t("settings.localModel.int8.name"),
+    description: t("settings.localModel.int8.description"),
+    sizeLabel: t("settings.localModel.int8.size"),
     installed: false,
     installing: false,
     progress: 0,
@@ -426,8 +430,6 @@ const props = withDefaults(
   }>(),
   { mode: "all" },
 );
-
-const { locale, t, setLocale } = useI18n();
 
 function onLocaleChange(event: Event): void {
   const value = (event.target as HTMLSelectElement).value;
@@ -469,7 +471,7 @@ async function loadLog(kind: "watson" | "system") {
     files.value = result.files;
     target.value = parsePlainLogText(result.text || "");
   } catch (error) {
-    const message = error instanceof Error ? error.message : "日志加载失败";
+    const message = error instanceof Error ? error.message : t("settings.logLoadFailed");
     target.value = [{ t: Date.now(), l: "error", m: message, tags: ["error"] }];
   } finally {
     activeLogLoading.value = false;
@@ -515,39 +517,39 @@ const configured = reactive<Record<ServiceId, boolean>>({
   serper: false,
   firecrawl: false,
 });
-const serviceMeta: Record<ServiceId, { name: string; description: string; consoleUrl?: string }> = {
+const serviceMeta: Record<ServiceId, { nameKey: string; descriptionKey: string; consoleUrl?: string }> = {
   local: {
-    name: "本地模型识别",
-    description: "sherpa-onnx",
+    nameKey: "settings.service.local.name",
+    descriptionKey: "settings.service.local.description",
   },
   qwen: {
-    name: "Qwen3 ASR",
-    description: "阿里云百炼实时语音识别",
+    nameKey: "settings.service.qwen.name",
+    descriptionKey: "settings.service.qwen.description",
     consoleUrl: "https://bailian.console.aliyun.com/?apiKey=1#/api-key",
   },
   doubao: {
-    name: "豆包流式语音识别 2.0",
-    description: "火山引擎双向流式语音识别",
+    nameKey: "settings.service.doubao.name",
+    descriptionKey: "settings.service.doubao.description",
     consoleUrl: "https://console.volcengine.com/speech/new/setting/apikeys?projectName=default",
   },
   tavily: {
-    name: "Tavily",
-    description: "搜索与网页提取",
+    nameKey: "settings.service.tavily.name",
+    descriptionKey: "settings.service.tavily.description",
     consoleUrl: "https://app.tavily.com/home",
   },
   brave: {
-    name: "Brave Search",
-    description: "Brave 搜索 API",
+    nameKey: "settings.service.brave.name",
+    descriptionKey: "settings.service.brave.description",
     consoleUrl: "https://api-dashboard.search.brave.com/app/keys",
   },
   serper: {
-    name: "Serper",
-    description: "Google 搜索 API",
+    nameKey: "settings.service.serper.name",
+    descriptionKey: "settings.service.serper.description",
     consoleUrl: "https://serper.dev/api-key",
   },
   firecrawl: {
-    name: "Firecrawl",
-    description: "搜索与网页抓取",
+    nameKey: "settings.service.firecrawl.name",
+    descriptionKey: "settings.service.firecrawl.description",
     consoleUrl: "https://www.firecrawl.dev/app/api-keys",
   },
 };
@@ -589,10 +591,10 @@ function localModelStatus(model: LocalSpeechModelStatus): UiListStatusKind {
 }
 
 function localModelStatusTitle(model: LocalSpeechModelStatus): string | undefined {
-  if (model.installing) return `安装中 ${model.progress}%`;
+  if (model.installing) return t("settings.installing", { progress: model.progress });
   if (model.error) return model.error;
-  if (model.installed) return "已安装";
-  return "点击安装";
+  if (model.installed) return t("settings.installed");
+  return t("settings.clickToInstall");
 }
 
 async function onLocalModelRowClick(model: LocalSpeechModelStatus) {
@@ -613,7 +615,7 @@ async function onLocalModelRowClick(model: LocalSpeechModelStatus) {
       }),
     );
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "保存选用模型失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("settings.saveModelFailed"), "error");
   }
 }
 const draftEnvName = ref("");
@@ -627,7 +629,13 @@ const dialogFailed = ref(false);
 
 const activeMeta = computed(() => {
   const id = activeService.value ?? "local";
-  return { ...serviceMeta[id], configured: configured[id] };
+  const meta = serviceMeta[id];
+  return {
+    name: t(meta.nameKey),
+    description: t(meta.descriptionKey),
+    consoleUrl: meta.consoleUrl,
+    configured: configured[id],
+  };
 });
 const isWebService = computed(() =>
   activeService.value
@@ -636,7 +644,14 @@ const isWebService = computed(() =>
 );
 
 function serviceView(id: ServiceId) {
-  return { id, ...serviceMeta[id], configured: configured[id] };
+  const meta = serviceMeta[id];
+  return {
+    id,
+    name: t(meta.nameKey),
+    description: t(meta.descriptionKey),
+    consoleUrl: meta.consoleUrl,
+    configured: configured[id],
+  };
 }
 
 function featureKey(ref: FeatureModelRef): string {
@@ -738,19 +753,19 @@ async function installLocalModel(id: LocalSpeechModelId) {
     const result = await installLocalSpeechModel(id);
     mergeLocalSpeechModels(result.models);
     startLocalModelPolling();
-    showUiMessage("开始安装本地语音模型", "success");
+    showUiMessage(t("settings.installStarted"), "success");
   } catch (error) {
     localSpeechModels.value = localSpeechModels.value.map((model) =>
       model.id === id
         ? {
             ...model,
             installing: false,
-            error: error instanceof Error ? error.message : "安装失败",
+            error: error instanceof Error ? error.message : t("settings.installFailed"),
           }
         : model,
     );
     dialogFailed.value = true;
-    dialogMessage.value = error instanceof Error ? error.message : "安装失败";
+    dialogMessage.value = error instanceof Error ? error.message : t("settings.installFailed");
     showUiMessage(dialogMessage.value, "error");
   }
 }
@@ -779,7 +794,7 @@ function clearActiveKey() {
   if (!activeService.value || activeService.value === "local") return;
   draftApiKey.value = "";
   clearRequested.value = true;
-  dialogMessage.value = "保存后将清除密钥";
+  dialogMessage.value = t("settings.clearKeyOnSave");
   dialogFailed.value = false;
 }
 
@@ -796,10 +811,10 @@ async function testActiveKey() {
       await testSettingsApiKey(activeService.value, draftApiKey.value || undefined);
     }
     dialogFailed.value = false;
-    dialogMessage.value = "连接测试通过";
+    dialogMessage.value = t("settings.connectionPassed");
   } catch (error) {
     dialogFailed.value = true;
-    dialogMessage.value = error instanceof Error ? error.message : "连接测试失败";
+    dialogMessage.value = error instanceof Error ? error.message : t("settings.connectionFailed");
   } finally {
     testingKey.value = "";
   }
@@ -842,7 +857,7 @@ async function saveService() {
       );
       if (!selected?.installed) {
         dialogFailed.value = true;
-        dialogMessage.value = "请先安装所选本地模型";
+        dialogMessage.value = t("settings.installModelFirst");
         return;
       }
       patch.speechRecognitionMode = "local";
@@ -852,7 +867,7 @@ async function saveService() {
       const nextKey = draftApiKey.value.trim();
       if (!clearRequested.value && !configured.doubao && !nextKey) {
         dialogFailed.value = true;
-        dialogMessage.value = "请填写 API Key";
+        dialogMessage.value = t("settings.apiKeyRequired");
         return;
       }
       if (draftApiKey.value || clearRequested.value) {
@@ -890,11 +905,11 @@ async function saveService() {
     apply(await updateSupervisorSettings(patch));
     closeService();
     failed.value = false;
-    message.value = "已保存";
-    showUiMessage("设置已保存", "success");
+    message.value = t("settings.saved");
+    showUiMessage(t("settings.settingsSaved"), "success");
   } catch (error) {
     dialogFailed.value = true;
-    const text = error instanceof Error ? error.message : "保存失败";
+    const text = error instanceof Error ? error.message : t("settings.saveFailed");
     dialogMessage.value = text;
     showUiMessage(text, "error");
   } finally {
@@ -908,11 +923,11 @@ async function saveMain() {
   try {
     apply(await updateSupervisorSettings(mainPatch()));
     failed.value = false;
-    message.value = "已保存";
-    showUiMessage("设置已保存", "success");
+    message.value = t("settings.saved");
+    showUiMessage(t("settings.settingsSaved"), "success");
   } catch (error) {
     failed.value = true;
-    const text = error instanceof Error ? error.message : "保存失败";
+    const text = error instanceof Error ? error.message : t("settings.saveFailed");
     message.value = text;
     showUiMessage(text, "error");
   } finally {
@@ -944,7 +959,7 @@ onMounted(async () => {
     apply(await getSupervisorSettings());
   } catch (error) {
     failed.value = true;
-    message.value = error instanceof Error ? error.message : "读取设置失败";
+    message.value = error instanceof Error ? error.message : t("settings.loadFailed");
   }
 });
 

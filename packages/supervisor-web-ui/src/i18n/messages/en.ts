@@ -1044,6 +1044,9 @@ const messages: TranslationMessages = {
   "common.saving": "Saving…",
   "common.saveFailed": "Save failed",
   "provider.presets": "Quick presets",
+  "provider.preset.custom": "Custom",
+  "provider.preset.minimaxChina": "MiniMax (China)",
+  "provider.preset.doubao": "Doubao (ByteDance)",
   "provider.namePlaceholder": "e.g. OpenAI",
   "provider.enableHint": "Allow bound Agents to use this model provider",
   "provider.baseUrlDefaultPlaceholder": "Leave blank to use the default endpoint",
@@ -1396,6 +1399,9 @@ const messages: TranslationMessages = {
   "common.dialog": "Dialog",
   "common.action": "Actions",
   "common.resize": "Adjust size",
+  "chat.compaction.summary": "Compaction summary",
+  "chat.compaction.readFiles": "Read files (compaction details)",
+  "chat.compaction.modifiedFiles": "Modified files (compaction details)",
 };
 
 export default messages;

@@ -10,6 +10,7 @@ export const WIRE_PROTOCOLS: Array<{ value: WireProtocol; label: string }> = [
 export interface ProviderPreset {
   id: string;
   name: string;
+  nameKey?: string;
   icon: string;
   protocol: WireProtocol;
   baseUrl: string | null;
@@ -24,7 +25,8 @@ function presetModels(...ids: string[]): UIProviderModel[] {
 export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: "custom",
-    name: "自定义",
+    name: "Custom",
+    nameKey: "provider.preset.custom",
     icon: "lucide:sparkles",
     protocol: "chat-completions",
     baseUrl: null,
@@ -78,7 +80,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
   {
     id: "minimax-cn",
-    name: "MiniMax (国内)",
+    name: "MiniMax (China)",
+    nameKey: "provider.preset.minimaxChina",
     icon: "/icons/minimax.svg",
     protocol: "messages",
     baseUrl: "https://api.minimaxi.com/anthropic",
@@ -87,7 +90,8 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   },
   {
     id: "doubao",
-    name: "豆包 (ByteDance)",
+    name: "Doubao (ByteDance)",
+    nameKey: "provider.preset.doubao",
     icon: "/icons/doubao.svg",
     protocol: "messages",
     baseUrl: "https://ark.cn-beijing.volces.com/api/coding",

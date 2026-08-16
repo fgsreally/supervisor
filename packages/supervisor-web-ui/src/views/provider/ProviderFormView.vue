@@ -36,11 +36,11 @@
               >
                 <ProviderAvatar
                   :provider-id="preset.id"
-                  :provider-name="preset.name"
+                  :provider-name="providerPresetLabel(preset)"
                   :icon="preset.icon"
                   class="provider-form-preset-icon w-6 h-6"
                 />
-                <span>{{ preset.name }}</span>
+                <span>{{ providerPresetLabel(preset) }}</span>
               </button>
             </div>
           </div>
@@ -345,6 +345,10 @@ function applyProviderPreset(preset: (typeof PROVIDER_PRESETS)[number]) {
   draft.value.baseUrl = preset.baseUrl;
   draft.value.models = preset.models.map((model) => ({ ...model }));
   apiKeyInput.value = "";
+}
+
+function providerPresetLabel(preset: (typeof PROVIDER_PRESETS)[number]) {
+  return preset.nameKey ? t(preset.nameKey) : preset.name;
 }
 
 async function syncModels(providerId: string, models: UIProviderModel[]) {

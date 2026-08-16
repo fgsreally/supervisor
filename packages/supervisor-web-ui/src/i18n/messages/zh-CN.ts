@@ -1044,6 +1044,9 @@ const messages: TranslationMessages = {
   "common.saving": "\u4fdd\u5b58\u4e2d\u2026",
   "common.saveFailed": "\u4fdd\u5b58\u5931\u8d25",
   "provider.presets": "\u5feb\u901f\u9884\u8bbe",
+  "provider.preset.custom": "\u81ea\u5b9a\u4e49",
+  "provider.preset.minimaxChina": "MiniMax \uff08\u56fd\u5185\uff09",
+  "provider.preset.doubao": "\u8c46\u5305 \uff08ByteDance\uff09",
   "provider.namePlaceholder": "\u4f8b\u5982 OpenAI",
   "provider.enableHint": "\u5141\u8bb8\u7ed1\u5b9a\u7684 Agent \u4f7f\u7528\u6b64\u6a21\u578b\u4f9b\u5e94\u5546",
   "provider.baseUrlDefaultPlaceholder": "\u7559\u7a7a\u4f7f\u7528\u9ed8\u8ba4\u7aef\u70b9",
@@ -1396,6 +1399,9 @@ const messages: TranslationMessages = {
   "common.dialog": "\u5bf9\u8bdd\u6846",
   "common.action": "\u64cd\u4f5c",
   "common.resize": "\u8c03\u6574\u5927\u5c0f",
+  "chat.compaction.summary": "\u538b\u7f29\u6458\u8981",
+  "chat.compaction.readFiles": "\u8bfb\u53d6\u6587\u4ef6\uff08\u538b\u7f29\u8be6\u60c5\uff09",
+  "chat.compaction.modifiedFiles": "\u5df2\u4fee\u6539\u6587\u4ef6\uff08\u538b\u7f29\u8be6\u60c5\uff09",
 };
 
 export default messages;

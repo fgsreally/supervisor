@@ -1,5 +1,6 @@
 import type { ToolDetailSection } from "../components/tool/ToolDetailModal.vue";
 import { toolCallDetail, toolCallSummary, toolDetailLabel, toolResultDetail } from "./tool-display";
+import { translate as t } from "@/i18n";
 
 export function buildToolModal(
   toolName: string,
@@ -11,7 +12,7 @@ export function buildToolModal(
 
   if (callArgs) {
     const call = toolCallDetail(toolName, callArgs);
-    if (call) sections.push({ label: "调用参数", content: call });
+    if (call) sections.push({ label: t("toolDetail.arguments"), content: call });
   }
   if (resultContent?.length) {
     const result = toolResultDetail(resultContent);
@@ -27,10 +28,10 @@ export function buildBashModal(
   intent?: string,
 ): { title: string; sections: ToolDetailSection[] } {
   const sections: ToolDetailSection[] = [];
-  if (intent?.trim()) sections.push({ label: "意图", content: intent.trim() });
-  sections.push({ label: "命令", content: command });
+  if (intent?.trim()) sections.push({ label: t("toolDetail.intent"), content: intent.trim() });
+  sections.push({ label: t("toolDetail.command"), content: command });
   const output = toolResultDetail(resultContent);
-  if (output) sections.push({ label: "终端输出", content: output });
+  if (output) sections.push({ label: t("toolDetail.terminalOutput"), content: output });
   const title =
     intent?.trim() ||
     (() => {
@@ -47,29 +48,29 @@ export function buildExternalInteractionModal(
   const title =
     typeof callArgs?.title === "string" && callArgs.title.trim()
       ? callArgs.title.trim()
-      : "外部 Agent 请求";
+      : t("toolDetail.externalRequest");
   const sections: ToolDetailSection[] = [];
 
   const detail = typeof callArgs?.detail === "string" ? callArgs.detail.trim() : "";
-  if (detail) sections.push({ label: "摘要", content: detail });
+  if (detail) sections.push({ label: t("toolDetail.summary"), content: detail });
 
   const request = callArgs?.request;
   if (request && typeof request === "object") {
     try {
       sections.push({
-        label: "请求详情",
+        label: t("toolDetail.requestDetails"),
         content: JSON.stringify(request, null, 2),
       });
     } catch {
-      sections.push({ label: "请求详情", content: String(request) });
+      sections.push({ label: t("toolDetail.requestDetails"), content: String(request) });
     }
   }
 
   const result = toolResultDetail(resultContent);
-  if (result) sections.push({ label: "处理结果", content: result });
+  if (result) sections.push({ label: t("toolDetail.result"), content: result });
 
   if (sections.length === 0) {
-    sections.push({ label: "详情", content: "无附加信息" });
+    sections.push({ label: t("toolDetail.details"), content: t("toolDetail.noAdditionalInfo") });
   }
 
   return { title, sections };

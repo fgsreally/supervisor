@@ -1,6 +1,7 @@
 import * as api from "@/api";
 import { createMessageStorage, degradeMessageStorageToMemory } from "./create-message-storage";
 import { syncSessionArchive } from "./sync-session-archive";
+import { translate as t } from "@/i18n";
 
 export type BootstrapArchiveProgress = {
   phase: "prepare" | "syncing" | "done" | "skipped";
@@ -20,11 +21,11 @@ export async function bootstrapMessageArchives(
   options?: { signal?: AbortSignal },
 ): Promise<void> {
   const report = (progress: BootstrapArchiveProgress) => onProgress?.(progress);
-  report({ phase: "prepare", current: 0, total: 0, label: "正在准备本地消息同步…" });
+  report({ phase: "prepare", current: 0, total: 0, label: t("archive.prepare") });
 
   let storage = await createMessageStorage();
   if (!storage.persistent) {
-    report({ phase: "skipped", current: 0, total: 0, label: "当前环境不支持本地消息库，已跳过" });
+    report({ phase: "skipped", current: 0, total: 0, label: t("archive.skippedUnsupported") });
     return;
   }
 
@@ -40,7 +41,7 @@ export async function bootstrapMessageArchives(
   const ids = sessions.map((session) => session.id);
   const total = ids.length;
   if (total === 0) {
-    report({ phase: "done", current: 0, total: 0, label: "暂无会话需要同步" });
+    report({ phase: "done", current: 0, total: 0, label: t("archive.noSessions") });
     return;
   }
 
@@ -52,7 +53,7 @@ export async function bootstrapMessageArchives(
       current: index + 1,
       total,
       sessionId,
-      label: `正在同步会话消息 ${index + 1}/${total}`,
+      label: t("archive.syncing", { current: index + 1, total }),
     });
     try {
       await syncSessionArchive(storage, sessionId, { signal: options?.signal });
@@ -68,12 +69,12 @@ export async function bootstrapMessageArchives(
           phase: "skipped",
           current: index + 1,
           total,
-          label: "本地存储写入失败，已降级跳过全量同步",
+          label: t("archive.storageFailed"),
         });
         return;
       }
     }
   }
 
-  report({ phase: "done", current: total, total, label: "会话消息同步完成" });
+  report({ phase: "done", current: total, total, label: t("archive.done") });
 }

@@ -1,4 +1,5 @@
 import type { ChatEntry } from "@/types/chat-entry";
+import { translate as t } from "@/i18n";
 
 export type SessionBranchType = "subagent" | "fork" | "btw";
 
@@ -10,9 +11,9 @@ export const BRANCH_DOT_COLORS: Record<SessionBranchType, string> = {
 };
 
 export const BRANCH_LABELS: Record<SessionBranchType, string> = {
-  subagent: "子代理",
-  fork: "分叉",
-  btw: "顺便问",
+  subagent: t("branch.subagent"),
+  fork: t("branch.fork"),
+  btw: t("branch.btw"),
 };
 
 export function branchDotColor(branchType?: SessionBranchType): string {

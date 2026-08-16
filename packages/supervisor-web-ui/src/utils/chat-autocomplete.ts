@@ -2,6 +2,7 @@ import { agentResourcesToUiItems } from "@/utils/resources-ui";
 import { isTokenStart } from "./chat-token-patterns";
 import { type FileIconKind, getFileIconKind } from "./file-type-icon";
 import { fuzzyFilter } from "./fuzzy-filter";
+import { translate as t } from "@/i18n";
 
 export type AutocompleteTrigger = "at" | "atat" | "slash" | "skill";
 
@@ -243,11 +244,11 @@ function buildFlatFileItems(
       fileIconKind: getFileIconKind(f.path, f.isDirectory),
       description: f.isDirectory
         ? absoluteRoot
-          ? "其它项目目录"
-          : "目录"
+          ? t("autocomplete.otherProjectDirectory")
+          : t("autocomplete.directory")
         : absoluteRoot
-          ? "其它项目文件"
-          : "文件",
+          ? t("autocomplete.otherProjectFile")
+          : t("autocomplete.file"),
     };
   });
 }
@@ -295,7 +296,7 @@ export function getAutocompleteSuggestions(
         trigger: "atat" as const,
         kind: "nav-projects" as const,
         value: "__nav_projects__",
-        label: "返回项目列表",
+        label: t("autocomplete.backToProjects"),
         description: browse.atatProject.name,
       },
       ...buildFlatFileItems("atat", options.atatFiles ?? [], query, quoted, browse.atatProject.cwd),

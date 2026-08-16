@@ -18,7 +18,7 @@
         <ChevronLeft class="w-5 h-5" />
       </button>
       <div class="flex-1 min-w-0">
-        <div class="text-[16px] font-medium" style="color: var(--app-text-primary)">会话日志</div>
+        <div class="text-[16px] font-medium" style="color: var(--app-text-primary)">{{ t("session.log.title") }}</div>
       </div>
     </div>
 
@@ -61,14 +61,14 @@
           </button>
         </div>
         <div class="log-filter-row__opts" style="color: var(--app-text-muted)">
-          <span>{{ entries.length }} 条{{ hasMoreOlder ? "+" : "" }}</span>
+          <span>{{ t("log.count", { count: entries.length }) }}{{ hasMoreOlder ? "+" : "" }}</span>
           <label class="log-opt">
             <input v-model="showTime" type="checkbox" />
-            显示时间
+            {{ t("log.showTime") }}
           </label>
           <label class="log-opt">
             <input v-model="showDelta" type="checkbox" />
-            显示时间差
+            {{ t("log.showDelta") }}
           </label>
           <button
             v-if="levelFilter || tagFilter.length"
@@ -77,7 +77,7 @@
             style="color: var(--app-text-link)"
             @click="clearFilters"
           >
-            清除筛选
+            {{ t("log.clearFilters") }}
           </button>
         </div>
       </div>
@@ -86,7 +86,7 @@
     <div ref="scrollEl" class="flex-1 overflow-y-auto custom-scrollbar">
       <div v-if="hasMoreOlder" class="px-3 py-2 text-center">
         <button type="button" class="log-load-more" :disabled="loadingOlder" @click="loadOlder">
-          {{ loadingOlder ? "加载中…" : "加载更早" }}
+          {{ loadingOlder ? t("log.loading") : t("session.log.loadEarlier") }}
         </button>
       </div>
 
@@ -95,14 +95,14 @@
         class="py-10 text-center text-[12px]"
         style="color: var(--app-text-muted)"
       >
-        暂无日志
+        {{ t("log.empty") }}
       </div>
 
       <template v-for="(entry, i) in entries" :key="`${entry.t}-${i}-${entry.m.slice(0, 24)}`">
         <div
           class="log-row"
           :class="{ 'log-row--expanded': expandedIndex === i, 'log-row--has-meta': hasMeta(entry) }"
-          :title="hasMeta(entry) ? '点击查看元数据' : undefined"
+          :title="hasMeta(entry) ? t('log.viewMetadata') : undefined"
           @click="toggleMeta(i, entry)"
         >
           <span class="log-row__level" :style="{ color: levelColor(entry.l) }">{{ entry.l }}</span>
@@ -128,7 +128,10 @@
 import { ref, computed, watch, onBeforeUnmount, nextTick } from "vue";
 import { ChevronLeft } from "lucide-vue-next";
 import type { LogEntry } from "@/api";
+import { useI18n } from "@/i18n";
 import { getSessionLog } from "@/api";
+
+const { t } = useI18n();
 
 const LOG_PAGE_SIZE = 120;
 const SHOW_TIME_KEY = "pi-supervisor:session-log-show-time";
@@ -297,10 +300,10 @@ function formatDelta(entry: LogEntry, index: number): string {
 }
 
 function deltaTitle(entry: LogEntry, index: number): string {
-  if (index <= 0) return "首条";
+  if (index <= 0) return t("log.firstEntry");
   const prev = entries.value[index - 1];
   if (!prev) return "";
-  return `距上条 ${entry.t - prev.t}ms`;
+  return t("log.deltaTitle", { delta: entry.t - prev.t });
 }
 
 function formatMeta(meta: Record<string, unknown>): string {

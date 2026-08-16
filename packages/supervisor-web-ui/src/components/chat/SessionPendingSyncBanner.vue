@@ -21,7 +21,7 @@
           class="pending-sync-action pending-sync-action--ghost"
           @click="emit('dismiss')"
         >
-          暂不
+          {{ t("session.sync.dismiss") }}
         </button>
         <button
           type="button"
@@ -29,7 +29,7 @@
           :disabled="syncDisabled"
           @click="emit('sync')"
         >
-          更新
+          {{ t("session.sync.update") }}
         </button>
       </div>
     </div>
@@ -67,6 +67,9 @@ import { computed, ref, watch } from "vue";
 import { ChevronDown } from "lucide-vue-next";
 import FileTypeIcon from "../base/FileTypeIcon.vue";
 import type { SessionGitPendingUpdate } from "@/api";
+import { useI18n } from "@/i18n";
+
+const { t } = useI18n();
 
 const props = defineProps<{
   pending: SessionGitPendingUpdate;
@@ -92,14 +95,14 @@ const sourceLabel = computed(() => {
   const title = props.pending.sourceTitle?.trim();
   if (title) return title;
   const id = String(props.pending.sourceSessionId);
-  return `会话 ${id.slice(0, 8)}`;
+  return t("session.sync.sessionName", { id: id.slice(0, 8) });
 });
 
 const summaryText = computed(() => {
   if (props.pending.files.length > 0) {
-    return `项目已更新（来自 ${sourceLabel.value}）· ${props.pending.files.length} 个文件`;
+    return t("session.sync.projectUpdated", { source: sourceLabel.value, count: props.pending.files.length });
   }
-  return `项目分支已变化（${props.pending.branch}），是否更新到本会话？`;
+  return t("session.sync.branchChanged", { branch: props.pending.branch });
 });
 
 function fileName(path: string) {

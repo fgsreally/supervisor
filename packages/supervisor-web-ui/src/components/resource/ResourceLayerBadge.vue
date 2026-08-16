@@ -2,14 +2,14 @@
   <span
     v-if="layer === 'global'"
     class="resource-layer-badge inline-flex items-center px-1.5 py-0.5 rounded shrink-0"
-    title="来自全局 skill 库（含 ~/.supervisor/global/skills 与 npx skills -g）"
+    :title="t('resource.globalSkillSource')"
   >
     global
   </span>
   <span
     v-else-if="layer === 'project'"
     class="resource-layer-badge resource-layer-badge--project inline-flex items-center px-1.5 py-0.5 rounded shrink-0"
-    title="来自项目 .agents/skills/"
+    :title="t('resource.projectSkillSource')"
   >
     project
   </span>
@@ -17,10 +17,12 @@
 
 <script setup lang="ts">
 import type { UIResourceLayer } from "@/types/ui";
+import { useI18n } from "@/i18n";
 
 defineProps<{
   layer: UIResourceLayer;
 }>();
+const { t } = useI18n();
 </script>
 
 <style scoped>

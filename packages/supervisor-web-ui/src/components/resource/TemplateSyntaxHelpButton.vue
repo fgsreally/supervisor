@@ -3,8 +3,8 @@
     <button
       type="button"
       class="template-help__trigger list-header-btn"
-      title="查看模板写法"
-      aria-label="查看模板写法"
+      :title="t('resource.templateHelp.view')"
+      :aria-label="t('resource.templateHelp.view')"
       :aria-expanded="open"
       @click="open = true"
     >
@@ -13,12 +13,12 @@
 
     <Transition name="template-help-popover">
       <div v-if="hovered && !open" class="template-help__popover" role="tooltip">
-        <div class="template-help__popover-title">模板语法</div>
+        <div class="template-help__popover-title">{{ t("resource.templateHelp.syntax") }}</div>
         <div class="template-help__popover-syntax">
-          <code>$1、$2</code><span>第一项、第二项</span> <code>$ARGUMENTS</code
-          ><span>全部内容</span> <code>$@</code><span>全部内容</span> <code>${@:2}</code
-          ><span>从第二项开始</span> <code>${@:2:3}</code><span>从第二项开始取三项</span>
-          <code>argument-hint</code><span>输入时显示参数提示</span>
+          <code>$1, $2</code><span>{{ t("resource.templateHelp.firstTwo") }}</span> <code>$ARGUMENTS</code
+          ><span>{{ t("resource.templateHelp.allContent") }}</span> <code>$@</code><span>{{ t("resource.templateHelp.allContent") }}</span> <code>${@:2}</code
+          ><span>{{ t("resource.templateHelp.fromSecond") }}</span> <code>${@:2:3}</code><span>{{ t("resource.templateHelp.fromSecondThree") }}</span>
+          <code>argument-hint</code><span>{{ t("resource.templateHelp.argumentHint") }}</span>
         </div>
       </div>
     </Transition>
@@ -31,51 +31,51 @@
       >
         <section class="template-help__dialog w-full max-w-3xl rounded-lg border p-5 shadow-xl">
           <header class="mb-5 flex items-center gap-3">
-            <div class="flex-1 text-[16px] font-medium">模板怎么使用</div>
-            <button type="button" class="list-header-btn" title="关闭" @click="open = false">
+            <div class="flex-1 text-[16px] font-medium">{{ t("resource.templateHelp.howTo") }}</div>
+            <button type="button" class="list-header-btn" :title="t('common.close')" @click="open = false">
               <X class="h-4 w-4" />
             </button>
           </header>
 
           <div class="template-help__columns">
             <section>
-              <h3>常用写法</h3>
+              <h3>{{ t("resource.templateHelp.commonPatterns") }}</h3>
               <div class="template-help__syntax">
-                <code>$1</code><span>用户填写的第一项内容</span> <code>$2</code
-                ><span>用户填写的第二项内容</span> <code>$ARGUMENTS</code
-                ><span>用户填写的全部内容</span> <code>$@</code><span>同样表示全部内容</span>
-                <code>${@:2}</code><span>从第二项开始的全部内容</span> <code>${@:2:3}</code
-                ><span>从第二项开始，取三项内容</span>
+                <code>$1</code><span>{{ t("resource.templateHelp.userFirst") }}</span> <code>$2</code
+                ><span>{{ t("resource.templateHelp.userSecond") }}</span> <code>$ARGUMENTS</code
+                ><span>{{ t("resource.templateHelp.userAll") }}</span> <code>$@</code><span>{{ t("resource.templateHelp.sameAll") }}</span>
+                <code>${@:2}</code><span>{{ t("resource.templateHelp.fromSecondAll") }}</span> <code>${@:2:3}</code
+                ><span>{{ t("resource.templateHelp.fromSecondThreeContent") }}</span>
               </div>
 
-              <h3 class="mt-5">输入时显示提示</h3>
+              <h3 class="mt-5">{{ t("resource.templateHelp.promptTitle") }}</h3>
               <p class="template-help__copy">
-                在模板开头加入下面几行，用户输入模板命令时，就能看到需要填写什么。
+                {{ t("resource.templateHelp.promptDescription") }}
               </p>
               <pre class="template-help__code">
 ---
-argument-hint: &lt;主题&gt; [风格]
+argument-hint: &lt;topic&gt; [style]
 ---</pre>
             </section>
 
             <section class="template-help__example-panel">
-              <h3>完整例子</h3>
+              <h3>{{ t("resource.templateHelp.example") }}</h3>
               <div class="template-help__step">
-                <span>模板内容</span>
+                <span>{{ t("resource.templateHelp.templateContent") }}</span>
                 <pre>
 ---
-argument-hint: &lt;主题&gt; [风格]
+argument-hint: &lt;topic&gt; [style]
 ---
 
-请围绕 $1 写一篇文章，风格为 $2。</pre>
+Write an article about $1 in the style of $2.</pre>
               </div>
               <div class="template-help__step">
-                <span>用户输入</span>
-                <pre>/article "权限设计" 简洁</pre>
+                <span>{{ t("resource.templateHelp.userInput") }}</span>
+                <pre>/article "permission design" concise</pre>
               </div>
               <div class="template-help__step">
-                <span>实际发送给模型</span>
-                <pre>请围绕权限设计写一篇文章，风格为简洁。</pre>
+                <span>{{ t("resource.templateHelp.sentToModel") }}</span>
+                <pre>Write an article about permission design in a concise style.</pre>
               </div>
             </section>
           </div>
@@ -88,9 +88,11 @@ argument-hint: &lt;主题&gt; [风格]
 <script setup lang="ts">
 import { ref } from "vue";
 import { Info, X } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 
 const hovered = ref(false);
 const open = ref(false);
+const { t } = useI18n();
 </script>
 
 <style scoped>

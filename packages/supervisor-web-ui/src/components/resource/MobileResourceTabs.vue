@@ -18,7 +18,7 @@
       class="flex min-h-[12rem] items-center justify-center gap-2 text-[13px] text-gray-400"
     >
       <Loader2 class="h-4 w-4 animate-spin" />
-      正在加载资源...
+      {{ t("resource.loading") }}
     </div>
 
     <div v-else-if="tab === 'config'" class="px-4 py-4">
@@ -48,7 +48,7 @@
         </div>
       </div>
       <div v-if="skillItems.length === 0" class="py-6 text-center text-[13px] text-gray-400">
-        暂无
+        {{ t("common.empty") }}
       </div>
     </div>
 
@@ -64,7 +64,7 @@
         </div>
       </div>
       <div v-if="fileItems.length === 0" class="py-6 text-center text-[13px] text-gray-400">
-        暂无
+        {{ t("common.empty") }}
       </div>
     </div>
   </div>
@@ -86,6 +86,7 @@ import type { UIResourceKind } from "@/types/ui";
 import { isFileItem, isSkillItem } from "@/utils/resource-utils";
 import { getDefaultWorkspaceCwd } from "@/config/workspace";
 import type { UIResourceItem } from "@/types/ui";
+import { useI18n } from "@/i18n";
 
 const props = defineProps<{
   agentId: string;
@@ -95,6 +96,7 @@ type MobileTab = "config" | "system" | UIResourceKind;
 
 const agentStore = useAgentStore();
 const resourceStore = useResourceStore();
+const { t } = useI18n();
 const agentItems = ref<UIResourceItem[]>([]);
 const loading = ref(false);
 
@@ -115,14 +117,14 @@ watch(
 
 const tab = ref<MobileTab>("config");
 
-const tabs = [
-  { id: "config" as const, label: "配置" },
-  { id: "system" as const, label: "系统提示" },
-  { id: "skills" as const, label: "技能" },
-  { id: "extensions" as const, label: "扩展" },
-  { id: "prompts" as const, label: "模板" },
+const tabs = computed(() => [
+  { id: "config" as const, label: t("resource.config") },
+  { id: "system" as const, label: t("resource.systemPrompt") },
+  { id: "skills" as const, label: t("resource.skills") },
+  { id: "extensions" as const, label: t("resource.extensions") },
+  { id: "prompts" as const, label: t("resource.templates") },
   { id: "mcp" as const, label: "MCP" },
-];
+]);
 
 const linked = computed(() =>
   getLinkedResourcesForAgent(props.agentId, agentItems.value, resourceStore.resourceItems),

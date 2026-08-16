@@ -11,10 +11,10 @@
 
     <div v-for="(group, groupIndex) in groups" :key="group.id" class="permission-group">
       <button type="button" class="permission-group__toggle" @click="toggleGroup(group.id)">
-        <span class="font-mono">{{ group.tool }}</span>
+        <span class="permission-group__tool">{{ group.tool }}</span>
         <span class="permission-group__summary">{{ t("agent.ruleCount", { count: group.rules.length }) }}</span>
         <ChevronDown
-          class="h-4 w-4"
+          class="permission-group__chevron"
           :class="{ 'permission-group__chevron--open': openGroups.has(group.id) }"
         />
       </button>
@@ -24,7 +24,7 @@
             <UiField
               v-model="rule.pattern"
               :placeholder="t('agent.globPlaceholder')"
-              class="font-mono"
+              class="permission-rule__pattern"
             />
             <UiField v-model="rule.effect" as="select" class="permission-rule__effect">
               <option value="ask">ask</option>
@@ -160,6 +160,14 @@ function removeRule(groupIndex: number, ruleIndex: number) {
   margin-left: auto;
   font-size: 12px;
   color: var(--app-text-muted);
+}
+.permission-group__tool,
+.permission-rule__pattern {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+.permission-group__chevron {
+  width: 1rem;
+  height: 1rem;
 }
 .permission-group__toggle svg {
   transition: transform 180ms ease;

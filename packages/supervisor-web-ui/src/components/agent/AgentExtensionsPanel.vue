@@ -1,25 +1,25 @@
 <template>
-  <div class="agent-ext flex flex-1 min-h-0 overflow-hidden">
+  <div class="agent-ext">
     <div
       v-if="loading"
-      class="agent-ext-main flex flex-1 items-center justify-center gap-2 text-[13px]"
+      class="agent-ext-main agent-ext-main--loading"
     >
       <Loader2 class="h-4 w-4 animate-spin" />
       {{ t("agent.extensionsLoading") }}
     </div>
     <template v-else>
       <div
-        class="agent-ext-sidebar shrink-0 border-r flex flex-col min-h-0 relative"
+        class="agent-ext-sidebar"
         :style="{ width: `${sidebarWidth}px` }"
       >
-        <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar px-3 py-3 space-y-5">
+        <div class="agent-ext-sidebar__body custom-scrollbar">
           <section>
             <div class="agent-ext-section-title">{{ t("agent.builtinExtensions") }}</div>
             <p class="agent-ext-hint">{{ t("agent.builtinExtensionsHint") }}</p>
-            <div class="mt-2 space-y-1">
+            <div class="agent-ext-list">
               <div v-for="item in builtinItems" :key="item.resourceId" class="agent-ext-row">
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-1.5 min-w-0">
+                <div class="agent-ext-row__main">
+                  <div class="agent-ext-row__heading">
                     <span class="agent-ext-name truncate">{{ item.name }}</span>
                     <span class="agent-ext-badge">{{ t("agent.builtin") }}</span>
                   </div>
@@ -35,9 +35,9 @@
           <section>
             <div class="agent-ext-section-title">{{ t("agent.addedExtensions") }}</div>
             <p class="agent-ext-hint">{{ t("agent.addedExtensionsHint") }}</p>
-            <div class="mt-2 space-y-1">
+            <div class="agent-ext-list">
               <div v-for="item in userItems" :key="item.resourceId" class="agent-ext-row">
-                <div class="min-w-0 flex-1">
+                <div class="agent-ext-row__main">
                   <div class="agent-ext-name truncate">{{ item.name }}</div>
                   <p v-if="item.description" class="agent-ext-desc truncate">
                     {{ item.description }}
@@ -74,7 +74,7 @@
       </div>
 
       <div
-        class="agent-ext-main flex-1 flex items-center justify-center text-[13px] px-6 text-center"
+        class="agent-ext-main agent-ext-main--empty"
       >
         {{ t("agent.extensionLibraryHint") }}
       </div>
@@ -175,10 +175,31 @@ async function bindGlobalItem(item: UIResourceItem) {
 </script>
 
 <style scoped>
+.agent-ext {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
 .agent-ext-sidebar {
+  display: flex;
+  position: relative;
+  min-height: 0;
+  flex-shrink: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--app-border);
   background: var(--app-resource-sidebar-bg);
   border-color: var(--app-border);
 }
+.agent-ext-sidebar__body {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.75rem;
+}
+.agent-ext-list { display: grid; gap: 0.25rem; margin-top: 0.5rem; }
+.agent-ext-row__main { min-width: 0; flex: 1; }
+.agent-ext-row__heading { display: flex; min-width: 0; align-items: center; gap: 0.375rem; }
 
 @media (max-width: 767px) {
   .agent-ext {
@@ -202,8 +223,19 @@ async function bindGlobalItem(item: UIResourceItem) {
 }
 
 .agent-ext-main {
+  flex: 1;
   background: var(--app-settings-bg);
   color: var(--app-text-secondary);
+}
+.agent-ext-main--loading,
+.agent-ext-main--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding-inline: 1.5rem;
+  text-align: center;
+  font-size: var(--app-font-body);
 }
 
 .agent-ext-section-title {

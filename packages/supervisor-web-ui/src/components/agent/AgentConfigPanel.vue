@@ -1,7 +1,7 @@
 <template>
   <div v-if="agent" class="agent-config mx-auto w-full max-w-[1040px]">
     <div v-if="loading" class="agent-config-loading">
-      <Loader2 class="h-4 w-4 animate-spin" />
+      <Loader2 class="agent-config-loading__icon animate-spin" />
       {{ t("agent.loadingConfig") }}
     </div>
     <template v-else>
@@ -52,13 +52,13 @@
         <div class="agent-tools-list">
           <div v-for="tool in resolvedTools" :key="tool.name" class="agent-tool-row">
             <div class="agent-tool-icon">
-              <Puzzle v-if="tool.source === 'extension'" class="h-4 w-4" />
-              <ShieldCheck v-else-if="tool.source === 'system'" class="h-4 w-4" />
-              <Wrench v-else class="h-4 w-4" />
+              <Puzzle v-if="tool.source === 'extension'" class="agent-tool-icon__glyph" />
+              <ShieldCheck v-else-if="tool.source === 'system'" class="agent-tool-icon__glyph" />
+              <Wrench v-else class="agent-tool-icon__glyph" />
             </div>
             <div class="agent-tool-main">
               <div class="agent-tool-heading">
-                <span class="font-mono text-[12px]">{{ tool.name }}</span>
+                <span class="agent-tool-name">{{ tool.name }}</span>
                 <span class="agent-config-tool-source">{{ sourceLabel(tool) }}</span>
               </div>
               <p>{{ tool.description || t("agent.toolDescriptionMissing") }}</p>
@@ -166,6 +166,15 @@ watch(
   gap: 0.5rem;
   color: var(--app-text-secondary);
   font-size: 13px;
+}
+.agent-config-loading__icon,
+.agent-tool-icon__glyph {
+  width: 1rem;
+  height: 1rem;
+}
+.agent-tool-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: var(--app-font-caption);
 }
 
 .agent-config-section__title {

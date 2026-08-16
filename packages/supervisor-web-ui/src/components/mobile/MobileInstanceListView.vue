@@ -5,17 +5,17 @@
         v-if="allowDismiss"
         type="button"
         class="mobile-instances__header-btn"
-        aria-label="返回"
+        :aria-label="t('common.back')"
         @click="emit('dismiss')"
       >
         <ChevronLeft />
       </button>
       <span v-else aria-hidden="true" class="mobile-instances__header-spacer" />
-      <h1 class="m-mobile-header__title">服务器</h1>
+      <h1 class="m-mobile-header__title">{{ t("mobile.server") }}</h1>
       <button
         type="button"
         class="mobile-instances__header-btn"
-        aria-label="扫一扫"
+        :aria-label="t('mobile.scan')"
         :disabled="scanning"
         @click="onScan"
       >
@@ -25,9 +25,9 @@
 
     <div class="mobile-instances__scroll">
       <div v-if="instances.length === 0" class="mobile-instances__empty">
-        <h2 class="mobile-instances__empty-title">添加 Supervisor 实例</h2>
+        <h2 class="mobile-instances__empty-title">{{ t("mobile.addServerInstanceTitle") }}</h2>
         <p class="mobile-instances__empty-hint">
-          在电脑启动 Supervisor 后，扫描终端二维码即可添加。一个 App 可连接多个实例。
+          {{ t("mobile.addServerInstanceDescription") }}
         </p>
         <MobileButton
           variant="primary"
@@ -35,15 +35,15 @@
           :loading="scanning"
           @click="onScan"
         >
-          扫一扫
+          {{ t("mobile.scan") }}
         </MobileButton>
         <button type="button" class="mobile-instances__manual-link" @click="openManualAdd()">
-          手动填写地址
+          {{ t("mobile.manualAddress") }}
         </button>
       </div>
 
       <template v-else>
-        <div class="list-section-label">已添加的实例</div>
+        <div class="list-section-label">{{ t("mobile.addedInstances") }}</div>
         <div class="mobile-instances__group">
           <button
             v-for="item in instances"
@@ -64,19 +64,19 @@
               }}</span>
               <span class="mobile-instances__url">{{ item.url }}</span>
             </span>
-            <span v-if="item.id === activeId" class="mobile-instances__badge">当前</span>
+            <span v-if="item.id === activeId" class="mobile-instances__badge">{{ t("mobile.current") }}</span>
             <ChevronRight class="mobile-instances__chevron" />
           </button>
         </div>
         <div class="mobile-instances__actions">
           <MobileButton variant="primary" block :loading="scanning" @click="onScan">
-            扫一扫添加
+            {{ t("mobile.scanToAdd") }}
           </MobileButton>
           <button type="button" class="mobile-instances__manual-link" @click="openManualAdd()">
-            手动填写地址
+            {{ t("mobile.manualAddress") }}
           </button>
         </div>
-        <p class="mobile-instances__tip">长按列表项可删除</p>
+        <p class="mobile-instances__tip">{{ t("mobile.longPressDelete") }}</p>
       </template>
     </div>
 
@@ -93,6 +93,7 @@
 <script setup lang="ts">
 import { onUnmounted, ref } from "vue";
 import { ChevronLeft, ChevronRight, ScanLine } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
 import { scanSupervisorQrCode } from "@/composables/use-native-qr";
@@ -107,6 +108,8 @@ import {
 } from "@/utils/mobile-server-config";
 import MobileButton from "./ui/MobileButton.vue";
 import MobileServerConfigSheet from "./MobileServerConfigSheet.vue";
+
+const { t } = useI18n();
 
 withDefaults(
   defineProps<{
@@ -156,13 +159,13 @@ async function onScan() {
     if (!raw) return;
     const url = parseSupervisorQrPayload(raw);
     if (!url) {
-      showUiMessage("二维码不是有效的 http(s) 地址", "error");
+      showUiMessage(t("mobile.invalidQrUrl"), "error");
       return;
     }
     const existing = instances.value.find((item) => item.url === url);
     openManualAdd(url, existing?.pin ?? "", existing?.id);
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "扫码失败", "error");
+    showUiMessage(error instanceof Error ? error.message : t("mobile.scanFailed"), "error");
   } finally {
     scanning.value = false;
   }
@@ -175,7 +178,7 @@ async function connect(id: string) {
   }
   const instance = setActiveSupervisorInstance(id);
   if (!instance) {
-    showUiMessage("实例不存在", "error");
+    showUiMessage(t("mobile.instanceNotFound"), "error");
     refresh();
     return;
   }
@@ -190,13 +193,13 @@ async function connect(id: string) {
 async function onDelete(item: SupervisorInstance) {
   const label = item.name || displayNameForUrl(item.url);
   const ok = await requestUiDeleteConfirm({
-    title: "删除实例",
-    message: `确定删除「${label}」？`,
+    title: t("mobile.deleteInstance"),
+    message: t("mobile.deleteInstanceConfirm", { label }),
   });
   if (!ok) return;
   removeSupervisorInstance(item.id);
   refresh();
-  showUiMessage("已删除", "success");
+  showUiMessage(t("common.deleted"), "success");
 }
 
 function onSaved() {

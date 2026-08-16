@@ -3,7 +3,7 @@
     <span @click="emit('update:open', !open)"><slot name="trigger" /></span>
     <MobileDrawer
       :open="open"
-      :ariaLabel="title || '操作'"
+      :ariaLabel="title || t('common.action')"
       size="auto"
       :show-footer="showFooter"
       @close="emit('update:open', false)"
@@ -18,6 +18,7 @@
 
 <script setup lang="ts">
 import MobileDrawer from "./MobileDrawer.vue";
+import { useI18n } from "@/i18n";
 
 withDefaults(
   defineProps<{
@@ -31,4 +32,5 @@ withDefaults(
 );
 
 const emit = defineEmits<{ "update:open": [open: boolean] }>();
+const { t } = useI18n();
 </script>

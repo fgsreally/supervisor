@@ -7,7 +7,7 @@
           :class="panelClass"
           role="dialog"
           aria-modal="true"
-          :aria-label="ariaLabel || title || '对话框'"
+          :aria-label="ariaLabel || title || t('common.dialog')"
         >
           <header v-if="showHeader" class="ui-dialog__header">
             <slot name="header">
@@ -17,7 +17,7 @@
               v-if="showClose"
               type="button"
               class="ui-dialog__close"
-              aria-label="关闭"
+              :aria-label="t('common.close')"
               @click="emit('close')"
             >
               ×
@@ -37,6 +37,7 @@
 
 <script setup lang="ts">
 import { computed, useSlots } from "vue";
+import { useI18n } from "@/i18n";
 
 /**
  * Light notification / short-form dialog (c):
@@ -61,6 +62,7 @@ const props = withDefaults(
 
 const emit = defineEmits<{ close: [] }>();
 const slots = useSlots();
+const { t } = useI18n();
 
 const showHeader = computed(() => Boolean(slots.header || props.title || props.showClose));
 

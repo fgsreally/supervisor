@@ -16,7 +16,7 @@
             v-if="showHandle"
             class="m-drawer__handle-bar"
             :class="{ 'm-drawer__handle-bar--resizable': canResize }"
-            :aria-label="canResize ? '拖动调整高度' : undefined"
+            :aria-label="canResize ? t('mobile.resizeHeight') : undefined"
             @pointerdown="onHandlePointerDown"
           >
             <span class="m-drawer__handle" aria-hidden="true" />
@@ -35,7 +35,7 @@
               v-if="showClose"
               type="button"
               class="m-drawer__close"
-              aria-label="关闭"
+              :aria-label="t('common.close')"
               @click="emit('close')"
             >
               <X />
@@ -46,7 +46,7 @@
           </div>
           <div v-if="$slots.footer || showFooter" class="m-drawer__footer">
             <slot name="footer">
-              <MobileButton block @click="emit('close')">{{ footerCancelText }}</MobileButton>
+              <MobileButton block @click="emit('close')">{{ resolvedFooterCancelText }}</MobileButton>
             </slot>
           </div>
         </section>
@@ -58,6 +58,7 @@
 <script setup lang="ts">
 import { X } from "lucide-vue-next";
 import { computed, nextTick, onBeforeUnmount, ref, useSlots, watch } from "vue";
+import { useI18n } from "@/i18n";
 import MobileButton from "./MobileButton.vue";
 
 export type MobileDrawerSize = "auto" | "tall";
@@ -95,7 +96,6 @@ const props = withDefaults(
     width: "md",
     showFooter: false,
     showClose: false,
-    footerCancelText: "取消",
     dismissOnBackdrop: true,
     minHeight: 240,
     maxHeightRatio: 0.94,
@@ -104,6 +104,7 @@ const props = withDefaults(
 );
 
 const emit = defineEmits<{ close: [] }>();
+const { t } = useI18n();
 
 const slots = useSlots();
 const panelRef = ref<HTMLElement | null>(null);
@@ -117,6 +118,8 @@ const resolvedSize = computed<MobileDrawerSize>(() => {
   if (props.size) return props.size;
   return props.flush ? "tall" : "auto";
 });
+
+const resolvedFooterCancelText = computed(() => props.footerCancelText ?? t("common.cancel"));
 
 const isTall = computed(() => resolvedSize.value === "tall");
 

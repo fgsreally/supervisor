@@ -2,7 +2,7 @@
   <div
     role="separator"
     :aria-orientation="orientation"
-    :aria-label="label"
+    :aria-label="resolvedLabel"
     class="resize-handle"
     :class="orientation === 'horizontal' ? 'resize-handle--horizontal' : 'resize-handle--vertical'"
     @pointerdown="onStart"
@@ -10,15 +10,15 @@
 </template>
 
 <script setup lang="ts">
-withDefaults(
-  defineProps<{
-    orientation: "horizontal" | "vertical";
-    label?: string;
-  }>(),
-  {
-    label: "调整大小",
-  },
-);
+import { computed } from "vue";
+import { useI18n } from "@/i18n";
+
+const props = defineProps<{
+  orientation: "horizontal" | "vertical";
+  label?: string;
+}>();
+const { t } = useI18n();
+const resolvedLabel = computed(() => props.label ?? t("common.resize"));
 
 const emit = defineEmits<{ start: [event: PointerEvent] }>();
 

@@ -3,6 +3,7 @@ import { watch } from "vue";
 import type { Session, SessionStatus } from "@/api";
 import * as api from "@/api";
 import { useSessionStore } from "@/store";
+import { translate } from "@/i18n";
 import { viewPreferences } from "@/utils/view-preferences";
 import {
   isCurrentlyOpenVisibleSession,
@@ -40,7 +41,7 @@ function sessionDisplayName(session: Session): string {
   const title = session.title?.trim();
   if (title) return title;
   const metaName = session.meta?.name;
-  return typeof metaName === "string" && metaName.trim() ? metaName.trim() : "会话";
+  return typeof metaName === "string" && metaName.trim() ? metaName.trim() : translate("common.session");
 }
 
 function isMuted(session: Session): boolean {

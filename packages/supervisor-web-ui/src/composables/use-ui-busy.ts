@@ -1,9 +1,10 @@
 import { readonly, ref } from "vue";
+import { translate } from "@/i18n";
 
 const busyCount = ref(0);
-const busyText = ref("加载中…");
+const busyText = ref(translate("common.loading"));
 
-export function showUiBusy(text = "加载中…") {
+export function showUiBusy(text = translate("common.loading")) {
   busyText.value = text;
   busyCount.value += 1;
   return () => {

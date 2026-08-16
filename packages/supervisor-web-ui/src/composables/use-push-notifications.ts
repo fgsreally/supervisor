@@ -1,5 +1,7 @@
 /** Browser push notifications when assistant replies complete (PWA-friendly). */
 
+import { translate as t } from "@/i18n";
+
 export interface MessageCompleteNotifyOptions {
   sessionId: string;
   sessionName: string;
@@ -27,7 +29,7 @@ export function notifyMessageComplete(options: MessageCompleteNotifyOptions): vo
   if (options.muted) return;
   if (!document.hidden) return;
   showNotification(options.sessionName, {
-    body: truncatePreview(options.preview, "新消息已完成"),
+    body: truncatePreview(options.preview, t("notification.messageComplete")),
     tag: `pi-supervisor-${options.sessionId}`,
   });
 }
@@ -44,8 +46,8 @@ export function notifyAskUserInput(options: AskUserInputNotifyOptions): void {
   if (typeof window === "undefined" || !("Notification" in window)) return;
   if (options.muted) return;
   const preview = options.prompt
-    ? `请选择：${truncatePreview(options.prompt, "请在聊天中选择一项并确认")}`
-    : "请在聊天中选择一项并确认";
+    ? t("notification.askUser", { prompt: truncatePreview(options.prompt, t("notification.askFallback")) })
+    : t("notification.askFallback");
   showNotification(options.sessionName, {
     body: preview,
     tag: `pi-supervisor-ask-${options.sessionId}`,

@@ -5,6 +5,7 @@ import {
   isCurrentlyOpenVisibleSession,
   navigateToSessionFromNotification,
 } from "@/utils/notification-navigate";
+import { translate as t } from "@/i18n";
 
 export interface MessageCompleteNotifyOptions {
   sessionId: string;
@@ -70,7 +71,7 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
 export function notifyMessageComplete(options: MessageCompleteNotifyOptions): void {
   if (options.muted) return;
   void dispatchNotification(options.sessionName, {
-    body: truncatePreview(options.preview, "新消息已完成"),
+    body: truncatePreview(options.preview, t("notification.messageComplete")),
     tag: `pi-supervisor-${options.sessionId}`,
     sessionId: options.sessionId,
     kind: "message_complete",
@@ -81,8 +82,8 @@ export function notifyMessageComplete(options: MessageCompleteNotifyOptions): vo
 export function notifyAskUserInput(options: AskUserInputNotifyOptions): void {
   if (options.muted) return;
   const preview = options.prompt
-    ? `请选择：${truncatePreview(options.prompt, "请在聊天中选择一项并确认")}`
-    : "请在聊天中选择一项并确认";
+    ? t("notification.askUser", { prompt: truncatePreview(options.prompt, t("notification.askFallback")) })
+    : t("notification.askFallback");
   void dispatchNotification(options.sessionName, {
     body: preview,
     tag: `pi-supervisor-ask-${options.sessionId}`,
@@ -94,7 +95,7 @@ export function notifyAskUserInput(options: AskUserInputNotifyOptions): void {
 export function notifySessionError(options: SessionErrorNotifyOptions): void {
   if (options.muted) return;
   void dispatchNotification(options.sessionName, {
-    body: truncatePreview(options.detail, "出错需要处理"),
+    body: truncatePreview(options.detail, t("notification.errorNeedsAction")),
     tag: `pi-supervisor-error-${options.sessionId}`,
     sessionId: options.sessionId,
     kind: "session_error",

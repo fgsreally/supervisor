@@ -1,5 +1,6 @@
 import { readonly, ref } from "vue";
 import { hapticDelete } from "@/composables/use-native-haptics";
+import { translate } from "@/i18n";
 
 export interface UiConfirmOptions {
   title: string;
@@ -21,8 +22,8 @@ const state = ref<UiConfirmState>({
   open: false,
   title: "",
   message: "",
-  confirmText: "确定",
-  cancelText: "取消",
+  confirmText: translate("common.confirm"),
+  cancelText: translate("common.cancel"),
   danger: false,
   haptic: false,
   resolve: null,
@@ -36,8 +37,8 @@ export function requestUiConfirm(options: UiConfirmOptions): Promise<boolean> {
       open: true,
       title: options.title,
       message: options.message,
-      confirmText: options.confirmText ?? "确定",
-      cancelText: options.cancelText ?? "取消",
+      confirmText: options.confirmText ?? translate("common.confirm"),
+      cancelText: options.cancelText ?? translate("common.cancel"),
       danger: options.danger ?? false,
       expectedText: options.expectedText,
       haptic: options.haptic ?? false,
@@ -55,7 +56,7 @@ export function requestUiDeleteConfirm(
 ): Promise<boolean> {
   return requestUiConfirm({
     ...options,
-    confirmText: options.confirmText ?? "删除",
+    confirmText: options.confirmText ?? translate("common.delete"),
     danger: true,
     haptic: true,
   });

@@ -2185,7 +2185,7 @@ async function wakePreviewServicesIfNeeded(): Promise<boolean> {
     return true;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    showUiMessage(`唤醒服务失败：${message}`, "error");
+    showUiMessage(t("chat.previewWakeFailed", { message }), "error");
     return false;
   } finally {
     previewLoading.value = false;
@@ -2695,7 +2695,7 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
     mimeType: img.mimeType,
     name: img.name,
   }));
-  const sessionName = props.session.title ?? "会话";
+  const sessionName = props.session.title ?? t("common.session");
 
   streamCleanup = api.promptSession(
     props.session.id,

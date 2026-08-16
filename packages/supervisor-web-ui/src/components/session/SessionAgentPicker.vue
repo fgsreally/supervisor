@@ -1,22 +1,22 @@
 ﻿<template>
   <ResponsiveDialog
     :open="open"
-    title="选择 Agent"
-    description="为当前会话挑选一个智能代理"
+    :title="t('session.agentPicker.title')"
+    :description="t('session.agentPicker.description')"
     width="sm"
     size="auto"
     panel-class="agent-picker-dialog"
     @close="emit('close')"
   >
     <template #header-actions>
-      <button type="button" title="重新检测外部 Agent" :disabled="detecting" @click="detectAgents">
+      <button type="button" :title="t('session.agentPicker.redetect')" :disabled="detecting" @click="detectAgents">
         <RefreshCw :class="{ 'animate-spin': detecting }" />
       </button>
     </template>
 
     <div class="agent-picker custom-scrollbar">
       <div class="agent-picker__mobile-intro">
-        <p>为当前会话挑选一个智能代理</p>
+        <p>{{ t("session.agentPicker.description") }}</p>
       </div>
 
       <div v-if="project" class="agent-picker__project">
@@ -62,8 +62,8 @@
         </section>
       </div>
 
-      <div v-if="!groups.length" class="agent-picker__empty">无可选智能代理</div>
-      <p v-else class="agent-picker__hint">选择后将在当前项目下创建新会话</p>
+      <div v-if="!groups.length" class="agent-picker__empty">{{ t("session.agentPicker.empty") }}</div>
+      <p v-else class="agent-picker__hint">{{ t("session.agentPicker.hint") }}</p>
     </div>
   </ResponsiveDialog>
 </template>
@@ -71,6 +71,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { FolderOpen, RefreshCw } from "lucide-vue-next";
+import { useI18n } from "@/i18n";
 import type { Project } from "@/api";
 import { useAgentStore } from "@/store";
 import ResponsiveDialog from "@/components/base/ResponsiveDialog/index.vue";
@@ -88,6 +89,7 @@ const emit = defineEmits<{
 }>();
 
 const agentStore = useAgentStore();
+const { t } = useI18n();
 /** 与「智能代理」Tab 共用同一套分类/可见性规则 */
 const groups = computed(() => agentStore.getAgentsByCategory);
 const detecting = ref(false);

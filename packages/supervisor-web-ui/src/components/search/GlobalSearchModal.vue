@@ -113,8 +113,8 @@ watch(
 );
 
 function roleLabel(role: string | null): string {
-  if (role === "user") return "用户";
-  if (role === "assistant") return "助手";
+  if (role === "user") return t("search.user");
+  if (role === "assistant") return t("search.assistant");
   return role ?? t("search.unknownRole");
 }
 

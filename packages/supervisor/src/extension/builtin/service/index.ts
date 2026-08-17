@@ -1,9 +1,9 @@
 import { Type, type Static } from "typebox";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { resolve as resolvePath } from "node:path";
 import type { ExtensionContext, ExtensionDefinition, ExtensionJobFacade } from "../../types.js";
 import {
   extractPortPlaceholders,
+  parseProjectServicesMeta,
   type SessionServiceApp,
   type SessionServicesMeta,
 } from "../../../core/project-runtime.js";
@@ -28,12 +28,10 @@ import {
 import type { SessionServiceJobHost } from "../../../core/session-registered-services.js";
 import {
   findFreePortInRange,
-  isLoopbackTcpPortOpen,
   preferredServicePortHint,
   SESSION_SERVICE_PREFERRED_PORT_MAX,
   SESSION_SERVICE_PREFERRED_PORT_MIN,
 } from "../../../utils/ports.js";
-import { detectListenPort } from "../../../utils/listen-port.js";
 
 const UPDATE_TOOL = "UpdateService";
 const UPDATE_DESCRIPTION =
@@ -65,7 +63,7 @@ const UPDATE_PARAMS = Type.Object({
   stopCommand: Type.Optional(Type.String()),
   destroyCommand: Type.Optional(Type.String()),
 });
-const APPLY_READY_MS = 90_000;
+const PROJECT_SERVICES_WAIT_MS = 5 * 60_000;
 
 function numberedPortPlaceholders(command: string): string[] {
   return [
@@ -332,7 +330,7 @@ const projectServicesExtension: ExtensionDefinition = {
           lastActiveAtMs: now,
           runBackground,
         });
-        await writeServices(await waitForAppsReady(next));
+        await writeServices(next);
       }
     };
 
@@ -431,52 +429,6 @@ const projectServicesExtension: ExtensionDefinition = {
       { priority: 200, mode: "sync" },
     );
 
-    const waitForAppReady = async (
-      appName: string,
-      started: SessionServiceApp,
-    ): Promise<SessionServiceApp> => {
-      if (!started.jobId) return started;
-
-      const deadline = Date.now() + APPLY_READY_MS;
-      let output = "";
-      while (Date.now() < deadline) {
-        const job = await ctx.jobs.get(started.jobId);
-        output = typeof job?.output === "string" ? job.output : "";
-        const detected = detectListenPort(output);
-        const candidates = [started.port, detected].filter(
-          (port): port is number => typeof port === "number" && Number.isInteger(port) && port > 0,
-        );
-        for (const port of candidates) {
-          if (await isLoopbackTcpPortOpen(port)) {
-            return port === started.port ? started : { ...started, port };
-          }
-        }
-        // Windows pnpm/npx .cmd often exits while Vite stays up as a grandchild.
-        // Never treat the wrapper job ending as "service dead", and never kill it.
-        if (/Missing script|command not found|ENOENT/i.test(output)) {
-          throw new Error(`Service ${appName} failed to start. Output:\n${output.slice(-4000)}`);
-        }
-        await sleep(300);
-      }
-      throw new Error(
-        `Service ${appName} did not become reachable on 127.0.0.1:${started.port}. Output:\n${output.slice(-4000) || "(no output)"}`,
-      );
-    };
-
-    const waitForAppsReady = async (started: SessionServicesMeta): Promise<SessionServicesMeta> => {
-      const readyApps: SessionServiceApp[] = [];
-      for (const app of started.apps ?? []) {
-        readyApps.push(await waitForAppReady(app.name, app));
-      }
-      const first = readyApps.find((app) => app.jobId) ?? readyApps[0];
-      return {
-        ...started,
-        apps: readyApps,
-        jobId: first?.jobId,
-        pid: first?.pid ?? null,
-      };
-    };
-
     const updateService = async (
       params: Static<typeof UPDATE_PARAMS>,
     ): Promise<{
@@ -502,7 +454,7 @@ const projectServicesExtension: ExtensionDefinition = {
       });
 
       const startAndRegister = async (app: SessionServiceApp, list: SessionServiceApp[]) => {
-        let next: SessionServicesMeta = patchCommands({
+        const next: SessionServicesMeta = patchCommands({
           ...current,
           apps: list,
           startCommand: current.startCommand || app.startCommand || "",
@@ -516,7 +468,7 @@ const projectServicesExtension: ExtensionDefinition = {
           jobs,
           runBackground,
         });
-        return waitForAppReady(name, started);
+        return started;
       };
 
       try {
@@ -559,9 +511,8 @@ const projectServicesExtension: ExtensionDefinition = {
               lastActiveAtMs: Date.now(),
               runBackground,
             });
-            const readyServices = await waitForAppsReady(startedAll);
-            await writeServices(readyServices);
-            const summary = (readyServices.apps ?? [])
+            await writeServices(startedAll);
+            const summary = (startedAll.apps ?? [])
               .map((item) => `${item.name}:${item.port}`)
               .join(", ");
             return applyText(
@@ -571,8 +522,8 @@ const projectServicesExtension: ExtensionDefinition = {
             );
           }
           const started = await startAndRegister(app, nextList);
-          const nextListReady = nextList.map((item) => (item.name === name ? started : item));
-          await writeServices(finalizeServices(patchCommands(current), nextListReady));
+          const nextListStarted = nextList.map((item) => (item.name === name ? started : item));
+          await writeServices(finalizeServices(patchCommands(current), nextListStarted));
           return applyText(
             `已新增 ${name}。端口：${Object.entries(portEnv)
               .map(([key, value]) => `${key}=${value}`)
@@ -623,8 +574,7 @@ const projectServicesExtension: ExtensionDefinition = {
             lastActiveAtMs: Date.now(),
             runBackground,
           });
-          const readyServices = await waitForAppsReady(startedAll);
-          await writeServices(readyServices);
+          await writeServices(startedAll);
           return applyText(
             `已安装依赖并更新 ${name}。端口：${Object.entries(portEnv)
               .map(([key, value]) => `${key}=${value}`)
@@ -632,8 +582,8 @@ const projectServicesExtension: ExtensionDefinition = {
           );
         }
         const started = await startAndRegister(updated, nextList);
-        const nextListReady = nextList.map((item) => (item.name === name ? started : item));
-        await writeServices(finalizeServices(patchCommands(current), nextListReady));
+        const nextListStarted = nextList.map((item) => (item.name === name ? started : item));
+        await writeServices(finalizeServices(patchCommands(current), nextListStarted));
         return applyText(
           `已更新 ${name}。端口：${Object.entries(portEnv)
             .map(([key, value]) => `${key}=${value}`)
@@ -653,36 +603,47 @@ const projectServicesExtension: ExtensionDefinition = {
       execute: updateService,
     });
 
-    const watsonUpdateTool: AgentTool<typeof UPDATE_PARAMS> = {
-      name: UPDATE_TOOL,
-      label: UPDATE_TOOL,
-      description: UPDATE_DESCRIPTION,
-      parameters: UPDATE_PARAMS,
-      execute: async (_toolCallId, params) => updateService(params),
+    const startProjectServices = async (): Promise<void> => {
+      const deadline = Date.now() + PROJECT_SERVICES_WAIT_MS;
+      let projectServices = parseProjectServicesMeta((await ctx.project.data.get()).meta);
+      while (
+        projectServices?.status === "pending" &&
+        Date.now() < deadline &&
+        !ctx.session.signal?.aborted
+      ) {
+        await sleep(500);
+        projectServices = parseProjectServicesMeta((await ctx.project.data.get()).meta);
+      }
+      if (projectServices?.status !== "ready" || projectServices.definitions.length === 0) return;
+      if (hasRegisteredServices(await readServices())) return;
+
+      for (const definition of projectServices.definitions) {
+        if (hasRegisteredServices(await readServices())) {
+          const current = await readServices();
+          if (current?.apps?.some((app) => app.name === definition.name)) continue;
+        }
+        const result = await updateService({
+          action: "add",
+          name: definition.name,
+          startCommand: definition.startCommand,
+          path: definition.path,
+          installCommand: projectServices.installCommand,
+          stopCommand: projectServices.stopCommand,
+          destroyCommand: projectServices.destroyCommand,
+        });
+        const text = result.content[0]?.text ?? "";
+        if (text.includes("失败") || text.includes("未启动")) {
+          ctx.log("warn", `Project service ${definition.name} was not started: ${text}`);
+          return;
+        }
+      }
     };
 
     if (!hasRegisteredServices(await readServices())) {
-      void ctx.watson
-        .run({
-          mode: "agent",
-          kind: "session-services-register",
-          toolsPreset: "readonly",
-          extraTools: [watsonUpdateTool],
-          injectSystem:
-            "Analyze whether the current project has local development services that should start. If a start command exists, call UpdateService with action=add once per service. Do not guess 3000/5173 when no port is specified; omit port and the system will allocate one in 4396–4500. Do not start long-running services with bash or modify AGENTS.md.",
-          prompt: [
-            "This Session was just created. Analyze the project's long-running local development services.",
-            "If the project root has AGENTS.md with `## 本地开发服务`, prefer its commands. If AGENTS.md or that section is absent, continue by checking package.json, workspace configuration, README, build tools, and project structure; do not skip analysis.",
-            "For each service with a start command, call UpdateService with action=add and provide name, startCommand, and optional path. Inspect the project yourself and decide whether installCommand is needed; do not assume a Node package manager.",
-            "Do not provide port unless the command hard-codes one; otherwise the system uses 4396–4500.",
-            "If there is no start command, do not call the tool and finish.",
-            "Do not commit or modify AGENTS.md.",
-          ].join("\n"),
-        })
-        .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
-          ctx.log("warn", `Session service register skipped: ${message}`);
-        });
+      void startProjectServices().catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.log("warn", `Project services start skipped: ${message}`);
+      });
     }
 
     ctx.agent.registerTool({
@@ -727,13 +688,12 @@ const projectServicesExtension: ExtensionDefinition = {
           lastActiveAtMs: Date.now(),
           runBackground,
         });
-        const ready = await waitForAppsReady(next);
-        await writeServices(ready);
+        await writeServices(next);
         return {
           content: [
             {
               type: "text",
-              text: `服务已启动。入口：${JSON.stringify(ready.apps ?? [])}`,
+              text: `服务已启动。入口：${JSON.stringify(next.apps ?? [])}`,
             },
           ],
         };

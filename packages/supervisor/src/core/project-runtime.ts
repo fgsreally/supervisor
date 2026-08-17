@@ -9,10 +9,75 @@ import { join } from "node:path";
 
 export interface ProjectRuntimeSpec {
   description: string;
+  services: ProjectServiceConfig;
+}
+
+export interface ProjectServiceDefinition {
+  name: string;
+  startCommand: string;
+  path: string;
+}
+
+export interface ProjectServiceConfig {
+  definitions: ProjectServiceDefinition[];
+  installCommand?: string;
+  stopCommand?: string;
+  destroyCommand?: string;
+}
+
+export interface ProjectServicesMeta extends ProjectServiceConfig {
+  status: "pending" | "ready" | "error";
+  error?: string;
+  updatedAt: string;
+}
+
+export function parseProjectServicesMeta(
+  meta: Record<string, unknown> | null | undefined,
+): ProjectServicesMeta | null {
+  const raw = meta?.services;
+  if (!raw || typeof raw !== "object") return null;
+  const value = raw as Record<string, unknown>;
+  if (
+    (value.status !== "pending" && value.status !== "ready" && value.status !== "error") ||
+    !Array.isArray(value.definitions)
+  ) {
+    return null;
+  }
+  const definitions = value.definitions.filter(
+    (item): item is ProjectServiceDefinition =>
+      !!item &&
+      typeof item === "object" &&
+      typeof (item as ProjectServiceDefinition).name === "string" &&
+      typeof (item as ProjectServiceDefinition).startCommand === "string" &&
+      typeof (item as ProjectServiceDefinition).path === "string",
+  );
+  const optional = (key: string): string | undefined =>
+    typeof value[key] === "string" && value[key].trim() ? value[key].trim() : undefined;
+  return {
+    status: value.status,
+    definitions,
+    installCommand: optional("installCommand"),
+    stopCommand: optional("stopCommand"),
+    destroyCommand: optional("destroyCommand"),
+    error: optional("error"),
+    updatedAt: typeof value.updatedAt === "string" ? value.updatedAt : "",
+  };
 }
 
 const ProjectRuntimeSpecSchema = Type.Object({
   description: Type.String(),
+  services: Type.Object({
+    installCommand: Type.Optional(Type.String()),
+    stopCommand: Type.Optional(Type.String()),
+    destroyCommand: Type.Optional(Type.String()),
+    definitions: Type.Array(
+      Type.Object({
+        name: Type.String(),
+        startCommand: Type.String(),
+        path: Type.String(),
+      }),
+    ),
+  }),
 });
 
 /** One UI entry exposed by the session's project runtime. */
@@ -62,7 +127,7 @@ export function buildProjectRuntimeInstructions(project: Pick<Project, "name" | 
     "     ```markdown",
     "     ## \u672c\u5730\u5f00\u53d1\u670d\u52a1",
     "     - Install: `<install command, optional>`",
-    "     - Start: `<long-running start command; use placeholders such as ${PORT} / ${API_PORT} for ports>`",
+    "     - Start: `<long-running start command; use placeholders such as ${PORT1} and ${PORT2} for ports>`",
     "     - Stop: `<idle shutdown command, optional>`",
     "     - Destroy: `<archive/delete cleanup command, optional>`",
     "     ```",
@@ -73,13 +138,27 @@ export function buildProjectRuntimeInstructions(project: Pick<Project, "name" | 
     "5. Call the submit_result tool when finished. Its result must be the JSON object below; this ends the task.",
     "Result shape:",
     "{",
-    '  "description": "A Chinese project description of 200-600 characters"',
+    '  "description": "A Chinese project description of 200-600 characters",',
+    '  "services": {',
+    '    "installCommand": "optional project dependency installation command",',
+    '    "stopCommand": "optional project-wide graceful stop command",',
+    '    "destroyCommand": "optional project-wide cleanup command",',
+    '    "definitions": [',
+    "      {",
+    '        "name": "short unique service name such as web or api",',
+    '        "startCommand": "declared long-running start script using ${PORT1}, ${PORT2}, ...",',
+    '        "path": "/"',
+    "      }",
+    "    ]",
+    "  }",
     "}",
     "",
     "Constraints:",
     "- Do not commit or push; do not write secrets.",
     "- Put only install/start/stop/destroy commands in Local Development Services; do not create a separate script unless the project already uses one.",
-    "- Do not invent or fill in entry ports/paths.",
+    "- Return every long-running local development service. Use an empty definitions array when none exists.",
+    "- Each startCommand must use consecutive ${PORT1}, ${PORT2}, ... placeholders instead of fixed ports.",
+    "- Do not invent commands. Entry paths must begin with /.",
     "",
     `Project name: ${project.name}`,
     `Path: ${project.cwd}`,
@@ -119,7 +198,47 @@ export function parseProjectRuntimeSpec(rawInput: unknown): ProjectRuntimeSpec {
     typeof row.description === "string" ? row.description : "",
   );
   if (!description) throw new Error("项目解析缺少 description");
-  return { description };
+  if (!row.services || typeof row.services !== "object") {
+    throw new Error("项目解析缺少 services");
+  }
+  const rawServices = row.services as Record<string, unknown>;
+  if (!Array.isArray(rawServices.definitions)) throw new Error("项目解析缺少 services.definitions");
+  const definitions = rawServices.definitions.map((item, index): ProjectServiceDefinition => {
+    if (!item || typeof item !== "object") throw new Error(`服务 ${index + 1} 无效`);
+    const service = item as Record<string, unknown>;
+    const name = typeof service.name === "string" ? service.name.trim() : "";
+    const startCommand =
+      typeof service.startCommand === "string" ? service.startCommand.trim() : "";
+    const path = typeof service.path === "string" ? service.path.trim() : "/";
+    if (!name || !startCommand) throw new Error(`服务 ${index + 1} 缺少名称或启动命令`);
+    const placeholders = extractPortPlaceholders(startCommand).filter((value) =>
+      /^PORT[1-9]\d*$/.test(value),
+    );
+    if (
+      placeholders.length === 0 ||
+      !placeholders.every((value, placeholderIndex) => value === `PORT${placeholderIndex + 1}`)
+    ) {
+      throw new Error(`服务 ${name} 的启动命令必须使用连续的 \${PORT1} 占位符`);
+    }
+    return {
+      name,
+      startCommand,
+      path: path.startsWith("/") ? path : `/${path}`,
+    };
+  });
+  const optional = (key: string): string | undefined => {
+    const value = rawServices[key];
+    return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  };
+  return {
+    description,
+    services: {
+      definitions,
+      installCommand: optional("installCommand"),
+      stopCommand: optional("stopCommand"),
+      destroyCommand: optional("destroyCommand"),
+    },
+  };
 }
 
 /** Run Watson project parse (structured via terminating submit_result tool). */
@@ -156,7 +275,17 @@ export async function applyProjectRuntimeParse(
 
   await commitAll(project.cwd, "chore: initialize project for supervisor");
 
-  db.updateProject(projectId, { description: spec.description });
+  db.updateProject(projectId, {
+    description: spec.description,
+    meta: {
+      ...project.meta,
+      services: {
+        status: "ready",
+        ...spec.services,
+        updatedAt: new Date().toISOString(),
+      } satisfies ProjectServicesMeta,
+    },
+  });
 }
 
 export { normalizeProjectDescription };

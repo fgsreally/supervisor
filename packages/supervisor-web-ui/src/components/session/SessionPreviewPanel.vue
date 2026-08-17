@@ -13,7 +13,9 @@
       </button>
     </header>
 
-    <div v-if="loading" class="session-preview-panel__state">{{ t("session.preview.loading") }}</div>
+    <div v-if="loading" class="session-preview-panel__state">
+      {{ t("session.preview.loading") }}
+    </div>
     <div v-else-if="previews.length === 0" class="session-preview-panel__state">
       {{ t("session.preview.empty") }}
     </div>
@@ -30,21 +32,28 @@
           {{ preview.label ?? preview.name }}
         </button>
       </div>
-      <iframe
-        v-for="preview in previews"
-        v-show="activeKey === previewKey(preview)"
-        :key="previewKey(preview)"
-        class="session-preview-panel__frame"
-        :src="preview.previewUrl"
-        :title="preview.label ?? preview.name"
-      />
+      <div class="session-preview-panel__body">
+        <iframe
+          v-for="preview in previews"
+          v-show="activeKey === previewKey(preview)"
+          :key="previewKey(preview)"
+          class="session-preview-panel__frame"
+          :src="preview.previewUrl"
+          :title="preview.label ?? preview.name"
+          @load="markLoaded(preview.previewUrl)"
+        />
+        <div v-if="activePreviewLoading" class="session-preview-panel__loading">
+          <Loader2 class="session-preview-panel__spinner" />
+          <span>{{ t("session.preview.loading") }}</span>
+        </div>
+      </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { X } from "lucide-vue-next";
+import { Loader2, X } from "lucide-vue-next";
 import { useI18n } from "@/i18n";
 import type { SessionServicesPreview } from "@/utils/session-services";
 
@@ -78,6 +87,11 @@ function previewKey(preview: SessionServicesPreview): string {
 }
 
 const activeKey = ref(props.modelValue || (props.previews[0] ? previewKey(props.previews[0]) : ""));
+const loadedUrls = ref(new Set<string>());
+const activePreviewLoading = computed(() => {
+  const preview = props.previews.find((item) => previewKey(item) === activeKey.value);
+  return !!preview && !loadedUrls.value.has(preview.previewUrl);
+});
 
 watch(
   () => props.previews,
@@ -103,6 +117,10 @@ function selectPreview(preview: SessionServicesPreview) {
   activeKey.value = key;
   emit("update:modelValue", key);
 }
+
+function markLoaded(url: string) {
+  loadedUrls.value = new Set([...loadedUrls.value, url]);
+}
 </script>
 
 <style scoped>
@@ -124,8 +142,8 @@ function selectPreview(preview: SessionServicesPreview) {
 }
 
 .session-preview-panel__title {
-  font-size: 14px;
-  font-weight: 500;
+  font-size: var(--app-font-body);
+  font-weight: var(--app-font-weight-medium);
   color: var(--app-text-primary);
 }
 
@@ -151,7 +169,7 @@ function selectPreview(preview: SessionServicesPreview) {
 .session-preview-panel__tab {
   padding: 4px 10px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--app-font-caption);
   white-space: nowrap;
   color: var(--app-text-secondary);
   background: var(--app-list-search-bg);
@@ -162,16 +180,48 @@ function selectPreview(preview: SessionServicesPreview) {
   background: var(--app-list-item-active);
 }
 
-.session-preview-panel__frame {
+.session-preview-panel__body {
+  position: relative;
   flex: 1;
+  min-height: 0;
+}
+
+.session-preview-panel__frame {
+  position: absolute;
+  inset: 0;
+  height: 100%;
   width: 100%;
   border: 0;
   background: #fff;
 }
 
+.session-preview-panel__loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--app-text-secondary);
+  background: var(--app-chat-bg);
+  font-size: var(--app-font-body);
+}
+
+.session-preview-panel__spinner {
+  width: 18px;
+  height: 18px;
+  animation: session-preview-spin 0.8s linear infinite;
+}
+
+@keyframes session-preview-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .session-preview-panel__state {
   padding: 24px 16px;
   color: var(--app-text-secondary);
-  font-size: 13px;
+  font-size: var(--app-font-control);
 }
 </style>

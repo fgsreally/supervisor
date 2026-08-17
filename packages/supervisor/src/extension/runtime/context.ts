@@ -456,6 +456,7 @@ export class Context {
             description: data.description,
             cwd: data.cwd,
             homeDir: data.homeDir,
+            meta: data.meta,
           });
           return project;
         },

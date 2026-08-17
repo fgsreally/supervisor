@@ -2371,7 +2371,10 @@ export class SessionManager {
     return created;
   }
 
-  updateProject(id: number, patch: { name?: string; description?: string | null }) {
+  updateProject(
+    id: number,
+    patch: { name?: string; description?: string | null; meta?: Record<string, unknown> },
+  ) {
     return this.db.updateProject(id, patch);
   }
 
@@ -2386,9 +2389,28 @@ export class SessionManager {
     const project = this.db.getProject(projectId);
     if (!project) throw new Error(`Project ${projectId} not found`);
 
+    this.db.updateProject(projectId, {
+      meta: {
+        ...project.meta,
+        services: { status: "pending", definitions: [], updatedAt: new Date().toISOString() },
+      },
+    });
+
     const ref = readSupervisorSettings().featureModels?.assistant;
     if (!isFeatureModelRef(ref)) {
       const message = "未配置「助手模型」";
+      const current = this.db.getProject(projectId)!;
+      this.db.updateProject(projectId, {
+        meta: {
+          ...current.meta,
+          services: {
+            status: "error",
+            definitions: [],
+            error: message,
+            updatedAt: new Date().toISOString(),
+          },
+        },
+      });
       return { description: null, status: "skipped", error: message };
     }
 
@@ -2398,6 +2420,20 @@ export class SessionManager {
       return { description: spec.description, status: "ready" };
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
+      const current = this.db.getProject(projectId);
+      if (current) {
+        this.db.updateProject(projectId, {
+          meta: {
+            ...current.meta,
+            services: {
+              status: "error",
+              definitions: [],
+              error: message,
+              updatedAt: new Date().toISOString(),
+            },
+          },
+        });
+      }
       sessionLog(0, "error", `Project parse failed [${projectId}]: ${message}`, [
         "system",
         "project",

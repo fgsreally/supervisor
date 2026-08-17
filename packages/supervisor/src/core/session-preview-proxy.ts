@@ -15,6 +15,10 @@ const FRAME_BLOCKING_HEADERS = [
   "content-security-policy",
   "content-security-policy-report-only",
 ];
+const PREVIEW_CONNECT_TIMEOUT_MS = 30_000;
+const PREVIEW_CONNECT_RETRY_MS = 300;
+const HIDDEN_SCROLLBAR_STYLE =
+  '<style id="supervisor-preview-scrollbars">*{scrollbar-width:none}*::-webkit-scrollbar{display:none}</style>';
 
 function isPreviewableStatus(status: SessionServicesMeta["status"] | undefined): boolean {
   return status === "running" || status === "active" || status === "starting";
@@ -107,6 +111,9 @@ export function rewriteSessionPreviewText(
       (_match, attribute: string, quote: string, path: string) =>
         `${attribute}=${quote}${proxyRootPath(path, target, password)}${quote}`,
     );
+    rewritten = /<\/head>/i.test(rewritten)
+      ? rewritten.replace(/<\/head>/i, `${HIDDEN_SCROLLBAR_STYLE}</head>`)
+      : `${HIDDEN_SCROLLBAR_STYLE}${rewritten}`;
   }
 
   if (
@@ -190,14 +197,25 @@ export async function proxySessionPreviewRequest(
     body: body && body.byteLength > 0 ? body : undefined,
     redirect: "manual",
   };
-  let upstream: Response;
-  try {
-    upstream = await fetch(upstreamUrl, fetchOptions);
-  } catch {
-    const ipv6Url = new URL(upstreamUrl);
-    ipv6Url.hostname = "[::1]";
-    upstream = await fetch(ipv6Url, fetchOptions);
+  let upstream: Response | undefined;
+  let lastError: unknown;
+  const deadline = Date.now() + PREVIEW_CONNECT_TIMEOUT_MS;
+  while (!upstream && Date.now() < deadline && !request.signal.aborted) {
+    try {
+      upstream = await fetch(upstreamUrl, { ...fetchOptions, signal: request.signal });
+    } catch (error: unknown) {
+      lastError = error;
+      try {
+        const ipv6Url = new URL(upstreamUrl);
+        ipv6Url.hostname = "[::1]";
+        upstream = await fetch(ipv6Url, { ...fetchOptions, signal: request.signal });
+      } catch (ipv6Error: unknown) {
+        lastError = ipv6Error;
+        await new Promise((resolve) => setTimeout(resolve, PREVIEW_CONNECT_RETRY_MS));
+      }
+    }
   }
+  if (!upstream) throw lastError ?? new Error("Preview service is not reachable");
 
   const responseHeaders = sanitizePreviewResponseHeaders(upstream.headers);
   const contentType = responseHeaders.get("content-type")?.toLowerCase() ?? "";

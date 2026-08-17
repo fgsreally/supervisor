@@ -5,7 +5,11 @@
         <div>
           <h1 class="active-ui-view__title">{{ t("activeUi.title") }}</h1>
           <p class="active-ui-view__meta">
-            {{ sessionsLoading ? t("activeUi.loadingApps") : t("activeUi.entryCount", { count: entries.length }) }}
+            {{
+              sessionsLoading
+                ? t("activeUi.loadingApps")
+                : t("activeUi.entryCount", { count: entries.length })
+            }}
           </p>
         </div>
       </header>
@@ -24,9 +28,13 @@
       </UiEmptyState>
       <template v-else>
         <div class="active-ui-view__pager">
-          <button type="button" :disabled="page <= 1" @click="page -= 1">{{ t("activeUi.previous") }}</button>
+          <button type="button" :disabled="page <= 1" @click="page -= 1">
+            {{ t("activeUi.previous") }}
+          </button>
           <span>{{ page }} / {{ totalPages }}</span>
-          <button type="button" :disabled="page >= totalPages" @click="page += 1">{{ t("activeUi.next") }}</button>
+          <button type="button" :disabled="page >= totalPages" @click="page += 1">
+            {{ t("activeUi.next") }}
+          </button>
         </div>
 
         <div class="active-ui-view__items custom-scrollbar">
@@ -40,7 +48,9 @@
           >
             <strong>{{ entry.sessionTitle }}</strong>
             <span>{{ entry.label ?? entry.scriptName }}</span>
-            <small>{{ entry.status === "starting" ? t("activeUi.starting") : t("activeUi.running") }}</small>
+            <small>{{
+              entry.status === "starting" ? t("activeUi.starting") : t("activeUi.running")
+            }}</small>
           </button>
         </div>
       </template>
@@ -69,16 +79,21 @@
             {{ t("activeUi.openSession") }}
           </button>
         </header>
-        <div v-if="previewLoading" class="active-ui-view__state active-ui-view__state--preview">
-          <Loader2 class="active-ui-view__spin" aria-hidden="true" />
-          <span>{{ t("activeUi.waking") }}</span>
+        <div class="active-ui-view__preview-body">
+          <iframe
+            class="active-ui-view__frame"
+            :src="selectedEntry.previewUrl"
+            :title="`${selectedEntry.sessionTitle} · ${selectedEntry.label ?? selectedEntry.scriptName}`"
+            @load="frameLoading = false"
+          />
+          <div
+            v-if="previewLoading || frameLoading"
+            class="active-ui-view__state active-ui-view__state--preview active-ui-view__frame-loading"
+          >
+            <Loader2 class="active-ui-view__spin" aria-hidden="true" />
+            <span>{{ previewLoading ? t("activeUi.waking") : t("activeUi.loadingPreview") }}</span>
+          </div>
         </div>
-        <iframe
-          v-else
-          class="active-ui-view__frame"
-          :src="selectedEntry.previewUrl"
-          :title="`${selectedEntry.sessionTitle} · ${selectedEntry.label ?? selectedEntry.scriptName}`"
-        />
       </template>
     </section>
   </div>
@@ -109,6 +124,7 @@ const { t } = useI18n();
 const page = ref(1);
 const selectedKey = ref<string | null>(null);
 const previewLoading = ref(false);
+const frameLoading = ref(true);
 const sessionStore = useSessionStore();
 const rootStore = useRootStore();
 
@@ -121,6 +137,13 @@ const totalPages = computed(() => pagination.value.totalPages);
 
 const selectedEntry = computed(
   () => entries.value.find((entry) => entry.key === selectedKey.value) ?? null,
+);
+
+watch(
+  () => selectedEntry.value?.previewUrl,
+  () => {
+    frameLoading.value = true;
+  },
 );
 
 watch(
@@ -345,11 +368,24 @@ function openSelectedSession() {
 }
 
 .active-ui-view__frame {
-  flex: 1;
+  position: absolute;
+  inset: 0;
   width: 100%;
-  min-height: 0;
+  height: 100%;
   border: 0;
   background: #fff;
+}
+
+.active-ui-view__preview-body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
+
+.active-ui-view__frame-loading {
+  position: absolute;
+  inset: 0;
+  background: var(--app-chat-bg);
 }
 
 @keyframes active-ui-spin {

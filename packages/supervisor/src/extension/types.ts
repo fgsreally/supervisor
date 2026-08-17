@@ -235,6 +235,7 @@ export interface ProjectData {
   description: string | null;
   cwd: string;
   homeDir: string;
+  meta: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }

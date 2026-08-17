@@ -192,6 +192,7 @@ export interface ProjectRow {
   cwd: string;
   description: string | null;
   home_dir: string;
+  meta: string;
   created_at: number;
   updated_at: number;
 }
@@ -202,6 +203,7 @@ export interface Project {
   description: string | null;
   cwd: string;
   homeDir: string;
+  meta: Record<string, unknown>;
   createdAt: Date;
   updatedAt: Date;
 }

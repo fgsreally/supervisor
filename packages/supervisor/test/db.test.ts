@@ -48,6 +48,16 @@ describe("supervisor: SupervisorDb", () => {
     expect(db.get(99999)).toBeUndefined();
   });
 
+  it("persists project extension metadata", () => {
+    const project = db.insertProject({ cwd: join(tmpDir, "project"), name: "Project" });
+    expect(project.meta).toEqual({});
+
+    const updated = db.updateProject(project.id, {
+      meta: { services: { status: "pending", definitions: [] } },
+    });
+    expect(updated.meta).toEqual({ services: { status: "pending", definitions: [] } });
+  });
+
   it("lists all instances, newest first", () => {
     const older = insertSession(db, {
       status: "running",
@@ -315,6 +325,7 @@ describe("supervisor: SupervisorDb", () => {
       "description",
       "cwd",
       "home_dir",
+      "meta",
       "created_at",
       "updated_at",
     ]);

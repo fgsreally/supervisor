@@ -102,6 +102,7 @@ export interface Project {
   description: string | null;
   cwd: string;
   homeDir: string;
+  meta: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }
@@ -618,6 +619,7 @@ export interface CreateProjectRequest {
 export interface UpdateProjectRequest {
   name?: string;
   description?: string | null;
+  meta?: Record<string, unknown>;
 }
 
 export interface CreateAgentRequest {
@@ -764,6 +766,7 @@ interface RawProject {
   description: string | null;
   cwd: string;
   homeDir: string;
+  meta: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
 }

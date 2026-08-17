@@ -150,6 +150,7 @@ function rowToProject(row: ProjectRow): Project {
     description: row.description,
     cwd: row.cwd,
     homeDir: row.home_dir,
+    meta: JSON.parse(row.meta || "{}") as Record<string, unknown>,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -294,14 +295,15 @@ export class SupervisorDb {
     const now = Date.now();
     const result = this.db
       .prepare(
-        `INSERT INTO projects (name, description, cwd, home_dir, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (name, description, cwd, home_dir, meta, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         options?.name ?? this.projectNameFromCwd(cwd),
         options?.description ?? null,
         cwd,
         "",
+        "{}",
         now,
         now,
       );
@@ -321,7 +323,13 @@ export class SupervisorDb {
 
   updateProject(
     id: number,
-    patch: { name?: string; description?: string | null; cwd?: string; homeDir?: string },
+    patch: {
+      name?: string;
+      description?: string | null;
+      cwd?: string;
+      homeDir?: string;
+      meta?: Record<string, unknown>;
+    },
   ): Project {
     const project = this.getProject(id);
     if (!project) throw new Error(`Project ${id} not found`);
@@ -330,11 +338,12 @@ export class SupervisorDb {
     const description = patch.description === undefined ? project.description : patch.description;
     const cwd = patch.cwd ?? project.cwd;
     const homeDir = patch.homeDir ?? project.homeDir;
+    const meta = patch.meta ?? project.meta;
     this.db
       .prepare(
-        "UPDATE projects SET name = ?, description = ?, cwd = ?, home_dir = ?, updated_at = ? WHERE id = ?",
+        "UPDATE projects SET name = ?, description = ?, cwd = ?, home_dir = ?, meta = ?, updated_at = ? WHERE id = ?",
       )
-      .run(name, description, cwd, homeDir, Date.now(), id);
+      .run(name, description, cwd, homeDir, JSON.stringify(meta), Date.now(), id);
     return this.getProject(id)!;
   }
 

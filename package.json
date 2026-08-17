@@ -47,7 +47,8 @@
   },
   "pnpm": {
     "onlyBuiltDependencies": [
-      "better-sqlite3"
+      "better-sqlite3",
+      "esbuild"
     ],
     "patchedDependencies": {
       "@elysia/node@1.4.6": "patches/@elysia__node.patch"

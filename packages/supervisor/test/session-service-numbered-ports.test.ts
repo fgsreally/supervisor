@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { delimiter, join } from "node:path";
 import {
-  appsToPortEnv,
+  servicesToPortEnv,
   findProjectBinDir,
   withProjectPath,
 } from "../src/core/session-registered-services.js";
@@ -32,7 +32,7 @@ describe("numbered session service ports", () => {
               services: {
                 status: "active",
                 startCommand: "pnpm dev --port ${PORT1}",
-                apps: [{ name: "web", port: 4396, portEnv: { PORT1: 4396 }, path: "/" }],
+                services: [{ name: "web", port: 4396, portEnv: { PORT1: 4396 }, path: "/" }],
               },
             }),
           },
@@ -42,7 +42,7 @@ describe("numbered session service ports", () => {
               services: {
                 status: "idle",
                 startCommand: "pnpm dev --port ${PORT1}",
-                apps: [{ name: "dev", port: 4428, portEnv: { PORT1: 4428 }, path: "/" }],
+                services: [{ name: "dev", port: 4428, portEnv: { PORT1: 4428 }, path: "/" }],
               },
             }),
           },
@@ -57,7 +57,7 @@ describe("numbered session service ports", () => {
       services: {
         status: "idle",
         startCommand: "server --ui ${PORT1} --api ${PORT2}",
-        apps: [
+        services: [
           {
             name: "web",
             port: 4396,
@@ -68,8 +68,8 @@ describe("numbered session service ports", () => {
       },
     });
 
-    expect(services?.apps?.[0]?.portEnv).toEqual({ PORT1: 4396, PORT2: 4397 });
-    const env = appsToPortEnv(services?.apps);
+    expect(services?.services?.[0]?.portEnv).toEqual({ PORT1: 4396, PORT2: 4397 });
+    const env = servicesToPortEnv(services?.services);
     expect(substitutePortPlaceholders(services!.startCommand, env)).toBe(
       "server --ui 4396 --api 4397",
     );

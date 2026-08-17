@@ -22,7 +22,11 @@ import {
   ensureBuiltinExtensionResources,
   listEnabledBuiltinExtensionSlugs,
 } from "../extension/builtin/ensure.js";
-import { BUILTIN_EXTENSIONS, BUILTIN_EXTENSION_SLUGS, isBuiltinExtensionResource } from "../extension/builtin/catalog.js";
+import {
+  BUILTIN_EXTENSIONS,
+  BUILTIN_EXTENSION_SLUGS,
+  isBuiltinExtensionResource,
+} from "../extension/builtin/catalog.js";
 import { declaredMenusForSlug, serializeUiMenu } from "../extension/ui-menus.js";
 import { JobManager } from "./jobs.js";
 import {
@@ -116,9 +120,14 @@ import {
   resolveSessionGitContext,
 } from "../utils/git.js";
 import { configureSessionLogProjectResolver, sessionLog } from "../utils/session-log.js";
+import { appendSystemLog } from "../utils/system-log.js";
 import { beginSessionTiming, timedSessionStep } from "../utils/session-timing.js";
 import { writeLog } from "../i18n/logs.js";
-import { startSessionActivityScheduler, hasSessionActivityPolicy, clearSessionActivityPolicy } from "./session-activity.js";
+import {
+  startSessionActivityScheduler,
+  hasSessionActivityPolicy,
+  clearSessionActivityPolicy,
+} from "./session-activity.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "./resource/prompt-templates.js";
 import { loadPromptTemplate } from "./resource/system-prompts.js";
@@ -372,6 +381,7 @@ export class SessionManager {
   private readonly sessionInputQueues = new SessionInputQueue();
   private readonly drainingSessionInputs = new Set<number>();
   private readonly pendingSpawns = new Map<number, Promise<Session>>();
+  private readonly pendingProjectParses = new Map<number, Promise<unknown>>();
   /** Runtime restores for existing Sessions; creation-time initialization uses pendingSpawns. */
   private readonly pendingRuntimeRestores = new Map<number, Promise<ManagedSessionRuntime>>();
   private readonly systemPromptOverlays = new Map<number, SystemPromptOverlay>();
@@ -475,7 +485,11 @@ export class SessionManager {
     if (menuId === "git.fork-session" || menuId === "git.fork-message") {
       return { action: "select-agent-for-fork" };
     }
-    if (menuId === "git.checkpoint" || menuId === "git.achieve" || menuId === "git.rewind-message") {
+    if (
+      menuId === "git.checkpoint" ||
+      menuId === "git.achieve" ||
+      menuId === "git.rewind-message"
+    ) {
       await this.ensureRuntime(sessionId);
       if (menuId === "git.checkpoint") {
         await this.createCheckpoint(sessionId);
@@ -588,7 +602,7 @@ export class SessionManager {
       services.status === "active";
     if (!activeStatus) return session;
 
-    const jobIds = [services.jobId, ...(services.apps ?? []).map((app) => app.jobId)].filter(
+    const jobIds = [services.jobId, ...(services.services ?? []).map((app) => app.jobId)].filter(
       (id): id is string => Boolean(id),
     );
     const endedJobId = jobIds.find((id) => {
@@ -1302,6 +1316,9 @@ export class SessionManager {
         backendType: agentInDb?.backendType,
         skipRuntime: !!options.skipRuntime,
       });
+      await timedSessionStep(session.id, "waitForProjectParse", () =>
+        this.waitForProjectParse(this.requireProjectId(session)),
+      );
       const activeSession = await timedSessionStep(session.id, "prepareLifecycle", () =>
         prepareSessionLifecycleSpawn(this.db, session, options, agentInDb?.name, this.jobs),
       );
@@ -2161,8 +2178,10 @@ export class SessionManager {
     if (!runtime) {
       throw new Error("not running");
     }
+    sessionLog(id, "info", "Runtime closing", ["system", "lifecycle"]);
     await runtime.abort().catch(() => {});
     await runtime.clear().catch(() => {});
+    sessionLog(id, "info", "Runtime closed", ["system", "lifecycle"]);
     this.runtimes.delete(id);
     this.turnTrackers.delete(id);
     this.sessionToolConfigs.delete(id);
@@ -2171,6 +2190,21 @@ export class SessionManager {
       if (current.created_by === "spawn_agent" && current.parent_id != null) {
       }
     }
+  }
+
+  private async stopOwnedShellJobs(id: number): Promise<void> {
+    const shells = this.jobs.list(id).filter((job) => job.kind === "shell" || job.kind === "service");
+    await Promise.all(
+      shells
+        .filter((job) => job.status === "queued" || job.status === "running" || job.status === "waiting")
+        .map((job) => this.jobs.cancel(job.id).catch(() => undefined)),
+    );
+  }
+
+  private async unloadEval(id: number): Promise<void> {
+    const runtime = this.runtimes.get(id);
+    if (!runtime?.extension) return;
+    await runtime.extension.unload("eval").catch(() => undefined);
   }
 
   async complete(id: number): Promise<Session> {
@@ -2191,6 +2225,8 @@ export class SessionManager {
         sessionId: id,
       } as ExtensionEvent);
     }
+    await this.unloadEval(id);
+    await this.stopOwnedShellJobs(id);
 
     const isSpawnedSubagent = session.creationMethod === "spawn_agent" && session.parentId != null;
     try {
@@ -2240,6 +2276,7 @@ export class SessionManager {
       const runtime = this.runtimes.get(id);
       if (runtime) {
         await runtime.clear().catch(() => {});
+        sessionLog(id, "info", "Runtime closed after session completion", ["system", "lifecycle"]);
       }
       this.runtimes.delete(id);
       this.turnTrackers.delete(id);
@@ -2361,14 +2398,48 @@ export class SessionManager {
       ...options,
     });
     const created = this.db.getProject(project.id)!;
-    void this.parseProject(created.id).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      sessionLog(0, "error", `Project parse failed [${created.id}]: ${message}`, [
-        "system",
-        "project",
-      ]);
-    });
+    const parsing = this.parseProject(created.id);
+    this.pendingProjectParses.set(created.id, parsing);
+    void parsing
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        sessionLog(0, "error", `Project parse failed [${created.id}]: ${message}`, [
+          "system",
+          "project",
+        ]);
+      })
+      .finally(() => this.pendingProjectParses.delete(created.id));
     return created;
+  }
+
+  private async waitForProjectParse(projectId: number): Promise<void> {
+    const pending = this.pendingProjectParses.get(projectId);
+    if (pending) {
+      await pending;
+    }
+
+    let current = this.db.getProject(projectId);
+    if (!current) throw new Error(`Project ${projectId} not found`);
+    let services = current.meta.services;
+    if (!services || typeof services !== "object") {
+      await this.parseProject(projectId);
+      current = this.db.getProject(projectId);
+      if (!current) throw new Error(`Project ${projectId} not found`);
+      services = current.meta.services;
+    }
+
+    const status = (services as { status?: string } | undefined)?.status;
+    if (status === "ready") return;
+    if (status === "error") {
+      // Parsing is complete even when Watson reported an error. The Session
+      // can still be created, but the service extension will not start any
+      // incomplete definitions and the persisted project status remains
+      // visible to the user.
+      return;
+    }
+    if (status === "pending") {
+      throw new Error(`Project ${projectId} parsing did not complete`);
+    }
   }
 
   updateProject(
@@ -2392,7 +2463,12 @@ export class SessionManager {
     this.db.updateProject(projectId, {
       meta: {
         ...project.meta,
-        services: { status: "pending", definitions: [], updatedAt: new Date().toISOString() },
+        services: {
+          status: "pending",
+          definitions: [],
+          views: [],
+          updatedAt: new Date().toISOString(),
+        },
       },
     });
 
@@ -2406,6 +2482,7 @@ export class SessionManager {
           services: {
             status: "error",
             definitions: [],
+            views: [],
             error: message,
             updatedAt: new Date().toISOString(),
           },
@@ -2428,6 +2505,7 @@ export class SessionManager {
             services: {
               status: "error",
               definitions: [],
+              views: [],
               error: message,
               updatedAt: new Date().toISOString(),
             },
@@ -2570,7 +2648,13 @@ export class SessionManager {
     const availability = externalAgentAvailability(agent);
     const uiMenus = this.listAgentUiMenus(agent.id);
     if (agent.backendType !== "native") {
-      return { ...agent, homeDir: null, systemMd: agent.systemPrompt ?? "", ...availability, uiMenus };
+      return {
+        ...agent,
+        homeDir: null,
+        systemMd: agent.systemPrompt ?? "",
+        ...availability,
+        uiMenus,
+      };
     }
     const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
     return { ...agent, homeDir, systemMd: agent.systemPrompt ?? "", ...availability, uiMenus };
@@ -2792,18 +2876,18 @@ export class SessionManager {
     if (!session) return;
     const services = parseSessionServicesMeta(session.meta);
     if (!services) return;
-    const apps = services.apps ?? [];
-    const hitApp = apps.some((app) => app.jobId === jobId);
+    const servicesList = services.services ?? [];
+    const hitApp = servicesList.some((app) => app.jobId === jobId);
     const hitSession = services.jobId === jobId;
     if (!hitApp && !hitSession) return;
-    const nextApps = apps.map((app) =>
+    const nextServices = servicesList.map((app) =>
       app.jobId === jobId ? { ...app, jobId: undefined, pid: null } : app,
     );
-    const still = nextApps.find((app) => app.jobId);
+    const still = nextServices.find((app) => app.jobId);
     this.db.updateMeta(sessionId, {
       services: {
         ...services,
-        apps: nextApps,
+        services: nextServices,
         jobId: still?.jobId,
         pid: still?.pid ?? null,
         resolvedStartCommand: still?.startCommand,
@@ -2972,12 +3056,17 @@ export class SessionManager {
     }
 
     if (runtime?.extension) {
+      sessionLog(id, "debug", "session.before_delete start", ["system", "lifecycle"]);
       try {
         await runtime.extension.emit({
           type: "session.before_delete",
           sessionId: id,
         } as ExtensionEvent);
+        sessionLog(id, "debug", "session.before_delete done", ["system", "lifecycle"]);
       } catch (error: unknown) {
+        sessionLog(id, "error", "session.before_delete failed", ["system", "lifecycle"], {
+          error: error instanceof Error ? error.message : String(error),
+        });
         writeLog("error", "runtime.clearOnDeleteFailed", {
           id,
           step: "before_delete",
@@ -2985,6 +3074,8 @@ export class SessionManager {
         });
       }
     }
+    await this.unloadEval(id);
+    await this.stopOwnedShellJobs(id);
 
     if (runtime) {
       this.runtimes.delete(id);
@@ -2995,6 +3086,18 @@ export class SessionManager {
     clearSessionActivityPolicy(id);
 
     const projectId = session?.projectId ?? null;
+    sessionLog(
+      id,
+      "info",
+      `Session deleted${projectId == null ? "" : ` projectId=${projectId}`}`,
+      ["system", "lifecycle"],
+      projectId == null ? undefined : { projectId },
+    );
+    appendSystemLog(
+      `Session deleted id=${id}${projectId == null ? "" : ` projectId=${projectId}`}`,
+      "info",
+      ["session", "lifecycle"],
+    );
     this.db.delete(id);
 
     // The Session and its messages disappear atomically with the DB delete above. Slow runtime
@@ -3034,6 +3137,7 @@ export class SessionManager {
       if (runtime) {
         try {
           await runtime.clear();
+          sessionLog(id, "info", "Runtime closed during session deletion", ["system", "lifecycle"]);
         } catch (error: unknown) {
           recordCleanupFailure("runtime", error);
         }
@@ -3522,7 +3626,9 @@ export class SessionManager {
     return this.db.getLastMessagePreviews(sessionIds);
   }
 
-  getLastMessageSummaries(sessionIds: number[]): Map<number, { preview: string; createdAt: number }> {
+  getLastMessageSummaries(
+    sessionIds: number[],
+  ): Map<number, { preview: string; createdAt: number }> {
     return this.db.getLastMessageSummaries(sessionIds);
   }
 

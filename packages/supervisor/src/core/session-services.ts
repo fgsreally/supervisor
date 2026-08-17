@@ -1,15 +1,12 @@
 import type { JobManager } from "./jobs.js";
-import type { SessionServiceApp, SessionServicesMeta } from "./project-runtime.js";
+import type { SessionService, SessionServicesMeta } from "./project-runtime.js";
 import {
-  appsToPortEnv,
+  servicesToPortEnv,
   hasRegisteredServices,
   jobManagerAsHost,
   startRegisteredSessionServices,
   stopRegisteredSessionServices,
-  type RegisteredServiceEntry,
 } from "./session-registered-services.js";
-
-export type { RegisteredServiceEntry };
 
 type SessionMetaStore = {
   list: () => Array<{ id: number; meta: string }>;
@@ -18,11 +15,11 @@ type SessionMetaStore = {
 
 /** Build the injected session tip about started services. */
 export function buildSessionServicesPrompt(services: SessionServicesMeta): string {
-  const apps = services.apps ?? [];
-  if (!apps.length && !services.startCommand?.trim()) return "";
+  const registered = services.services ?? [];
+  if (!registered.length && !services.startCommand?.trim()) return "";
   const lines = ["Local services started for this Session:", `Status: ${services.status}`];
-  if (apps.length) {
-    for (const app of apps) {
+  if (registered.length) {
+    for (const app of registered) {
       const start = app.startCommand ?? services.resolvedStartCommand ?? services.startCommand;
       lines.push(
         `- ${app.name}: port ${app.port} path ${app.path ?? "/"}${start ? ` start \`${start}\`` : ""}`,
@@ -83,7 +80,7 @@ export function stoppedSessionServicesMeta(
     startCommand: previous?.startCommand ?? "",
     stopCommand: previous?.stopCommand,
     destroyCommand: previous?.destroyCommand ?? previous?.uninstallCommand,
-    apps: previous?.apps?.map((app) => ({ ...app, jobId: undefined, pid: null })),
+    services: previous?.services?.map((app) => ({ ...app, jobId: undefined, pid: null })),
     status: "idle",
     installedAt: previous?.installedAt,
     lastActiveAt: previous?.lastActiveAt,
@@ -95,7 +92,7 @@ export function stoppedSessionServicesMeta(
 
 /**
  * After Supervisor restart, child processes / Jobs are gone.
- * Drop process-bound fields from meta.services; keep registration (commands/apps).
+ * Drop process-bound fields from meta.services; keep Service registration.
  * Eval / background bash are not stored in meta (jobs table + session eval dir).
  */
 export function scrubStaleSessionRuntimeMeta(db: SessionMetaStore): number {
@@ -121,9 +118,9 @@ export function scrubStaleSessionRuntimeMeta(db: SessionMetaStore): number {
   return changed;
 }
 
-function parseApps(raw: unknown): SessionServiceApp[] {
+function parseServices(raw: unknown): SessionService[] {
   if (!Array.isArray(raw)) return [];
-  const apps: SessionServiceApp[] = [];
+  const services: SessionService[] = [];
   for (const item of raw) {
     if (!item || typeof item !== "object") continue;
     const row = item as Record<string, unknown>;
@@ -135,7 +132,7 @@ function parseApps(raw: unknown): SessionServiceApp[] {
           ? Number.parseInt(row.port, 10)
           : NaN;
     if (!name || !Number.isFinite(port) || port <= 0) continue;
-    apps.push({
+    services.push({
       name,
       port,
       portEnv:
@@ -160,106 +157,7 @@ function parseApps(raw: unknown): SessionServiceApp[] {
       pid: typeof row.pid === "number" ? row.pid : null,
     });
   }
-  return apps;
-}
-
-function migrateLegacyEntries(row: Record<string, unknown>): SessionServicesMeta | null {
-  if (!Array.isArray(row.entries) || row.entries.length === 0) return null;
-  const portEnv =
-    row.portEnv && typeof row.portEnv === "object" && !Array.isArray(row.portEnv)
-      ? Object.fromEntries(
-          Object.entries(row.portEnv as Record<string, unknown>)
-            .filter(([, value]) => typeof value === "string" || typeof value === "number")
-            .map(([key, value]) => [key, String(value)]),
-        )
-      : {};
-
-  const entries: RegisteredServiceEntry[] = [];
-  for (const item of row.entries) {
-    if (!item || typeof item !== "object") continue;
-    const entry = item as Record<string, unknown>;
-    const name = typeof entry.name === "string" ? entry.name.trim() : "";
-    const startCommand = typeof entry.startCommand === "string" ? entry.startCommand.trim() : "";
-    if (!name || !startCommand) continue;
-    entries.push({
-      name,
-      startCommand,
-      installCommand: typeof entry.installCommand === "string" ? entry.installCommand : undefined,
-      stopCommand: typeof entry.stopCommand === "string" ? entry.stopCommand : undefined,
-      destroyCommand: typeof entry.destroyCommand === "string" ? entry.destroyCommand : undefined,
-      uninstallCommand:
-        typeof entry.uninstallCommand === "string" ? entry.uninstallCommand : undefined,
-      uiPorts: Array.isArray(entry.uiPorts)
-        ? entry.uiPorts
-            .filter((port): port is Record<string, unknown> => !!port && typeof port === "object")
-            .map((port) => ({
-              envVar: typeof port.envVar === "string" ? port.envVar.trim() : "",
-              label: typeof port.label === "string" ? port.label : undefined,
-              path: typeof port.path === "string" ? port.path : undefined,
-            }))
-            .filter((port) => port.envVar)
-        : undefined,
-      pid: typeof entry.pid === "number" ? entry.pid : null,
-      jobId: typeof entry.jobId === "string" ? entry.jobId : undefined,
-      resolvedStartCommand:
-        typeof entry.resolvedStartCommand === "string" ? entry.resolvedStartCommand : undefined,
-    });
-  }
-  if (entries.length === 0) return null;
-
-  const primary = entries[0]!;
-  const apps: SessionServiceApp[] = [];
-  for (const entry of entries) {
-    for (const port of entry.uiPorts ?? []) {
-      const raw = portEnv[port.envVar];
-      const num = raw ? Number.parseInt(raw, 10) : NaN;
-      if (!Number.isFinite(num) || num <= 0) continue;
-      apps.push({
-        name: port.label ?? entry.name,
-        port: num,
-        path: port.path ?? "/",
-      });
-    }
-  }
-
-  const status = row.status;
-  if (
-    status !== "starting" &&
-    status !== "running" &&
-    status !== "active" &&
-    status !== "stopped" &&
-    status !== "idle" &&
-    status !== "error" &&
-    status !== "unregistered"
-  ) {
-    return null;
-  }
-
-  return {
-    status,
-    installCommand: primary.installCommand,
-    startCommand:
-      entries.length === 1
-        ? primary.startCommand
-        : entries
-            .map((entry) => entry.startCommand)
-            .join(process.platform === "win32" ? " & " : " & "),
-    stopCommand: primary.stopCommand,
-    destroyCommand: primary.destroyCommand ?? primary.uninstallCommand,
-    apps: apps.length > 0 ? apps : undefined,
-    startedAt: typeof row.startedAt === "string" ? row.startedAt : undefined,
-    installedAt: typeof row.installedAt === "string" ? row.installedAt : undefined,
-    lastActiveAt:
-      typeof row.lastActiveAt === "number" && Number.isFinite(row.lastActiveAt)
-        ? row.lastActiveAt
-        : undefined,
-    sleepAt:
-      typeof row.sleepAt === "number" && Number.isFinite(row.sleepAt) ? row.sleepAt : undefined,
-    error: typeof row.error === "string" ? row.error : undefined,
-    pid: primary.pid ?? null,
-    jobId: primary.jobId,
-    resolvedStartCommand: primary.resolvedStartCommand,
-  };
+  return services;
 }
 
 export function parseSessionServicesMeta(
@@ -296,7 +194,7 @@ export function parseSessionServicesMeta(
           : typeof row.uninstallCommand === "string"
             ? row.uninstallCommand.trim() || undefined
             : undefined,
-      apps: parseApps(row.apps),
+      services: parseServices(row.services),
       startedAt: typeof row.startedAt === "string" ? row.startedAt : undefined,
       installedAt: typeof row.installedAt === "string" ? row.installedAt : undefined,
       lastActiveAt:
@@ -313,7 +211,7 @@ export function parseSessionServicesMeta(
     };
   }
 
-  return migrateLegacyEntries(row);
+  return null;
 }
 
 /** Ports already claimed in other Sessions' meta.services. */
@@ -331,7 +229,7 @@ export function collectReservedServicePorts(
       continue;
     }
     const services = parseSessionServicesMeta(meta);
-    for (const app of services?.apps ?? []) {
+    for (const app of services?.services ?? []) {
       if (Number.isInteger(app.port) && app.port > 0) ports.push(app.port);
       for (const port of Object.values(app.portEnv ?? {})) {
         if (Number.isInteger(port) && port > 0) ports.push(port);
@@ -341,11 +239,11 @@ export function collectReservedServicePorts(
   return [...new Set(ports)];
 }
 
-/** Port env derived from apps for agent shells / external runtimes. */
+/** Port env derived from registered Services for agent shells / external runtimes. */
 export function sessionServicePortEnv(
   meta: Record<string, unknown> | undefined | null,
 ): Record<string, string> {
-  return appsToPortEnv(parseSessionServicesMeta(meta)?.apps);
+  return servicesToPortEnv(parseSessionServicesMeta(meta)?.services);
 }
 
 export {

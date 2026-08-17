@@ -40,13 +40,6 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
     description: "Session timer / scheduling helpers",
   },
   {
-    slug: "persistent-bash",
-    name: "Background bash cleanup",
-    description:
-      "Stops leftover background bash jobs when a Session unloads (bash tool is built-in)",
-    bindExternalByDefault: true,
-  },
-  {
     slug: "skill",
     name: "Skills",
     description: "Loads and exposes bound skills",
@@ -64,7 +57,7 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
   {
     slug: "service",
     name: "Service",
-    description: "Add, delete, or update per-session local services via persistent-bash",
+    description: "Add, delete, or update per-session local services",
     requiresMainSession: true,
     bindExternalByDefault: true,
   },

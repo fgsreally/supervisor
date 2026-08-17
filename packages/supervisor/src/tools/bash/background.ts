@@ -128,8 +128,9 @@ export async function startBackgroundBashSession(options: {
   command?: string;
   label?: string;
   env?: NodeJS.ProcessEnv;
+  kind?: "shell" | "service";
 }): Promise<BackgroundBashSession> {
-  const running = (await options.jobs.list({ kind: "shell" })).filter(
+  const running = (await options.jobs.list()).filter(
     (job) => job.status === "running",
   ).length;
   if (running >= MAX_SESSIONS) {
@@ -144,7 +145,7 @@ export async function startBackgroundBashSession(options: {
       ? spawn(process.env.ComSpec ?? "cmd.exe", ["/Q"], { cwd: options.cwd, env, stdio: "pipe" })
       : spawn(process.env.SHELL ?? "/bin/bash", [], { cwd: options.cwd, env, stdio: "pipe" });
   const job = await options.jobs.create({
-    kind: "shell",
+    kind: options.kind ?? "shell",
     name: "bash",
     label: options.label?.trim() || command || "Interactive shell",
     status: "running",

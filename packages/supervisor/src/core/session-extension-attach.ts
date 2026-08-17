@@ -8,7 +8,6 @@ import {
   gitExtension,
   mcpExtension,
   messageAssetsExtension,
-  persistentBashExtension,
   projectServicesExtension,
   subagentExtension,
   supervisorAdminExtension,
@@ -128,7 +127,6 @@ export async function loadSessionExtensions(options: {
   await loadBuiltin("task-management", taskManagementExtension);
   await loadBuiltin("tool-loop-guard", toolLoopGuardExtension);
   await loadBuiltin("timer", timerExtension);
-  await loadBuiltin("persistent-bash", persistentBashExtension, 150);
   if (enabled("skill")) {
     await agentRuntime.loadSessionExtensionFactory("skill", (scope) =>
       createSkillExtension(scope.agentResource),
@@ -141,7 +139,7 @@ export async function loadSessionExtensions(options: {
       when: (scope) => scope.session.isMain,
     });
   }
-  if (enabled("service") || enabled("project-services")) {
+  if (enabled("service")) {
     await agentRuntime.loadSessionExtensionFactory(
       "service",
       () => projectServicesExtension,

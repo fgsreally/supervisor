@@ -1046,13 +1046,10 @@ async function refreshBackgroundBashCount() {
   const sessionId = props.session.id;
   if (!sessionId || document.hidden) return;
   try {
-    const snapshot = await api.getSessionJobs(sessionId);
+    const snapshot = await api.getSessionShells(sessionId);
     if (props.session.id !== sessionId) return;
-    backgroundBashCount.value = snapshot.jobs.filter(
-      (job) =>
-        (job.status === "running" || job.status === "waiting" || job.status === "queued") &&
-        (job.kind === "shell" ||
-          (job.kind === "project-service" && (job.name || "").startsWith("start:"))),
+    backgroundBashCount.value = snapshot.shells.filter(
+      (shell) => shell.status === "running" || shell.status === "waiting" || shell.status === "queued" || shell.status === "active",
     ).length;
   } catch {
     /* ignore transient poll errors */
@@ -1895,7 +1892,6 @@ async function rewindToMessage(entryId: string) {
 }
 
 async function forkFromMessage(entryId: string) {
-  if (!agentStore.hasUiMenu(props.agentId, "git.fork-message")) return;
   forkEntryId.value = entryId;
 }
 
@@ -2145,10 +2141,11 @@ const headerStatusKey = computed(() => {
 
 const servicePreviews = computed<SessionServicesPreview[]>(() => {
   const services = sessionServices.value;
-  if (!services?.apps?.length) return [];
+  if (!services) return [];
   const status = services.status;
   if (status !== "active" && status !== "running" && status !== "starting") return [];
-  return services.apps.map((app) => ({
+  const entries = services.views ?? [];
+  return entries.map((app) => ({
     name: app.name,
     port: app.port,
     path: app.path,

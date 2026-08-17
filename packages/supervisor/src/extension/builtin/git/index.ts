@@ -250,19 +250,18 @@ const gitExtension: ExtensionDefinition = {
 
     const sessionData = await ctx.session.data.get();
     const sessionMeta = await ctx.session.meta.get();
-    if (shouldCreateWorktree(ctx.session.isMain)) {
+    const forkSource =
+      sessionMeta.forkSource &&
+      typeof sessionMeta.forkSource === "object" &&
+      !Array.isArray(sessionMeta.forkSource)
+        ? (sessionMeta.forkSource as { gitRef?: unknown })
+        : undefined;
+    const canCreateForkWorktree =
+      sessionData.spawnType !== "fork" || typeof forkSource?.gitRef === "string";
+    if (shouldCreateWorktree(ctx.session.isMain) && canCreateForkWorktree) {
       try {
         sessionLog(sessionId, "info", "Creating session worktree", ["system", "git", "worktree"]);
         const repoRoot = ensureProjectGitRootSync(projectCwd);
-        const forkSource =
-          sessionMeta.forkSource &&
-          typeof sessionMeta.forkSource === "object" &&
-          !Array.isArray(sessionMeta.forkSource)
-            ? (sessionMeta.forkSource as { gitRef?: unknown })
-            : undefined;
-        if (sessionData.spawnType === "fork" && typeof forkSource?.gitRef !== "string") {
-          throw new Error("The selected message has no Git snapshot");
-        }
         const gitMeta = await createSessionWorktree(
           repoRoot,
           String(sessionId),

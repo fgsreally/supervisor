@@ -725,10 +725,10 @@ export function registerWebSocketRoutes(
   >();
 
   app.ws("/sessions/:id/preview/:scriptName/*", {
-    beforeHandle(context: {
+    beforeHandle: (context: {
       params?: Record<string, string>;
       query?: Record<string, string | undefined>;
-    }) {
+    }) => {
       if (password && context.query?.password !== password) {
         return new Response("Unauthorized", { status: 401 });
       }
@@ -808,7 +808,7 @@ export function registerWebSocketRoutes(
 
   app.ws("/ws", {
     maxPayloadLength: MAX_AUDIO_FRAME_BYTES,
-    beforeHandle(context: { query?: Record<string, string | undefined> }) {
+    beforeHandle: (context: { query?: Record<string, string | undefined> }) => {
       if (password && context.query?.password !== password) {
         return new Response("Unauthorized", { status: 401 });
       }

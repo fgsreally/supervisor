@@ -162,14 +162,21 @@ describe("supervisor: HTTP server", () => {
     expect(await res.json()).toEqual([]);
   });
 
-  it("exposes Session Jobs and schedules through one HTTP resource", async () => {
+  it("exposes Shells and Timers through separate HTTP resources", async () => {
     const { id } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
       id: string;
     };
     const sessionId = Number(id);
     const job = manager.jobs.create(sessionId, {
       kind: "shell",
-      name: "persistent-bash",
+      name: "bash",
+      status: "running",
+      executionMode: "background",
+      capabilities: ["cancel"],
+    });
+    const service = manager.jobs.create(sessionId, {
+      kind: "service",
+      name: "api",
       status: "running",
       executionMode: "background",
       capabilities: ["cancel"],
@@ -182,20 +189,29 @@ describe("supervisor: HTTP server", () => {
       createdAt: Date.now(),
     });
 
-    const snapshot = (await (await req("GET", `/sessions/${id}/jobs`)).json()) as {
-      jobs: Array<{ id: string; kind: string }>;
-      schedules: Array<{ kind: string; prompt: string }>;
+    const snapshot = (await (await req("GET", `/sessions/${id}/shells`)).json()) as {
+      shells: Array<{ id: string; kind: string }>;
     };
-    expect(snapshot.jobs).toEqual([expect.objectContaining({ id: job.id, kind: "shell" })]);
-    expect(snapshot.schedules).toEqual([
+    expect(snapshot.shells).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: job.id, kind: "bash" }),
+        expect.objectContaining({ id: service.id, kind: "service" }),
+      ]),
+    );
+    const timers = (await (await req("GET", `/sessions/${id}/timers`)).json()) as {
+      timers: Array<{ kind: string; prompt: string }>;
+    };
+    expect(timers.timers).toEqual([
       expect.objectContaining({ kind: "timer", prompt: "continue" }),
     ]);
 
-    const cancelled = await req("DELETE", `/sessions/${id}/jobs/${job.id}`);
+    const cancelled = await req("DELETE", `/sessions/${id}/shells/${job.id}`);
     expect(cancelled.status).toBe(200);
     expect(await cancelled.json()).toEqual({
-      job: expect.objectContaining({ status: "cancelled" }),
+      shell: expect.objectContaining({ status: "cancelled" }),
     });
+    expect((await req("DELETE", `/sessions/${id}/shells/${service.id}`)).status).toBe(200);
+    expect((await req("GET", `/sessions/${id}/jobs`)).status).toBe(404);
   });
 
   it("PATCH /sessions/:id/meta merges patch", async () => {

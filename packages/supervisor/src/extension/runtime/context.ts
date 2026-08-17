@@ -80,8 +80,7 @@ export function upsertMarkedSystemPromptBlock(
   const end = `<!-- /ext-sys:${id} -->`;
   const marked = new RegExp(`${escapeRegExp(start)}[\\s\\S]*?${escapeRegExp(end)}\\n?`, "g");
   let base = current.replace(marked, "").trim();
-  // Drop legacy unscoped project-services / service section from earlier injects.
-  if (id === "project-services" || id === "service") {
+  if (id === "service") {
     base = stripMarkdownSection(base, "## 项目服务");
   }
   const fragment = content.trim();

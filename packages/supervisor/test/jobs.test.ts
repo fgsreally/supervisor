@@ -36,7 +36,7 @@ describe("JobManager", () => {
   it("persists execution state and invokes cancellation handlers", async () => {
     const job = jobs.create(sessionId, {
       kind: "shell",
-      name: "persistent-bash",
+      name: "bash",
       status: "running",
       executionMode: "background",
       capabilities: ["cancel", "read_output"],
@@ -84,7 +84,7 @@ describe("JobManager", () => {
     const pid = child.pid!;
     const job = jobs.create(sessionId, {
       kind: "shell",
-      name: "persistent-bash",
+      name: "bash",
       status: "running",
       executionMode: "background",
       metadata: { pid },

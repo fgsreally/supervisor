@@ -326,7 +326,7 @@ async function openActions(
   contextMenu.copyText = copyText;
   contextMenu.canRewind = props.rewindableEntryIds.includes(group.id);
   const session = sessionStore.sessions.find((item) => item.id === props.sessionId);
-  contextMenu.canFork = agentStore.hasUiMenu(session?.agentId, "git.fork-message");
+  contextMenu.canFork = Boolean(session);
   contextMenu.canCopy = copyText.length > 0;
   contextMenu.usage =
     !props.externalAgent && isGroupedAssistantGroup(group) ? (group.usage ?? null) : null;

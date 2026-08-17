@@ -111,7 +111,7 @@ export function sessionLog(
   const id = Number(sessionId);
   const localizedMessage = translateRawLog(message);
   writeLog(
-    level === "error" ? "error" : level === "warn" ? "warn" : "info",
+    level,
     "runtime.sessionLog.entry",
     { id: sessionId, message: localizedMessage },
     meta ?? "",

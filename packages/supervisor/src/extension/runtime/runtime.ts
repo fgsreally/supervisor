@@ -12,7 +12,6 @@ import {
   evalExtension,
   mcpExtension,
   messageAssetsExtension,
-  persistentBashExtension,
   subagentExtension,
   supervisorAdminExtension,
   taskManagementExtension,
@@ -109,9 +108,6 @@ export class SessionExtensionRuntime {
       await this.loadExtension(toolLoopGuardExtension, "builtin:tool-loop-guard");
     }
     if (allow("timer")) await this.loadExtension(timerExtension, "builtin:timer");
-    if (allow("persistent-bash")) {
-      await this.loadExtension(persistentBashExtension, "builtin:persistent-bash");
-    }
     if (allow("skill")) {
       await this.loadExtension(createSkillExtension(this.context.agentResource), "builtin:skill");
     }

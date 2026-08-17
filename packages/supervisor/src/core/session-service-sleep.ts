@@ -23,7 +23,7 @@ function updateServicesPromptBlock(current: string, content: string): string {
   const start = "<!-- ext-sys:service -->";
   const end = "<!-- /ext-sys:service -->";
   const base = current
-    .replace(/<!-- ext-sys:(?:service|project-services) -->[\s\S]*?<!-- \/ext-sys:(?:service|project-services) -->\n?/g, "")
+    .replace(/<!-- ext-sys:service -->[\s\S]*?<!-- \/ext-sys:service -->\n?/g, "")
     .trim();
   const fragment = content.trim();
   if (!fragment) return base;

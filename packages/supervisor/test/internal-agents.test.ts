@@ -118,7 +118,7 @@ describe("packaged agents", () => {
         .map((binding) => binding.resource?.slug)
         .filter((slug): slug is string => typeof slug === "string")
         .sort();
-      expect(slugs).toEqual(["git", "persistent-bash", "service"]);
+      expect(slugs).toEqual(["git", "service"]);
     }
   });
 

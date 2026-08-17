@@ -5,6 +5,7 @@
     :description="t('session.agentPicker.description')"
     width="sm"
     size="auto"
+    :show-close="false"
     panel-class="agent-picker-dialog"
     @close="emit('close')"
   >
@@ -15,10 +16,6 @@
     </template>
 
     <div class="agent-picker custom-scrollbar">
-      <div class="agent-picker__mobile-intro">
-        <p>{{ t("session.agentPicker.description") }}</p>
-      </div>
-
       <div v-if="project" class="agent-picker__project">
         <div class="agent-picker__project-icon">
           <FolderOpen class="w-4 h-4" />
@@ -128,29 +125,6 @@ async function detectAgents() {
 
 .agent-picker::-webkit-scrollbar {
   display: none;
-}
-
-.agent-picker__mobile-intro {
-  margin-bottom: -12px;
-  padding: 0;
-  text-align: center;
-  color: var(--app-text-muted);
-  font-size: var(--app-font-micro);
-  line-height: 1.4;
-}
-
-.agent-picker__mobile-intro p {
-  margin: 0;
-}
-
-@media (max-width: 767px) {
-  :global(.agent-picker-dialog .m-drawer__header) {
-    display: none;
-  }
-
-  .agent-picker {
-    padding-top: 0;
-  }
 }
 
 .agent-picker__project {
@@ -298,10 +272,6 @@ async function detectAgents() {
 
 /* PC：内容区留白、分组卡片、副文案 */
 @media (min-width: 768px) {
-  .agent-picker__mobile-intro {
-    display: none;
-  }
-
   .agent-picker {
     gap: 18px;
     padding: 18px 20px 20px;

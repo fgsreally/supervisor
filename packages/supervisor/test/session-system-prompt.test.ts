@@ -35,7 +35,7 @@ describe("supervisor: session system prompt compose", () => {
       services: {
         status: "active",
         startCommand: "pnpm dev",
-        apps: [{ name: "web", port: 4396, path: "/", startCommand: "pnpm dev" }],
+        services: [{ name: "web", port: 4396, path: "/", startCommand: "pnpm dev" }],
       },
     });
 

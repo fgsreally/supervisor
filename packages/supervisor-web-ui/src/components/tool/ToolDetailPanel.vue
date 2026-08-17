@@ -44,11 +44,11 @@
 import { X } from "lucide-vue-next";
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
-  cancelSessionJob,
+  cancelSessionShell,
   getSessionEvalState,
-  getSessionJobs,
+  getSessionShells,
   type EvalRuntimeState,
-  type SessionJob,
+  type SessionShell,
 } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { useSessionStore } from "@/store";
@@ -62,7 +62,7 @@ const props = defineProps<{
   sections: ToolDetailSection[];
   /** Eval surface: kernel history and/or a background bash Job. */
   terminal?: "bash" | "eval";
-  /** Live-poll this Job's output (background bash / project-service). */
+  /** Live-poll this Shell's output. */
   jobId?: string;
   sessionId?: string;
   mobile?: boolean;
@@ -75,7 +75,7 @@ const emit = defineEmits<{
   "job-ended": [jobId: string];
 }>();
 const evalState = ref<EvalRuntimeState>();
-const jobState = ref<SessionJob>();
+const shellState = ref<SessionShell>();
 const killing = ref(false);
 const sessionStore = useSessionStore();
 const { t } = useI18n();
@@ -87,13 +87,13 @@ let closeTimer: ReturnType<typeof setTimeout> | undefined;
 const watchingJob = computed(() => Boolean(props.jobId));
 const canKillJob = computed(() => {
   if (!props.jobId || !props.sessionId) return false;
-  const status = jobState.value?.status;
-  return status === "running" || status === "waiting" || status === "queued";
+  const status = shellState.value?.status;
+  return status === "running" || status === "waiting" || status === "queued" || status === "active";
 });
 
 const terminalLines = computed(() => {
-  if (watchingJob.value && jobState.value) {
-    const job = jobState.value;
+  if (watchingJob.value && shellState.value) {
+    const job = shellState.value;
     const metaCommand =
       typeof job.metadata.resolvedCommand === "string"
         ? job.metadata.resolvedCommand
@@ -102,7 +102,7 @@ const terminalLines = computed(() => {
           : "";
     const header = metaCommand
       ? `\x1b[36m$ ${metaCommand}\x1b[0m`
-      : `\x1b[36m# ${job.label}\x1b[0m`;
+      : `\x1b[36m# ${job.title}\x1b[0m`;
     const status = `\x1b[90m# ${job.kind} · ${job.status}\x1b[0m`;
     const body = job.output || t("tool.noOutput");
     return [header, status, body];
@@ -120,7 +120,7 @@ const terminalLines = computed(() => {
 });
 const terminalPrompt = computed(() => {
   if (watchingJob.value) {
-    return jobState.value?.status === "running" || jobState.value?.status === "waiting"
+    return shellState.value?.status === "running" || shellState.value?.status === "waiting" || shellState.value?.status === "active"
       ? t("tool.running")
       : t("tool.outputComplete");
   }
@@ -139,7 +139,7 @@ function isTerminalJobStatus(status: string | undefined): boolean {
   );
 }
 
-function maybeEmitJobEnded(job: SessionJob) {
+function maybeEmitJobEnded(job: SessionShell) {
   if (!props.jobId || !isTerminalJobStatus(job.status)) return;
   if (endedEmittedFor === props.jobId) return;
   endedEmittedFor = props.jobId;
@@ -154,13 +154,13 @@ async function killJob() {
   if (!props.sessionId || !props.jobId || killing.value) return;
   killing.value = true;
   try {
-    const { job } = await cancelSessionJob(props.sessionId, props.jobId);
-    jobState.value = job;
-    jobSignature = `${job.status}:${job.output.length}:${job.finishedAt ?? 0}`;
+    const { shell } = await cancelSessionShell(props.sessionId, props.jobId);
+    shellState.value = shell;
+    jobSignature = `${shell.status}:${shell.output.length}:${shell.updatedAt}`;
     // Server clears meta.services.jobId/pid on terminal; refresh local session row.
     void sessionStore.fetchSession(props.sessionId);
     showUiMessage(t("tool.ended"), "success");
-    maybeEmitJobEnded(job);
+    maybeEmitJobEnded(shell);
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : t("tool.endFailed"), "error");
   } finally {
@@ -182,8 +182,8 @@ async function refreshEvalState() {
 }
 async function refreshJobState() {
   if (!props.jobId || !props.sessionId || document.hidden) return;
-  const snapshot = await getSessionJobs(props.sessionId).catch(() => undefined);
-  const next = snapshot?.jobs.find((job) => job.id === props.jobId);
+  const snapshot = await getSessionShells(props.sessionId).catch(() => undefined);
+  const next = snapshot?.shells.find((shell) => shell.id === props.jobId);
   if (!next) {
     // Job row gone (CASCADE / restart) — treat as ended.
     if (endedEmittedFor !== props.jobId) {
@@ -192,11 +192,11 @@ async function refreshJobState() {
     }
     return;
   }
-  const signature = `${next.status}:${next.output.length}:${next.finishedAt ?? 0}`;
+  const signature = `${next.status}:${next.output.length}:${next.updatedAt}`;
   if (signature === jobSignature) return;
   jobSignature = signature;
-  jobState.value = next;
-  maybeEmitJobEnded(next);
+  shellState.value = next;
+  if (next.status !== "active") maybeEmitJobEnded(next);
 }
 function startPolling() {
   if (poll) clearInterval(poll);

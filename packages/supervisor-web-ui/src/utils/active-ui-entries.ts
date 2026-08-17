@@ -23,9 +23,11 @@ export function collectActiveUiEntries(sessions: UISession[]): ActiveUiEntry[] {
   const result: ActiveUiEntry[] = [];
   for (const session of sessions) {
     const services = parseSessionServicesFromMeta(session.meta);
-    if (!services?.apps?.length) continue;
+    if (!services) continue;
+    const views = services.views ?? [];
+    if (!views.length) continue;
     if (!isActiveStatus(services.status)) continue;
-    for (const app of services.apps) {
+    for (const app of views) {
       result.push({
         key: `${session.id}:${app.name}:${app.port}`,
         sessionId: session.id,

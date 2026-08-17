@@ -2,7 +2,7 @@ import type { JobManager } from "./jobs.js";
 import type { CreateJobInput, UpdateJobInput } from "./jobs.js";
 import {
   extractPortPlaceholders,
-  type SessionServiceApp,
+  type SessionService,
   type SessionServicesMeta,
 } from "./project-runtime.js";
 import { computeServiceSleepAt } from "./session-service-sleep.js";
@@ -19,20 +19,6 @@ import { sessionLog } from "../utils/session-log.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";
-
-/** Legacy multi-entry shape kept only for parse migration. */
-export interface RegisteredServiceEntry {
-  name: string;
-  installCommand?: string;
-  startCommand: string;
-  stopCommand?: string;
-  destroyCommand?: string;
-  uninstallCommand?: string;
-  uiPorts?: Array<{ envVar: string; label?: string; path?: string }>;
-  resolvedStartCommand?: string;
-  jobId?: string;
-  pid?: number | null;
-}
 
 const MAIN_SERVICE_NAME = "main";
 
@@ -72,16 +58,16 @@ export function hasRegisteredServices(
 ): services is SessionServicesMeta {
   if (!services) return false;
   if (services.startCommand?.trim()) return true;
-  return Boolean(services.apps?.some((app) => app.startCommand?.trim() || app.port > 0));
+  return Boolean(services.services?.some((app) => app.startCommand?.trim() || app.port > 0));
 }
 
-export function appStartCommand(app: SessionServiceApp, services: SessionServicesMeta): string {
+export function appStartCommand(app: SessionService, services: SessionServicesMeta): string {
   return app.startCommand?.trim() || services.startCommand?.trim() || "";
 }
 
-export function appsToPortEnv(apps: SessionServiceApp[] | undefined): Record<string, string> {
+export function servicesToPortEnv(services: SessionService[] | undefined): Record<string, string> {
   const env: Record<string, string> = {};
-  for (const app of apps ?? []) {
+  for (const app of services ?? []) {
     for (const [name, port] of Object.entries(app.portEnv ?? {})) {
       if (/^PORT[1-9]\d*$/.test(name) && Number.isInteger(port) && port > 0) {
         env[name] = String(port);
@@ -92,7 +78,7 @@ export function appsToPortEnv(apps: SessionServiceApp[] | undefined): Record<str
     env[`${upper}_PORT`] = String(app.port);
     env[upper] = String(app.port);
   }
-  if (apps?.[0]) env.PORT = String(apps[0].port);
+  if (services?.[0]) env.PORT = String(services[0].port);
   return env;
 }
 
@@ -121,14 +107,14 @@ export function isSessionServiceProcessAlive(
   if (!services) return false;
   const main = runningChildren.get(childKeyByName(sessionId, MAIN_SERVICE_NAME));
   if (main?.pid && isPidAlive(main.pid)) return true;
-  for (const app of services.apps ?? []) {
-    if (isAppProcessAlive(sessionId, app)) return true;
+  for (const app of services.services ?? []) {
+    if (isServiceProcessAlive(sessionId, app)) return true;
   }
   if (services.pid && isPidAlive(services.pid)) return true;
   return false;
 }
 
-export function isAppProcessAlive(sessionId: number, app: SessionServiceApp | undefined): boolean {
+export function isServiceProcessAlive(sessionId: number, app: SessionService | undefined): boolean {
   if (!app) return false;
   const child = runningChildren.get(childKeyByName(sessionId, app.name));
   if (child?.pid && isPidAlive(child.pid)) return true;
@@ -176,10 +162,10 @@ export function jobManagerAsHost(jobs: JobManager): SessionServiceJobHost {
 
 async function resolvePortEnv(services: SessionServicesMeta): Promise<{
   portEnv: Record<string, string>;
-  apps: SessionServiceApp[];
+  services: SessionService[];
 }> {
-  const apps = [...(services.apps ?? [])];
-  const portEnv = appsToPortEnv(apps);
+  const nextServices = [...(services.services ?? [])];
+  const portEnv = servicesToPortEnv(nextServices);
   const commands = [
     services.installCommand,
     services.startCommand,
@@ -196,27 +182,27 @@ async function resolvePortEnv(services: SessionServicesMeta): Promise<{
     for (const [name, value] of Object.entries(allocated)) {
       const port = Number.parseInt(value, 10);
       if (!Number.isFinite(port) || port <= 0) continue;
-      if (name === "PORT" && apps[0]) {
-        apps[0] = { ...apps[0], port };
+      if (name === "PORT" && nextServices[0]) {
+        nextServices[0] = { ...nextServices[0], port };
         continue;
       }
       const appName = name.endsWith("_PORT") ? name.slice(0, -5) : name;
-      const idx = apps.findIndex(
+      const idx = nextServices.findIndex(
         (app) => app.name.replace(/[^A-Za-z0-9]+/g, "_").toUpperCase() === appName,
       );
-      if (idx >= 0) apps[idx] = { ...apps[idx]!, port };
-      else if (name === "PORT" && apps.length === 0) {
-        apps.push({ name: "web", port, path: "/" });
+      if (idx >= 0) nextServices[idx] = { ...nextServices[idx]!, port };
+      else if (name === "PORT" && nextServices.length === 0) {
+        nextServices.push({ name: "web", port, path: "/" });
       }
     }
   }
 
-  return { portEnv, apps };
+  return { portEnv, services: nextServices };
 }
 
 export async function stopRegisteredApp(options: {
   sessionId: number;
-  app: SessionServiceApp;
+  app: SessionService;
   jobs?: SessionServiceJobHost;
 }): Promise<void> {
   const key = childKeyByName(options.sessionId, options.app.name);
@@ -247,22 +233,22 @@ export async function startRegisteredApp(options: {
   sessionId: number;
   cwd: string;
   services: SessionServicesMeta;
-  app: SessionServiceApp;
+  app: SessionService;
   jobs: SessionServiceJobHost;
-  /** Prefer persistent-bash (or equivalent) over local spawn. */
+  /** Start the process through the shared Shell runner. */
   runBackground?: (input: {
     command: string;
     cwd: string;
     label: string;
     env?: NodeJS.ProcessEnv;
   }) => Promise<{ id: string; pid?: number }>;
-}): Promise<SessionServiceApp> {
+}): Promise<SessionService> {
   const startCommand = appStartCommand(options.app, options.services);
   if (!startCommand) throw new Error(`服务 ${options.app.name} 缺少 startCommand`);
 
-  const { portEnv, apps } = await resolvePortEnv({
+  const { portEnv, services } = await resolvePortEnv({
     ...options.services,
-    apps: options.services.apps?.map((item) =>
+    services: options.services.services?.map((item) =>
       item.name === options.app.name ? { ...item, ...options.app } : item,
     ) ?? [options.app],
   });
@@ -296,7 +282,7 @@ export async function startRegisteredApp(options: {
   }
 
   const job = await options.jobs.create(options.sessionId, {
-    kind: "project-service",
+    kind: "service",
     name: `start:${options.app.name}`,
     label: `start · ${options.app.name}`,
     status: "running",
@@ -306,7 +292,7 @@ export async function startRegisteredApp(options: {
       command: startCommand,
       resolvedCommand: resolved,
       cwd: options.cwd,
-      apps,
+      services,
       app: options.app.name,
     },
   });
@@ -375,11 +361,11 @@ export async function startRegisteredSessionServices(options: {
     throw new Error("尚未注册项目服务命令");
   }
 
-  const { portEnv, apps } = await resolvePortEnv(options.services);
+  const { portEnv, services } = await resolvePortEnv(options.services);
   const env: NodeJS.ProcessEnv = withProjectPath(options.cwd, { ...process.env, ...portEnv });
   const meta: SessionServicesMeta = {
     ...options.services,
-    apps: apps.map((app, index) =>
+    services: services.map((app, index) =>
       app.startCommand?.trim() || index > 0
         ? app
         : { ...app, startCommand: options.services.startCommand },
@@ -396,7 +382,7 @@ export async function startRegisteredSessionServices(options: {
         meta.installCommand = install;
         const resolved = substitutePortPlaceholders(install, portEnv);
         const job = await options.jobs.create(options.sessionId, {
-          kind: "project-service",
+          kind: "service",
           name: "install:main",
           label: "install · project",
           status: "running",
@@ -427,21 +413,21 @@ export async function startRegisteredSessionServices(options: {
       }
     }
 
-    const nextApps: SessionServiceApp[] = [];
-    for (const app of meta.apps ?? []) {
-      if (isAppProcessAlive(options.sessionId, app)) {
-        nextApps.push(app);
+    const nextServices: SessionService[] = [];
+    for (const app of meta.services ?? []) {
+      if (isServiceProcessAlive(options.sessionId, app)) {
+        nextServices.push(app);
         continue;
       }
       if (!appStartCommand(app, meta)) {
-        nextApps.push(app);
+        nextServices.push(app);
         continue;
       }
-      nextApps.push(
+      nextServices.push(
         await startRegisteredApp({
           sessionId: options.sessionId,
           cwd: options.cwd,
-          services: { ...meta, apps: meta.apps },
+          services: { ...meta, services: meta.services },
           app,
           jobs: options.jobs,
           runBackground: options.runBackground,
@@ -449,8 +435,8 @@ export async function startRegisteredSessionServices(options: {
       );
     }
 
-    const first = nextApps.find((app) => app.jobId) ?? nextApps[0];
-    meta.apps = nextApps;
+    const first = nextServices.find((app) => app.jobId) ?? nextServices[0];
+    meta.services = nextServices;
     meta.startCommand = first?.startCommand ?? meta.startCommand;
     meta.resolvedStartCommand = first?.startCommand;
     meta.jobId = first?.jobId;
@@ -481,7 +467,7 @@ export async function stopRegisteredSessionServices(options: {
 }): Promise<void> {
   if (!hasRegisteredServices(options.services)) return;
   const services = options.services;
-  const portEnv = appsToPortEnv(services.apps);
+  const portEnv = servicesToPortEnv(services.services);
   const env: NodeJS.ProcessEnv = { ...process.env, ...portEnv };
   const mode = options.mode ?? "stop";
   const destroy = services.destroyCommand?.trim() ?? services.uninstallCommand?.trim();
@@ -496,7 +482,7 @@ export async function stopRegisteredSessionServices(options: {
     let jobId: string | undefined;
     if (options.jobs) {
       const job = await options.jobs.create(options.sessionId, {
-        kind: "project-service",
+        kind: "service",
         name: `${mode}:main`,
         label: `${mode} · project`,
         status: "running",
@@ -533,7 +519,7 @@ export async function stopRegisteredSessionServices(options: {
     }
   }
 
-  for (const app of services.apps ?? []) {
+  for (const app of services.services ?? []) {
     await stopRegisteredApp({ sessionId: options.sessionId, app, jobs: options.jobs });
   }
 
@@ -546,7 +532,7 @@ export async function stopRegisteredSessionServices(options: {
   }
   runningChildren.delete(key);
   if (services.jobId && options.jobs) {
-    const stillBound = (services.apps ?? []).some((app) => app.jobId === services.jobId);
+    const stillBound = (services.services ?? []).some((app) => app.jobId === services.jobId);
     if (!stillBound) {
       const job = await options.jobs.get(services.jobId);
       if (job && (job.status === "running" || job.status === "waiting")) {
@@ -560,17 +546,6 @@ export async function stopRegisteredSessionServices(options: {
   }
 
   await new Promise((resolve) => setTimeout(resolve, 500));
-}
-
-/** @deprecated no-op compatibility export */
-export function flattenUiPorts(_entries: RegisteredServiceEntry[]): never[] {
-  return [];
-}
-
-export function parseRegisteredServiceEntries(
-  _services: SessionServicesMeta | null | undefined,
-): RegisteredServiceEntry[] {
-  return [];
 }
 
 export type { RunningServiceKey, ChildProcess };

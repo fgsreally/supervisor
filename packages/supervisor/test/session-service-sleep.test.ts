@@ -18,7 +18,7 @@ describe("session project service sleep", () => {
     const services = {
       status: "active",
       startCommand: "server --port ${PORT}",
-      apps: [{ name: "web", port: 43219, path: "/" }],
+      services: [{ name: "web", port: 43219, path: "/" }],
       sleepAt: Date.now() - 1,
       pid: null,
     };
@@ -40,7 +40,7 @@ describe("session project service sleep", () => {
     expect(onUpdated).toHaveBeenCalledWith(7);
     expect(updateSessionFields).toHaveBeenCalledWith(
       7,
-      expect.objectContaining({ systemPrompt: expect.stringContaining("状态：idle") }),
+      expect.objectContaining({ systemPrompt: expect.stringContaining("Status: idle") }),
     );
   });
 });

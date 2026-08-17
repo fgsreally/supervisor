@@ -92,7 +92,7 @@ describe("builtin extension catalog bindings", () => {
     expect(routerSlugs.has("subagent")).toBe(true);
   });
 
-  it("binds git, service, and persistent-bash on packaged external agents", () => {
+  it("binds git and service on packaged external agents", () => {
     const agent = db.insertAgent({
       name: "Codex",
       backend_type: "codex",
@@ -107,12 +107,11 @@ describe("builtin extension catalog bindings", () => {
     );
     expect(bound.has("git")).toBe(true);
     expect(bound.has("service")).toBe(true);
-    expect(bound.has("persistent-bash")).toBe(true);
     expect(bound.has("mcp")).toBe(false);
     expect(bound.has("skill")).toBe(false);
     expect(bound.has("task-management")).toBe(false);
 
     const enabled = listEnabledBuiltinExtensionSlugs(db, agent.id, { isMainSession: true });
-    expect([...enabled].sort()).toEqual(["git", "persistent-bash", "service"]);
+    expect([...enabled].sort()).toEqual(["git", "service"]);
   });
 });

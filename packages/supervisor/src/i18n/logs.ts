@@ -1,5 +1,6 @@
 import en from "./locales/en.json";
 import zhCN from "./locales/zh-CN.json";
+import pc from "picocolors";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogLocale = "en" | "zh-CN";
@@ -70,8 +71,18 @@ export function writeLog(
   ...details: unknown[]
 ): void {
   const message = translateLog(key, params);
-  if (level === "error") console.error(message, ...details);
-  else if (level === "warn") console.warn(message, ...details);
-  else if (level === "debug") console.debug(message, ...details);
-  else console.log(message, ...details);
+  const prefix = `[${level.toUpperCase()}]`;
+  const coloredPrefix =
+    level === "error"
+      ? pc.red(prefix)
+      : level === "warn"
+        ? pc.yellow(prefix)
+        : level === "debug"
+          ? pc.cyan(prefix)
+          : pc.blue(prefix);
+  const output = `${coloredPrefix} ${message}`;
+  if (level === "error") console.error(output, ...details);
+  else if (level === "warn") console.warn(output, ...details);
+  else if (level === "debug") console.debug(output, ...details);
+  else console.log(output, ...details);
 }

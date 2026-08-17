@@ -1444,6 +1444,7 @@ export async function syncSession(id: string): Promise<Session> {
 
 export interface SessionServicesSnapshot {
   status:
+    | "registered"
     | "starting"
     | "running"
     | "active"
@@ -1454,8 +1455,14 @@ export interface SessionServicesSnapshot {
     | "none";
   sleepAt?: number;
   installedAt?: string;
-  apps: Array<{
+  services: Array<{
     name: string;
+    port: number;
+    path?: string;
+  }>;
+  views: Array<{
+    name: string;
+    service: string;
     port: number;
     path?: string;
   }>;
@@ -1740,20 +1747,6 @@ export async function submitQueuedSessionInput(
   );
 }
 
-export interface PersistentBashSession {
-  id: string;
-  sessionId: number;
-  command: string;
-  label: string;
-  cwd: string;
-  pid?: number;
-  status: "running" | "exited" | "failed";
-  startedAt: number;
-  endedAt?: number;
-  exitCode?: number | null;
-  output: string;
-}
-
 export type JobStatus =
   | "queued"
   | "running"
@@ -1763,27 +1756,7 @@ export type JobStatus =
   | "cancelled"
   | "interrupted";
 
-export interface SessionJob {
-  id: string;
-  sessionId: number;
-  kind: string;
-  name: string;
-  label: string;
-  status: JobStatus;
-  executionMode: "inline" | "background";
-  parentJobId?: string;
-  capabilities: Array<"cancel" | "input" | "read_output" | "retry">;
-  output: string;
-  progress?: Record<string, unknown>;
-  result?: unknown;
-  error?: unknown;
-  metadata: Record<string, unknown>;
-  createdAt: number;
-  startedAt?: number;
-  finishedAt?: number;
-}
-
-export interface SessionJobSchedule {
+export interface SessionTimer {
   id: string;
   sessionId: number;
   kind: string;
@@ -1797,51 +1770,47 @@ export interface SessionJobSchedule {
   updatedAt: number;
 }
 
-export interface SessionJobsSnapshot {
-  jobs: SessionJob[];
-  schedules: SessionJobSchedule[];
+export function getSessionTimers(id: string): Promise<{ timers: SessionTimer[] }> {
+  return fetchJson<{ timers: SessionTimer[] }>(`/sessions/${id}/timers`);
 }
 
-export async function getSessionJobs(id: string): Promise<SessionJobsSnapshot> {
-  return fetchJson<SessionJobsSnapshot>(`/sessions/${id}/jobs`);
+export interface SessionShell {
+  id: string;
+  kind: "bash" | "service" | "eval";
+  title: string;
+  status: JobStatus | "active";
+  output: string;
+  command?: string;
+  cwd?: string;
+  createdAt: number;
+  updatedAt: number;
+  capabilities: Array<"cancel" | "input" | "read_output" | "retry">;
+  metadata: Record<string, unknown>;
 }
 
-export async function sendSessionJobInput(
+export interface SessionShellsSnapshot {
+  shells: SessionShell[];
+}
+
+export function getSessionShells(id: string): Promise<SessionShellsSnapshot> {
+  return fetchJson<SessionShellsSnapshot>(`/sessions/${id}/shells`);
+}
+
+export function sendSessionShellInput(
   sessionId: string,
-  jobId: string,
+  shellId: string,
   input: string,
 ): Promise<{ ok: boolean }> {
-  return postJson(`/sessions/${sessionId}/jobs/${jobId}/input`, { input });
+  return postJson(`/sessions/${sessionId}/shells/${shellId}/input`, { input });
 }
 
-export async function cancelSessionJob(
+export function cancelSessionShell(
   sessionId: string,
-  jobId: string,
-): Promise<{ job: SessionJob }> {
-  return fetchJson(`/sessions/${sessionId}/jobs/${jobId}`, { method: "DELETE" });
+  shellId: string,
+): Promise<{ shell: SessionShell }> {
+  return fetchJson(`/sessions/${sessionId}/shells/${shellId}`, { method: "DELETE" });
 }
 
-export async function listPersistentBashSessions(id: string): Promise<PersistentBashSession[]> {
-  const result = await fetchJson<{ sessions: PersistentBashSession[] }>(
-    `/sessions/${id}/bash-sessions`,
-  );
-  return result.sessions;
-}
-
-export async function writePersistentBashInput(
-  sessionId: string,
-  bashId: string,
-  input: string,
-): Promise<{ ok: boolean }> {
-  return postJson(`/sessions/${sessionId}/bash-sessions/${bashId}/input`, { input });
-}
-
-export async function stopPersistentBash(
-  sessionId: string,
-  bashId: string,
-): Promise<{ ok: boolean }> {
-  return fetchJson(`/sessions/${sessionId}/bash-sessions/${bashId}`, { method: "DELETE" });
-}
 
 /** Abort the current work in a session. */
 export async function abortSession(

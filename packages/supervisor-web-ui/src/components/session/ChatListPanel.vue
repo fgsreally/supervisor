@@ -612,9 +612,7 @@ const contextSession = computed(() =>
     ? sessionStore.sessions.find((session) => session.id === contextMenu.value?.sessionId)
     : undefined,
 );
-const canForkContextSession = computed(() =>
-  agentStore.hasUiMenu(contextSession.value?.agentId, "git.fork-session"),
-);
+const canForkContextSession = computed(() => Boolean(contextSession.value));
 const projectSettingsId = ref<string | null>(null);
 const projectGit = ref<{ projectId: string; x: number; y: number } | null>(null);
 const projectGitLoading = ref(false);
@@ -1172,7 +1170,6 @@ async function forkSessionFromMenu() {
   const source = sessionStore.sessions.find((session) => session.id === target.sessionId);
   if (!source) return;
   if (!source.leafId) return;
-  if (!agentStore.hasUiMenu(source.agentId, "git.fork-session")) return;
   forkTarget.value = {
     sessionId: source.id,
     entryId: source.leafId,

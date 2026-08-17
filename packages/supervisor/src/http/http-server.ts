@@ -197,7 +197,6 @@ const API_PATH_PREFIXES = [
   "/resources",
   "/settings",
   "/devices",
-  "/jobs",
   "/uploaded-icons",
   "/approvals",
   "/watson",
@@ -2412,100 +2411,98 @@ export function createHttpServer(
     }
   });
 
-  // Unified execution records + timer definitions (meta.timers) for the Session Job popover.
-  app.get("/sessions/:id/jobs", (c) => {
+  // Shell is the public runtime surface. Jobs remain an internal execution record.
+  app.get("/sessions/:id/shells", async (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, `Session ${id} not found`);
-    return c.json({
-      jobs: manager.jobs.list(id, { limit: 50 }),
-      schedules: sessionTimersToScheduleDto(id, manager.listTimers(id)),
-    });
+    const jobs = manager.jobs
+      .list(id, { limit: 100 })
+      .filter((job) => job.kind === "shell" || job.kind === "service")
+      .sort((a, b) => (b.createdAt - a.createdAt) || (b.startedAt ?? 0) - (a.startedAt ?? 0));
+    let evalState: { kernels?: string[]; history?: Array<Record<string, unknown>> } = {};
+    try {
+      evalState = JSON.parse(
+        await readFile(join(getSessionDir(session.projectId!, session.id), "eval", "state.json"), "utf8"),
+      ) as typeof evalState;
+    } catch {
+      // No eval runtime yet.
+    }
+    const history = Array.isArray(evalState.history) ? evalState.history : [];
+    const last = history.at(-1);
+    const shells: Array<Record<string, unknown>> = jobs.map((job) => ({
+      id: job.id,
+      kind: job.kind === "service" ? "service" : "bash",
+      title: job.label,
+      status: job.status,
+      output: job.output,
+      command: typeof job.metadata.resolvedCommand === "string"
+        ? job.metadata.resolvedCommand
+        : typeof job.metadata.command === "string" ? job.metadata.command : undefined,
+      cwd: typeof job.metadata.cwd === "string" ? job.metadata.cwd : undefined,
+      createdAt: job.createdAt,
+      updatedAt: job.finishedAt ?? job.startedAt ?? job.createdAt,
+      capabilities: job.capabilities,
+      metadata: job.metadata,
+    }));
+    if (history.length || (evalState.kernels?.length ?? 0) > 0) {
+      shells.push({
+        id: `eval:${id}`,
+        kind: "eval",
+        title: "Eval",
+        status: "active",
+        output: typeof last?.output === "string" ? last.output : "",
+        command: typeof last?.code === "string" ? last.code : undefined,
+        createdAt: typeof last?.at === "number" ? last.at : Date.now(),
+        updatedAt: typeof last?.at === "number" ? last.at : Date.now(),
+        capabilities: [],
+        metadata: { kernels: evalState.kernels ?? [], history },
+      });
+    }
+    shells.sort((a, b) => Number(b.updatedAt) - Number(a.updatedAt));
+    return c.json({ shells });
   });
 
-  app.post("/sessions/:id/jobs/:jobId/input", async (c) => {
+  app.post("/sessions/:id/shells/:shellId/input", async (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
-    const job = manager.jobs.get(c.req.param("jobId"));
-    if (!job || job.sessionId !== id) return jsonError(c, 404, "Job not found");
-    const body = await c.req
-      .json<Record<string, unknown>>()
-      .catch((): Record<string, unknown> => ({}));
-    if (typeof body.input !== "string" || !body.input) {
-      return jsonError(c, 400, "input is required");
+    const shellId = c.req.param("shellId");
+    const job = manager.jobs.get(shellId);
+    if (!job || job.sessionId !== id || (job.kind !== "shell" && job.kind !== "service")) {
+      return jsonError(c, 404, "Shell not found");
     }
+    const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}));
+    if (typeof body.input !== "string" || !body.input) return jsonError(c, 400, "input is required");
     try {
-      await manager.jobs.input(job.id, body.input);
+      await manager.jobs.input(shellId, body.input);
       return c.json({ ok: true });
     } catch (error) {
       return jsonError(c, 409, error instanceof Error ? error.message : String(error));
     }
   });
 
-  app.delete("/sessions/:id/jobs/:jobId", async (c) => {
+  app.delete("/sessions/:id/shells/:shellId", async (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
-    const job = manager.jobs.get(c.req.param("jobId"));
-    if (!job || job.sessionId !== id) return jsonError(c, 404, "Job not found");
+    const shellId = c.req.param("shellId");
+    const job = manager.jobs.get(shellId);
+    if (!job || job.sessionId !== id || (job.kind !== "shell" && job.kind !== "service")) {
+      return jsonError(c, 404, "Shell not found");
+    }
     try {
-      const cancelled = await manager.jobs.cancel(job.id);
-      return c.json({ job: cancelled });
+      const cancelled = await manager.jobs.cancel(shellId);
+      return c.json({ shell: cancelled });
     } catch (error) {
       return jsonError(c, 409, error instanceof Error ? error.message : String(error));
     }
   });
 
-  // Compatibility aliases for clients that still use the PersistentBash endpoints.
-  app.get("/sessions/:id/bash-sessions", (c) => {
+  app.get("/sessions/:id/timers", (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
     if (!manager.get(id)) return jsonError(c, 404, `Session ${id} not found`);
-    const sessions = manager.jobs.list(id, { kind: "shell" }).map((job) => ({
-      id: job.id,
-      sessionId: job.sessionId,
-      command: typeof job.metadata.command === "string" ? job.metadata.command : "",
-      label: job.label,
-      cwd: typeof job.metadata.cwd === "string" ? job.metadata.cwd : "",
-      pid: job.metadata.pid,
-      status:
-        job.status === "succeeded" ? "exited" : job.status === "cancelled" ? "exited" : job.status,
-      startedAt: job.startedAt ?? job.createdAt,
-      endedAt: job.finishedAt,
-      exitCode: job.metadata.exitCode,
-      output: job.output,
-    }));
-    return c.json({ sessions });
-  });
-
-  app.post("/sessions/:id/bash-sessions/:bashId/input", async (c) => {
-    const id = parseIntegerId(c.req.param("id"));
-    if (id === null) return jsonError(c, 400, "invalid session id");
-    const body = await c.req
-      .json<Record<string, unknown>>()
-      .catch((): Record<string, unknown> => ({}));
-    if (typeof body.input !== "string" || !body.input) {
-      return jsonError(c, 400, "input is required");
-    }
-    try {
-      await manager.jobs.input(c.req.param("bashId"), body.input);
-      return c.json({ ok: true });
-    } catch (error) {
-      return jsonError(c, 404, error instanceof Error ? error.message : String(error));
-    }
-  });
-
-  app.delete("/sessions/:id/bash-sessions/:bashId", async (c) => {
-    const id = parseIntegerId(c.req.param("id"));
-    if (id === null) return jsonError(c, 400, "invalid session id");
-    try {
-      const job = manager.jobs.get(c.req.param("bashId"));
-      if (!job || job.sessionId !== id) return jsonError(c, 404, "Bash Job not found");
-      await manager.jobs.cancel(job.id);
-      return c.json({ ok: true });
-    } catch (error) {
-      return jsonError(c, 404, error instanceof Error ? error.message : String(error));
-    }
+    return c.json({ timers: sessionTimersToScheduleDto(id, manager.listTimers(id)) });
   });
 
   // POST /sessions/:id/abort — abort current work without deleting the runtime
@@ -3754,7 +3751,6 @@ export function createHttpServer(
         pathname.startsWith("/extensions") ||
         pathname.startsWith("/resources") ||
         pathname.startsWith("/settings") ||
-        pathname.startsWith("/jobs") ||
         pathname.startsWith("/uploaded-icons")
       ) {
         return jsonError(c, 404, "not found");

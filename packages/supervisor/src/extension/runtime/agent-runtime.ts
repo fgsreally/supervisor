@@ -17,7 +17,7 @@ import type { Context } from "./context.js";
 
 function hasGitAndServiceExtensions(runtime: AgentExtensionRuntime): boolean {
   const owners = new Set(runtime.loadedExtensionNames());
-  return owners.has("git") && (owners.has("service") || owners.has("project-services"));
+  return owners.has("git") && owners.has("service");
 }
 
 interface SetupHandler {
@@ -314,7 +314,7 @@ export class AgentExtensionRuntime {
       // policy.active registers session.on listeners; those need an active extension owner.
       scope.owners.add("session-activity");
       await context.runExtension("session-activity", () => {
-        context.session.policy.active("session-activity");
+        context.session.policy?.active?.("session-activity");
       });
     }
 

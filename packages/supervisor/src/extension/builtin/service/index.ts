@@ -4,7 +4,7 @@ import type { ExtensionContext, ExtensionDefinition, ExtensionJobFacade } from "
 import {
   extractPortPlaceholders,
   parseProjectServicesMeta,
-  type SessionServiceApp,
+  type SessionService,
   type SessionServicesMeta,
 } from "../../../core/project-runtime.js";
 import {
@@ -26,6 +26,7 @@ import {
   stoppedSessionServicesMeta,
 } from "../../../core/session-services.js";
 import type { SessionServiceJobHost } from "../../../core/session-registered-services.js";
+import { startBackgroundBashSession } from "../../../tools/bash/background.js";
 import {
   findFreePortInRange,
   preferredServicePortHint,
@@ -134,19 +135,19 @@ function isServiceIdle(status: SessionServicesMeta["status"] | undefined): boole
 
 function finalizeServices(
   current: SessionServicesMeta,
-  apps: SessionServiceApp[],
+  services: SessionService[],
 ): SessionServicesMeta {
-  const first = apps[0];
-  const running = apps.some((app) => Boolean(app.jobId) || (app.pid != null && app.pid > 0));
+  const first = services[0];
+  const running = services.some((app) => Boolean(app.jobId) || (app.pid != null && app.pid > 0));
   const now = Date.now();
   return {
     ...current,
-    apps,
+    services,
     startCommand: first?.startCommand ?? current.startCommand ?? "",
     jobId: first?.jobId,
     pid: first?.pid ?? null,
     resolvedStartCommand: first?.startCommand,
-    status: apps.length === 0 ? "unregistered" : running ? "active" : "idle",
+    status: services.length === 0 ? "unregistered" : running ? "active" : "idle",
     lastActiveAt: now,
     sleepAt: computeServiceSleepAt(now),
     error: undefined,
@@ -204,29 +205,24 @@ function ensureGlobalSleepScheduler(ctx: ExtensionContext): void {
 const projectServicesExtension: ExtensionDefinition = {
   name: "service",
   async setup(ctx) {
-    const bash = ctx.capabilities.get<{
-      run: (
-        command: string,
-        options?: { cwd?: string; label?: string; env?: NodeJS.ProcessEnv },
-      ) => Promise<{ id: string; pid?: number }>;
-    }>("persistent-bash");
-    if (!bash) {
-      ctx.log("warn", "service requires persistent-bash");
-      return () => {};
-    }
-    const runBackground = (input: {
+    const jobs = extensionJobsAsHost(ctx.jobs);
+    const runBackground = async (input: {
       command: string;
       cwd: string;
       label: string;
       env?: NodeJS.ProcessEnv;
-    }) =>
-      bash.run(input.command, {
+    }) => {
+      const shell = await startBackgroundBashSession({
+        sessionId: ctx.session.id,
+        command: input.command,
         cwd: input.cwd,
         label: input.label,
         env: input.env,
+        kind: "service",
+        jobs: ctx.jobs,
       });
-
-    const jobs = extensionJobsAsHost(ctx.jobs);
+      return { id: shell.id, pid: shell.pid };
+    };
     const sessionId = ctx.session.id;
     const cwd = () => ctx.session.cwd;
 
@@ -442,8 +438,8 @@ const projectServicesExtension: ExtensionDefinition = {
         status: "unregistered" as const,
         startCommand: "",
       };
-      const apps = [...(current.apps ?? [])];
-      const existing = apps.find((app) => app.name === name);
+      const services = [...(current.services ?? [])];
+      const existing = services.find((app) => app.name === name);
       const installCommand = params.installCommand?.trim() || current.installCommand;
 
       const patchCommands = (base: SessionServicesMeta): SessionServicesMeta => ({
@@ -453,10 +449,10 @@ const projectServicesExtension: ExtensionDefinition = {
         destroyCommand: params.destroyCommand?.trim() || base.destroyCommand,
       });
 
-      const startAndRegister = async (app: SessionServiceApp, list: SessionServiceApp[]) => {
+      const startAndRegister = async (app: SessionService, list: SessionService[]) => {
         const next: SessionServicesMeta = patchCommands({
           ...current,
-          apps: list,
+          services: list,
           startCommand: current.startCommand || app.startCommand || "",
           status: "starting",
         });
@@ -464,9 +460,9 @@ const projectServicesExtension: ExtensionDefinition = {
           sessionId,
           cwd: cwd(),
           services: next,
-          app,
-          jobs,
-          runBackground,
+            app,
+            jobs,
+            runBackground,
         });
         return started;
       };
@@ -478,7 +474,7 @@ const projectServicesExtension: ExtensionDefinition = {
           if (!startCommand) return applyText("add 需要 startCommand。");
           const portEnv = await allocateCommandPorts(
             startCommand,
-            apps.flatMap((app) => [app.port, ...Object.values(app.portEnv ?? {})]),
+            services.flatMap((app) => [app.port, ...Object.values(app.portEnv ?? {})]),
           );
           if (!portEnv) {
             return applyText(
@@ -486,18 +482,18 @@ const projectServicesExtension: ExtensionDefinition = {
             );
           }
           const port = portEnv.PORT1!;
-          const app: SessionServiceApp = {
+          const app: SessionService = {
             name,
             port,
             portEnv,
             path: params.path?.trim() || "/",
             startCommand,
           };
-          const nextList = [...apps, app];
+          const nextList = [...services, app];
           if (!current.installedAt && installCommand) {
             const pending = patchCommands({
               ...current,
-              apps: nextList,
+              services: nextList,
               startCommand: current.startCommand || startCommand,
               status: "starting",
               installCommand,
@@ -506,13 +502,13 @@ const projectServicesExtension: ExtensionDefinition = {
               sessionId,
               cwd: cwd(),
               services: pending,
-              jobs,
-              skipInstall: false,
-              lastActiveAtMs: Date.now(),
-              runBackground,
+                jobs,
+                skipInstall: false,
+                lastActiveAtMs: Date.now(),
+                runBackground,
             });
             await writeServices(startedAll);
-            const summary = (startedAll.apps ?? [])
+            const summary = (startedAll.services ?? [])
               .map((item) => `${item.name}:${item.port}`)
               .join(", ");
             return applyText(
@@ -534,7 +530,7 @@ const projectServicesExtension: ExtensionDefinition = {
         if (action === "delete") {
           if (!existing) return applyText(`没有名为 ${name} 的服务。`);
           await stopRegisteredApp({ sessionId, app: existing, jobs });
-          const nextList = apps.filter((app) => app.name !== name);
+          const nextList = services.filter((app) => app.name !== name);
           await writeServices(finalizeServices(current, nextList));
           return applyText(`已删除 ${name}。`);
         }
@@ -542,7 +538,7 @@ const projectServicesExtension: ExtensionDefinition = {
         if (!existing) return applyText(`没有名为 ${name} 的服务，请用 action=add。`);
         const startCommand = params.startCommand?.trim() || existing.startCommand;
         if (!startCommand) return applyText("update 需要 startCommand。");
-        const otherApps = apps.filter((app) => app.name !== name);
+        const otherApps = services.filter((app) => app.name !== name);
         const portEnv = await allocateCommandPorts(
           startCommand,
           otherApps.flatMap((app) => [app.port, ...Object.values(app.portEnv ?? {})]),
@@ -555,12 +551,12 @@ const projectServicesExtension: ExtensionDefinition = {
         const port = portEnv.PORT1!;
         const path = params.path?.trim() || existing.path || "/";
         await stopRegisteredApp({ sessionId, app: existing, jobs });
-        const updated: SessionServiceApp = { name, port, portEnv, path, startCommand };
-        const nextList = apps.map((app) => (app.name === name ? updated : app));
+        const updated: SessionService = { name, port, portEnv, path, startCommand };
+        const nextList = services.map((app) => (app.name === name ? updated : app));
         if (!current.installedAt && installCommand) {
           const pending = patchCommands({
             ...current,
-            apps: nextList,
+            services: nextList,
             startCommand,
             status: "starting",
             installCommand,
@@ -569,10 +565,10 @@ const projectServicesExtension: ExtensionDefinition = {
             sessionId,
             cwd: cwd(),
             services: pending,
-            jobs,
-            skipInstall: false,
-            lastActiveAtMs: Date.now(),
-            runBackground,
+              jobs,
+              skipInstall: false,
+              lastActiveAtMs: Date.now(),
+              runBackground,
           });
           await writeServices(startedAll);
           return applyText(
@@ -620,7 +616,7 @@ const projectServicesExtension: ExtensionDefinition = {
       for (const definition of projectServices.definitions) {
         if (hasRegisteredServices(await readServices())) {
           const current = await readServices();
-          if (current?.apps?.some((app) => app.name === definition.name)) continue;
+          if (current?.services?.some((app) => app.name === definition.name)) continue;
         }
         const result = await updateService({
           action: "add",
@@ -636,6 +632,18 @@ const projectServicesExtension: ExtensionDefinition = {
           ctx.log("warn", `Project service ${definition.name} was not started: ${text}`);
           return;
         }
+      }
+      const current = await readServices();
+      if (current && (projectServices.views?.length ?? 0) > 0) {
+        const views = projectServices.views!.flatMap((view) => {
+          const service = current.services?.find((app) => app.name === view.service);
+          const port =
+            service?.portEnv?.[view.port] ?? (view.port === "PORT1" ? service?.port : undefined);
+          return service && port
+            ? [{ name: view.name, service: view.service, port, path: view.path }]
+            : [];
+        });
+        await writeServices({ ...current, views });
       }
     };
 
@@ -674,7 +682,7 @@ const projectServicesExtension: ExtensionDefinition = {
             content: [
               {
                 type: "text",
-                text: `服务已在运行，已标记活跃。入口：${JSON.stringify(current!.apps ?? [])}。勿重复拉起。`,
+                text: `服务已在运行，已标记活跃。入口：${JSON.stringify(current!.services ?? [])}。勿重复拉起。`,
               },
             ],
           };
@@ -693,7 +701,7 @@ const projectServicesExtension: ExtensionDefinition = {
           content: [
             {
               type: "text",
-              text: `服务已启动。入口：${JSON.stringify(next.apps ?? [])}`,
+              text: `服务已启动。入口：${JSON.stringify(next.services ?? [])}`,
             },
           ],
         };
@@ -733,7 +741,7 @@ const projectServicesExtension: ExtensionDefinition = {
           content: [
             {
               type: "text",
-              text: `服务已停止。入口：${JSON.stringify(next.apps ?? [])}。需要再启动时调用 ProjectServiceStart。`,
+              text: `服务已停止。入口：${JSON.stringify(next.services ?? [])}。需要再启动时调用 ProjectServiceStart。`,
             },
           ],
         };

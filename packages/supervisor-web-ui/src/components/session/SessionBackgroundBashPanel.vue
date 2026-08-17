@@ -33,7 +33,7 @@
 <script setup lang="ts">
 import { X } from "lucide-vue-next";
 import { computed, ref, watch } from "vue";
-import { getSessionJobs } from "@/api";
+import { getSessionShells } from "@/api";
 import SessionBackgroundTerminals from "./SessionBackgroundTerminals.vue";
 import ToolDetailPanel from "../tool/ToolDetailPanel.vue";
 import { useI18n } from "@/i18n";
@@ -57,15 +57,9 @@ void hasSelection;
 
 async function selectJob(jobId: string) {
   selectedJobId.value = jobId;
-  const snapshot = await getSessionJobs(props.sessionId).catch(() => undefined);
-  const job = snapshot?.jobs.find((item) => item.id === jobId);
-  const command =
-    typeof job?.metadata.resolvedCommand === "string"
-      ? job.metadata.resolvedCommand
-      : typeof job?.metadata.command === "string"
-        ? job.metadata.command
-        : "";
-  selectedTitle.value = command || job?.label || t("session.background.title");
+  const snapshot = await getSessionShells(props.sessionId).catch(() => undefined);
+  const shell = snapshot?.shells.find((item) => item.id === jobId);
+  selectedTitle.value = shell?.command || shell?.title || t("session.background.title");
 }
 
 function onJobEnded(jobId: string) {
@@ -78,17 +72,14 @@ function onChanged() {
 
 async function refreshCount() {
   const sessionId = props.sessionId;
-  const snapshot = await getSessionJobs(sessionId).catch(() => undefined);
+  const snapshot = await getSessionShells(sessionId).catch(() => undefined);
   if (props.sessionId !== sessionId) return;
   if (!snapshot) {
     count.value = 0;
     return;
   }
-  count.value = snapshot.jobs.filter(
-    (job) =>
-      (job.status === "running" || job.status === "waiting" || job.status === "queued") &&
-      (job.kind === "shell" ||
-        (job.kind === "project-service" && (job.name || "").startsWith("start:"))),
+  count.value = snapshot.shells.filter(
+    (shell) => shell.status === "running" || shell.status === "waiting" || shell.status === "queued" || shell.status === "active",
   ).length;
 }
 

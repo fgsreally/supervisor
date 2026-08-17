@@ -1,5 +1,9 @@
 import type { Session } from "../types.js";
-import type { SessionServiceApp, SessionServicesMeta } from "./project-runtime.js";
+import type {
+  SessionService,
+  SessionServiceView,
+  SessionServicesMeta,
+} from "./project-runtime.js";
 import { parseSessionServicesMeta } from "./session-services.js";
 
 export interface SessionPreviewTarget {
@@ -43,8 +47,8 @@ export function resolveSessionPreviewTarget(options: {
 }): SessionPreviewTarget | null {
   const services = parseSessionServicesMeta(options.session.meta);
   if (!services || !isPreviewableStatus(services.status)) return null;
-  const app = findServiceApp(services, options.scriptName);
-  if (!app) return null;
+  const view = findServiceView(services, options.scriptName);
+  if (!view) return null;
   const prefix = `/sessions/${options.session.id}/preview/${encodeURIComponent(options.scriptName)}`;
   let subPath = options.requestPath.startsWith(prefix)
     ? options.requestPath.slice(prefix.length)
@@ -52,25 +56,18 @@ export function resolveSessionPreviewTarget(options: {
   if (!subPath.startsWith("/")) subPath = `/${subPath}`;
   return {
     scriptName: options.scriptName,
-    port: app.port,
+    port: view.port,
     proxyBasePath: prefix,
-    basePath: app.path ?? "/",
-    subPath: subPath === "/" ? (app.path ?? "/") : subPath,
+    basePath: view.path ?? "/",
+    subPath: subPath === "/" ? (view.path ?? "/") : subPath,
   };
 }
 
-export function findServiceApp(
+export function findServiceView(
   services: SessionServicesMeta,
   name: string,
-): SessionServiceApp | undefined {
-  return services.apps?.find((app) => app.name === name);
-}
-
-/** @deprecated use findServiceApp */
-export function findUiPort(services: SessionServicesMeta, scriptName: string) {
-  const app = findServiceApp(services, scriptName);
-  if (!app) return undefined;
-  return { scriptName: app.name, envVar: "PORT", label: app.name, path: app.path };
+): SessionServiceView | undefined {
+  return services.views?.find((item) => item.name === name);
 }
 
 export function buildPreviewUpstreamUrl(target: SessionPreviewTarget, requestUrl: URL): URL {
@@ -90,7 +87,11 @@ function appendPreviewPassword(url: string, password: string | null): string {
   return `${beforeHash}${separator}password=${encodeURIComponent(password)}${hash}`;
 }
 
-function proxyRootPath(path: string, target: SessionPreviewTarget, password: string | null): string {
+function proxyRootPath(
+  path: string,
+  target: SessionPreviewTarget,
+  password: string | null,
+): string {
   if (!path.startsWith("/") || path.startsWith("//")) return path;
   if (path === target.proxyBasePath || path.startsWith(`${target.proxyBasePath}/`)) return path;
   return appendPreviewPassword(`${target.proxyBasePath}${path}`, password);
@@ -136,7 +137,7 @@ export function rewriteSessionPreviewText(
 
   // Vite's HMR client bakes its base and WebSocket path into /@vite/client.
   // Keep both on the Session preview route instead of falling back to Supervisor's root.
-  if (contentType.includes("javascript") && text.includes('const socketHost = `')) {
+  if (contentType.includes("javascript") && text.includes("const socketHost = `")) {
     const proxyBase = `${target.proxyBasePath}/`;
     rewritten = rewritten
       .replace('const base$1 = "/" || "/";', `const base$1 = ${JSON.stringify(proxyBase)};`)
@@ -145,7 +146,7 @@ export function rewriteSessionPreviewText(
     if (password) {
       const encoded = encodeURIComponent(password);
       rewritten = rewritten
-        .replaceAll('?token=${wsToken}', `?token=\${wsToken}&password=${encoded}`)
+        .replaceAll("?token=${wsToken}", `?token=\${wsToken}&password=${encoded}`)
         .replace(
           't=${timestamp}${query ? `&${query}` : ""}',
           `t=\${timestamp}\${query ? \`&\${query}\` : ""}&password=${encoded}`,
@@ -226,11 +227,14 @@ export async function proxySessionPreviewRequest(
     contentType.includes("text/css");
   if (shouldRewrite) {
     const text = await upstream.text();
-    return new Response(rewriteSessionPreviewText(text, contentType, target, new URL(request.url)), {
-      status: upstream.status,
-      statusText: upstream.statusText,
-      headers: responseHeaders,
-    });
+    return new Response(
+      rewriteSessionPreviewText(text, contentType, target, new URL(request.url)),
+      {
+        status: upstream.status,
+        statusText: upstream.statusText,
+        headers: responseHeaders,
+      },
+    );
   }
   const location = responseHeaders.get("location");
   if (location?.startsWith("/")) {
@@ -265,23 +269,22 @@ export function buildSessionServicesDto(
   status: SessionServicesMeta["status"] | "none";
   sleepAt?: number;
   installedAt?: string;
-  apps: SessionServiceApp[];
-  /** @deprecated use apps */
-  uiPorts: Array<{ scriptName: string; envVar: string; label?: string; path?: string }>;
+  services: SessionService[];
+  views: SessionServiceView[];
   previews: SessionServicesPreviewDto[];
   error?: string;
 } {
   const services = parseSessionServicesMeta(session.meta);
   if (!services) {
-    return { status: "none", apps: [], uiPorts: [], previews: [] };
+    return { status: "none", services: [], views: [], previews: [] };
   }
-  const apps = services.apps ?? [];
+  const registered = services.services ?? [];
+  const views = services.views ?? [];
   const active =
-    services.status === "starting" ||
-    services.status === "running" ||
-    services.status === "active";
+    services.status === "starting" || services.status === "running" || services.status === "active";
+  const previewEntries = views;
   const previews = active
-    ? apps.map((app) => ({
+    ? previewEntries.map((app) => ({
         name: app.name,
         port: app.port,
         path: app.path,
@@ -294,13 +297,8 @@ export function buildSessionServicesDto(
     status: services.status,
     sleepAt: services.sleepAt,
     installedAt: services.installedAt,
-    apps,
-    uiPorts: apps.map((app) => ({
-      scriptName: app.name,
-      envVar: "PORT",
-      label: app.name,
-      path: app.path,
-    })),
+    services: registered,
+    views,
     previews,
     error: services.error,
   };

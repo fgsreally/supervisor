@@ -10,7 +10,6 @@ export {
   evalExtension,
   mcpExtension,
   messageAssetsExtension,
-  persistentBashExtension,
   projectServicesExtension,
   gitExtension,
   shadowExtension,

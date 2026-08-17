@@ -6,7 +6,6 @@ export { default as evalExtension } from "./eval/index.js";
 export { default as taskManagementExtension } from "./task-management/index.js";
 export { default as timerExtension } from "./timer/index.js";
 export { default as toolLoopGuardExtension } from "./tool-loop-guard/index.js";
-export { default as persistentBashExtension } from "./persistent-bash/index.js";
 export { default as projectServicesExtension } from "./service/index.js";
 export { default as serviceExtension } from "./service/index.js";
 export { default as gitExtension } from "./git/index.js";

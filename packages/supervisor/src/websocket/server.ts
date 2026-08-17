@@ -39,7 +39,7 @@ type SpeechProvider = "local" | "qwen" | "doubao";
 
 interface ClientMessage {
   id?: string;
-  channel: "speech" | "system" | "session";
+  channel: "speech" | "system" | "session" | "agent";
   type: string;
   sessionId?: number | string;
   message?: string;
@@ -554,6 +554,7 @@ interface SocketSessionState {
   speech: SpeechConnection;
   unsubscribe: (() => void) | null;
   subscribedSessionId: number | null;
+  unsubscribeAgent: (() => void) | null;
 }
 
 function handleSessionMessage(
@@ -666,6 +667,52 @@ function handleSessionMessage(
   });
 }
 
+function handleAgentMessage(
+  socket: ClientSocket,
+  state: SocketSessionState,
+  manager: SessionManager | undefined,
+  message: ClientMessage,
+): void {
+  if (!manager) {
+    sendJson(socket, {
+      channel: "agent",
+      type: "error",
+      error: "agent channel is unavailable",
+    });
+    return;
+  }
+
+  if (message.type === "subscribe") {
+    state.unsubscribeAgent?.();
+    sendJson(socket, {
+      channel: "agent",
+      type: "ui_menus",
+      agents: manager.listAllAgentUiMenus(),
+    });
+    state.unsubscribeAgent = manager.onAgentUiMenus((event) => {
+      sendJson(socket, {
+        channel: "agent",
+        type: "ui_menus",
+        agentId: event.agentId,
+        menus: event.menus,
+      });
+    });
+    return;
+  }
+
+  if (message.type === "unsubscribe") {
+    state.unsubscribeAgent?.();
+    state.unsubscribeAgent = null;
+    return;
+  }
+
+  sendJson(socket, {
+    channel: "agent",
+    type: "error",
+    error: `unknown agent message type: ${message.type}`,
+  });
+}
+
 export function registerWebSocketRoutes(
   app: WebSocketRouteBuilder,
   password?: string,
@@ -771,6 +818,7 @@ export function registerWebSocketRoutes(
         speech: new SpeechConnection(socket),
         unsubscribe: null,
         subscribedSessionId: null,
+        unsubscribeAgent: null,
       });
       sendJson(socket, { channel: "system", type: "system.ready" });
     },
@@ -804,6 +852,8 @@ export function registerWebSocketRoutes(
           state.speech.stop();
         } else if (message.channel === "session") {
           handleSessionMessage(socket, state, manager, message);
+        } else if (message.channel === "agent") {
+          handleAgentMessage(socket, state, manager, message);
         }
       } catch (error) {
         sendJson(socket, {
@@ -817,6 +867,7 @@ export function registerWebSocketRoutes(
       const state = connections.get(socket.raw);
       state?.speech.close();
       state?.unsubscribe?.();
+      state?.unsubscribeAgent?.();
       connections.delete(socket.raw);
     },
   });

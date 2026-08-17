@@ -69,12 +69,8 @@ function markSiblingsPendingUpdate(
   }
 }
 
-function shouldCreateWorktree(input: {
-  isBuiltin: boolean;
-  parentId: number | null;
-  spawnType: string | null;
-}): boolean {
-  return !input.isBuiltin;
+function shouldCreateWorktree(isMain: boolean): boolean {
+  return isMain;
 }
 
 type SessionGit = {
@@ -166,8 +162,17 @@ async function removeWorktreeWithWatson(
   );
 }
 
+export const GIT_UI_MENUS = [
+  { id: "git.fork-session", surface: "session" as const, label: "Fork 新会话", order: 100 },
+  { id: "git.fork-message", surface: "message" as const, label: "从此处 Fork", order: 100 },
+  { id: "git.checkpoint", surface: "session" as const, label: "创建存档点", order: 110 },
+  { id: "git.achieve", surface: "session" as const, label: "完成并归档", order: 120 },
+  { id: "git.rewind-message", surface: "message" as const, label: "回到这条消息", order: 110 },
+] as const;
+
 const gitExtension: ExtensionDefinition = {
   name: "git",
+  menus: GIT_UI_MENUS,
   async setup(ctx) {
     const sessionId = ctx.session.id;
     const projectCwd = ctx.project.cwd;
@@ -179,57 +184,6 @@ const gitExtension: ExtensionDefinition = {
         cwd: ctx.session.cwd,
         projectCwd,
       });
-
-    const unregisterForkSessionMenu = ctx.ui.registerMenu({
-      id: "git.fork-session",
-      surface: "session",
-      label: "Fork 新会话",
-      order: 100,
-      visible: async () => true,
-      action: () => ({ action: "select-agent-for-fork" as const }),
-    });
-    const unregisterForkMessageMenu = ctx.ui.registerMenu({
-      id: "git.fork-message",
-      surface: "message",
-      label: "从此处 Fork",
-      order: 100,
-      visible: async ({ entryId }) => Boolean(entryId),
-      action: () => ({ action: "select-agent-for-fork" as const }),
-    });
-    const unregisterCheckpointMenu = ctx.ui.registerMenu({
-      id: "git.checkpoint",
-      surface: "session",
-      label: "创建存档点",
-      order: 110,
-      visible: async () => true,
-      action: async () => {
-        await ctx.session.checkpoint();
-        return { refresh: true };
-      },
-    });
-    const unregisterAchieveMenu = ctx.ui.registerMenu({
-      id: "git.achieve",
-      surface: "session",
-      label: "完成并归档",
-      order: 120,
-      visible: async () => true,
-      action: async () => {
-        await ctx.session.finish();
-        return { refresh: true };
-      },
-    });
-    const unregisterRewindMenu = ctx.ui.registerMenu({
-      id: "git.rewind-message",
-      surface: "message",
-      label: "回到这条消息",
-      order: 110,
-      visible: async ({ entryId }) => Boolean(entryId),
-      action: async ({ entryId }) => {
-        if (!entryId) throw new Error("Message entry is required");
-        await ctx.session.rewindToEntry(entryId);
-        return { refresh: true };
-      },
-    });
 
     // task-management loads before git. Only compose auto-commit when both extensions are active.
     if (ctx.tools.get("TodoList")) {
@@ -296,11 +250,7 @@ const gitExtension: ExtensionDefinition = {
 
     const sessionData = await ctx.session.data.get();
     const sessionMeta = await ctx.session.meta.get();
-    if (shouldCreateWorktree({
-      isBuiltin: sessionData.isBuiltin,
-      parentId: sessionData.parentId,
-      spawnType: sessionData.spawnType,
-    })) {
+    if (shouldCreateWorktree(ctx.session.isMain)) {
       try {
         sessionLog(sessionId, "info", "Creating session worktree", ["system", "git", "worktree"]);
         const repoRoot = ensureProjectGitRootSync(projectCwd);
@@ -386,7 +336,7 @@ const gitExtension: ExtensionDefinition = {
           reason: "session.before_delete",
         });
       },
-      { priority: 100, mode: "sync" },
+      { priority: 100, mode: "async" },
     );
 
     ctx.on(
@@ -407,14 +357,6 @@ const gitExtension: ExtensionDefinition = {
       },
       { priority: 100, mode: "sync" },
     );
-
-    return () => {
-      unregisterForkSessionMenu();
-      unregisterForkMessageMenu();
-      unregisterCheckpointMenu();
-      unregisterRewindMenu();
-      unregisterAchieveMenu();
-    };
   },
 };
 

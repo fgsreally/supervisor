@@ -173,7 +173,6 @@ export interface Session {
   currentTask: string | null;
   /** UI-specific: last message preview */
   lastMessagePreview?: string;
-  lastMessageAt?: string;
 }
 
 export interface TaskArtifact {
@@ -250,6 +249,7 @@ export interface Agent {
   installCommand: string | null;
   createdAt: string;
   updatedAt: string;
+  uiMenus?: UiMenuItem[];
 }
 
 /** Wire protocol values (vendor-neutral). */
@@ -2219,6 +2219,109 @@ export function subscribeSessionEvents(
 
   return () => {
     abortController.abort();
+    ws?.close();
+  };
+}
+
+export type AgentUiMenusEvent = {
+  type: "ui_menus";
+  agentId?: string;
+  menus?: UiMenuItem[];
+  agents?: Array<{ agentId: string; menus: UiMenuItem[] }>;
+};
+
+/** Subscribe to agent UI menu snapshots over the shared /ws channel. */
+export function subscribeAgentUiMenus(
+  onEvent: (event: AgentUiMenusEvent) => void,
+  onError?: (error: Error) => void,
+): () => void {
+  const abortController = new AbortController();
+  let ws: WebSocket | null = null;
+  let retryTimer: number | null = null;
+
+  const mapMenusPayload = (parsed: {
+    type?: string;
+    agentId?: number | string;
+    menus?: UiMenuItem[];
+    agents?: Array<{ agentId: number | string; menus: UiMenuItem[] }>;
+  }): AgentUiMenusEvent | null => {
+    if (parsed.type !== "ui_menus") return null;
+    return {
+      type: "ui_menus",
+      ...(parsed.agentId !== undefined ? { agentId: String(parsed.agentId) } : {}),
+      ...(parsed.menus ? { menus: parsed.menus } : {}),
+      ...(parsed.agents
+        ? {
+            agents: parsed.agents.map((item) => ({
+              agentId: String(item.agentId),
+              menus: item.menus,
+            })),
+          }
+        : {}),
+    };
+  };
+
+  const connect = () => {
+    if (abortController.signal.aborted) return;
+    void (async () => {
+      try {
+        ws = await openSessionSocket();
+        if (abortController.signal.aborted) {
+          ws.close();
+          ws = null;
+          return;
+        }
+        const onMessage = (event: MessageEvent) => {
+          let parsed: {
+            channel?: string;
+            type?: string;
+            agentId?: number | string;
+            menus?: UiMenuItem[];
+            agents?: Array<{ agentId: number | string; menus: UiMenuItem[] }>;
+          };
+          try {
+            parsed = JSON.parse(String(event.data)) as typeof parsed;
+          } catch {
+            return;
+          }
+          if (parsed.channel !== "agent") return;
+          const mapped = mapMenusPayload(parsed);
+          if (mapped) onEvent(mapped);
+        };
+        ws.addEventListener("message", onMessage);
+        ws.addEventListener("close", () => {
+          ws = null;
+          if (abortController.signal.aborted) return;
+          retryTimer = window.setTimeout(connect, 1500);
+        });
+        abortController.signal.addEventListener(
+          "abort",
+          () => {
+            if (retryTimer != null) window.clearTimeout(retryTimer);
+            try {
+              ws?.send(JSON.stringify({ channel: "agent", type: "unsubscribe" }));
+            } catch {
+              // ignore
+            }
+            ws?.close();
+            ws = null;
+          },
+          { once: true },
+        );
+        ws.send(JSON.stringify({ channel: "agent", type: "subscribe" }));
+      } catch (error) {
+        if (abortController.signal.aborted) return;
+        onError?.(error instanceof Error ? error : new Error(String(error)));
+        retryTimer = window.setTimeout(connect, 1500);
+      }
+    })();
+  };
+
+  connect();
+
+  return () => {
+    abortController.abort();
+    if (retryTimer != null) window.clearTimeout(retryTimer);
     ws?.close();
   };
 }

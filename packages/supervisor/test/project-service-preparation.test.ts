@@ -3,7 +3,7 @@ import { buildSessionServicesPrompt } from "../src/core/session-services.js";
 import {
   buildProjectServicePreparationPrompt,
   preparationToServices,
-} from "../src/extension/builtin/project-services/preparation.js";
+} from "../src/extension/builtin/service/preparation.js";
 
 describe("project service preparation", () => {
   it("requires Watson to inspect the project without starting it", () => {

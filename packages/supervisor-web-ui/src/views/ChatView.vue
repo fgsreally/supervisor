@@ -1043,9 +1043,11 @@ function toggleMobileBash() {
 }
 
 async function refreshBackgroundBashCount() {
-  if (!props.session.id || document.hidden) return;
+  const sessionId = props.session.id;
+  if (!sessionId || document.hidden) return;
   try {
-    const snapshot = await api.getSessionJobs(props.session.id);
+    const snapshot = await api.getSessionJobs(sessionId);
+    if (props.session.id !== sessionId) return;
     backgroundBashCount.value = snapshot.jobs.filter(
       (job) =>
         (job.status === "running" || job.status === "waiting" || job.status === "queued") &&
@@ -1893,13 +1895,7 @@ async function rewindToMessage(entryId: string) {
 }
 
 async function forkFromMessage(entryId: string) {
-  try {
-    const result = await api.executeSessionUiMenu(props.session.id, "git.fork-message", entryId);
-    if (result.action !== "select-agent-for-fork") return;
-  } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "Fork failed", "error");
-    return;
-  }
+  if (!agentStore.hasUiMenu(props.agentId, "git.fork-message")) return;
   forkEntryId.value = entryId;
 }
 

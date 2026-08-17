@@ -65,9 +65,21 @@ export type SessionSetupReason = "create" | "restore";
 
 export type SessionRemoveReason = "delete" | "achieve" | "replace" | "shutdown";
 
+export type UiMenuSurface = "session" | "message";
+
+export interface UiMenuDescriptor {
+  id: string;
+  surface: UiMenuSurface;
+  label: string;
+  icon?: string;
+  order?: number;
+}
+
 export interface SessionExtensionDefinition {
   /** 扩展名称（用于标识和日志） */
   name: string;
+  /** Agent-level UI menu descriptors; listed without attaching a Session runtime. */
+  menus?: readonly UiMenuDescriptor[];
 
   /** 初始化函数 */
   setup(context: ExtensionContext): ExtensionCleanup | void | Promise<void | ExtensionCleanup>;
@@ -76,6 +88,7 @@ export interface SessionExtensionDefinition {
 export interface AgentExtensionDefinition {
   name: string;
   readonly scope: "agent";
+  menus?: readonly UiMenuDescriptor[];
   setup(context: AgentExtensionContext): ExtensionCleanup | void | Promise<void | ExtensionCleanup>;
 }
 
@@ -321,6 +334,10 @@ export interface ExtensionSession {
   readonly activity: {
     touch(): void;
   };
+  /** Named session policies (not extensions). Call from session.setup. */
+  readonly policy: {
+    active(id: string): void;
+  };
   checkpoint(label?: string): Promise<unknown>;
   rewindToEntry(entryId: string): Promise<void>;
   readonly agent: AgentDataFacade | null;
@@ -451,6 +468,7 @@ export interface AgentExtensionAgent extends Omit<ExtensionAgent, "activate" | "
       session: ExtensionSession,
       reason: SessionSetupReason,
     ) => void | ExtensionCleanup | Promise<void | ExtensionCleanup>,
+    options?: ExtensionEventHandlerOptions,
   ): void;
   on(
     event: "session.remove",
@@ -458,6 +476,7 @@ export interface AgentExtensionAgent extends Omit<ExtensionAgent, "activate" | "
       session: ExtensionSession,
       reason: SessionRemoveReason,
     ) => void | ExtensionCleanup | Promise<void | ExtensionCleanup>,
+    options?: ExtensionEventHandlerOptions,
   ): void;
 }
 
@@ -516,7 +535,12 @@ export interface ExtensionContext {
 
   /** 会话域：当前会话身份 + spawn / 消息 / meta 等操作 */
   readonly session: ExtensionSession;
-  /** Hidden strategy controls; strategies themselves are not user-visible extensions. */
+  /** Extension-to-extension capability registry for this Session. */
+  readonly capabilities: {
+    provide<T>(name: string, api: T): void;
+    get<T>(name: string): T | undefined;
+  };
+  /** @deprecated Prefer session.policy.active; kept for agent.meta.disabledPolicies. */
   readonly policies: {
     disable(id: string): void;
     isDisabled(id: string): boolean;
@@ -609,6 +633,7 @@ export interface ExtensionContext {
 export interface AgentExtensionContext {
   readonly agent: AgentExtensionAgent;
   readonly policies: ExtensionContext["policies"];
+  readonly capabilities: ExtensionContext["capabilities"];
   readonly db: ExtensionRawDatabase;
   readonly ui: SupervisorUiFacade;
   readonly events: EventBus;
@@ -690,8 +715,6 @@ export interface SupervisorUiFacade {
   requestApproval(request: ApprovalRequest): Promise<ApprovalResult>;
   registerMenu(menu: UiMenuDefinition): () => void;
 }
-
-export type UiMenuSurface = "session" | "message";
 
 export interface UiMenuContext {
   sessionId: number;

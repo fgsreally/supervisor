@@ -13,6 +13,7 @@ type ResourceOptions<T> = {
 const inflight = new Map<string, Promise<void>>();
 const generations = new Map<string, number>();
 const retryCounts = new Map<string, number>();
+const invalidated = new Set<string>();
 
 function identity(key: string, queryKey?: string): string {
   return cacheKey(key, queryKey);
@@ -20,7 +21,8 @@ function identity(key: string, queryKey?: string): string {
 
 export async function loadClientResource<T>(options: ResourceOptions<T>): Promise<T> {
   const id = identity(options.key, options.queryKey);
-  const cached = await readClientCache<T>(id).catch(() => null);
+  const generation = generations.get(id) ?? 0;
+  const cached = invalidated.has(id) ? null : await readClientCache<T>(id).catch(() => null);
   if (cached) {
     options.apply(cached.value);
     options.loading?.(false);
@@ -31,8 +33,10 @@ export async function loadClientResource<T>(options: ResourceOptions<T>): Promis
   options.loading?.(true);
   try {
     const value = await options.read();
+    if ((generations.get(id) ?? 0) !== generation) return loadClientResource(options);
     options.apply(value);
     await writeClientCache(id, value);
+    invalidated.delete(id);
     void syncClientResource(options);
     return value;
   } catch (error) {
@@ -52,8 +56,11 @@ export function syncClientResource<T>(options: ResourceOptions<T>): Promise<void
   if (typeof sync !== "function") return Promise.resolve();
   const generation = generations.get(id) ?? 0;
   const task = Promise.resolve(
-    (sync as (request: api.ClientCacheSyncRequest) => Promise<api.ClientCacheSyncResponse> | undefined)
-      .call(api, { resources: [{ key: options.key, queryKey: options.queryKey }] }),
+    (
+      sync as (
+        request: api.ClientCacheSyncRequest,
+      ) => Promise<api.ClientCacheSyncResponse> | undefined
+    ).call(api, { resources: [{ key: options.key, queryKey: options.queryKey }] }),
   )
     .then(async (response) => {
       if (!response) return;
@@ -65,6 +72,7 @@ export function syncClientResource<T>(options: ResourceOptions<T>): Promise<void
       const value = item.data as T;
       await writeClientCache(id, value, item.syncedAt);
       options.apply(value);
+      invalidated.delete(id);
       retryCounts.delete(id);
     })
     .catch(async (error) => {
@@ -73,14 +81,18 @@ export function syncClientResource<T>(options: ResourceOptions<T>): Promise<void
         if ((generations.get(id) ?? 0) !== generation) return;
         await writeClientCache(id, value);
         options.apply(value);
+        invalidated.delete(id);
         retryCounts.delete(id);
       } catch {
         options.onError?.(error);
         const retry = Math.min((retryCounts.get(id) ?? 0) + 1, 5);
         retryCounts.set(id, retry);
-        globalThis.setTimeout(() => {
-          void syncClientResource(options);
-        }, Math.min(30_000, 1_000 * 2 ** retry));
+        globalThis.setTimeout(
+          () => {
+            void syncClientResource(options);
+          },
+          Math.min(30_000, 1_000 * 2 ** retry),
+        );
       }
     })
     .finally(() => {
@@ -93,6 +105,7 @@ export function syncClientResource<T>(options: ResourceOptions<T>): Promise<void
 export function invalidateClientResource(key: string, queryKey?: string): void {
   const id = identity(key, queryKey);
   generations.set(id, (generations.get(id) ?? 0) + 1);
+  invalidated.add(id);
 }
 
 export function invalidateAndSyncClientResource<T>(options: ResourceOptions<T>): Promise<void> {

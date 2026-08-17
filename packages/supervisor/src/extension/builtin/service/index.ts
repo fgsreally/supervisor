@@ -51,7 +51,8 @@ const UPDATE_PARAMS = Type.Object({
   ),
   port: Type.Optional(
     Type.Number({
-      description: "Deprecated; the tool allocates ports from ${PORT1}, ${PORT2}, and similar placeholders in startCommand.",
+      description:
+        "Deprecated; the tool allocates ports from ${PORT1}, ${PORT2}, and similar placeholders in startCommand.",
     }),
   ),
   path: Type.Optional(Type.String({ description: "URL path, default /" })),
@@ -203,16 +204,29 @@ function ensureGlobalSleepScheduler(ctx: ExtensionContext): void {
 }
 
 const projectServicesExtension: ExtensionDefinition = {
-  name: "project-services",
+  name: "service",
   async setup(ctx) {
-    const agentRow = ctx.db.queryOne<{ tools_preset: string }>(
-      `SELECT a.tools_preset FROM agents a
-       JOIN sessions s ON s.agent_id = a.id WHERE s.id = ?`,
-      [ctx.session.id],
-    );
-    if (agentRow?.tools_preset !== "coding") {
+    const bash = ctx.capabilities.get<{
+      run: (
+        command: string,
+        options?: { cwd?: string; label?: string; env?: NodeJS.ProcessEnv },
+      ) => Promise<{ id: string; pid?: number }>;
+    }>("persistent-bash");
+    if (!bash) {
+      ctx.log("warn", "service requires persistent-bash");
       return () => {};
     }
+    const runBackground = (input: {
+      command: string;
+      cwd: string;
+      label: string;
+      env?: NodeJS.ProcessEnv;
+    }) =>
+      bash.run(input.command, {
+        cwd: input.cwd,
+        label: input.label,
+        env: input.env,
+      });
 
     const jobs = extensionJobsAsHost(ctx.jobs);
     const sessionId = ctx.session.id;
@@ -316,6 +330,7 @@ const projectServicesExtension: ExtensionDefinition = {
           jobs,
           skipInstall: !!current!.installedAt,
           lastActiveAtMs: now,
+          runBackground,
         });
         await writeServices(await waitForAppsReady(next));
       }
@@ -378,10 +393,11 @@ const projectServicesExtension: ExtensionDefinition = {
       { priority: 200, mode: "sync" },
     );
 
-    const runTeardown = async (mode: "stop" | "uninstall") => {
-      const current = await readServices();
-      if (!hasRegisteredServices(current)) return;
-      if (mode === "stop") {
+    ctx.on(
+      "session.before_complete",
+      async () => {
+        const current = await readServices();
+        if (!hasRegisteredServices(current)) return;
         await stopRegisteredSessionServices({
           sessionId,
           cwd: cwd(),
@@ -389,40 +405,31 @@ const projectServicesExtension: ExtensionDefinition = {
           jobs,
           mode: "stop",
         });
-        return;
-      }
-      await stopRegisteredSessionServices({
-        sessionId,
-        cwd: cwd(),
-        services: current,
-        jobs,
-        mode: "uninstall",
-      });
-      await writeServices({
-        ...current!,
-        status: "idle",
-        pid: null,
-        jobId: undefined,
-        resolvedStartCommand: undefined,
-      });
-    };
-
-    ctx.on("session.before_complete", async () => runTeardown("stop"), {
-      priority: 300,
-      mode: "sync",
-    });
-    ctx.on("session.before_complete", async () => runTeardown("uninstall"), {
-      priority: 200,
-      mode: "sync",
-    });
-    ctx.on("session.before_delete", async () => runTeardown("stop"), {
-      priority: 300,
-      mode: "sync",
-    });
-    ctx.on("session.before_delete", async () => runTeardown("uninstall"), {
-      priority: 200,
-      mode: "sync",
-    });
+      },
+      { priority: 300, mode: "sync" },
+    );
+    ctx.on(
+      "session.before_complete",
+      async () => {
+        const current = await readServices();
+        if (!hasRegisteredServices(current)) return;
+        await stopRegisteredSessionServices({
+          sessionId,
+          cwd: cwd(),
+          services: current,
+          jobs,
+          mode: "uninstall",
+        });
+        await writeServices({
+          ...current!,
+          status: "idle",
+          pid: null,
+          jobId: undefined,
+          resolvedStartCommand: undefined,
+        });
+      },
+      { priority: 200, mode: "sync" },
+    );
 
     const waitForAppReady = async (
       appName: string,
@@ -437,7 +444,7 @@ const projectServicesExtension: ExtensionDefinition = {
         output = typeof job?.output === "string" ? job.output : "";
         const detected = detectListenPort(output);
         const candidates = [started.port, detected].filter(
-          (port): port is number => Number.isInteger(port) && port > 0,
+          (port): port is number => typeof port === "number" && Number.isInteger(port) && port > 0,
         );
         for (const port of candidates) {
           if (await isLoopbackTcpPortOpen(port)) {
@@ -447,9 +454,7 @@ const projectServicesExtension: ExtensionDefinition = {
         // Windows pnpm/npx .cmd often exits while Vite stays up as a grandchild.
         // Never treat the wrapper job ending as "service dead", and never kill it.
         if (/Missing script|command not found|ENOENT/i.test(output)) {
-          throw new Error(
-            `Service ${appName} failed to start. Output:\n${output.slice(-4000)}`,
-          );
+          throw new Error(`Service ${appName} failed to start. Output:\n${output.slice(-4000)}`);
         }
         await sleep(300);
       }
@@ -509,6 +514,7 @@ const projectServicesExtension: ExtensionDefinition = {
           services: next,
           app,
           jobs,
+          runBackground,
         });
         return waitForAppReady(name, started);
       };
@@ -551,6 +557,7 @@ const projectServicesExtension: ExtensionDefinition = {
               jobs,
               skipInstall: false,
               lastActiveAtMs: Date.now(),
+              runBackground,
             });
             const readyServices = await waitForAppsReady(startedAll);
             await writeServices(readyServices);
@@ -614,6 +621,7 @@ const projectServicesExtension: ExtensionDefinition = {
             jobs,
             skipInstall: false,
             lastActiveAtMs: Date.now(),
+            runBackground,
           });
           const readyServices = await waitForAppsReady(startedAll);
           await writeServices(readyServices);
@@ -654,8 +662,8 @@ const projectServicesExtension: ExtensionDefinition = {
     };
 
     if (!hasRegisteredServices(await readServices())) {
-      try {
-        await ctx.watson.run({
+      void ctx.watson
+        .run({
           mode: "agent",
           kind: "session-services-register",
           toolsPreset: "readonly",
@@ -670,11 +678,11 @@ const projectServicesExtension: ExtensionDefinition = {
             "If there is no start command, do not call the tool and finish.",
             "Do not commit or modify AGENTS.md.",
           ].join("\n"),
+        })
+        .catch((error: unknown) => {
+          const message = error instanceof Error ? error.message : String(error);
+          ctx.log("warn", `Session service register skipped: ${message}`);
         });
-      } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        ctx.log("warn", `Session service register skipped: ${message}`);
-      }
     }
 
     ctx.agent.registerTool({
@@ -717,6 +725,7 @@ const projectServicesExtension: ExtensionDefinition = {
           jobs,
           skipInstall: params.skipInstall ?? !!current!.installedAt,
           lastActiveAtMs: Date.now(),
+          runBackground,
         });
         const ready = await waitForAppsReady(next);
         await writeServices(ready);

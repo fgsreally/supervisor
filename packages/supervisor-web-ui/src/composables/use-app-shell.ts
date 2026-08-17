@@ -13,6 +13,7 @@ import { idFromRoute, modelIdFromRoute, tabFromRoute } from "@/router";
 import { hasConfiguredSupervisorInstance } from "@/utils/mobile-server-config";
 import { providerToUI } from "@/utils/provider-ui";
 import { viewPreferences } from "@/utils/view-preferences";
+import { subscribeAgentUiMenus } from "@/api";
 
 type ProviderPage = "detail" | "add" | "model-add" | "model-edit";
 type AgentPage = "detail" | "add";
@@ -53,6 +54,7 @@ export const useAppShell = createGlobalState(() => {
   const instancePickerDismissible = computed(() => instancePickerMode.value === "manage");
   let appDataLoaded = false;
   let lastLoadedTab: MainTab | null = null;
+  let stopAgentUiMenus: (() => void) | null = null;
 
   function openInstancePicker() {
     instancePickerMode.value = "manage";
@@ -152,7 +154,17 @@ export const useAppShell = createGlobalState(() => {
   watch(() => route.fullPath, applyRoute);
 
   async function onStartupReady() {
-    if (await loadAppData()) appReady.value = true;
+    if (await loadAppData()) {
+      appReady.value = true;
+      if (!stopAgentUiMenus) {
+        stopAgentUiMenus = subscribeAgentUiMenus((event) => {
+          if (event.agents) agentStore.applyAllAgentUiMenus(event.agents);
+          else if (event.agentId && event.menus) {
+            agentStore.applyAgentUiMenus(event.agentId, event.menus);
+          }
+        });
+      }
+    }
   }
 
   async function loadAppData(): Promise<boolean> {
@@ -176,7 +188,11 @@ export const useAppShell = createGlobalState(() => {
   async function loadTabData(tab: MainTab): Promise<boolean> {
     try {
       if (tab === "chat") {
-        await Promise.all([sessionStore.fetchProjects(), sessionStore.fetchSessions()]);
+        await Promise.all([
+          sessionStore.fetchProjects(),
+          sessionStore.fetchSessions(),
+          agentStore.fetchAgents(),
+        ]);
       } else if (tab === "contacts") {
         await agentStore.fetchAgents();
         void agentStore.detectExternalAgents().catch(() => undefined);
@@ -210,6 +226,8 @@ export const useAppShell = createGlobalState(() => {
   });
   onBeforeUnmount(() => {
     document.removeEventListener("visibilitychange", onVisibilityChange);
+    stopAgentUiMenus?.();
+    stopAgentUiMenus = null;
   });
 
   const activeSession = computed(() => {

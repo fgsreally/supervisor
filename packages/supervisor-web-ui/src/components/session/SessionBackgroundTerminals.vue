@@ -92,9 +92,10 @@ function canCancel(job: SessionJob): boolean {
 }
 
 async function refresh() {
-  if (!props.sessionId || document.hidden) return;
-  const snapshot = await getSessionJobs(props.sessionId).catch(() => undefined);
-  if (!snapshot) return;
+  const sessionId = props.sessionId;
+  if (!sessionId || document.hidden) return;
+  const snapshot = await getSessionJobs(sessionId).catch(() => undefined);
+  if (!snapshot || props.sessionId !== sessionId) return;
   const next = snapshot.jobs.filter((job) => isBackgroundKind(job) && isLive(job));
   const prevIds = terminals.value.map((job) => job.id).join(",");
   const nextIds = next.map((job) => job.id).join(",");
@@ -112,7 +113,10 @@ async function kill(jobId: string) {
     await refresh();
     emit("changed");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : t("session.background.stopFailed"), "error");
+    showUiMessage(
+      error instanceof Error ? error.message : t("session.background.stopFailed"),
+      "error",
+    );
   } finally {
     killingId.value = null;
   }

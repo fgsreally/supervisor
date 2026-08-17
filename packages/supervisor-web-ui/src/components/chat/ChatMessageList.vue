@@ -134,7 +134,7 @@ import {
 import ChatMessageGroupRow from "./ChatMessageGroupRow.vue";
 import MessageContextMenu from "./MessageContextMenu.vue";
 import AgentAvatar from "../agent/AgentAvatar.vue";
-import * as api from "@/api";
+import { useAgentStore, useSessionStore } from "@/store";
 
 const props = defineProps<{
   sessionId: string;
@@ -158,6 +158,8 @@ const props = defineProps<{
   scrollReady?: boolean;
 }>();
 const { t } = useI18n();
+const sessionStore = useSessionStore();
+const agentStore = useAgentStore();
 
 const emit = defineEmits<{
   "load-older": [];
@@ -323,14 +325,8 @@ async function openActions(
   contextMenu.entryId = group.id;
   contextMenu.copyText = copyText;
   contextMenu.canRewind = props.rewindableEntryIds.includes(group.id);
-  contextMenu.canFork = false;
-  void api
-    .listSessionUiMenus(props.sessionId, "message", group.id)
-    .then((menus) => {
-      if (contextMenu.entryId !== group.id) return;
-      contextMenu.canFork = menus.some((menu) => menu.id === "git.fork-message");
-    })
-    .catch(() => undefined);
+  const session = sessionStore.sessions.find((item) => item.id === props.sessionId);
+  contextMenu.canFork = agentStore.hasUiMenu(session?.agentId, "git.fork-message");
   contextMenu.canCopy = copyText.length > 0;
   contextMenu.usage =
     !props.externalAgent && isGroupedAssistantGroup(group) ? (group.usage ?? null) : null;

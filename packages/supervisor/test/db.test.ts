@@ -104,6 +104,17 @@ describe("supervisor: SupervisorDb", () => {
     expect(updated.last_active_at).toBeGreaterThanOrEqual(updated.created_at);
   });
 
+  it("clears process-bound statuses after Supervisor restart", () => {
+    const active = insertSession(db, { status: "active" });
+    const running = insertSession(db, { status: "running" });
+    const idle = insertSession(db, { status: "idle" });
+
+    expect(db.reconcileInterruptedSessionStatuses()).toBe(2);
+    expect(db.get(active.id)?.status).toBe("idle");
+    expect(db.get(running.id)?.status).toBe("idle");
+    expect(db.get(idle.id)?.status).toBe("idle");
+  });
+
   it("updateMeta merges patch into existing meta", () => {
     const inst = insertSession(db, { status: "idle", meta: '{"a":1}' });
     const merged = db.updateMeta(inst.id, { b: 2 });

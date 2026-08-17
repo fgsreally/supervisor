@@ -249,6 +249,13 @@ export async function startRegisteredApp(options: {
   services: SessionServicesMeta;
   app: SessionServiceApp;
   jobs: SessionServiceJobHost;
+  /** Prefer persistent-bash (or equivalent) over local spawn. */
+  runBackground?: (input: {
+    command: string;
+    cwd: string;
+    label: string;
+    env?: NodeJS.ProcessEnv;
+  }) => Promise<{ id: string; pid?: number }>;
 }): Promise<SessionServiceApp> {
   const startCommand = appStartCommand(options.app, options.services);
   if (!startCommand) throw new Error(`服务 ${options.app.name} 缺少 startCommand`);
@@ -264,6 +271,30 @@ export async function startRegisteredApp(options: {
   }
   const env: NodeJS.ProcessEnv = withProjectPath(options.cwd, { ...process.env, ...portEnv });
   const resolved = substitutePortPlaceholders(startCommand, portEnv);
+  sessionLog(options.sessionId, "info", `Starting ${options.app.name}: ${resolved}`, [
+    "system",
+    "services",
+  ]);
+
+  if (options.runBackground) {
+    const started = await options.runBackground({
+      command: resolved,
+      cwd: options.cwd,
+      label: `start · ${options.app.name}`,
+      env,
+    });
+    return {
+      ...options.app,
+      startCommand,
+      port: options.app.port || Number(portEnv.PORT1 ?? portEnv.PORT ?? options.app.port) || 0,
+      portEnv: Object.fromEntries(
+        Object.entries(portEnv).map(([key, value]) => [key, Number(value)]),
+      ),
+      jobId: started.id,
+      pid: started.pid ?? null,
+    };
+  }
+
   const job = await options.jobs.create(options.sessionId, {
     kind: "project-service",
     name: `start:${options.app.name}`,
@@ -279,10 +310,6 @@ export async function startRegisteredApp(options: {
       app: options.app.name,
     },
   });
-  sessionLog(options.sessionId, "info", `Starting ${options.app.name}: ${resolved}`, [
-    "system",
-    "services",
-  ]);
   let output = "";
   const child = spawn(resolved, {
     cwd: options.cwd,
@@ -320,6 +347,10 @@ export async function startRegisteredApp(options: {
   return {
     ...options.app,
     startCommand,
+    port: options.app.port || Number(portEnv.PORT1 ?? portEnv.PORT ?? options.app.port) || 0,
+    portEnv: Object.fromEntries(
+      Object.entries(portEnv).map(([key, value]) => [key, Number(value)]),
+    ),
     jobId: job.id,
     pid: child.pid ?? null,
   };
@@ -333,6 +364,12 @@ export async function startRegisteredSessionServices(options: {
   jobs: SessionServiceJobHost;
   skipInstall?: boolean;
   lastActiveAtMs?: number;
+  runBackground?: (input: {
+    command: string;
+    cwd: string;
+    label: string;
+    env?: NodeJS.ProcessEnv;
+  }) => Promise<{ id: string; pid?: number }>;
 }): Promise<SessionServicesMeta> {
   if (!hasRegisteredServices(options.services)) {
     throw new Error("尚未注册项目服务命令");
@@ -407,6 +444,7 @@ export async function startRegisteredSessionServices(options: {
           services: { ...meta, apps: meta.apps },
           app,
           jobs: options.jobs,
+          runBackground: options.runBackground,
         }),
       );
     }

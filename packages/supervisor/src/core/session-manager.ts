@@ -20,8 +20,10 @@ import { ResourceManager } from "../resources/resource-manager.js";
 import {
   ensureAgentBuiltinExtensionBindings,
   ensureBuiltinExtensionResources,
+  listEnabledBuiltinExtensionSlugs,
 } from "../extension/builtin/ensure.js";
-import { BUILTIN_EXTENSIONS, isBuiltinExtensionResource } from "../extension/builtin/catalog.js";
+import { BUILTIN_EXTENSIONS, BUILTIN_EXTENSION_SLUGS, isBuiltinExtensionResource } from "../extension/builtin/catalog.js";
+import { declaredMenusForSlug, serializeUiMenu } from "../extension/ui-menus.js";
 import { JobManager } from "./jobs.js";
 import {
   executeTaskSlashCommand,
@@ -33,7 +35,6 @@ import { ensureGlobalResourceRoot } from "../resources/resource-paths.js";
 import { AgentResource } from "../agent/runtime-resources.js";
 import {
   disposeAgentExtensionRuntime,
-  isAgentPolicyDisabled,
   loadSessionExtensions,
   ExtensionAttachRuntime,
 } from "./session-extension-attach.js";
@@ -65,7 +66,6 @@ import {
   parseSessionServicesMeta,
   sessionServicePortEnv,
   scrubStaleSessionRuntimeMeta,
-  stopSessionProjectServices,
   stoppedSessionServicesMeta,
 } from "./session-services.js";
 import { runWatson } from "./watson.js";
@@ -81,6 +81,7 @@ import type {
   ExtensionEvent,
   UiMenuContext,
   UiMenuDefinition,
+  UiMenuDescriptor,
   UiMenuSurface,
   UiMenuResult,
   SessionSetupReason,
@@ -112,13 +113,12 @@ import {
   commitAll,
   commitGitSnapshot,
   ensureGitRepositorySync,
-  removeSessionWorktree,
   resolveSessionGitContext,
 } from "../utils/git.js";
 import { configureSessionLogProjectResolver, sessionLog } from "../utils/session-log.js";
 import { beginSessionTiming, timedSessionStep } from "../utils/session-timing.js";
 import { writeLog } from "../i18n/logs.js";
-import { startSessionActivityScheduler } from "./session-activity.js";
+import { startSessionActivityScheduler, hasSessionActivityPolicy, clearSessionActivityPolicy } from "./session-activity.js";
 import { listExtensionInfosInDirectories } from "../extension/index.js";
 import { loadPromptTemplates } from "./resource/prompt-templates.js";
 import { loadPromptTemplate } from "./resource/system-prompts.js";
@@ -266,6 +266,11 @@ export type SessionOutputEvent =
   | SessionStatusEvent
   | { type: "approval.pending"; [key: string]: unknown };
 export type SessionOutputListener = (sessionId: number, event: SessionOutputEvent) => void;
+export type AgentUiMenusEvent = {
+  agentId: number;
+  menus: UiMenuDescriptor[];
+};
+export type AgentUiMenusListener = (event: AgentUiMenusEvent) => void;
 
 function isTrackedAgentEvent(event: AgentHarnessEvent): event is AgentEvent {
   return (
@@ -374,6 +379,7 @@ export class SessionManager {
     number,
     Map<string, { owner: string; menu: UiMenuDefinition }>
   >();
+  private readonly agentUiMenuListeners = new Set<AgentUiMenusListener>();
   private readonly extensionRegistry = new ExtensionModuleRegistry();
   private readonly resourceHandlers: ReturnType<typeof createResourceHandlers>;
   private readonly resourceManager: ResourceManager;
@@ -382,37 +388,76 @@ export class SessionManager {
   private readonly detachHomeTaskSync: () => void;
   private readonly stopSessionActivity: () => void;
 
-  registerUiMenu(sessionId: number, owner: string, menu: UiMenuDefinition): () => void {
-    const menus = this.uiMenus.get(sessionId) ?? new Map();
-    this.uiMenus.set(sessionId, menus);
+  registerUiMenu(agentId: number, owner: string, menu: UiMenuDefinition): () => void {
+    const menus = this.uiMenus.get(agentId) ?? new Map();
+    this.uiMenus.set(agentId, menus);
     const key = `${owner}:${menu.id}`;
     menus.set(key, { owner, menu });
+    this.publishAgentUiMenus(agentId);
     return () => {
-      const current = this.uiMenus.get(sessionId);
+      const current = this.uiMenus.get(agentId);
       current?.delete(key);
-      if (current && current.size === 0) this.uiMenus.delete(sessionId);
+      if (current && current.size === 0) this.uiMenus.delete(agentId);
+      this.publishAgentUiMenus(agentId);
     };
+  }
+
+  listAgentUiMenus(agentId: number): UiMenuDescriptor[] {
+    if (!this.db.getAgent(agentId)) return [];
+    const byId = new Map<string, UiMenuDescriptor>();
+    for (const slug of listEnabledBuiltinExtensionSlugs(this.db, agentId)) {
+      for (const menu of declaredMenusForSlug(slug)) byId.set(menu.id, menu);
+    }
+    const userSlugs = this.db
+      .listAgentResourceBindings(agentId, { kind: "extension", enabledOnly: true })
+      .flatMap((binding) => {
+        const slug = binding.resource?.slug;
+        if (!slug || BUILTIN_EXTENSION_SLUGS.has(slug)) return [];
+        return [slug];
+      });
+    for (const module of this.extensionRegistry.getMany(userSlugs)) {
+      if (module.error) continue;
+      for (const menu of declaredMenusForSlug(module.slug, module.definition)) {
+        byId.set(menu.id, menu);
+      }
+    }
+    for (const { menu } of this.uiMenus.get(agentId)?.values() ?? []) {
+      byId.set(menu.id, serializeUiMenu(menu));
+    }
+    return [...byId.values()].sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
+  }
+
+  listAllAgentUiMenus(): AgentUiMenusEvent[] {
+    return this.db.listAgents().map((agent) => ({
+      agentId: agent.id,
+      menus: this.listAgentUiMenus(agent.id),
+    }));
+  }
+
+  onAgentUiMenus(listener: AgentUiMenusListener): () => void {
+    this.agentUiMenuListeners.add(listener);
+    return () => {
+      this.agentUiMenuListeners.delete(listener);
+    };
+  }
+
+  publishAgentUiMenus(agentId: number): void {
+    const event: AgentUiMenusEvent = { agentId, menus: this.listAgentUiMenus(agentId) };
+    for (const listener of this.agentUiMenuListeners) listener(event);
   }
 
   async listUiMenus(
     sessionId: number,
     surface: UiMenuSurface,
     entryId?: string,
-  ): Promise<Array<Pick<UiMenuDefinition, "id" | "surface" | "label" | "icon" | "order">>> {
-    const context: UiMenuContext = { sessionId, ...(entryId ? { entryId } : {}) };
-    const result: Array<Pick<UiMenuDefinition, "id" | "surface" | "label" | "icon" | "order">> = [];
-    for (const { menu } of this.uiMenus.get(sessionId)?.values() ?? []) {
-      if (menu.surface !== surface) continue;
-      if (menu.visible && !(await menu.visible(context))) continue;
-      result.push({
-        id: menu.id,
-        surface: menu.surface,
-        label: menu.label,
-        ...(menu.icon ? { icon: menu.icon } : {}),
-        ...(menu.order !== undefined ? { order: menu.order } : {}),
-      });
-    }
-    return result.sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
+  ): Promise<UiMenuDescriptor[]> {
+    const session = this.get(sessionId);
+    if (session?.agentId == null) return [];
+    return this.listAgentUiMenus(session.agentId).filter((menu) => {
+      if (menu.surface !== surface) return false;
+      if (surface === "message" && !entryId) return false;
+      return true;
+    });
   }
 
   async executeUiMenu(
@@ -420,11 +465,35 @@ export class SessionManager {
     menuId: string,
     entryId?: string,
   ): Promise<UiMenuResult | void> {
-    const entry = [...(this.uiMenus.get(sessionId)?.values() ?? [])].find(
+    const session = this.get(sessionId);
+    if (!session) throw new Error(`Session ${sessionId} not found`);
+    if (session.agentId == null) throw new Error(`UI menu ${menuId} not found`);
+    const allowed = this.listAgentUiMenus(session.agentId).some((menu) => menu.id === menuId);
+    if (!allowed) throw new Error(`UI menu ${menuId} not found`);
+    const context: UiMenuContext = { sessionId, ...(entryId ? { entryId } : {}) };
+
+    if (menuId === "git.fork-session" || menuId === "git.fork-message") {
+      return { action: "select-agent-for-fork" };
+    }
+    if (menuId === "git.checkpoint" || menuId === "git.achieve" || menuId === "git.rewind-message") {
+      await this.ensureRuntime(sessionId);
+      if (menuId === "git.checkpoint") {
+        await this.createCheckpoint(sessionId);
+        return { refresh: true };
+      }
+      if (menuId === "git.achieve") {
+        await this.complete(sessionId);
+        return { refresh: true };
+      }
+      if (!entryId) throw new Error("Message entry is required");
+      await this.rewindToEntry(sessionId, entryId);
+      return { refresh: true };
+    }
+
+    const entry = [...(this.uiMenus.get(session.agentId)?.values() ?? [])].find(
       ({ menu }) => menu.id === menuId,
     );
     if (!entry) throw new Error(`UI menu ${menuId} not found`);
-    const context: UiMenuContext = { sessionId, ...(entryId ? { entryId } : {}) };
     if (entry.menu.visible && !(await entry.menu.visible(context))) {
       throw new Error(`UI menu ${menuId} is not available`);
     }
@@ -446,18 +515,7 @@ export class SessionManager {
     this.stopSessionActivity = startSessionActivityScheduler(
       this.db,
       (id) => this.publishSessionStatus(id),
-      (id) => {
-        const row = this.db.get(id);
-        if (row?.agent_id == null) return true;
-        const agent = this.db.getAgent(row.agent_id);
-        if (
-          Array.isArray(agent?.meta.disabledPolicies) &&
-          agent.meta.disabledPolicies.includes("session-activity")
-        ) {
-          return false;
-        }
-        return !isAgentPolicyDisabled(this, row.agent_id, "session-activity");
-      },
+      (id) => hasSessionActivityPolicy(id),
     );
     for (const input of this.db.listPersistedSessionInputs()) {
       this.sessionInputQueues.enqueue(input.sessionId, {
@@ -1509,6 +1567,7 @@ export class SessionManager {
       if (!host) continue;
       runtime.attachExtension?.(host);
     }
+    this.publishAgentUiMenus(agentId);
   }
 
   private async refreshRuntimeTools(
@@ -2473,11 +2532,12 @@ export class SessionManager {
 
   private enrichAgentWithSystemMd(agent: Agent): AgentWithSystemMd {
     const availability = externalAgentAvailability(agent);
+    const uiMenus = this.listAgentUiMenus(agent.id);
     if (agent.backendType !== "native") {
-      return { ...agent, homeDir: null, systemMd: agent.systemPrompt ?? "", ...availability };
+      return { ...agent, homeDir: null, systemMd: agent.systemPrompt ?? "", ...availability, uiMenus };
     }
     const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
-    return { ...agent, homeDir, systemMd: agent.systemPrompt ?? "", ...availability };
+    return { ...agent, homeDir, systemMd: agent.systemPrompt ?? "", ...availability, uiMenus };
   }
 
   detectExternalAgents(): AgentWithSystemMd[] {
@@ -2566,6 +2626,7 @@ export class SessionManager {
     });
     ensureBuiltinExtensionResources(this.db);
     ensureAgentBuiltinExtensionBindings(this.db, agent.id);
+    this.publishAgentUiMenus(agent.id);
     return this.enrichAgentWithSystemMd(agent);
   }
 
@@ -2634,7 +2695,9 @@ export class SessionManager {
   }
 
   setAgentExtensionEnabled(agentId: number, resourceId: number, enabled: boolean) {
-    return this.resourceManager.setResourceEnabled(agentId, resourceId, enabled);
+    const binding = this.resourceManager.setResourceEnabled(agentId, resourceId, enabled);
+    this.publishAgentUiMenus(agentId);
+    return binding;
   }
 
   updateAgent(id: number, patch: Parameters<SupervisorDb["updateAgent"]>[1]): AgentWithSystemMd {
@@ -2660,6 +2723,8 @@ export class SessionManager {
 
   deleteAgent(id: number) {
     this.db.deleteAgent(id);
+    this.uiMenus.delete(id);
+    this.publishAgentUiMenus(id);
   }
 
   setSessionSubagentIds(sessionId: number, agentIds: number[]): number[] {
@@ -2857,20 +2922,14 @@ export class SessionManager {
       }
     }
 
-    const runtime = this.runtimes.get(id);
-    if (session) {
+    let runtime = this.runtimes.get(id);
+    if (!runtime?.extension && session?.projectId != null) {
       try {
-        await stopSessionProjectServices({
-          sessionId: id,
-          cwd: session.cwd,
-          services: parseSessionServicesMeta(session.meta),
-          jobs: this.jobs,
-          mode: "destroy",
-        });
+        runtime = await this.ensureRuntime(id);
       } catch (error: unknown) {
         writeLog("error", "runtime.clearOnDeleteFailed", {
           id,
-          step: "services",
+          step: "attach_for_delete",
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -2889,27 +2948,6 @@ export class SessionManager {
           error: error instanceof Error ? error.message : String(error),
         });
       }
-    } else if (session) {
-      try {
-        const project =
-          session.projectId != null ? this.db.getProject(session.projectId) : undefined;
-        const git = resolveSessionGitContext({
-          sessionId: id,
-          cwd: session.cwd,
-          projectCwd: project?.cwd,
-        });
-        if (git) {
-          await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch, {
-            forceBranch: true,
-          });
-        }
-      } catch (error: unknown) {
-        writeLog("error", "runtime.clearOnDeleteFailed", {
-          id,
-          step: "worktree",
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
     }
 
     if (runtime) {
@@ -2918,7 +2956,7 @@ export class SessionManager {
       this.sessionToolConfigs.delete(id);
     }
     this.systemPromptOverlays.delete(id);
-    this.uiMenus.delete(id);
+    clearSessionActivityPolicy(id);
 
     const projectId = session?.projectId ?? null;
     this.db.delete(id);
@@ -3062,6 +3100,7 @@ export class SessionManager {
     this.turnTrackers.clear();
     this.outputListeners.clear();
     this.globalOutputListeners.clear();
+    this.agentUiMenuListeners.clear();
     this.sessionToolConfigs.clear();
     this.systemPromptOverlays.clear();
     this.uiMenus.clear();
@@ -3445,6 +3484,10 @@ export class SessionManager {
 
   getLastMessagePreviews(sessionIds: number[]): Map<number, string> {
     return this.db.getLastMessagePreviews(sessionIds);
+  }
+
+  getLastMessageSummaries(sessionIds: number[]): Map<number, { preview: string; createdAt: number }> {
+    return this.db.getLastMessageSummaries(sessionIds);
   }
 
   getRuntime(id: number): ManagedSessionRuntime {

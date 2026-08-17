@@ -620,6 +620,26 @@ export const useAgentStore = defineStore("agent", () => {
   const agents = ref<Agent[]>([]);
   const currentAgentId = ref<string | null>(null);
   const agentResources = ref<Record<string, api.AgentResources>>({});
+  const uiMenus = ref<Record<string, api.UiMenuItem[]>>({});
+
+  function applyAgentUiMenus(agentId: string, menus: api.UiMenuItem[]) {
+    uiMenus.value = { ...uiMenus.value, [agentId]: menus };
+  }
+
+  function applyAllAgentUiMenus(entries: Array<{ agentId: string; menus: api.UiMenuItem[] }>) {
+    const next: Record<string, api.UiMenuItem[]> = {};
+    for (const entry of entries) next[entry.agentId] = entry.menus;
+    uiMenus.value = next;
+  }
+
+  function ingestAgentUiMenus(agent: Agent) {
+    if (agent.uiMenus) applyAgentUiMenus(agent.id, agent.uiMenus);
+  }
+
+  function hasUiMenu(agentId: string | null | undefined, menuId: string): boolean {
+    if (!agentId) return false;
+    return (uiMenus.value[agentId] ?? []).some((menu) => menu.id === menuId);
+  }
 
   // Getters
   const getAgentById = computed(() => (id: string) => {
@@ -660,7 +680,10 @@ export const useAgentStore = defineStore("agent", () => {
       await loadClientResource<Agent[]>({
         key: "agents",
         read: api.listAgents,
-        apply: (value) => { agents.value = value; },
+        apply: (value) => {
+          agents.value = value;
+          for (const agent of value) ingestAgentUiMenus(agent);
+        },
         loading: (value) => { root.loading.agents = value; },
       });
     } catch (err) {
@@ -676,6 +699,7 @@ export const useAgentStore = defineStore("agent", () => {
     root.clearError();
     try {
       agents.value = await api.detectExternalAgents();
+      for (const agent of agents.value) ingestAgentUiMenus(agent);
       invalidateClientResource("agents");
       return agents.value;
     } catch (err) {
@@ -696,6 +720,7 @@ export const useAgentStore = defineStore("agent", () => {
       } else {
         agents.value.push(agent);
       }
+      ingestAgentUiMenus(agent);
       return agent;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to install external agent");
@@ -713,6 +738,7 @@ export const useAgentStore = defineStore("agent", () => {
       } else {
         agents.value.push(result.agent);
       }
+      ingestAgentUiMenus(result.agent);
       return result;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to repair external agent");
@@ -730,6 +756,7 @@ export const useAgentStore = defineStore("agent", () => {
       } else {
         agents.value.push(agent);
       }
+      ingestAgentUiMenus(agent);
       return agent;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch agent");
@@ -742,6 +769,7 @@ export const useAgentStore = defineStore("agent", () => {
     try {
       const agent = await api.createAgent(options);
       agents.value.push(agent);
+      ingestAgentUiMenus(agent);
       invalidateClientResource("agents");
       return agent;
     } catch (err) {
@@ -758,6 +786,7 @@ export const useAgentStore = defineStore("agent", () => {
       if (index >= 0) {
         agents.value[index] = agent;
       }
+      ingestAgentUiMenus(agent);
       invalidateClientResource("agents");
       return agent;
     } catch (err) {
@@ -772,6 +801,9 @@ export const useAgentStore = defineStore("agent", () => {
       await api.deleteAgent(id);
       agents.value = agents.value.filter((a) => a.id !== id);
       delete agentResources.value[id];
+      const nextMenus = { ...uiMenus.value };
+      delete nextMenus[id];
+      uiMenus.value = nextMenus;
       invalidateClientResource("agents");
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to delete agent");
@@ -872,6 +904,10 @@ export const useAgentStore = defineStore("agent", () => {
     currentAgentId,
     currentAgent,
     agentResources,
+    uiMenus,
+    hasUiMenu,
+    applyAgentUiMenus,
+    applyAllAgentUiMenus,
     getAgentById,
     getAgentsByCategory,
     fetchAgents,

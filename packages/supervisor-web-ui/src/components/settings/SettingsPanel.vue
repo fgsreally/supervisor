@@ -72,12 +72,14 @@
           <h2>{{ t("settings.view") }}</h2>
           <div class="service-list">
             <label class="settings-field">
-              <span>{{ t("settings.language") }}</span>
+              <span>
+                <span>{{ t("settings.language") }}</span>
+                <small class="settings-field__hint">{{ t("settings.languageHint") }}</small>
+              </span>
               <select :value="locale" @change="onLocaleChange">
                 <option value="zh-CN">{{ t("settings.language.zhCN") }}</option>
                 <option value="en">{{ t("settings.language.en") }}</option>
               </select>
-              <small class="settings-field__hint">{{ t("settings.languageHint") }}</small>
             </label>
             <div class="service-row service-row--switch">
               <div class="service-copy">

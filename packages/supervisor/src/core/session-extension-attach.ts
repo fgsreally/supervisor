@@ -18,7 +18,6 @@ import {
 } from "../extension/builtin/index.js";
 import { listEnabledBuiltinExtensionSlugs } from "../extension/builtin/ensure.js";
 import { isAgentExtension } from "../extension/index.js";
-import { sessionActivityPolicy } from "../extension/policies/session-activity.js";
 import {
   AgentExtensionRuntime,
   Context,
@@ -118,17 +117,18 @@ export async function loadSessionExtensions(options: {
   const loadBuiltin = async (
     slug: string,
     definition: Parameters<AgentExtensionRuntime["loadSessionExtension"]>[0],
+    priority?: number,
   ) => {
-    if (enabled(slug)) await agentRuntime.loadSessionExtension(definition);
+    if (enabled(slug)) await agentRuntime.loadSessionExtension(definition, { priority });
   };
   // Preparation-sensitive extensions are registered first so their session.setup handlers run first.
-  await loadBuiltin("git", gitExtension);
+  await loadBuiltin("git", gitExtension, 200);
   await loadBuiltin("supervisor-admin", supervisorAdminExtension);
   await loadBuiltin("eval", evalExtension);
   await loadBuiltin("task-management", taskManagementExtension);
   await loadBuiltin("tool-loop-guard", toolLoopGuardExtension);
   await loadBuiltin("timer", timerExtension);
-  await loadBuiltin("persistent-bash", persistentBashExtension);
+  await loadBuiltin("persistent-bash", persistentBashExtension, 150);
   if (enabled("skill")) {
     await agentRuntime.loadSessionExtensionFactory("skill", (scope) =>
       createSkillExtension(scope.agentResource),
@@ -141,11 +141,11 @@ export async function loadSessionExtensions(options: {
       when: (scope) => scope.session.isMain,
     });
   }
-  if (enabled("project-services")) {
+  if (enabled("service") || enabled("project-services")) {
     await agentRuntime.loadSessionExtensionFactory(
-      "project-services",
+      "service",
       () => projectServicesExtension,
-      { when: (scope) => scope.session.isMain },
+      { when: (scope) => scope.session.isMain, priority: 100 },
     );
   }
   const agentModules = modules.filter(
@@ -168,12 +168,6 @@ export async function loadSessionExtensions(options: {
       slug: moduleError.slug,
       error: moduleError.error,
     });
-  }
-  if (context.policies.isDisabled("session-activity")) {
-    agentRuntime.disablePolicy("session-activity");
-  }
-  if (!agentRuntime.isPolicyDisabled("session-activity")) {
-    await agentRuntime.load(sessionActivityPolicy, { policy: true });
   }
 
   await agentRuntime.attach(context, options.setupReason ?? "restore");

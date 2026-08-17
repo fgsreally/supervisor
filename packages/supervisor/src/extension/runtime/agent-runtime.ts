@@ -5,6 +5,7 @@ import type {
   AgentExtensionDefinition,
   ExtensionCleanup,
   ExtensionCommandDefinition,
+  ExtensionEventHandlerOptions,
   ExtensionSession,
   SessionExtensionDefinition,
   SessionRemoveReason,
@@ -14,9 +15,14 @@ import type {
 } from "../types.js";
 import type { Context } from "./context.js";
 
+function hasGitAndServiceExtensions(runtime: AgentExtensionRuntime): boolean {
+  const owners = new Set(runtime.loadedExtensionNames());
+  return owners.has("git") && (owners.has("service") || owners.has("project-services"));
+}
+
 interface SetupHandler {
   owner: string;
-  policy: boolean;
+  priority: number;
   handler: (
     session: ExtensionSession,
     reason: SessionSetupReason,
@@ -25,7 +31,7 @@ interface SetupHandler {
 
 interface RemoveHandler {
   owner: string;
-  policy: boolean;
+  priority: number;
   handler: (
     session: ExtensionSession,
     reason: SessionRemoveReason,
@@ -102,21 +108,22 @@ export class AgentExtensionRuntime {
         get meta() {
           return self.representative.agent.meta;
         },
-        on(event, handler) {
+        on(event, handler, options?: ExtensionEventHandlerOptions) {
           if (event !== "session.setup" && event !== "session.remove") {
             throw new Error(`Unsupported Agent event: ${event}`);
           }
           const owner = self.requireRegistration().owner;
+          const priority = options?.priority ?? 0;
           if (event === "session.setup") {
             self.handlers.push({
               owner,
-              policy: owner.startsWith("policy:"),
+              priority,
               handler: handler as SetupHandler["handler"],
             });
           } else {
             self.removeHandlers.push({
               owner,
-              policy: owner.startsWith("policy:"),
+              priority,
               handler: handler as RemoveHandler["handler"],
             });
           }
@@ -195,6 +202,14 @@ export class AgentExtensionRuntime {
           return self.disabledPolicies.has(id);
         },
       },
+      capabilities: {
+        provide(name, api) {
+          self.representative.capabilities.provide(name, api);
+        },
+        get(name) {
+          return self.representative.capabilities.get(name);
+        },
+      },
       get db() {
         return self.representative.db;
       },
@@ -224,24 +239,35 @@ export class AgentExtensionRuntime {
     this.disabledPolicies.add(id);
   }
 
-  async load(definition: AgentExtensionDefinition, options?: { policy?: boolean }): Promise<void> {
-    const owner = options?.policy ? `policy:${definition.name}` : definition.name;
+  loadedExtensionNames(): string[] {
+    return [...this.loaded.keys()];
+  }
+
+  async load(definition: AgentExtensionDefinition): Promise<void> {
+    const owner = definition.name;
     if (this.loaded.has(owner)) return;
     const cleanup = await this.registration.run({ owner }, () => definition.setup(this.context));
     this.loaded.set(owner, { name: owner, ...(cleanup ? { cleanup } : {}) });
   }
 
   /** Transitional adapter: the definition body becomes the per-Session setup handler. */
-  async loadSessionExtension(definition: SessionExtensionDefinition): Promise<void> {
+  async loadSessionExtension(
+    definition: SessionExtensionDefinition,
+    options?: { priority?: number },
+  ): Promise<void> {
     await this.load({
       name: definition.name,
       scope: "agent",
       setup: (agentContext) => {
-        agentContext.agent.on("session.setup", (session) => {
-          const scope = this.sessions.get(session.id);
-          if (!scope) throw new Error(`Session scope ${session.id} is unavailable`);
-          return definition.setup(scope.context);
-        });
+        agentContext.agent.on(
+          "session.setup",
+          (session) => {
+            const scope = this.sessions.get(session.id);
+            if (!scope) throw new Error(`Session scope ${session.id} is unavailable`);
+            return definition.setup(scope.context);
+          },
+          { priority: options?.priority ?? 0 },
+        );
       },
     });
   }
@@ -249,18 +275,22 @@ export class AgentExtensionRuntime {
   async loadSessionExtensionFactory(
     name: string,
     factory: (context: Context) => SessionExtensionDefinition,
-    options?: { when?: (context: Context) => boolean },
+    options?: { when?: (context: Context) => boolean; priority?: number },
   ): Promise<void> {
     await this.load({
       name,
       scope: "agent",
       setup: (agentContext) => {
-        agentContext.agent.on("session.setup", (session) => {
-          const scope = this.sessions.get(session.id);
-          if (!scope) throw new Error(`Session scope ${session.id} is unavailable`);
-          if (options?.when && !options.when(scope.context)) return;
-          return factory(scope.context).setup(scope.context);
-        });
+        agentContext.agent.on(
+          "session.setup",
+          (session) => {
+            const scope = this.sessions.get(session.id);
+            if (!scope) throw new Error(`Session scope ${session.id} is unavailable`);
+            if (options?.when && !options.when(scope.context)) return;
+            return factory(scope.context).setup(scope.context);
+          },
+          { priority: options?.priority ?? 0 },
+        );
       },
     });
   }
@@ -280,9 +310,15 @@ export class AgentExtensionRuntime {
       context.runExtensionSync(owner, () => context.agent.registerSlash(name, definition));
     }
 
-    const handlers = [...this.handlers].sort(
-      (left, right) => Number(right.policy) - Number(left.policy),
-    );
+    if (!context.session.isMain || !hasGitAndServiceExtensions(this)) {
+      // policy.active registers session.on listeners; those need an active extension owner.
+      scope.owners.add("session-activity");
+      await context.runExtension("session-activity", () => {
+        context.session.policy.active("session-activity");
+      });
+    }
+
+    const handlers = [...this.handlers].sort((left, right) => right.priority - left.priority);
     try {
       for (const entry of handlers) {
         scope.owners.add(entry.owner);
@@ -300,9 +336,7 @@ export class AgentExtensionRuntime {
   }
 
   async remove(session: ExtensionSession, reason: SessionRemoveReason): Promise<void> {
-    const handlers = [...this.removeHandlers].sort(
-      (left, right) => Number(right.policy) - Number(left.policy),
-    );
+    const handlers = [...this.removeHandlers].sort((left, right) => right.priority - left.priority);
     for (const entry of handlers) {
       await this.registration.run({ owner: entry.owner }, () =>
         entry.handler(session, reason),

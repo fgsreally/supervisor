@@ -296,6 +296,14 @@ export interface Agent {
   updatedAt: Date;
 }
 
+export interface AgentUiMenu {
+  id: string;
+  surface: "session" | "message";
+  label: string;
+  icon?: string;
+  order?: number;
+}
+
 export interface AgentWithSystemMd extends Agent {
   /** @deprecated Alias kept temporarily for API compatibility; sourced from system_prompt. */
   systemMd: string;
@@ -305,6 +313,7 @@ export interface AgentWithSystemMd extends Agent {
   detectedVersion: string | null;
   compatibility: "compatible" | "unknown" | "unavailable";
   installCommand: string | null;
+  uiMenus: AgentUiMenu[];
 }
 
 export interface CreateAgentOptions {

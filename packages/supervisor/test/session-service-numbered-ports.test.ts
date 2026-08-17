@@ -10,7 +10,7 @@ import {
   parseSessionServicesMeta,
 } from "../src/core/session-services.js";
 import { substitutePortPlaceholders } from "../src/core/session-service-runtime.js";
-import { validateNumberedPortPlaceholders } from "../src/extension/builtin/project-services/index.js";
+import { validateNumberedPortPlaceholders } from "../src/extension/builtin/service/index.js";
 
 describe("numbered session service ports", () => {
   it("accepts consecutive PORT1..N placeholders only", () => {

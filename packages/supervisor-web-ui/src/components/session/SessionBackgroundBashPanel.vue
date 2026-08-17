@@ -77,7 +77,9 @@ function onChanged() {
 }
 
 async function refreshCount() {
-  const snapshot = await getSessionJobs(props.sessionId).catch(() => undefined);
+  const sessionId = props.sessionId;
+  const snapshot = await getSessionJobs(sessionId).catch(() => undefined);
+  if (props.sessionId !== sessionId) return;
   if (!snapshot) {
     count.value = 0;
     return;

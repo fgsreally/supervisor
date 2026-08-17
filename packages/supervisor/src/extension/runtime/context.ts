@@ -38,7 +38,7 @@ import type { SessionManager } from "../../core/session-manager.js";
 import type { ManagedSessionRuntime } from "../../core/managed-session-runtime.js";
 import type { AgentResource } from "../../agent/runtime-resources.js";
 import { readHarnessTools } from "../../core/harness-compat.js";
-import { touchSessionActivity } from "../../core/session-activity.js";
+import { touchSessionActivity, applySessionActivityPolicy } from "../../core/session-activity.js";
 import { runWatson } from "../../core/watson.js";
 import type {
   SessionTaskInfo,
@@ -80,8 +80,8 @@ export function upsertMarkedSystemPromptBlock(
   const end = `<!-- /ext-sys:${id} -->`;
   const marked = new RegExp(`${escapeRegExp(start)}[\\s\\S]*?${escapeRegExp(end)}\\n?`, "g");
   let base = current.replace(marked, "").trim();
-  // Drop legacy unscoped project-services section from earlier injects.
-  if (id === "project-services") {
+  // Drop legacy unscoped project-services / service section from earlier injects.
+  if (id === "project-services" || id === "service") {
     base = stripMarkdownSection(base, "## 项目服务");
   }
   const fragment = content.trim();
@@ -187,6 +187,7 @@ interface ContextSessionOptions {
     ): Promise<SessionTodoInfo[]>;
   };
   activity: { touch: () => void };
+  policy: { active: (id: string) => void };
   project: ExtensionContext["project"];
   agent: AgentDataFacade | null;
   inject: ExtensionContext["inject"];
@@ -316,6 +317,7 @@ export class Context {
   private readonly sessionManager: SessionManager;
   readonly session: ContextSession;
   readonly policies: ExtensionContext["policies"];
+  readonly capabilities: ExtensionContext["capabilities"];
   readonly agent: ContextAgent;
   readonly tools: {
     list(): ToolInfo[];
@@ -356,6 +358,7 @@ export class Context {
     options?: { cwd?: string; timeout?: number; signal?: AbortSignal },
   ) => Promise<ExecResult>;
   private readonly disabledPolicies: Set<string>;
+  private readonly capabilityApis = new Map<string, unknown>();
 
   constructor({ sessionManager, db, sessionRuntime, resource }: ContextDependencies) {
     this.sessionManager = sessionManager;
@@ -372,6 +375,12 @@ export class Context {
     this.policies = {
       disable: (id) => this.disabledPolicies.add(id),
       isDisabled: (id) => this.disabledPolicies.has(id),
+    };
+    this.capabilities = {
+      provide: (name, api) => {
+        this.capabilityApis.set(name, api);
+      },
+      get: <T>(name: string) => this.capabilityApis.get(name) as T | undefined,
     };
     const projectRow = db.getProject(session.projectId);
     if (!projectRow) throw new Error(`Project ${session.projectId} not found`);
@@ -540,8 +549,8 @@ export class Context {
         sessionState.cwd = path;
       },
       dir: getSessionDir(session.projectId, session.id),
-      isMain: session.parentId == null,
-      isChild: session.parentId != null,
+      isMain: session.parentId == null || session.spawnType === "fork",
+      isChild: session.parentId != null && session.spawnType !== "fork",
       getDir: deps.getSessionDir,
       appendSystemPrompt: async (content: string) => {
         sessionManager.appendSystemPromptOverlay(session.id, content);
@@ -594,6 +603,13 @@ export class Context {
         replace: deps.setTodos,
       },
       activity: { touch: () => touchSessionActivity(db, session.id) },
+      policy: {
+        active: (id: string) => {
+          if (id === "session-activity") {
+            applySessionActivityPolicy(this.session);
+          }
+        },
+      },
       project: projectFacade,
       agent: agentData ?? null,
       inject: injectFacade,
@@ -739,7 +755,9 @@ export class Context {
       requestApproval: (request) => this.services.uiApproval.requestApproval(request),
       registerMenu: (menu) => {
         const owner = this.requireActiveExtension();
-        const registered = this.sessionManager.registerUiMenu(this.session.id, owner, menu);
+        const agentId = session.agentId;
+        if (agentId == null) return () => {};
+        const registered = this.sessionManager.registerUiMenu(agentId, owner, menu);
         return this.trackExtensionCleanup(registered);
       },
     };
@@ -978,6 +996,9 @@ export class ContextSession {
   }
   get activity(): ContextSessionOptions["activity"] {
     return this.options.activity;
+  }
+  get policy(): ContextSessionOptions["policy"] {
+    return this.options.policy;
   }
   get project(): ContextSessionOptions["project"] {
     return this.options.project;

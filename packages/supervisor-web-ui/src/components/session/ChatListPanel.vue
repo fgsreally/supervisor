@@ -470,8 +470,6 @@ import {
   getProjectGitInfo,
   checkoutProjectGit,
   deleteProject as apiDeleteProject,
-  executeSessionUiMenu,
-  listSessionUiMenus,
   parseProject as apiParseProject,
   searchMessages,
 } from "@/api";
@@ -608,12 +606,14 @@ const projectCreating = ref(false);
 const projectParsing = ref(false);
 const externalImportOpen = ref(false);
 const contextMenu = ref<{ sessionId: string; x: number; y: number } | null>(null);
-const canForkContextSession = ref(false);
 const projectContextMenu = ref<{ projectId: string; x: number; y: number } | null>(null);
 const contextSession = computed(() =>
   contextMenu.value
     ? sessionStore.sessions.find((session) => session.id === contextMenu.value?.sessionId)
     : undefined,
+);
+const canForkContextSession = computed(() =>
+  agentStore.hasUiMenu(contextSession.value?.agentId, "git.fork-session"),
 );
 const projectSettingsId = ref<string | null>(null);
 const projectGit = ref<{ projectId: string; x: number; y: number } | null>(null);
@@ -982,26 +982,17 @@ async function parseCurrentProject() {
 }
 
 async function openContextMenu(sessionId: string, pos: { x: number; y: number }) {
-  if (sessionStore.sessions.find((session) => session.id === sessionId)?.isBuiltin) return;
+  const session = sessionStore.sessions.find((item) => item.id === sessionId);
+  if (session?.isBuiltin) return;
   const menuWidth = 120;
   const menuHeight = 80;
   const x = Math.min(pos.x, window.innerWidth - menuWidth - 8);
   const y = Math.min(pos.y, window.innerHeight - menuHeight - 8);
   contextMenu.value = { sessionId, x: Math.max(8, x), y: Math.max(8, y) };
-  canForkContextSession.value = false;
-  try {
-    const menus = await listSessionUiMenus(sessionId, "session");
-    if (contextMenu.value?.sessionId === sessionId) {
-      canForkContextSession.value = menus.some((menu) => menu.id === "git.fork-session");
-    }
-  } catch {
-    canForkContextSession.value = false;
-  }
 }
 
 function closeContextMenu() {
   contextMenu.value = null;
-  canForkContextSession.value = false;
 }
 
 function sessionIdFromLeaveEl(el: Element): string | null {
@@ -1181,19 +1172,12 @@ async function forkSessionFromMenu() {
   const source = sessionStore.sessions.find((session) => session.id === target.sessionId);
   if (!source) return;
   if (!source.leafId) return;
-  try {
-    const result = await executeSessionUiMenu(target.sessionId, "git.fork-session");
-    if (result.action !== "select-agent-for-fork") return;
-  } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : "Fork failed", "error");
-    return;
-  }
+  if (!agentStore.hasUiMenu(source.agentId, "git.fork-session")) return;
   forkTarget.value = {
     sessionId: source.id,
     entryId: source.leafId,
     projectId: source.projectId,
   };
-  return;
 }
 
 async function onForkAgentPicked(agentId: string) {

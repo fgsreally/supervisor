@@ -1,8 +1,31 @@
 import type { SupervisorDb } from "../db/db.js";
 import type { SessionStatus } from "../types.js";
+import type { ExtensionSession } from "../extension/types.js";
 
 export const SESSION_ACTIVITY_IDLE_MS = 24 * 60 * 60 * 1000;
 export const SESSION_ACTIVITY_TICK_MS = 5 * 60 * 1000;
+
+/** Sessions that opted into session-activity via session.policy.active. */
+const activeActivitySessions = new Set<number>();
+
+export function hasSessionActivityPolicy(sessionId: number): boolean {
+  return activeActivitySessions.has(sessionId);
+}
+
+export function clearSessionActivityPolicy(sessionId: number): void {
+  activeActivitySessions.delete(sessionId);
+}
+
+/** Wire message events to touch activity; marks the Session for idle scheduling. */
+export function applySessionActivityPolicy(session: ExtensionSession): void {
+  activeActivitySessions.add(session.id);
+  const touch = () => session.activity.touch();
+  session.on("message.user", touch, { priority: 1000 });
+  session.on("message.assistant", touch, { priority: 1000 });
+  session.on("message.tool_call", touch, { priority: 1000 });
+  session.on("message.tool_result", touch, { priority: 1000 });
+  session.on("message.custom", touch, { priority: 1000 });
+}
 
 export function touchSessionActivity(db: SupervisorDb, id: number, at = Date.now()): void {
   const row = db.get(id);

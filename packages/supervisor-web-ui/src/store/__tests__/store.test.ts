@@ -81,6 +81,23 @@ describe("Session Store", () => {
     expect(result).toEqual(newSession);
   });
 
+  it("does not restore a stale session list after creating a session", async () => {
+    const oldSession = { id: "1", status: "idle", cwd: "/old", meta: {} };
+    const newSession = { id: "2", status: "initializing", cwd: "/new", meta: {} };
+    vi.mocked(api.listSessions)
+      .mockResolvedValueOnce([oldSession] as any)
+      .mockResolvedValueOnce([newSession, oldSession] as any);
+    vi.mocked(api.createSession).mockResolvedValue(newSession as any);
+
+    const store = useSessionStore();
+    await store.fetchSessions();
+    await store.createSession({ cwd: "/new" });
+    await store.fetchSessions();
+
+    expect(api.listSessions).toHaveBeenCalledTimes(2);
+    expect(store.sessions.map((session) => session.id)).toEqual(["2", "1"]);
+  });
+
   it("should delete session", async () => {
     vi.mocked(api.deleteSession).mockResolvedValue({ ok: true });
 

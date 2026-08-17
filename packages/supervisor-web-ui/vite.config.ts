@@ -99,6 +99,11 @@ export default defineConfig({
         target: backendWsTarget,
         ws: true,
       },
+      "^/sessions/[^/]+/preview/": {
+        target: backendTarget,
+        changeOrigin: true,
+        ws: true,
+      },
       "^/.*": spaAwareProxy(),
     },
   },

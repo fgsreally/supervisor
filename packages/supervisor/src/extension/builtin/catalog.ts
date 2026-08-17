@@ -44,6 +44,7 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
     name: "Background bash cleanup",
     description:
       "Stops leftover background bash jobs when a Session unloads (bash tool is built-in)",
+    bindExternalByDefault: true,
   },
   {
     slug: "skill",
@@ -61,9 +62,9 @@ export const BUILTIN_EXTENSIONS: readonly BuiltinExtensionSpec[] = [
     description: "Attaches session media assets to messages",
   },
   {
-    slug: "project-services",
-    name: "Project services",
-    description: "Add, delete, or update per-session local services without bash",
+    slug: "service",
+    name: "Service",
+    description: "Add, delete, or update per-session local services via persistent-bash",
     requiresMainSession: true,
     bindExternalByDefault: true,
   },

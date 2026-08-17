@@ -652,7 +652,7 @@ export class SupervisorDb {
       .prepare(
         `UPDATE sessions
          SET status = 'idle'
-         WHERE status IN ('initializing', 'starting', 'running', 'waiting_user')
+         WHERE status IN ('active', 'initializing', 'starting', 'running', 'waiting_user')
             OR (status = 'blocked' AND (error_msg IS NULL OR trim(error_msg) = ''))
             OR (status = 'needs_model' AND (error_msg IS NULL OR trim(error_msg) = ''))`,
       )

@@ -36,6 +36,21 @@ export function ensureBuiltinExtensionResources(db: SupervisorDb): void {
       meta: { builtin: true },
     });
   }
+  const legacyServices = db.getResourceByKindSlug("extension", "project-services");
+  const service = db.getResourceByKindSlug("extension", "service");
+  if (legacyServices && isBuiltinExtensionResource(legacyServices.meta) && service) {
+    db.db.transaction(() => {
+      db.db
+        .prepare(
+          `UPDATE OR IGNORE agent_resources
+           SET resource_id = ?
+           WHERE resource_id = ?`,
+        )
+        .run(service.id, legacyServices.id);
+      db.db.prepare(`DELETE FROM agent_resources WHERE resource_id = ?`).run(legacyServices.id);
+      db.db.prepare("DELETE FROM resources WHERE id = ?").run(legacyServices.id);
+    })();
+  }
 }
 
 /**

@@ -11,7 +11,10 @@ describe("project runtime parsing", () => {
     const prompt = buildProjectRuntimeInstructions({ name: "demo", cwd: "/tmp/demo" });
 
     expect(prompt).toContain("git init");
+    expect(prompt).toContain("multiple rounds");
+    expect(prompt).toContain("project-root `.gitignore`");
     expect(prompt).toContain("AGENTS.md");
+    expect(prompt).toContain("submit_result exactly once");
     expect(prompt).toContain("本地开发服务");
     expect(prompt).toContain("start");
     expect(prompt).toContain("Preserve valid project rules and improve it in place");
@@ -49,7 +52,7 @@ describe("project runtime parsing", () => {
           definitions: [{ name: "web", startCommand: "vite --port 5173", path: "/" }],
         },
       }),
-    ).toThrow("${PORT1}");
+    ).toThrow('startCommand="vite --port 5173"；识别到的占位符=[]');
 
     expect(
       parseProjectServicesMeta({

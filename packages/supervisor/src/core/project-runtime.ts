@@ -1,6 +1,6 @@
 import type { SupervisorDb } from "../db/db.js";
 import type { Project } from "../types.js";
-import { commitAll } from "../utils/git.js";
+import { commitAll, findGitRoot } from "../utils/git.js";
 import { normalizeProjectDescription } from "./project-description.js";
 import { runWatson } from "./watson.js";
 import { renderPromptTemplate } from "./resource/system-prompts.js";
@@ -219,7 +219,11 @@ export function parseProjectRuntimeSpec(rawInput: unknown): ProjectRuntimeSpec {
       placeholders.length === 0 ||
       !placeholders.every((value, placeholderIndex) => value === `PORT${placeholderIndex + 1}`)
     ) {
-      throw new Error(`服务 ${name} 的启动命令必须使用连续的 \${PORT1} 占位符`);
+      throw new Error(
+        `服务 ${name} 的启动命令必须使用连续的 \${PORT1} 占位符；` +
+          `startCommand=${JSON.stringify(startCommand)}；` +
+          `识别到的占位符=${JSON.stringify(placeholders)}`,
+      );
     }
     return legacyPath ? { name, startCommand, path: legacyPath } : { name, startCommand };
   });
@@ -283,6 +287,9 @@ export async function runProjectRuntimeParse(options: {
   }
   const agents = existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : "";
   if (!agents.trim()) throw new Error("项目解析未创建有效的 AGENTS.md");
+  const gitignorePath = join(options.project.cwd, ".gitignore");
+  const gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : "";
+  if (!gitignore.trim()) throw new Error("项目解析未创建有效的 .gitignore");
   return parseProjectRuntimeSpec(run.result);
 }
 
@@ -294,6 +301,9 @@ export async function applyProjectRuntimeParse(
   const project = db.getProject(projectId);
   if (!project) throw new Error(`Project ${projectId} not found`);
 
+  if (!(await findGitRoot(project.cwd))) {
+    throw new Error("项目解析未初始化 Git 仓库");
+  }
   await commitAll(project.cwd, "chore: initialize project for supervisor");
 
   db.updateProject(projectId, {

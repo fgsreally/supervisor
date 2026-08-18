@@ -1,14 +1,14 @@
 <template>
   <Teleport to="body">
     <Transition name="home-composer">
-      <div v-if="open" class="home-composer-overlay" @mousedown.self="emit('close')">
+      <div v-if="open" class="home-composer-overlay" @click="emit('close')">
         <div class="absolute inset-0 bg-black/35" />
         <div
           class="home-composer-dialog"
           role="dialog"
           aria-modal="true"
           aria-labelledby="home-composer-title"
-          @mousedown.stop
+          @click.stop
         >
           <header>
             <h2 id="home-composer-title">{{ t("home.task.add") }}</h2>

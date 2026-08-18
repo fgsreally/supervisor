@@ -11,7 +11,7 @@ describe("ResponsiveDialog", () => {
 
     expect(wrapper.find(".m-drawer__close").exists()).toBe(true);
 
-    await wrapper.get(".m-overlay").trigger("mousedown");
+    await wrapper.get(".m-overlay").trigger("click");
     expect(wrapper.emitted("close")).toBeTruthy();
   });
 });

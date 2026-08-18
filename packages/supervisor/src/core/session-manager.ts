@@ -117,7 +117,6 @@ function sessionSetupReason(options: SpawnSessionOptions): SessionSetupReason {
 import {
   commitAll,
   commitGitSnapshot,
-  ensureGitRepositorySync,
   resolveSessionGitContext,
 } from "../utils/git.js";
 import { configureSessionLogProjectResolver, sessionLog } from "../utils/session-log.js";
@@ -2391,7 +2390,6 @@ export class SessionManager {
   }
 
   createProject(options: { name?: string; description?: string | null; cwd: string }) {
-    ensureGitRepositorySync(options.cwd);
     const project = this.db.insertProject({
       ...options,
     });

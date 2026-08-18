@@ -1,10 +1,12 @@
 Complete project analysis and initialization in this order:
 
-1. Verify git is installed and run `git init` if necessary without changing remotes.
-2. Inspect README, manifests, CI, checks, existing Agent instructions, and project structure.
-3. If AGENTS.md exists, read it first. Preserve valid project rules and improve it in place; do not discard useful content or overwrite it blindly. If it does not exist, create it with project purpose, directories, commands, conventions, and boundaries.
-4. Keep exactly one {{localServicesHeading}} section in AGENTS.md with Install, Start, Stop, and Destroy commands. Do not write ports or paths there.
-5. Do not commit or push. Call submit_result when finished.
+1. Work through this task with your coding-agent tools and multiple rounds as needed; do not stop at the first observation or return a guessed result.
+2. Verify git is installed. Inspect the project first to determine whether the project root is already a Git repository; run `git init` only when necessary and without changing remotes.
+3. Read the project-root `.gitignore` before inspecting files. If it is absent, create it; otherwise preserve valid rules and improve it. Derive ignore rules from this project's actual dependency directories, build/cache output, local runtime data, generated artifacts, and platform-specific files. Do not use a generic fixed template or add unrelated rules.
+4. Inspect README, manifests, CI, checks, existing Agent instructions, and project structure.
+5. If AGENTS.md exists, read it first. Preserve valid project rules and improve it in place; do not discard useful content or overwrite it blindly. If it does not exist, create it with project purpose, directories, commands, conventions, and boundaries.
+6. Keep exactly one {{localServicesHeading}} section in AGENTS.md with Install, Start, Stop, and Destroy commands. Do not write ports or paths there.
+7. Do not commit or push. Only after all filesystem and analysis tasks are complete, call submit_result exactly once with the service/view result.
 
 Return:
 {

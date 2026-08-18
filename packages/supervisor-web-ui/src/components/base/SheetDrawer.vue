@@ -1,7 +1,7 @@
 <template>
   <Teleport to="body">
     <Transition :name="overlayTransition">
-      <div v-if="open" class="m-overlay" :class="overlayClass" @mousedown.self="onBackdropClick">
+      <div v-if="open" class="m-overlay" :class="overlayClass" @click.self="onBackdropClick">
         <section
           ref="panelRef"
           class="m-drawer"

@@ -102,7 +102,7 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
     entry.type === "custom" &&
     (entry.customType === "custom_message" ||
       entry.customType === "session_notice" ||
-      entry.customType === "shadow_analysis")
+      entry.customType === "shadow_message")
   ) {
     const data = entry.data ?? {};
     const text =
@@ -128,6 +128,10 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
       type: "notice",
       content: text,
       createdAt: entry.createdAt,
+      ...(entry.customType === "shadow_message" &&
+      (data.level === "error" || data.level === "warning" || data.level === "info")
+        ? { level: data.level }
+        : {}),
     };
   }
   if (entry.type === "custom") {

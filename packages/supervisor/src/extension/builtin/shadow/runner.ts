@@ -1,9 +1,7 @@
 import type { AgentHarnessEvent } from "@earendil-works/pi-agent-core";
 import type { SessionManager } from "../../../core/session-manager.js";
-import { SESSION_INPUT_INTERRUPT_LEVEL } from "../../../core/session-input-queue.js";
 import { parseSessionMeta } from "../../../core/session-fields.js";
 import { runWatson } from "../../../core/watson.js";
-import { SHADOW_ANALYSIS_MESSAGE_TYPE } from "../../../core/session-notice.js";
 import type { SupervisorDb } from "../../../db/db.js";
 import type { Session, SessionCheckpoint } from "../../../types.js";
 import { applyShadowMemoryUpdate, readShadowMemory } from "./memory.js";
@@ -108,18 +106,16 @@ export async function runShadow(
     return;
   }
 
-  applyShadowMemoryUpdate(session.projectId, session.id, result.shadowMemory);
+  const message = result.message?.trim();
+  const isInfo = result.level === "info" && Boolean(message);
+  if (isInfo) applyShadowMemoryUpdate(session.projectId, session.id, result.shadowMemory);
 
-  const suggestedQuestions = result.suggestedQuestions ?? [];
+  const suggestedQuestions = isInfo ? (result.suggestedQuestions ?? []) : [];
   db.updateMeta(session.id, {
     shadow: {
       suggestedQuestions,
-      lastAlert: result.alert,
-      lastAnalysis: result.analysis,
-      title: result.title,
-      commitMessage: result.commitMessage,
-      memory: result.shadowMemory,
-      memoryUpdated: Boolean(result.shadowMemory),
+      memory: isInfo ? result.shadowMemory : undefined,
+      memoryUpdated: isInfo && Boolean(result.shadowMemory),
       lastRunAt: Date.now(),
       running: false,
     },
@@ -127,10 +123,12 @@ export async function runShadow(
   manager.publishShadowRunning(session.id, false);
   manager.publishShadowSuggestions(session.id, suggestedQuestions);
 
-  const title = result.title?.replace(/\s+/g, " ").trim().slice(0, 80);
+  const title = isInfo ? result.title?.replace(/\s+/g, " ").trim().slice(0, 80) : undefined;
   if (title) db.updateSessionFields(session.id, { title });
 
-  const commitMessage = result.commitMessage?.replace(/\s+/g, " ").trim().slice(0, 120);
+  const commitMessage = isInfo
+    ? result.commitMessage?.replace(/\s+/g, " ").trim().slice(0, 120)
+    : undefined;
   if (commitMessage) {
     try {
       await manager.commitCheckpoint(session.id, checkpoint.id, commitMessage);
@@ -140,17 +138,21 @@ export async function runShadow(
     }
   }
 
-  const alert = result.alert?.trim();
-  if (alert) {
-    await manager.submitSessionInput(session.id, {
-      message: alert,
-      level: SESSION_INPUT_INTERRUPT_LEVEL,
-      source: "shadow:alert",
-    });
-  }
-  const analysis = result.analysis?.trim();
-  if (analysis) {
-    await manager.sendCustomMessage(session.id, analysis, SHADOW_ANALYSIS_MESSAGE_TYPE);
-    manager.publishShadowAnalysis(session.id);
+  if (message && result.level) {
+    try {
+      await manager.sendShadowMessage(session.id, message, result.level);
+      manager.publishShadowMessage(session.id, message, result.level);
+    } catch (error: unknown) {
+      const detail = error instanceof Error ? error.message : String(error);
+      writeLog("error", "runtime.shadowMessageFailed", { id: session.id, error: detail });
+    }
+    if (result.level === "error") {
+      try {
+        await manager.abort(session.id);
+      } catch (error: unknown) {
+        const detail = error instanceof Error ? error.message : String(error);
+        writeLog("error", "runtime.shadowInterruptFailed", { id: session.id, error: detail });
+      }
+    }
   }
 }

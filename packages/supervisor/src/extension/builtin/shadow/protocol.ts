@@ -2,6 +2,7 @@ import { appendContextFilesToSystemPrompt } from "../../../core/resource/context
 import { loadBuiltinShadowResource } from "../../../agent/builtin/prompts.js";
 import { Check } from "typebox/schema";
 import type { ShadowProtocolResult } from "./types.js";
+import type { ShadowMessageLevel } from "./types.js";
 import { Type } from "typebox";
 
 const commonProperties = {
@@ -17,10 +18,13 @@ const commonProperties = {
 };
 
 const shadowResultOptions = { additionalProperties: false } as const;
+const shadowMessageProperties = {
+  message: Type.String(),
+  level: Type.Union([Type.Literal("error"), Type.Literal("warning"), Type.Literal("info")]),
+};
 
 export const ShadowResultSchema = Type.Union([
-  Type.Object({ ...commonProperties, alert: Type.String() }, shadowResultOptions),
-  Type.Object({ ...commonProperties, analysis: Type.String() }, shadowResultOptions),
+  Type.Object({ ...commonProperties, ...shadowMessageProperties }, shadowResultOptions),
   Type.Object(commonProperties, shadowResultOptions),
 ]);
 
@@ -82,10 +86,14 @@ export function normalizeShadowSubmitResult(rawInput: unknown): ShadowProtocolRe
 
   return {
     shadowMemory,
-    alert: asNonEmptyString(record.alert),
-    analysis: asNonEmptyString(record.analysis),
+    message: asNonEmptyString(record.message),
+    level: isShadowMessageLevel(record.level) ? record.level : undefined,
     suggestedQuestions: asStringArray(record.suggestedQuestions, 4),
     title: asNonEmptyString(record.title),
     commitMessage: asNonEmptyString(record.commitMessage),
   };
+}
+
+function isShadowMessageLevel(value: unknown): value is ShadowMessageLevel {
+  return value === "error" || value === "warning" || value === "info";
 }

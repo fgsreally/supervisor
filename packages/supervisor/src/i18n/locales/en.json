@@ -56,6 +56,8 @@
   "runtime.shadowSubmitInvalid": "shadow submit_result invalid [session={{id}}]",
   "runtime.shadowCompletionFailed": "shadow completion failed [session={{id}}]: {{error}}",
   "runtime.shadowSnapshotFailed": "shadow snapshot commit failed [session={{id}}]: {{error}}",
+  "runtime.shadowMessageFailed": "shadow message persistence failed [session={{id}}]: {{error}}",
+  "runtime.shadowInterruptFailed": "shadow interruption failed [session={{id}}]: {{error}}",
   "runtime.externalProcessError": "[{{backend}}:{{id}}] {{error}}",
   "runtime.externalProcessFailed": "[{{backend}}:{{id}}] process error: {{error}}",
   "runtime.externalUnsupportedMethod": "[acp:{{id}}] unsupported extension method: {{method}}",

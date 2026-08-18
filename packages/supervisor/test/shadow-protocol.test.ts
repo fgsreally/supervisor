@@ -14,7 +14,8 @@ describe("shadow Watson submit_result protocol", () => {
   it("normalizes every supported field", () => {
     const result = normalizeShadowSubmitResult({
       shadowMemory: { action: "append", content: "remember <this>" },
-      alert: "The payment callback is failing.",
+      message: "The payment callback is failing.",
+      level: "error",
       suggestedQuestions: ["What should I test next?", "Can this be deployed safely?", ""],
       title: "Shadow redesign",
       commitMessage: "feat: checkpoint shadow redesign",
@@ -22,8 +23,8 @@ describe("shadow Watson submit_result protocol", () => {
 
     expect(result).toEqual({
       shadowMemory: { action: "append", content: "remember <this>" },
-      alert: "The payment callback is failing.",
-      analysis: undefined,
+      message: "The payment callback is failing.",
+      level: "error",
       suggestedQuestions: ["What should I test next?", "Can this be deployed safely?"],
       title: "Shadow redesign",
       commitMessage: "feat: checkpoint shadow redesign",
@@ -33,24 +34,37 @@ describe("shadow Watson submit_result protocol", () => {
   it("accepts empty objects and JSON strings", () => {
     expect(normalizeShadowSubmitResult({})).toEqual({
       shadowMemory: undefined,
-      alert: undefined,
-      analysis: undefined,
+      message: undefined,
+      level: undefined,
       suggestedQuestions: undefined,
       title: undefined,
       commitMessage: undefined,
     });
     expect(normalizeShadowSubmitResult("")).toEqual({});
-    expect(normalizeShadowSubmitResult('{"analysis":"User-visible note"}')).toMatchObject({
-      analysis: "User-visible note",
+    expect(
+      normalizeShadowSubmitResult('{"message":"User-visible note","level":"info"}'),
+    ).toMatchObject({
+      message: "User-visible note",
+      level: "info",
     });
   });
 
-  it("enforces mutually exclusive alert and analysis fields", () => {
-    expect(Check(ShadowResultSchema, { alert: "urgent" })).toBe(true);
-    expect(Check(ShadowResultSchema, { analysis: "note" })).toBe(true);
-    expect(Check(ShadowResultSchema, { alert: "urgent", analysis: "note" })).toBe(false);
-    expect(normalizeShadowSubmitResult({ alert: "urgent", analysis: "note" })).toBeNull();
-    expect(normalizeShadowSubmitResult({ alert: "   " })).toMatchObject({ alert: undefined });
+  it("requires a valid leveled message and rejects the old fields", () => {
+    expect(Check(ShadowResultSchema, { message: "urgent", level: "error" })).toBe(true);
+    expect(Check(ShadowResultSchema, { message: "careful", level: "warning" })).toBe(true);
+    expect(Check(ShadowResultSchema, { message: "note", level: "info" })).toBe(true);
+    expect(Check(ShadowResultSchema, { alert: "urgent" })).toBe(false);
+    expect(Check(ShadowResultSchema, { analysis: "note" })).toBe(false);
+    expect(Check(ShadowResultSchema, { message: "urgent", level: "invalid" })).toBe(false);
+    expect(Check(ShadowResultSchema, { message: "urgent" })).toBe(false);
+    expect(normalizeShadowSubmitResult({ message: "urgent", level: "error" })).toMatchObject({
+      message: "urgent",
+      level: "error",
+    });
+    expect(normalizeShadowSubmitResult({ message: "   ", level: "info" })).toMatchObject({
+      message: undefined,
+      level: "info",
+    });
   });
 
   it("rejects non-object payloads", () => {
@@ -62,8 +76,12 @@ describe("shadow Watson submit_result protocol", () => {
     const system = getShadowSystemPrompt();
     expect(system).toContain("Shadow");
     expect(system).toContain("submit_result");
-    expect(system).toContain("alert");
-    expect(system).toContain("analysis");
+    expect(system).toContain("message");
+    expect(system).toContain("error");
+    expect(system).toContain("warning");
+    expect(system).toContain("info");
+    expect(system).not.toContain("alert");
+    expect(system).not.toContain("analysis");
 
     const prompt = formatShadowRunPrompt("memo", "[user] hi");
     expect(prompt).toContain("## Shadow memory");

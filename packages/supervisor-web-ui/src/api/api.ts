@@ -517,8 +517,10 @@ export interface ShadowRunningEvent {
   timestamp: number;
 }
 
-export interface ShadowAnalysisEvent {
-  type: "shadow_analysis";
+export interface ShadowMessageEvent {
+  type: "shadow_message";
+  message: string;
+  level: "error" | "warning" | "info";
   timestamp: number;
 }
 
@@ -558,7 +560,7 @@ export type SessionStreamEvent =
   | AgentEvent
   | ShadowSuggestionsEvent
   | ShadowRunningEvent
-  | ShadowAnalysisEvent
+  | ShadowMessageEvent
   | UiNotifyEvent
   | SessionStatusEvent
   | SessionServicesEvent

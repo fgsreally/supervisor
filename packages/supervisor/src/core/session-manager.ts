@@ -114,11 +114,7 @@ function sessionSetupReason(options: SpawnSessionOptions): SessionSetupReason {
   void options;
   return "create";
 }
-import {
-  commitAll,
-  commitGitSnapshot,
-  resolveSessionGitContext,
-} from "../utils/git.js";
+import { commitAll, commitGitSnapshot, resolveSessionGitContext } from "../utils/git.js";
 import { configureSessionLogProjectResolver, sessionLog } from "../utils/session-log.js";
 import { appendSystemLog } from "../utils/system-log.js";
 import { beginSessionTiming, timedSessionStep } from "../utils/session-timing.js";
@@ -169,7 +165,12 @@ import {
   toSessionMessageResponse,
 } from "./session-storage.js";
 import { getSessionMessageByEntryId, querySessionMessagesPage } from "./session-message-query.js";
-import { appendCustomMessage, formatGitCommitCustomMessage } from "./session-notice.js";
+import {
+  appendCustomMessage,
+  appendShadowMessage,
+  formatGitCommitCustomMessage,
+  type ShadowMessageLevel,
+} from "./session-notice.js";
 import {
   appendLlmErrorMessage,
   assistantHasVisibleContent,
@@ -246,8 +247,10 @@ export type ShadowRunningEvent = {
   timestamp: number;
 };
 
-export type ShadowAnalysisEvent = {
-  type: "shadow_analysis";
+export type ShadowMessageEvent = {
+  type: "shadow_message";
+  message: string;
+  level: ShadowMessageLevel;
   timestamp: number;
 };
 
@@ -270,7 +273,7 @@ export type SessionOutputEvent =
   | AgentHarnessEvent
   | ShadowSuggestionsEvent
   | ShadowRunningEvent
-  | ShadowAnalysisEvent
+  | ShadowMessageEvent
   | UiNotifyEvent
   | SessionStatusEvent
   | { type: "approval.pending"; [key: string]: unknown };
@@ -1653,9 +1656,11 @@ export class SessionManager {
     }
   }
 
-  publishShadowAnalysis(sessionId: number): void {
-    const event: ShadowAnalysisEvent = {
-      type: "shadow_analysis",
+  publishShadowMessage(sessionId: number, message: string, level: ShadowMessageLevel): void {
+    const event: ShadowMessageEvent = {
+      type: "shadow_message",
+      message,
+      level,
       timestamp: Date.now(),
     };
     for (const listener of this.outputListeners.get(sessionId) ?? []) {
@@ -2190,10 +2195,14 @@ export class SessionManager {
   }
 
   private async stopOwnedShellJobs(id: number): Promise<void> {
-    const shells = this.jobs.list(id).filter((job) => job.kind === "shell" || job.kind === "service");
+    const shells = this.jobs
+      .list(id)
+      .filter((job) => job.kind === "shell" || job.kind === "service");
     await Promise.all(
       shells
-        .filter((job) => job.status === "queued" || job.status === "running" || job.status === "waiting")
+        .filter(
+          (job) => job.status === "queued" || job.status === "running" || job.status === "waiting",
+        )
         .map((job) => this.jobs.cancel(job.id).catch(() => undefined)),
     );
   }
@@ -3338,6 +3347,15 @@ export class SessionManager {
   ): Promise<string> {
     const storage = new SQLiteSessionStorage(this.db, sessionId);
     return appendCustomMessage(storage, content, customType);
+  }
+
+  async sendShadowMessage(
+    sessionId: number,
+    content: string,
+    level: ShadowMessageLevel,
+  ): Promise<string> {
+    const storage = new SQLiteSessionStorage(this.db, sessionId);
+    return appendShadowMessage(storage, content, level);
   }
 
   private async recordLlmError(sessionId: number, content: string): Promise<void> {

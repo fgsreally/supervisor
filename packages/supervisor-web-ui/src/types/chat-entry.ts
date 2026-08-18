@@ -74,6 +74,7 @@ export type ChatEntry =
       id: string;
       type: "notice";
       content: string;
+      level?: "error" | "warning" | "info";
     })
   | (ChatEntryBase & {
       id: string;

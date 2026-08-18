@@ -1063,8 +1063,25 @@ export async function listProjects(): Promise<Project[]> {
   return projects.map(mapProject);
 }
 
+export type ClientCacheGroupKey = "project-session" | "agents" | "provider-model" | "messages";
+
+export type ProjectSessionSnapshot = {
+  projects: Project[];
+  sessions: Session[];
+};
+
+export type ProviderModelSnapshot = {
+  providers: Provider[];
+  models: Record<string, Model[]>;
+};
+
 export type ClientCacheSyncRequest = {
-  resources: Array<{ key: string; queryKey?: string; savedAt?: number }>;
+  resources: Array<{
+    key: string;
+    queryKey?: string;
+    fingerprint?: string | null;
+    savedAt?: number;
+  }>;
 };
 
 export type ClientCacheSyncResponse = {
@@ -1072,6 +1089,7 @@ export type ClientCacheSyncResponse = {
     key: string;
     queryKey?: string;
     status: "updated" | "unchanged" | "deleted";
+    fingerprint: string;
     data?: unknown;
     syncedAt: number;
   }>;
@@ -1082,6 +1100,19 @@ export function syncClientCache(request: ClientCacheSyncRequest): Promise<Client
     ...response,
     resources: response.resources.map((resource) => {
       if (resource.data === undefined) return resource;
+      if (resource.key === "project-session") {
+        const data = resource.data as {
+          projects?: RawProject[];
+          sessions?: RawSession[];
+        };
+        return {
+          ...resource,
+          data: {
+            projects: (data.projects ?? []).map(mapProject),
+            sessions: (data.sessions ?? []).map(mapSession),
+          },
+        };
+      }
       if (resource.key === "agents")
         return { ...resource, data: (resource.data as RawAgent[]).map(mapAgent) };
       if (resource.key === "projects")
@@ -1092,9 +1123,44 @@ export function syncClientCache(request: ClientCacheSyncRequest): Promise<Client
         return { ...resource, data: (resource.data as RawModel[]).map(mapModel) };
       if (resource.key === "sessions")
         return { ...resource, data: (resource.data as RawSession[]).map(mapSession) };
+      if (resource.key === "provider-model") {
+        const data = resource.data as {
+          providers?: RawProvider[];
+          models?: Record<string, RawModel[]>;
+        };
+        return {
+          ...resource,
+          data: {
+            providers: (data.providers ?? []).map(mapProvider),
+            models: Object.fromEntries(
+              Object.entries(data.models ?? {}).map(([providerId, models]) => [
+                providerId,
+                models.map(mapModel),
+              ]),
+            ),
+          },
+        };
+      }
       return resource;
     }),
   }));
+}
+
+export async function listProjectSessionSnapshot(): Promise<ProjectSessionSnapshot> {
+  const [projects, sessions] = await Promise.all([listProjects(), listSessions()]);
+  return { projects, sessions };
+}
+
+export async function listProviderModelSnapshot(): Promise<ProviderModelSnapshot> {
+  const providers = await listProviders();
+  const models = Object.fromEntries(
+    await Promise.all(
+      providers.map(
+        async (provider) => [provider.id, await listProviderModels(provider.id)] as const,
+      ),
+    ),
+  );
+  return { providers, models };
 }
 
 export async function createProject(options: CreateProjectRequest): Promise<Project> {
@@ -1811,7 +1877,6 @@ export function cancelSessionShell(
   return fetchJson(`/sessions/${sessionId}/shells/${shellId}`, { method: "DELETE" });
 }
 
-
 /** Abort the current work in a session. */
 export async function abortSession(
   id: string,
@@ -1973,9 +2038,10 @@ export function executeSessionUiMenu(
   menuId: string,
   entryId?: string,
 ): Promise<{ action?: "select-agent-for-fork"; message?: string; refresh?: boolean }> {
-  return postJson(`/sessions/${id}/ui-menus/${encodeURIComponent(menuId)}`, {
-    ...(entryId ? { entryId } : {}),
-  });
+  return postJson(
+    `/sessions/${id}/ui-menus/${encodeURIComponent(menuId)}`,
+    entryId ? { entryId } : {},
+  );
 }
 
 /** Create a child that inherits a frozen context snapshot without copying messages. */

@@ -26,4 +26,5 @@ export type ClientCacheRecord = {
   payload: unknown;
   savedAt: number;
   syncedAt: number | null;
+  fingerprint?: string | null;
 };

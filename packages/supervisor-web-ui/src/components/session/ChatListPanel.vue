@@ -10,7 +10,9 @@
         border-color: var(--app-header-divider, var(--app-border-subtle));
       "
     >
-      <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">{{ t("sessionList.title") }}</h1>
+      <h1 class="text-[16px] font-medium flex-1" style="color: var(--app-text-primary)">
+        {{ t("sessionList.title") }}
+      </h1>
       <button
         type="button"
         class="chat-list-search-icon"
@@ -124,7 +126,9 @@
             </small>
           </span>
         </button>
-        <div v-if="!searching && !searchResults.length" class="chat-search-state">{{ t("sessionList.noResults") }}</div>
+        <div v-if="!searching && !searchResults.length" class="chat-search-state">
+          {{ t("sessionList.noResults") }}
+        </div>
       </template>
       <template v-else>
         <div v-if="sessionsLoading && !hasListContent" class="chat-list-state">
@@ -152,9 +156,9 @@
         </UiEmptyState>
         <template v-else>
           <div v-if="sessionsListError" class="chat-list-error-banner">
-            <span class="chat-list-error-banner__text"
-              >{{ t("sessionList.refreshFailed", { error: sessionsListError }) }}</span
-            >
+            <span class="chat-list-error-banner__text">{{
+              t("sessionList.refreshFailed", { error: sessionsListError })
+            }}</span>
             <button type="button" class="chat-list-error-banner__retry" @click="retryLoadSessions">
               {{ t("sessionList.retry") }}
             </button>
@@ -164,7 +168,9 @@
               <button
                 type="button"
                 class="section-action-btn section-action-btn--chevron"
-                :title="pinnedSectionCollapsed ? t('sessionList.expand') : t('sessionList.collapse')"
+                :title="
+                  pinnedSectionCollapsed ? t('sessionList.expand') : t('sessionList.collapse')
+                "
                 @click="togglePinnedCollapse"
               >
                 <ChevronRight
@@ -240,7 +246,11 @@
                   <button
                     type="button"
                     class="section-action-btn section-action-btn--chevron"
-                    :title="isWorkspaceCollapsed(group.workspace.id) ? t('sessionList.expand') : t('sessionList.collapse')"
+                    :title="
+                      isWorkspaceCollapsed(group.workspace.id)
+                        ? t('sessionList.expand')
+                        : t('sessionList.collapse')
+                    "
                     @click="toggleWorkspaceCollapse(group.workspace.id)"
                   >
                     <ChevronRight
@@ -469,7 +479,6 @@ import {
   pushProjectGit,
   getProjectGitInfo,
   checkoutProjectGit,
-  deleteProject as apiDeleteProject,
   parseProject as apiParseProject,
   searchMessages,
 } from "@/api";
@@ -590,7 +599,7 @@ function onProjectDrop(targetId: string) {
   const [project] = next.splice(sourceIndex, 1);
   if (!project) return;
   next.splice(targetIndex, 0, project);
-  sessionStore.projects = next;
+  sessionStore.reorderProjects(next);
   setProjectOrder(next.map((item) => item.id));
   draggedProjectId.value = null;
 }
@@ -600,7 +609,9 @@ let searchGeneration = 0;
 const collapsedWorkspaceIds = computed(() => new Set(viewPreferences.collapsedProjectIds));
 const pinnedSectionCollapsed = computed(() => viewPreferences.pinnedSectionCollapsed);
 const agentPickerWorkspaceId = ref<string | null>(null);
-const forkTarget = ref<{ sessionId: string; entryId: string; projectId: string | null } | null>(null);
+const forkTarget = ref<{ sessionId: string; entryId: string; projectId: string | null } | null>(
+  null,
+);
 const projectCreateOpen = ref(false);
 const projectCreating = ref(false);
 const projectParsing = ref(false);
@@ -652,7 +663,9 @@ const searchResults = computed(() => {
       const titleMatch = session.title.toLowerCase().includes(q);
       const description =
         messageMatches.value.get(session.id) ??
-        (titleMatch ? session.lastMessagePreview || session.meta.description || t("session.list.titleMatch") : "");
+        (titleMatch
+          ? session.lastMessagePreview || session.meta.description || t("session.list.titleMatch")
+          : "");
       return {
         session,
         description,
@@ -807,11 +820,13 @@ async function confirmDeleteProject() {
   });
   if (!ok) return;
   try {
-    await apiDeleteProject(project.id, project.name);
-    await Promise.all([sessionStore.fetchProjects(), sessionStore.fetchSessions()]);
+    await sessionStore.deleteProject(project.id, project.name);
     showUiMessage(t("session.list.projectDeleted"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : t("session.list.deleteProjectFailed"), "error");
+    showUiMessage(
+      error instanceof Error ? error.message : t("session.list.deleteProjectFailed"),
+      "error",
+    );
   }
 }
 
@@ -841,7 +856,8 @@ async function refreshProjectGitInfo(projectId: string) {
   try {
     projectGitInfo.value = await getProjectGitInfo(projectId);
   } catch (error) {
-    projectGitError.value = error instanceof Error ? error.message : t("session.list.readGitFailed");
+    projectGitError.value =
+      error instanceof Error ? error.message : t("session.list.readGitFailed");
   } finally {
     projectGitLoading.value = false;
   }
@@ -862,7 +878,10 @@ async function renameProject(name: string) {
     await sessionStore.updateProject(projectId, { name });
     showUiMessage(t("session.list.projectRenamed"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : t("session.list.renameProjectFailed"), "error");
+    showUiMessage(
+      error instanceof Error ? error.message : t("session.list.renameProjectFailed"),
+      "error",
+    );
   } finally {
     projectBusy.value = false;
   }
@@ -894,7 +913,10 @@ async function runProjectGit(action: "pull" | "push") {
         ? await pullProjectGit(target.projectId)
         : await pushProjectGit(target.projectId);
     const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-    showUiMessage(detail || t(action === "pull" ? "session.list.gitPullDone" : "session.list.gitPushDone"), "success");
+    showUiMessage(
+      detail || t(action === "pull" ? "session.list.gitPullDone" : "session.list.gitPushDone"),
+      "success",
+    );
     projectGit.value = null;
   } catch (error) {
     showUiMessage(formatProjectGitError(error, action), "error");
@@ -905,7 +927,11 @@ async function runProjectGit(action: "pull" | "push") {
 
 function formatProjectGitError(error: unknown, action: "pull" | "push" | "checkout"): string {
   const fallback =
-    action === "pull" ? t("session.list.gitPullFailed") : action === "push" ? t("session.list.gitPushFailed") : t("session.list.checkoutFailed");
+    action === "pull"
+      ? t("session.list.gitPullFailed")
+      : action === "push"
+        ? t("session.list.gitPushFailed")
+        : t("session.list.checkoutFailed");
   if (!(error instanceof Error)) return fallback;
   const match = error.message.match(/\{[\s\S]*\}/);
   if (match) {
@@ -949,7 +975,10 @@ async function createProjectFromDialog(cwd: string) {
     showUiMessage(t("session.list.projectCreatedParsing"), "success");
     projectSettingsId.value = project.id;
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : t("session.list.createProjectFailed"), "error");
+    showUiMessage(
+      error instanceof Error ? error.message : t("session.list.createProjectFailed"),
+      "error",
+    );
   } finally {
     projectCreating.value = false;
   }
@@ -961,9 +990,7 @@ async function parseCurrentProject() {
   projectParsing.value = true;
   try {
     const result = await apiParseProject(projectId);
-    const index = sessionStore.projects.findIndex((project) => project.id === result.project.id);
-    if (index >= 0) sessionStore.projects[index] = result.project;
-    else sessionStore.projects.unshift(result.project);
+    sessionStore.upsertProject(result.project);
     if (result.status === "ready") showUiMessage(t("session.list.projectParsed"), "success");
     else if (result.status === "skipped") {
       showUiMessage(result.error || t("session.list.assistantNotConfigured"), "error");
@@ -1141,7 +1168,10 @@ async function achieveSession() {
     await sessionStore.completeSession(target.sessionId);
     showUiMessage(t("session.list.sessionArchived"), "success");
   } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : t("session.list.archiveFailed"), "error");
+    showUiMessage(
+      error instanceof Error ? error.message : t("session.list.archiveFailed"),
+      "error",
+    );
   }
 }
 

@@ -1,5 +1,5 @@
 import { existsSync, writeFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { extname, join } from "node:path";
 import { readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -129,6 +129,22 @@ function toModelResponse(m: Model) {
     createdAt: m.createdAt,
     updatedAt: m.updatedAt,
   };
+}
+
+function stableJson(value: unknown): string {
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson((value as Record<string, unknown>)[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+function cacheFingerprint(value: unknown): string {
+  return createHash("sha256").update(stableJson(value)).digest("hex");
 }
 
 function jsonError(
@@ -973,8 +989,12 @@ export function createHttpServer(
   // POST /client-cache/sync — read-only canonical snapshots for cache refresh.
   app.post("/client-cache/sync", async (c) => {
     const body = await c.req
-      .json<{ resources?: Array<{ key?: unknown; queryKey?: unknown }> }>()
-      .catch((): { resources?: Array<{ key?: unknown; queryKey?: unknown }> } => ({}));
+      .json<{ resources?: Array<{ key?: unknown; queryKey?: unknown; fingerprint?: unknown }> }>()
+      .catch(
+        (): {
+          resources?: Array<{ key?: unknown; queryKey?: unknown; fingerprint?: unknown }>;
+        } => ({}),
+      );
     const resources = Array.isArray(body.resources) ? body.resources : [];
     const syncedAt = Date.now();
     try {
@@ -982,54 +1002,143 @@ export function createHttpServer(
         key: string;
         queryKey?: string;
         status: "updated" | "unchanged" | "deleted";
+        fingerprint: string;
         data?: unknown;
         syncedAt: number;
       };
+      const resultFor = (
+        item: { key: string; queryKey?: string; fingerprint?: unknown },
+        data: unknown,
+      ): ClientCacheSyncResult => {
+        const fingerprint = cacheFingerprint(data);
+        const unchanged = item.fingerprint === fingerprint;
+        return {
+          key: item.key,
+          queryKey: item.queryKey,
+          status: unchanged ? "unchanged" : "updated",
+          fingerprint,
+          ...(unchanged ? {} : { data }),
+          syncedAt,
+        };
+      };
       const result: ClientCacheSyncResult[] = (
-        await Promise.all(resources.map(async (item): Promise<ClientCacheSyncResult[]> => {
-        const key = typeof item.key === "string" ? item.key : "";
-        const queryKey = typeof item.queryKey === "string" ? item.queryKey : undefined;
-        if (!key) return [];
-        if (key === "agents") return [{ key, queryKey, status: "updated" as const, data: manager.listAgents(), syncedAt }];
-        if (key === "projects") return [{ key, queryKey, status: "updated" as const, data: manager.listProjects(), syncedAt }];
-        if (key === "providers") return [{ key, queryKey, status: "updated" as const, data: manager.listProviders().map(toProviderResponse), syncedAt }];
-        if (key === "providers:models" && queryKey) {
-          const providerId = parseIntegerId(queryKey);
-          if (providerId === null) return [];
-          return [{ key, queryKey, status: "updated" as const, data: manager.listModelsByProvider(providerId).map(toModelResponse), syncedAt }];
-        }
-        if (key === "resources:global") return [{ key, queryKey, status: "updated" as const, data: manager.resolveGlobalResources(), syncedAt }];
-        if (key === "agent-resources" && queryKey) {
-          const separator = queryKey.indexOf(":");
-          const agentId = parseIntegerId(separator < 0 ? queryKey : queryKey.slice(0, separator));
-          const cwd = separator < 0 ? process.cwd() : queryKey.slice(separator + 1) || process.cwd();
-          if (agentId === null) return [];
-          return [{ key, queryKey, status: "updated" as const, data: await manager.resolveAgentResources(agentId, cwd), syncedAt }];
-        }
-        if (key === "sessions") {
-          let filter: { status?: SessionStatus; parentId?: number | null; projectId?: number } = {};
-          if (queryKey) {
-            try {
-              const query = JSON.parse(queryKey) as Record<string, unknown>;
-              if (typeof query.status === "string") filter.status = query.status as SessionStatus;
-              if (query.parentId === null) filter.parentId = null;
-              else if (typeof query.parentId === "string") filter.parentId = parseIntegerId(query.parentId) ?? undefined;
-              if (typeof query.projectId === "string") filter.projectId = parseIntegerId(query.projectId) ?? undefined;
-            } catch {
-              // Ignore malformed query keys and return the canonical full list.
+        await Promise.all(
+          resources.map(async (item): Promise<ClientCacheSyncResult[]> => {
+            const key = typeof item.key === "string" ? item.key : "";
+            const queryKey = typeof item.queryKey === "string" ? item.queryKey : undefined;
+            if (!key) return [];
+            if (key === "project-session") {
+              const projects = manager.listProjects();
+              const sessions = manager.list({});
+              const summaries = manager.getLastMessageSummaries(sessions.map((s) => s.id));
+              return [
+                resultFor(
+                  { key, queryKey, fingerprint: item.fingerprint },
+                  {
+                    projects,
+                    sessions: sessions.map((session) => withLastMessageSummary(session, summaries)),
+                  },
+                ),
+              ];
             }
-          }
-          const sessions = manager.list(filter);
-          const summaries = manager.getLastMessageSummaries(sessions.map((s) => s.id));
-          return [{ key, queryKey, status: "updated" as const, data: sessions.map((s) => withLastMessageSummary(s, summaries)), syncedAt }];
-        }
-        if (key === "messages" && queryKey) {
-          const id = parseIntegerId(queryKey);
-          if (id === null) return [];
-          return [{ key, queryKey, status: "updated" as const, data: manager.getSessionMessagesPage(id, { limit: 80, view: "lite" }), syncedAt }];
-        }
-        return [];
-        }))
+            if (key === "agents")
+              return [
+                resultFor({ key, queryKey, fingerprint: item.fingerprint }, manager.listAgents()),
+              ];
+            if (key === "projects")
+              return [
+                resultFor({ key, queryKey, fingerprint: item.fingerprint }, manager.listProjects()),
+              ];
+            if (key === "providers")
+              return [
+                resultFor(
+                  { key, queryKey, fingerprint: item.fingerprint },
+                  manager.listProviders().map(toProviderResponse),
+                ),
+              ];
+            if (key === "provider-model") {
+              const providers = manager.listProviders().map(toProviderResponse);
+              const models = Object.fromEntries(
+                providers.map((provider) => [
+                  String(provider.id),
+                  manager.listModelsByProvider(provider.id).map(toModelResponse),
+                ]),
+              );
+              return [
+                resultFor({ key, queryKey, fingerprint: item.fingerprint }, { providers, models }),
+              ];
+            }
+            if (key === "providers:models" && queryKey) {
+              const providerId = parseIntegerId(queryKey);
+              if (providerId === null) return [];
+              return [
+                resultFor(
+                  { key, queryKey, fingerprint: item.fingerprint },
+                  manager.listModelsByProvider(providerId).map(toModelResponse),
+                ),
+              ];
+            }
+            if (key === "resources:global")
+              return [
+                resultFor(
+                  { key, queryKey, fingerprint: item.fingerprint },
+                  manager.resolveGlobalResources(),
+                ),
+              ];
+            if (key === "agent-resources" && queryKey) {
+              const separator = queryKey.indexOf(":");
+              const agentId = parseIntegerId(
+                separator < 0 ? queryKey : queryKey.slice(0, separator),
+              );
+              const cwd =
+                separator < 0 ? process.cwd() : queryKey.slice(separator + 1) || process.cwd();
+              if (agentId === null) return [];
+              return [
+                resultFor(
+                  { key, queryKey, fingerprint: item.fingerprint },
+                  await manager.resolveAgentResources(agentId, cwd),
+                ),
+              ];
+            }
+            if (key === "sessions") {
+              let filter: { status?: SessionStatus; parentId?: number | null; projectId?: number } =
+                {};
+              if (queryKey) {
+                try {
+                  const query = JSON.parse(queryKey) as Record<string, unknown>;
+                  if (typeof query.status === "string")
+                    filter.status = query.status as SessionStatus;
+                  if (query.parentId === null) filter.parentId = null;
+                  else if (typeof query.parentId === "string")
+                    filter.parentId = parseIntegerId(query.parentId) ?? undefined;
+                  if (typeof query.projectId === "string")
+                    filter.projectId = parseIntegerId(query.projectId) ?? undefined;
+                } catch {
+                  // Ignore malformed query keys and return the canonical full list.
+                }
+              }
+              const sessions = manager.list(filter);
+              const summaries = manager.getLastMessageSummaries(sessions.map((s) => s.id));
+              return [
+                resultFor(
+                  { key, queryKey, fingerprint: item.fingerprint },
+                  sessions.map((s) => withLastMessageSummary(s, summaries)),
+                ),
+              ];
+            }
+            if (key === "messages" && queryKey) {
+              const id = parseIntegerId(queryKey);
+              if (id === null) return [];
+              return [
+                resultFor(
+                  { key, queryKey, fingerprint: item.fingerprint },
+                  manager.getSessionMessagesPage(id, { limit: 80, view: "lite" }),
+                ),
+              ];
+            }
+            return [];
+          }),
+        )
       ).flat();
       return c.json({ resources: result });
     } catch (error) {
@@ -2420,11 +2529,14 @@ export function createHttpServer(
     const jobs = manager.jobs
       .list(id, { limit: 100 })
       .filter((job) => job.kind === "shell" || job.kind === "service")
-      .sort((a, b) => (b.createdAt - a.createdAt) || (b.startedAt ?? 0) - (a.startedAt ?? 0));
+      .sort((a, b) => b.createdAt - a.createdAt || (b.startedAt ?? 0) - (a.startedAt ?? 0));
     let evalState: { kernels?: string[]; history?: Array<Record<string, unknown>> } = {};
     try {
       evalState = JSON.parse(
-        await readFile(join(getSessionDir(session.projectId!, session.id), "eval", "state.json"), "utf8"),
+        await readFile(
+          join(getSessionDir(session.projectId!, session.id), "eval", "state.json"),
+          "utf8",
+        ),
       ) as typeof evalState;
     } catch {
       // No eval runtime yet.
@@ -2437,9 +2549,12 @@ export function createHttpServer(
       title: job.label,
       status: job.status,
       output: job.output,
-      command: typeof job.metadata.resolvedCommand === "string"
-        ? job.metadata.resolvedCommand
-        : typeof job.metadata.command === "string" ? job.metadata.command : undefined,
+      command:
+        typeof job.metadata.resolvedCommand === "string"
+          ? job.metadata.resolvedCommand
+          : typeof job.metadata.command === "string"
+            ? job.metadata.command
+            : undefined,
       cwd: typeof job.metadata.cwd === "string" ? job.metadata.cwd : undefined,
       createdAt: job.createdAt,
       updatedAt: job.finishedAt ?? job.startedAt ?? job.createdAt,
@@ -2472,8 +2587,11 @@ export function createHttpServer(
     if (!job || job.sessionId !== id || (job.kind !== "shell" && job.kind !== "service")) {
       return jsonError(c, 404, "Shell not found");
     }
-    const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}));
-    if (typeof body.input !== "string" || !body.input) return jsonError(c, 400, "input is required");
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch((): Record<string, unknown> => ({}));
+    if (typeof body.input !== "string" || !body.input)
+      return jsonError(c, 400, "input is required");
     try {
       await manager.jobs.input(shellId, body.input);
       return c.json({ ok: true });
@@ -3094,9 +3212,7 @@ export function createHttpServer(
       return jsonError(c, 400, "surface must be session or message");
     }
     try {
-      return c.json(
-        await manager.listUiMenus(id, surface, c.req.query("entryId") || undefined),
-      );
+      return c.json(await manager.listUiMenus(id, surface, c.req.query("entryId") || undefined));
     } catch (e: unknown) {
       return jsonError(c, 404, e instanceof Error ? e.message : String(e));
     }
@@ -3106,7 +3222,9 @@ export function createHttpServer(
   app.post("/sessions/:id/ui-menus/:menuId", async (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
-    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const body = await c.req
+      .json<Record<string, unknown>>()
+      .catch(() => ({}) as Record<string, unknown>);
     try {
       return c.json(
         (await manager.executeUiMenu(

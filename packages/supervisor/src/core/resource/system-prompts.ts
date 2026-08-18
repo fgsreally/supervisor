@@ -1,35 +1,25 @@
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import btwSession from "../../../resource/prompts/btw-session.md";
+import builtinAssistantSkill from "../../../resource/prompts/builtin-assistant-skill.md";
+import contextFileSection from "../../../resource/prompts/context-file-section.md";
+import projectParse from "../../../resource/prompts/project-parse.md";
+import skillsPreamble from "../../../resource/prompts/skills-preamble.md";
 
 const templateCache = new Map<string, string>();
 
-/** Resolve the directory containing prompts shipped with Supervisor. */
-export function getPackagedPromptsDir(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    join(here, "../resource/prompts"),
-    join(here, "../../../resource/prompts"),
-    join(here, "../../resource/prompts"),
-    join(here, "../../../prompts"),
-    join(here, "../../prompts"),
-  ];
-  for (const dir of candidates) {
-    if (existsSync(dir)) return dir;
-  }
-  throw new Error(`Packaged prompts directory not found: ${candidates.join(", ")}`);
-}
+const PROMPT_TEMPLATES: Record<string, string> = {
+  "btw-session": btwSession,
+  "builtin-assistant-skill": builtinAssistantSkill,
+  "context-file-section": contextFileSection,
+  "project-parse": projectParse,
+  "skills-preamble": skillsPreamble,
+};
 
 export function loadPromptTemplate(name: string): string {
   const cached = templateCache.get(name);
   if (cached !== undefined) return cached;
 
-  const filePath = join(getPackagedPromptsDir(), `${name}.md`);
-  if (!existsSync(filePath)) {
-    throw new Error(`Missing prompt template: ${name}.md (${filePath})`);
-  }
-
-  const content = readFileSync(filePath, "utf-8").trim();
+  const content = PROMPT_TEMPLATES[name]?.trim();
+  if (content === undefined) throw new Error(`Missing prompt template: ${name}.md`);
   templateCache.set(name, content);
   return content;
 }

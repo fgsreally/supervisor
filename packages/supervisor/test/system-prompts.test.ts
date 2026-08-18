@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { getPackagedPromptsDir, renderPromptTemplate } from "../src/core/resource/system-prompts.js";
+import { loadPromptTemplate, renderPromptTemplate } from "../src/core/resource/system-prompts.js";
 
 describe("supervisor: system-prompts", () => {
-  it("resolves the packaged prompts directory", () => {
-    expect(getPackagedPromptsDir()).toContain("prompts");
+  it("loads the bundled prompt template", () => {
+    expect(loadPromptTemplate("context-file-section")).toContain("# Context File");
   });
 
   it("renders variable placeholders", () => {

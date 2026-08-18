@@ -72,13 +72,6 @@ function ensurePackagedAgent(db: SupervisorDb, kind: PackagedAgentKind): number 
   const existing = findPackagedAgentId(db, kind);
   const label = PACKAGED_AGENT_LABELS[kind];
   if (existing !== undefined) {
-    const agent = db.getAgent(existing);
-    const packagedPrompt = loadPackagedAgentPrompt(kind);
-    // Packaged agents keep system_prompt in sync with resource/agents/<kind>.md on boot.
-    // Smart Router is intentionally user-configurable: seed its routing policy once and preserve edits.
-    if (kind !== "smart-router" && agent?.systemPrompt !== packagedPrompt) {
-      db.updateAgent(existing, { system_prompt: packagedPrompt });
-    }
     ensureAgentHome(existing, getAgentHomeDir(existing));
     ensureBuiltinExtensionResources(db);
     ensureAgentBuiltinExtensionBindings(db, existing);
@@ -382,8 +375,6 @@ export function ensureBuiltinAssistant(db: SupervisorDb, manager: SessionManager
       is_builtin: true,
       meta: {},
     });
-  } else if (agent.systemPrompt !== BUILTIN_ASSISTANT_PROMPT) {
-    agent = db.updateAgent(agent.id, { system_prompt: BUILTIN_ASSISTANT_PROMPT });
   }
 
   const homeDir = getAgentHomeDir(agent.id);

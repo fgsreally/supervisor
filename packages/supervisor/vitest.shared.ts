@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
@@ -5,7 +6,18 @@ import { defineConfig } from "vitest/config";
 const directory = fileURLToPath(new URL(".", import.meta.url));
 const src = resolve(directory, "src");
 
+const markdownAsTextPlugin = {
+  name: "supervisor-markdown-as-text",
+  enforce: "pre" as const,
+  load(id: string) {
+    const file = id.split("?", 1)[0];
+    if (!file.endsWith(".md")) return;
+    return `export default ${JSON.stringify(readFileSync(file, "utf8"))};`;
+  },
+};
+
 export default defineConfig({
+  plugins: [markdownAsTextPlugin],
   resolve: {
     alias: {
       "pi-supervisor/test": resolve(src, "testing/ai/index.ts"),

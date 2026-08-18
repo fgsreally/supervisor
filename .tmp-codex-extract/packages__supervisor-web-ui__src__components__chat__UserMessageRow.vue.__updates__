@@ -1,3 +1,0 @@
-\n\n===== UPDATE @ L2040 =====\n@@
--          fontSize: 'var(--chat-msg-font-size, 14px)',
-+          fontSize: 'var(--chat-msg-font-size, 12.5px)',

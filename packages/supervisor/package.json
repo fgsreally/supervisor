@@ -7,31 +7,30 @@
   },
   "files": [
     "dist",
-    "agents",
-    "resource",
     ".env.example",
     "SUPERVISOR.md"
   ],
   "type": "module",
   "main": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.mts",
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.mjs"
     },
     "./test": {
-      "types": "./dist/testing/ai/index.d.mts",
+      "types": "./dist/testing/ai/index.d.ts",
       "import": "./dist/testing/ai/index.mjs"
     },
     "./package.json": "./package.json"
   },
   "scripts": {
     "clean": "shx rm -rf dist",
-    "dev": "tsdown --watch",
-    "serve:dev": "cross-env PI_SUPERVISOR_DEV=1 PI_SUPERVISOR_UI_PORT=5163 esno watch src/cli.ts serve --port 3042 --cwd ../../playground --password 123456",
-    "serve:playground": "node --import jiti/register src/cli.ts serve --port 3040 --cwd ../../playground --password 123456",
-    "build": "tsdown && shx cp -r src/db/sql dist/sql && shx cp -r src/db/migrations dist/migrations && shx mkdir -p dist/i18n && shx cp -r src/i18n/locales dist/i18n/locales",
+    "dev": "tsup --watch",
+    "serve:dev": "cross-env PI_SUPERVISOR_DEV=1 PI_SUPERVISOR_UI_PORT=5163 esno watch --loader ./scripts/md-loader.mjs src/cli.ts serve --port 3042 --cwd ../../playground --password 123456",
+    "serve:playground": "esno --loader ./scripts/md-loader.mjs src/cli.ts serve --port 3040 --cwd ../../playground --password 123456",
+    "build": "tsup && shx cp -r src/db/sql dist/sql && shx cp -r src/db/migrations dist/migrations && shx mkdir -p dist/i18n && shx cp -r src/i18n/locales dist/i18n/locales",
+    "prepack": "pnpm run build",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest --run --config vitest.config.ts",
     "test:unit": "vitest --run --config vitest.config.ts",
@@ -78,7 +77,6 @@
     "cross-env": "^7.0.3",
     "esno": "4.8.0",
     "shx": "^0.4.0",
-    "tsdown": "^0.22.3",
     "unrun": "^0.3.1",
     "vitest": "^3.2.4"
   },

@@ -21,7 +21,7 @@ pnpm install
 pnpm run build
 ```
 
-`tsdown` 会将 `packages/supervisor/src/` 编译到 `packages/supervisor/dist/`，产出 `cli.mjs` 等入口。
+`tsup` 会将 `packages/supervisor/src/` 编译到 `packages/supervisor/dist/`，并把源码中的 Markdown 提示词内联到 JavaScript。
 
 ## 3. 启动 Supervisor HTTP API
 

@@ -1,4 +1,0 @@
-﻿import { createOutboundWebSocket, formatOutboundHandshakeError } from './packages/supervisor/src/utils/outbound-ws.ts';
-import { buildDoubaoSpeechWsHeaders } from './packages/supervisor/src/utils/supervisor-settings.ts';
-const key=process.env.DOUBAO_DIAG_KEY;
-for (const [id,resource] of [['2.0-duration','volc.seedasr.sauc.duration'],['2.0-concurrent','volc.seedasr.sauc.concurrent'],['1.0-duration','volc.bigasr.sauc.duration'],['1.0-concurrent','volc.bigasr.sauc.concurrent']]) await new Promise(resolve=>{const ws=createOutboundWebSocket('wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async',buildDoubaoSpeechWsHeaders(key,resource),8000);ws.once('open',()=>{console.log(id+': OK');ws.close();resolve();});ws.on('error',e=>{console.log(id+': '+formatOutboundHandshakeError(e,'豆包语音',''));resolve();});});

@@ -1,6 +1,0 @@
-\n\n===== UPDATE @ L2133 =====\n@@
--  type ToolsPreset,
-@@
--  toolsPreset: "coding" as ToolsPreset,
-@@
--      toolsPreset: draft.value.toolsPreset,

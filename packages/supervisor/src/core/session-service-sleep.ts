@@ -3,6 +3,7 @@ import { parseSessionMeta } from "./session-fields.js";
 import {
   buildSessionServicesPrompt,
   parseSessionServicesMeta,
+  getSessionServicesStatus,
   stopSessionProjectServices,
   stoppedSessionServicesMeta,
 } from "./session-services.js";
@@ -39,12 +40,7 @@ export async function runSessionServiceSleepTick(options: {
   const now = Date.now();
   for (const row of options.db.list()) {
     const services = parseSessionServicesMeta(parseSessionMeta(row.meta));
-    if (
-      !services ||
-      (services.status !== "active" &&
-        services.status !== "running" &&
-        services.status !== "starting")
-    ) {
+    if (!services || getSessionServicesStatus(services) !== "active") {
       continue;
     }
     const sleepAt = services.sleepAt;

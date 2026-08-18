@@ -14,7 +14,7 @@ describe("project runtime parsing", () => {
     expect(prompt).toContain("AGENTS.md");
     expect(prompt).toContain("本地开发服务");
     expect(prompt).toContain("start");
-    expect(prompt).toContain("refactor it to match the project");
+    expect(prompt).toContain("Preserve valid project rules and improve it in place");
     expect(prompt).not.toContain("ProjectServiceRegister");
     expect(prompt).not.toContain("ProjectServiceApply");
     expect(prompt).not.toContain("UpdateService");
@@ -54,12 +54,11 @@ describe("project runtime parsing", () => {
     expect(
       parseProjectServicesMeta({
         services: {
-          status: "ready",
           definitions: [{ name: "web", startCommand: "vite --port ${PORT1}", path: "/" }],
           updatedAt: "2026-08-17T00:00:00.000Z",
         },
-      })?.status,
-    ).toBe("ready");
+      }),
+    ).not.toBeNull();
   });
 
   it("extracts unique cross-platform port placeholders", () => {

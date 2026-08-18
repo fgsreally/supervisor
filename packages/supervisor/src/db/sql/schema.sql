@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS projects (
   cwd TEXT NOT NULL UNIQUE,
   home_dir TEXT NOT NULL,
   meta TEXT NOT NULL DEFAULT '{}',
+  parsed_at INTEGER,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL
 );

@@ -17,7 +17,7 @@ type SessionMetaStore = {
 export function buildSessionServicesPrompt(services: SessionServicesMeta): string {
   const registered = services.services ?? [];
   if (!registered.length && !services.startCommand?.trim()) return "";
-  const lines = ["Local services started for this Session:", `Status: ${services.status}`];
+  const lines = ["Local services registered for this Session:"];
   if (registered.length) {
     for (const app of registered) {
       const start = app.startCommand ?? services.resolvedStartCommand ?? services.startCommand;
@@ -81,13 +81,26 @@ export function stoppedSessionServicesMeta(
     stopCommand: previous?.stopCommand,
     destroyCommand: previous?.destroyCommand ?? previous?.uninstallCommand,
     services: previous?.services?.map((app) => ({ ...app, jobId: undefined, pid: null })),
-    status: "idle",
     installedAt: previous?.installedAt,
     lastActiveAt: previous?.lastActiveAt,
     pid: null,
     jobId: undefined,
     resolvedStartCommand: undefined,
   };
+}
+
+export type SessionServicesStatus = "active" | "idle" | "error" | "unregistered";
+
+/** Derive runtime state from process/job references; never persist a status in meta.services. */
+export function getSessionServicesStatus(
+  services: SessionServicesMeta | null | undefined,
+): SessionServicesStatus {
+  if (!services?.services?.length) return "unregistered";
+  if (services.error) return "error";
+  const active = Boolean(services.jobId) || services.pid != null || services.services.some(
+    (app) => Boolean(app.jobId) || app.pid != null,
+  );
+  return active ? "active" : "idle";
 }
 
 /**
@@ -106,10 +119,7 @@ export function scrubStaleSessionRuntimeMeta(db: SessionMetaStore): number {
     }
     const services = parseSessionServicesMeta(meta);
     if (!services) continue;
-    const liveStatus =
-      services.status === "starting" ||
-      services.status === "running" ||
-      services.status === "active";
+    const liveStatus = getSessionServicesStatus(services) === "active";
     const hasRuntimeRef = Boolean(services.jobId) || services.pid != null;
     if (!liveStatus && !hasRuntimeRef) continue;
     db.updateMeta(row.id, { services: stoppedSessionServicesMeta(services) });
@@ -166,23 +176,9 @@ export function parseSessionServicesMeta(
   const raw = meta?.services;
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
-  const status = row.status;
-  if (
-    status !== "starting" &&
-    status !== "running" &&
-    status !== "active" &&
-    status !== "stopped" &&
-    status !== "idle" &&
-    status !== "error" &&
-    status !== "unregistered"
-  ) {
-    return null;
-  }
-
   const startCommand = typeof row.startCommand === "string" ? row.startCommand.trim() : "";
   if (startCommand) {
     return {
-      status,
       installCommand:
         typeof row.installCommand === "string" ? row.installCommand.trim() || undefined : undefined,
       startCommand,

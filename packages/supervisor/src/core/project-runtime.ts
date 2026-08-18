@@ -41,7 +41,6 @@ export interface ProjectServiceConfig {
 }
 
 export interface ProjectServicesMeta extends ProjectServiceConfig {
-  status: "pending" | "ready" | "error";
   error?: string;
   updatedAt: string;
 }
@@ -52,10 +51,7 @@ export function parseProjectServicesMeta(
   const raw = meta?.services;
   if (!raw || typeof raw !== "object") return null;
   const value = raw as Record<string, unknown>;
-  if (
-    (value.status !== "pending" && value.status !== "ready" && value.status !== "error") ||
-    !Array.isArray(value.definitions)
-  ) {
+  if (!Array.isArray(value.definitions)) {
     return null;
   }
   const definitions = value.definitions.filter(
@@ -79,7 +75,6 @@ export function parseProjectServicesMeta(
   const optional = (key: string): string | undefined =>
     typeof value[key] === "string" && value[key].trim() ? value[key].trim() : undefined;
   return {
-    status: value.status,
     definitions,
     ...(Array.isArray(value.views) ? { views } : {}),
     installCommand: optional("installCommand"),
@@ -139,15 +134,6 @@ export interface SessionServiceView {
  * Agent registers Services and Views; sleep/pid fields are system-managed.
  */
 export interface SessionServicesMeta {
-  status:
-    | "registered"
-    | "starting"
-    | "running"
-    | "active"
-    | "stopped"
-    | "idle"
-    | "error"
-    | "unregistered";
   installCommand?: string;
   startCommand: string;
   stopCommand?: string;
@@ -278,12 +264,18 @@ export async function runProjectRuntimeParse(options: {
   project: Project;
 }): Promise<ProjectRuntimeSpec> {
   const agentsPath = join(options.project.cwd, "AGENTS.md");
+  const existingAgents = existsSync(agentsPath) ? readFileSync(agentsPath, "utf8") : "";
   const run = await runWatson({
     mode: "agent",
     cwd: options.project.cwd,
     kind: "project-parse",
     resultSchema: ProjectRuntimeSpecSchema,
-    prompt: buildProjectRuntimeInstructions(options.project),
+    prompt: [
+      buildProjectRuntimeInstructions(options.project),
+      existingAgents.trim()
+        ? `\nExisting AGENTS.md (preserve valid rules and improve it in place):\n\n${existingAgents}`
+        : "\nNo existing AGENTS.md was found; create it.",
+    ].join("\n"),
   });
 
   if (run.result == null) {
@@ -306,10 +298,10 @@ export async function applyProjectRuntimeParse(
 
   db.updateProject(projectId, {
     description: spec.description,
+    parsedAt: Date.now(),
     meta: {
       ...project.meta,
       services: {
-        status: "ready",
         ...spec.services,
         updatedAt: new Date().toISOString(),
       } satisfies ProjectServicesMeta,

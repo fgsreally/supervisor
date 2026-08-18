@@ -53,9 +53,9 @@ describe("supervisor: SupervisorDb", () => {
     expect(project.meta).toEqual({});
 
     const updated = db.updateProject(project.id, {
-      meta: { services: { status: "pending", definitions: [] } },
+      meta: { services: { definitions: [] } },
     });
-    expect(updated.meta).toEqual({ services: { status: "pending", definitions: [] } });
+    expect(updated.meta).toEqual({ services: { definitions: [] } });
   });
 
   it("lists all instances, newest first", () => {
@@ -326,6 +326,7 @@ describe("supervisor: SupervisorDb", () => {
       "cwd",
       "home_dir",
       "meta",
+      "parsed_at",
       "created_at",
       "updated_at",
     ]);

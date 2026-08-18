@@ -4,7 +4,11 @@ import type {
   SessionServiceView,
   SessionServicesMeta,
 } from "./project-runtime.js";
-import { parseSessionServicesMeta } from "./session-services.js";
+import {
+  getSessionServicesStatus,
+  parseSessionServicesMeta,
+  type SessionServicesStatus,
+} from "./session-services.js";
 
 export interface SessionPreviewTarget {
   scriptName: string;
@@ -24,10 +28,6 @@ const PREVIEW_CONNECT_RETRY_MS = 300;
 const HIDDEN_SCROLLBAR_STYLE =
   '<style id="supervisor-preview-scrollbars">*{scrollbar-width:none}*::-webkit-scrollbar{display:none}</style>';
 
-function isPreviewableStatus(status: SessionServicesMeta["status"] | undefined): boolean {
-  return status === "running" || status === "active" || status === "starting";
-}
-
 export function buildSessionPreviewPath(
   sessionId: number,
   scriptName: string,
@@ -46,7 +46,7 @@ export function resolveSessionPreviewTarget(options: {
   requestPath: string;
 }): SessionPreviewTarget | null {
   const services = parseSessionServicesMeta(options.session.meta);
-  if (!services || !isPreviewableStatus(services.status)) return null;
+  if (!services || getSessionServicesStatus(services) !== "active") return null;
   const view = findServiceView(services, options.scriptName);
   if (!view) return null;
   const prefix = `/sessions/${options.session.id}/preview/${encodeURIComponent(options.scriptName)}`;
@@ -266,7 +266,7 @@ export function buildSessionServicesDto(
   session: Pick<Session, "id" | "meta">,
   origin = "",
 ): {
-  status: SessionServicesMeta["status"] | "none";
+  status: SessionServicesStatus | "none";
   sleepAt?: number;
   installedAt?: string;
   services: SessionService[];
@@ -280,8 +280,7 @@ export function buildSessionServicesDto(
   }
   const registered = services.services ?? [];
   const views = services.views ?? [];
-  const active =
-    services.status === "starting" || services.status === "running" || services.status === "active";
+  const active = getSessionServicesStatus(services) === "active";
   const previewEntries = views;
   const previews = active
     ? previewEntries.map((app) => ({
@@ -294,7 +293,7 @@ export function buildSessionServicesDto(
       }))
     : [];
   return {
-    status: services.status,
+    status: getSessionServicesStatus(services),
     sleepAt: services.sleepAt,
     installedAt: services.installedAt,
     services: registered,

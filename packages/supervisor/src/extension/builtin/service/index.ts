@@ -22,6 +22,7 @@ import {
 } from "../../../core/session-service-sleep.js";
 import {
   collectReservedServicePorts,
+  getSessionServicesStatus,
   parseSessionServicesMeta,
   stoppedSessionServicesMeta,
 } from "../../../core/session-services.js";
@@ -64,7 +65,6 @@ const UPDATE_PARAMS = Type.Object({
   stopCommand: Type.Optional(Type.String()),
   destroyCommand: Type.Optional(Type.String()),
 });
-const PROJECT_SERVICES_WAIT_MS = 5 * 60_000;
 
 function numberedPortPlaceholders(command: string): string[] {
   return [
@@ -83,10 +83,6 @@ function applyText(text: string): {
   details: unknown;
 } {
   return { content: [{ type: "text" as const, text }], details: null };
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** True when jobCwd is the session cwd or a path inside it. */
@@ -123,14 +119,12 @@ function extensionJobsAsHost(jobs: ExtensionJobFacade): SessionServiceJobHost {
   };
 }
 
-function isServiceActive(status: SessionServicesMeta["status"] | undefined): boolean {
-  return status === "active" || status === "running" || status === "starting";
+function isServiceActive(services: SessionServicesMeta | null | undefined): boolean {
+  return getSessionServicesStatus(services) === "active";
 }
 
-function isServiceIdle(status: SessionServicesMeta["status"] | undefined): boolean {
-  return (
-    status === "idle" || status === "stopped" || status === "unregistered" || status === "error"
-  );
+function isServiceIdle(services: SessionServicesMeta | null | undefined): boolean {
+  return getSessionServicesStatus(services) !== "active";
 }
 
 function finalizeServices(
@@ -147,7 +141,6 @@ function finalizeServices(
     jobId: first?.jobId,
     pid: first?.pid ?? null,
     resolvedStartCommand: first?.startCommand,
-    status: services.length === 0 ? "unregistered" : running ? "active" : "idle",
     lastActiveAt: now,
     sleepAt: computeServiceSleepAt(now),
     error: undefined,
@@ -168,7 +161,7 @@ function ensureGlobalSleepScheduler(ctx: ExtensionContext): void {
     const now = Date.now();
     for (const row of rows) {
       const meta = parseSessionServicesMeta(JSON.parse(row.meta || "{}"));
-      if (!hasRegisteredServices(meta) || !isServiceActive(meta?.status)) continue;
+      if (!hasRegisteredServices(meta) || !isServiceActive(meta)) continue;
       const sleepAt = meta!.sleepAt;
       if (!sleepAt || sleepAt > now) continue;
       try {
@@ -182,7 +175,6 @@ function ensureGlobalSleepScheduler(ctx: ExtensionContext): void {
           ...JSON.parse(row.meta || "{}"),
           services: {
             ...meta,
-            status: "idle" as const,
             pid: null,
             jobId: undefined,
             resolvedStartCommand: undefined,
@@ -285,11 +277,10 @@ const projectServicesExtension: ExtensionDefinition = {
       if (!hasRegisteredServices(current)) return;
       const now = Date.now();
 
-      if (isServiceActive(current!.status)) {
+      if (isServiceActive(current)) {
         if (isSessionServiceProcessAlive(sessionId, current)) {
           await writeServices({
             ...current!,
-            status: "active",
             lastActiveAt: now,
             sleepAt: computeServiceSleepAt(now),
           });
@@ -309,14 +300,13 @@ const projectServicesExtension: ExtensionDefinition = {
       if (isSessionServiceProcessAlive(sessionId, current)) {
         await writeServices({
           ...current!,
-          status: "active",
           lastActiveAt: now,
           sleepAt: computeServiceSleepAt(now),
         });
         return;
       }
 
-      if (isServiceIdle(current!.status) || isServiceActive(current!.status)) {
+      if (isServiceIdle(current) || isServiceActive(current)) {
         const next = await startRegisteredSessionServices({
           sessionId,
           cwd: cwd(),
@@ -337,12 +327,11 @@ const projectServicesExtension: ExtensionDefinition = {
     if (setupServices) {
       const lastActive = setupServices.lastActiveAt ?? Date.now();
       if (
-        isServiceActive(setupServices.status) &&
+        isServiceActive(setupServices) &&
         Date.now() - lastActive >= SESSION_SERVICE_SLEEP_MS
       ) {
         await writeServices({
           ...setupServices,
-          status: "idle",
           pid: null,
           jobId: undefined,
           resolvedStartCommand: undefined,
@@ -370,7 +359,6 @@ const projectServicesExtension: ExtensionDefinition = {
         });
         await writeServices({
           ...current!,
-          status: "idle",
           pid: null,
           jobId: undefined,
           resolvedStartCommand: undefined,
@@ -416,7 +404,6 @@ const projectServicesExtension: ExtensionDefinition = {
         });
         await writeServices({
           ...current!,
-          status: "idle",
           pid: null,
           jobId: undefined,
           resolvedStartCommand: undefined,
@@ -435,7 +422,6 @@ const projectServicesExtension: ExtensionDefinition = {
       if (!name) return applyText("需要 name。");
       const action = params.action;
       const current = (await readServices()) ?? {
-        status: "unregistered" as const,
         startCommand: "",
       };
       const services = [...(current.services ?? [])];
@@ -454,7 +440,6 @@ const projectServicesExtension: ExtensionDefinition = {
           ...current,
           services: list,
           startCommand: current.startCommand || app.startCommand || "",
-          status: "starting",
         });
         const started = await startRegisteredApp({
           sessionId,
@@ -495,7 +480,6 @@ const projectServicesExtension: ExtensionDefinition = {
               ...current,
               services: nextList,
               startCommand: current.startCommand || startCommand,
-              status: "starting",
               installCommand,
             });
             const startedAll = await startRegisteredSessionServices({
@@ -558,7 +542,6 @@ const projectServicesExtension: ExtensionDefinition = {
             ...current,
             services: nextList,
             startCommand,
-            status: "starting",
             installCommand,
           });
           const startedAll = await startRegisteredSessionServices({
@@ -587,7 +570,7 @@ const projectServicesExtension: ExtensionDefinition = {
         );
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        await writeServices({ ...current, status: "error", error: message });
+        await writeServices({ ...current, error: message });
         return applyText(`UpdateService 失败：${message}`);
       }
     };
@@ -600,17 +583,8 @@ const projectServicesExtension: ExtensionDefinition = {
     });
 
     const startProjectServices = async (): Promise<void> => {
-      const deadline = Date.now() + PROJECT_SERVICES_WAIT_MS;
-      let projectServices = parseProjectServicesMeta((await ctx.project.data.get()).meta);
-      while (
-        projectServices?.status === "pending" &&
-        Date.now() < deadline &&
-        !ctx.session.signal?.aborted
-      ) {
-        await sleep(500);
-        projectServices = parseProjectServicesMeta((await ctx.project.data.get()).meta);
-      }
-      if (projectServices?.status !== "ready" || projectServices.definitions.length === 0) return;
+      const projectServices = parseProjectServicesMeta((await ctx.project.data.get()).meta);
+      if (!projectServices || projectServices.definitions.length === 0) return;
       if (hasRegisteredServices(await readServices())) return;
 
       for (const definition of projectServices.definitions) {
@@ -670,11 +644,10 @@ const projectServicesExtension: ExtensionDefinition = {
             ],
           };
         }
-        if (isServiceActive(current!.status) && isSessionServiceProcessAlive(sessionId, current)) {
+        if (isServiceActive(current) && isSessionServiceProcessAlive(sessionId, current)) {
           const now = Date.now();
           await writeServices({
             ...current!,
-            status: "active",
             lastActiveAt: now,
             sleepAt: computeServiceSleepAt(now),
           });
@@ -731,7 +704,6 @@ const projectServicesExtension: ExtensionDefinition = {
         });
         const next: SessionServicesMeta = {
           ...current!,
-          status: "idle",
           pid: null,
           jobId: undefined,
           resolvedStartCommand: undefined,
@@ -755,7 +727,7 @@ const projectServicesExtension: ExtensionDefinition = {
       execute: async () => {
         const current = await readServices();
         return {
-          content: [{ type: "text", text: JSON.stringify(current ?? { status: "none" }, null, 2) }],
+          content: [{ type: "text", text: JSON.stringify(current ?? { services: [] }, null, 2) }],
         };
       },
     });

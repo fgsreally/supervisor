@@ -8,11 +8,19 @@ import {
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { completeSimple, type AssistantMessage } from "@earendil-works/pi-ai";
+import {
+  createCodingTools,
+  createFindTool,
+  createGrepTool,
+  createLsTool,
+  createReadOnlyTools,
+  SettingsManager,
+  type ToolsOptions,
+} from "@earendil-works/pi-coding-agent";
 import { Type, type Static, type TSchema } from "typebox";
 import { Check } from "typebox/schema";
 import { loadBuiltinAgentPrompt } from "../agent/builtin/prompts.js";
 import { getDb } from "../db/db.js";
-import { createDefaultTools } from "../utils/default-tools.js";
 import { getSupervisorHome } from "../utils/supervisor-home.js";
 import { resolveLLMConfig } from "../utils/model-utils.js";
 import { isFeatureModelRef, readSupervisorSettings } from "../utils/supervisor-settings.js";
@@ -144,6 +152,22 @@ function writeRunLog(kind: string, text: string, result: unknown): void {
   );
 }
 
+function createWatsonTools(cwd: string, preset: WatsonAgentOptions["toolsPreset"]): AgentTool[] {
+  const settings = SettingsManager.create(cwd);
+  const options: ToolsOptions = {};
+  const shellPath = settings.getShellPath();
+  const commandPrefix = settings.getShellCommandPrefix();
+  if (shellPath || commandPrefix) options.bash = { shellPath, commandPrefix };
+  if (preset === "none") return [];
+  if (preset === "readonly") return createReadOnlyTools(cwd, options);
+  return [
+    ...createCodingTools(cwd, options),
+    createGrepTool(cwd, options.grep),
+    createFindTool(cwd, options.find),
+    createLsTool(cwd, options.ls),
+  ];
+}
+
 export function runWatson<const Schema extends TSchema>(
   options: WatsonRunOptions & { resultSchema: Schema },
 ): Promise<WatsonRunResult<Static<Schema>>>;
@@ -201,7 +225,7 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
     } else {
       const capture: { value?: unknown } = {};
       const tools = [
-        ...createDefaultTools(cwd, options.toolsPreset ?? "coding"),
+        ...createWatsonTools(cwd, options.toolsPreset ?? "coding"),
         ...(options.extraTools ?? []),
         ...(options.resultSchema
           ? [createSubmitResultTool(capture, options.resultSchema, options.resultToolDescription)]

@@ -16,11 +16,11 @@ describe("session project service sleep", () => {
     const updateSessionFields = vi.fn();
     const onUpdated = vi.fn();
     const services = {
-      status: "active",
       startCommand: "server --port ${PORT}",
       services: [{ name: "web", port: 43219, path: "/" }],
       sleepAt: Date.now() - 1,
       pid: null,
+      jobId: "job-1",
     };
     const db = {
       list: () => [{ id: 7, cwd: process.cwd(), meta: JSON.stringify({ services }) }],
@@ -34,13 +34,13 @@ describe("session project service sleep", () => {
     expect(updateMeta).toHaveBeenCalledWith(
       7,
       expect.objectContaining({
-        services: expect.objectContaining({ status: "idle", jobId: undefined, pid: null }),
+        services: expect.objectContaining({ jobId: undefined, pid: null }),
       }),
     );
     expect(onUpdated).toHaveBeenCalledWith(7);
     expect(updateSessionFields).toHaveBeenCalledWith(
       7,
-      expect.objectContaining({ systemPrompt: expect.stringContaining("Status: idle") }),
+      expect.objectContaining({ systemPrompt: expect.stringContaining("Local services registered") }),
     );
   });
 });

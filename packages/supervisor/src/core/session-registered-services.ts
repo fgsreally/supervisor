@@ -370,7 +370,6 @@ export async function startRegisteredSessionServices(options: {
         ? app
         : { ...app, startCommand: options.services.startCommand },
     ),
-    status: "starting",
     startedAt: new Date().toISOString(),
     error: undefined,
   };
@@ -441,13 +440,11 @@ export async function startRegisteredSessionServices(options: {
     meta.resolvedStartCommand = first?.startCommand;
     meta.jobId = first?.jobId;
     meta.pid = first?.pid ?? null;
-    meta.status = "active";
     meta.lastActiveAt = options.lastActiveAtMs ?? Date.now();
     meta.sleepAt = computeServiceSleepAt(meta.lastActiveAt);
     return meta;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    meta.status = "error";
     meta.error = message;
     sessionLog(options.sessionId, "error", `Registered services failed: ${message}`, [
       "system",

@@ -68,6 +68,7 @@ import {
 } from "./project-runtime.js";
 import {
   parseSessionServicesMeta,
+  getSessionServicesStatus,
   sessionServicePortEnv,
   scrubStaleSessionRuntimeMeta,
   stoppedSessionServicesMeta,
@@ -596,10 +597,7 @@ export class SessionManager {
     const services = parseSessionServicesMeta(session.meta);
     if (!services) return session;
 
-    const activeStatus =
-      services.status === "starting" ||
-      services.status === "running" ||
-      services.status === "active";
+    const activeStatus = getSessionServicesStatus(services) === "active";
     if (!activeStatus) return session;
 
     const jobIds = [services.jobId, ...(services.services ?? []).map((app) => app.jobId)].filter(
@@ -2398,6 +2396,7 @@ export class SessionManager {
       ...options,
     });
     const created = this.db.getProject(project.id)!;
+    if (created.parsedAt != null) return created;
     const parsing = this.parseProject(created.id);
     this.pendingProjectParses.set(created.id, parsing);
     void parsing
@@ -2413,33 +2412,16 @@ export class SessionManager {
   }
 
   private async waitForProjectParse(projectId: number): Promise<void> {
+    const current = this.db.getProject(projectId);
+    if (!current) throw new Error(`Project ${projectId} not found`);
+    if (current.parsedAt != null) return;
+
     const pending = this.pendingProjectParses.get(projectId);
     if (pending) {
       await pending;
-    }
-
-    let current = this.db.getProject(projectId);
-    if (!current) throw new Error(`Project ${projectId} not found`);
-    let services = current.meta.services;
-    if (!services || typeof services !== "object") {
-      await this.parseProject(projectId);
-      current = this.db.getProject(projectId);
-      if (!current) throw new Error(`Project ${projectId} not found`);
-      services = current.meta.services;
-    }
-
-    const status = (services as { status?: string } | undefined)?.status;
-    if (status === "ready") return;
-    if (status === "error") {
-      // Parsing is complete even when Watson reported an error. The Session
-      // can still be created, but the service extension will not start any
-      // incomplete definitions and the persisted project status remains
-      // visible to the user.
       return;
     }
-    if (status === "pending") {
-      throw new Error(`Project ${projectId} parsing did not complete`);
-    }
+    await this.parseProject(projectId);
   }
 
   updateProject(
@@ -2891,7 +2873,6 @@ export class SessionManager {
         jobId: still?.jobId,
         pid: still?.pid ?? null,
         resolvedStartCommand: still?.startCommand,
-        status: still ? services.status : "idle",
       },
     });
     this.publishServicesChange(sessionId);

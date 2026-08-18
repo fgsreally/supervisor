@@ -151,6 +151,7 @@ function rowToProject(row: ProjectRow): Project {
     cwd: row.cwd,
     homeDir: row.home_dir,
     meta: JSON.parse(row.meta || "{}") as Record<string, unknown>,
+    parsedAt: row.parsed_at == null ? null : new Date(row.parsed_at),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
   };
@@ -295,8 +296,8 @@ export class SupervisorDb {
     const now = Date.now();
     const result = this.db
       .prepare(
-        `INSERT INTO projects (name, description, cwd, home_dir, meta, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (name, description, cwd, home_dir, meta, parsed_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         options?.name ?? this.projectNameFromCwd(cwd),
@@ -304,6 +305,7 @@ export class SupervisorDb {
         cwd,
         "",
         "{}",
+        null,
         now,
         now,
       );
@@ -329,6 +331,7 @@ export class SupervisorDb {
       cwd?: string;
       homeDir?: string;
       meta?: Record<string, unknown>;
+      parsedAt?: number | null;
     },
   ): Project {
     const project = this.getProject(id);
@@ -339,11 +342,12 @@ export class SupervisorDb {
     const cwd = patch.cwd ?? project.cwd;
     const homeDir = patch.homeDir ?? project.homeDir;
     const meta = patch.meta ?? project.meta;
+    const parsedAt = patch.parsedAt === undefined ? project.parsedAt?.getTime() ?? null : patch.parsedAt;
     this.db
       .prepare(
-        "UPDATE projects SET name = ?, description = ?, cwd = ?, home_dir = ?, meta = ?, updated_at = ? WHERE id = ?",
+        "UPDATE projects SET name = ?, description = ?, cwd = ?, home_dir = ?, meta = ?, parsed_at = ?, updated_at = ? WHERE id = ?",
       )
-      .run(name, description, cwd, homeDir, JSON.stringify(meta), Date.now(), id);
+      .run(name, description, cwd, homeDir, JSON.stringify(meta), parsedAt, Date.now(), id);
     return this.getProject(id)!;
   }
 

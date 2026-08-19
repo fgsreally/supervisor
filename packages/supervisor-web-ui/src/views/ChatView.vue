@@ -708,8 +708,6 @@ const props = defineProps<{
       subagentIds?: number[];
       shadow?: {
         suggestedQuestions?: string[];
-        lastAlert?: string;
-        lastAnalysis?: string;
         running?: boolean;
       };
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
@@ -1049,7 +1047,11 @@ async function refreshBackgroundBashCount() {
     const snapshot = await api.getSessionShells(sessionId);
     if (props.session.id !== sessionId) return;
     backgroundBashCount.value = snapshot.shells.filter(
-      (shell) => shell.status === "running" || shell.status === "waiting" || shell.status === "queued" || shell.status === "active",
+      (shell) =>
+        shell.status === "running" ||
+        shell.status === "waiting" ||
+        shell.status === "queued" ||
+        shell.status === "active",
     ).length;
   } catch {
     /* ignore transient poll errors */
@@ -1771,7 +1773,7 @@ function subscribeShadowSuggestions(sessionId: string) {
         shadowRunning.value = payload.event.running;
         return;
       }
-      if (payload.event.type === "shadow_analysis") {
+      if (payload.event.type === "shadow_message") {
         void applySessionMessages(sessionId);
         return;
       }

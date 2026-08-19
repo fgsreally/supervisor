@@ -2,10 +2,12 @@ import { createPinia, setActivePinia } from "pinia";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAgentStore, useProviderStore, useRootStore, useSessionStore } from "../index";
 import { resetMessageStorageForTests } from "@/utils/message-storage";
+import { resetClientResourceLifecycle } from "@/utils/client-data";
 
 // Mock API module
 vi.mock("@/api", () => ({
   listSessions: vi.fn(),
+  listProjects: vi.fn(),
   getSession: vi.fn(),
   createSession: vi.fn(),
   deleteSession: vi.fn(),
@@ -40,7 +42,11 @@ describe("Session Store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     resetMessageStorageForTests();
+    resetClientResourceLifecycle();
     vi.resetAllMocks();
+    vi.mocked(api.listProjects).mockResolvedValue([] as any);
+    vi.mocked(api.listProviders).mockResolvedValue([] as any);
+    vi.mocked(api.listProviderModels).mockResolvedValue([] as any);
   });
 
   it("should fetch sessions", async () => {
@@ -94,7 +100,7 @@ describe("Session Store", () => {
     await store.createSession({ cwd: "/new" });
     await store.fetchSessions();
 
-    expect(api.listSessions).toHaveBeenCalledTimes(2);
+    expect(api.listSessions).toHaveBeenCalledTimes(1);
     expect(store.sessions.map((session) => session.id)).toEqual(["2", "1"]);
   });
 
@@ -138,7 +144,11 @@ describe("Agent Store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     resetMessageStorageForTests();
+    resetClientResourceLifecycle();
     vi.resetAllMocks();
+    vi.mocked(api.listProjects).mockResolvedValue([] as any);
+    vi.mocked(api.listProviders).mockResolvedValue([] as any);
+    vi.mocked(api.listProviderModels).mockResolvedValue([] as any);
   });
 
   it("should fetch agents", async () => {
@@ -188,7 +198,11 @@ describe("Provider Store", () => {
   beforeEach(() => {
     setActivePinia(createPinia());
     resetMessageStorageForTests();
+    resetClientResourceLifecycle();
     vi.resetAllMocks();
+    vi.mocked(api.listProjects).mockResolvedValue([] as any);
+    vi.mocked(api.listProviders).mockResolvedValue([] as any);
+    vi.mocked(api.listProviderModels).mockResolvedValue([] as any);
   });
 
   it("should fetch providers", async () => {
@@ -229,6 +243,7 @@ describe("Provider Store", () => {
 
   it("should manage models", async () => {
     const mockModels = [{ modelId: "m1", name: "Model 1" }];
+    vi.mocked(api.listProviders).mockResolvedValue([{ id: "p1", name: "Test" }] as any);
     vi.mocked(api.listProviderModels).mockResolvedValue(mockModels as any);
 
     const store = useProviderStore();

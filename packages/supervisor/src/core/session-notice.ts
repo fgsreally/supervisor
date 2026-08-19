@@ -7,7 +7,8 @@ import type { SQLiteSessionStorage } from "./session-storage.js";
  * Stored as `type: "custom"` so pi never includes it in the LLM context.
  */
 export const CUSTOM_MESSAGE_TYPE = "custom_message";
-export const SHADOW_ANALYSIS_MESSAGE_TYPE = "shadow_analysis";
+export const SHADOW_MESSAGE_TYPE = "shadow_message";
+export type ShadowMessageLevel = "error" | "warning" | "info";
 
 export function formatGitCommitCustomMessage(commit: { hash: string; message: string }): string {
   const shortHash = commit.hash.slice(0, 7);
@@ -31,6 +32,27 @@ export async function appendCustomMessage(
     type: "custom",
     customType,
     data: { text },
+  } as SessionTreeEntry;
+  await storage.appendEntry(entry);
+  return id;
+}
+
+export async function appendShadowMessage(
+  storage: Pick<SQLiteSessionStorage, "appendEntry" | "getLeafId" | "createEntryId">,
+  content: string,
+  level: ShadowMessageLevel,
+): Promise<string> {
+  const text = content.trim();
+  if (!text) throw new Error("shadow message content is required");
+  const id = await storage.createEntryId().catch(() => randomUUID());
+  const parentId = await storage.getLeafId();
+  const entry = {
+    id,
+    parentId,
+    timestamp: new Date().toISOString(),
+    type: "custom",
+    customType: SHADOW_MESSAGE_TYPE,
+    data: { text, level },
   } as SessionTreeEntry;
   await storage.appendEntry(entry);
   return id;

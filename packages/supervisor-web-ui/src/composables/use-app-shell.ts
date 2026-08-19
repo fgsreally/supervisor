@@ -1,4 +1,4 @@
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { createGlobalState } from "@vueuse/core";
 import type { MainTab } from "@/components/layout/ShellNav.vue";
@@ -13,6 +13,7 @@ import { idFromRoute, modelIdFromRoute, tabFromRoute } from "@/router";
 import { hasConfiguredSupervisorInstance } from "@/utils/mobile-server-config";
 import { providerToUI } from "@/utils/provider-ui";
 import { viewPreferences } from "@/utils/view-preferences";
+import { resetClientResourceLifecycle } from "@/utils/client-data";
 import { subscribeAgentUiMenus } from "@/api";
 
 type ProviderPage = "detail" | "add" | "model-add" | "model-edit";
@@ -154,6 +155,7 @@ export const useAppShell = createGlobalState(() => {
   watch(() => route.fullPath, applyRoute);
 
   async function onStartupReady() {
+    resetClientResourceLifecycle();
     if (await loadAppData()) {
       appReady.value = true;
       if (!stopAgentUiMenus) {
@@ -172,7 +174,8 @@ export const useAppShell = createGlobalState(() => {
     appDataLoaded = true;
     const initialTab = tabFromRoute(route);
     lastLoadedTab = initialTab;
-    return await loadTabData(initialTab)
+    return await preloadBaseData()
+      .then(() => loadTabData(initialTab))
       .then(() => {
         if (route.path === "/" || route.path === "") void router.replace("/chat");
         else applyRoute();
@@ -185,21 +188,24 @@ export const useAppShell = createGlobalState(() => {
       });
   }
 
+  async function preloadBaseData(): Promise<void> {
+    await Promise.allSettled([
+      sessionStore.fetchProjects(),
+      sessionStore.fetchSessions(),
+      agentStore.fetchAgents(),
+      providerStore.fetchProviders(),
+    ]);
+  }
+
   async function loadTabData(tab: MainTab): Promise<boolean> {
     try {
       if (tab === "chat") {
-        await Promise.all([
-          sessionStore.fetchProjects(),
-          sessionStore.fetchSessions(),
-          agentStore.fetchAgents(),
-        ]);
+        return true;
       } else if (tab === "contacts") {
-        await agentStore.fetchAgents();
         void agentStore.detectExternalAgents().catch(() => undefined);
       } else if (tab === "providers") {
-        await providerStore.fetchProviders();
-        if (!activeProviderId.value) activeProviderId.value = providerStore.providers[0]?.id ?? null;
-        if (activeProviderId.value) await providerStore.fetchModels(activeProviderId.value);
+        if (!activeProviderId.value)
+          activeProviderId.value = providerStore.providers[0]?.id ?? null;
       } else if (tab === "resources") {
         await resourceStore.fetchGlobalResources();
         if (!activeResourceId.value) {
@@ -453,7 +459,10 @@ export const useAppShell = createGlobalState(() => {
       await providerStore.fetchModels(activeProviderId.value);
       showUiMessage(t("provider.modelSaved"), "success");
     } catch (error) {
-      showUiMessage(error instanceof Error ? error.message : t("provider.modelSaveFailed"), "error");
+      showUiMessage(
+        error instanceof Error ? error.message : t("provider.modelSaveFailed"),
+        "error",
+      );
     } finally {
       modelEditorSaving.value = false;
     }
@@ -495,7 +504,9 @@ export const useAppShell = createGlobalState(() => {
     const wasAdd = providerPage.value === "add";
     providerPage.value = "detail";
     if (isMobile.value && wasAdd) mobilePage.value = "list";
-    void router.push(activeProviderId.value ? `/providers/${activeProviderId.value}` : "/providers");
+    void router.push(
+      activeProviderId.value ? `/providers/${activeProviderId.value}` : "/providers",
+    );
   }
 
   async function onProviderSaved(id: string) {

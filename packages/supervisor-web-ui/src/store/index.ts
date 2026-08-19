@@ -31,7 +31,7 @@ import {
   viewPreferences,
 } from "@/utils/view-preferences";
 import { createMessageStorage } from "@/utils/message-storage";
-import { loadClientResource, invalidateClientResource } from "@/utils/client-data";
+import { loadClientResource } from "@/utils/client-data";
 import { cacheKey, writeClientCache } from "@/utils/client-cache";
 import { translate as t } from "@/i18n";
 import {
@@ -98,12 +98,57 @@ export const useSessionStore = defineStore("session", () => {
   const projects = ref<Project[]>(listCache?.projects.map(projectFromListCache) ?? []);
   const currentSessionId = ref<string | null>(null);
   const messages = ref<Record<string, SessionTreeEntry[]>>({});
-  const messageCursors = ref<Record<string, { oldestRowId: number | null; newestRowId: number | null; hasMore: boolean }>>({});
+  const messageCursors = ref<
+    Record<string, { oldestRowId: number | null; newestRowId: number | null; hasMore: boolean }>
+  >({});
   /** Session list fetch error only — not shared with import / agent detect / chat ops. */
   const sessionsListError = ref<string | null>(null);
 
   function persistSessionListCache() {
     saveSessionListCache(sessions.value, projects.value);
+  }
+
+  function persistProjectSessionCache() {
+    void writeClientCache("project-session", {
+      projects: projects.value,
+      sessions: sessions.value,
+    });
+  }
+
+  function applyProjectSessionSnapshot(snapshot: api.ProjectSessionSnapshot) {
+    projects.value = sortByProjectPreference(snapshot.projects);
+    sessions.value = snapshot.sessions;
+    persistSessionListCache();
+  }
+
+  function upsertProject(project: Project) {
+    const index = projects.value.findIndex((item) => item.id === project.id);
+    if (index >= 0) projects.value[index] = project;
+    else projects.value.unshift(project);
+    persistSessionListCache();
+    persistProjectSessionCache();
+  }
+
+  function reorderProjects(next: Project[]) {
+    projects.value = next;
+    persistSessionListCache();
+    persistProjectSessionCache();
+  }
+
+  async function loadProjectSessionSnapshot() {
+    return loadClientResource<api.ProjectSessionSnapshot>({
+      key: "project-session",
+      cacheKey: "project-session",
+      groupKey: "project-session",
+      read: async () => {
+        const [projects, sessions] = await Promise.all([api.listProjects(), api.listSessions()]);
+        return { projects, sessions };
+      },
+      apply: applyProjectSessionSnapshot,
+      loading: (value) => {
+        root.loading.sessions = value;
+      },
+    });
   }
 
   // Getters
@@ -127,16 +172,9 @@ export const useSessionStore = defineStore("session", () => {
   async function fetchProjects() {
     root.clearError();
     try {
-      await loadClientResource<Project[]>({
-        key: "projects",
-        read: api.listProjects,
-        apply: (value) => {
-          projects.value = sortByProjectPreference(value);
-          persistSessionListCache();
-        },
-        loading: (value) => { root.loading.sessions = value; },
-      });
+      await loadProjectSessionSnapshot();
       persistSessionListCache();
+      return projects.value;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch projects");
       throw err;
@@ -147,11 +185,7 @@ export const useSessionStore = defineStore("session", () => {
     root.clearError();
     try {
       const project = await api.createProject(options);
-      const index = projects.value.findIndex((p) => p.id === project.id);
-      if (index >= 0) projects.value[index] = project;
-      else projects.value.unshift(project);
-      invalidateClientResource("projects");
-      persistSessionListCache();
+      upsertProject(project);
       return project;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create project");
@@ -163,14 +197,23 @@ export const useSessionStore = defineStore("session", () => {
     root.clearError();
     try {
       const project = await api.updateProject(id, options);
-      const index = projects.value.findIndex((p) => p.id === id);
-      if (index >= 0) projects.value[index] = project;
-      else projects.value.unshift(project);
-      invalidateClientResource("projects");
-      persistSessionListCache();
+      upsertProject(project);
       return project;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to update project");
+      throw err;
+    }
+  }
+
+  async function deleteProject(id: string, name: string) {
+    root.clearError();
+    try {
+      await api.deleteProject(id, name);
+      projects.value = projects.value.filter((project) => project.id !== id);
+      persistSessionListCache();
+      persistProjectSessionCache();
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to delete project");
       throw err;
     }
   }
@@ -191,16 +234,13 @@ export const useSessionStore = defineStore("session", () => {
       sessionsListError.value = null;
     }
     try {
-      await loadClientResource<Session[]>({
-        key: "sessions",
-        queryKey: hasQuery ? JSON.stringify(query) : undefined,
-        read: () => api.listSessions(hasQuery ? query : undefined),
-        apply: (value) => {
-          sessions.value = value;
-          if (!hasQuery) persistSessionListCache();
-        },
-        loading: (value) => { if (!quiet) root.loading.sessions = value; },
-      });
+      if (hasQuery) {
+        // Filtered lists are not part of the startup cache group.
+        const value = await api.listSessions(query);
+        sessions.value = value;
+      } else {
+        await loadProjectSessionSnapshot();
+      }
       sessionsListError.value = null;
       // Full list only: prune local message caches + persist slim list cache.
       if (!hasQuery) {
@@ -226,16 +266,9 @@ export const useSessionStore = defineStore("session", () => {
   async function fetchSession(id: string) {
     root.clearError();
     try {
-      const session = await loadClientResource<Session>({
-        key: "session",
-        queryKey: id,
-        read: () => api.getSession(id),
-        apply: (value) => {
-          const index = sessions.value.findIndex((s) => s.id === id);
-          if (index >= 0) sessions.value[index] = value;
-          else sessions.value.push(value);
-        },
-      });
+      await loadProjectSessionSnapshot();
+      const session = sessions.value.find((item) => item.id === id);
+      if (!session) throw new Error(`Session ${id} not found`);
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch session");
@@ -248,8 +281,8 @@ export const useSessionStore = defineStore("session", () => {
     try {
       const session = await api.createSession(options);
       sessions.value.unshift(session);
-      invalidateClientResource("sessions");
       persistSessionListCache();
+      persistProjectSessionCache();
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create session");
@@ -265,7 +298,11 @@ export const useSessionStore = defineStore("session", () => {
     root.clearError();
     try {
       const session = await api.importExternalSession(options);
-      await Promise.all([fetchSessions(), fetchProjects()]);
+      const index = sessions.value.findIndex((item) => item.id === session.id);
+      if (index >= 0) sessions.value[index] = session;
+      else sessions.value.unshift(session);
+      persistSessionListCache();
+      persistProjectSessionCache();
       return getSessionById.value(session.id) ?? session;
     } catch (err) {
       await fetchSessions({ silent: true }).catch(() => undefined);
@@ -317,9 +354,7 @@ export const useSessionStore = defineStore("session", () => {
 
     try {
       await api.deleteSession(id);
-      invalidateClientResource("sessions");
-      invalidateClientResource("session", id);
-      invalidateClientResource("messages", id);
+      persistProjectSessionCache();
       void createMessageStorage()
         .then(async (storage) => {
           for (const removedId of removedIds) {
@@ -356,8 +391,7 @@ export const useSessionStore = defineStore("session", () => {
       const updated = await api.updateSessionMeta(id, serverMeta);
       const session = getSessionById.value(id);
       if (session) Object.assign(session, updated);
-      invalidateClientResource("sessions");
-      invalidateClientResource("session", id);
+      persistProjectSessionCache();
       return updated;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to update session meta");
@@ -377,6 +411,7 @@ export const useSessionStore = defineStore("session", () => {
       const page = await loadClientResource<api.SessionMessagesPage>({
         key: "messages",
         queryKey: id,
+        groupKey: `messages:${id}`,
         read: () => api.getSessionMessagesPage(id, { limit: 80, view: "lite" }),
         apply: (value) => {
           const previous = messages.value[id] ?? [];
@@ -396,7 +431,9 @@ export const useSessionStore = defineStore("session", () => {
             hasMore: previousCursor ? previousCursor.hasMore && value.hasMore : value.hasMore,
           };
         },
-        loading: (value) => { root.loading.messages = value; },
+        loading: (value) => {
+          root.loading.messages = value;
+        },
       });
       return page.messages;
     } catch (err) {
@@ -464,6 +501,7 @@ export const useSessionStore = defineStore("session", () => {
       const session = await api.forkSession(id, options);
       sessions.value.unshift(session);
       persistSessionListCache();
+      persistProjectSessionCache();
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fork session");
@@ -477,6 +515,7 @@ export const useSessionStore = defineStore("session", () => {
       const session = await api.createBtwSession(id);
       sessions.value.unshift(session);
       persistSessionListCache();
+      persistProjectSessionCache();
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create BTW session");
@@ -488,7 +527,11 @@ export const useSessionStore = defineStore("session", () => {
     root.clearError();
     try {
       await api.killSession(id);
-      await fetchSession(id);
+      const session = await api.getSession(id);
+      const index = sessions.value.findIndex((item) => item.id === id);
+      if (index >= 0) sessions.value[index] = session;
+      else sessions.value.push(session);
+      persistProjectSessionCache();
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to kill session");
       throw err;
@@ -504,6 +547,7 @@ export const useSessionStore = defineStore("session", () => {
         sessions.value[index] = session;
       }
       persistSessionListCache();
+      persistProjectSessionCache();
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to complete session");
@@ -517,6 +561,8 @@ export const useSessionStore = defineStore("session", () => {
       const session = await api.syncSession(id);
       const index = sessions.value.findIndex((item) => item.id === id);
       if (index >= 0) sessions.value[index] = session;
+      persistSessionListCache();
+      persistProjectSessionCache();
       return session;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to sync session");
@@ -537,6 +583,7 @@ export const useSessionStore = defineStore("session", () => {
       if (index >= 0) {
         sessions.value[index] = session;
       }
+      persistProjectSessionCache();
       await fetchSessionMessages(id);
       return session;
     } catch (err) {
@@ -586,8 +633,11 @@ export const useSessionStore = defineStore("session", () => {
     groupedSessions,
     fetchProjects,
     fetchSessions,
+    upsertProject,
+    reorderProjects,
     createProject,
     updateProject,
+    deleteProject,
     fetchSession,
     createSession,
     importExternalSession,
@@ -621,6 +671,10 @@ export const useAgentStore = defineStore("agent", () => {
   const currentAgentId = ref<string | null>(null);
   const agentResources = ref<Record<string, api.AgentResources>>({});
   const uiMenus = ref<Record<string, api.UiMenuItem[]>>({});
+
+  function persistAgentsCache() {
+    void writeClientCache("agents", agents.value);
+  }
 
   function applyAgentUiMenus(agentId: string, menus: api.UiMenuItem[]) {
     uiMenus.value = { ...uiMenus.value, [agentId]: menus };
@@ -684,7 +738,9 @@ export const useAgentStore = defineStore("agent", () => {
           agents.value = value;
           for (const agent of value) ingestAgentUiMenus(agent);
         },
-        loading: (value) => { root.loading.agents = value; },
+        loading: (value) => {
+          root.loading.agents = value;
+        },
       });
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch agents");
@@ -700,7 +756,7 @@ export const useAgentStore = defineStore("agent", () => {
     try {
       agents.value = await api.detectExternalAgents();
       for (const agent of agents.value) ingestAgentUiMenus(agent);
-      invalidateClientResource("agents");
+      persistAgentsCache();
       return agents.value;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to detect external agents");
@@ -721,6 +777,7 @@ export const useAgentStore = defineStore("agent", () => {
         agents.value.push(agent);
       }
       ingestAgentUiMenus(agent);
+      persistAgentsCache();
       return agent;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to install external agent");
@@ -739,6 +796,7 @@ export const useAgentStore = defineStore("agent", () => {
         agents.value.push(result.agent);
       }
       ingestAgentUiMenus(result.agent);
+      persistAgentsCache();
       return result;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to repair external agent");
@@ -749,14 +807,9 @@ export const useAgentStore = defineStore("agent", () => {
   async function fetchAgent(id: string) {
     root.clearError();
     try {
-      const agent = await api.getAgent(id);
-      const index = agents.value.findIndex((a) => a.id === id);
-      if (index >= 0) {
-        agents.value[index] = agent;
-      } else {
-        agents.value.push(agent);
-      }
-      ingestAgentUiMenus(agent);
+      await fetchAgents();
+      const agent = agents.value.find((item) => item.id === id);
+      if (!agent) throw new Error(`Agent ${id} not found`);
       return agent;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch agent");
@@ -770,7 +823,7 @@ export const useAgentStore = defineStore("agent", () => {
       const agent = await api.createAgent(options);
       agents.value.push(agent);
       ingestAgentUiMenus(agent);
-      invalidateClientResource("agents");
+      persistAgentsCache();
       return agent;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create agent");
@@ -787,7 +840,7 @@ export const useAgentStore = defineStore("agent", () => {
         agents.value[index] = agent;
       }
       ingestAgentUiMenus(agent);
-      invalidateClientResource("agents");
+      persistAgentsCache();
       return agent;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to update agent");
@@ -804,7 +857,7 @@ export const useAgentStore = defineStore("agent", () => {
       const nextMenus = { ...uiMenus.value };
       delete nextMenus[id];
       uiMenus.value = nextMenus;
-      invalidateClientResource("agents");
+      persistAgentsCache();
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to delete agent");
       throw err;
@@ -818,8 +871,12 @@ export const useAgentStore = defineStore("agent", () => {
         key: "agent-resources",
         queryKey: `${id}:${cwd ?? ""}`,
         read: () => api.getAgentResources(id, cwd),
-        apply: (value) => { agentResources.value[id] = value; },
-        loading: (value) => { root.loading.resources = value; },
+        apply: (value) => {
+          agentResources.value[id] = value;
+        },
+        loading: (value) => {
+          root.loading.resources = value;
+        },
       });
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch agent resources");
@@ -939,6 +996,13 @@ export const useProviderStore = defineStore("provider", () => {
   const currentProviderId = ref<string | null>(null);
   const models = ref<Record<string, Model[]>>({});
 
+  function persistProviderModelCache() {
+    void writeClientCache("provider-model", {
+      providers: providers.value,
+      models: models.value,
+    });
+  }
+
   // Getters
   const getProviderById = computed(() => (id: string) => {
     return providers.value.find((p) => p.id === id);
@@ -952,16 +1016,40 @@ export const useProviderStore = defineStore("provider", () => {
     return currentProviderId.value ? (models.value[currentProviderId.value] ?? []) : [];
   });
 
+  function applyProviderModelSnapshot(snapshot: api.ProviderModelSnapshot) {
+    providers.value = snapshot.providers;
+    models.value = snapshot.models;
+  }
+
+  async function loadProviderModelSnapshot() {
+    return loadClientResource<api.ProviderModelSnapshot>({
+      key: "provider-model",
+      cacheKey: "provider-model",
+      groupKey: "provider-model",
+      read: async () => {
+        const providers = await api.listProviders();
+        const models = Object.fromEntries(
+          await Promise.all(
+            providers.map(
+              async (provider) => [provider.id, await api.listProviderModels(provider.id)] as const,
+            ),
+          ),
+        );
+        return { providers, models };
+      },
+      apply: applyProviderModelSnapshot,
+      loading: (value) => {
+        root.loading.providers = value;
+      },
+    });
+  }
+
   // Actions
   async function fetchProviders() {
     root.clearError();
     try {
-      await loadClientResource<Provider[]>({
-        key: "providers",
-        read: api.listProviders,
-        apply: (value) => { providers.value = value; },
-        loading: (value) => { root.loading.providers = value; },
-      });
+      await loadProviderModelSnapshot();
+      return providers.value;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch providers");
       throw err;
@@ -973,14 +1061,9 @@ export const useProviderStore = defineStore("provider", () => {
   async function fetchProvider(id: string) {
     root.clearError();
     try {
-      const provider = await api.getProvider(id);
-      const index = providers.value.findIndex((p) => p.id === id);
-      if (index >= 0) {
-        providers.value[index] = provider;
-      } else {
-        providers.value.push(provider);
-      }
-      invalidateClientResource("providers");
+      await loadProviderModelSnapshot();
+      const provider = providers.value.find((item) => item.id === id);
+      if (!provider) throw new Error(`Provider ${id} not found`);
       return provider;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch provider");
@@ -993,7 +1076,7 @@ export const useProviderStore = defineStore("provider", () => {
     try {
       const provider = await api.createProvider(options);
       providers.value.push(provider);
-      invalidateClientResource("providers");
+      persistProviderModelCache();
       return provider;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create provider");
@@ -1009,7 +1092,7 @@ export const useProviderStore = defineStore("provider", () => {
       if (index >= 0) {
         providers.value[index] = provider;
       }
-      invalidateClientResource("providers");
+      persistProviderModelCache();
       return provider;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to update provider");
@@ -1023,7 +1106,7 @@ export const useProviderStore = defineStore("provider", () => {
       await api.deleteProvider(id);
       providers.value = providers.value.filter((p) => p.id !== id);
       delete models.value[id];
-      invalidateClientResource("providers");
+      persistProviderModelCache();
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to delete provider");
       throw err;
@@ -1033,12 +1116,8 @@ export const useProviderStore = defineStore("provider", () => {
   async function fetchModels(providerId: string) {
     root.clearError();
     try {
-      return await loadClientResource<Model[]>({
-        key: "providers:models",
-        queryKey: providerId,
-        read: () => api.listProviderModels(providerId),
-        apply: (value) => { models.value[providerId] = value; },
-      });
+      await loadProviderModelSnapshot();
+      return models.value[providerId] ?? [];
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch models");
       throw err;
@@ -1051,6 +1130,7 @@ export const useProviderStore = defineStore("provider", () => {
       const model = await api.createProviderModel(providerId, options);
       if (!models.value[providerId]) models.value[providerId] = [];
       models.value[providerId].push(model);
+      persistProviderModelCache();
       return model;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to create model");
@@ -1067,6 +1147,7 @@ export const useProviderStore = defineStore("provider", () => {
       if (index >= 0) {
         list[index] = model;
       }
+      persistProviderModelCache();
       return model;
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to update model");
@@ -1082,6 +1163,7 @@ export const useProviderStore = defineStore("provider", () => {
       if (list) {
         models.value[providerId] = list.filter((m) => m.modelId !== modelId);
       }
+      persistProviderModelCache();
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to delete model");
       throw err;
@@ -1163,7 +1245,9 @@ export const useResourceStore = defineStore("resource", () => {
           globalResources.value = value;
           resourceItems.value = layerFromApi(value);
         },
-        loading: (value) => { root.loading.resources = value; },
+        loading: (value) => {
+          root.loading.resources = value;
+        },
       });
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch resources");

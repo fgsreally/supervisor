@@ -1,7 +1,12 @@
 import { createMessageStorage } from "./message-storage";
 import type { ClientCacheRecord } from "./message-storage/types";
 
-export type CacheReadResult<T> = { value: T; savedAt: number; syncedAt: number | null } | null;
+export type CacheReadResult<T> = {
+  value: T;
+  savedAt: number;
+  syncedAt: number | null;
+  fingerprint: string | null;
+} | null;
 
 // The API base is part of the scope so switching mobile Supervisor instances never mixes data.
 function cacheScope(): string {
@@ -12,10 +17,20 @@ function cacheScope(): string {
 export async function readClientCache<T>(cacheKey: string): Promise<CacheReadResult<T>> {
   const record = await (await createMessageStorage()).getClientCache(cacheScope(), cacheKey);
   if (!record) return null;
-  return { value: record.payload as T, savedAt: record.savedAt, syncedAt: record.syncedAt };
+  return {
+    value: record.payload as T,
+    savedAt: record.savedAt,
+    syncedAt: record.syncedAt,
+    fingerprint: record.fingerprint ?? null,
+  };
 }
 
-export async function writeClientCache<T>(cacheKey: string, value: T, syncedAt = Date.now()): Promise<void> {
+export async function writeClientCache<T>(
+  cacheKey: string,
+  value: T,
+  syncedAt = Date.now(),
+  fingerprint: string | null = null,
+): Promise<void> {
   const record: ClientCacheRecord = {
     scope: cacheScope(),
     cacheKey,
@@ -23,6 +38,7 @@ export async function writeClientCache<T>(cacheKey: string, value: T, syncedAt =
     payload: value,
     savedAt: Date.now(),
     syncedAt,
+    fingerprint,
   };
   await (await createMessageStorage()).putClientCache(record);
 }

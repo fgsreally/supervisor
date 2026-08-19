@@ -56,6 +56,8 @@
   "runtime.shadowSubmitInvalid": "Shadow submit_result 无效 [session={{id}}]",
   "runtime.shadowCompletionFailed": "Shadow 完成失败 [session={{id}}]：{{error}}",
   "runtime.shadowSnapshotFailed": "Shadow 快照提交失败 [session={{id}}]：{{error}}",
+  "runtime.shadowMessageFailed": "Shadow 消息保存失败 [session={{id}}]：{{error}}",
+  "runtime.shadowInterruptFailed": "Shadow 中断失败 [session={{id}}]：{{error}}",
   "runtime.externalProcessError": "[{{backend}}:{{id}}] {{error}}",
   "runtime.externalProcessFailed": "[{{backend}}:{{id}}] 进程错误：{{error}}",
   "runtime.externalUnsupportedMethod": "[acp:{{id}}] 不支持的扩展方法：{{method}}",

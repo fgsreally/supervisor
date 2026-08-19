@@ -1,43 +1,79 @@
 import * as api from "@/api";
 import { cacheKey, readClientCache, writeClientCache } from "./client-cache";
 
-type ResourceOptions<T> = {
+export type ResourceOptions<T> = {
   key: string;
   queryKey?: string;
+  cacheKey?: string;
+  groupKey?: string;
   read: () => Promise<T>;
   apply: (value: T) => void;
   loading?: (value: boolean) => void;
   onError?: (error: unknown) => void;
 };
 
-const inflight = new Map<string, Promise<void>>();
-const generations = new Map<string, number>();
-const retryCounts = new Map<string, number>();
-const invalidated = new Set<string>();
+// A resource group is refreshed once per loaded application lifecycle.
+const syncedGroups = new Set<string>();
+const inflight = new Map<string, Promise<unknown>>();
+const loads = new Map<string, Promise<unknown>>();
+const groupValues = new Map<string, unknown>();
 
-function identity(key: string, queryKey?: string): string {
-  return cacheKey(key, queryKey);
+export function resetClientResourceLifecycle(): void {
+  syncedGroups.clear();
+  inflight.clear();
+  loads.clear();
+  groupValues.clear();
+}
+
+function resourceIdentity<T>(options: ResourceOptions<T>): string {
+  return options.cacheKey ?? cacheKey(options.key, options.queryKey);
+}
+
+function groupIdentity<T>(options: ResourceOptions<T>): string {
+  return options.groupKey ?? resourceIdentity(options);
 }
 
 export async function loadClientResource<T>(options: ResourceOptions<T>): Promise<T> {
-  const id = identity(options.key, options.queryKey);
-  const generation = generations.get(id) ?? 0;
-  const cached = invalidated.has(id) ? null : await readClientCache<T>(id).catch(() => null);
+  const id = resourceIdentity(options);
+  const existing = loads.get(id);
+  if (existing) return existing as Promise<T>;
+
+  const task = loadClientResourceInternal(options);
+  loads.set(id, task);
+  try {
+    return await task;
+  } finally {
+    loads.delete(id);
+  }
+}
+
+async function loadClientResourceInternal<T>(options: ResourceOptions<T>): Promise<T> {
+  const id = resourceIdentity(options);
+  const cached = await readClientCache<T>(id).catch(() => null);
+
   if (cached) {
-    options.apply(cached.value);
+    if (!syncedGroups.has(groupIdentity(options))) options.apply(cached.value);
     options.loading?.(false);
-    void syncClientResource(options);
+    groupValues.set(groupIdentity(options), cached.value);
+    void syncClientResource(options, cached.fingerprint, cached.value).catch(() => undefined);
     return cached.value;
+  }
+
+  const group = groupIdentity(options);
+  if (syncedGroups.has(group) && groupValues.has(group)) {
+    return groupValues.get(group) as T;
   }
 
   options.loading?.(true);
   try {
+    const refreshed = await syncClientResource<T>(options);
+    if (refreshed !== undefined) return refreshed;
+
     const value = await options.read();
-    if ((generations.get(id) ?? 0) !== generation) return loadClientResource(options);
     options.apply(value);
     await writeClientCache(id, value);
-    invalidated.delete(id);
-    void syncClientResource(options);
+    groupValues.set(group, value);
+    syncedGroups.add(group);
     return value;
   } catch (error) {
     options.onError?.(error);
@@ -47,68 +83,72 @@ export async function loadClientResource<T>(options: ResourceOptions<T>): Promis
   }
 }
 
-export function syncClientResource<T>(options: ResourceOptions<T>): Promise<void> {
-  const id = identity(options.key, options.queryKey);
-  const existing = inflight.get(id);
-  if (existing) return existing;
-  // Keeps lightweight Store API mocks and older embedded UI bundles compatible.
+export function syncClientResource<T>(
+  options: ResourceOptions<T>,
+  cachedFingerprint: string | null = null,
+  cachedValue?: T,
+): Promise<T | undefined> {
+  const group = groupIdentity(options);
+  if (syncedGroups.has(group)) return Promise.resolve(undefined);
+
+  const existing = inflight.get(group);
+  if (existing) return existing as Promise<T | undefined>;
+
   const sync = (api as unknown as Record<string, unknown>).syncClientCache;
-  if (typeof sync !== "function") return Promise.resolve();
-  const generation = generations.get(id) ?? 0;
   const task = Promise.resolve(
-    (
-      sync as (
-        request: api.ClientCacheSyncRequest,
-      ) => Promise<api.ClientCacheSyncResponse> | undefined
-    ).call(api, { resources: [{ key: options.key, queryKey: options.queryKey }] }),
+    typeof sync === "function"
+      ? (
+          sync as (
+            request: api.ClientCacheSyncRequest,
+          ) => Promise<api.ClientCacheSyncResponse> | undefined
+        ).call(api, {
+          resources: [
+            { key: options.key, queryKey: options.queryKey, fingerprint: cachedFingerprint },
+          ],
+        })
+      : undefined,
   )
     .then(async (response) => {
-      if (!response) return;
-      const item = response.resources.find(
+      const item = response?.resources.find(
         (entry) => entry.key === options.key && entry.queryKey === options.queryKey,
       );
-      if (!item || item.status === "deleted" || item.data === undefined) return;
-      if ((generations.get(id) ?? 0) !== generation) return;
-      const value = item.data as T;
-      await writeClientCache(id, value, item.syncedAt);
-      options.apply(value);
-      invalidated.delete(id);
-      retryCounts.delete(id);
-    })
-    .catch(async (error) => {
-      try {
-        const value = await options.read();
-        if ((generations.get(id) ?? 0) !== generation) return;
-        await writeClientCache(id, value);
-        options.apply(value);
-        invalidated.delete(id);
-        retryCounts.delete(id);
-      } catch {
-        options.onError?.(error);
-        const retry = Math.min((retryCounts.get(id) ?? 0) + 1, 5);
-        retryCounts.set(id, retry);
-        globalThis.setTimeout(
-          () => {
-            void syncClientResource(options);
-          },
-          Math.min(30_000, 1_000 * 2 ** retry),
-        );
+      if (item?.status === "unchanged") {
+        if (cachedValue !== undefined) {
+          await writeClientCache(
+            resourceIdentity(options),
+            cachedValue,
+            item.syncedAt,
+            item.fingerprint,
+          );
+          groupValues.set(group, cachedValue);
+        }
+        syncedGroups.add(group);
+        return undefined;
       }
+      if (item?.status === "updated" && item.data !== undefined) {
+        const value = item.data as T;
+        await writeClientCache(resourceIdentity(options), value, item.syncedAt, item.fingerprint);
+        options.apply(value);
+        groupValues.set(group, value);
+        syncedGroups.add(group);
+        return value;
+      }
+
+      const value = await options.read();
+      options.apply(value);
+      await writeClientCache(resourceIdentity(options), value);
+      groupValues.set(group, value);
+      syncedGroups.add(group);
+      return value;
+    })
+    .catch((error) => {
+      options.onError?.(error);
+      throw error;
     })
     .finally(() => {
-      inflight.delete(id);
+      inflight.delete(group);
     });
-  inflight.set(id, task);
-  return task;
-}
 
-export function invalidateClientResource(key: string, queryKey?: string): void {
-  const id = identity(key, queryKey);
-  generations.set(id, (generations.get(id) ?? 0) + 1);
-  invalidated.add(id);
-}
-
-export function invalidateAndSyncClientResource<T>(options: ResourceOptions<T>): Promise<void> {
-  invalidateClientResource(options.key, options.queryKey);
-  return syncClientResource(options);
+  inflight.set(group, task);
+  return task as Promise<T | undefined>;
 }

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { appendCustomMessage, SHADOW_ANALYSIS_MESSAGE_TYPE } from "../src/core/session-notice.js";
+import { appendShadowMessage, SHADOW_MESSAGE_TYPE } from "../src/core/session-notice.js";
 
 describe("session custom notices", () => {
-  it("stores Shadow analysis as a type=custom entry", async () => {
+  it("stores leveled Shadow messages as type=custom entries", async () => {
     const entries: unknown[] = [];
     const storage = {
       createEntryId: async () => "entry-1",
@@ -12,12 +12,12 @@ describe("session custom notices", () => {
       },
     };
 
-    await appendCustomMessage(storage, "analysis", SHADOW_ANALYSIS_MESSAGE_TYPE);
+    await appendShadowMessage(storage, "analysis", "warning");
 
     expect(entries[0]).toMatchObject({
       type: "custom",
-      customType: "shadow_analysis",
-      data: { text: "analysis" },
+      customType: SHADOW_MESSAGE_TYPE,
+      data: { text: "analysis", level: "warning" },
     });
   });
 });

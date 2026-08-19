@@ -23,8 +23,7 @@
 
     <div
       v-if="(group.type === 'notice' || group.type === 'system') && group.content"
-      class="chat-date-divider"
-      style="background: var(--app-chat-message-bg)"
+      :class="noticeClass"
     >
       <span>{{ group.content }}</span>
     </div>
@@ -193,6 +192,11 @@ const messageRowClass = computed(() => {
   return isDisplayGroupInherited(props.group) ? `${pad} chat-row-inherited` : `${pad} chat-row`;
 });
 
+const noticeClass = computed(() => {
+  if (props.group.type !== "notice" || !props.group.level) return "chat-date-divider";
+  return `chat-date-divider shadow-notice shadow-notice--${props.group.level}`;
+});
+
 const userImages = computed(() => {
   if (props.group.type !== "message" || props.group.message?.role !== "user") return [];
   return messageImageParts(props.group.message.content);
@@ -226,6 +230,30 @@ const userFile = computed((): ChatUserFileAttachment | null => {
   display: flex;
   justify-content: center;
   padding: 10px 12px 4px;
+  background: var(--app-chat-message-bg);
+}
+
+.shadow-notice {
+  margin: 6px 16px;
+  border: 1px solid color-mix(in srgb, var(--app-accent) 35%, var(--app-border));
+  border-radius: 8px;
+}
+
+.shadow-notice--error {
+  color: var(--app-danger);
+  border-color: color-mix(in srgb, var(--app-danger) 42%, var(--app-border));
+  background: color-mix(in srgb, var(--app-danger) 10%, var(--app-chat-message-bg));
+}
+
+.shadow-notice--warning {
+  color: var(--app-warning);
+  border-color: color-mix(in srgb, var(--app-warning) 42%, var(--app-border));
+  background: color-mix(in srgb, var(--app-warning) 10%, var(--app-chat-message-bg));
+}
+
+.shadow-notice--info {
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent) 8%, var(--app-chat-message-bg));
 }
 
 .chat-date-divider span {

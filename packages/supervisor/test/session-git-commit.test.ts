@@ -11,9 +11,9 @@ import {
   getGitHead,
   getGitStatusPorcelain,
 } from "../src/utils/git.js";
-import { handleSessionLifecycleAgentEnd } from "../src/core/session-lifecycle.js";
-import { commitSessionChanges } from "../src/core/session-lifecycle.js";
-import type { SessionRuntime } from "../src/core/session-runtime.js";
+import { handleSessionLifecycleAgentEnd } from "../src/core/session/session-lifecycle.js";
+import { commitSessionChanges } from "../src/core/session/session-lifecycle.js";
+import type { SessionRuntime } from "../src/core/session/session-runtime.js";
 
 let db: SupervisorDb;
 let tmpDir: string;

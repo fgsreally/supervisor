@@ -33,13 +33,16 @@ import type {
   ToolResultHandler,
   ExtensionContext,
 } from "../index.js";
-import { getProjectDir, getSessionDir } from "../../core/session-files.js";
-import type { SessionManager } from "../../core/session-manager.js";
-import type { ManagedSessionRuntime } from "../../core/managed-session-runtime.js";
+import { getProjectDir, getSessionDir } from "../../core/session/session-files.js";
+import type { SessionManager } from "../../core/session/session-manager.js";
+import type { ManagedSessionRuntime } from "../../core/session/managed-session-runtime.js";
 import type { AgentResource } from "../../agent/runtime-resources.js";
-import { readHarnessTools } from "../../core/harness-compat.js";
-import { touchSessionActivity, applySessionActivityPolicy } from "../../core/session-activity.js";
-import { runWatson } from "../../core/watson.js";
+import { readHarnessTools } from "../../core/agent/harness-compat.js";
+import {
+  touchSessionActivity,
+  applySessionActivityPolicy,
+} from "../../core/session/session-activity.js";
+import { runWatson } from "../../core/agent/watson.js";
 import type {
   SessionTaskInfo,
   SessionTodoInfo,
@@ -491,9 +494,7 @@ export class Context {
               tools_preset: data.toolsPreset,
               home_dir: data.homeDir,
               is_builtin: data.isBuiltin ? 1 : 0,
-              external_config: data.externalConfig
-                ? JSON.stringify(data.externalConfig)
-                : null,
+              external_config: data.externalConfig ? JSON.stringify(data.externalConfig) : null,
               permission_rules: JSON.stringify(data.permissionRules),
             });
             const { meta: _meta, ...resultData } = current;
@@ -509,8 +510,7 @@ export class Context {
               system_prompt: patch.systemPrompt,
               tools_preset: patch.toolsPreset,
               home_dir: patch.homeDir,
-              is_builtin:
-                patch.isBuiltin === undefined ? undefined : patch.isBuiltin ? 1 : 0,
+              is_builtin: patch.isBuiltin === undefined ? undefined : patch.isBuiltin ? 1 : 0,
               external_config:
                 patch.externalConfig === undefined
                   ? undefined
@@ -630,7 +630,8 @@ export class Context {
         return deps.getSessionResultSummary(targetSessionId, { maxChars: options?.maxChars });
       },
       finish: (targetSessionId) => deps.finishSession(targetSessionId ?? session.id),
-      checkpoint: (label) => sessionManager.createCheckpoint(session.id, label ? { label } : undefined),
+      checkpoint: (label) =>
+        sessionManager.createCheckpoint(session.id, label ? { label } : undefined),
       rewindToEntry: async (entryId) => {
         await sessionManager.rewindToEntry(session.id, entryId);
       },
@@ -921,32 +922,84 @@ export class ContextSession {
   get id(): number {
     return this.options.record.id;
   }
-  get projectId() { return this.options.record.projectId; }
-  get parentId() { return this.options.record.parentId; }
-  get status() { return this.options.record.status; }
-  get thinkingLevel() { return this.options.record.thinkingLevel; }
-  get leafId() { return this.options.record.leafId; }
-  get agentId() { return this.options.record.agentId; }
-  get spawnType() { return this.options.record.spawnType; }
-  get creationMethod() { return this.options.record.creationMethod; }
-  get title() { return this.options.record.title; }
-  get systemPrompt() { return this.options.record.systemPrompt; }
-  get avatar() { return this.options.record.avatar; }
-  get isBuiltin() { return this.options.record.isBuiltin; }
-  get pinned() { return this.options.record.pinned; }
-  get muted() { return this.options.record.muted; }
-  get unread() { return this.options.record.unread; }
-  get externalSessionId() { return this.options.record.externalSessionId; }
-  get errorMsg() { return this.options.record.errorMsg; }
-  get stage() { return this.options.record.stage; }
-  get shadowEnabled() { return this.options.record.shadowEnabled; }
-  get createdAt() { return this.options.record.createdAt; }
-  get lastActiveAt() { return this.options.record.lastActiveAt; }
-  get agent() { return this.options.agent; }
-  get data() { return this.options.data; }
-  get meta() { return this.options.meta; }
-  setMeta(meta: Record<string, unknown>) { return this.options.meta.set(meta); }
-  patchMeta(patch: Record<string, unknown>) { return this.options.meta.patch(patch); }
+  get projectId() {
+    return this.options.record.projectId;
+  }
+  get parentId() {
+    return this.options.record.parentId;
+  }
+  get status() {
+    return this.options.record.status;
+  }
+  get thinkingLevel() {
+    return this.options.record.thinkingLevel;
+  }
+  get leafId() {
+    return this.options.record.leafId;
+  }
+  get agentId() {
+    return this.options.record.agentId;
+  }
+  get spawnType() {
+    return this.options.record.spawnType;
+  }
+  get creationMethod() {
+    return this.options.record.creationMethod;
+  }
+  get title() {
+    return this.options.record.title;
+  }
+  get systemPrompt() {
+    return this.options.record.systemPrompt;
+  }
+  get avatar() {
+    return this.options.record.avatar;
+  }
+  get isBuiltin() {
+    return this.options.record.isBuiltin;
+  }
+  get pinned() {
+    return this.options.record.pinned;
+  }
+  get muted() {
+    return this.options.record.muted;
+  }
+  get unread() {
+    return this.options.record.unread;
+  }
+  get externalSessionId() {
+    return this.options.record.externalSessionId;
+  }
+  get errorMsg() {
+    return this.options.record.errorMsg;
+  }
+  get stage() {
+    return this.options.record.stage;
+  }
+  get shadowEnabled() {
+    return this.options.record.shadowEnabled;
+  }
+  get createdAt() {
+    return this.options.record.createdAt;
+  }
+  get lastActiveAt() {
+    return this.options.record.lastActiveAt;
+  }
+  get agent() {
+    return this.options.agent;
+  }
+  get data() {
+    return this.options.data;
+  }
+  get meta() {
+    return this.options.meta;
+  }
+  setMeta(meta: Record<string, unknown>) {
+    return this.options.meta.set(meta);
+  }
+  patchMeta(patch: Record<string, unknown>) {
+    return this.options.meta.patch(patch);
+  }
 
   get cwd(): string {
     return this.options.getCwd();
@@ -1092,8 +1145,12 @@ export class ContextSession {
 export class ContextAgent {
   constructor(private readonly options: ContextAgentOptions) {}
 
-  get data() { return this.options.data; }
-  get meta() { return this.options.meta; }
+  get data() {
+    return this.options.data;
+  }
+  get meta() {
+    return this.options.meta;
+  }
 
   get id(): number {
     return this.options.id;

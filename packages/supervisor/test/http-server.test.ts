@@ -181,7 +181,7 @@ describe("supervisor: HTTP server", () => {
       executionMode: "background",
       capabilities: ["cancel"],
     });
-    const { upsertSessionTimer } = await import("../src/core/session-timers.js");
+    const { upsertSessionTimer } = await import("../src/core/session/session-timers.js");
     upsertSessionTimer(manager.db, sessionId, {
       id: "timer1",
       prompt: "continue",
@@ -201,9 +201,7 @@ describe("supervisor: HTTP server", () => {
     const timers = (await (await req("GET", `/sessions/${id}/timers`)).json()) as {
       timers: Array<{ kind: string; prompt: string }>;
     };
-    expect(timers.timers).toEqual([
-      expect.objectContaining({ kind: "timer", prompt: "continue" }),
-    ]);
+    expect(timers.timers).toEqual([expect.objectContaining({ kind: "timer", prompt: "continue" })]);
 
     const cancelled = await req("DELETE", `/sessions/${id}/shells/${job.id}`);
     expect(cancelled.status).toBe(200);

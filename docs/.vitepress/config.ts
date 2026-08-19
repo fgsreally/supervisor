@@ -33,6 +33,7 @@ export default defineConfig({
             { text: "数据库结构", link: "/supervisor/schema-reference" },
             { text: "Pi 管理助手", link: "/supervisor/intro-assistant" },
             { text: "会话管理", link: "/supervisor/session" },
+            { text: "Session 专属文件与产物", link: "/supervisor/session-artifacts" },
             { text: "Job", link: "/supervisor/jobs" },
             { text: "工作流", link: "/supervisor/workflow" },
             { text: "子代理", link: "/supervisor/subagents" },

@@ -377,6 +377,9 @@ describe("supervisor: SupervisorDb", () => {
       "level",
       "origin_msg",
       "images",
+      "display_message",
+      "pasted_texts",
+      "attachments",
       "enqueued_at",
     ]);
   });

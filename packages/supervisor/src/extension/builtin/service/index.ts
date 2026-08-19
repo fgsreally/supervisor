@@ -6,7 +6,7 @@ import {
   parseProjectServicesMeta,
   type SessionService,
   type SessionServicesMeta,
-} from "../../../core/project-runtime.js";
+} from "../../../core/project/project-runtime.js";
 import {
   hasRegisteredServices,
   isSessionServiceProcessAlive,
@@ -14,19 +14,19 @@ import {
   startRegisteredSessionServices,
   stopRegisteredApp,
   stopRegisteredSessionServices,
-} from "../../../core/session-registered-services.js";
+} from "../../../core/session/session-registered-services.js";
 import {
   SESSION_SERVICE_SLEEP_MS,
   SESSION_SERVICE_SLEEP_TICK_MS,
   computeServiceSleepAt,
-} from "../../../core/session-service-sleep.js";
+} from "../../../core/session/session-service-sleep.js";
 import {
   collectReservedServicePorts,
   getSessionServicesStatus,
   parseSessionServicesMeta,
   stoppedSessionServicesMeta,
-} from "../../../core/session-services.js";
-import type { SessionServiceJobHost } from "../../../core/session-registered-services.js";
+} from "../../../core/session/session-services.js";
+import type { SessionServiceJobHost } from "../../../core/session/session-registered-services.js";
 import { startBackgroundBashSession } from "../../../tools/bash/background.js";
 import {
   findFreePortInRange,
@@ -326,10 +326,7 @@ const projectServicesExtension: ExtensionDefinition = {
     const setupServices = await readServices();
     if (setupServices) {
       const lastActive = setupServices.lastActiveAt ?? Date.now();
-      if (
-        isServiceActive(setupServices) &&
-        Date.now() - lastActive >= SESSION_SERVICE_SLEEP_MS
-      ) {
+      if (isServiceActive(setupServices) && Date.now() - lastActive >= SESSION_SERVICE_SLEEP_MS) {
         await writeServices({
           ...setupServices,
           pid: null,
@@ -445,9 +442,9 @@ const projectServicesExtension: ExtensionDefinition = {
           sessionId,
           cwd: cwd(),
           services: next,
-            app,
-            jobs,
-            runBackground,
+          app,
+          jobs,
+          runBackground,
         });
         return started;
       };
@@ -486,10 +483,10 @@ const projectServicesExtension: ExtensionDefinition = {
               sessionId,
               cwd: cwd(),
               services: pending,
-                jobs,
-                skipInstall: false,
-                lastActiveAtMs: Date.now(),
-                runBackground,
+              jobs,
+              skipInstall: false,
+              lastActiveAtMs: Date.now(),
+              runBackground,
             });
             await writeServices(startedAll);
             const summary = (startedAll.services ?? [])
@@ -548,10 +545,10 @@ const projectServicesExtension: ExtensionDefinition = {
             sessionId,
             cwd: cwd(),
             services: pending,
-              jobs,
-              skipInstall: false,
-              lastActiveAtMs: Date.now(),
-              runBackground,
+            jobs,
+            skipInstall: false,
+            lastActiveAtMs: Date.now(),
+            runBackground,
           });
           await writeServices(startedAll);
           return applyText(

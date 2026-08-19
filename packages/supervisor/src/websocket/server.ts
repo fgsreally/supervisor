@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { WebSocket, type RawData } from "ws";
-import type { SessionManager } from "../core/session-manager.js";
-import type { SessionPromptImage } from "../core/session-media.js";
+import type { SessionManager } from "../core/session/session-manager.js";
+import type { SessionPromptImage } from "../core/session/session-media.js";
+import type { SessionPromptAttachment } from "../core/session/session-pasted-text.js";
 import {
   buildPreviewUpstreamUrl,
   resolveSessionPreviewTarget,
-} from "../core/session-preview-proxy.js";
+} from "../core/session/session-preview-proxy.js";
 import { decryptApiKey } from "../utils/encrypt.js";
 import { formatUnknownError } from "../utils/format-error.js";
 import {
@@ -44,6 +45,8 @@ interface ClientMessage {
   sessionId?: number | string;
   message?: string;
   images?: SessionPromptImage[];
+  pastedTexts?: Array<{ id: string; text: string }>;
+  attachments?: SessionPromptAttachment[];
   payload?: Record<string, unknown>;
 }
 
@@ -617,6 +620,16 @@ function handleSessionMessage(
       : Array.isArray(message.payload?.images)
         ? (message.payload.images as SessionPromptImage[])
         : undefined;
+    const pastedTexts = Array.isArray(message.pastedTexts)
+      ? message.pastedTexts
+      : Array.isArray(message.payload?.pastedTexts)
+        ? (message.payload.pastedTexts as Array<{ id: string; text: string }>)
+        : undefined;
+    const attachments = Array.isArray(message.attachments)
+      ? message.attachments
+      : Array.isArray(message.payload?.attachments)
+        ? (message.payload.attachments as SessionPromptAttachment[])
+        : undefined;
 
     let promptUnsub = () => {};
     let finished = false;
@@ -636,7 +649,7 @@ function handleSessionMessage(
 
     sendJson(socket, { id: message.id, channel: "session", type: "started", sessionId });
     void manager
-      .submitSessionInput(sessionId, { message: text, images })
+      .submitSessionInput(sessionId, { message: text, images, pastedTexts, attachments })
       .then((disposition) => {
         if (disposition === "queued") {
           sendJson(socket, { id: message.id, channel: "session", type: "queued", sessionId });
@@ -736,10 +749,12 @@ export function registerWebSocketRoutes(
       const session = sessionId == null ? undefined : manager?.get(sessionId);
       if (!session) return new Response("Preview not found", { status: 404 });
     },
-    open(socket: ClientSocket & {
-      raw: object;
-      data: { params: Record<string, string>; query: Record<string, string>; request: Request };
-    }) {
+    open(
+      socket: ClientSocket & {
+        raw: object;
+        data: { params: Record<string, string>; query: Record<string, string>; request: Request };
+      },
+    ) {
       const sessionId = parseSessionId(socket.data.params.id);
       const session = sessionId == null ? undefined : manager?.get(sessionId);
       if (!session) {

@@ -392,6 +392,12 @@ describe("extension runtime events", () => {
     expect(first.isError).toBeFalsy();
     expect(second.content).toEqual([{ type: "text", text: "42" }]);
     expect(second.details).toMatchObject({ language: "js", runtimeDir: join(sessionDir, "eval") });
+    const env = await runtime.executeTool(
+      "eval",
+      { language: "js", code: "console.log(process.env.SV_SESSION_DIR); undefined" },
+      { ...executionContext, toolCallId: "eval-env" },
+    );
+    expect(env.content).toEqual([{ type: "text", text: sessionDir }]);
     await runtime.unload("eval");
   });
 

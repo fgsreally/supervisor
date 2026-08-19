@@ -3,11 +3,11 @@ import { join } from "node:path";
 import { ensureAgentHome, getAgentHomeDir } from "../agent-paths.js";
 import type { SupervisorDb } from "../../db/db.js";
 import type { Agent } from "../../types.js";
-import type { SessionManager } from "../../core/session-manager.js";
+import type { SessionManager } from "../../core/session/session-manager.js";
 import { getGlobalSkillsDirectory } from "../skill-resource.js";
 import { loadPromptTemplate } from "../../core/resource/system-prompts.js";
 import { loadBuiltinAgentPrompt, loadPackagedAgentPrompt } from "./prompts.js";
-import { parseSessionMeta } from "../../core/session-fields.js";
+import { parseSessionMeta } from "../../core/session/session-fields.js";
 import {
   ensureAgentBuiltinExtensionBindings,
   ensureBuiltinExtensionResources,

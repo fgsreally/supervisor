@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SupervisorDb } from "../src/db/db.js";
-import { scheduleReadyHomeTasks } from "../src/core/home-task-scheduler.js";
+import { scheduleReadyHomeTasks } from "../src/core/tasks/home-task-scheduler.js";
 
 let db: SupervisorDb;
 let tmpDir: string;

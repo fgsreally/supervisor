@@ -3,7 +3,7 @@ import {
   handleAgentEventForTurnFiles,
   normalizeFilePath,
   TurnFileTracker,
-} from "../src/core/turn-file-tracker.js";
+} from "../src/core/session/turn-file-tracker.js";
 
 describe("supervisor: TurnFileTracker", () => {
   it("normalizeFilePath returns relative path under cwd", () => {

@@ -4,7 +4,7 @@ import {
   sessionBranchName,
   sessionWorktreePath,
 } from "../src/utils/git.js";
-import { isDefaultSessionName } from "../src/core/session-lifecycle.js";
+import { isDefaultSessionName } from "../src/core/session/session-lifecycle.js";
 
 describe("supervisor: git-worktree helpers", () => {
   it("sessionBranchName uses short session id", () => {

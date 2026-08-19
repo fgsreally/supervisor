@@ -625,6 +625,7 @@ import {
   mergeStreamingToolsIntoPersistedEntries,
   sessionTreeToChatEntries,
 } from "../utils/session-entries";
+import { buildOptimisticUserParts } from "../utils/user-prompt";
 import {
   buildToolModal,
   buildBashModal,
@@ -1336,8 +1337,18 @@ async function editQueuedInput(input: api.QueuedSessionInput) {
   queuedActionBusyId.value = input.id;
   try {
     await api.cancelQueuedSessionInput(props.session.id, input.id);
-    const next = [input.message.trim(), inputText.value.trim()].filter(Boolean).join("\n\n");
+    const next = [input.displayMessage ?? input.message, inputText.value.trim()]
+      .filter(Boolean)
+      .join("\n\n");
     inputText.value = next;
+    inputPanelRef.value?.restorePastedTexts(
+      (input.pastedTexts ?? []).map((item) => ({
+        id: item.id,
+        text: item.text,
+        chars: item.chars ?? Array.from(item.text).length,
+      })),
+      input.attachments ?? [],
+    );
     await refreshQueuedInputs();
     await nextTick(() => inputPanelRef.value?.focus());
   } catch (error) {
@@ -2669,7 +2680,12 @@ async function reconcileStreamingWithServer() {
   void sessionStore.fetchSessions();
 }
 
-async function sendStreamReply(userText: string, images: ChatSendPayload["images"]) {
+async function sendStreamReply(
+  userText: string,
+  images: ChatSendPayload["images"],
+  pastedTexts: ChatSendPayload["pastedTexts"],
+  attachments: ChatSendPayload["attachments"],
+) {
   const assistantId = `stream-${Date.now()}`;
   streamingAssistantId.value = assistantId;
   isStreaming.value = true;
@@ -2749,21 +2765,36 @@ async function sendStreamReply(userText: string, images: ChatSendPayload["images
       });
     },
     imagePayload.length ? imagePayload : undefined,
+    pastedTexts.length ? pastedTexts.map(({ id, text }) => ({ id, text })) : undefined,
+    attachments.length ? attachments : undefined,
   );
 }
 
 const sendMessage = async (payload: ChatSendPayload) => {
   const text = payload.text.trim();
-  if ((!text && !payload.images.length) || inputDisabled.value || isInitializing.value) return;
+  if (
+    (!text && !payload.images.length && !payload.attachments.length) ||
+    inputDisabled.value ||
+    isInitializing.value
+  )
+    return;
   suggestedQuestions.value = [];
 
-  if (!payload.images.length && externalCommandHostRef.value?.handleCommand(text)) {
+  if (
+    !payload.images.length &&
+    !payload.pastedTexts.length &&
+    !payload.attachments.length &&
+    externalCommandHostRef.value?.handleCommand(text)
+  ) {
     inputText.value = "";
     inputPanelRef.value?.clearAfterSend();
     return;
   }
 
-  const slash = !payload.images.length ? /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text) : null;
+  const slash =
+    !payload.images.length && !payload.pastedTexts.length && !payload.attachments.length
+      ? /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(text)
+      : null;
   if (slash) {
     const commands = await api.getSessionCommands(props.session.id).catch(() => []);
     const commandName = slash[1]!.toLowerCase();
@@ -2800,7 +2831,13 @@ const sendMessage = async (payload: ChatSendPayload) => {
       name: image.name,
     }));
     void api
-      .followUpSession(props.session.id, text, images)
+      .followUpSession(
+        props.session.id,
+        text,
+        images,
+        payload.pastedTexts.map(({ id, text: pastedText }) => ({ id, text: pastedText })),
+        payload.attachments,
+      )
       .then(() => refreshQueuedInputs())
       .catch((error) => {
         console.error("Send during streaming failed:", error);
@@ -2810,9 +2847,16 @@ const sendMessage = async (payload: ChatSendPayload) => {
     return;
   }
   const userEntry = createUserChatEntry(Date.now().toString(), text || " ");
+  if (userEntry.type === "message" && (payload.pastedTexts.length || payload.attachments.length)) {
+    userEntry.message.content = buildOptimisticUserParts(
+      text || " ",
+      payload.pastedTexts,
+      payload.attachments,
+    );
+  }
   chatEntries.value.push(userEntry);
   void scrollToBottom();
-  void sendStreamReply(text, payload.images);
+  void sendStreamReply(text, payload.images, payload.pastedTexts, payload.attachments);
 };
 
 async function executeCustomSlash(name: string) {

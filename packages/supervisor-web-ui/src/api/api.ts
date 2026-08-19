@@ -1625,6 +1625,8 @@ export function promptSession(
   onError?: (error: Error) => void,
   onComplete?: () => void,
   images?: PromptImageInput[],
+  pastedTexts?: Array<{ id: string; text: string }>,
+  attachments?: SessionAttachmentInput[],
 ): () => void {
   const abortController = new AbortController();
   let ws: WebSocket | null = null;
@@ -1686,6 +1688,8 @@ export function promptSession(
               sessionId: id,
               message,
               images: images?.length ? images : undefined,
+              pastedTexts: pastedTexts?.length ? pastedTexts : undefined,
+              attachments: attachments?.length ? attachments : undefined,
             }),
           );
         });
@@ -1701,6 +1705,8 @@ export function promptSession(
           body: JSON.stringify({
             message,
             images: images?.length ? images : undefined,
+            pastedTexts: pastedTexts?.length ? pastedTexts : undefined,
+            attachments: attachments?.length ? attachments : undefined,
           }),
           signal: abortController.signal,
         }),
@@ -1778,16 +1784,26 @@ export interface QueuedSessionInput {
   source: string | null;
   enqueuedAt: number;
   images?: PromptImageInput[];
+  displayMessage?: string;
+  pastedTexts?: Array<{ id: string; text: string; chars?: number }>;
+  attachments?: SessionAttachmentInput[];
 }
 
 export async function followUpSession(
   id: string,
   message: string,
   images?: PromptImageInput[],
+  pastedTexts?: Array<{ id: string; text: string }>,
+  attachments?: SessionAttachmentInput[],
 ): Promise<{ ok: boolean; disposition: SessionInputDisposition }> {
   return postJson<{ ok: boolean; disposition: SessionInputDisposition }>(
     `/sessions/${id}/follow-up`,
-    { message, images },
+    {
+      message,
+      images,
+      pastedTexts: pastedTexts?.length ? pastedTexts : undefined,
+      attachments: attachments?.length ? attachments : undefined,
+    },
   );
 }
 
@@ -2900,6 +2916,14 @@ export interface PromptImageInput {
   name?: string;
 }
 
+export interface SessionAttachmentInput {
+  id: string;
+  name: string;
+  path: string;
+  mimeType: string;
+  size: number;
+}
+
 export async function uploadSessionMedia(sessionId: string, file: File): Promise<PromptImageInput> {
   const body = new FormData();
   body.append("file", file, file.name || "image.png");
@@ -2920,6 +2944,23 @@ export async function uploadSessionMedia(sessionId: string, file: File): Promise
     mimeType: json.mimeType,
     name: json.name,
   };
+}
+
+export async function uploadSessionAttachment(
+  sessionId: string,
+  file: File,
+): Promise<SessionAttachmentInput> {
+  const body = new FormData();
+  body.append("file", file, file.name || "attachment");
+  const res = await fetch(
+    `${getApiBase()}/sessions/${encodeURIComponent(sessionId)}/attachments`,
+    withAuth({ method: "POST", body }),
+  );
+  if (!res.ok) {
+    const err = await res.text().catch(() => "upload failed");
+    throw new Error(`HTTP ${res.status}: ${err}`);
+  }
+  return (await res.json()) as SessionAttachmentInput;
 }
 
 export function sessionMediaUrl(sessionId: string, mediaId: string): string {

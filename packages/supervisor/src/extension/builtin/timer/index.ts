@@ -4,7 +4,7 @@ import {
   newSessionTimerId,
   parseSessionTimers,
   type SessionTimer,
-} from "../../../core/session-timers.js";
+} from "../../../core/session/session-timers.js";
 
 const MAX_TIMERS = 50;
 const MAX_DELAY_MS = 2_147_000_000;

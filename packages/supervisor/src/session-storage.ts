@@ -1,1 +1,1 @@
-export * from "./core/session-storage.js";
+export * from "./core/session/session-storage.js";

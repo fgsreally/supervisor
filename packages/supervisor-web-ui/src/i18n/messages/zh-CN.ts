@@ -125,6 +125,7 @@ const messages: TranslationMessages = {
   "chat.header.cost": "当前 Session 累计模型费用",
   "chat.header.menu": "聊天信息",
   "chat.input.uploadImage": "上传图片",
+  "chat.input.uploadAttachment": "上传附件",
   "chat.input.shadowWorking": "影子代理工作中",
   "chat.input.btw": "顺便问一下",
   "chat.input.interrupt": "打断当前会话",

@@ -46,6 +46,24 @@ export interface ChatImagePart {
   missing?: boolean;
 }
 
+export interface ChatPastedTextPart {
+  type: "pasted_text";
+  id: string;
+  chars: number;
+  mode: "inline" | "attachment";
+  text?: string;
+  path?: string;
+}
+
+export interface ChatAttachmentPart {
+  type: "attachment";
+  id: string;
+  name: string;
+  path: string;
+  mimeType: string;
+  size: number;
+}
+
 export interface ChatUserFileAttachment {
   type: "file";
   name: string;
@@ -56,7 +74,7 @@ export interface ChatUserFileAttachment {
 export type ChatUserMessageContent =
   | string
   | ChatUserFileAttachment
-  | Array<ChatTextPart | ChatImagePart>;
+  | Array<ChatTextPart | ChatImagePart | ChatPastedTextPart | ChatAttachmentPart>;
 
 export type ChatCompactionEntry = ChatEntryBase & {
   id: string;

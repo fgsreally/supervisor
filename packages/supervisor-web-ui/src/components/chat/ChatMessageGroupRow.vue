@@ -54,6 +54,8 @@
         :session-id="sessionId"
         :text="userText"
         :images="userImages"
+        :pasted-texts="userPastedTexts"
+        :attachments="userAttachments"
         :file="userFile"
         :time-label="timeLabel"
         :search-hit="searchHit"
@@ -132,6 +134,7 @@ import {
   messageTextContent,
   stripImagePlaceholders,
 } from "@/utils/message-content";
+import { attachmentUserPromptParts, pastedUserPromptParts } from "@/utils/user-prompt";
 import UserMessageRow from "./UserMessageRow.vue";
 import InjectedAgentMessageRow from "./InjectedAgentMessageRow.vue";
 import AssistantMessageGroup from "./AssistantMessageGroup.vue";
@@ -200,6 +203,16 @@ const noticeClass = computed(() => {
 const userImages = computed(() => {
   if (props.group.type !== "message" || props.group.message?.role !== "user") return [];
   return messageImageParts(props.group.message.content);
+});
+
+const userPastedTexts = computed(() => {
+  if (props.group.type !== "message" || props.group.message?.role !== "user") return [];
+  return pastedUserPromptParts(props.group.message.content);
+});
+
+const userAttachments = computed(() => {
+  if (props.group.type !== "message" || props.group.message?.role !== "user") return [];
+  return attachmentUserPromptParts(props.group.message.content);
 });
 
 const userText = computed(() => {

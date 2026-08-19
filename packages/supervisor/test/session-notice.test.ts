@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { appendShadowMessage, SHADOW_MESSAGE_TYPE } from "../src/core/session-notice.js";
+import { appendShadowMessage, SHADOW_MESSAGE_TYPE } from "../src/core/session/session-notice.js";
 
 describe("session custom notices", () => {
   it("stores leveled Shadow messages as type=custom entries", async () => {

@@ -1,6 +1,6 @@
 import type { AgentTool, SessionMetadata, SessionTreeEntry } from "@earendil-works/pi-agent-core";
-import type { SessionBranchType } from "./core/session-history.js";
-import type { AgentPermissionRules } from "./core/agent-permissions.js";
+import type { SessionBranchType } from "./core/session/session-history.js";
+import type { AgentPermissionRules } from "./core/agent/agent-permissions.js";
 import type { ApiProtocol } from "./config/api-protocol.js";
 
 /** Runtime shape of SQLiteSessionStorage.getMetadata() in supervisor. */

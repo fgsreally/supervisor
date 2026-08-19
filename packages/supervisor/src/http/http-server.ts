@@ -9,18 +9,20 @@ import { t } from "elysia";
 import { getSupervisorAgentsRoot, isBuiltinAgent } from "../agent/index.js";
 import { normalizeApiProtocol } from "../config/api-protocol.js";
 import type { ApprovalResult, ExtensionEvent } from "../extension/index.js";
-import type { SessionManager } from "../core/session-manager.js";
-import { getProjectDir, getSessionDir } from "../core/session-files.js";
+import type { SessionManager } from "../core/session/session-manager.js";
+import { getProjectDir, getSessionDir } from "../core/session/session-files.js";
+import { writeSessionAttachment } from "../core/session/session-attachments.js";
+import type { SessionPromptAttachment } from "../core/session/session-pasted-text.js";
 import {
   isSafeMediaId,
   mimeTypeFromFilename,
   readSessionMediaFile,
   writeSessionMediaFile,
   type SessionPromptImage,
-} from "../core/session-media.js";
-import { readTaskArtifact } from "../core/task-artifacts.js";
-import { extractSessionFieldsFromMetaPatch } from "../core/session-fields.js";
-import { normalizeAgentPermissionRules } from "../core/agent-permissions.js";
+} from "../core/session/session-media.js";
+import { readTaskArtifact } from "../core/tasks/task-artifacts.js";
+import { extractSessionFieldsFromMetaPatch } from "../core/session/session-fields.js";
+import { normalizeAgentPermissionRules } from "../core/agent/agent-permissions.js";
 import { listPendingApprovals } from "../extension/runtime/index.js";
 import {
   parseBindResourceBody,
@@ -63,8 +65,12 @@ import {
   listWorktreeCommits,
   resolveSessionGitContext,
 } from "../utils/git.js";
-import { listDailyWorkRecords, runDailyWorkAnalysis, yesterdayDayKey } from "../core/daily-work.js";
-import { listWatsonLogFiles, readWatsonLogs } from "../core/watson.js";
+import {
+  listDailyWorkRecords,
+  runDailyWorkAnalysis,
+  yesterdayDayKey,
+} from "../core/tasks/daily-work.js";
+import { listWatsonLogFiles, readWatsonLogs } from "../core/agent/watson.js";
 import { appendSystemLog, readSystemLogs } from "../utils/system-log.js";
 import {
   HOME_TASK_PHASES,
@@ -87,10 +93,10 @@ import {
   buildSessionServicesDto,
   proxySessionPreviewRequest,
   resolveSessionPreviewTarget,
-} from "../core/session-preview-proxy.js";
+} from "../core/session/session-preview-proxy.js";
 import { pickDirectory } from "../utils/pick-directory.js";
 import { openPathInFileManager, pathExistsOnHost } from "../utils/open-path.js";
-import { sessionTimersToScheduleDto } from "../core/session-timers.js";
+import { sessionTimersToScheduleDto } from "../core/session/session-timers.js";
 
 /** Strip apiKey before sending provider to clients. */
 function toProviderResponse(p: Provider): Omit<Provider, "apiKey"> & { apiKey: null } {
@@ -291,6 +297,52 @@ function hasAgentManagedTaskMeta(value: Record<string, unknown>): boolean {
 }
 
 type PromptImageInput = SessionPromptImage;
+
+type PastedTextInput = { id: string; text: string };
+
+function parsePastedTexts(value: unknown): PastedTextInput[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+  const pastedTexts: PastedTextInput[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return null;
+    const id = (item as { id?: unknown }).id;
+    const text = (item as { text?: unknown }).text;
+    if (typeof id !== "string" || !/^[a-zA-Z0-9_-]+$/.test(id)) return null;
+    if (typeof text !== "string") return null;
+    pastedTexts.push({ id, text });
+  }
+  return pastedTexts;
+}
+
+function parsePromptAttachments(value: unknown): SessionPromptAttachment[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+  const attachments: SessionPromptAttachment[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") return null;
+    const attachment = item as Record<string, unknown>;
+    if (
+      typeof attachment.id !== "string" ||
+      !/^[a-zA-Z0-9_-]+$/.test(attachment.id) ||
+      typeof attachment.name !== "string" ||
+      typeof attachment.path !== "string" ||
+      typeof attachment.mimeType !== "string" ||
+      typeof attachment.size !== "number" ||
+      !Number.isFinite(attachment.size)
+    ) {
+      return null;
+    }
+    attachments.push({
+      id: attachment.id,
+      name: attachment.name,
+      path: attachment.path,
+      mimeType: attachment.mimeType,
+      size: attachment.size,
+    });
+  }
+  return attachments;
+}
 
 function parsePromptImages(value: unknown): PromptImageInput[] | null | undefined {
   if (value === undefined) return undefined;
@@ -1869,10 +1921,16 @@ export function createHttpServer(
     if (id === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, "not found");
-    if (!session.cwd) return jsonError(c, 400, "session has no cwd");
     const path = c.req.query("path");
     if (!path) return jsonError(c, 400, "path is required");
     try {
+      if (path.startsWith("@/")) {
+        if (session.projectId == null) return jsonError(c, 400, "session has no project");
+        return c.json(
+          readSessionWorkspaceFile(getSessionDir(session.projectId, id), path.slice(2)),
+        );
+      }
+      if (!session.cwd) return jsonError(c, 400, "session has no cwd");
       return c.json(readSessionWorkspaceFile(session.cwd, path));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
@@ -1908,6 +1966,7 @@ export function createHttpServer(
     }
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, "session not found");
+    if (session.projectId == null) return jsonError(c, 400, "session has no project");
     if (session.projectId == null) return jsonError(c, 404, "session project not found");
     try {
       const content = await readFile(
@@ -1927,6 +1986,7 @@ export function createHttpServer(
     if (id === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, "session not found");
+    if (session.projectId == null) return jsonError(c, 400, "session has no project");
     try {
       const form = await c.req.parseBody();
       const file = form.file;
@@ -1942,7 +2002,7 @@ export function createHttpServer(
         return jsonError(c, 400, "only image uploads are supported");
       }
       const data = Buffer.from(await blob.arrayBuffer());
-      const saved = await writeSessionMediaFile(id, {
+      const saved = await writeSessionMediaFile(session.projectId, id, {
         mimeType,
         data,
         name: blob.name || undefined,
@@ -1954,14 +2014,40 @@ export function createHttpServer(
     }
   });
 
+  app.post("/sessions/:id/attachments", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const session = manager.get(id);
+    if (!session) return jsonError(c, 404, "session not found");
+    if (session.projectId == null) return jsonError(c, 400, "session has no project");
+    try {
+      const form = await c.req.parseBody();
+      const file = form.file;
+      if (!file || typeof file === "string") return jsonError(c, 400, "file is required");
+      const blob = file as File;
+      const data = Buffer.from(await blob.arrayBuffer());
+      if (!data.length) return jsonError(c, 400, "empty files are not supported");
+      return c.json(
+        await writeSessionAttachment(session.projectId, id, {
+          name: blob.name || undefined,
+          mimeType: blob.type || undefined,
+          data,
+        }),
+      );
+    } catch (e: unknown) {
+      return jsonError(c, 400, e instanceof Error ? e.message : String(e));
+    }
+  });
+
   app.get("/sessions/:id/media/:mediaId", async (c) => {
     const id = parseIntegerId(c.req.param("id"));
     if (id === null) return jsonError(c, 400, "invalid session id");
     const session = manager.get(id);
     if (!session) return jsonError(c, 404, "session not found");
+    if (session.projectId == null) return jsonError(c, 400, "session has no project");
     const mediaId = c.req.param("mediaId");
     if (!mediaId) return jsonError(c, 400, "mediaId is required");
-    const file = await readSessionMediaFile(id, mediaId);
+    const file = await readSessionMediaFile(session.projectId, id, mediaId);
     if (!file) return jsonError(c, 404, "media not found");
     return new Response(new Uint8Array(file.bytes), {
       headers: {
@@ -2337,6 +2423,14 @@ export function createHttpServer(
     if (images === null) {
       return jsonError(c, 400, "invalid images, expected [{ mediaId, mimeType }]");
     }
+    const pastedTexts = parsePastedTexts(body.pastedTexts);
+    if (pastedTexts === null) {
+      return jsonError(c, 400, "invalid pastedTexts, expected [{ id, text }]");
+    }
+    const attachments = parsePromptAttachments(body.attachments);
+    if (attachments === null) {
+      return jsonError(c, 400, "invalid attachments, expected uploaded attachment metadata");
+    }
     const sessionId = parseIntegerId(c.req.param("id"));
     if (sessionId === null) return jsonError(c, 400, "invalid session id");
     const clientId = randomUUID();
@@ -2391,6 +2485,8 @@ export function createHttpServer(
         const disposition = await manager.submitSessionInput(sessionId, {
           message: promptMessage,
           images,
+          pastedTexts,
+          attachments,
           source,
           level,
         });
@@ -2463,6 +2559,14 @@ export function createHttpServer(
     if (images === null) {
       return jsonError(c, 400, "invalid images, expected [{ mediaId, mimeType }]");
     }
+    const pastedTexts = parsePastedTexts(body.pastedTexts);
+    if (pastedTexts === null) {
+      return jsonError(c, 400, "invalid pastedTexts, expected [{ id, text }]");
+    }
+    const attachments = parsePromptAttachments(body.attachments);
+    if (attachments === null) {
+      return jsonError(c, 400, "invalid attachments, expected uploaded attachment metadata");
+    }
     try {
       const id = parseIntegerId(c.req.param("id"));
       if (id === null) return jsonError(c, 400, "invalid session id");
@@ -2470,6 +2574,8 @@ export function createHttpServer(
         message: body.message,
         source,
         images,
+        pastedTexts,
+        attachments,
       });
       return c.json({ ok: true, disposition });
     } catch (e: unknown) {

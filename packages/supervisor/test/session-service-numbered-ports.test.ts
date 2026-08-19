@@ -4,12 +4,12 @@ import {
   servicesToPortEnv,
   findProjectBinDir,
   withProjectPath,
-} from "../src/core/session-registered-services.js";
+} from "../src/core/session/session-registered-services.js";
 import {
   collectReservedServicePorts,
   parseSessionServicesMeta,
-} from "../src/core/session-services.js";
-import { substitutePortPlaceholders } from "../src/core/session-service-runtime.js";
+} from "../src/core/session/session-services.js";
+import { substitutePortPlaceholders } from "../src/core/session/session-service-runtime.js";
 import { validateNumberedPortPlaceholders } from "../src/extension/builtin/service/index.js";
 
 describe("numbered session service ports", () => {

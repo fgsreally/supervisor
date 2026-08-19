@@ -4,7 +4,7 @@ import {
   proxySessionPreviewRequest,
   rewriteSessionPreviewText,
   type SessionPreviewTarget,
-} from "../src/core/session-preview-proxy.js";
+} from "../src/core/session/session-preview-proxy.js";
 
 const target: SessionPreviewTarget = {
   scriptName: "web",

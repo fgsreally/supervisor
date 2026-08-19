@@ -8,7 +8,7 @@ import {
   listSessionCheckpoints,
   parseCheckpoints,
   rewindSessionToCheckpoint,
-} from "../src/core/session-history.js";
+} from "../src/core/session/session-history.js";
 import { SQLiteSessionStorage } from "../src/session-storage.js";
 
 let db: SupervisorDb;

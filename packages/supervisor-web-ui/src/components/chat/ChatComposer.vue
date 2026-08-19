@@ -3,6 +3,7 @@
     ref="composerRoot"
     class="relative flex flex-col min-h-0 h-full chat-composer"
     @mousedown="onComposerMouseDown"
+    @chat-pasted-text-open="onPastedTextOpen"
   >
     <ChatAutocompletePopup
       :open="autocompleteOpen"
@@ -31,8 +32,11 @@ import * as api from "@/api";
 import {
   chatInputTagExtension,
   chatInputTheme,
+  attachmentCatalogFacet,
+  pastedTextCatalogFacet,
   slashCatalogFacet,
 } from "../../codemirror/chat-input-tags";
+import { makePastedTextToken } from "../../utils/user-prompt";
 import ChatAutocompletePopup from "./ChatAutocompletePopup.vue";
 import {
   applyAutocompleteCompletion,
@@ -66,6 +70,8 @@ const props = withDefaults(
     disabled?: boolean;
     editorHeight?: number;
     placeholder?: string;
+    pastedTexts?: Record<string, { chars: number }>;
+    attachments?: Record<string, { name: string; size: number }>;
   }>(),
   {
     workspaceFiles: () => [],
@@ -78,6 +84,8 @@ const props = withDefaults(
     skillTrigger: "slash",
     disabled: false,
     editorHeight: 88,
+    pastedTexts: () => ({}),
+    attachments: () => ({}),
   },
 );
 
@@ -87,6 +95,8 @@ const emit = defineEmits<{
   "update:modelValue": [value: string];
   send: [];
   "paste-image": [file: File];
+  "paste-text": [payload: { id: string; text: string; chars: number }];
+  "open-pasted-text": [id: string];
 }>();
 
 const editorHost = ref<HTMLElement | null>(null);
@@ -106,6 +116,8 @@ let atatLoadToken = 0;
 const editableCompartment = new Compartment();
 const themeCompartment = new Compartment();
 const slashCatalogCompartment = new Compartment();
+const pastedTextCatalogCompartment = new Compartment();
+const attachmentCatalogCompartment = new Compartment();
 
 function buildSlashCatalog(): SlashCommandCatalog {
   return {
@@ -306,6 +318,8 @@ function buildExtensions() {
   return [
     themeCompartment.of(chatInputTheme(props.editorHeight)),
     slashCatalogCompartment.of(slashCatalogFacet.of(buildSlashCatalog())),
+    pastedTextCatalogCompartment.of(pastedTextCatalogFacet.of(props.pastedTexts)),
+    attachmentCatalogCompartment.of(attachmentCatalogFacet.of(props.attachments)),
     chatInputTagExtension,
     EditorView.lineWrapping,
     editableCompartment.of(EditorView.editable.of(!props.disabled)),
@@ -331,6 +345,15 @@ function buildExtensions() {
             emit("paste-image", file);
             return true;
           }
+        }
+        const pasted = event.clipboardData?.getData("text/plain") ?? "";
+        const chars = Array.from(pasted).length;
+        if (chars > 100) {
+          event.preventDefault();
+          const id = `paste-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          insertAtCursor(makePastedTextToken(id));
+          emit("paste-text", { id, text: pasted, chars });
+          return true;
         }
         return false;
       },
@@ -407,6 +430,30 @@ watch(
 );
 
 watch(
+  () => props.pastedTexts,
+  (pastedTexts) => {
+    const view = viewRef.value;
+    if (!view) return;
+    view.dispatch({
+      effects: pastedTextCatalogCompartment.reconfigure(pastedTextCatalogFacet.of(pastedTexts)),
+    });
+  },
+  { deep: true },
+);
+
+watch(
+  () => props.attachments,
+  (attachments) => {
+    const view = viewRef.value;
+    if (!view) return;
+    view.dispatch({
+      effects: attachmentCatalogCompartment.reconfigure(attachmentCatalogFacet.of(attachments)),
+    });
+  },
+  { deep: true },
+);
+
+watch(
   () => props.disabled,
   (disabled) => {
     const view = viewRef.value;
@@ -467,6 +514,11 @@ function blur() {
   autocompleteDismissed.value = true;
   viewRef.value?.contentDOM.blur();
   isFocused.value = false;
+}
+
+function onPastedTextOpen(event: Event) {
+  const id = (event as CustomEvent<string>).detail;
+  if (id) emit("open-pasted-text", id);
 }
 
 defineExpose({ focus, blur, insertTrigger });

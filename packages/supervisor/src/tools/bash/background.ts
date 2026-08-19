@@ -1,5 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import type { CreateJobInput, JobRecord, UpdateJobInput } from "../../core/jobs.js";
+import type { CreateJobInput, JobRecord, UpdateJobInput } from "../../core/jobs/jobs.js";
 
 const MAX_SESSIONS = 10;
 const MAX_OUTPUT_CHARS = 200_000;
@@ -130,9 +130,7 @@ export async function startBackgroundBashSession(options: {
   env?: NodeJS.ProcessEnv;
   kind?: "shell" | "service";
 }): Promise<BackgroundBashSession> {
-  const running = (await options.jobs.list()).filter(
-    (job) => job.status === "running",
-  ).length;
+  const running = (await options.jobs.list()).filter((job) => job.status === "running").length;
   if (running >= MAX_SESSIONS) {
     throw new Error(`A Session can have at most ${MAX_SESSIONS} background bash tasks`);
   }

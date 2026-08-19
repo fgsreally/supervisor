@@ -1,4 +1,5 @@
 import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { relative, resolve, sep } from "node:path";
 import {
   createCodingTools,
   createFindTool,
@@ -9,6 +10,7 @@ import {
   type ToolsOptions,
 } from "@earendil-works/pi-coding-agent";
 import type { ToolsPreset } from "../types.js";
+import { getSessionDir } from "../core/session/session-files.js";
 import {
   createSupervisorBashTool,
   type BashJobHost,
@@ -22,7 +24,42 @@ export type DefaultToolsOptions = ToolsOptions & {
   jobs?: BashJobHost;
   /** Extra env for bash (e.g. registered service ports). */
   getEnv?: () => NodeJS.ProcessEnv;
+  /** Session-owned root addressable as @/path by read-only file tools. */
+  projectId?: number | null;
 };
+
+const SESSION_PATH_TOOLS = new Set(["read", "grep", "find", "ls"]);
+
+function resolveToolPath(value: unknown, sessionDir: string): unknown {
+  if (typeof value !== "string" || !value.startsWith("@/")) return value;
+  const root = resolve(sessionDir);
+  const target = resolve(root, value.slice(2));
+  const rel = relative(root, target);
+  if (rel === ".." || rel.startsWith(`..${sep}`) || rel.includes(`..${sep}`)) {
+    throw new Error(`Session path escapes session directory: ${value}`);
+  }
+  return target;
+}
+
+function wrapSessionPathTool(tool: AgentTool, sessionDir?: string): AgentTool {
+  if (!sessionDir || !SESSION_PATH_TOOLS.has(tool.name)) return tool;
+  return {
+    ...tool,
+    description: `${tool.description} Use @/path to address the session-owned directory.`,
+    execute: (toolCallId, params, signal, onUpdate) => {
+      if (!params || typeof params !== "object") {
+        return tool.execute(toolCallId, params, signal, onUpdate);
+      }
+      const next = { ...(params as Record<string, unknown>) };
+      if ("path" in next) next.path = resolveToolPath(next.path, sessionDir);
+      return tool.execute(toolCallId, next, signal, onUpdate);
+    },
+  };
+}
+
+function wrapSessionPathTools(tools: AgentTool[], sessionDir?: string): AgentTool[] {
+  return tools.map((tool) => wrapSessionPathTool(tool, sessionDir));
+}
 
 /** Match interactive pi: merge global + project settings for bash shell resolution. */
 export function resolveToolsOptions(cwd: string, overrides?: ToolsOptions): ToolsOptions {
@@ -87,14 +124,21 @@ export function createDefaultTools(
 ): AgentTool[] {
   const merged = resolveToolsOptions(cwd, options);
   const bash = buildSupervisorBash(cwd, options);
+  const sessionDir =
+    options?.projectId != null && options.sessionId != null
+      ? getSessionDir(options.projectId, options.sessionId)
+      : undefined;
   switch (preset) {
     case "coding":
-      return replacePiBash(
-        [...createCodingTools(cwd, merged), ...createExplorationTools(cwd, merged)],
-        bash,
+      return wrapSessionPathTools(
+        replacePiBash(
+          [...createCodingTools(cwd, merged), ...createExplorationTools(cwd, merged)],
+          bash,
+        ),
+        sessionDir,
       );
     case "readonly":
-      return createReadOnlyTools(cwd, merged);
+      return wrapSessionPathTools(createReadOnlyTools(cwd, merged), sessionDir);
     case "none":
       return [];
   }

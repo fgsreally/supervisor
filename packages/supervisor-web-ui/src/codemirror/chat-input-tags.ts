@@ -34,6 +34,16 @@ export const slashCatalogFacet = Facet.define<SlashCommandCatalog, SlashCommandC
     },
 });
 
+export const pastedTextCatalogFacet = Facet.define<
+  Record<string, { chars: number }>,
+  Record<string, { chars: number }>
+>({ combine: (values) => values.at(-1) ?? {} });
+
+export const attachmentCatalogFacet = Facet.define<
+  Record<string, { name: string; size: number }>,
+  Record<string, { name: string; size: number }>
+>({ combine: (values) => values.at(-1) ?? {} });
+
 class FileTagWidget extends WidgetType {
   constructor(readonly token: string) {
     super();
@@ -88,6 +98,98 @@ class SlashTagWidget extends WidgetType {
   }
 }
 
+class PastedTextTagWidget extends WidgetType {
+  constructor(
+    readonly id: string,
+    readonly chars: number,
+  ) {
+    super();
+  }
+
+  eq(other: PastedTextTagWidget): boolean {
+    return other.id === this.id && other.chars === this.chars;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-chat-tag cm-chat-tag--pasted";
+    span.contentEditable = "false";
+    span.setAttribute("role", "button");
+    span.setAttribute("tabindex", "0");
+    span.textContent = `粘贴文本 · ${this.chars} 字`;
+    span.addEventListener("click", () => {
+      span.dispatchEvent(
+        new CustomEvent("chat-pasted-text-open", { bubbles: true, detail: this.id }),
+      );
+    });
+    span.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        span.click();
+      }
+    });
+    return span;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+class ImageTagWidget extends WidgetType {
+  constructor(readonly token: string) {
+    super();
+  }
+
+  eq(other: ImageTagWidget): boolean {
+    return other.token === this.token;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-chat-tag cm-chat-tag--image";
+    span.contentEditable = "false";
+    span.textContent = this.token.slice(1, -1);
+    return span;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+class AttachmentTagWidget extends WidgetType {
+  constructor(
+    readonly id: string,
+    readonly name: string,
+    readonly size: number,
+  ) {
+    super();
+  }
+
+  eq(other: AttachmentTagWidget): boolean {
+    return other.id === this.id && other.name === this.name && other.size === this.size;
+  }
+
+  toDOM(): HTMLElement {
+    const span = document.createElement("span");
+    span.className = "cm-chat-tag cm-chat-tag--attachment";
+    span.contentEditable = "false";
+    span.textContent = `${this.name} · ${formatAttachmentSize(this.size)}`;
+    return span;
+  }
+
+  ignoreEvent(): boolean {
+    return false;
+  }
+}
+
+function formatAttachmentSize(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function buildFileTagElement(iconSvg: string, label: string, source?: string): HTMLElement {
   const span = document.createElement("span");
   span.className = "cm-chat-tag cm-chat-tag--file";
@@ -132,19 +234,62 @@ function buildSlashTagElement(source: SlashCommandSource, label: string): HTMLEl
 
 function buildTagDecorations(view: EditorView): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>();
+  const decorations: Array<[number, number, Decoration]> = [];
   const text = view.state.doc.toString();
   const catalog = view.state.facet(slashCatalogFacet);
+  const pastedTexts = view.state.facet(pastedTextCatalogFacet);
+  const attachments = view.state.facet(attachmentCatalogFacet);
+
+  const pastedRe = /\uE000paste:([a-zA-Z0-9_-]+)\uE001/g;
+  for (const match of text.matchAll(pastedRe)) {
+    const item = pastedTexts[match[1]!];
+    if (!item || match.index == null) continue;
+    decorations.push([
+      match.index,
+      match.index + match[0].length,
+      Decoration.replace({
+        widget: new PastedTextTagWidget(match[1]!, item.chars),
+        inclusive: false,
+      }),
+    ]);
+  }
+
+  for (const match of text.matchAll(/\[Image #(\d+)\]/g)) {
+    if (match.index == null) continue;
+    decorations.push([
+      match.index,
+      match.index + match[0].length,
+      Decoration.replace({
+        widget: new ImageTagWidget(match[0]),
+        inclusive: false,
+      }),
+    ]);
+  }
+
+  const attachmentRe = /\uE000attachment:([a-zA-Z0-9_-]+)\uE001/g;
+  for (const match of text.matchAll(attachmentRe)) {
+    const item = attachments[match[1]!];
+    if (!item || match.index == null) continue;
+    decorations.push([
+      match.index,
+      match.index + match[0].length,
+      Decoration.replace({
+        widget: new AttachmentTagWidget(match[1]!, item.name, item.size),
+        inclusive: false,
+      }),
+    ]);
+  }
 
   for (const token of findChatTokens(text)) {
     if (token.kind === "file") {
-      builder.add(
+      decorations.push([
         token.from,
         token.to,
         Decoration.replace({
           widget: new FileTagWidget(token.text),
           inclusive: false,
         }),
-      );
+      ]);
       continue;
     }
 
@@ -155,15 +300,17 @@ function buildTagDecorations(view: EditorView): DecorationSet {
     const displayToken =
       token.kind === "skill" ? `/${getSkillNameFromToken(token.text)}` : token.text;
 
-    builder.add(
+    decorations.push([
       token.from,
       token.to,
       Decoration.replace({
         widget: new SlashTagWidget(displayToken, slashSource),
         inclusive: false,
       }),
-    );
+    ]);
   }
+  decorations.sort(([fromA], [fromB]) => fromA - fromB);
+  for (const [from, to, decoration] of decorations) builder.add(from, to, decoration);
   return builder.finish();
 }
 
@@ -179,7 +326,11 @@ export const chatInputTagExtension = ViewPlugin.fromClass(
       if (
         update.docChanged ||
         update.viewportChanged ||
-        update.startState.facet(slashCatalogFacet) !== update.state.facet(slashCatalogFacet)
+        update.startState.facet(slashCatalogFacet) !== update.state.facet(slashCatalogFacet) ||
+        update.startState.facet(pastedTextCatalogFacet) !==
+          update.state.facet(pastedTextCatalogFacet) ||
+        update.startState.facet(attachmentCatalogFacet) !==
+          update.state.facet(attachmentCatalogFacet)
       ) {
         this.decorations = buildTagDecorations(update.view);
       }
@@ -229,6 +380,26 @@ export function chatInputTheme(editorHeightPx: number) {
     ".cm-chat-tag--file": {
       backgroundColor: "var(--app-tag-file-bg)",
       color: "var(--app-tag-file-fg)",
+    },
+    ".cm-chat-tag--image": {
+      border: "1px solid color-mix(in srgb, var(--app-accent) 24%, var(--app-border))",
+      color: "var(--app-text-secondary)",
+      backgroundColor: "color-mix(in srgb, var(--app-hover) 78%, transparent)",
+    },
+    ".cm-chat-tag--attachment": {
+      border: "1px solid color-mix(in srgb, var(--app-accent) 28%, var(--app-border))",
+      color: "var(--app-accent)",
+      backgroundColor: "color-mix(in srgb, var(--app-accent) 10%, transparent)",
+      maxWidth: "280px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    ".cm-chat-tag--pasted": {
+      border: "1px solid color-mix(in srgb, var(--app-accent) 28%, var(--app-border))",
+      color: "var(--app-accent)",
+      backgroundColor: "color-mix(in srgb, var(--app-accent) 10%, transparent)",
+      cursor: "pointer",
     },
     ".cm-chat-tag--slash": {
       border: "1px solid rgb(7 166 90 / 24%)",

@@ -1,6 +1,8 @@
 /** Extract plain text from user/assistant message content (string or parts array). */
+import { ordinaryUserPromptText } from "./user-prompt";
+
 export function messageTextContent(content: unknown): string {
-  if (typeof content === "string") return stripLegacyImageXml(content);
+  if (typeof content === "string") return stripLegacyImageXml(ordinaryUserPromptText(content));
   if (!Array.isArray(content)) return "";
   return content
     .filter(

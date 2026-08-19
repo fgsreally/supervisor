@@ -4,7 +4,7 @@ import {
   SessionInputQueue,
   SESSION_INPUT_INTERRUPT_LEVEL,
   shouldInterruptSessionInput,
-} from "../src/core/session-input-queue.js";
+} from "../src/core/session/session-input-queue.js";
 
 describe("SessionInputQueue", () => {
   it("dequeues highest level first, then earliest enqueue time", () => {

@@ -3,7 +3,7 @@ import {
   SESSION_SERVICE_SLEEP_MS,
   computeServiceSleepAt,
   runSessionServiceSleepTick,
-} from "../src/core/session-service-sleep.js";
+} from "../src/core/session/session-service-sleep.js";
 
 describe("session project service sleep", () => {
   it("uses a 24 hour idle window", () => {
@@ -40,7 +40,9 @@ describe("session project service sleep", () => {
     expect(onUpdated).toHaveBeenCalledWith(7);
     expect(updateSessionFields).toHaveBeenCalledWith(
       7,
-      expect.objectContaining({ systemPrompt: expect.stringContaining("Local services registered") }),
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining("Local services registered"),
+      }),
     );
   });
 });

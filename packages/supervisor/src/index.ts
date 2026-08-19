@@ -2,9 +2,9 @@ import { getDefaultCwd, setDefaultCwd, resolveWorkspacePath } from "./config/def
 import { resolveDbPath } from "./config/resolve-db-path.js";
 import { SupervisorDb } from "./db/db.js";
 import { createHttpServer } from "./http/http-server.js";
-import { SessionManager } from "./core/session-manager.js";
-import { attachPushDispatcher } from "./core/push-dispatcher.js";
-import { startDailyWorkScheduler } from "./core/daily-work.js";
+import { SessionManager } from "./core/session/session-manager.js";
+import { attachPushDispatcher } from "./core/push/push-dispatcher.js";
+import { startDailyWorkScheduler } from "./core/tasks/daily-work.js";
 import { registerWebSocketRoutes } from "./websocket/server.js";
 
 export interface SupervisorOptions {
@@ -78,8 +78,8 @@ export { extractMessageSearchFields } from "./db/message-search.js";
 export { copyMessagesWithInheritance } from "./core/session/index.js";
 export type { SessionOutputListener } from "./core/session/index.js";
 export { SessionManager } from "./core/session/index.js";
-export { JobManager } from "./core/jobs.js";
-export type * from "./core/jobs.js";
+export { JobManager } from "./core/jobs/jobs.js";
+export type * from "./core/jobs/jobs.js";
 export {
   ResourceManager,
   type BindResourceInput,
@@ -105,5 +105,5 @@ export type { AgentResourceBinding, Resource, ResourceKind } from "./core/resour
 export type { SessionEvent, SessionState } from "./core/session/index.js";
 export { SessionRuntime } from "./core/session/index.js";
 export { formatSkillsForPrompt, loadSkills, loadSkillsFromDir } from "./core/agent/index.js";
-export type { TurnFileChanges, TurnRecord } from "./core/turn-file-tracker.js";
+export type { TurnFileChanges, TurnRecord } from "./core/session/turn-file-tracker.js";
 export type * from "./types.js";

@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { ClaudeSessionRuntime } from "../src/core/external/claude-session-runtime.js";
-import { CodexSessionRuntime } from "../src/core/external/codex-session-runtime.js";
+import { ClaudeSessionRuntime } from "../src/core/session/external/claude-session-runtime.js";
+import { CodexSessionRuntime } from "../src/core/session/external/codex-session-runtime.js";
 import { SupervisorDb } from "../src/db.js";
 import type { Agent, AgentBackendType, Session } from "../src/types.js";
 
@@ -181,9 +181,9 @@ describe("external CLI runtimes", () => {
   it("uses structured Codex skill, mention, image, and native turn steering inputs", async () => {
     const records = createRecords("codex", "mock-codex-app-server.mjs");
     const runtime = await CodexSessionRuntime.create({ db, ...records });
-    const { writeSessionMediaFile } = await import("../src/core/session-media.js");
+    const { writeSessionMediaFile } = await import("../src/core/session/session-media.js");
     try {
-      const promptImage = await writeSessionMediaFile(records.session.id, {
+      const promptImage = await writeSessionMediaFile(records.session.projectId!, records.session.id, {
         mimeType: "image/png",
         data: Buffer.from("image"),
         name: "prompt.png",
@@ -202,7 +202,7 @@ describe("external CLI runtimes", () => {
 
       const turn = runtime.prompt("hold for steer");
       await new Promise((resolve) => setTimeout(resolve, 30));
-      const steerImage = await writeSessionMediaFile(records.session.id, {
+      const steerImage = await writeSessionMediaFile(records.session.projectId!, records.session.id, {
         mimeType: "image/png",
         data: Buffer.from("steer"),
         name: "steer.png",

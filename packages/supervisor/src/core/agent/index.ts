@@ -7,4 +7,6 @@ export * from "../../agent/runtime-resources.js";
 export * from "../../agent/skill-dirs.js";
 export * from "../../agent/skill-resource.js";
 export * from "../../agent/skills.js";
-export * from "../agent-permissions.js";
+export * from "./agent-permissions.js";
+export * from "./harness-compat.js";
+export * from "./watson.js";

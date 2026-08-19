@@ -44,8 +44,13 @@
               {{ emptyStateAction }}
             </button>
           </div>
-          <ResizeHandle orientation="horizontal" :label="t('chat.input.resize')" @start="startResize" />
+          <ResizeHandle
+            orientation="horizontal"
+            :label="t('chat.input.resize')"
+            @start="startResize"
+          />
           <ChatPendingImages :images="pendingImages" @remove="removePendingImage" />
+          <ChatPendingAttachments :attachments="attachments" @remove="removePendingAttachment" />
           <div class="chat-input-editor-wrap flex-1 min-h-0 relative">
             <ChatComposer
               ref="composerRef"
@@ -62,8 +67,12 @@
               :skill-trigger="skillTrigger"
               :disabled="disabled"
               :placeholder="composerPlaceholder"
+              :pasted-texts="pastedTextCatalog"
+              :attachments="attachmentCatalog"
               @send="requestSend"
               @paste-image="addPendingImage"
+              @paste-text="onPastedText"
+              @open-pasted-text="openPastedText"
             />
           </div>
           <ChatInputToolbar
@@ -86,9 +95,23 @@
             tabindex="-1"
             @change="onImageInputChange"
           />
+          <input
+            ref="attachmentInputRef"
+            type="file"
+            class="sr-only"
+            multiple
+            tabindex="-1"
+            @change="onAttachmentInputChange"
+          />
         </template>
       </div>
     </div>
+    <PastedTextDialog
+      :open="!!openedPastedText"
+      :text="openedPastedText?.text ?? ''"
+      :chars="openedPastedText?.chars ?? 0"
+      @close="openedPastedText = null"
+    />
   </div>
 </template>
 
@@ -102,7 +125,12 @@ import { showUiMessage } from "../../composables/use-ui-message";
 import { isNativeApp } from "../../composables/use-native-app";
 import { pickChatImage } from "../../composables/use-native-camera";
 import { useVoiceRecognition } from "../../composables/use-voice-recognition";
-import type { ChatSendPayload, PendingChatImage } from "@/types/chat-compose";
+import type {
+  ChatSendPayload,
+  PendingChatAttachment,
+  PendingChatImage,
+  PendingPastedText,
+} from "@/types/chat-compose";
 import { useI18n } from "@/i18n";
 import {
   promptsFromAgentResources,
@@ -115,7 +143,10 @@ import {
 import ChatComposer from "./ChatComposer.vue";
 import ChatInputToolbar, { type ChatToolbarAction } from "./ChatInputToolbar.vue";
 import ChatPendingImages from "./ChatPendingImages.vue";
+import ChatPendingAttachments from "./ChatPendingAttachments.vue";
 import ResizeHandle from "../base/ResizeHandle.vue";
+import PastedTextDialog from "./PastedTextDialog.vue";
+import { makeAttachmentToken, makePastedTextToken } from "../../utils/user-prompt";
 
 const TOOLBAR_HEIGHT = 40;
 const HOLD_LONG_PRESS_MS = 300;
@@ -152,6 +183,7 @@ const skills = ref<SkillAutocompleteEntry[]>([]);
 const prompts = ref<PromptAutocompleteEntry[]>([]);
 const customCommands = ref<api.SlashCommandInfo[]>([]);
 const imageInputRef = ref<HTMLInputElement | null>(null);
+const attachmentInputRef = ref<HTMLInputElement | null>(null);
 const projectOptions = computed<ProjectAutocompleteEntry[]>(() =>
   sessionStore.projects.map((p) => ({ id: p.id, name: p.name, cwd: p.cwd })),
 );
@@ -175,6 +207,15 @@ const autocompleteCommands = computed(() =>
   })),
 );
 const pendingImages = ref<PendingChatImage[]>([]);
+const attachments = ref<PendingChatAttachment[]>([]);
+const attachmentCatalog = computed(() =>
+  Object.fromEntries(
+    attachments.value.map((item) => [item.id, { name: item.name, size: item.size }]),
+  ),
+);
+const pastedTextCatalog = ref<Record<string, { chars: number }>>({});
+const pastedTexts = ref<Record<string, PendingPastedText>>({});
+const openedPastedText = ref<PendingPastedText | null>(null);
 let commandRefreshInFlight: Promise<void> | null = null;
 let lastCommandRefresh = 0;
 let commandRetryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -199,7 +240,18 @@ const canSend = computed(
 
 function requestSend() {
   if (props.disabled || props.sendDisabled) return;
-  emit("send", { text: text.value, images: pendingImages.value });
+  const activePastedTexts = Object.values(pastedTexts.value).filter((item) =>
+    text.value.includes(makePastedTextToken(item.id)),
+  );
+  const activeAttachments = attachments.value.filter((item) =>
+    text.value.includes(makeAttachmentToken(item.id)),
+  );
+  emit("send", {
+    text: text.value,
+    images: pendingImages.value,
+    pastedTexts: activePastedTexts,
+    attachments: activeAttachments,
+  });
 }
 
 const isNarrow = typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
@@ -416,7 +468,12 @@ async function finishHoldAndSend() {
     text.value = finalText;
     return;
   }
-  emit("send", { text: finalText, images: pendingImages.value });
+  emit("send", {
+    text: finalText,
+    images: pendingImages.value,
+    pastedTexts: [],
+    attachments: [],
+  });
 }
 
 function cancelHoldRecording() {
@@ -540,7 +597,10 @@ async function refreshSessionCommands(force = false) {
       }
     } catch (error) {
       if (/(^|\s)\/[^\s]*$/.test(props.modelValue)) {
-        showUiMessage(error instanceof Error ? error.message : t("chat.input.commandsLoadFailed"), "error");
+        showUiMessage(
+          error instanceof Error ? error.message : t("chat.input.commandsLoadFailed"),
+          "error",
+        );
       }
     } finally {
       commandRefreshInFlight = null;
@@ -593,11 +653,17 @@ function onToolbarAction(action: ChatToolbarAction) {
             if (file) addPendingImage(file);
           })
           .catch((error: unknown) => {
-            showUiMessage(error instanceof Error ? error.message : t("chat.input.cameraFailed"), "error");
+            showUiMessage(
+              error instanceof Error ? error.message : t("chat.input.cameraFailed"),
+              "error",
+            );
           });
       } else {
         imageInputRef.value?.click();
       }
+      break;
+    case "upload-attachment":
+      attachmentInputRef.value?.click();
       break;
     case "btw":
       emit("btw");
@@ -639,14 +705,27 @@ function addPendingImage(file: File) {
         mimeType: uploaded.mimeType,
         previewUrl,
         mediaId: uploaded.mediaId,
+        placeholder: label,
       });
       const separator = text.value && !/\s$/.test(text.value) ? " " : "";
       text.value += `${separator}${label}`;
       void nextTick(() => composerRef.value?.focus());
     } catch (error) {
-    showUiMessage(error instanceof Error ? error.message : t("chat.input.uploadFailed"), "error");
+      showUiMessage(error instanceof Error ? error.message : t("chat.input.uploadFailed"), "error");
     }
   })();
+}
+
+function onPastedText(item: PendingPastedText) {
+  pastedTexts.value[item.id] = item;
+  pastedTextCatalog.value = Object.fromEntries(
+    Object.values(pastedTexts.value).map((entry) => [entry.id, { chars: entry.chars }]),
+  );
+}
+
+function openPastedText(id: string) {
+  const item = pastedTexts.value[id];
+  if (item) openedPastedText.value = item;
 }
 
 function onImageInputChange(event: Event) {
@@ -656,12 +735,44 @@ function onImageInputChange(event: Event) {
   input.value = "";
 }
 
+function onAttachmentInputChange(event: Event) {
+  const input = event.target as HTMLInputElement;
+  for (const file of Array.from(input.files ?? [])) addPendingAttachment(file);
+  input.value = "";
+}
+
+function addPendingAttachment(file: File) {
+  if (!props.sessionId) {
+    showUiMessage(t("chat.input.openSessionFirst"), "error");
+    return;
+  }
+  void api
+    .uploadSessionAttachment(props.sessionId, file)
+    .then((attachment) => {
+      attachments.value.push(attachment);
+      const separator = text.value && !/\s$/.test(text.value) ? " " : "";
+      text.value += `${separator}${makeAttachmentToken(attachment.id)}`;
+      void nextTick(() => composerRef.value?.focus());
+    })
+    .catch((error) => {
+      showUiMessage(error instanceof Error ? error.message : t("chat.input.uploadFailed"), "error");
+    });
+}
+
 function removePendingImage(id: string) {
   const item = pendingImages.value.find((img) => img.id === id);
   if (item?.previewUrl.startsWith("blob:")) {
     URL.revokeObjectURL(item.previewUrl);
   }
   pendingImages.value = pendingImages.value.filter((img) => img.id !== id);
+  if (item?.placeholder) {
+    text.value = text.value.replace(item.placeholder, "").replace(/ {2,}/g, " ").trim();
+  }
+}
+
+function removePendingAttachment(id: string) {
+  attachments.value = attachments.value.filter((item) => item.id !== id);
+  text.value = text.value.replace(makeAttachmentToken(id), "").replace(/ {2,}/g, " ").trim();
 }
 
 function clearPendingImages() {
@@ -677,9 +788,23 @@ function focus() {
 
 function clearAfterSend() {
   clearPendingImages();
+  attachments.value = [];
+  pastedTexts.value = {};
+  pastedTextCatalog.value = {};
 }
 
-defineExpose({ focus, clearAfterSend, addPendingImage });
+function restorePastedTexts(
+  items: PendingPastedText[],
+  nextAttachments: PendingChatAttachment[] = [],
+) {
+  pastedTexts.value = Object.fromEntries(items.map((item) => [item.id, item]));
+  pastedTextCatalog.value = Object.fromEntries(
+    items.map((item) => [item.id, { chars: item.chars }]),
+  );
+  attachments.value = nextAttachments;
+}
+
+defineExpose({ focus, clearAfterSend, addPendingImage, restorePastedTexts });
 </script>
 
 <style scoped>

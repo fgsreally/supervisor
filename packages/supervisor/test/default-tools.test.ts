@@ -13,4 +13,27 @@ describe("supervisor: default tools", () => {
 
     expect(names).toEqual(["read", "grep", "find", "ls"]);
   });
+
+  it("resolves @/ paths inside the session directory for read", async () => {
+    let requestedPath = "";
+    const tools = createDefaultTools(process.cwd(), "readonly", {
+      projectId: 7,
+      sessionId: 9,
+      read: {
+        operations: {
+          access: async (path) => {
+            requestedPath = path;
+          },
+          readFile: async () => Buffer.from("ok"),
+        },
+      },
+    });
+    const read = tools.find((tool) => tool.name === "read");
+    expect(read).toBeDefined();
+
+    await read!.execute("test", { path: "@/logs/session.log" });
+    expect(requestedPath).toContain("projects");
+    expect(requestedPath).toMatch(/[\\/]sessions[\\/]9[\\/]logs[\\/]session\.log$/);
+  });
+
 });

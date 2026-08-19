@@ -3,12 +3,15 @@ import { mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { SupervisorDb } from "../src/db/db.js";
-import { SQLiteSessionStorage } from "../src/core/session-storage.js";
+import { SQLiteSessionStorage } from "../src/core/session/session-storage.js";
 import {
   getSessionMessageByEntryId,
   querySessionMessagesPage,
-} from "../src/core/session-message-query.js";
-import { LITE_TOOL_RESULT_CHARS, toLiteSessionMessage } from "../src/core/session-message-lite.js";
+} from "../src/core/session/session-message-query.js";
+import {
+  LITE_TOOL_RESULT_CHARS,
+  toLiteSessionMessage,
+} from "../src/core/session/session-message-lite.js";
 import type { SessionMessageResponse } from "../src/types.js";
 
 describe("session message pagination + lite", () => {

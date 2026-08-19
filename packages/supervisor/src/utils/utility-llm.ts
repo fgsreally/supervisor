@@ -1,7 +1,7 @@
 import type { CompactionPreparation } from "@earendil-works/pi-agent-core";
 import { compact } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
-import { runWatson } from "../core/watson.js";
+import { runWatson } from "../core/agent/watson.js";
 import type { LLMConfig } from "./model-utils.js";
 import type { SupervisorSettings } from "./supervisor-settings.js";
 

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SupervisorDb } from "../src/db.js";
-import { AcpSessionRuntime } from "../src/core/external/acp-session-runtime.js";
+import { AcpSessionRuntime } from "../src/core/session/external/acp-session-runtime.js";
 import type { Session } from "../src/types.js";
 
 let db: SupervisorDb;

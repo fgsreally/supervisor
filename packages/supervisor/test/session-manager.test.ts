@@ -9,7 +9,7 @@ import "./mock-agent-harness.js";
 import { SupervisorDb } from "../src/db.js";
 import { SessionManager } from "../src/session-manager.js";
 import { MockAgentHarness } from "./mock-agent-harness.js";
-import { getProjectDir, getSessionDir } from "../src/core/session-files.js";
+import { getProjectDir, getSessionDir } from "../src/core/session/session-files.js";
 import { ensurePackagedAgents, findPackagedAgentId } from "../src/agent/index.js";
 
 const SPAWN_OPTS = { cwd: "/proj", providerId: 0, model: "test-model" };

@@ -4,7 +4,7 @@ import {
   extractPortPlaceholders,
   parseProjectServicesMeta,
   parseProjectRuntimeSpec,
-} from "../src/core/project-runtime.js";
+} from "../src/core/project/project-runtime.js";
 
 describe("project runtime parsing", () => {
   it("requires git and AGENTS.md initialization only", () => {

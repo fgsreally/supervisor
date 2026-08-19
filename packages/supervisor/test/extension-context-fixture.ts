@@ -28,7 +28,7 @@ import type {
   ToolInfo,
   ToolResultHandler,
 } from "../src/extension/index.js";
-import type { CreateJobInput, JobRecord, UpdateJobInput } from "../src/core/jobs.js";
+import type { CreateJobInput, JobRecord, UpdateJobInput } from "../src/core/jobs/jobs.js";
 import type { SessionWorkflowState, WorkflowStatePatch } from "../src/extension/types.js";
 
 function parseWorkflowState(value: unknown): SessionWorkflowState | null {

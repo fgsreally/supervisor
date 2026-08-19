@@ -7,13 +7,14 @@ import type { ExtensionDefinition } from "../../types.js";
 
 type Language = "js" | "py";
 type KernelReply = { id: number; output: string; value?: unknown; error?: string };
+type EvalEnv = Record<string, string>;
 
 const JS_RUNNER = String.raw`
 const vm = require("node:vm"), { parentPort } = require("node:worker_threads");
 let context;
-function reset(){ const lines=[]; context=vm.createContext({ Buffer, URL, URLSearchParams, fetch, setTimeout, clearTimeout, console:{log:(...x)=>lines.push(x.map(v=>typeof v==="string"?v:JSON.stringify(v)).join(" ")),error:(...x)=>lines.push(x.join(" "))}, __lines:lines }); }
+function reset(env={}){ const lines=[]; context=vm.createContext({ Buffer, URL, URLSearchParams, fetch, setTimeout, clearTimeout, process:{env:{...env}}, console:{log:(...x)=>lines.push(x.map(v=>typeof v==="string"?v:JSON.stringify(v)).join(" ")),error:(...x)=>lines.push(x.join(" "))}, __lines:lines }); }
 reset();
-parentPort.on("message", async m => { try { if(m.reset) reset(); context.__lines.length=0; let value=await new vm.Script(m.code,{filename:"eval.js"}).runInContext(context,{timeout:m.timeout}); try { value=value===undefined?undefined:JSON.parse(JSON.stringify(value)); } catch { value=String(value); } parentPort.postMessage({id:m.id,output:context.__lines.join("\n"),value}); } catch(e){ parentPort.postMessage({id:m?.id??-1,output:context?.__lines?.join("\n")??"",error:e?.stack||String(e)}); } });`;
+parentPort.on("message", async m => { try { if(m.reset) reset(m.env); else Object.assign(context.process.env,m.env); context.__lines.length=0; let value=await new vm.Script(m.code,{filename:"eval.js"}).runInContext(context,{timeout:m.timeout}); try { value=value===undefined?undefined:JSON.parse(JSON.stringify(value)); } catch { value=String(value); } parentPort.postMessage({id:m.id,output:context.__lines.join("\n"),value}); } catch(e){ parentPort.postMessage({id:m?.id??-1,output:context?.__lines?.join("\n")??"",error:e?.stack||String(e)}); } });`;
 
 const PY_RUNNER = String.raw`
 import sys,json,io,traceback,contextlib
@@ -36,6 +37,8 @@ class JsEvalKernel implements EvalKernel {
   private worker?: Worker;
   private sequence = 0;
   private pending = new Map<number, (reply: KernelReply) => void>();
+
+  constructor(private readonly env: EvalEnv) {}
 
   private start(): void {
     if (this.worker) return;
@@ -70,7 +73,7 @@ class JsEvalKernel implements EvalKernel {
         clearTimeout(timer);
         resolve(reply);
       });
-      this.worker!.postMessage({ id, code, reset, timeout: timeoutSeconds * 1000 });
+      this.worker!.postMessage({ id, code, reset, env: this.env, timeout: timeoutSeconds * 1000 });
     });
   }
 
@@ -87,13 +90,20 @@ class PythonEvalKernel implements EvalKernel {
   private pending = new Map<number, (reply: KernelReply) => void>();
   private buffer = "";
 
-  constructor(private cwd: string) {}
+  constructor(
+    private cwd: string,
+    private env: EvalEnv,
+  ) {}
 
   private start(): void {
     if (this.process) return;
     const command = process.platform === "win32" ? "python" : "python3";
     const args = ["-u", "-c", PY_RUNNER];
-    const child = spawn(command, args, { cwd: this.cwd, stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawn(command, args, {
+      cwd: this.cwd,
+      env: { ...process.env, ...this.env },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     this.process = child;
     child.stdout.on("data", (chunk) => {
       this.buffer += String(chunk);
@@ -154,6 +164,7 @@ const evalExtension: ExtensionDefinition = {
   async setup(ctx) {
     const runtimeDir = join(ctx.session.dir, "eval");
     await mkdir(runtimeDir, { recursive: true });
+    const env: EvalEnv = { SV_SESSION_DIR: ctx.session.dir };
     const kernels = new Map<Language, EvalKernel>();
     const history: Array<{
       language: Language;
@@ -166,7 +177,7 @@ const evalExtension: ExtensionDefinition = {
     ctx.agent.registerTool({
       name: "eval",
       description:
-        "Run ad-hoc JavaScript or Python in a persistent Session-owned runtime without creating scripts in the project workspace. State persists per language until reset.",
+        'Run ad-hoc JavaScript or Python in a persistent Session-owned runtime. Use process.env.SV_SESSION_DIR in JS or os.environ["SV_SESSION_DIR"] in Python for Session files; keep scripts, plans, todos, temporary data, and outputs under that directory. State persists per language until reset.',
       parameters: Type.Object({
         language: Type.Union([Type.Literal("js"), Type.Literal("py")]),
         code: Type.String(),
@@ -187,7 +198,9 @@ const evalExtension: ExtensionDefinition = {
           let kernel = kernels.get(params.language);
           if (!kernel) {
             kernel =
-              params.language === "js" ? new JsEvalKernel() : new PythonEvalKernel(runtimeDir);
+              params.language === "js"
+                ? new JsEvalKernel(env)
+                : new PythonEvalKernel(runtimeDir, env);
             kernels.set(params.language, kernel);
           }
           const reply = await kernel.execute(

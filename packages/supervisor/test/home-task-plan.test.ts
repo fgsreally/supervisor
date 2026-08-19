@@ -4,7 +4,7 @@ import {
   listReadyHomeTaskChildren,
   parseTodoPlanResult,
   validateHomeTaskDependencies,
-} from "../src/core/home-task-plan.js";
+} from "../src/core/tasks/home-task-plan.js";
 import type { HomeTask } from "../src/types.js";
 
 function child(partial: Partial<HomeTask> & { id: number }): HomeTask {

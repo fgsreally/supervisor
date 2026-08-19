@@ -6,7 +6,7 @@ import {
   composeSessionSystemPrompt,
   isStoredSystemPromptSnapshot,
   sessionSystemPromptExtra,
-} from "../src/core/session-system-prompt.js";
+} from "../src/core/session/session-system-prompt.js";
 
 let dir: string | undefined;
 
@@ -43,7 +43,20 @@ describe("supervisor: session system prompt compose", () => {
     expect(composed).toContain("## 本地开发服务");
     expect(composed).toContain("port 4396");
     expect(composed).toContain("UpdateService");
+    expect(composed).toContain("SV_SESSION_DIR");
+    expect(composed).toContain("@/path");
     expect(composed).not.toContain("/old/AGENTS.md");
     expect(composed).not.toContain("stale");
+  });
+
+  it("uses the session environment path for external agents", () => {
+    const composed = composeSessionSystemPrompt({
+      agentSystemMd: "Use @/attachments/input.csv.",
+      cwd: tmpdir(),
+      external: true,
+    });
+
+    expect(composed).toContain("${SV_SESSION_DIR}/attachments/input.csv");
+    expect(composed).not.toContain("@/");
   });
 });

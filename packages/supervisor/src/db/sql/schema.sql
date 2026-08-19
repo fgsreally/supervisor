@@ -148,6 +148,9 @@ CREATE TABLE IF NOT EXISTS session_input_queue (
   level INTEGER NOT NULL,
   origin_msg TEXT,
   images TEXT,
+  display_message TEXT,
+  pasted_texts TEXT,
+  attachments TEXT,
   enqueued_at INTEGER NOT NULL
 );
 

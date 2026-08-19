@@ -41,10 +41,10 @@ import {
   HOME_TASK_STATUSES,
   normalizeSessionStatus,
 } from "../types.js";
-import { normalizeAgentPermissionRules } from "../core/agent-permissions.js";
-import { parseSessionMeta } from "../core/session-fields.js";
-import { getProjectDir } from "../core/session-files.js";
-import type { SessionBranchType } from "../core/session-history.js";
+import { normalizeAgentPermissionRules } from "../core/agent/agent-permissions.js";
+import { parseSessionMeta } from "../core/session/session-fields.js";
+import { getProjectDir } from "../core/session/session-files.js";
+import type { SessionBranchType } from "../core/session/session-history.js";
 import { normalizeApiProtocol, requireApiProtocol } from "../config/api-protocol.js";
 import { openSqliteDatabase, type SqliteDatabase } from "./sqlite.js";
 import { migrationDirsFromEnv, runMigrations } from "./run-migrations.js";
@@ -342,7 +342,8 @@ export class SupervisorDb {
     const cwd = patch.cwd ?? project.cwd;
     const homeDir = patch.homeDir ?? project.homeDir;
     const meta = patch.meta ?? project.meta;
-    const parsedAt = patch.parsedAt === undefined ? project.parsedAt?.getTime() ?? null : patch.parsedAt;
+    const parsedAt =
+      patch.parsedAt === undefined ? (project.parsedAt?.getTime() ?? null) : patch.parsedAt;
     this.db
       .prepare(
         "UPDATE projects SET name = ?, description = ?, cwd = ?, home_dir = ?, meta = ?, parsed_at = ?, updated_at = ? WHERE id = ?",
@@ -695,9 +696,7 @@ export class SupervisorDb {
       | undefined;
     if (!row) throw new Error(`Session ${id} not found`);
     const merged = { ...JSON.parse(row.meta), ...patch };
-    this.db
-      .prepare("UPDATE sessions SET meta = ? WHERE id = ?")
-      .run(JSON.stringify(merged), id);
+    this.db.prepare("UPDATE sessions SET meta = ? WHERE id = ?").run(JSON.stringify(merged), id);
     return merged;
   }
 
@@ -922,13 +921,16 @@ export class SupervisorDb {
     level: number;
     originMsg?: string;
     images?: unknown[];
+    displayMessage?: string;
+    pastedTexts?: unknown[];
+    attachments?: unknown[];
     enqueuedAt: number;
   }): void {
     this.db
       .prepare(
         `INSERT INTO session_input_queue
-         (id, session_id, message, level, origin_msg, images, enqueued_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+         (id, session_id, message, level, origin_msg, images, display_message, pasted_texts, attachments, enqueued_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         input.id,
@@ -937,6 +939,9 @@ export class SupervisorDb {
         input.level,
         input.originMsg ?? null,
         input.images ? JSON.stringify(input.images) : null,
+        input.displayMessage ?? null,
+        input.pastedTexts ? JSON.stringify(input.pastedTexts) : null,
+        input.attachments ? JSON.stringify(input.attachments) : null,
         input.enqueuedAt,
       );
   }
@@ -952,11 +957,14 @@ export class SupervisorDb {
     level: number;
     originMsg?: string;
     images?: unknown[];
+    displayMessage?: string;
+    pastedTexts?: unknown[];
+    attachments?: unknown[];
     enqueuedAt: number;
   }> {
     const rows = this.db
       .prepare(
-        `SELECT id, session_id, message, level, origin_msg, images, enqueued_at
+        `SELECT id, session_id, message, level, origin_msg, images, display_message, pasted_texts, attachments, enqueued_at
          FROM session_input_queue
          ORDER BY level DESC, enqueued_at ASC`,
       )
@@ -967,6 +975,9 @@ export class SupervisorDb {
       level: number;
       origin_msg: string | null;
       images: string | null;
+      display_message: string | null;
+      pasted_texts: string | null;
+      attachments: string | null;
       enqueued_at: number;
     }>;
     return rows.map((row) => ({
@@ -976,6 +987,9 @@ export class SupervisorDb {
       level: row.level,
       ...(row.origin_msg ? { originMsg: row.origin_msg } : {}),
       ...(row.images ? { images: JSON.parse(row.images) as unknown[] } : {}),
+      ...(row.display_message ? { displayMessage: row.display_message } : {}),
+      ...(row.pasted_texts ? { pastedTexts: JSON.parse(row.pasted_texts) as unknown[] } : {}),
+      ...(row.attachments ? { attachments: JSON.parse(row.attachments) as unknown[] } : {}),
       enqueuedAt: row.enqueued_at,
     }));
   }
@@ -1093,7 +1107,7 @@ export class SupervisorDb {
     home_dir?: string | null;
     is_builtin?: boolean;
     external_config?: AgentRow["external_config"];
-    permission_rules?: string | import("../core/agent-permissions.js").AgentPermissionRules;
+    permission_rules?: string | import("../core/agent/agent-permissions.js").AgentPermissionRules;
     meta?: string | Record<string, unknown>;
   }): Agent {
     const now = Date.now();
@@ -1490,7 +1504,9 @@ export class SupervisorDb {
     return out;
   }
 
-  getLastMessageSummaries(sessionIds: number[]): Map<number, { preview: string; createdAt: number }> {
+  getLastMessageSummaries(
+    sessionIds: number[],
+  ): Map<number, { preview: string; createdAt: number }> {
     const unique = [...new Set(sessionIds.filter((id) => Number.isInteger(id) && id > 0))];
     if (unique.length === 0) return new Map();
     const placeholders = unique.map(() => "?").join(", ");
@@ -1907,7 +1923,7 @@ export class SupervisorDb {
 
   // ============ Push devices ============
 
-  upsertPushDevice(input: import("../core/push-device-types.js").PushDeviceInput) {
+  upsertPushDevice(input: import("../core/push/push-device-types.js").PushDeviceInput) {
     const now = Date.now();
     const existing = this.db
       .prepare("SELECT id FROM push_devices WHERE device_id = ?")
@@ -1956,7 +1972,7 @@ export class SupervisorDb {
 
   getPushDevice(deviceId: string) {
     const row = this.db.prepare("SELECT * FROM push_devices WHERE device_id = ?").get(deviceId) as
-      | import("../core/push-device-types.js").PushDeviceRow
+      | import("../core/push/push-device-types.js").PushDeviceRow
       | undefined;
     return row ?? null;
   }
@@ -1964,7 +1980,7 @@ export class SupervisorDb {
   listPushDevices() {
     return this.db
       .prepare("SELECT * FROM push_devices ORDER BY last_seen DESC")
-      .all() as import("../core/push-device-types.js").PushDeviceRow[];
+      .all() as import("../core/push/push-device-types.js").PushDeviceRow[];
   }
 
   deletePushDevice(deviceId: string): boolean {

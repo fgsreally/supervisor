@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ExternalTurnBuffer } from "../src/core/external/external-turn-buffer.js";
+import { ExternalTurnBuffer } from "../src/core/session/external/external-turn-buffer.js";
 
 describe("ExternalTurnBuffer", () => {
   it("persists plain text turns without tools", async () => {

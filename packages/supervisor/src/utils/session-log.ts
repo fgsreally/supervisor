@@ -1,6 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { getSessionDir } from "../core/session-files.js";
+import { getSessionDir } from "../core/session/session-files.js";
 import { translateRawLog, writeLog } from "../i18n/logs.js";
 
 export type SessionLogLevel = "debug" | "info" | "warn" | "error";

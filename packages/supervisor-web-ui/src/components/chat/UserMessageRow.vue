@@ -21,7 +21,9 @@
         </button>
         <span class="chat-msg-time chat-msg-time--user">{{ timeLabel }}</span>
       </div>
-      <span v-if="deliveryState === 'failed'" class="chat-msg-delivery failed"> {{ t("chat.sendFailed") }} </span>
+      <span v-if="deliveryState === 'failed'" class="chat-msg-delivery failed">
+        {{ t("chat.sendFailed") }}
+      </span>
       <ChatFileBubble v-if="file" :file="file" class="relative" />
       <div
         v-else
@@ -61,6 +63,30 @@
             {{ t("chat.imageMissing", { name: image.name }) }}
           </span>
         </div>
+        <div v-if="pastedTexts.length" class="pasted-text-tags relative z-10">
+          <button
+            v-for="item in pastedTexts"
+            :key="item.id"
+            type="button"
+            class="pasted-text-tag"
+            @click.stop="openPastedText(item)"
+          >
+            <span>粘贴文本</span>
+            <small>{{ item.chars }} 字</small>
+          </button>
+        </div>
+        <div v-if="attachments.length" class="pasted-text-tags relative z-10">
+          <span
+            v-for="attachment in attachments"
+            :key="attachment.id"
+            class="pasted-text-tag attachment-text-tag"
+            :title="attachment.path"
+          >
+            <Paperclip class="h-3.5 w-3.5" />
+            <span>{{ attachment.name }}</span>
+            <small>{{ formatAttachmentSize(attachment.size) }}</small>
+          </span>
+        </div>
         <div v-if="slashCommand" class="relative z-10 slash-message">
           <span class="slash-command-tag" :class="`slash-command-tag--${slashSource ?? 'custom'}`">
             <Sparkles v-if="slashSource === 'skill'" class="w-3.5 h-3.5" />
@@ -80,23 +106,38 @@
       </div>
     </div>
     <div class="chat-avatar chat-avatar--user shrink-0">U</div>
+    <PastedTextDialog
+      :open="!!openedPastedText"
+      :text="openedPastedTextText"
+      :chars="openedPastedText?.chars ?? 0"
+      :loading="openedPastedTextLoading"
+      @close="openedPastedText = null"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
 import ChatFileBubble from "./ChatFileBubble.vue";
 import ChatRichText from "./ChatRichText.vue";
-import type { ChatUserFileAttachment } from "@/types/chat-entry";
+import type {
+  ChatAttachmentPart,
+  ChatPastedTextPart,
+  ChatUserFileAttachment,
+} from "@/types/chat-entry";
+import * as api from "@/api";
 import { sessionMediaUrl } from "@/api";
 import { openImagePreview } from "@/composables/use-image-preview";
-import { FileText, Plug, Sparkles, Terminal, Undo2 } from "lucide-vue-next";
+import { FileText, Paperclip, Plug, Sparkles, Terminal, Undo2 } from "lucide-vue-next";
 import { useI18n } from "@/i18n";
+import PastedTextDialog from "./PastedTextDialog.vue";
 
 const props = defineProps<{
   sessionId: string;
   text: string;
   images?: Array<{ name: string; mediaId?: string; mimeType?: string; missing?: boolean }>;
+  pastedTexts?: ChatPastedTextPart[];
+  attachments?: ChatAttachmentPart[];
   file?: ChatUserFileAttachment | null;
   timeLabel: string;
   searchHit?: boolean;
@@ -112,6 +153,11 @@ const emit = defineEmits<{
 const { t } = useI18n();
 
 const images = computed(() => props.images ?? []);
+const pastedTexts = computed(() => props.pastedTexts ?? []);
+const attachments = computed(() => props.attachments ?? []);
+const openedPastedText = ref<ChatPastedTextPart | null>(null);
+const openedPastedTextText = ref("");
+const openedPastedTextLoading = ref(false);
 const previewableImages = computed(() =>
   images.value.filter((image) => image.mediaId && !image.missing),
 );
@@ -125,6 +171,30 @@ function openPreview(index: number) {
     .map((image) => (image.mediaId ? mediaUrl(image.mediaId) : ""))
     .filter(Boolean);
   openImagePreview(urls, index);
+}
+
+function openPastedText(item: ChatPastedTextPart) {
+  openedPastedText.value = item;
+  openedPastedTextLoading.value = item.mode === "attachment";
+  openedPastedTextText.value = item.text ?? "";
+  if (item.mode !== "attachment" || !item.path) return;
+  void api
+    .getSessionFileContent(props.sessionId, item.path)
+    .then((result) => {
+      openedPastedTextText.value = result.content ?? "";
+    })
+    .catch((error) => {
+      openedPastedTextText.value = error instanceof Error ? error.message : "读取粘贴文本失败";
+    })
+    .finally(() => {
+      openedPastedTextLoading.value = false;
+    });
+}
+
+function formatAttachmentSize(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 let longPressTimer: ReturnType<typeof setTimeout> | undefined;
@@ -343,6 +413,43 @@ onBeforeUnmount(cancelLongPress);
 .user-message-images__missing {
   font-size: 12px;
   opacity: 0.75;
+}
+
+.pasted-text-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.45rem;
+}
+
+.pasted-text-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--app-accent) 28%, var(--app-border));
+  border-radius: 0.45rem;
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent) 10%, transparent);
+  font-size: var(--app-font-control);
+  cursor: pointer;
+}
+
+.pasted-text-tag small {
+  color: var(--app-text-secondary);
+  font-size: var(--app-font-caption);
+}
+
+.attachment-text-tag {
+  max-width: min(20rem, 100%);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-text-tag > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .chat-bubble--user {

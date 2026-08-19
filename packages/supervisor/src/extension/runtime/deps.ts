@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { EventEmitter } from "node:events";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
-import type { ManagedSessionRuntime } from "../../core/managed-session-runtime.js";
-import type { SessionManager } from "../../core/session-manager.js";
+import type { ManagedSessionRuntime } from "../../core/session/managed-session-runtime.js";
+import type { SessionManager } from "../../core/session/session-manager.js";
 import type { SupervisorDb } from "../../db/db.js";
-import { ensureProjectDir, ensureSessionDir } from "../../core/session-files.js";
-import { DEFAULT_SESSION_INPUT_LEVEL } from "../../core/session-input-queue.js";
+import { ensureProjectDir, ensureSessionDir } from "../../core/session/session-files.js";
+import { DEFAULT_SESSION_INPUT_LEVEL } from "../../core/session/session-input-queue.js";
 import { execCommand } from "../../utils/exec.js";
 import { appendSessionLog } from "../../utils/session-log.js";
 import { writeLog } from "../../i18n/logs.js";
@@ -418,7 +418,7 @@ export function buildExtensionDeps(deps: {
       } finally {
         const current = db.get(sessionId)?.status;
         if (current === "blocked") {
-        db.updateStatus(sessionId, before === "running" ? "running" : "active");
+          db.updateStatus(sessionId, before === "running" ? "running" : "active");
         }
         if (reason.trim()) {
           // Kept visible in logs; pausing is intentionally stateful via session status.

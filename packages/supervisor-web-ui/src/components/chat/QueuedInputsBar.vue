@@ -1,7 +1,9 @@
 <template>
   <div v-if="inputs.length" class="queued-inputs-bar">
     <div v-for="input in inputs" :key="input.id" class="queued-inputs-bar__row">
-      <p class="queued-inputs-bar__text" :title="input.message">{{ input.message }}</p>
+      <p class="queued-inputs-bar__text" :title="input.displayMessage ?? input.message">
+        {{ input.displayMessage ?? input.message }}
+      </p>
       <div class="queued-inputs-bar__actions">
         <button
           type="button"

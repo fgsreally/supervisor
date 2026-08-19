@@ -7,8 +7,8 @@ import {
   permissionPathTarget,
   splitShellCommand,
   type AgentPermissionRules,
-} from "../src/core/agent-permissions.js";
-import { SessionRuntime } from "../src/core/session-runtime.js";
+} from "../src/core/agent/agent-permissions.js";
+import { SessionRuntime } from "../src/core/session/session-runtime.js";
 
 const roots: string[] = [];
 
@@ -53,9 +53,9 @@ describe("agent permission rules", () => {
   it("uses explicit projectRoots even when cwd is unrelated", () => {
     const project = makeRoot("explicit-project");
     const other = makeRoot("other-cwd");
-    expect(
-      permissionPathTarget(join(project, "README.md"), other, [project]),
-    ).toBe("project/README.md");
+    expect(permissionPathTarget(join(project, "README.md"), other, [project])).toBe(
+      "project/README.md",
+    );
   });
 
   it("allows unmatched arguments and asks for matching arguments", () => {

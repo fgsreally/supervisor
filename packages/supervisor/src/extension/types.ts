@@ -6,8 +6,8 @@
 
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { Static, TSchema } from "typebox";
-import type { CreateJobInput, JobRecord, UpdateJobInput } from "../core/jobs.js";
-import type { WatsonRunResult } from "../core/watson.js";
+import type { CreateJobInput, JobRecord, UpdateJobInput } from "../core/jobs/jobs.js";
+import type { WatsonRunResult } from "../core/agent/watson.js";
 import type {
   AgentBackendType,
   AgentExternalConfig,
@@ -18,7 +18,7 @@ import type {
   SessionTodoStatus,
   ToolsPreset,
 } from "../types.js";
-import type { SessionBranchType } from "../core/session-history.js";
+import type { SessionBranchType } from "../core/session/session-history.js";
 
 /**
  * Thin session-stage view, replacing the former meta.workflow { stage, status }.

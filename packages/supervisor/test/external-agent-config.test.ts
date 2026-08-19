@@ -9,7 +9,7 @@ import {
   getExternalAgentDetectArgs,
   getExternalAgentInstallCommand,
   resolveExternalAgentInstallShellCommand,
-} from "../src/core/external/external-agent-config.js";
+} from "../src/core/session/external/external-agent-config.js";
 
 let db: SupervisorDb;
 let tmpDir: string;

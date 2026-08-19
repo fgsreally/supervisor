@@ -3,7 +3,7 @@ import {
   SESSION_ACTIVITY_IDLE_MS,
   runSessionActivityTick,
   touchSessionActivity,
-} from "../src/core/session-activity.js";
+} from "../src/core/session/session-activity.js";
 
 function fakeDb(status: string, lastActiveAt: number) {
   const row = { id: 1, status, last_active_at: lastActiveAt } as any;

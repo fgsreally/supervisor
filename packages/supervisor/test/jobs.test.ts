@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { JobManager } from "../src/core/jobs.js";
+import { JobManager } from "../src/core/jobs/jobs.js";
 import { SupervisorDb } from "../src/db.js";
 
 let db: SupervisorDb;

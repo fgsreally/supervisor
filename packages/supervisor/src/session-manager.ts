@@ -1,1 +1,1 @@
-export * from "./core/session-manager.js";
+export * from "./core/session/session-manager.js";

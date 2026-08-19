@@ -3,8 +3,8 @@ import {
   readTaskArtifact,
   taskArtifactPath,
   writeTaskArtifact,
-} from "../../../core/task-artifacts.js";
-import { parseSessionTodos, renderSessionTodos } from "../../../core/session-todos.js";
+} from "../../../core/tasks/task-artifacts.js";
+import { parseSessionTodos, renderSessionTodos } from "../../../core/session/session-todos.js";
 import type { ExtensionContext, ExtensionDefinition } from "../../types.js";
 
 type Todo = {

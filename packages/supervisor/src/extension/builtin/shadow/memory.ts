@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { getSessionDir } from "../../../core/session-files.js";
+import { getSessionDir } from "../../../core/session/session-files.js";
 import type { ShadowProtocolResult } from "./types.js";
 
 export const SHADOW_DIR_NAME = "shadow";

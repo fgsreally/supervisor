@@ -1,7 +1,7 @@
 import type { AgentHarnessEvent } from "@earendil-works/pi-agent-core";
-import type { SessionManager } from "../../../core/session-manager.js";
-import { parseSessionMeta } from "../../../core/session-fields.js";
-import { runWatson } from "../../../core/watson.js";
+import type { SessionManager } from "../../../core/session/session-manager.js";
+import { parseSessionMeta } from "../../../core/session/session-fields.js";
+import { runWatson } from "../../../core/agent/watson.js";
 import type { SupervisorDb } from "../../../db/db.js";
 import type { Session, SessionCheckpoint } from "../../../types.js";
 import { applyShadowMemoryUpdate, readShadowMemory } from "./memory.js";

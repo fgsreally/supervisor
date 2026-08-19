@@ -2,7 +2,7 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import "./mock-agent-harness.js";
 import { SupervisorDb } from "../src/db.js";
-import { SESSION_INPUT_INTERRUPT_LEVEL } from "../src/core/session-input-queue.js";
+import { SESSION_INPUT_INTERRUPT_LEVEL } from "../src/core/session/session-input-queue.js";
 import { SessionManager } from "../src/session-manager.js";
 import { MockAgentHarness } from "./mock-agent-harness.js";
 import { mkdirSync, rmSync } from "node:fs";
@@ -83,8 +83,8 @@ describe("session input queue", () => {
     const inst = await manager.spawn(SPAWN_OPTS);
     const harness = MockAgentHarness.instances[0]!;
     harness.agent.emit({ type: "agent_start" } as AgentEvent);
-    const { writeSessionMediaFile } = await import("../src/core/session-media.js");
-    const saved = await writeSessionMediaFile(inst.id, {
+    const { writeSessionMediaFile } = await import("../src/core/session/session-media.js");
+    const saved = await writeSessionMediaFile(inst.projectId!, inst.id, {
       mimeType: "image/png",
       data: Buffer.from("queued"),
       name: "queued.png",

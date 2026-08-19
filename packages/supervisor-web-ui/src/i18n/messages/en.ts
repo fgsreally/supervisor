@@ -125,6 +125,7 @@ const messages: TranslationMessages = {
   "chat.header.cost": "Total model cost for this session",
   "chat.header.menu": "Chat information",
   "chat.input.uploadImage": "Upload image",
+  "chat.input.uploadAttachment": "Upload attachment",
   "chat.input.shadowWorking": "Shadow agent is working",
   "chat.input.btw": "Ask a quick follow-up",
   "chat.input.interrupt": "Interrupt current session",

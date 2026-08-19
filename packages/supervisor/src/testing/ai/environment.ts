@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import type { AgentHarnessEvent, AgentMessage } from "@earendil-works/pi-agent-core";
 import { SupervisorDb } from "../../db/db.js";
-import { SessionManager } from "../../core/session-manager.js";
-import { SQLiteSessionStorage } from "../../core/session-storage.js";
+import { SessionManager } from "../../core/session/session-manager.js";
+import { SQLiteSessionStorage } from "../../core/session/session-storage.js";
 import { readAiSubjectConfig } from "./config.js";
 import type {
   AiScenarioInput,

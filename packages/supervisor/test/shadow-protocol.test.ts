@@ -4,31 +4,53 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   formatShadowRunPrompt,
+  createShadowResultSchema,
   getShadowSystemPrompt,
   normalizeShadowSubmitResult,
   ShadowResultSchema,
 } from "../src/extension/builtin/shadow/protocol.js";
 import { Check } from "typebox/schema";
+import { Type } from "typebox";
 
 describe("shadow Watson submit_result protocol", () => {
   it("normalizes every supported field", () => {
     const result = normalizeShadowSubmitResult({
       shadowMemory: { action: "append", content: "remember <this>" },
-      message: "The payment callback is failing.",
-      level: "error",
+      message: "The payment callback changed its behavior.",
+      level: "info",
       suggestedQuestions: ["What should I test next?", "Can this be deployed safely?", ""],
       title: "Shadow redesign",
-      commitMessage: "feat: checkpoint shadow redesign",
     });
 
     expect(result).toEqual({
       shadowMemory: { action: "append", content: "remember <this>" },
-      message: "The payment callback is failing.",
-      level: "error",
+      message: "The payment callback changed its behavior.",
+      level: "info",
       suggestedQuestions: ["What should I test next?", "Can this be deployed safely?"],
       title: "Shadow redesign",
-      commitMessage: "feat: checkpoint shadow redesign",
+      extensions: {},
     });
+  });
+
+  it("preserves extension fields only for info results", () => {
+    const schema = createShadowResultSchema({
+      commitMessage: Type.Optional(Type.String()),
+    });
+
+    expect(
+      normalizeShadowSubmitResult(
+        { message: "checkpoint ready", level: "info", commitMessage: "checkpoint" },
+        schema,
+        ["commitMessage"],
+      ),
+    ).toMatchObject({ level: "info", extensions: { commitMessage: "checkpoint" } });
+    expect(
+      normalizeShadowSubmitResult(
+        { message: "be careful", level: "warning", commitMessage: "must not be here" },
+        schema,
+        ["commitMessage"],
+      ),
+    ).toBeNull();
   });
 
   it("accepts empty objects and JSON strings", () => {
@@ -38,7 +60,7 @@ describe("shadow Watson submit_result protocol", () => {
       level: undefined,
       suggestedQuestions: undefined,
       title: undefined,
-      commitMessage: undefined,
+      extensions: undefined,
     });
     expect(normalizeShadowSubmitResult("")).toEqual({});
     expect(

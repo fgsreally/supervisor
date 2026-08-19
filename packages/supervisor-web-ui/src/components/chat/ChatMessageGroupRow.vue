@@ -21,8 +21,15 @@
       <span>{{ dateDividerLabel }}</span>
     </div>
 
+    <ShadowMessageRow
+      v-if="group.type === 'notice' && group.shadowRun"
+      :text="group.content"
+      :status="group.shadowRun.status"
+      :level="group.level"
+    />
+
     <div
-      v-if="(group.type === 'notice' || group.type === 'system') && group.content"
+      v-else-if="(group.type === 'notice' || group.type === 'system') && group.content"
       :class="noticeClass"
     >
       <span>{{ group.content }}</span>
@@ -141,6 +148,7 @@ import AssistantMessageGroup from "./AssistantMessageGroup.vue";
 import LlmErrorCard from "./LlmErrorCard.vue";
 import CompactionBanner from "./CompactionBanner.vue";
 import MessageAssets from "./MessageAssets.vue";
+import ShadowMessageRow from "./ShadowMessageRow.vue";
 
 const props = defineProps<{
   sessionId: string;

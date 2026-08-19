@@ -102,7 +102,8 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
     entry.type === "custom" &&
     (entry.customType === "custom_message" ||
       entry.customType === "session_notice" ||
-      entry.customType === "shadow_message")
+      entry.customType === "shadow_message" ||
+      entry.customType === "shadow_run")
   ) {
     const data = entry.data ?? {};
     const text =
@@ -110,7 +111,9 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
         ? data.text.trim()
         : typeof data.message === "string"
           ? data.message.trim()
-          : t("sessionEntries.systemEvent");
+          : entry.customType === "shadow_run"
+            ? ""
+            : t("sessionEntries.systemEvent");
     // Legacy path: some external-agent failures were stored as custom_message.
     // Render them as llm_error cards so they match LobeChat-style error bubbles.
     if (looksLikeLlmFailureNotice(text)) {
@@ -128,9 +131,13 @@ export function sessionTreeEntryToChatEntry(entry: SessionTreeEntry): ChatEntry 
       type: "notice",
       content: text,
       createdAt: entry.createdAt,
-      ...(entry.customType === "shadow_message" &&
+      ...((entry.customType === "shadow_message" || entry.customType === "shadow_run") &&
       (data.level === "error" || data.level === "warning" || data.level === "info")
         ? { level: data.level }
+        : {}),
+      ...(entry.customType === "shadow_run" &&
+      (data.status === "running" || data.status === "completed" || data.status === "failed")
+        ? { shadowRun: { status: data.status } }
         : {}),
     };
   }

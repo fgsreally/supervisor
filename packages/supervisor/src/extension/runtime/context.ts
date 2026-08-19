@@ -215,7 +215,7 @@ interface ContextSessionOptions {
     details?: unknown;
     triggerTurn?: boolean;
   }) => Promise<void>;
-  sendCustomMessage: (content: string) => Promise<string>;
+  sendCustomMessage: (content: string, options?: { createdAt?: number }) => Promise<string>;
   sendUserMessage: (
     content: string,
     options?: { source?: string; origin?: string },
@@ -1090,8 +1090,8 @@ export class ContextSession {
   sendMessage(message: Parameters<ContextSessionOptions["sendMessage"]>[0]): Promise<void> {
     return this.options.sendMessage(message);
   }
-  sendCustomMessage(content: string): Promise<string> {
-    return this.options.sendCustomMessage(content);
+  sendCustomMessage(content: string, options?: { createdAt?: number }): Promise<string> {
+    return this.options.sendCustomMessage(content, options);
   }
   sendUserMessage(content: string, options?: { source?: string; origin?: string }): Promise<void> {
     return this.options.sendUserMessage(content, options);

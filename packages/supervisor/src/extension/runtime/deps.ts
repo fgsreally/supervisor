@@ -242,8 +242,8 @@ export function buildExtensionDeps(deps: {
       }
     },
 
-    sendCustomMessage: async (content) => {
-      return manager.sendCustomMessage(sessionId, content);
+    sendCustomMessage: async (content, options) => {
+      return manager.sendCustomMessage(sessionId, content, undefined, options);
     },
 
     sendUserMessage: async (
@@ -722,7 +722,7 @@ type RuntimeDeps = {
     details?: unknown;
     triggerTurn?: boolean;
   }) => Promise<void>;
-  sendCustomMessage: (content: string) => Promise<string>;
+  sendCustomMessage: (content: string, options?: { createdAt?: number }) => Promise<string>;
   sendUserMessage: (
     content: string,
     options?: { source?: string; origin?: string },

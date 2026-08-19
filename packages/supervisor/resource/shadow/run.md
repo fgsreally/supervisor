@@ -8,8 +8,7 @@ The result may contain the following optional fields:
   "message": "A concise user-visible finding",
   "level": "error" | "warning" | "info",
   "suggestedQuestions": ["A short question the user may ask next"],
-  "title": "A replacement session title when clearly warranted",
-  "commitMessage": "A checkpoint commit message when a stable intermediate milestone exists"
+  "title": "A replacement session title when clearly warranted"
 }
 ```
 

@@ -75,6 +75,28 @@ describe("sessionTreeEntryToChatEntry", () => {
     });
   });
 
+  it("maps a Shadow placeholder to a stable running notice entry", () => {
+    const entry = sessionTreeEntryToChatEntry({
+      id: "shadow-run-1",
+      parentId: "a1",
+      type: "custom",
+      customType: "shadow_run",
+      data: { status: "running", text: "", level: "info" },
+      isOld: false,
+      meta: {},
+      createdAt: 44,
+    } as import("@/api").SessionTreeEntry);
+
+    expect(entry).toEqual({
+      id: "shadow-run-1",
+      type: "notice",
+      content: "",
+      level: "info",
+      shadowRun: { status: "running" },
+      createdAt: 44,
+    });
+  });
+
   it("ignores harness metadata entries such as thinking_level_change", () => {
     const entry = sessionTreeEntryToChatEntry({
       id: "tl1",

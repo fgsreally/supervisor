@@ -93,6 +93,7 @@ export type ChatEntry =
       type: "notice";
       content: string;
       level?: "error" | "warning" | "info";
+      shadowRun?: { status: "running" | "completed" | "failed" };
     })
   | (ChatEntryBase & {
       id: string;

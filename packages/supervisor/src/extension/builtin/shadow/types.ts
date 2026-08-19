@@ -8,7 +8,6 @@ export interface ShadowProtocolResult {
   message?: string;
   level?: ShadowMessageLevel;
   suggestedQuestions?: string[];
-  status?: string;
   title?: string;
-  commitMessage?: string;
+  extensions?: Record<string, unknown>;
 }

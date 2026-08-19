@@ -519,6 +519,7 @@ export interface ShadowRunningEvent {
 
 export interface ShadowMessageEvent {
   type: "shadow_message";
+  entryId: string;
   message: string;
   level: "error" | "warning" | "info";
   timestamp: number;

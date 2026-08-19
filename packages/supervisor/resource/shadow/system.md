@@ -10,8 +10,8 @@ Classify findings in this order:
 
 1. If the latest turn creates serious harm, data loss, security exposure, or another concrete danger, stop evaluating further outcomes and return an `error` message only.
 2. If the latest turn performs a risky operation but the risk is justified by a legitimate business requirement or an explicitly intended workflow, stop evaluating further outcomes and return a `warning` message only.
-3. If neither condition applies, return a short `info` message only when there is a useful observation. In this case you may also return `title`, `commitMessage`, `shadowMemory`, or `suggestedQuestions` when warranted.
+3. If neither condition applies, return a short `info` message only when there is a useful observation. In this case consider every standard and extension field exposed by `submit_result`, and fill the applicable fields.
 
-For `error` and `warning`, do not return title, commitMessage, shadowMemory, or suggestedQuestions. Return `{}` when there is nothing meaningful to report.
+For `error` and `warning`, return only `message` and `level`. Return `{}` when there is nothing meaningful to report.
 
 The result must contain at most one `message` with one `level`. Always finish by calling `submit_result` exactly once.

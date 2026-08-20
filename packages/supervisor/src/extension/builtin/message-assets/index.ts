@@ -1,8 +1,8 @@
 import { readdir, stat } from "node:fs/promises";
-import { basename, extname, isAbsolute, join, relative, sep } from "node:path";
+import { basename, extname, join, relative, sep } from "node:path";
 import type { ExtensionDefinition, MessageAsset } from "../../types.js";
 
-const ARTIFACT_DIRS = ["scripts", "plans", "todos", "outputs"];
+const OUTPUTS_DIR = "outputs";
 
 type ArtifactRecord = { asset: MessageAsset; fingerprint: string };
 
@@ -69,59 +69,36 @@ async function scanArtifactDir(root: string, dir: string): Promise<ArtifactRecor
   return records;
 }
 
-async function scanArtifacts(root: string): Promise<ArtifactRecord[]> {
-  return (await Promise.all(ARTIFACT_DIRS.map((dir) => scanArtifactDir(root, dir)))).flat();
-}
-
 const messageAssetsExtension: ExtensionDefinition = {
   name: "message-assets",
   async setup(ctx) {
-    const seenArtifacts = new Map<string, string>();
-    for (const record of await scanArtifacts(ctx.session.dir)) {
-      seenArtifacts.set(record.asset.path, record.fingerprint);
+    const seenOutputs = new Map<string, string>();
+    for (const record of await scanArtifactDir(ctx.session.dir, OUTPUTS_DIR)) {
+      seenOutputs.set(record.asset.path, record.fingerprint);
     }
-    return ctx.on("message.tool_result", async (event) => {
-      if (event.isError || !event.messageId) return;
+    let scanScheduled = false;
+    let roundEnded = false;
 
-      const result = event.result as {
-        content?: Array<{ type?: string; text?: string }>;
-        details?: { action?: string; path?: string | null; assets?: MessageAsset[] };
-      };
-      const details = result.details;
-      const path = details?.path;
-      const assets: MessageAsset[] = details?.assets ? [...details.assets] : [];
-      const isRecording =
-        (event.toolName === "browser" && details?.action === "complete") ||
-        (event.toolName === "desktop_recording" &&
-          result.content?.some((part) => part.text?.includes("recording saved:")));
-      const isScreenshot =
-        details?.action === "screenshot" &&
-        (event.toolName === "browser" || event.toolName === "desktop_recording");
-      if ((isRecording || isScreenshot) && path && isAbsolute(path)) {
-        const relativePath = relative(ctx.session.dir, path);
-        if (relativePath && relativePath !== ".." && !relativePath.startsWith(`..${sep}`)) {
-          assets.push({
-            scope: "session",
-            path: relativePath.split(sep).join("/"),
-            name: isScreenshot
-              ? event.toolName === "browser"
-                ? "Browser screenshot"
-                : "Desktop screenshot"
-              : event.toolName === "browser"
-                ? "Browser recording"
-                : "Desktop recording",
-            mediaType: isScreenshot ? "image/png" : "video/webm",
-          });
-        }
-      }
-      for (const record of await scanArtifacts(ctx.session.dir)) {
-        if (seenArtifacts.get(record.asset.path) === record.fingerprint) continue;
-        seenArtifacts.set(record.asset.path, record.fingerprint);
+    const scanOutputs = async (): Promise<void> => {
+      scanScheduled = false;
+      if (!roundEnded) return;
+      roundEnded = false;
+      const [target] = (await ctx.session.messages.list({ limit: 100 })).filter(
+        (message) => message.role === "assistant",
+      );
+      if (!target) return;
+
+      const assets: MessageAsset[] = [];
+      for (const record of await scanArtifactDir(ctx.session.dir, OUTPUTS_DIR)) {
+        if (seenOutputs.get(record.asset.path) === record.fingerprint) continue;
+        seenOutputs.set(record.asset.path, record.fingerprint);
         assets.push(record.asset);
       }
-      const uniqueAssets = [...new Map(assets.map((asset) => [asset.path, asset])).values()];
-      if (!uniqueAssets.length) return;
-      const meta = await ctx.session.messages.getMeta(event.messageId);
+      if (!assets.length) return;
+
+      const message = await ctx.session.messages.get(target.id);
+      if (!message) return;
+      const meta = await message.meta.get();
       const existing = Array.isArray(meta.assets) ? meta.assets : [];
       const existingPaths = new Set(
         existing
@@ -130,9 +107,29 @@ const messageAssetsExtension: ExtensionDefinition = {
           )
           .map((asset) => asset.path),
       );
-      await ctx.session.messages.patchMeta(event.messageId, {
-        assets: [...existing, ...uniqueAssets.filter((asset) => !existingPaths.has(asset.path))],
+      const nextMeta = await message.meta.patch({
+        assets: [...existing, ...assets.filter((asset) => !existingPaths.has(asset.path))],
       });
+      ctx.ui.broadcast({
+        type: "message_meta_updated",
+        messageId: target.id,
+        meta: nextMeta,
+        timestamp: Date.now(),
+      });
+    };
+
+    const scheduleScan = (): void => {
+      if (scanScheduled) return;
+      scanScheduled = true;
+      setTimeout(() => void scanOutputs(), 0);
+    };
+
+    ctx.on("agent.end", () => {
+      roundEnded = true;
+      scheduleScan();
+    });
+    return ctx.on("message.assistant", () => {
+      if (roundEnded) scheduleScan();
     });
   },
 };

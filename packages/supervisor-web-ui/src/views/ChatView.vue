@@ -1788,6 +1788,10 @@ function subscribeShadowSuggestions(sessionId: string) {
         void applySessionMessages(sessionId);
         return;
       }
+      if (payload.event.type === "message_meta_updated") {
+        void applySessionMessages(sessionId);
+        return;
+      }
       if (payload.event.type !== "shadow_suggestions") return;
       shadowRunning.value = false;
       suggestedQuestions.value = payload.event.questions;
@@ -2637,6 +2641,10 @@ function attachToRunningSession(streamingReply?: string) {
         return;
       }
       if (payload.event.type === "shadow_suggestions") return;
+      if (payload.event.type === "message_meta_updated") {
+        void reloadMessagesFromServer(props.session.id);
+        return;
+      }
       applyAgentEventToChatEntries(
         chatEntries.value,
         assistantId,

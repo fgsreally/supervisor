@@ -556,6 +556,13 @@ export interface ApprovalPendingEvent {
   actions: Array<"approve" | "approve_session" | "reject" | "revise">;
 }
 
+export interface MessageMetaUpdatedEvent {
+  type: "message_meta_updated";
+  messageId: string;
+  meta: Record<string, unknown>;
+  timestamp: number;
+}
+
 export type SessionStreamEvent =
   | AgentEvent
   | ShadowSuggestionsEvent
@@ -564,6 +571,7 @@ export type SessionStreamEvent =
   | UiNotifyEvent
   | SessionStatusEvent
   | SessionServicesEvent
+  | MessageMetaUpdatedEvent
   | ApprovalPendingEvent;
 
 export interface SseEvent {

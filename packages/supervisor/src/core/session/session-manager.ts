@@ -83,6 +83,7 @@ import {
 import type {
   ApprovalRequest,
   ApprovalResult,
+  BroadcastEvent,
   ExtensionEvent,
   UiMenuContext,
   UiMenuDefinition,
@@ -281,6 +282,7 @@ export type SessionStatusEvent = {
 
 export type SessionOutputEvent =
   | AgentHarnessEvent
+  | BroadcastEvent
   | ShadowSuggestionsEvent
   | ShadowRunningEvent
   | ShadowMessageEvent

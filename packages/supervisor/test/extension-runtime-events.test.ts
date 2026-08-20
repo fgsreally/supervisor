@@ -147,21 +147,49 @@ describe("extension runtime events", () => {
     expect(seen).toEqual({ messageId: "result-entry-1", entryId: "result-entry-1" });
   });
 
-  it("attaches completed recordings to tool result message assets", async () => {
-    const sessionDir = join(tmpdir(), "supervisor-message-assets-test");
-    mkdirSync(join(sessionDir, "recordings"), { recursive: true });
-    writeFileSync(join(sessionDir, "recordings", "e2e.webm"), "recording");
+  it("attaches outputs to the latest assistant message at agent end", async () => {
+    const sessionDir = join(tmpdir(), `supervisor-message-assets-test-${Date.now()}`);
     const options = createRuntimeOptions();
     options.sessionDir = sessionDir;
+    options.db.getMessages = async () => [
+      {
+        id: "assistant-1",
+        entryId: "assistant-1",
+        type: "message",
+        role: "assistant",
+        content: "done",
+        parentId: null,
+        meta: {},
+      },
+    ];
+    options.db.getMessageById = async (id) =>
+      id === "assistant-1"
+        ? {
+            id: "assistant-1",
+            entryId: "assistant-1",
+            type: "message",
+            role: "assistant",
+            content: "done",
+            parentId: null,
+            meta: {},
+          }
+        : undefined;
     let patchedId = "";
     let patched: Record<string, unknown> = {};
+    let broadcasted: Record<string, unknown> | undefined;
     options.deps.patchMessageMeta = async (id, patch) => {
       patchedId = id;
       patched = patch;
       return patch;
     };
+    options.deps.broadcast = (event) => {
+      broadcasted = event as Record<string, unknown>;
+    };
     const runtime = new SessionExtensionHost(createExtensionTestContext(options));
     await runtime.initialize();
+
+    mkdirSync(join(sessionDir, "outputs"), { recursive: true });
+    writeFileSync(join(sessionDir, "outputs", "converted.csv"), "a,b\n1,2\n");
 
     await runtime.handleStoredEntry({
       id: "recording-result-1",
@@ -172,52 +200,30 @@ describe("extension runtime events", () => {
         toolCallId: "call-1",
         toolName: "browser",
         content: [{ type: "text", text: "Browser recording saved" }],
-        details: {
-          action: "complete",
-          path: join(sessionDir, "recordings", "e2e.webm"),
-        },
       },
     } as any);
 
-    expect(patchedId).toBe("recording-result-1");
+    expect(patchedId).toBe("");
+
+    await runtime.handleHarnessEvent({ type: "agent_end", messages: [] } as any);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(patchedId).toBe("assistant-1");
     expect(patched).toEqual({
       assets: [
         {
           scope: "session",
-          path: "recordings/e2e.webm",
-          name: "Browser recording",
-          mediaType: "video/webm",
+          path: "outputs/converted.csv",
+          name: "converted.csv",
+          mediaType: "text/csv",
         },
       ],
     });
-
-    await runtime.handleStoredEntry({
-      id: "screenshot-result-1",
-      parentId: "assistant-1",
-      type: "message",
-      message: {
-        role: "toolResult",
-        toolCallId: "call-2",
-        toolName: "browser",
-        content: [{ type: "text", text: "Browser screenshot saved" }],
-        details: {
-          action: "screenshot",
-          path: join(sessionDir, "screenshots", "page.png"),
-        },
-      },
-    } as any);
-
-    expect(patchedId).toBe("screenshot-result-1");
-    expect(patched).toEqual({
-      assets: [
-        {
-          scope: "session",
-          path: "screenshots/page.png",
-          name: "Browser screenshot",
-          mediaType: "image/png",
-        },
-      ],
+    expect(broadcasted).toMatchObject({
+      type: "message_meta_updated",
+      messageId: "assistant-1",
     });
+    rmSync(sessionDir, { recursive: true, force: true });
   });
 
   it("delivers system events registered via ctx.on", async () => {

@@ -173,7 +173,7 @@ export type ToolResultHandler = (
 
 export interface ExtensionSessionMessages {
   list: ExtensionDatabase["getMessages"];
-  get: ExtensionDatabase["getMessageById"];
+  get(messageId: string): Promise<ExtensionMessage | undefined>;
   tree: ExtensionDatabase["getMessageTree"];
   currentBranch: ExtensionDatabase["getCurrentBranch"];
   search: ExtensionDatabase["searchMessages"];
@@ -250,6 +250,12 @@ export interface SessionMetaFacade {
   get(): Promise<Record<string, unknown>>;
   set(meta: Record<string, unknown>): Promise<void>;
   patch(patch: Record<string, unknown>): Promise<Record<string, unknown>>;
+}
+
+export interface MessageMetaFacade {
+  get(): Promise<MessageMeta>;
+  set(meta: MessageMeta): Promise<void>;
+  patch(patch: Record<string, unknown>): Promise<MessageMeta>;
 }
 
 export interface AgentDataFacade {
@@ -1277,6 +1283,10 @@ export interface MessageEntry {
   createdAt: number;
 }
 
+export interface ExtensionMessage extends Omit<MessageEntry, "meta"> {
+  meta: MessageMetaFacade;
+}
+
 export interface MessageNode extends MessageEntry {
   children: MessageNode[];
 }
@@ -1316,6 +1326,12 @@ export interface ExecResult {
 export type BroadcastEvent =
   | { type: "tool_progress"; toolCallId: string; percent: number; message?: string }
   | { type: "agent_thinking"; text: string }
+  | {
+      type: "message_meta_updated";
+      messageId: string;
+      meta: Record<string, unknown>;
+      timestamp: number;
+    }
   | { type: "custom"; [key: string]: unknown };
 
 export interface EventBus {

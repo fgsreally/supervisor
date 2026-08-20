@@ -49,6 +49,8 @@ import type {
   SessionWorkflowState,
   SessionDataFacade,
   SessionMetaFacade,
+  MessageMetaFacade,
+  ExtensionMessage,
   SessionData,
   AgentDataFacade,
   AgentMetaFacade,
@@ -113,7 +115,7 @@ function stripMarkdownSection(text: string, heading: string): string {
 
 export interface ContextSessionMessages {
   list: ExtensionDatabase["getMessages"];
-  get: ExtensionDatabase["getMessageById"];
+  get(messageId: string): Promise<ExtensionMessage | undefined>;
   tree: ExtensionDatabase["getMessageTree"];
   currentBranch: ExtensionDatabase["getCurrentBranch"];
   search: ExtensionDatabase["searchMessages"];
@@ -565,7 +567,16 @@ export class Context {
       waitForIdle: deps.waitForIdle,
       messages: {
         list: extensionDb.getMessages,
-        get: extensionDb.getMessageById,
+        get: async (messageId) => {
+          const message = await extensionDb.getMessageById(messageId);
+          if (!message) return undefined;
+          const meta: MessageMetaFacade = {
+            get: async () => extensionDb.getMessageMeta(messageId),
+            set: async (nextMeta) => deps.setMessageMeta(messageId, nextMeta),
+            patch: (patch) => deps.patchMessageMeta(messageId, patch),
+          };
+          return { ...message, meta };
+        },
         tree: extensionDb.getMessageTree,
         currentBranch: extensionDb.getCurrentBranch,
         search: extensionDb.searchMessages,

@@ -225,7 +225,20 @@ export function createExtensionTestContext(options: RuntimeOptions): Context {
       waitForIdle: options.deps.waitForIdle,
       messages: {
         list: options.db.getMessages,
-        get: options.db.getMessageById,
+        get: async (messageId: string) => {
+          const message = await options.db.getMessageById(messageId);
+          if (!message) return undefined;
+          return {
+            ...message,
+            meta: {
+              get: async () => options.db.getMessageMeta(messageId),
+              set: async (meta: Record<string, unknown>) =>
+                options.deps.setMessageMeta(messageId, meta),
+              patch: (patch: Record<string, unknown>) =>
+                options.deps.patchMessageMeta(messageId, patch),
+            },
+          };
+        },
         tree: options.db.getMessageTree,
         currentBranch: options.db.getCurrentBranch,
         search: options.db.searchMessages,

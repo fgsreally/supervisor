@@ -1,8 +1,11 @@
 import type { ExtensionContext, ExtensionDefinition } from "../../types.js";
 import type { SessionRow } from "../../../types.js";
+import { Type } from "typebox";
 import { parseSessionMeta } from "../../../core/session/session-fields.js";
+import { formatGitCommitCustomMessage } from "../../../core/session/session-notice.js";
 import {
   commitAll,
+  commitGitSnapshot,
   createSessionWorktree,
   ensureProjectGitRootSync,
   getGitStatusPorcelain,
@@ -184,6 +187,59 @@ const gitExtension: ExtensionDefinition = {
         cwd: ctx.session.cwd,
         projectCwd,
       });
+
+    ctx.on("shadow.start", (event) => {
+      event.submitResultProperties.commitMessage = Type.Optional(
+        Type.String({
+          description:
+            "A concise checkpoint commit message when a stable intermediate milestone exists.",
+        }),
+      );
+    });
+
+    ctx.on(
+      "shadow.completed",
+      async (event) => {
+        if (event.result.level !== "info") return;
+        const rawCommitMessage = event.result.extensions.commitMessage;
+        if (typeof rawCommitMessage !== "string") return;
+        const commitMessage = rawCommitMessage.replace(/\s+/g, " ").trim().slice(0, 120);
+        if (!commitMessage) return;
+
+        try {
+          if (!event.checkpoint.gitRef || !event.checkpoint.gitHead) return;
+          const commit = await commitGitSnapshot(
+            ctx.session.cwd,
+            event.checkpoint.gitRef,
+            event.checkpoint.gitHead,
+            commitMessage,
+          );
+          const meta = await ctx.session.meta.get();
+          const gitMeta =
+            meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)
+              ? (meta.git as Record<string, unknown>)
+              : {};
+          await ctx.session.meta.patch({ git: { ...gitMeta, lastCommit: commit } });
+          await ctx.session.sendCustomMessage(formatGitCommitCustomMessage(commit), {
+            createdAt: event.startedAt,
+          });
+          sessionLog(sessionId, "info", `Shadow checkpoint committed: ${commit.hash}`, [
+            "system",
+            "git",
+            "shadow",
+          ]);
+        } catch (error: unknown) {
+          const detail = error instanceof Error ? error.message : String(error);
+          ctx.log("error", `Shadow checkpoint commit failed: ${detail}`);
+          sessionLog(sessionId, "error", `Shadow checkpoint commit failed: ${detail}`, [
+            "system",
+            "git",
+            "shadow",
+          ]);
+        }
+      },
+      { mode: "async" },
+    );
 
     // task-management loads before git. Only compose auto-commit when both extensions are active.
     if (ctx.tools.get("TodoList")) {

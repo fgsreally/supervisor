@@ -402,7 +402,7 @@ export interface ExtensionSession {
    * Timeline-only custom message for the user (date-divider style).
    * Never enters the LLM context.
    */
-  sendCustomMessage(content: string): Promise<string>;
+  sendCustomMessage(content: string, options?: { createdAt?: number }): Promise<string>;
   sendUserMessage(content: string, options?: { source?: string; origin?: string }): Promise<void>;
   sendToChild(
     sessionId: number,
@@ -934,6 +934,38 @@ export type ExtensionEvent =
       reason: "shutdown" | "switch" | "error";
       sessionId: number;
       nextSessionId?: string;
+    }
+  | {
+      /** Shadow is about to run; extensions may add submit_result fields. */
+      type: "shadow.start";
+      sessionId: number;
+      startedAt: number;
+      checkpointId: string;
+      placeholderEntryId: string;
+      submitResultProperties: Record<string, TSchema>;
+    }
+  | {
+      /** Shadow has updated its own result; extensions may process their fields asynchronously. */
+      type: "shadow.completed";
+      sessionId: number;
+      startedAt: number;
+      checkpointId: string;
+      placeholderEntryId: string;
+      checkpoint: {
+        gitRef: string | null;
+        gitHead: string | null;
+      };
+      result: {
+        message?: string;
+        level?: "error" | "warning" | "info";
+        shadowMemory?: {
+          action: "append" | "replace";
+          content: string;
+        };
+        suggestedQuestions?: string[];
+        title?: string;
+        extensions: Record<string, unknown>;
+      };
     }
   | {
       type: "workflow.stage_changed";

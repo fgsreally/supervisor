@@ -3,9 +3,10 @@ import { loadBuiltinShadowResource } from "../../../agent/builtin/prompts.js";
 import { Check } from "typebox/schema";
 import type { ShadowProtocolResult } from "./types.js";
 import type { ShadowMessageLevel } from "./types.js";
+import type { TSchema } from "typebox";
 import { Type } from "typebox";
 
-const commonProperties = {
+const standardInfoProperties = {
   shadowMemory: Type.Optional(
     Type.Object({
       action: Type.Union([Type.Literal("append"), Type.Literal("replace")]),
@@ -14,19 +15,38 @@ const commonProperties = {
   ),
   suggestedQuestions: Type.Optional(Type.Array(Type.String())),
   title: Type.Optional(Type.String()),
-  commitMessage: Type.Optional(Type.String()),
 };
 
 const shadowResultOptions = { additionalProperties: false } as const;
 const shadowMessageProperties = {
   message: Type.String(),
-  level: Type.Union([Type.Literal("error"), Type.Literal("warning"), Type.Literal("info")]),
 };
 
-export const ShadowResultSchema = Type.Union([
-  Type.Object({ ...commonProperties, ...shadowMessageProperties }, shadowResultOptions),
-  Type.Object(commonProperties, shadowResultOptions),
-]);
+export function createShadowResultSchema(
+  extensionProperties: Record<string, TSchema> = {},
+): TSchema {
+  return Type.Union([
+    Type.Object({}, shadowResultOptions),
+    Type.Object(
+      {
+        ...shadowMessageProperties,
+        level: Type.Union([Type.Literal("error"), Type.Literal("warning")]),
+      },
+      shadowResultOptions,
+    ),
+    Type.Object(
+      {
+        ...standardInfoProperties,
+        ...extensionProperties,
+        ...shadowMessageProperties,
+        level: Type.Literal("info"),
+      },
+      shadowResultOptions,
+    ),
+  ]);
+}
+
+export const ShadowResultSchema = createShadowResultSchema();
 
 export function getShadowSubmitResultDescription(): string {
   return loadBuiltinShadowResource("submit-result.md");
@@ -60,7 +80,11 @@ function asStringArray(value: unknown, limit: number): string[] | undefined {
 }
 
 /** Normalize and validate the Watson submit_result payload into Shadow fields. */
-export function normalizeShadowSubmitResult(rawInput: unknown): ShadowProtocolResult | null {
+export function normalizeShadowSubmitResult(
+  rawInput: unknown,
+  schema: TSchema = ShadowResultSchema,
+  extensionKeys: string[] = [],
+): ShadowProtocolResult | null {
   let raw = rawInput;
   if (typeof raw === "string") {
     const trimmed = raw.trim();
@@ -72,7 +96,7 @@ export function normalizeShadowSubmitResult(rawInput: unknown): ShadowProtocolRe
     }
   }
   if (raw == null) return {};
-  if (!Check(ShadowResultSchema, raw)) return null;
+  if (!Check(schema, raw)) return null;
 
   const record = raw as Record<string, unknown>;
   const memoryRaw = record.shadowMemory;
@@ -84,13 +108,21 @@ export function normalizeShadowSubmitResult(rawInput: unknown): ShadowProtocolRe
     if (action && content) shadowMemory = { action, content };
   }
 
+  const level = isShadowMessageLevel(record.level) ? record.level : undefined;
   return {
     shadowMemory,
     message: asNonEmptyString(record.message),
-    level: isShadowMessageLevel(record.level) ? record.level : undefined,
+    level,
     suggestedQuestions: asStringArray(record.suggestedQuestions, 4),
     title: asNonEmptyString(record.title),
-    commitMessage: asNonEmptyString(record.commitMessage),
+    extensions:
+      level === "info"
+        ? Object.fromEntries(
+            extensionKeys
+              .filter((key) => Object.hasOwn(record, key))
+              .map((key) => [key, record[key]]),
+          )
+        : undefined,
   };
 }
 

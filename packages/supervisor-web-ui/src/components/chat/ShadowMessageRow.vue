@@ -1,18 +1,29 @@
 <template>
-  <div class="shadow-message-row">
-    <Sparkles />
+  <div class="shadow-message-row" :class="`shadow-message-row--${level ?? 'info'}`">
+    <Loader2 v-if="status === 'running'" class="animate-spin" />
+    <Sparkles v-else />
     <div>
       <small>Shadow</small>
-      <p>{{ text }}</p>
-      <span v-if="queued">{{ t("chat.shadowWaiting") }}</span>
+      <p>{{ text || statusText }}</p>
     </div>
   </div>
 </template>
 <script setup lang="ts">
-import { Sparkles } from "lucide-vue-next";
+import { Loader2, Sparkles } from "lucide-vue-next";
 import { useI18n } from "@/i18n";
-defineProps<{ text: string; queued?: boolean }>();
+import { computed } from "vue";
+
+const props = defineProps<{
+  text: string;
+  status: "running" | "completed" | "failed";
+  level?: "error" | "warning" | "info";
+}>();
 const { t } = useI18n();
+const statusText = computed(() => {
+  if (props.status === "running") return t("chat.shadowWorking");
+  if (props.status === "failed") return t("chat.shadowFailed");
+  return t("chat.shadowCompleted");
+});
 </script>
 <style scoped>
 .shadow-message-row {
@@ -32,6 +43,14 @@ const { t } = useI18n();
   flex: none;
   color: var(--app-accent);
   margin-top: 2px;
+}
+.shadow-message-row--error {
+  color: var(--app-danger);
+  border-color: color-mix(in srgb, var(--app-danger) 42%, var(--app-border));
+}
+.shadow-message-row--warning {
+  color: var(--app-warning);
+  border-color: color-mix(in srgb, var(--app-warning) 42%, var(--app-border));
 }
 small {
   color: var(--app-accent);

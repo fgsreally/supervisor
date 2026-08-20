@@ -168,6 +168,7 @@ import {
 import { getSessionMessageByEntryId, querySessionMessagesPage } from "./session-message-query.js";
 import {
   appendCustomMessage,
+  appendShadowRunPlaceholder,
   appendShadowMessage,
   formatGitCommitCustomMessage,
   type ShadowMessageLevel,
@@ -260,6 +261,7 @@ export type ShadowRunningEvent = {
 
 export type ShadowMessageEvent = {
   type: "shadow_message";
+  entryId: string;
   message: string;
   level: ShadowMessageLevel;
   timestamp: number;
@@ -898,11 +900,31 @@ export class SessionManager {
                 });
               }
             }
+            const shadowSession = this.get(sessionId);
+            if (
+              runtime instanceof SessionRuntime &&
+              shadowCheckpoint &&
+              shadowSession &&
+              shadowSession.parentId === null &&
+              shadowSession.shadowEnabled &&
+              !shadowSession.isBuiltin &&
+              shadowSession.projectId != null
+            ) {
+              const shadowStartedAt = Date.now();
+              const shadowPlaceholderEntryId = await appendShadowRunPlaceholder(
+                new SQLiteSessionStorage(this.db, sessionId),
+                shadowStartedAt,
+              );
+              void runShadow(this, this.db, sessionId, event, shadowCheckpoint, {
+                startedAt: shadowStartedAt,
+                placeholderEntryId: shadowPlaceholderEntryId,
+              }).catch((error: unknown) => {
+                const message = error instanceof Error ? error.message : String(error);
+                writeLog("error", "runtime.shadowHookFailed", { id: sessionId, error: message });
+              });
+            }
             if (!hasPendingAsks(sessionId)) {
               await this.drainSessionInputQueue(sessionId);
-            }
-            if (runtime instanceof SessionRuntime && shadowCheckpoint) {
-              await runShadow(this, this.db, sessionId, event, shadowCheckpoint);
             }
           })().catch((error: unknown) => {
             const message = error instanceof Error ? error.message : String(error);
@@ -1674,9 +1696,15 @@ export class SessionManager {
     }
   }
 
-  publishShadowMessage(sessionId: number, message: string, level: ShadowMessageLevel): void {
+  publishShadowMessage(
+    sessionId: number,
+    entryId: string,
+    message: string,
+    level: ShadowMessageLevel,
+  ): void {
     const event: ShadowMessageEvent = {
       type: "shadow_message",
+      entryId,
       message,
       level,
       timestamp: Date.now(),
@@ -3396,9 +3424,10 @@ export class SessionManager {
     sessionId: number,
     content: string,
     customType?: string,
+    options?: { createdAt?: number },
   ): Promise<string> {
     const storage = new SQLiteSessionStorage(this.db, sessionId);
-    return appendCustomMessage(storage, content, customType);
+    return appendCustomMessage(storage, content, customType, options?.createdAt);
   }
 
   async sendShadowMessage(

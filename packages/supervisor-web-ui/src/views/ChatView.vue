@@ -1782,6 +1782,7 @@ function subscribeShadowSuggestions(sessionId: string) {
       }
       if (payload.event.type === "shadow_running") {
         shadowRunning.value = payload.event.running;
+        void applySessionMessages(sessionId);
         return;
       }
       if (payload.event.type === "shadow_message") {

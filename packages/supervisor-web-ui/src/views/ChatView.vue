@@ -54,14 +54,64 @@
           </ChatHeaderAction>
         </div>
         <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
+        <ResponsivePopover
+          v-if="hasServicePreviews && !isMobileViewport"
+          v-model:open="previewPopoverOpen"
+          :title="t('chat.activeApps')"
+          panel-class="session-preview-popover"
+        >
+          <template #trigger>
+            <ChatHeaderAction
+              :title="`${t('chat.activeApps')} · ${servicePreviews.length}`"
+              :active="previewPopoverOpen || previewActionActive"
+              :count="servicePreviews.length"
+              @click="previewPopoverOpen = !previewPopoverOpen"
+            >
+              <AppWindow />
+            </ChatHeaderAction>
+          </template>
+          <div class="session-preview-popover__list">
+            <button
+              v-for="preview in servicePreviews"
+              :key="previewKey(preview)"
+              type="button"
+              class="session-preview-popover__item"
+              @click="selectSessionPreview(preview)"
+            >
+              <span class="session-preview-popover__icon">
+                <img
+                  v-if="!failedPreviewFavicons.has(previewKey(preview))"
+                  :src="previewFaviconUrl(preview)"
+                  alt=""
+                  @error="markPreviewFaviconFailed(preview)"
+                />
+                <AppWindow v-else />
+              </span>
+              <span class="session-preview-popover__copy">
+                <strong>{{ preview.label ?? preview.name }}</strong>
+                <small>{{ preview.service }} · :{{ preview.port }}</small>
+              </span>
+              <ChevronRight class="session-preview-popover__arrow" />
+            </button>
+          </div>
+        </ResponsivePopover>
         <ChatHeaderAction
-          v-if="hasServicePreviews"
+          v-else-if="hasServicePreviews"
           :title="`${t('chat.activeApps')} · ${servicePreviews.length}`"
           :active="previewActionActive"
           :count="servicePreviews.length"
           @click="toggleSessionPreview"
         >
           <AppWindow />
+        </ChatHeaderAction>
+        <ChatHeaderAction
+          v-if="!isMobileViewport && contentTabs.length > 0"
+          :title="contentPanelOpen ? t('common.collapse') : t('common.expand')"
+          :active="contentPanelOpen"
+          @click="toggleContentPanel"
+        >
+          <PanelRightClose v-if="contentPanelOpen" />
+          <PanelRightOpen v-else />
         </ChatHeaderAction>
         <ChatHeaderAction
           v-if="backgroundBashCount > 0"
@@ -389,7 +439,7 @@
         :active-tab-id="activeContentTabId"
         @update:active-tab-id="activeContentTabId = $event"
         @close-tab="closeContentTab"
-        @close="clearContentTabs"
+        @close="contentPanelOpen = false"
         @resize-start="startSidePanelResize"
       >
         <template v-for="tab in contentTabs" :key="tab.id">
@@ -597,9 +647,12 @@ import { ref, computed, nextTick, watch, onBeforeUnmount, onMounted } from "vue"
 import {
   AppWindow,
   Braces,
+  ChevronRight,
   ClipboardList,
   FolderTree,
   Loader2,
+  PanelRightClose,
+  PanelRightOpen,
   SlidersHorizontal,
   ScrollText,
   Search,
@@ -643,6 +696,7 @@ import SessionFilesPanel from "../components/session/SessionFilesPanel.vue";
 import SessionFilePreviewPane from "../components/session/SessionFilePreviewPane.vue";
 import SessionFileTreeSidebar from "../components/session/SessionFileTreeSidebar.vue";
 import { ResponsiveSplitSurface } from "../components/base";
+import ResponsivePopover from "../components/base/ResponsivePopover/index.vue";
 import { fileBasename, isSupervisorRuntimePath } from "../utils/session-file-tree";
 import { useResizableWidth } from "../composables/use-resizable-width";
 import { useMobileViewport } from "../composables/use-mobile-viewport";
@@ -954,7 +1008,9 @@ const contentTabs = ref<ContentTab[]>([]);
 const activeContentTabId = ref<string | null>(null);
 const showFileTreeSidebar = ref(true);
 
-const contentPanelOpen = computed(() => contentTabs.value.length > 0);
+const contentPanelOpen = ref(false);
+const previewPopoverOpen = ref(false);
+const failedPreviewFavicons = ref(new Set<string>());
 const contentSplitTabs = computed(() =>
   contentTabs.value.map((tab) => ({
     id: tab.id,
@@ -976,7 +1032,7 @@ const hasBashTerminalsTab = computed(() =>
   contentTabs.value.some((tab) => tab.kind === "bash-terminals"),
 );
 const logActionActive = computed(() =>
-  isMobileViewport.value ? showLogPanel.value : hasLogTab.value,
+  isMobileViewport.value ? showLogPanel.value : contentPanelOpen.value && hasLogTab.value,
 );
 const filesActionActive = computed(() =>
   isMobileViewport.value ? showFilesPanel.value : showFileTreeSidebar.value,
@@ -985,11 +1041,11 @@ const evalActionActive = computed(() => {
   if (isMobileViewport.value) {
     return toolPanel.value?.terminal === "eval";
   }
-  return hasEvalTab.value;
+  return contentPanelOpen.value && hasEvalTab.value;
 });
 const bashTerminalsActionActive = computed(() => {
   if (isMobileViewport.value) return mobileBashOpen.value;
-  return hasBashTerminalsTab.value;
+  return contentPanelOpen.value && hasBashTerminalsTab.value;
 });
 const previewActionActive = computed(() => {
   if (isMobileViewport.value) return mobilePreviewOpen.value;
@@ -1023,6 +1079,11 @@ function openBackgroundBashPanel(jobId?: string) {
 function toggleBackgroundBashPanel() {
   if (isMobileViewport.value) {
     toggleMobileBash();
+    return;
+  }
+  if (!contentPanelOpen.value && hasBashTerminalsTab.value) {
+    activeContentTabId.value = "bash-terminals";
+    contentPanelOpen.value = true;
     return;
   }
   if (hasBashTerminalsTab.value) {
@@ -1076,6 +1137,12 @@ function upsertContentTab(tab: ContentTab) {
   if (index >= 0) contentTabs.value[index] = tab;
   else contentTabs.value.push(tab);
   activeContentTabId.value = tab.id;
+  contentPanelOpen.value = true;
+}
+
+function toggleContentPanel() {
+  if (contentTabs.value.length === 0) return;
+  contentPanelOpen.value = !contentPanelOpen.value;
 }
 
 function closeContentTab(id: string) {
@@ -1096,12 +1163,14 @@ function closeContentTab(id: string) {
     const next = contentTabs.value[index] ?? contentTabs.value[index - 1] ?? null;
     activeContentTabId.value = next?.id ?? null;
   }
+  if (contentTabs.value.length === 0) contentPanelOpen.value = false;
 }
 
 function clearContentTabs() {
   contentTabs.value = [];
   activeContentTabId.value = null;
   toolPanel.value = null;
+  contentPanelOpen.value = false;
 }
 
 function openFileContentTab(path: string) {
@@ -1205,6 +1274,11 @@ function toggleLogPanel() {
       return;
     }
     openSidePanel("log");
+    return;
+  }
+  if (!contentPanelOpen.value && hasLogTab.value) {
+    activeContentTabId.value = "log";
+    contentPanelOpen.value = true;
     return;
   }
   if (hasLogTab.value && activeContentTabId.value === "log") {
@@ -2165,6 +2239,7 @@ const servicePreviews = computed<SessionServicesPreview[]>(() => {
   const entries = services.views ?? [];
   return entries.map((app) => ({
     name: app.name,
+    service: app.service,
     port: app.port,
     path: app.path,
     label: app.name,
@@ -2184,6 +2259,18 @@ function ensureLastPreviewKey() {
   }
   const first = servicePreviews.value[0];
   lastPreviewKey.value = first ? `${first.name}:${first.port}` : "";
+}
+
+function previewKey(preview: SessionServicesPreview): string {
+  return `${preview.name}:${preview.port}`;
+}
+
+function previewFaviconUrl(preview: SessionServicesPreview): string {
+  return `${preview.previewUrl.replace(/\/?$/, "/")}favicon.ico`;
+}
+
+function markPreviewFaviconFailed(preview: SessionServicesPreview) {
+  failedPreviewFavicons.value = new Set([...failedPreviewFavicons.value, previewKey(preview)]);
 }
 
 async function wakePreviewServicesIfNeeded(): Promise<boolean> {
@@ -2222,7 +2309,14 @@ async function openSessionPreview() {
 
   taskPaneOpen.value = false;
   btwPanelOpen.value = false;
+  contentPanelOpen.value = true;
   upsertContentTab({ id: "preview", kind: "preview", title: t("chat.activeApps") });
+}
+
+function selectSessionPreview(preview: SessionServicesPreview) {
+  lastPreviewKey.value = previewKey(preview);
+  previewPopoverOpen.value = false;
+  void openSessionPreview();
 }
 
 function toggleSessionPreview() {
@@ -2235,7 +2329,7 @@ function toggleSessionPreview() {
     return;
   }
   if (hasPreviewTab.value) {
-    closeContentTab("preview");
+    contentPanelOpen.value = false;
     return;
   }
   void openSessionPreview();
@@ -2495,6 +2589,11 @@ function toggleEvalPanel() {
   const evalTabs = contentTabs.value.filter(
     (tab) => tab.kind === "tool" && tab.terminal === "eval",
   );
+  if (!contentPanelOpen.value && evalTabs.length) {
+    activeContentTabId.value = evalTabs[0]!.id;
+    contentPanelOpen.value = true;
+    return;
+  }
   if (evalTabs.length) {
     for (const tab of [...evalTabs]) closeContentTab(tab.id);
     return;
@@ -3058,6 +3157,80 @@ async function executeCustomSlash(name: string) {
 .mobile-session-actions {
   position: relative;
   z-index: 70;
+}
+
+:global(.session-preview-popover) {
+  width: 260px;
+  padding: 6px;
+}
+
+.session-preview-popover__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-preview-popover__item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border-radius: 8px;
+  text-align: left;
+  color: var(--app-text-primary);
+}
+
+.session-preview-popover__item:hover {
+  background: var(--app-hover);
+}
+
+.session-preview-popover__icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--app-text-secondary);
+}
+
+.session-preview-popover__icon img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+}
+
+.session-preview-popover__copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.session-preview-popover__copy strong,
+.session-preview-popover__copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-preview-popover__copy strong {
+  font-size: var(--app-font-control);
+  font-weight: var(--app-font-weight-medium);
+}
+
+.session-preview-popover__copy small {
+  font-size: var(--app-font-micro);
+  color: var(--app-text-muted);
+}
+
+.session-preview-popover__arrow {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: var(--app-text-muted);
 }
 
 @media (max-width: 767px) {

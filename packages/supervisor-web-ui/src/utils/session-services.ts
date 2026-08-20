@@ -37,6 +37,7 @@ export interface SessionServicesMeta {
 
 export interface SessionServicesPreview {
   name: string;
+  service: string;
   port: number;
   path?: string;
   label?: string;

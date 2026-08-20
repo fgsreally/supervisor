@@ -1,7 +1,11 @@
 <template>
   <div
     class="chat-view relative flex flex-col h-full w-full"
-    :class="{ 'chat-view--builtin-assistant': session.isBuiltin }"
+    :class="{
+      'chat-view--builtin-assistant': session.isBuiltin,
+      'chat-view--foldable': isFoldable,
+      'chat-view--foldable-panel-open': isFoldable && foldablePanelOpen,
+    }"
     :style="{ background: 'var(--app-chat-bg)', '--chat-msg-font-size': fontSizePx }"
     v-if="session"
   >
@@ -700,6 +704,8 @@ import ResponsivePopover from "../components/base/ResponsivePopover/index.vue";
 import { fileBasename, isSupervisorRuntimePath } from "../utils/session-file-tree";
 import { useResizableWidth } from "../composables/use-resizable-width";
 import { useMobileViewport } from "../composables/use-mobile-viewport";
+import { useAppLayoutMode } from "../composables/use-app-layout-mode";
+import { useFoldableChatLayout } from "../composables/use-foldable-chat-layout";
 import ChatViewHeader from "../components/chat/ChatViewHeader.vue";
 import ChatSearchBar from "../components/chat/ChatSearchBar.vue";
 import ChatMessageList from "../components/chat/ChatMessageList.vue";
@@ -839,6 +845,9 @@ const { width: sidePanelWidth, startResize: startSidePanelResize } = useResizabl
   direction: "rtl",
 });
 const isMobileViewport = useMobileViewport();
+const { isFoldable } = useAppLayoutMode();
+const { panelOpen: foldablePanelOpen, setPanelOpen: setFoldablePanelOpen } =
+  useFoldableChatLayout();
 
 const agentStore = useAgentStore();
 const providerStore = useProviderStore();
@@ -1006,7 +1015,7 @@ type ContentTab =
 
 const contentTabs = ref<ContentTab[]>([]);
 const activeContentTabId = ref<string | null>(null);
-const showFileTreeSidebar = ref(true);
+const showFileTreeSidebar = ref(!isFoldable.value);
 
 const contentPanelOpen = ref(false);
 const previewPopoverOpen = ref(false);
@@ -1133,6 +1142,7 @@ function toolTabId(panel: { title: string; terminal?: "bash" | "eval"; jobId?: s
 }
 
 function upsertContentTab(tab: ContentTab) {
+  switchFoldablePanel("content");
   const index = contentTabs.value.findIndex((item) => item.id === tab.id);
   if (index >= 0) contentTabs.value[index] = tab;
   else contentTabs.value.push(tab);
@@ -1197,6 +1207,7 @@ function closeAllSidePanels() {
 
 function openSidePanel(kind: SidePanelKind) {
   if (isMobileViewport.value) closeAllSidePanels();
+  switchFoldablePanel(kind === "log" ? "content" : kind);
   switch (kind) {
     case "task":
       taskPaneOpen.value = true;
@@ -1219,6 +1230,14 @@ function openSidePanel(kind: SidePanelKind) {
       }
       break;
   }
+}
+
+function switchFoldablePanel(kind: "task" | "btw" | "content" | "files") {
+  if (!isFoldable.value) return;
+  if (kind !== "task") taskPaneOpen.value = false;
+  if (kind !== "btw") btwPanelOpen.value = false;
+  if (kind !== "content") contentPanelOpen.value = false;
+  if (kind !== "files") showFileTreeSidebar.value = false;
 }
 
 function setToolPanel(panel: NonNullable<typeof toolPanel.value>) {
@@ -1297,6 +1316,14 @@ function toggleFilesPanel() {
     openSidePanel("files");
     return;
   }
+  if (isFoldable.value) {
+    if (showFileTreeSidebar.value) {
+      showFileTreeSidebar.value = false;
+      return;
+    }
+    openSidePanel("files");
+    return;
+  }
   showFileTreeSidebar.value = !showFileTreeSidebar.value;
 }
 
@@ -1313,6 +1340,20 @@ const tasks = ref<api.TaskArtifact[]>([]);
 const todos = ref<api.TodoItem[]>([]);
 const selectedTaskPath = ref<string | null>(null);
 const taskPaneOpen = ref(false);
+const foldablePanelActive = computed(
+  () =>
+    isFoldable.value &&
+    (contentPanelOpen.value ||
+      showFileTreeSidebar.value ||
+      taskPaneOpen.value ||
+      btwPanelOpen.value),
+);
+
+watch(foldablePanelActive, (value) => setFoldablePanelOpen(value), { immediate: true });
+
+watch(isFoldable, (value) => {
+  showFileTreeSidebar.value = !value;
+});
 let streamCleanup: (() => void) | null = null;
 let shadowSuggestionCleanup: (() => void) | null = null;
 let streamingReconcileTimer: ReturnType<typeof setInterval> | null = null;
@@ -2176,6 +2217,7 @@ watch(
 );
 
 onBeforeUnmount(() => {
+  setFoldablePanelOpen(false);
   // Keep Live Update aggregate across session switches; completion is tracked via
   // syncAgentLiveStatus / session-store watch, not view unmount.
   window.removeEventListener("supervisor:open-file", onOpenFileEvent);
@@ -3039,6 +3081,31 @@ async function executeCustomSlash(name: string) {
   flex-direction: column;
   min-height: 0;
   overflow: hidden;
+}
+
+.chat-view--foldable-panel-open .chat-workspace__conversation {
+  flex: 0 0 50%;
+  width: 50%;
+  transition: width 280ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chat-view--foldable .chat-workspace > :deep(.responsive-split) {
+  width: 50% !important;
+  max-width: 50%;
+  min-width: 0;
+  transition:
+    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease;
+}
+
+.chat-view--foldable-panel-open .chat-workspace > :deep(.session-file-tree-sidebar) {
+  width: 50%;
+  max-width: none;
+  transition:
+    width 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 280ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease;
 }
 
 .chat-main-row {

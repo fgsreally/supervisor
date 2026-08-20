@@ -1,5 +1,9 @@
 <template>
-  <div class="mobile-instances" data-tour-page="instances">
+  <div
+    class="mobile-instances"
+    :class="{ 'mobile-instances--wide': !isMobile }"
+    data-tour-page="instances"
+  >
     <header class="mobile-instances__header m-mobile-header">
       <button
         v-if="allowDismiss"
@@ -23,61 +27,86 @@
       </button>
     </header>
 
-    <div class="mobile-instances__scroll">
-      <div v-if="instances.length === 0" class="mobile-instances__empty">
-        <h2 class="mobile-instances__empty-title">{{ t("mobile.addServerInstanceTitle") }}</h2>
-        <p class="mobile-instances__empty-hint">
-          {{ t("mobile.addServerInstanceDescription") }}
-        </p>
-        <UiActionButton
-          variant="primary"
-          class="mobile-instances__empty-cta"
-          :loading="scanning"
-          @click="onScan"
-        >
-          {{ t("mobile.scan") }}
-        </UiActionButton>
-        <button type="button" class="mobile-instances__manual-link" @click="openManualAdd()">
-          {{ t("mobile.manualAddress") }}
-        </button>
-      </div>
-
-      <template v-else>
-        <div class="list-section-label">{{ t("mobile.addedInstances") }}</div>
-        <div class="mobile-instances__group">
-          <button
-            v-for="item in instances"
-            :key="item.id"
-            type="button"
-            class="mobile-instances__row"
-            @click="connect(item.id)"
-            @contextmenu.prevent="onDelete(item)"
-            @touchstart.passive="startLongPress(item)"
-            @touchend="clearLongPress"
-            @touchcancel="clearLongPress"
-            @touchmove.passive="clearLongPress"
+    <div class="mobile-instances__layout">
+      <div class="mobile-instances__scroll">
+        <div v-if="instances.length === 0" class="mobile-instances__empty">
+          <h2 class="mobile-instances__empty-title">{{ t("mobile.addServerInstanceTitle") }}</h2>
+          <p class="mobile-instances__empty-hint">
+            {{ t("mobile.addServerInstanceDescription") }}
+          </p>
+          <UiActionButton
+            variant="primary"
+            class="mobile-instances__empty-cta"
+            :loading="scanning"
+            @click="onScan"
           >
-            <span class="mobile-instances__avatar">{{ avatarLetter(item) }}</span>
-            <span class="mobile-instances__body">
-              <span class="mobile-instances__name">{{
-                item.name || displayNameForUrl(item.url)
-              }}</span>
-              <span class="mobile-instances__url">{{ item.url }}</span>
-            </span>
-            <span v-if="item.id === activeId" class="mobile-instances__badge">{{ t("mobile.current") }}</span>
-            <ChevronRight class="mobile-instances__chevron" />
-          </button>
-        </div>
-        <div class="mobile-instances__actions">
-          <UiActionButton variant="primary" block :loading="scanning" @click="onScan">
-            {{ t("mobile.scanToAdd") }}
+            {{ t("mobile.scan") }}
           </UiActionButton>
           <button type="button" class="mobile-instances__manual-link" @click="openManualAdd()">
             {{ t("mobile.manualAddress") }}
           </button>
         </div>
-        <p class="mobile-instances__tip">{{ t("mobile.longPressDelete") }}</p>
-      </template>
+
+        <template v-else>
+          <div class="list-section-label">{{ t("mobile.addedInstances") }}</div>
+          <div class="mobile-instances__group">
+            <button
+              v-for="item in instances"
+              :key="item.id"
+              type="button"
+              class="mobile-instances__row"
+              :class="{ 'mobile-instances__row--selected': !isMobile && item.id === selectedId }"
+              @click="onInstanceClick(item)"
+              @contextmenu.prevent="onDelete(item)"
+              @touchstart.passive="startLongPress(item)"
+              @touchend="clearLongPress"
+              @touchcancel="clearLongPress"
+              @touchmove.passive="clearLongPress"
+            >
+              <span class="mobile-instances__avatar">{{ avatarLetter(item) }}</span>
+              <span class="mobile-instances__body">
+                <span class="mobile-instances__name">{{
+                  item.name || displayNameForUrl(item.url)
+                }}</span>
+                <span class="mobile-instances__url">{{ item.url }}</span>
+              </span>
+              <span v-if="item.id === activeId" class="mobile-instances__badge">{{
+                t("mobile.current")
+              }}</span>
+              <ChevronRight class="mobile-instances__chevron" />
+            </button>
+          </div>
+          <div class="mobile-instances__actions">
+            <UiActionButton variant="primary" block :loading="scanning" @click="onScan">
+              {{ t("mobile.scanToAdd") }}
+            </UiActionButton>
+            <button type="button" class="mobile-instances__manual-link" @click="openManualAdd()">
+              {{ t("mobile.manualAddress") }}
+            </button>
+          </div>
+          <p class="mobile-instances__tip">{{ t("mobile.longPressDelete") }}</p>
+        </template>
+      </div>
+
+      <aside v-if="!isMobile && instances.length > 0" class="mobile-instances__detail">
+        <template v-if="selectedInstance">
+          <div class="mobile-instances__detail-icon">{{ avatarLetter(selectedInstance) }}</div>
+          <h2 class="mobile-instances__detail-title">
+            {{ selectedInstance.name || displayNameForUrl(selectedInstance.url) }}
+          </h2>
+          <p class="mobile-instances__detail-url">{{ selectedInstance.url }}</p>
+          <p class="mobile-instances__detail-hint">{{ t("mobile.instanceDetailHint") }}</p>
+          <UiActionButton
+            variant="primary"
+            block
+            :loading="connecting"
+            @click="connect(selectedInstance.id)"
+          >
+            {{ t("mobile.connectInstance") }}
+          </UiActionButton>
+        </template>
+        <p v-else class="mobile-instances__detail-empty">{{ t("mobile.instanceDetailTitle") }}</p>
+      </aside>
     </div>
 
     <ServerConfigSheet
@@ -91,9 +120,10 @@
 </template>
 
 <script setup lang="ts">
-import { onUnmounted, ref } from "vue";
+import { computed, onUnmounted, ref } from "vue";
 import { ChevronLeft, ChevronRight, ScanLine } from "lucide-vue-next";
 import { useI18n } from "@/i18n";
+import { useAppLayoutMode } from "@/composables/use-app-layout-mode";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { requestUiDeleteConfirm } from "@/composables/use-ui-confirm";
 import { scanSupervisorQrCode } from "@/composables/use-native-qr";
@@ -110,6 +140,7 @@ import UiActionButton from "@/components/base/UiActionButton.vue";
 import ServerConfigSheet from "./ServerConfigSheet.vue";
 
 const { t } = useI18n();
+const { isMobile } = useAppLayoutMode();
 
 withDefaults(
   defineProps<{
@@ -127,6 +158,8 @@ const emit = defineEmits<{
 const instances = ref<SupervisorInstance[]>(listSupervisorInstances());
 const activeId = ref<string | null>(getActiveInstanceId());
 const scanning = ref(false);
+const connecting = ref(false);
+const selectedId = ref<string | null>(activeId.value ?? instances.value[0]?.id ?? null);
 const sheetOpen = ref(false);
 const sheetUrl = ref("");
 const sheetPin = ref("");
@@ -138,7 +171,14 @@ let longPressFired = false;
 function refresh() {
   instances.value = listSupervisorInstances();
   activeId.value = getActiveInstanceId();
+  if (!instances.value.some((item) => item.id === selectedId.value)) {
+    selectedId.value = activeId.value ?? instances.value[0]?.id ?? null;
+  }
 }
+
+const selectedInstance = computed(
+  () => instances.value.find((item) => item.id === selectedId.value) ?? null,
+);
 
 function avatarLetter(item: SupervisorInstance): string {
   const label = item.name || displayNameForUrl(item.url);
@@ -171,23 +211,36 @@ async function onScan() {
   }
 }
 
+function onInstanceClick(item: SupervisorInstance) {
+  if (isMobile.value) {
+    void connect(item.id);
+    return;
+  }
+  selectedId.value = item.id;
+}
+
 async function connect(id: string) {
   if (longPressFired) {
     longPressFired = false;
     return;
   }
-  const instance = setActiveSupervisorInstance(id);
-  if (!instance) {
-    showUiMessage(t("mobile.instanceNotFound"), "error");
-    refresh();
-    return;
+  connecting.value = true;
+  try {
+    const instance = setActiveSupervisorInstance(id);
+    if (!instance) {
+      showUiMessage(t("mobile.instanceNotFound"), "error");
+      refresh();
+      return;
+    }
+    if (!instance.pin) {
+      openManualAdd(instance.url, "", instance.id);
+      return;
+    }
+    emit("connected");
+    window.location.reload();
+  } finally {
+    connecting.value = false;
   }
-  if (!instance.pin) {
-    openManualAdd(instance.url, "", instance.id);
-    return;
-  }
-  emit("connected");
-  window.location.reload();
 }
 
 async function onDelete(item: SupervisorInstance) {
@@ -401,5 +454,91 @@ onUnmounted(() => clearLongPress());
   text-align: center;
   color: var(--app-text-tertiary, rgba(0, 0, 0, 0.3));
   font-size: var(--app-font-caption);
+}
+
+@media (min-width: 768px) {
+  .mobile-instances--wide {
+    background: var(--app-shell-bg, var(--app-list-section-bg, #ededed));
+  }
+
+  .mobile-instances--wide .mobile-instances__header {
+    padding-inline: 24px;
+    border-bottom: 1px solid var(--app-border-subtle);
+  }
+
+  .mobile-instances__layout {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+  }
+
+  .mobile-instances--wide .mobile-instances__scroll {
+    width: min(42%, 480px);
+    flex: none;
+    border-right: 1px solid var(--app-border-subtle);
+  }
+
+  .mobile-instances__detail {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 48px;
+    text-align: center;
+    background: var(--app-chat-bg, var(--app-list-bg, #fff));
+  }
+
+  .mobile-instances__detail-icon {
+    display: grid;
+    width: 64px;
+    height: 64px;
+    place-items: center;
+    border-radius: 16px;
+    color: #fff;
+    background: #07c160;
+    font-size: 1.5rem;
+    font-weight: var(--app-font-weight-semibold);
+  }
+
+  .mobile-instances__detail-title {
+    margin: 20px 0 0;
+    font-size: var(--app-font-page-title);
+    font-weight: var(--app-font-weight-semibold);
+    color: var(--app-text-primary);
+  }
+
+  .mobile-instances__detail-url {
+    max-width: 440px;
+    margin: 8px 0 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--app-text-secondary);
+    font-size: var(--app-font-body);
+  }
+
+  .mobile-instances__detail-hint {
+    max-width: 360px;
+    margin: 20px 0 24px;
+    color: var(--app-text-muted);
+    font-size: var(--app-font-body);
+    line-height: 1.5;
+  }
+
+  .mobile-instances__detail-empty {
+    color: var(--app-text-secondary);
+    font-size: var(--app-font-body);
+  }
+
+  .mobile-instances__detail :deep(.ui-action-button) {
+    width: min(280px, 100%);
+  }
+
+  .mobile-instances__row--selected {
+    background: var(--app-list-item-active);
+  }
 }
 </style>

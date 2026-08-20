@@ -1,5 +1,9 @@
 ﻿<template>
-  <ListDetailChrome :show-list="!isMobile || mobilePage === 'list'">
+  <ListDetailChrome
+    :show-list="!isMobile || mobilePage === 'list'"
+    :foldable="isFoldable"
+    :foldable-list-visible="!foldableChatPanelOpen"
+  >
     <template #list>
       <ChatListPanel
         data-tour-page="chat"
@@ -27,6 +31,8 @@
 import { computed } from "vue";
 import { useRoute } from "vue-router";
 import { useAppShell } from "@/composables/use-app-shell";
+import { useAppLayoutMode } from "@/composables/use-app-layout-mode";
+import { useFoldableChatLayout } from "@/composables/use-foldable-chat-layout";
 import ChatListPanel from "@/components/session/ChatListPanel.vue";
 import ListDetailChrome from "@/components/layout/ListDetailChrome.vue";
 import EmptyPlaceholder from "@/components/base/EmptyPlaceholder.vue";
@@ -47,4 +53,6 @@ const {
   onMobileRootNavigate,
   viewAgent,
 } = useAppShell();
+const { isFoldable } = useAppLayoutMode();
+const { panelOpen: foldableChatPanelOpen } = useFoldableChatLayout();
 </script>

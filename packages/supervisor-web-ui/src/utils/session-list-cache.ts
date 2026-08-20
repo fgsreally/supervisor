@@ -101,6 +101,7 @@ export function projectFromListCache(item: CachedProjectListItem): Project {
     cwd: "",
     homeDir: "",
     meta: {},
+    parsedAt: null,
     createdAt: "",
     updatedAt: "",
   };

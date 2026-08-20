@@ -1,5 +1,9 @@
 import type { JobManager } from "../jobs/jobs.js";
-import type { SessionService, SessionServicesMeta } from "../project/project-runtime.js";
+import type {
+  SessionService,
+  SessionServiceView,
+  SessionServicesMeta,
+} from "../project/project-runtime.js";
 import {
   servicesToPortEnv,
   hasRegisteredServices,
@@ -27,6 +31,11 @@ export function buildSessionServicesPrompt(services: SessionServicesMeta): strin
     }
   } else {
     lines.push(`- start: \`${services.resolvedStartCommand ?? services.startCommand}\``);
+  }
+  for (const view of services.views ?? []) {
+    lines.push(
+      `- view ${view.name}: service ${view.service} port ${view.port} path ${view.path ?? "/"}`,
+    );
   }
   lines.push(
     "To add, delete, or update these services, always call UpdateService with action add, delete, or update. Do not start or stop them directly with bash.",
@@ -81,6 +90,7 @@ export function stoppedSessionServicesMeta(
     stopCommand: previous?.stopCommand,
     destroyCommand: previous?.destroyCommand ?? previous?.uninstallCommand,
     services: previous?.services?.map((app) => ({ ...app, jobId: undefined, pid: null })),
+    views: previous?.views,
     installedAt: previous?.installedAt,
     lastActiveAt: previous?.lastActiveAt,
     pid: null,
@@ -127,6 +137,31 @@ export function scrubStaleSessionRuntimeMeta(db: SessionMetaStore): number {
     changed += 1;
   }
   return changed;
+}
+
+function parseViews(raw: unknown): SessionServiceView[] {
+  if (!Array.isArray(raw)) return [];
+  const views: SessionServiceView[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    const name = typeof row.name === "string" ? row.name.trim() : "";
+    const service = typeof row.service === "string" ? row.service.trim() : "";
+    const port =
+      typeof row.port === "number"
+        ? row.port
+        : typeof row.port === "string"
+          ? Number.parseInt(row.port, 10)
+          : NaN;
+    if (!name || !service || !Number.isFinite(port) || port <= 0) continue;
+    views.push({
+      name,
+      service,
+      port,
+      path: typeof row.path === "string" && row.path.trim() ? row.path : "/",
+    });
+  }
+  return views;
 }
 
 function parseServices(raw: unknown): SessionService[] {
@@ -192,6 +227,7 @@ export function parseSessionServicesMeta(
             ? row.uninstallCommand.trim() || undefined
             : undefined,
       services: parseServices(row.services),
+      views: parseViews(row.views),
       startedAt: typeof row.startedAt === "string" ? row.startedAt : undefined,
       installedAt: typeof row.installedAt === "string" ? row.installedAt : undefined,
       lastActiveAt:

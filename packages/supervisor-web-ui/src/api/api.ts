@@ -103,6 +103,8 @@ export interface Project {
   cwd: string;
   homeDir: string;
   meta: Record<string, unknown>;
+  /** ISO timestamp when Watson project-parse last succeeded; null if never parsed. */
+  parsedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -778,12 +780,17 @@ interface RawProject {
   cwd: string;
   homeDir: string;
   meta: Record<string, unknown>;
+  parsedAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
 function mapProject(raw: RawProject): Project {
-  return { ...raw, id: String(raw.id) };
+  return {
+    ...raw,
+    id: String(raw.id),
+    parsedAt: raw.parsedAt ?? null,
+  };
 }
 
 interface RawSession {

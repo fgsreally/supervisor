@@ -658,6 +658,8 @@ const messages: TranslationMessages = {
   "project.initHint": "Initialize Git and AGENTS.md",
   "project.parse": "Parse",
   "project.parseTitle": "Parse and initialize project",
+  "project.parsing": "Parsing project",
+  "project.parseDone": "Project parsed",
   "btw.title": "Ask alongside",
   "btw.subtitle": "Does not affect the main conversation",
   "btw.close": "Close",

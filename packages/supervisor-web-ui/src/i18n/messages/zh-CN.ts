@@ -658,6 +658,8 @@ const messages: TranslationMessages = {
   "project.initHint": "初始化 Git 与 AGENTS.md",
   "project.parse": "解析",
   "project.parseTitle": "解析并初始化项目",
+  "project.parsing": "正在解析项目",
+  "project.parseDone": "项目已解析",
   "btw.title": "顺便问一下",
   "btw.subtitle": "不影响主对话",
   "btw.close": "关闭",

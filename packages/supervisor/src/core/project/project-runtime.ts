@@ -2,6 +2,7 @@ import type { SupervisorDb } from "../../db/db.js";
 import type { Project } from "../../types.js";
 import { commitAll, findGitRoot } from "../../utils/git.js";
 import { normalizeProjectDescription } from "./project-description.js";
+import { detectHtmlEntries, detectSetup } from "./project-detect.js";
 import { runWatson } from "../agent/watson.js";
 import { renderPromptTemplate } from "../resource/system-prompts.js";
 import { Type } from "typebox";
@@ -35,8 +36,11 @@ export type ProjectViewDefinition = View;
 export interface ProjectServiceConfig {
   definitions: ProjectServiceDefinition[];
   views?: ProjectViewDefinition[];
+  /** Written by deterministic detection (detectSetup), not by the LLM. */
   installCommand?: string;
+  /** @deprecated Legacy rows only; process lifecycle is platform-managed. */
   stopCommand?: string;
+  /** @deprecated Legacy rows only; destroy = drop the session worktree. */
   destroyCommand?: string;
 }
 
@@ -88,9 +92,6 @@ export function parseProjectServicesMeta(
 const ProjectRuntimeSpecSchema = Type.Object({
   description: Type.String(),
   services: Type.Object({
-    installCommand: Type.Optional(Type.String()),
-    stopCommand: Type.Optional(Type.String()),
-    destroyCommand: Type.Optional(Type.String()),
     definitions: Type.Array(
       Type.Object({
         name: Type.String(),
@@ -246,20 +247,41 @@ export function parseProjectRuntimeSpec(rawInput: unknown): ProjectRuntimeSpec {
       return { name, service, port, path: rawPath.startsWith("/") ? rawPath : `/${rawPath}` };
     },
   );
-  const optional = (key: string): string | undefined => {
-    const value = rawServices[key];
-    return typeof value === "string" && value.trim() ? value.trim() : undefined;
-  };
   return {
     description,
     services: {
       definitions,
       ...(Array.isArray(rawServices.views) ? { views } : {}),
-      installCommand: optional("installCommand"),
-      stopCommand: optional("stopCommand"),
-      destroyCommand: optional("destroyCommand"),
     },
   };
+}
+
+/**
+ * Guarantee views programmatically: every root-level HTML entry must be exposed
+ * as a view (the LLM is asked to do this, but the invariant is enforced here).
+ */
+export function ensureHtmlViews(spec: ProjectRuntimeSpec, cwd: string): ProjectRuntimeSpec {
+  const primary = spec.services.definitions[0];
+  if (!primary) return spec;
+  const htmlEntries = detectHtmlEntries(cwd);
+  if (htmlEntries.length === 0) return spec;
+
+  const views = [...(spec.services.views ?? [])];
+  const coveredPaths = new Set(views.map((view) => view.path.toLowerCase()));
+  const usedNames = new Set(views.map((view) => view.name));
+  for (const file of htmlEntries) {
+    const isIndex = file.toLowerCase() === "index.html";
+    const path = isIndex ? "/" : `/${file}`;
+    if (coveredPaths.has(path.toLowerCase())) continue;
+    if (isIndex && coveredPaths.has("/index.html")) continue;
+    let name = isIndex ? primary.name : file.replace(/\.html?$/i, "");
+    while (usedNames.has(name)) name = `${name}-view`;
+    usedNames.add(name);
+    views.push({ name, service: primary.name, port: "PORT1", path });
+    coveredPaths.add(path.toLowerCase());
+  }
+  if (views.length === (spec.services.views?.length ?? 0)) return spec;
+  return { ...spec, services: { ...spec.services, views } };
 }
 
 /** Run Watson project parse (structured via terminating submit_result tool). */
@@ -290,7 +312,7 @@ export async function runProjectRuntimeParse(options: {
   const gitignorePath = join(options.project.cwd, ".gitignore");
   const gitignore = existsSync(gitignorePath) ? readFileSync(gitignorePath, "utf8") : "";
   if (!gitignore.trim()) throw new Error("项目解析未创建有效的 .gitignore");
-  return parseProjectRuntimeSpec(run.result);
+  return ensureHtmlViews(parseProjectRuntimeSpec(run.result), options.project.cwd);
 }
 
 export async function applyProjectRuntimeParse(
@@ -306,13 +328,17 @@ export async function applyProjectRuntimeParse(
   }
   await commitAll(project.cwd, "chore: initialize project for supervisor");
 
+  // Setup comes from deterministic detection; stop/destroy are platform-managed.
+  const setup = detectSetup(project.cwd);
   db.updateProject(projectId, {
     description: spec.description,
     parsedAt: Date.now(),
     meta: {
       ...project.meta,
       services: {
-        ...spec.services,
+        definitions: spec.services.definitions,
+        ...(spec.services.views ? { views: spec.services.views } : {}),
+        installCommand: setup.installCommand,
         updatedAt: new Date().toISOString(),
       } satisfies ProjectServicesMeta,
     },

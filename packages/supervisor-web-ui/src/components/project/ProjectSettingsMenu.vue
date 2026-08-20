@@ -42,6 +42,10 @@
       <div class="form-dialog__field">
         <div class="form-dialog__row">
           <p class="form-dialog__hint form-dialog__grow">{{ t("project.initHint") }}</p>
+          <UiListStatus
+            :status="parseStatus"
+            :title="parseStatusTitle"
+          />
           <UiActionButton
             variant="secondary"
             :loading="parsing"
@@ -62,6 +66,7 @@
 import { computed, ref, watch } from "vue";
 import SheetDrawer from "@/components/base/SheetDrawer.vue";
 import UiActionButton from "@/components/base/UiActionButton.vue";
+import UiListStatus, { type UiListStatusKind } from "@/components/base/UiListStatus.vue";
 import WatsonIcon from "@/components/base/WatsonIcon.vue";
 import { useI18n } from "@/i18n";
 
@@ -71,6 +76,8 @@ const props = defineProps<{
   cwd?: string;
   busy?: boolean;
   parsing?: boolean;
+  /** ISO timestamp from projects.parsed_at when parse succeeded. */
+  parsedAt?: string | null;
 }>();
 const { t } = useI18n();
 
@@ -86,6 +93,18 @@ const saving = ref(false);
 const nameDirty = computed(
   () => draftName.value.trim() !== "" && draftName.value.trim() !== (props.name ?? "").trim(),
 );
+
+const parseStatus = computed<UiListStatusKind>(() => {
+  if (props.parsing) return "loading";
+  if (props.parsedAt) return "success";
+  return "idle";
+});
+
+const parseStatusTitle = computed(() => {
+  if (props.parsing) return t("project.parsing");
+  if (props.parsedAt) return t("project.parseDone");
+  return undefined;
+});
 
 watch(
   () => [props.open, props.name] as const,

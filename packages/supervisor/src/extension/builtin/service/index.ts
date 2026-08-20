@@ -7,6 +7,7 @@ import {
   type SessionService,
   type SessionServicesMeta,
 } from "../../../core/project/project-runtime.js";
+import { canReuseParentNodeModules } from "../../../core/project/project-detect.js";
 import {
   hasRegisteredServices,
   isSessionServiceProcessAlive,
@@ -584,6 +585,12 @@ const projectServicesExtension: ExtensionDefinition = {
       if (!projectServices || projectServices.definitions.length === 0) return;
       if (hasRegisteredServices(await readServices())) return;
 
+      // Worktrees resolve dependencies from the parent project's node_modules
+      // (Node walks up); skip the one-shot install in that case.
+      const reuseParentDeps = canReuseParentNodeModules(cwd());
+      if (reuseParentDeps && projectServices.installCommand) {
+        ctx.log("info", `Skipping install: node_modules reachable from ${cwd()}`);
+      }
       for (const definition of projectServices.definitions) {
         if (hasRegisteredServices(await readServices())) {
           const current = await readServices();
@@ -594,9 +601,7 @@ const projectServicesExtension: ExtensionDefinition = {
           name: definition.name,
           startCommand: definition.startCommand,
           path: definition.path,
-          installCommand: projectServices.installCommand,
-          stopCommand: projectServices.stopCommand,
-          destroyCommand: projectServices.destroyCommand,
+          installCommand: reuseParentDeps ? undefined : projectServices.installCommand,
         });
         const text = result.content[0]?.text ?? "";
         if (text.includes("失败") || text.includes("未启动")) {

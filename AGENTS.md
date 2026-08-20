@@ -177,5 +177,6 @@ components/<domain>/<Name>/
 - **华生**是内部 runner（`spawn_type: watson`）：`AgentHarness` + 简单工具（`createDefaultTools`）+ 助手模型；**不**再走 `pi-coding-agent` 的 `createAgentSession`（避免两套 agent 系统）。
 - 不创建用户 session；任务提示词临时注入；结构化结果只用终止型 `submit_result` tool（pi 官方方式，无文本托底）。
 - 入口：`SessionManager.runWatson` / 扩展 `ctx.watson.run(...)`；日志在 agent home `logs/`，Agent 详情 Logs 可见。
-- 华生会在两个时间点跑：创建项目时把安装/启动/停止/销毁写进 `AGENTS.md`「本地开发服务」（不写 port/path）；创建 Session 时再读该节，对每个服务调用 `UpdateService`（action=add）启动进程并写入 `sessions.meta.services`。进程在跑且 meta 有 apps 时，「活跃应用」能看到。对话中途增删改走 `UpdateService`（action 为 add / delete / update）：新增起进程，删除关进程，修改先关再起。不要用 bash 直接跑 vite/dev。创建 Session 后把已启动的 services 注入该 Session 的 system prompt。
+- 项目解析分两层：**setup（依赖安装）由程序检测**（`core/project/project-detect.ts`，按 lockfile / manifest 判定，Nixpacks 式），**services + views 由华生解析**；stop / destroy 不再是命令——停止即平台杀托管进程，销毁即删除 worktree。`AGENTS.md`「本地开发服务」只写 Start（不写 port/path）。views 有程序兜底：项目根每个可访问 HTML 入口必须成 view（`ensureHtmlViews`）。
+- 创建 Session 时平台从 `project.meta.services` 继承 services 与 views 并启动进程写入 `sessions.meta.services`；worktree 能向上复用父项目 `node_modules` 时跳过安装。进程在跑且 meta 有 apps 时，「活跃应用」能看到。对话中途增删改走 `UpdateService`（action 为 add / delete / update）：新增起进程，删除关进程，修改先关再起。不要用 bash 直接跑 vite/dev。创建 Session 后把已启动的 services 注入该 Session 的 system prompt。
 - Session 可委派子 Agent 白名单：`sessions.meta.subagentIds`（不再使用 `members` 表）。

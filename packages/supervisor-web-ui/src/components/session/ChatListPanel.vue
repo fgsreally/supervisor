@@ -424,6 +424,7 @@
       :cwd="projectSettingsProject?.cwd"
       :busy="projectBusy"
       :parsing="projectParsing"
+      :parsed-at="projectSettingsProject?.parsedAt"
       @close="closeProjectSettings"
       @rename="renameProject"
       @parse="parseCurrentProject"
@@ -795,6 +796,9 @@ function openAgentPicker(workspaceId: string) {
 function openProjectSettings(projectId: string) {
   closeProjectGit();
   projectSettingsId.value = projectId;
+  void sessionStore
+    .fetchProject(projectId)
+    .catch(() => undefined);
 }
 
 function openProjectContextMenu(projectId: string, event: MouseEvent) {

@@ -62,19 +62,19 @@
           v-if="hasServicePreviews && !isMobileViewport"
           v-model:open="previewPopoverOpen"
           :title="t('chat.activeApps')"
-          panel-class="session-preview-popover"
+          :panel-class="previewPopoverPanelClass"
         >
           <template #trigger>
             <ChatHeaderAction
               :title="`${t('chat.activeApps')} · ${servicePreviews.length}`"
-              :active="previewPopoverOpen || previewActionActive"
+              :active="previewPopoverOpen"
               :count="servicePreviews.length"
               @click="previewPopoverOpen = !previewPopoverOpen"
             >
               <AppWindow />
             </ChatHeaderAction>
           </template>
-          <div class="session-preview-popover__list">
+          <div v-if="!previewPopoverViewing" class="session-preview-popover__list">
             <button
               v-for="preview in servicePreviews"
               :key="previewKey(preview)"
@@ -98,6 +98,24 @@
               <ChevronRight class="session-preview-popover__arrow" />
             </button>
           </div>
+          <div v-else class="session-preview-popover__view">
+            <button
+              type="button"
+              class="session-preview-popover__back"
+              @click="previewPopoverViewing = false"
+            >
+              <ChevronLeft class="session-preview-popover__arrow" />
+              <span>{{ previewPopoverTitle }}</span>
+            </button>
+            <SessionPreviewPanel
+              embedded
+              class="session-preview-popover__frame"
+              :previews="popoverActivePreviews"
+              :loading="previewLoading"
+              :show-header="false"
+              v-model="lastPreviewKey"
+            />
+          </div>
         </ResponsivePopover>
         <ChatHeaderAction
           v-else-if="hasServicePreviews"
@@ -117,8 +135,33 @@
           <PanelRightClose v-if="contentPanelOpen" />
           <PanelRightOpen v-else />
         </ChatHeaderAction>
+        <ResponsivePopover
+          v-if="!isMobileViewport && (backgroundBashCount > 0 || bashPopoverOpen)"
+          v-model:open="bashPopoverOpen"
+          :title="t('chat.backgroundTerminal')"
+          panel-class="session-bash-popover"
+        >
+          <template #trigger>
+            <ChatHeaderAction
+              v-if="backgroundBashCount > 0"
+              :title="`${t('chat.backgroundTerminal')} · ${backgroundBashCount}`"
+              :active="bashPopoverOpen"
+              :count="backgroundBashCount"
+              @click="bashPopoverOpen = !bashPopoverOpen"
+            >
+              <Terminal />
+            </ChatHeaderAction>
+          </template>
+          <SessionBackgroundBashPanel
+            embedded
+            class="session-bash-popover__body"
+            :session-id="session.id"
+            :initial-job-id="mobileBashJobId ?? undefined"
+            @close="bashPopoverOpen = false"
+          />
+        </ResponsivePopover>
         <ChatHeaderAction
-          v-if="backgroundBashCount > 0"
+          v-else-if="backgroundBashCount > 0"
           :title="`${t('chat.backgroundTerminal')} · ${backgroundBashCount}`"
           :active="bashTerminalsActionActive"
           :count="backgroundBashCount"
@@ -477,25 +520,6 @@
             @close="closeContentTab(tab.id)"
             @job-ended="onEvalJobEnded"
           />
-          <SessionPreviewPanel
-            v-else-if="tab.kind === 'preview'"
-            v-show="activeContentTabId === tab.id"
-            embedded
-            class="chat-panel-host__body"
-            :previews="servicePreviews"
-            :loading="previewLoading"
-            v-model="lastPreviewKey"
-            @close="closeContentTab('preview')"
-          />
-          <SessionBackgroundBashPanel
-            v-else-if="tab.kind === 'bash-terminals'"
-            v-show="activeContentTabId === tab.id"
-            embedded
-            class="chat-panel-host__body"
-            :session-id="session.id"
-            :initial-job-id="tab.jobId"
-            @close="closeContentTab('bash-terminals')"
-          />
         </template>
       </ResponsiveSplitSurface>
 
@@ -651,6 +675,7 @@ import { ref, computed, nextTick, watch, onBeforeUnmount, onMounted } from "vue"
 import {
   AppWindow,
   Braces,
+  ChevronLeft,
   ChevronRight,
   ClipboardList,
   FolderTree,
@@ -988,6 +1013,7 @@ const sessionActionsOpen = ref(false);
 const mobilePreviewOpen = ref(false);
 const mobileBashOpen = ref(false);
 const mobileBashJobId = ref<string | null>(null);
+const bashPopoverOpen = ref(false);
 const backgroundBashCount = ref(0);
 let backgroundBashPoll: ReturnType<typeof setInterval> | undefined;
 const previewLoading = ref(false);
@@ -1001,8 +1027,6 @@ type SidePanelKind = "task" | "btw" | "log" | "files";
 
 type ContentTab =
   | { id: "log"; kind: "log"; title: string }
-  | { id: "preview"; kind: "preview"; title: string }
-  | { id: "bash-terminals"; kind: "bash-terminals"; title: string; jobId?: string }
   | { id: string; kind: "file"; path: string; title: string }
   | {
       id: string;
@@ -1019,6 +1043,7 @@ const showFileTreeSidebar = ref(!isFoldable.value);
 
 const contentPanelOpen = ref(false);
 const previewPopoverOpen = ref(false);
+const previewPopoverViewing = ref(false);
 const failedPreviewFavicons = ref(new Set<string>());
 const contentSplitTabs = computed(() =>
   contentTabs.value.map((tab) => ({
@@ -1037,9 +1062,6 @@ const hasLogTab = computed(() => contentTabs.value.some((tab) => tab.kind === "l
 const hasEvalTab = computed(() =>
   contentTabs.value.some((tab) => tab.kind === "tool" && tab.terminal === "eval"),
 );
-const hasBashTerminalsTab = computed(() =>
-  contentTabs.value.some((tab) => tab.kind === "bash-terminals"),
-);
 const logActionActive = computed(() =>
   isMobileViewport.value ? showLogPanel.value : contentPanelOpen.value && hasLogTab.value,
 );
@@ -1054,18 +1076,15 @@ const evalActionActive = computed(() => {
 });
 const bashTerminalsActionActive = computed(() => {
   if (isMobileViewport.value) return mobileBashOpen.value;
-  return contentPanelOpen.value && hasBashTerminalsTab.value;
+  return bashPopoverOpen.value;
 });
 const previewActionActive = computed(() => {
   if (isMobileViewport.value) return mobilePreviewOpen.value;
-  return hasPreviewTab.value;
+  return previewPopoverOpen.value;
 });
 
-function bashTerminalsTabTitle(count = backgroundBashCount.value): string {
-  return count > 0 ? t("chat.backgroundTerminalCount", { count }) : t("chat.backgroundTerminal");
-}
-
 function openBackgroundBashPanel(jobId?: string) {
+  mobileBashJobId.value = jobId ?? null;
   if (isMobileViewport.value) {
     taskPaneOpen.value = false;
     btwPanelOpen.value = false;
@@ -1073,16 +1092,10 @@ function openBackgroundBashPanel(jobId?: string) {
     showFilesPanel.value = false;
     mobilePreviewOpen.value = false;
     toolPanel.value = null;
-    mobileBashJobId.value = jobId ?? null;
     mobileBashOpen.value = true;
     return;
   }
-  upsertContentTab({
-    id: "bash-terminals",
-    kind: "bash-terminals",
-    title: bashTerminalsTabTitle(),
-    jobId,
-  });
+  bashPopoverOpen.value = true;
 }
 
 function toggleBackgroundBashPanel() {
@@ -1090,13 +1103,8 @@ function toggleBackgroundBashPanel() {
     toggleMobileBash();
     return;
   }
-  if (!contentPanelOpen.value && hasBashTerminalsTab.value) {
-    activeContentTabId.value = "bash-terminals";
-    contentPanelOpen.value = true;
-    return;
-  }
-  if (hasBashTerminalsTab.value) {
-    closeContentTab("bash-terminals");
+  if (bashPopoverOpen.value) {
+    bashPopoverOpen.value = false;
     return;
   }
   openBackgroundBashPanel();
@@ -1201,6 +1209,7 @@ function closeAllSidePanels() {
   mobilePreviewOpen.value = false;
   mobileBashOpen.value = false;
   mobileBashJobId.value = null;
+  bashPopoverOpen.value = false;
   toolPanel.value = null;
   clearContentTabs();
 }
@@ -1875,8 +1884,11 @@ watch(
     mobilePreviewOpen.value = false;
     mobileBashOpen.value = false;
     mobileBashJobId.value = null;
+    bashPopoverOpen.value = false;
     backgroundBashCount.value = 0;
     lastPreviewKey.value = "";
+    previewPopoverOpen.value = false;
+    previewPopoverViewing.value = false;
     startBackgroundBashPolling();
     void restorePendingApprovals(sessionId);
   },
@@ -2290,7 +2302,18 @@ const servicePreviews = computed<SessionServicesPreview[]>(() => {
   }));
 });
 const hasServicePreviews = computed(() => servicePreviews.value.length > 0);
-const hasPreviewTab = computed(() => contentTabs.value.some((tab) => tab.kind === "preview"));
+const previewPopoverPanelClass = computed(() =>
+  previewPopoverViewing.value
+    ? "session-preview-popover session-preview-popover--view"
+    : "session-preview-popover",
+);
+const popoverActivePreviews = computed(() =>
+  servicePreviews.value.filter((item) => previewKey(item) === lastPreviewKey.value),
+);
+const previewPopoverTitle = computed(() => {
+  const preview = popoverActivePreviews.value[0];
+  return preview?.label ?? preview?.name ?? t("chat.activeApps");
+});
 
 function ensureLastPreviewKey() {
   if (
@@ -2349,16 +2372,14 @@ async function openSessionPreview() {
     return;
   }
 
-  taskPaneOpen.value = false;
-  btwPanelOpen.value = false;
-  contentPanelOpen.value = true;
-  upsertContentTab({ id: "preview", kind: "preview", title: t("chat.activeApps") });
+  previewPopoverOpen.value = true;
+  previewPopoverViewing.value = true;
 }
 
 function selectSessionPreview(preview: SessionServicesPreview) {
   lastPreviewKey.value = previewKey(preview);
-  previewPopoverOpen.value = false;
-  void openSessionPreview();
+  previewPopoverViewing.value = true;
+  void wakePreviewServicesIfNeeded();
 }
 
 function toggleSessionPreview() {
@@ -2370,11 +2391,11 @@ function toggleSessionPreview() {
     void openSessionPreview();
     return;
   }
-  if (hasPreviewTab.value) {
-    contentPanelOpen.value = false;
+  if (previewPopoverOpen.value) {
+    previewPopoverOpen.value = false;
     return;
   }
-  void openSessionPreview();
+  previewPopoverOpen.value = true;
 }
 
 async function toggleMobilePreview() {
@@ -2448,19 +2469,21 @@ function onConversationTouchEnd(event: TouchEvent) {
 watch(hasServicePreviews, (has) => {
   if (!has) {
     mobilePreviewOpen.value = false;
-    if (hasPreviewTab.value) closeContentTab("preview");
+    previewPopoverOpen.value = false;
+    previewPopoverViewing.value = false;
   }
+});
+
+watch(previewPopoverOpen, (open) => {
+  if (!open) previewPopoverViewing.value = false;
 });
 
 watch(backgroundBashCount, (count) => {
   if (count <= 0) {
     mobileBashOpen.value = false;
     mobileBashJobId.value = null;
-    if (hasBashTerminalsTab.value) closeContentTab("bash-terminals");
-    return;
+    bashPopoverOpen.value = false;
   }
-  const tab = contentTabs.value.find((item) => item.kind === "bash-terminals");
-  if (tab) tab.title = bashTerminalsTabTitle(count);
 });
 
 const lastNotifiedAskId = ref<string | null>(null);
@@ -3226,15 +3249,90 @@ async function executeCustomSlash(name: string) {
   z-index: 70;
 }
 
-:global(.session-preview-popover) {
+:deep(.session-preview-popover) {
+  position: absolute;
+  z-index: 80;
+  top: 34px;
+  right: 0;
   width: 260px;
   padding: 6px;
+  border: 1px solid var(--app-popup-border);
+  border-radius: 10px;
+  background: var(--app-popup-bg);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 16%);
+}
+
+:deep(.session-preview-popover--view) {
+  display: flex;
+  width: min(720px, calc(100vw - 32px));
+  height: min(70vh, 640px);
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+}
+
+:deep(.session-bash-popover) {
+  position: absolute;
+  z-index: 80;
+  top: 34px;
+  right: 0;
+  display: flex;
+  width: min(720px, calc(100vw - 32px));
+  height: min(70vh, 640px);
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid var(--app-popup-border);
+  border-radius: 10px;
+  background: var(--app-popup-bg);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 16%);
+}
+
+.session-bash-popover__body {
+  min-height: 0;
+  flex: 1;
 }
 
 .session-preview-popover__list {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.session-preview-popover__view {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.session-preview-popover__back {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--app-border-subtle);
+  color: var(--app-text-primary);
+  font-size: var(--app-font-control);
+  font-weight: var(--app-font-weight-medium);
+  text-align: left;
+}
+
+.session-preview-popover__back:hover {
+  background: var(--app-hover);
+}
+
+.session-preview-popover__back span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-preview-popover__frame {
+  min-height: 0;
+  flex: 1;
 }
 
 .session-preview-popover__item {

@@ -181,6 +181,19 @@ export const useSessionStore = defineStore("session", () => {
     }
   }
 
+  async function fetchProject(id: string) {
+    root.clearError();
+    try {
+      const project = await api.getProject(id);
+      upsertProject(project);
+      persistSessionListCache();
+      return project;
+    } catch (err) {
+      root.setError(err instanceof Error ? err.message : "Failed to fetch project");
+      throw err;
+    }
+  }
+
   async function createProject(options: api.CreateProjectRequest) {
     root.clearError();
     try {
@@ -632,6 +645,7 @@ export const useSessionStore = defineStore("session", () => {
     getSessionsByAgentId,
     groupedSessions,
     fetchProjects,
+    fetchProject,
     fetchSessions,
     upsertProject,
     reorderProjects,

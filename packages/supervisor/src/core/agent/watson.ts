@@ -23,6 +23,10 @@ import { loadBuiltinAgentPrompt } from "../../agent/builtin/prompts.js";
 import { getDb } from "../../db/db.js";
 import { getSupervisorHome } from "../../utils/supervisor-home.js";
 import { resolveLLMConfig } from "../../utils/model-utils.js";
+import {
+  attachAnthropicCacheBreakpoints,
+  ensureAnthropicCacheBreakpoints,
+} from "../../utils/anthropic-prompt-cache.js";
 import { isFeatureModelRef, readSupervisorSettings } from "../../utils/supervisor-settings.js";
 
 export type WatsonTaskKind = string;
@@ -250,7 +254,10 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
           messages: [{ role: "user", content: options.prompt, timestamp: Date.now() }],
           ...(submitTool ? { tools: [submitTool] } : {}),
         },
-        { apiKey: llm.apiKey },
+        {
+          apiKey: llm.apiKey,
+          onPayload: (payload) => ensureAnthropicCacheBreakpoints(payload),
+        },
       );
       runLog.trace(
         `[llm:end] turn=1 durationMs=${Date.now() - llmStartedAt} stopReason=${message.stopReason}${usageLog(message)}`,
@@ -294,6 +301,7 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
           apiKey: llm.apiKey,
         }),
       });
+      attachAnthropicCacheBreakpoints(harness);
       // Timing trace only; must not alter harness behavior.
       const toolStartedAt = new Map<string, number>();
       let turnStartedAt = 0;

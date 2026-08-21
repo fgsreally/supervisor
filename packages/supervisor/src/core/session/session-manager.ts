@@ -209,6 +209,7 @@ import { getGlobalPromptsDirectory } from "../resource/prompt-resource.js";
 import { getGlobalExtensionsDirectory } from "../../extension/resource.js";
 import { createResourceHandlers } from "../../config/resource-handlers.js";
 import { resolveLLMConfig } from "../../utils/model-utils.js";
+import { attachAnthropicCacheBreakpoints } from "../../utils/anthropic-prompt-cache.js";
 import {
   handleAgentEventForTurnFiles,
   mergeTurnIntoMeta,
@@ -1136,6 +1137,7 @@ export class SessionManager {
         tools,
         getApiKeyAndHeaders: async () => ({ apiKey: llm.apiKey }),
       });
+      attachAnthropicCacheBreakpoints(harness);
       await harness.setThinkingLevel(toHarnessThinkingLevel(session.thinkingLevel));
 
       const runtime = new SessionRuntime({
@@ -1471,6 +1473,7 @@ export class SessionManager {
         tools,
         getApiKeyAndHeaders: async () => ({ apiKey: llm.apiKey }),
       });
+      attachAnthropicCacheBreakpoints(harness);
       await harness.setThinkingLevel(toHarnessThinkingLevel(activeSession.thinkingLevel));
 
       const runtime = new SessionRuntime({

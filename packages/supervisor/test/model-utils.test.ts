@@ -13,7 +13,7 @@ afterEach(() => {
 });
 
 describe("resolveLLMConfig", () => {
-  it("builds the request configuration only from model and provider rows", () => {
+  it("builds the request configuration only from model and provider rows", async () => {
     root = mkdtempSync(join(tmpdir(), "llm-config-"));
     const db = new SupervisorDb(join(root, "db.sqlite"));
     const providerId = db.insertProvider({
@@ -31,7 +31,7 @@ describe("resolveLLMConfig", () => {
       supports_vision: 1,
     });
 
-    const config = resolveLLMConfig(model.id);
+    const config = await resolveLLMConfig(model.id);
 
     expect(config.apiKey).toBe("secret");
     expect(config.model).toMatchObject({

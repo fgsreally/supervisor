@@ -112,7 +112,7 @@ async function runCompaction(
       : null;
     if (configuredModel) {
       const result = await compactWithUtilityModel(
-        resolveLLMConfig(configuredModel.id),
+        await resolveLLMConfig(configuredModel.id),
         preparation,
       );
       await runtime.appendCompactionResult(

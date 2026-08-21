@@ -21,10 +21,14 @@
     <div class="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-4">
       <template v-if="!modelsOnly">
         <section class="provider-form-card rounded-lg border p-4 space-y-4">
-          <div class="text-[14px] font-medium provider-form-title">{{ t("provider.basicInfo") }}</div>
+          <div class="text-[14px] font-medium provider-form-title">
+            {{ t("provider.basicInfo") }}
+          </div>
 
           <div v-if="isNew" class="provider-form-field">
-            <div class="provider-form-subtitle text-[13px] md:pt-2">{{ t("provider.presets") }}</div>
+            <div class="provider-form-subtitle text-[13px] md:pt-2">
+              {{ t("provider.presets") }}
+            </div>
             <div class="flex flex-wrap gap-2 min-w-0">
               <button
                 v-for="preset in PROVIDER_PRESETS"
@@ -100,7 +104,9 @@
         </section>
 
         <section class="provider-form-card rounded-lg border p-4 space-y-4">
-          <div class="text-[14px] font-medium provider-form-title">{{ t("provider.connection") }}</div>
+          <div class="text-[14px] font-medium provider-form-title">
+            {{ t("provider.connection") }}
+          </div>
 
           <div class="provider-form-field">
             <div class="provider-form-subtitle text-[13px] md:pt-2">Wire Protocol</div>
@@ -126,7 +132,34 @@
             </div>
           </div>
 
-          <label class="provider-form-field text-[13px]">
+          <div v-if="draft.authType === 'oauth'" class="provider-form-auth">
+            <div class="provider-form-subtitle md:pt-2">{{ t("provider.subscriptionAuth") }}</div>
+            <div class="provider-form-auth-row">
+              <span class="provider-form-auth-status">
+                {{
+                  authConfigured
+                    ? t("provider.subscriptionConnected")
+                    : t("provider.subscriptionNotConnected")
+                }}
+              </span>
+              <button
+                type="button"
+                class="provider-form-auth-btn"
+                :disabled="authBusy || isNew"
+                @click="authConfigured ? logoutSubscription() : loginSubscription()"
+              >
+                {{
+                  authBusy
+                    ? t("provider.subscriptionConnecting")
+                    : authConfigured
+                      ? t("provider.subscriptionLogout")
+                      : t("provider.subscriptionLogin")
+                }}
+              </button>
+            </div>
+          </div>
+
+          <label v-if="draft.authType !== 'oauth'" class="provider-form-field text-[13px]">
             <span class="provider-form-subtitle md:pt-2">Base URL</span>
             <input
               v-model="baseUrlInput"
@@ -136,13 +169,17 @@
             />
           </label>
 
-          <label class="provider-form-field text-[13px]">
+          <label v-if="draft.authType !== 'oauth'" class="provider-form-field text-[13px]">
             <span class="provider-form-subtitle md:pt-2">API Key</span>
             <span class="relative block min-w-0">
               <input
                 v-model="apiKeyInput"
                 :type="showApiKey ? 'text' : 'password'"
-                :placeholder="isNew ? t('provider.apiKeyCreatePlaceholder') : t('provider.apiKeyKeepPlaceholder')"
+                :placeholder="
+                  isNew
+                    ? t('provider.apiKeyCreatePlaceholder')
+                    : t('provider.apiKeyKeepPlaceholder')
+                "
                 autocomplete="new-password"
                 spellcheck="false"
                 class="provider-form-input w-full pl-3 pr-10 py-2 border rounded-md font-mono focus:outline-none focus:ring-1 focus:ring-[#07c160]/50"
@@ -201,7 +238,13 @@ import type { UIProvider, UIProviderModel } from "@/types/ui";
 import { WIRE_PROTOCOLS, PROVIDER_PRESETS } from "@/constants/providers";
 import { useProviderStore } from "@/store";
 import { providerToUI } from "@/utils/provider-ui";
-import { uploadIcon } from "@/api";
+import {
+  getProviderAuthStatus,
+  getProviderLoginState,
+  logoutProviderAuth,
+  startProviderAuthLogin,
+  uploadIcon,
+} from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { useI18n } from "@/i18n";
 
@@ -226,6 +269,8 @@ const saving = ref(false);
 const apiKeyInput = ref("");
 const showApiKey = ref(false);
 const selectedPresetId = ref<string | null>(null);
+const authBusy = ref(false);
+const authConfigured = ref(false);
 
 const title = computed(() => {
   if (props.modelsOnly) return t("provider.manageModels");
@@ -240,6 +285,7 @@ function emptyDraft(): UIProvider {
     icon: null,
     protocol: "chat-completions",
     baseUrl: null,
+    authType: "api-key",
     isEnabled: true,
     models: [],
   };
@@ -270,6 +316,11 @@ async function loadDraft(id: string) {
   await providerStore.fetchModels(id);
   const p = providerStore.getProviderById(id);
   if (p) draft.value = cloneProvider(providerToUI(p, providerStore.models[id] ?? []));
+  try {
+    authConfigured.value = (await getProviderAuthStatus(id)).configured;
+  } catch {
+    authConfigured.value = false;
+  }
 }
 
 watch(
@@ -282,6 +333,7 @@ watch(
       void loadDraft(id);
     } else {
       draft.value = emptyDraft();
+      authConfigured.value = false;
       apiKeyInput.value = "";
       showApiKey.value = false;
       selectedPresetId.value = null;
@@ -323,6 +375,7 @@ function applyProviderPreset(preset: (typeof PROVIDER_PRESETS)[number]) {
     draft.value.icon = null;
     draft.value.protocol = "chat-completions";
     draft.value.baseUrl = null;
+    draft.value.authType = "api-key";
     draft.value.models = [];
     apiKeyInput.value = "";
     return;
@@ -334,6 +387,7 @@ function applyProviderPreset(preset: (typeof PROVIDER_PRESETS)[number]) {
     draft.value.icon = preset.icon;
     draft.value.protocol = preset.protocol;
     draft.value.baseUrl = null;
+    draft.value.authType = preset.authType ?? "api-key";
     draft.value.models = preset.models.map((model) => ({ ...model }));
     apiKeyInput.value = "";
     return;
@@ -343,6 +397,7 @@ function applyProviderPreset(preset: (typeof PROVIDER_PRESETS)[number]) {
   draft.value.icon = preset.icon;
   draft.value.protocol = preset.protocol;
   draft.value.baseUrl = preset.baseUrl;
+  draft.value.authType = preset.authType ?? "api-key";
   draft.value.models = preset.models.map((model) => ({ ...model }));
   apiKeyInput.value = "";
 }
@@ -403,6 +458,7 @@ async function save() {
         protocol: payload.protocol,
         baseUrl: payload.baseUrl,
         apiKey: apiKeyInput.value.trim() || null,
+        authType: payload.authType,
         isEnabled: payload.isEnabled,
       });
       await syncModels(created.id, payload.models);
@@ -415,6 +471,7 @@ async function save() {
         icon: payload.icon,
         protocol: payload.protocol,
         baseUrl: payload.baseUrl,
+        authType: payload.authType,
       };
       if (apiKeyInput.value.trim()) patch.apiKey = apiKeyInput.value.trim();
       await providerStore.updateProvider(payload.id, patch);
@@ -426,6 +483,56 @@ async function save() {
     showUiMessage(error instanceof Error ? error.message : t("common.saveFailed"), "error");
   } finally {
     saving.value = false;
+  }
+}
+
+async function loginSubscription() {
+  if (isNew.value || draft.value.authType !== "oauth") return;
+  authBusy.value = true;
+  const authWindow = window.open("about:blank", "supervisor-oauth");
+  try {
+    const initial = await startProviderAuthLogin(draft.value.id);
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const state =
+        attempt === 0 ? initial : await getProviderLoginState(draft.value.id, initial.loginId);
+      if (state.url && authWindow && !authWindow.closed) authWindow.location.href = state.url;
+      if (state.status === "complete") {
+        authConfigured.value = true;
+        authWindow?.close();
+        showUiMessage(t("provider.subscriptionConnected"), "success");
+        return;
+      }
+      if (state.status === "error") {
+        throw new Error(state.error ?? t("provider.subscriptionLoginFailed"));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+    throw new Error(t("provider.subscriptionLoginTimeout"));
+  } catch (error) {
+    authWindow?.close();
+    showUiMessage(
+      error instanceof Error ? error.message : t("provider.subscriptionLoginFailed"),
+      "error",
+    );
+  } finally {
+    authBusy.value = false;
+  }
+}
+
+async function logoutSubscription() {
+  if (isNew.value || draft.value.authType !== "oauth") return;
+  authBusy.value = true;
+  try {
+    await logoutProviderAuth(draft.value.id);
+    authConfigured.value = false;
+    showUiMessage(t("provider.subscriptionLoggedOut"), "success");
+  } catch (error) {
+    showUiMessage(
+      error instanceof Error ? error.message : t("provider.subscriptionLogoutFailed"),
+      "error",
+    );
+  } finally {
+    authBusy.value = false;
   }
 }
 
@@ -642,6 +749,30 @@ function providerSlug(name: string): string {
 .provider-form-save-btn:hover:not(:disabled) {
   border-color: #06ad56;
   background: #06ad56;
+}
+
+.provider-form-auth-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.provider-form-auth-status {
+  color: var(--app-text-secondary);
+  font-size: var(--app-font-body);
+}
+
+.provider-form-auth-btn {
+  border: 1px solid var(--app-border);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  color: var(--app-text-primary);
+  background: var(--app-surface);
+}
+
+.provider-form-auth-btn:hover:not(:disabled) {
+  background: var(--app-hover);
 }
 
 @media (max-width: 767px) {

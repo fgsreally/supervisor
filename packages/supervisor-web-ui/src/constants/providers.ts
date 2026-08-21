@@ -14,6 +14,7 @@ export interface ProviderPreset {
   icon: string;
   protocol: WireProtocol;
   baseUrl: string | null;
+  authType?: "api-key" | "oauth";
   color: string;
   models: UIProviderModel[];
 }
@@ -41,6 +42,16 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
     baseUrl: null,
     color: "#10a37f",
     models: presetModels("gpt-4o", "gpt-4o-mini", "o3", "o4-mini"),
+  },
+  {
+    id: "openai-codex",
+    name: "ChatGPT (Codex 订阅)",
+    icon: "/icons/openai.svg",
+    protocol: "responses",
+    baseUrl: null,
+    authType: "oauth",
+    color: "#10a37f",
+    models: presetModels("gpt-5.3-codex", "gpt-5.2-codex", "gpt-5.1-codex-mini"),
   },
   {
     id: "gemini",

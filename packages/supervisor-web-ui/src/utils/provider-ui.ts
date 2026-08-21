@@ -19,6 +19,7 @@ export function providerToUI(provider: Provider, models: Model[]): UIProvider {
     icon: resolveProviderIcon(provider.id, provider.name, provider.icon),
     protocol: provider.protocol as UIProvider["protocol"],
     baseUrl: provider.baseUrl,
+    authType: provider.authType,
     isEnabled: provider.isEnabled,
     models: models.map(modelToUI),
   };

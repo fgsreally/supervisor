@@ -207,6 +207,7 @@ function rowToProvider(row: ProviderRow): Provider {
     protocol,
     baseUrl: row.base_url,
     apiKey,
+    authType: row.auth_type === "oauth" ? "oauth" : "api-key",
     isEnabled: Boolean(row.is_enabled),
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -1344,13 +1345,14 @@ export class SupervisorDb {
     protocol: string;
     base_url?: string | null;
     api_key?: string | null;
+    auth_type?: "api-key" | "oauth";
     is_enabled?: number;
   }): number {
     const now = Date.now();
     const result = this.db
       .prepare(
-        `INSERT INTO providers (slug, name, icon, protocol, base_url, api_key, is_enabled, created_at, updated_at)
-				 VALUES (@slug, @name, @icon, @protocol, @base_url, @api_key, @is_enabled, @created_at, @updated_at)`,
+        `INSERT INTO providers (slug, name, icon, protocol, base_url, api_key, auth_type, is_enabled, created_at, updated_at)
+				 VALUES (@slug, @name, @icon, @protocol, @base_url, @api_key, @auth_type, @is_enabled, @created_at, @updated_at)`,
       )
       .run({
         ...row,
@@ -1359,6 +1361,7 @@ export class SupervisorDb {
         icon: row.icon ?? null,
         base_url: row.base_url ?? null,
         api_key: row.api_key ? encryptApiKey(row.api_key) : null,
+        auth_type: row.auth_type ?? "api-key",
         is_enabled: row.is_enabled ?? 1,
         created_at: now,
         updated_at: now,
@@ -1375,6 +1378,7 @@ export class SupervisorDb {
       protocol: string;
       base_url: string | null;
       api_key: string | null;
+      auth_type: "api-key" | "oauth";
       is_enabled: number;
     }>,
   ): void {
@@ -1384,6 +1388,8 @@ export class SupervisorDb {
       sets.push(`${k} = ?`);
       if (k === "api_key" && typeof v === "string" && v) {
         params.push(encryptApiKey(v));
+      } else if (k === "auth_type") {
+        params.push(v === "oauth" ? "oauth" : "api-key");
       } else if (k === "protocol" && typeof v === "string") {
         params.push(requireApiProtocol(v));
       } else {

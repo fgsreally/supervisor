@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS providers (
   protocol TEXT NOT NULL,
   base_url TEXT,
   api_key TEXT,
+  auth_type TEXT NOT NULL DEFAULT 'api-key',
   is_enabled INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL

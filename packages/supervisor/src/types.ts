@@ -391,6 +391,7 @@ export interface ProviderRow {
   protocol: string;
   base_url: string | null;
   api_key: string | null;
+  auth_type?: string;
   is_enabled: number;
   created_at: number;
   updated_at: number;
@@ -405,6 +406,7 @@ export interface Provider {
   protocol: ApiProtocol;
   baseUrl: string | null;
   apiKey: string | null;
+  authType: "api-key" | "oauth";
   isEnabled: boolean;
   createdAt: Date;
   updatedAt: Date;

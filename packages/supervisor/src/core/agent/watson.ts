@@ -215,7 +215,7 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
   if (!isFeatureModelRef(ref)) throw new Error("未配置助手模型，华生无法运行");
   const configuredModel = db.getModel(ref.providerId, ref.modelId);
   if (!configuredModel) throw new Error("助手模型不存在，华生无法运行");
-  const llm = resolveLLMConfig(configuredModel.id);
+  const llm = await resolveLLMConfig(configuredModel.id);
 
   const structured = options.resultSchema !== undefined;
   const cwd = options.cwd?.trim() || process.cwd();

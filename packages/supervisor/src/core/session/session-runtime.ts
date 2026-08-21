@@ -397,7 +397,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
       .find((item) => item.slug === provider || String(item.id) === provider);
     const configuredModel = providerRow ? db.getModel(providerRow.id, modelId) : undefined;
     if (!configuredModel) throw new Error(`Model ${modelId} from provider ${provider} not found`);
-    const { model } = resolveLLMConfig(configuredModel.id);
+    const { model } = await resolveLLMConfig(configuredModel.id);
     await this.harness.setModel(model);
     return model;
   }

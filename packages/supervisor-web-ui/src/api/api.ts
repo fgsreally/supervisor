@@ -288,6 +288,7 @@ export interface Provider {
   protocol: WireProtocol | string;
   baseUrl: string | null;
   apiKey: null; // Always null in responses
+  authType: "api-key" | "oauth";
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -685,6 +686,7 @@ export interface UpdateProviderRequest {
   baseUrl?: string | null;
   icon?: string | null;
   apiKey?: string | null;
+  authType?: "api-key" | "oauth";
 }
 
 export interface CreateProviderRequest {
@@ -694,6 +696,7 @@ export interface CreateProviderRequest {
   protocol: WireProtocol | string;
   baseUrl?: string | null;
   apiKey?: string | null;
+  authType?: "api-key" | "oauth";
   isEnabled?: boolean;
 }
 
@@ -764,6 +767,7 @@ interface RawProvider {
   protocol: WireProtocol | string;
   baseUrl: string | null;
   apiKey: null;
+  authType: "api-key" | "oauth";
   isEnabled: boolean;
   createdAt: string;
   updatedAt: string;
@@ -2524,6 +2528,42 @@ export async function updateProvider(id: string, patch: UpdateProviderRequest): 
 /** Delete a provider. */
 export async function deleteProvider(id: string): Promise<{ ok: boolean }> {
   return deleteRequest<{ ok: boolean }>(`/providers/${id}`);
+}
+
+export interface ProviderAuthStatus {
+  provider: string | null;
+  configured: boolean;
+  status: "configured" | "not_configured";
+}
+
+export interface ProviderLoginState {
+  loginId: string;
+  provider: string;
+  status: "starting" | "waiting" | "complete" | "error";
+  url: string | null;
+  instructions: string | null;
+  error: string | null;
+}
+
+export async function getProviderAuthStatus(id: string): Promise<ProviderAuthStatus> {
+  return fetchJson<ProviderAuthStatus>(`/providers/${id}/auth/status`);
+}
+
+export async function startProviderAuthLogin(id: string): Promise<ProviderLoginState> {
+  return postJson<ProviderLoginState>(`/providers/${id}/auth/login`, {});
+}
+
+export async function getProviderLoginState(
+  id: string,
+  loginId: string,
+): Promise<Omit<ProviderLoginState, "loginId">> {
+  return fetchJson<Omit<ProviderLoginState, "loginId">>(
+    `/providers/${id}/auth/login/${encodeURIComponent(loginId)}`,
+  );
+}
+
+export async function logoutProviderAuth(id: string): Promise<{ ok: boolean }> {
+  return postJson<{ ok: boolean }>(`/providers/${id}/auth/logout`, {});
 }
 
 /** List models for a provider. */

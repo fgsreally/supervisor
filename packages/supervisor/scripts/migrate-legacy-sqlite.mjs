@@ -94,6 +94,7 @@ function createSchema(db) {
       protocol      TEXT NOT NULL,
       base_url      TEXT,
       api_key       TEXT,
+      auth_type     TEXT NOT NULL DEFAULT 'api-key',
       is_enabled    INTEGER NOT NULL DEFAULT 1,
       created_at    INTEGER NOT NULL,
       updated_at    INTEGER NOT NULL
@@ -323,8 +324,8 @@ function migrate() {
   const sessionMap = new Map();
 
   const insertProvider = next.prepare(`
-    INSERT INTO providers (slug, name, icon, protocol, base_url, api_key, is_enabled, created_at, updated_at)
-    VALUES (@slug, @name, @icon, @protocol, @base_url, @api_key, @is_enabled, @created_at, @updated_at)
+    INSERT INTO providers (slug, name, icon, protocol, base_url, api_key, auth_type, is_enabled, created_at, updated_at)
+    VALUES (@slug, @name, @icon, @protocol, @base_url, @api_key, @auth_type, @is_enabled, @created_at, @updated_at)
   `);
   for (const row of old.prepare("SELECT * FROM providers").all()) {
     const result = insertProvider.run({
@@ -334,6 +335,7 @@ function migrate() {
       protocol: normalizeProtocol(row.protocol ?? row.api_type),
       base_url: row.base_url ?? null,
       api_key: maybeEncrypt(row.api_key),
+      auth_type: row.auth_type === "oauth" ? "oauth" : "api-key",
       is_enabled: row.is_enabled ?? 1,
       created_at: row.created_at,
       updated_at: row.updated_at,

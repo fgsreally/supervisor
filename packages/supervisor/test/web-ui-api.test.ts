@@ -116,6 +116,27 @@ describe("supervisor: Web UI API compatibility", () => {
       expect((await updateRes.json()) as { apiKey: null }).toMatchObject({ apiKey: null });
       expect(db.getProvider(Number(id))?.apiKey).toBe("updated-secret");
     });
+
+    it("supports OAuth providers without exposing credentials", async () => {
+      const createRes = await req("POST", "/providers", {
+        slug: "openai-codex",
+        name: "ChatGPT Codex",
+        protocol: "responses",
+        authType: "oauth",
+      });
+      expect(createRes.status).toBe(201);
+      const body = (await createRes.json()) as {
+        id: string;
+        apiKey: null;
+        authType: string;
+      };
+      expect(body.apiKey).toBeNull();
+      expect(body.authType).toBe("oauth");
+
+      const statusRes = await req("GET", `/providers/${body.id}/auth/status`);
+      expect(statusRes.status).toBe(200);
+      expect((await statusRes.json()) as { configured: boolean }).toHaveProperty("configured");
+    });
   });
 
   describe("Agent management", () => {
@@ -461,5 +482,4 @@ describe("supervisor: Web UI API compatibility", () => {
       expect(rewindRes.status).toBe(200);
     });
   });
-
 });

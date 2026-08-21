@@ -53,6 +53,12 @@ import {
 } from "./elysia-app.js";
 import { encryptApiKey } from "../utils/encrypt.js";
 import { decryptApiKey } from "../utils/encrypt.js";
+import {
+  getNativeLogin,
+  logoutNative,
+  nativeAuthStatus,
+  startNativeLogin,
+} from "../utils/native-auth.js";
 import { testApiKey, type ApiKeyProvider } from "../utils/test-api-key.js";
 import { formatUnknownError } from "../utils/format-error.js";
 import { resolveApiKey } from "../tools/web/credentials.js";
@@ -122,6 +128,10 @@ function withLastMessageSummary<T extends { id: number; createdAt: Date | string
 function parseProtocolBody(body: Record<string, unknown>): string | undefined {
   const raw = body.protocol ?? body.apiType;
   return typeof raw === "string" ? raw : undefined;
+}
+
+function parseAuthTypeBody(body: Record<string, unknown>): "api-key" | "oauth" | undefined {
+  return body.authType === "oauth" || body.authType === "api-key" ? body.authType : undefined;
 }
 
 function toModelResponse(m: Model) {
@@ -1522,6 +1532,67 @@ export function createHttpServer(
     return c.json(toProviderResponse(provider));
   });
 
+  // GET /providers/:id/auth/status
+  app.get("/providers/:id/auth/status", (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return jsonError(c, 400, "invalid provider id");
+    const provider = manager.getProvider(id);
+    if (!provider) return jsonError(c, 404, "not found");
+    if (provider.authType !== "oauth" || !provider.slug) {
+      return c.json({
+        provider: provider.slug,
+        configured: Boolean(provider.apiKey),
+        status: provider.apiKey ? "configured" : "not_configured",
+      });
+    }
+    try {
+      return c.json(nativeAuthStatus(provider.slug));
+    } catch (error) {
+      return jsonError(c, 400, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  // POST /providers/:id/auth/login
+  app.post("/providers/:id/auth/login", (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return jsonError(c, 400, "invalid provider id");
+    const provider = manager.getProvider(id);
+    if (!provider) return jsonError(c, 404, "not found");
+    if (provider.authType !== "oauth" || !provider.slug) {
+      return jsonError(c, 400, "provider does not use OAuth");
+    }
+    try {
+      const login = startNativeLogin(provider.slug);
+      return c.json({ loginId: login.id, ...login.state });
+    } catch (error) {
+      return jsonError(c, 400, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  // GET /providers/:id/auth/login/:loginId
+  app.get("/providers/:id/auth/login/:loginId", (c) => {
+    const state = getNativeLogin(c.req.param("loginId"));
+    if (!state) return jsonError(c, 404, "login not found");
+    return c.json(state);
+  });
+
+  // POST /providers/:id/auth/logout
+  app.post("/providers/:id/auth/logout", (c) => {
+    const id = parseInt(c.req.param("id"), 10);
+    if (isNaN(id)) return jsonError(c, 400, "invalid provider id");
+    const provider = manager.getProvider(id);
+    if (!provider) return jsonError(c, 404, "not found");
+    if (provider.authType !== "oauth" || !provider.slug) {
+      return jsonError(c, 400, "provider does not use OAuth");
+    }
+    try {
+      logoutNative(provider.slug);
+      return c.json({ ok: true });
+    } catch (error) {
+      return jsonError(c, 400, error instanceof Error ? error.message : String(error));
+    }
+  });
+
   // GET /providers/:id/models
   app.get("/providers/:id/models", (c) => {
     const id = parseInt(c.req.param("id"), 10);
@@ -1626,6 +1697,11 @@ export function createHttpServer(
     if (typeof body.baseUrl === "string" || body.baseUrl === null) patch.base_url = body.baseUrl;
     if (typeof body.icon === "string" || body.icon === null) patch.icon = body.icon;
     if (typeof body.apiKey === "string" || body.apiKey === null) patch.api_key = body.apiKey;
+    const authType = parseAuthTypeBody(body);
+    if (authType) {
+      patch.auth_type = authType;
+      if (authType === "oauth") patch.api_key = null;
+    }
 
     manager.updateProvider(id, patch);
     const updated = manager.getProvider(id);
@@ -1654,7 +1730,13 @@ export function createHttpServer(
         icon: typeof body.icon === "string" ? body.icon : null,
         protocol,
         baseUrl: typeof body.baseUrl === "string" || body.baseUrl === null ? body.baseUrl : null,
-        apiKey: typeof body.apiKey === "string" || body.apiKey === null ? body.apiKey : null,
+        apiKey:
+          parseAuthTypeBody(body) === "oauth"
+            ? null
+            : typeof body.apiKey === "string" || body.apiKey === null
+              ? body.apiKey
+              : null,
+        authType: parseAuthTypeBody(body),
         isEnabled: typeof body.isEnabled === "boolean" ? body.isEnabled : undefined,
       });
       return c.json(toProviderResponse(provider), 201);

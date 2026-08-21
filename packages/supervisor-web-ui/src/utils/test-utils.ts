@@ -68,6 +68,7 @@ export function createMockProvider(overrides: Partial<Provider> = {}): Provider 
     protocol: "messages",
     baseUrl: null,
     apiKey: null,
+    authType: "api-key",
     isEnabled: true,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),

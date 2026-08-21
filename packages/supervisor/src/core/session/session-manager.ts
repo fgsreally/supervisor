@@ -1105,7 +1105,7 @@ export class SessionManager {
         throw new Error(`Agent ${agent?.id ?? session.agentId} has no model configured`);
       }
       const toolsPreset = this.resolveToolsPresetForSession(session, agent.toolsPreset ?? "coding");
-      const llm = resolveLLMConfig(agent.modelId);
+      const llm = await resolveLLMConfig(agent.modelId);
 
       await this.ensureResourceCatalog();
       const resource = new AgentResource({
@@ -1433,7 +1433,7 @@ export class SessionManager {
             : undefined;
       if (!selectedModel)
         throw new Error(`Agent ${agentInDb?.id ?? "unknown"} has no model configured`);
-      const llm = resolveLLMConfig(selectedModel.id);
+      const llm = await resolveLLMConfig(selectedModel.id);
 
       const storage = createRuntimeSessionStorage(this.db, activeSession);
       this.enableMessageCheckpoints(storage, activeSession.id);
@@ -3633,6 +3633,7 @@ export class SessionManager {
     protocol: string;
     baseUrl?: string | null;
     apiKey?: string | null;
+    authType?: "api-key" | "oauth";
     isEnabled?: boolean;
   }): Provider {
     const id = this.db.insertProvider({
@@ -3642,6 +3643,7 @@ export class SessionManager {
       protocol: options.protocol,
       base_url: options.baseUrl ?? null,
       api_key: options.apiKey ?? null,
+      auth_type: options.authType ?? "api-key",
       is_enabled: options.isEnabled === false ? 0 : 1,
     });
     return this.db.getProvider(id)!;

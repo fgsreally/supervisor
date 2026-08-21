@@ -54,6 +54,7 @@ export interface UIProvider {
   icon: string | null;
   protocol: WireProtocol;
   baseUrl: string | null;
+  authType: "api-key" | "oauth";
   isEnabled: boolean;
   models: UIProviderModel[];
 }

@@ -178,7 +178,8 @@ const messages: TranslationMessages = {
   "session.list.projectBelow": "对应项目在下方",
   "session.list.titleMatch": "标题匹配",
   "session.list.deleteProjectTitle": "删除项目",
-  "session.list.deleteProjectMessage": "这会删除项目下的所有会话和对应目录。请输入项目名“{{name}}”确认。",
+  "session.list.deleteProjectMessage":
+    "这会删除项目下的所有会话和对应目录。请输入项目名“{{name}}”确认。",
   "session.list.deleteProject": "删除项目",
   "session.list.projectDeleted": "项目已删除",
   "session.list.deleteProjectFailed": "删除项目失败",
@@ -202,14 +203,17 @@ const messages: TranslationMessages = {
   "session.list.deleteSessionMessage": "确定删除该会话？子会话也会一并删除。",
   "session.list.sessionDeleted": "会话已删除",
   "session.list.deleteFailed": "删除失败",
-  "session.list.completeSubagentMessage": "完成该子代理会话？完成后会从会话列表隐藏，不会提交或合并代码。",
-  "session.list.completeSessionMessage": "完成并归档该会话？系统会提交剩余修改并合并到项目默认分支。",
+  "session.list.completeSubagentMessage":
+    "完成该子代理会话？完成后会从会话列表隐藏，不会提交或合并代码。",
+  "session.list.completeSessionMessage":
+    "完成并归档该会话？系统会提交剩余修改并合并到项目默认分支。",
   "session.list.completeSessionTitle": "完成会话",
   "session.list.complete": "完成",
   "session.list.sessionArchived": "会话已归档",
   "session.list.archiveFailed": "归档失败",
   "session.list.syncTitle": "同步项目修改",
-  "session.list.syncMessage": "将合并项目最新修改，并重新安装依赖和启动服务。当前会话需要先提交已有修改。",
+  "session.list.syncMessage":
+    "将合并项目最新修改，并重新安装依赖和启动服务。当前会话需要先提交已有修改。",
   "session.list.sync": "同步",
   "session.list.syncing": "正在同步项目修改…",
   "session.list.syncDone": "同步完成，服务已重新启动",
@@ -247,7 +251,8 @@ const messages: TranslationMessages = {
   "project.create.folder": "本地文件夹",
   "project.create.pathPlaceholder": "项目绝对路径",
   "project.create.browse": "浏览文件夹",
-  "project.create.hint": "创建后会用「项目描述」功能模型启动临时 Coding Agent，只读整理描述写入项目。",
+  "project.create.hint":
+    "创建后会用「项目描述」功能模型启动临时 Coding Agent，只读整理描述写入项目。",
   "project.create.submit": "创建项目",
   "project.create.browseFailed": "打开文件夹选择失败",
   "session.commit.title": "Commit 记录",
@@ -268,7 +273,8 @@ const messages: TranslationMessages = {
   "session.import.failed": "引入失败",
   "session.import.loadFailed": "读取外部对话失败",
   "session.import.reimportTitle": "重新导入外部对话",
-  "session.import.reimportMessage": "该对话已导入为会话 #{{id}}。重新导入将删除旧会话并覆盖，是否继续？",
+  "session.import.reimportMessage":
+    "该对话已导入为会话 #{{id}}。重新导入将删除旧会话并覆盖，是否继续？",
   "session.import.reimport": "重新导入",
   "session.import.reimported": "外部对话已重新导入",
   "session.import.imported": "外部对话已引入",
@@ -710,13 +716,15 @@ const messages: TranslationMessages = {
   "onboarding.d1c": "聊天连接项目、Agent 和实际执行过程，是最常用的入口。",
   "onboarding.d2e": "第一章 · 会话",
   "onboarding.d2t": "从项目开始一次工作",
-  "onboarding.d2c": "在左侧项目旁点击“+”选择 Agent。会话会保留消息、任务、Git 状态和子 Agent 运行过程。",
+  "onboarding.d2c":
+    "在左侧项目旁点击“+”选择 Agent。会话会保留消息、任务、Git 状态和子 Agent 运行过程。",
   "onboarding.d3e": "第二章 · Todo",
   "onboarding.d3t": "理解任务管理",
   "onboarding.d3c": "复杂工作不必一直盯着聊天记录，可以进入 Todo / 计划集中查看。",
   "onboarding.d4e": "第二章 · 任务",
   "onboarding.d4t": "规划确认后再执行",
-  "onboarding.d4c": "新建 Todo 后由华生拆成带依赖的工作项，你确认项目、Agent 与子 Agent 后，再进入任务面板按依赖执行。",
+  "onboarding.d4c":
+    "新建 Todo 后由华生拆成带依赖的工作项，你确认项目、Agent 与子 Agent 后，再进入任务面板按依赖执行。",
   "onboarding.d5e": "第三章 · Agent",
   "onboarding.d5t": "配置 Agent 能力",
   "onboarding.d5c": "Agent 决定由谁工作，以及它能使用哪些模型、工具和资源。",
@@ -728,7 +736,8 @@ const messages: TranslationMessages = {
   "onboarding.d7c": "资源库用于维护可重复绑定给 Agent 的能力，不需要在每个 Agent 中重新创建。",
   "onboarding.d8e": "第四章 · 资源",
   "onboarding.d8t": "按用途选择资源类型",
-  "onboarding.d8c": "Skills 提供方法，Extensions 提供工作流与工具，Template 提供可复用提示，MCP 连接外部服务。",
+  "onboarding.d8c":
+    "Skills 提供方法，Extensions 提供工作流与工具，Template 提供可复用提示，MCP 连接外部服务。",
   "onboarding.d9e": "教程完成",
   "onboarding.d9t": "现在可以从聊天开始了",
   "onboarding.d9c": "先选择一个项目和 Agent，创建你的第一个会话。其他设置可以在真正需要时再配置。",
@@ -835,7 +844,8 @@ const messages: TranslationMessages = {
   "chat.branchCreated": "已从此消息创建分支会话",
   "chat.branchFailed": "分支失败",
   "chat.completeTitle": "完成会话",
-  "chat.completeMessage": "完成会话将把 worktree 分支合并到主分支，并关闭此会话。请先提交所有变更。继续？",
+  "chat.completeMessage":
+    "完成会话将把 worktree 分支合并到主分支，并关闭此会话。请先提交所有变更。继续？",
   "chat.completeConfirm": "完成",
   "chat.completeSuccess": "会话已完成",
   "chat.completeFailed": "完成会话失败",
@@ -887,15 +897,20 @@ const messages: TranslationMessages = {
   "session.file.selectPreview": "\u9009\u62e9\u6587\u4ef6\u4ee5\u9884\u89c8\u5185\u5bb9",
   "session.file.truncated": "\u5df2\u622a\u65ad",
   "session.file.content": "\u5185\u5bb9",
-  "session.file.committedNoDiff": "\u53d8\u66f4\u5df2\u63d0\u4ea4\uff0c\u5f53\u524d\u65e0\u672a\u63d0\u4ea4 diff",
+  "session.file.committedNoDiff":
+    "\u53d8\u66f4\u5df2\u63d0\u4ea4\uff0c\u5f53\u524d\u65e0\u672a\u63d0\u4ea4 diff",
   "session.file.deletedViewDiff": "\u6587\u4ef6\u5df2\u5220\u9664\uff0c\u8bf7\u67e5\u770b Diff",
-  "session.file.binaryNoDiff": "\u4e8c\u8fdb\u5236\u6587\u4ef6\uff0c\u6682\u4e0d\u652f\u6301 diff \u9884\u89c8",
+  "session.file.binaryNoDiff":
+    "\u4e8c\u8fdb\u5236\u6587\u4ef6\uff0c\u6682\u4e0d\u652f\u6301 diff \u9884\u89c8",
   "session.file.parsingOffice": "\u6b63\u5728\u89e3\u6790\u529e\u516c\u6587\u6863\u2026",
-  "session.file.legacyOffice": "\u6682\u4e0d\u652f\u6301\u65e7\u7248 Office \u683c\u5f0f\uff08.doc / .ppt / .xls\uff09\uff0c\u8bf7\u8f6c\u6362\u4e3a .docx / .pptx / .xlsx \u540e\u9884\u89c8",
-  "session.file.binaryNoPreview": "\u4e8c\u8fdb\u5236\u6587\u4ef6\uff0c\u6682\u4e0d\u652f\u6301\u9884\u89c8\uff08{{size}}\uff09",
+  "session.file.legacyOffice":
+    "\u6682\u4e0d\u652f\u6301\u65e7\u7248 Office \u683c\u5f0f\uff08.doc / .ppt / .xls\uff09\uff0c\u8bf7\u8f6c\u6362\u4e3a .docx / .pptx / .xlsx \u540e\u9884\u89c8",
+  "session.file.binaryNoPreview":
+    "\u4e8c\u8fdb\u5236\u6587\u4ef6\uff0c\u6682\u4e0d\u652f\u6301\u9884\u89c8\uff08{{size}}\uff09",
   "session.file.tooLarge": "\u6587\u4ef6\u8fc7\u5927\uff0c\u65e0\u6cd5\u9884\u89c8",
   "session.file.officeReadFailed": "\u65e0\u6cd5\u8bfb\u53d6\u529e\u516c\u6587\u6863\u5185\u5bb9",
-  "session.file.outsideWorkspace": "\u6587\u4ef6\u4e0d\u5728\u5f53\u524d\u4f1a\u8bdd\u5de5\u4f5c\u533a\uff1a{{path}}",
+  "session.file.outsideWorkspace":
+    "\u6587\u4ef6\u4e0d\u5728\u5f53\u524d\u4f1a\u8bdd\u5de5\u4f5c\u533a\uff1a{{path}}",
   "session.file.treeLoadFailed": "\u52a0\u8f7d\u6587\u4ef6\u6811\u5931\u8d25",
   "session.files.directory": "\u6587\u4ef6\u76ee\u5f55",
   "session.files.workspace": "\u5de5\u4f5c\u533a\u6587\u4ef6",
@@ -909,7 +924,8 @@ const messages: TranslationMessages = {
   "session.background.stopFailed": "\u7ed3\u675f\u5931\u8d25",
   "session.background.title": "\u540e\u53f0\u7ec8\u7aef",
   "session.background.output": "\u8f93\u51fa",
-  "session.background.select": "\u9009\u62e9\u4e00\u4e2a\u540e\u53f0\u7ec8\u7aef\u67e5\u770b\u8f93\u51fa",
+  "session.background.select":
+    "\u9009\u62e9\u4e00\u4e2a\u540e\u53f0\u7ec8\u7aef\u67e5\u770b\u8f93\u51fa",
   "session.background.empty": "\u6682\u65e0\u8fd0\u884c\u4e2d\u7684\u540e\u53f0\u7ec8\u7aef",
   "jobs.title": "\u4efb\u52a1",
   "jobs.hours": "{{count}} \u5c0f\u65f6",
@@ -934,7 +950,8 @@ const messages: TranslationMessages = {
   "home.task.priorityHigh": "\u9ad8",
   "home.task.priorityNormal": "\u666e\u901a",
   "home.task.priorityLow": "\u4f4e",
-  "home.task.descriptionPlaceholder": "\u8865\u5145\u8bf4\u660e\uff0c\u53ef\u7528 @\u9879\u76ee\u540d \u5173\u8054\u9879\u76ee",
+  "home.task.descriptionPlaceholder":
+    "\u8865\u5145\u8bf4\u660e\uff0c\u53ef\u7528 @\u9879\u76ee\u540d \u5173\u8054\u9879\u76ee",
   "home.task.dependencies": "\u4f9d\u8d56 {{count}} \u9879",
   "home.task.openSession": "\u6253\u5f00\u4f1a\u8bdd",
   "home.task.plan": "\u89c4\u5212",
@@ -946,27 +963,32 @@ const messages: TranslationMessages = {
   "home.task.failed": "\u5931\u8d25",
   "home.timeline.title": "\u4efb\u52a1\u65f6\u95f4\u8f74",
   "home.timeline.execution": "\u6267\u884c\u65f6\u95f4\u8f74",
-  "home.timeline.summary": "{{tasks}} \u4e2a\u4efb\u52a1 \u00b7 {{lanes}} \u4e2a\u6267\u884c\u9636\u6bb5",
+  "home.timeline.summary":
+    "{{tasks}} \u4e2a\u4efb\u52a1 \u00b7 {{lanes}} \u4e2a\u6267\u884c\u9636\u6bb5",
   "home.timeline.ready": "\u53ef\u5f00\u59cb",
   "home.timeline.waiting": "\u7b49\u5f85\u4f9d\u8d56",
-  "home.timeline.empty": "\u6dfb\u52a0\u4efb\u52a1\u540e\uff0c\u8fd9\u91cc\u4f1a\u663e\u793a\u5e76\u884c\u4e0e\u4f9d\u8d56\u5173\u7cfb",
+  "home.timeline.empty":
+    "\u6dfb\u52a0\u4efb\u52a1\u540e\uff0c\u8fd9\u91cc\u4f1a\u663e\u793a\u5e76\u884c\u4e0e\u4f9d\u8d56\u5173\u7cfb",
   "home.timeline.stage": "\u9636\u6bb5 {{lane}}",
   "home.timeline.noProject": "\u672a\u9009\u9879\u76ee",
   "common.ai": "AI",
   "home.daily.title": "\u8fd1\u65e5\u4ea7\u51fa",
   "home.daily.subtitle": "\u6309\u65e5\u671f\u56de\u770b\u5206\u6790\u4e0e\u63d0\u4ea4\u660e\u7ec6",
-  "home.daily.empty": "\u6682\u65e0\u6bcf\u65e5\u5206\u6790\u8bb0\u5f55\u3002\u914d\u7f6e\u300c\u5f53\u65e5\u5de5\u4f5c\u5206\u6790\u300d\u6a21\u578b\u540e\uff0c\u4f1a\u81ea\u52a8\u6c47\u603b\u524d\u4e00\u5929\u7684\u63d0\u4ea4\u3002",
+  "home.daily.empty":
+    "\u6682\u65e0\u6bcf\u65e5\u5206\u6790\u8bb0\u5f55\u3002\u914d\u7f6e\u300c\u5f53\u65e5\u5de5\u4f5c\u5206\u6790\u300d\u6a21\u578b\u540e\uff0c\u4f1a\u81ea\u52a8\u6c47\u603b\u524d\u4e00\u5929\u7684\u63d0\u4ea4\u3002",
   "home.daily.commits": "{{count}} \u4e2a\u63d0\u4ea4",
   "common.listSeparator": "\u3001",
   "home.plan.title": "\u786e\u8ba4\u89c4\u5212",
   "home.plan.back": "\u8fd4\u56de\u770b\u677f",
   "home.plan.confirm": "\u786e\u8ba4\u5b9e\u73b0",
-  "home.plan.hint": "\u68c0\u67e5\u4f9d\u8d56\uff08\u4e32\u884c\u95e8\u7981 / \u53ef\u5e76\u884c\uff09\u3001\u9879\u76ee\u3001Agent \u4e0e\u5b50 Agent\u3002\u786e\u8ba4\u540e\u5c06\u8fdb\u5165\u4efb\u52a1\u9762\u677f\u5e76\u6309\u4f9d\u8d56\u5f00\u59cb\u6267\u884c\u3002",
+  "home.plan.hint":
+    "\u68c0\u67e5\u4f9d\u8d56\uff08\u4e32\u884c\u95e8\u7981 / \u53ef\u5e76\u884c\uff09\u3001\u9879\u76ee\u3001Agent \u4e0e\u5b50 Agent\u3002\u786e\u8ba4\u540e\u5c06\u8fdb\u5165\u4efb\u52a1\u9762\u677f\u5e76\u6309\u4f9d\u8d56\u5f00\u59cb\u6267\u884c\u3002",
   "home.plan.command": "\u6267\u884c\u6307\u4ee4",
   "home.plan.project": "\u9879\u76ee",
   "home.plan.unbound": "\u672a\u7ed1\u5b9a",
   "home.plan.defaultAgent": "\u9ed8\u8ba4 Agent",
-  "home.plan.dependencies": "\u4f9d\u8d56\uff08\u5b8c\u6210\u540e\u624d\u6267\u884c\u672c\u9879\uff09",
+  "home.plan.dependencies":
+    "\u4f9d\u8d56\uff08\u5b8c\u6210\u540e\u624d\u6267\u884c\u672c\u9879\uff09",
   "home.plan.noOtherTasks": "\u65e0\u5176\u4ed6\u5de5\u4f5c\u9879",
   "home.plan.subagents": "\u5b50 Agent",
   "home.plan.noAgents": "\u6682\u65e0 Agent",
@@ -977,15 +999,18 @@ const messages: TranslationMessages = {
   "home.projectTimeline.title": "\u9879\u76ee\u65f6\u95f4\u8f74",
   "home.projectTimeline.loading": "\u52a0\u8f7d\u9879\u76ee\u65f6\u95f4\u8f74\u2026",
   "home.projectTimeline.emptyTitle": "\u6682\u65e0\u9879\u76ee\u4e8b\u4ef6",
-  "home.projectTimeline.emptyDescription": "\u4f1a\u8bdd\u521b\u5efa\u3001\u5408\u5e76\u6216\u72b6\u6001\u53d8\u5316\u4f1a\u663e\u793a\u5728\u8fd9\u91cc\u3002",
+  "home.projectTimeline.emptyDescription":
+    "\u4f1a\u8bdd\u521b\u5efa\u3001\u5408\u5e76\u6216\u72b6\u6001\u53d8\u5316\u4f1a\u663e\u793a\u5728\u8fd9\u91cc\u3002",
   "home.projectTimeline.project": "\u9879\u76ee",
   "home.projectTimeline.events": "{{count}} \u4e2a\u4e8b\u4ef6",
   "home.projectTimeline.noCommits": "\u6682\u65e0\u72ec\u7acb\u63d0\u4ea4",
   "home.projectTimeline.openSession": "\u6253\u5f00\u4f1a\u8bdd",
   "home.projectTimeline.filterRunning": "\u5df2\u7b5b\u9009\uff1a\u8fdb\u884c\u4e2d",
-  "home.projectTimeline.filterAttention": "\u5df2\u7b5b\u9009\uff1a\u9700\u5904\u7406 / \u5f02\u5e38",
+  "home.projectTimeline.filterAttention":
+    "\u5df2\u7b5b\u9009\uff1a\u9700\u5904\u7406 / \u5f02\u5e38",
   "home.projectTimeline.filterFinished": "\u5df2\u7b5b\u9009\uff1a\u5df2\u5408\u5e76",
-  "home.projectTimeline.filterCommits": "\u5df2\u7b5b\u9009\uff1a\u6709\u63d0\u4ea4\u7684\u4f1a\u8bdd",
+  "home.projectTimeline.filterCommits":
+    "\u5df2\u7b5b\u9009\uff1a\u6709\u63d0\u4ea4\u7684\u4f1a\u8bdd",
   "home.projectTimeline.session": "\u4f1a\u8bdd {{id}}",
   "home.projectTimeline.statusFinished": "\u5df2\u5408\u5e76",
   "home.projectTimeline.statusRunning": "\u8fdb\u884c\u4e2d",
@@ -997,39 +1022,54 @@ const messages: TranslationMessages = {
   "home.projectTimeline.eventCreated": "\u521b\u5efa",
   "home.projectTimeline.eventSynced": "\u540c\u6b65",
   "home.projectTimeline.eventStatusChanged": "\u72b6\u6001\u53d8\u5316",
-  "todo.sequenceHint": "{{count}} \u4e2a\u4efb\u52a1 \u00b7 \u62d6\u62fd\u5e73\u79fb / \u6eda\u8f6e\u7f29\u653e",
+  "todo.sequenceHint":
+    "{{count}} \u4e2a\u4efb\u52a1 \u00b7 \u62d6\u62fd\u5e73\u79fb / \u6eda\u8f6e\u7f29\u653e",
   "todo.planTaskList": "\u89c4\u5212\u4efb\u52a1\u5217\u8868",
   "todo.agent": "Agent",
   "todo.taskTitle": "\u4efb\u52a1 {{id}}",
-  "todo.defaultGoal": "\u4f18\u5316 Supervisor \u7684 Todo\uff0c\u8ba9\u89c4\u5212\u3001\u4f9d\u8d56\u548c\u6267\u884c\u72b6\u6001\u66f4\u6e05\u6670",
+  "todo.defaultGoal":
+    "\u4f18\u5316 Supervisor \u7684 Todo\uff0c\u8ba9\u89c4\u5212\u3001\u4f9d\u8d56\u548c\u6267\u884c\u72b6\u6001\u66f4\u6e05\u6670",
   "todo.unnamedPlan": "\u672a\u547d\u540d\u89c4\u5212",
   "todo.demo.draft1.title": "\u68b3\u7406 Todo \u6570\u636e\u6a21\u578b",
-  "todo.demo.draft1.description": "\u68c0\u67e5\u73b0\u6709 Todo \u7684\u5b58\u50a8\u4e0e\u8c03\u5ea6\u903b\u8f91\uff0c\u6574\u7406\u5355\u8868\u4efb\u52a1\u6a21\u578b\u53ca\u517c\u5bb9\u8fc1\u79fb\u65b9\u6848\u3002",
+  "todo.demo.draft1.description":
+    "\u68c0\u67e5\u73b0\u6709 Todo \u7684\u5b58\u50a8\u4e0e\u8c03\u5ea6\u903b\u8f91\uff0c\u6574\u7406\u5355\u8868\u4efb\u52a1\u6a21\u578b\u53ca\u517c\u5bb9\u8fc1\u79fb\u65b9\u6848\u3002",
   "todo.demo.draft2.title": "\u91cd\u6784\u4efb\u52a1\u63a5\u53e3",
-  "todo.demo.draft2.description": "\u8c03\u6574 HTTP API \u548c\u8c03\u5ea6\u5668\uff0c\u652f\u6301\u8349\u7a3f\u786e\u8ba4\u3001\u6279\u6b21\u6267\u884c\u548c\u53ef\u5173\u95ed\u7684\u81ea\u52a8\u8c03\u5ea6\u3002",
+  "todo.demo.draft2.description":
+    "\u8c03\u6574 HTTP API \u548c\u8c03\u5ea6\u5668\uff0c\u652f\u6301\u8349\u7a3f\u786e\u8ba4\u3001\u6279\u6b21\u6267\u884c\u548c\u53ef\u5173\u95ed\u7684\u81ea\u52a8\u8c03\u5ea6\u3002",
   "todo.demo.draft3.title": "\u91cd\u505a Todo \u4ea4\u4e92",
-  "todo.demo.draft3.description": "\u5b9e\u73b0\u89c4\u5212\u533a\u3001\u6267\u884c\u533a\u3001\u4efb\u52a1\u8be6\u60c5\u4e0e\u4f9d\u8d56\u5173\u7cfb\u7684\u53cc\u5411\u9ad8\u4eae\u3002",
+  "todo.demo.draft3.description":
+    "\u5b9e\u73b0\u89c4\u5212\u533a\u3001\u6267\u884c\u533a\u3001\u4efb\u52a1\u8be6\u60c5\u4e0e\u4f9d\u8d56\u5173\u7cfb\u7684\u53cc\u5411\u9ad8\u4eae\u3002",
   "todo.demo.draft4.title": "\u8054\u8c03\u4e0e\u54cd\u5e94\u5f0f\u9a8c\u8bc1",
-  "todo.demo.draft4.description": "\u8fde\u63a5\u771f\u5b9e\u63a5\u53e3\u5e76\u9a8c\u8bc1\u4efb\u52a1\u72b6\u6001\u540c\u6b65\u3001Session \u8df3\u8f6c\u53ca\u7a84\u5c4f\u4f53\u9a8c\u3002",
+  "todo.demo.draft4.description":
+    "\u8fde\u63a5\u771f\u5b9e\u63a5\u53e3\u5e76\u9a8c\u8bc1\u4efb\u52a1\u72b6\u6001\u540c\u6b65\u3001Session \u8df3\u8f6c\u53ca\u7a84\u5c4f\u4f53\u9a8c\u3002",
   "todo.demo.draft5.title": "\u8054\u8c03\u4e0e\u9a8c\u8bc1",
-  "todo.demo.draft5.description": "\u8fde\u63a5\u63a5\u53e3\u4e0e\u754c\u9762\uff0c\u9a8c\u8bc1\u4f9d\u8d56\u8c03\u5ea6\u3001Session \u8df3\u8f6c\u548c\u54cd\u5e94\u5f0f\u5e03\u5c40\u3002",
+  "todo.demo.draft5.description":
+    "\u8fde\u63a5\u63a5\u53e3\u4e0e\u754c\u9762\uff0c\u9a8c\u8bc1\u4f9d\u8d56\u8c03\u5ea6\u3001Session \u8df3\u8f6c\u548c\u54cd\u5e94\u5f0f\u5e03\u5c40\u3002",
   "todo.demo.exec11.title": "\u7edf\u4e00\u52a9\u624b\u6a21\u578b\u8bbe\u7f6e",
-  "todo.demo.exec11.description": "\u8bbe\u7f6e\u9875\u53ea\u4fdd\u7559 featureModels.assistant\uff0c\u5e76\u5b8c\u6210\u65e7\u914d\u7f6e\u517c\u5bb9\u3002",
+  "todo.demo.exec11.description":
+    "\u8bbe\u7f6e\u9875\u53ea\u4fdd\u7559 featureModels.assistant\uff0c\u5e76\u5b8c\u6210\u65e7\u914d\u7f6e\u517c\u5bb9\u3002",
   "todo.demo.exec12.title": "Watson Runner \u65e5\u5fd7",
-  "todo.demo.exec12.description": "\u8bfb\u53d6 agent home logs \u5e76\u6309\u65f6\u95f4\u5012\u5e8f\u5c55\u793a\u3002",
+  "todo.demo.exec12.description":
+    "\u8bfb\u53d6 agent home logs \u5e76\u6309\u65f6\u95f4\u5012\u5e8f\u5c55\u793a\u3002",
   "todo.demo.exec13.title": "\u79fb\u52a8\u7aef Session \u8be6\u60c5",
-  "todo.demo.exec13.description": "\u8c03\u6574\u79fb\u52a8\u7aef\u8be6\u60c5\u9875\u4fe1\u606f\u5bc6\u5ea6\u548c\u4e3b\u8981\u64cd\u4f5c\u4f4d\u7f6e\u3002",
+  "todo.demo.exec13.description":
+    "\u8c03\u6574\u79fb\u52a8\u7aef\u8be6\u60c5\u9875\u4fe1\u606f\u5bc6\u5ea6\u548c\u4e3b\u8981\u64cd\u4f5c\u4f4d\u7f6e\u3002",
   "todo.demo.exec14.title": "\u9879\u76ee\u811a\u672c\u542f\u52a8\u5f02\u5e38",
-  "todo.demo.exec14.description": "\u9879\u76ee\u811a\u672c\u5df2\u521b\u5efa\uff0c\u4f46\u5f53\u524d\u6ca1\u6709\u914d\u7f6e\u53ef\u7528\u4e8e\u8be5\u9879\u76ee\u7684 Agent\u3002",
+  "todo.demo.exec14.description":
+    "\u9879\u76ee\u811a\u672c\u5df2\u521b\u5efa\uff0c\u4f46\u5f53\u524d\u6ca1\u6709\u914d\u7f6e\u53ef\u7528\u4e8e\u8be5\u9879\u76ee\u7684 Agent\u3002",
   "todo.demo.unassigned": "\u672a\u5206\u914d",
   "todo.demo.exec15.title": "\u8fc1\u79fb\u65e7\u7248\u6a21\u578b\u914d\u7f6e",
-  "todo.demo.exec15.description": "\u628a\u5386\u53f2\u529f\u80fd\u6a21\u578b\u914d\u7f6e\u5f52\u5e76\u5230\u7edf\u4e00\u52a9\u624b\u6a21\u578b\uff0c\u5e76\u4fdd\u7559\u5b89\u5168\u56de\u9000\u3002",
+  "todo.demo.exec15.description":
+    "\u628a\u5386\u53f2\u529f\u80fd\u6a21\u578b\u914d\u7f6e\u5f52\u5e76\u5230\u7edf\u4e00\u52a9\u624b\u6a21\u578b\uff0c\u5e76\u4fdd\u7559\u5b89\u5168\u56de\u9000\u3002",
   "todo.demo.exec16.title": "\u8865\u5145\u8bbe\u7f6e\u9875\u56de\u5f52\u6d4b\u8bd5",
-  "todo.demo.exec16.description": "\u8986\u76d6\u6a21\u578b\u8bfb\u53d6\u3001\u4fdd\u5b58\u3001\u65e7\u914d\u7f6e\u8fc1\u79fb\u4e0e\u5f02\u5e38\u63d0\u793a\u3002",
+  "todo.demo.exec16.description":
+    "\u8986\u76d6\u6a21\u578b\u8bfb\u53d6\u3001\u4fdd\u5b58\u3001\u65e7\u914d\u7f6e\u8fc1\u79fb\u4e0e\u5f02\u5e38\u63d0\u793a\u3002",
   "todo.demo.exec17.title": "\u8054\u8c03\u79fb\u52a8\u7aef\u4efb\u52a1\u8be6\u60c5",
-  "todo.demo.exec17.description": "\u9a8c\u8bc1\u8be6\u60c5\u5f39\u5c42\u3001Session \u8df3\u8f6c\u4e0e\u4f9d\u8d56\u4efb\u52a1\u5207\u6362\u3002",
+  "todo.demo.exec17.description":
+    "\u9a8c\u8bc1\u8be6\u60c5\u5f39\u5c42\u3001Session \u8df3\u8f6c\u4e0e\u4f9d\u8d56\u4efb\u52a1\u5207\u6362\u3002",
   "todo.demo.exec18.title": "\u53d1\u5e03\u524d\u9a8c\u6536",
-  "todo.demo.exec18.description": "\u6c47\u603b\u8bbe\u7f6e\u3001\u65e5\u5fd7\u4e0e\u79fb\u52a8\u7aef\u6539\u52a8\uff0c\u5b8c\u6210\u53d1\u5e03\u68c0\u67e5\u3002",
+  "todo.demo.exec18.description":
+    "\u6c47\u603b\u8bbe\u7f6e\u3001\u65e5\u5fd7\u4e0e\u79fb\u52a8\u7aef\u6539\u52a8\uff0c\u5b8c\u6210\u53d1\u5e03\u68c0\u67e5\u3002",
   "provider.enabled": "\u5df2\u542f\u7528",
   "provider.configuration": "\u914d\u7f6e",
   "provider.default": "\uff08\u9ed8\u8ba4\uff09",
@@ -1039,11 +1079,13 @@ const messages: TranslationMessages = {
   "provider.visionInput": "\u652f\u6301\u56fe\u50cf\u8f93\u5165",
   "provider.textInputOnly": "\u4ec5\u652f\u6301\u6587\u672c\u8f93\u5165",
   "provider.addModelToBind": "\u6dfb\u52a0\u6a21\u578b\u540e\u624d\u80fd\u7ed1\u5b9a\u5230 Agent",
-  "provider.linkedAgents": "\u4f7f\u7528\u6b64\u6a21\u578b\u4f9b\u5e94\u5546\u7684\u667a\u80fd\u4ee3\u7406",
+  "provider.linkedAgents":
+    "\u4f7f\u7528\u6b64\u6a21\u578b\u4f9b\u5e94\u5546\u7684\u667a\u80fd\u4ee3\u7406",
   "provider.noLinkedAgents": "\u6682\u65e0 Agent \u7ed1\u5b9a",
   "agent.create": "\u521b\u5efa",
   "agent.namePlaceholder": "\u4f8b\u5982 \u6587\u6863\u52a9\u624b",
-  "agent.resourceLinkHint": "\u521b\u5efa\u540e\u53ef\u5728 Skills / Extensions / Template \u9875\u4ece\u5168\u5c40\u5e93\u5173\u8054\u8d44\u6e90\u3002",
+  "agent.resourceLinkHint":
+    "\u521b\u5efa\u540e\u53ef\u5728 Skills / Extensions / Template \u9875\u4ece\u5168\u5c40\u5e93\u5173\u8054\u8d44\u6e90\u3002",
   "agent.globalResourcePath": "\u5168\u5c40\u8d44\u6e90\u76ee\u5f55\uff1a",
   "agent.createSuccess": "\u667a\u80fd\u4ee3\u7406\u521b\u5efa\u6210\u529f",
   "agent.createFailed": "\u667a\u80fd\u4ee3\u7406\u521b\u5efa\u5931\u8d25",
@@ -1054,10 +1096,20 @@ const messages: TranslationMessages = {
   "provider.preset.minimaxChina": "MiniMax \uff08\u56fd\u5185\uff09",
   "provider.preset.doubao": "\u8c46\u5305 \uff08ByteDance\uff09",
   "provider.namePlaceholder": "\u4f8b\u5982 OpenAI",
-  "provider.enableHint": "\u5141\u8bb8\u7ed1\u5b9a\u7684 Agent \u4f7f\u7528\u6b64\u6a21\u578b\u4f9b\u5e94\u5546",
+  "provider.enableHint":
+    "\u5141\u8bb8\u7ed1\u5b9a\u7684 Agent \u4f7f\u7528\u6b64\u6a21\u578b\u4f9b\u5e94\u5546",
   "provider.baseUrlDefaultPlaceholder": "\u7559\u7a7a\u4f7f\u7528\u9ed8\u8ba4\u7aef\u70b9",
   "provider.apiKeyCreatePlaceholder": "\u8f93\u5165\u4f9b\u5e94\u5546 API Key",
   "provider.apiKeyKeepPlaceholder": "\u7559\u7a7a\u5219\u4fdd\u7559\u5df2\u6709 API Key",
+  "provider.subscriptionAuth": "订阅认证",
+  "provider.subscriptionConnected": "已连接 ChatGPT 订阅",
+  "provider.subscriptionNotConnected": "尚未连接订阅",
+  "provider.subscriptionLogin": "登录 ChatGPT",
+  "provider.subscriptionLogout": "退出登录",
+  "provider.subscriptionConnecting": "处理中...",
+  "provider.subscriptionLoginFailed": "订阅登录失败",
+  "provider.subscriptionLoginTimeout": "订阅登录超时",
+  "provider.subscriptionLoggedOut": "已退出订阅登录",
   "provider.manageModels": "\u7ba1\u7406\u6a21\u578b",
   "provider.modelsSaved": "\u6a21\u578b\u5217\u8868\u5df2\u4fdd\u5b58",
   "provider.created": "\u4f9b\u5e94\u5546\u521b\u5efa\u6210\u529f",
@@ -1078,9 +1130,11 @@ const messages: TranslationMessages = {
   "resource.skillSearchPlaceholder": "\u641c\u7d22 skills.sh\uff0c\u4f8b\u5982 typescript / react",
   "resource.installNamed": "\u5b89\u88c5 {{name}}",
   "resource.noMatchingSkill": "\u672a\u627e\u5230\u5339\u914d\u7684 Skill",
-  "resource.skillSearchHint": "\u8f93\u5165\u5173\u952e\u8bcd\u641c\u7d22 skills.sh \u516c\u5f00\u76ee\u5f55",
+  "resource.skillSearchHint":
+    "\u8f93\u5165\u5173\u952e\u8bcd\u641c\u7d22 skills.sh \u516c\u5f00\u76ee\u5f55",
   "resource.source": "\u6e90\u5730\u5740",
-  "resource.skillImportHint": "\u652f\u6301 skills.sh \u7b80\u5199\uff08owner/repo@skill\uff09\u3001GitHub \u94fe\u63a5\u6216\u672c\u5730\u76ee\u5f55\u3002",
+  "resource.skillImportHint":
+    "\u652f\u6301 skills.sh \u7b80\u5199\uff08owner/repo@skill\uff09\u3001GitHub \u94fe\u63a5\u6216\u672c\u5730\u76ee\u5f55\u3002",
   "resource.installing": "\u5b89\u88c5\u4e2d\u2026",
   "resource.install": "\u5b89\u88c5",
   "resource.installedNamed": "\u5df2\u5b89\u88c5 {{name}}",
@@ -1114,13 +1168,17 @@ const messages: TranslationMessages = {
   "resource.templateHelp.howTo": "\u6a21\u677f\u600e\u4e48\u4f7f\u7528",
   "resource.templateHelp.commonPatterns": "\u5e38\u7528\u5199\u6cd5",
   "resource.templateHelp.userFirst": "\u7528\u6237\u586b\u5199\u7684\u7b2c\u4e00\u9879\u5185\u5bb9",
-  "resource.templateHelp.userSecond": "\u7528\u6237\u586b\u5199\u7684\u7b2c\u4e8c\u9879\u5185\u5bb9",
+  "resource.templateHelp.userSecond":
+    "\u7528\u6237\u586b\u5199\u7684\u7b2c\u4e8c\u9879\u5185\u5bb9",
   "resource.templateHelp.userAll": "\u7528\u6237\u586b\u5199\u7684\u5168\u90e8\u5185\u5bb9",
   "resource.templateHelp.sameAll": "\u540c\u6837\u8868\u793a\u5168\u90e8\u5185\u5bb9",
-  "resource.templateHelp.fromSecondAll": "\u4ece\u7b2c\u4e8c\u9879\u5f00\u59cb\u7684\u5168\u90e8\u5185\u5bb9",
-  "resource.templateHelp.fromSecondThreeContent": "\u4ece\u7b2c\u4e8c\u9879\u5f00\u59cb\uff0c\u53d6\u4e09\u9879\u5185\u5bb9",
+  "resource.templateHelp.fromSecondAll":
+    "\u4ece\u7b2c\u4e8c\u9879\u5f00\u59cb\u7684\u5168\u90e8\u5185\u5bb9",
+  "resource.templateHelp.fromSecondThreeContent":
+    "\u4ece\u7b2c\u4e8c\u9879\u5f00\u59cb\uff0c\u53d6\u4e09\u9879\u5185\u5bb9",
   "resource.templateHelp.promptTitle": "\u8f93\u5165\u65f6\u663e\u793a\u63d0\u793a",
-  "resource.templateHelp.promptDescription": "\u5728\u6a21\u677f\u5f00\u5934\u52a0\u5165\u4e0b\u9762\u51e0\u884c\uff0c\u7528\u6237\u8f93\u5165\u6a21\u677f\u547d\u4ee4\u65f6\uff0c\u5c31\u80fd\u770b\u5230\u9700\u8981\u586b\u5199\u4ec0\u4e48\u3002",
+  "resource.templateHelp.promptDescription":
+    "\u5728\u6a21\u677f\u5f00\u5934\u52a0\u5165\u4e0b\u9762\u51e0\u884c\uff0c\u7528\u6237\u8f93\u5165\u6a21\u677f\u547d\u4ee4\u65f6\uff0c\u5c31\u80fd\u770b\u5230\u9700\u8981\u586b\u5199\u4ec0\u4e48\u3002",
   "resource.templateHelp.example": "\u5b8c\u6574\u4f8b\u5b50",
   "resource.templateHelp.templateContent": "\u6a21\u677f\u5185\u5bb9",
   "resource.templateHelp.userInput": "\u7528\u6237\u8f93\u5165",
@@ -1131,7 +1189,8 @@ const messages: TranslationMessages = {
   "resource.skills": "\u6280\u80fd",
   "resource.extensions": "\u6269\u5c55",
   "resource.templates": "\u6a21\u677f",
-  "resource.globalSkillSource": "\u6765\u81ea\u5168\u5c40 Skill \u5e93\uff08\u542b ~/.supervisor/global/skills \u4e0e npx skills -g\uff09",
+  "resource.globalSkillSource":
+    "\u6765\u81ea\u5168\u5c40 Skill \u5e93\uff08\u542b ~/.supervisor/global/skills \u4e0e npx skills -g\uff09",
   "resource.projectSkillSource": "\u6765\u81ea\u9879\u76ee .agents/skills/",
   "mobile.mainNavigation": "\u4e3b\u5bfc\u822a",
   "mobile.chat": "\u804a\u5929",
@@ -1143,14 +1202,17 @@ const messages: TranslationMessages = {
   "mobile.editServer": "\u7f16\u8f91\u670d\u52a1\u5668",
   "mobile.addServer": "\u6dfb\u52a0\u670d\u52a1\u5668",
   "mobile.serverAddress": "\u670d\u52a1\u5668\u5730\u5740",
-  "mobile.serverAddressHint": "\u4f8b\u5982 https://xxx.trycloudflare.com \u6216 http://192.168.1.10:3030",
+  "mobile.serverAddressHint":
+    "\u4f8b\u5982 https://xxx.trycloudflare.com \u6216 http://192.168.1.10:3030",
   "mobile.displayName": "\u663e\u793a\u540d\u79f0",
   "mobile.displayNameHint": "\u53ef\u9009\uff0c\u9ed8\u8ba4\u4f7f\u7528\u4e3b\u673a\u540d",
   "mobile.homeComputer": "\u5bb6\u91cc\u7684\u7535\u8111",
   "mobile.accessPin": "\u8bbf\u95ee PIN",
-  "mobile.accessPinHint": "\u4e0e Supervisor \u542f\u52a8\u65f6\u663e\u793a\u7684 6 \u4f4d PIN \u4e00\u81f4",
+  "mobile.accessPinHint":
+    "\u4e0e Supervisor \u542f\u52a8\u65f6\u663e\u793a\u7684 6 \u4f4d PIN \u4e00\u81f4",
   "mobile.backgroundConnection": "\u540e\u53f0\u4fdd\u6301\u8fde\u63a5",
-  "mobile.backgroundConnectionHint": "Android \u663e\u793a\u5e38\u9a7b\u901a\u77e5\uff0c\u5c3d\u91cf\u7ef4\u6301 SSE/WebSocket",
+  "mobile.backgroundConnectionHint":
+    "Android \u663e\u793a\u5e38\u9a7b\u901a\u77e5\uff0c\u5c3d\u91cf\u7ef4\u6301 SSE/WebSocket",
   "mobile.saveAndConnect": "\u4fdd\u5b58\u5e76\u8fde\u63a5",
   "mobile.serverAddressRequired": "\u8bf7\u586b\u5199\u670d\u52a1\u5668\u5730\u5740",
   "mobile.accessPinRequired": "\u8bf7\u586b\u5199\u8bbf\u95ee PIN",
@@ -1160,12 +1222,14 @@ const messages: TranslationMessages = {
   "mobile.server": "\u670d\u52a1\u5668",
   "mobile.scan": "\u626b\u4e00\u626b",
   "mobile.addServerInstanceTitle": "\u6dfb\u52a0 Supervisor \u5b9e\u4f8b",
-  "mobile.addServerInstanceDescription": "\u5728\u7535\u8111\u542f\u52a8 Supervisor \u540e\uff0c\u626b\u63cf\u7ec8\u7aef\u4e8c\u7ef4\u7801\u5373\u53ef\u6dfb\u52a0\u3002\u4e00\u4e2a App \u53ef\u8fde\u63a5\u591a\u4e2a\u5b9e\u4f8b\u3002",
+  "mobile.addServerInstanceDescription":
+    "\u5728\u7535\u8111\u542f\u52a8 Supervisor \u540e\uff0c\u626b\u63cf\u7ec8\u7aef\u4e8c\u7ef4\u7801\u5373\u53ef\u6dfb\u52a0\u3002\u4e00\u4e2a App \u53ef\u8fde\u63a5\u591a\u4e2a\u5b9e\u4f8b\u3002",
   "mobile.manualAddress": "\u624b\u52a8\u586b\u5199\u5730\u5740",
   "mobile.addedInstances": "\u5df2\u6dfb\u52a0\u7684\u5b9e\u4f8b",
   "mobile.current": "\u5f53\u524d",
   "mobile.instanceDetailTitle": "\u9009\u62e9\u4e00\u4e2a\u670d\u52a1\u5b9e\u4f8b",
-  "mobile.instanceDetailHint": "\u9009\u62e9\u5de6\u4fa7\u5b9e\u4f8b\u540e\uff0c\u5728\u8fd9\u91cc\u786e\u8ba4\u5e76\u8fde\u63a5\u3002",
+  "mobile.instanceDetailHint":
+    "\u9009\u62e9\u5de6\u4fa7\u5b9e\u4f8b\u540e\uff0c\u5728\u8fd9\u91cc\u786e\u8ba4\u5e76\u8fde\u63a5\u3002",
   "mobile.connectInstance": "\u8fde\u63a5\u6b64\u5b9e\u4f8b",
   "mobile.scanToAdd": "\u626b\u4e00\u626b\u6dfb\u52a0",
   "mobile.longPressDelete": "\u957f\u6309\u5217\u8868\u9879\u53ef\u5220\u9664",
@@ -1183,21 +1247,25 @@ const messages: TranslationMessages = {
   "session.preview.backToSession": "\u8fd4\u56de\u4f1a\u8bdd",
   "session.preview.appTitle": "\u5e94\u7528\u9884\u89c8",
   "session.share.title": "\u9009\u62e9\u4f1a\u8bdd",
-  "session.share.hint": "\u5c06\u5206\u4eab\u7684\u56fe\u7247\u6dfb\u52a0\u5230\u4f1a\u8bdd\u8f93\u5165\u6846",
+  "session.share.hint":
+    "\u5c06\u5206\u4eab\u7684\u56fe\u7247\u6dfb\u52a0\u5230\u4f1a\u8bdd\u8f93\u5165\u6846",
   "session.menu.actions": "\u4f1a\u8bdd\u64cd\u4f5c",
   "session.menu.pin": "\u7f6e\u9876",
   "session.menu.unpin": "\u53d6\u6d88\u7f6e\u9876",
   "session.menu.fork": "Fork \u65b0\u4f1a\u8bdd",
   "session.menu.achieve": "\u5b8c\u6210\u5e76\u5f52\u6863",
-  "session.file.diffTruncated": "Diff \u5df2\u622a\u65ad\uff0c\u4ec5\u663e\u793a\u524d {{count}} \u884c",
+  "session.file.diffTruncated":
+    "Diff \u5df2\u622a\u65ad\uff0c\u4ec5\u663e\u793a\u524d {{count}} \u884c",
   "project.git.loading": "\u6b63\u5728\u8bfb\u53d6\u5206\u652f...",
   "project.git.empty": "\u6682\u65e0\u672c\u5730\u5206\u652f",
   "task.workflowMode": "\u5de5\u4f5c\u6d41\u6a21\u5f0f · {{label}}",
   "session.agentPicker.title": "\u9009\u62e9 Agent",
-  "session.agentPicker.description": "\u4e3a\u5f53\u524d\u4f1a\u8bdd\u6311\u9009\u4e00\u4e2a\u667a\u80fd\u4ee3\u7406",
+  "session.agentPicker.description":
+    "\u4e3a\u5f53\u524d\u4f1a\u8bdd\u6311\u9009\u4e00\u4e2a\u667a\u80fd\u4ee3\u7406",
   "session.agentPicker.redetect": "\u91cd\u65b0\u68c0\u6d4b\u5916\u90e8 Agent",
   "session.agentPicker.empty": "\u65e0\u53ef\u9009\u667a\u80fd\u4ee3\u7406",
-  "session.agentPicker.hint": "\u9009\u62e9\u540e\u5c06\u5728\u5f53\u524d\u9879\u76ee\u4e0b\u521b\u5efa\u65b0\u4f1a\u8bdd",
+  "session.agentPicker.hint":
+    "\u9009\u62e9\u540e\u5c06\u5728\u5f53\u524d\u9879\u76ee\u4e0b\u521b\u5efa\u65b0\u4f1a\u8bdd",
   "chat.previewWakeFailed": "\u5524\u9192\u670d\u52a1\u5931\u8d25\uff1a{{message}}",
   "common.session": "\u4f1a\u8bdd",
   "common.remove": "\u79fb\u9664",
@@ -1210,10 +1278,12 @@ const messages: TranslationMessages = {
   "chat.minimap.label": "\u5386\u53f2\u6d88\u606f\u5bfc\u822a",
   "chat.minimap.title": "\u6eda\u8f6e\u67e5\u770b\u66f4\u65e9\u6d88\u606f",
   "externalAgent.installCommandMissing": "\u672a\u914d\u7f6e\u5b89\u88c5\u547d\u4ee4",
-  "externalAgent.installNotDetected": "\u5b89\u88c5\u547d\u4ee4\u5df2\u6267\u884c\uff0c\u4f46\u4ecd\u672a\u68c0\u6d4b\u5230\u53ef\u6267\u884c\u6587\u4ef6\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u68c0\u6d4b",
+  "externalAgent.installNotDetected":
+    "\u5b89\u88c5\u547d\u4ee4\u5df2\u6267\u884c\uff0c\u4f46\u4ecd\u672a\u68c0\u6d4b\u5230\u53ef\u6267\u884c\u6587\u4ef6\uff0c\u8bf7\u7a0d\u540e\u91cd\u8bd5\u68c0\u6d4b",
   "externalAgent.installDone": "\u5b89\u88c5\u5b8c\u6210",
   "externalAgent.installFailed": "\u5b89\u88c5\u5931\u8d25",
-  "share.createSessionFirst": "\u8bf7\u5148\u521b\u5efa\u4f1a\u8bdd\u518d\u63a5\u6536\u5206\u4eab\u56fe\u7247",
+  "share.createSessionFirst":
+    "\u8bf7\u5148\u521b\u5efa\u4f1a\u8bdd\u518d\u63a5\u6536\u5206\u4eab\u56fe\u7247",
   "share.readFailed": "\u65e0\u6cd5\u8bfb\u53d6\u5206\u4eab\u7684\u56fe\u7247",
   "task.todo": "Todo",
   "task.current": "\u5f53\u524d\u4efb\u52a1",
@@ -1226,8 +1296,10 @@ const messages: TranslationMessages = {
   "task.status.planning": "\u89c4\u5212\u4e2d",
   "task.status.paused": "\u5df2\u6682\u505c",
   "task.status.blocked": "\u53d7\u963b",
-  "api.notFound": "\u63a5\u53e3\u4e0d\u5b58\u5728\uff0c\u8bf7\u91cd\u542f\u540e\u7aef\u670d\u52a1\u540e\u518d\u8bd5",
-  "api.nonJson": "\u63a5\u53e3 {{path}} \u8fd4\u56de\u4e86\u975e JSON \u54cd\u5e94\uff0c\u8bf7\u786e\u8ba4\u540e\u7aef\u670d\u52a1\u548c\u5f00\u53d1\u4ee3\u7406\u5df2\u542f\u52a8",
+  "api.notFound":
+    "\u63a5\u53e3\u4e0d\u5b58\u5728\uff0c\u8bf7\u91cd\u542f\u540e\u7aef\u670d\u52a1\u540e\u518d\u8bd5",
+  "api.nonJson":
+    "\u63a5\u53e3 {{path}} \u8fd4\u56de\u4e86\u975e JSON \u54cd\u5e94\uff0c\u8bf7\u786e\u8ba4\u540e\u7aef\u670d\u52a1\u548c\u5f00\u53d1\u4ee3\u7406\u5df2\u542f\u52a8",
   "api.authStatusFailed": "\u65e0\u6cd5\u68c0\u67e5\u767b\u5f55\u72b6\u6001",
   "common.resizePanel": "\u8c03\u6574\u9762\u677f\u5bbd\u5ea6",
   "provider.modelSaved": "\u6a21\u578b\u4fdd\u5b58\u6210\u529f",
@@ -1244,21 +1316,27 @@ const messages: TranslationMessages = {
   "live.otherRunning": " · \u53e6\u6709 {{count}} \u4e2a\u8fdb\u884c\u4e2d",
   "live.sessionWaitingTitle": "{{title}} · \u5f85\u786e\u8ba4",
   "live.sessionsWaitingTitle": "{{count}} \u4e2a\u4f1a\u8bdd\u5f85\u786e\u8ba4",
-  "live.sessionWaitingSubtitle": "\u9700\u8981\u4f60\u786e\u8ba4\u540e\u624d\u80fd\u7ee7\u7eed{{rest}}",
-  "live.sessionsWaitingSubtitle": "\u8bf7\u5c3d\u5feb\u5904\u7406{{rest}} · \u5171 {{total}} \u4e2a\u4f1a\u8bdd",
+  "live.sessionWaitingSubtitle":
+    "\u9700\u8981\u4f60\u786e\u8ba4\u540e\u624d\u80fd\u7ee7\u7eed{{rest}}",
+  "live.sessionsWaitingSubtitle":
+    "\u8bf7\u5c3d\u5feb\u5904\u7406{{rest}} · \u5171 {{total}} \u4e2a\u4f1a\u8bdd",
   "live.waitingChip": "\u5f85\u786e\u8ba4",
   "live.waitingCountChip": "{{count}}\u5f85\u786e\u8ba4",
   "live.sessionErrorTitle": "{{title}} · \u51fa\u9519",
   "live.sessionsErrorTitle": "{{count}} \u4e2a\u4f1a\u8bdd\u51fa\u9519",
-  "live.sessionErrorSubtitle": "\u8fd0\u884c\u51fa\u9519\uff0c\u9700\u8981\u4f60\u5904\u7406{{rest}}",
-  "live.sessionsErrorSubtitle": "\u8bf7\u9010\u4e2a\u5904\u7406{{rest}} · \u5171 {{total}} \u4e2a\u4f1a\u8bdd",
+  "live.sessionErrorSubtitle":
+    "\u8fd0\u884c\u51fa\u9519\uff0c\u9700\u8981\u4f60\u5904\u7406{{rest}}",
+  "live.sessionsErrorSubtitle":
+    "\u8bf7\u9010\u4e2a\u5904\u7406{{rest}} · \u5171 {{total}} \u4e2a\u4f1a\u8bdd",
   "live.errorChip": "\u51fa\u9519",
   "live.errorCountChip": "{{count}}\u51fa\u9519",
   "live.sessionDoneTitle": "{{title}} · \u5df2\u5b8c\u6210",
   "live.allDoneTitle": "\u5168\u90e8\u4efb\u52a1\u5df2\u5b8c\u6210",
   "live.sessionDoneSubtitle": "\u300c{{title}}\u300d\u672c\u8f6e\u5bf9\u8bdd\u5df2\u7ed3\u675f",
-  "live.allDoneSubtitle": "\u8fdb\u884c\u4e2d 0 · \u5df2\u5b8c\u6210 {{completed}} · \u5171 {{total}} \u4e2a\u4f1a\u8bdd",
-  "live.progressSubtitle": "\u8fd0\u884c\u4e2d {{active}} · \u5df2\u5b8c\u6210 {{completed}}/{{total}}",
+  "live.allDoneSubtitle":
+    "\u8fdb\u884c\u4e2d 0 · \u5df2\u5b8c\u6210 {{completed}} · \u5171 {{total}} \u4e2a\u4f1a\u8bdd",
+  "live.progressSubtitle":
+    "\u8fd0\u884c\u4e2d {{active}} · \u5df2\u5b8c\u6210 {{completed}}/{{total}}",
   "live.singleRunningSubtitle": "{{subtitle}} · \u5171 1 \u4e2a\u4efb\u52a1",
   "live.moreRunning": "\u7b49 {{count}} \u4e2a",
   "live.tasksRunningTitle": "{{count}} \u4e2a\u4efb\u52a1\u8fdb\u884c\u4e2d",
@@ -1266,13 +1344,18 @@ const messages: TranslationMessages = {
   "live.multipleRunningSubtitle": "{{phases}} · \u5171 {{total}} \u4e2a\u4efb\u52a1",
   "notification.messageComplete": "\u65b0\u6d88\u606f\u5df2\u5b8c\u6210",
   "notification.askUser": "\u8bf7\u9009\u62e9\uff1a{{prompt}}",
-  "notification.askFallback": "\u8bf7\u5728\u804a\u5929\u4e2d\u9009\u62e9\u4e00\u9879\u5e76\u786e\u8ba4",
+  "notification.askFallback":
+    "\u8bf7\u5728\u804a\u5929\u4e2d\u9009\u62e9\u4e00\u9879\u5e76\u786e\u8ba4",
   "notification.errorNeedsAction": "\u51fa\u9519\u9700\u8981\u5904\u7406",
-  "voice.installLocalModelFirst": "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u5b89\u88c5\u672c\u5730\u8bed\u97f3\u6a21\u578b",
-  "voice.configureDoubaoFirst": "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e\u8c46\u5305\u8bed\u97f3\u8bc6\u522b\u51ed\u8bc1",
-  "voice.configureDashScopeFirst": "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e DashScope API Key",
+  "voice.installLocalModelFirst":
+    "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u5b89\u88c5\u672c\u5730\u8bed\u97f3\u6a21\u578b",
+  "voice.configureDoubaoFirst":
+    "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e\u8c46\u5305\u8bed\u97f3\u8bc6\u522b\u51ed\u8bc1",
+  "voice.configureDashScopeFirst":
+    "\u8bf7\u5148\u5728\u8bbe\u7f6e\u4e2d\u914d\u7f6e DashScope API Key",
   "voice.startFailed": "\u65e0\u6cd5\u542f\u52a8\u8bed\u97f3\u8bc6\u522b",
-  "voice.browserUnsupported": "\u5f53\u524d\u6d4f\u89c8\u5668\u4e0d\u652f\u6301\u672c\u5730\u8bed\u97f3\u8bc6\u522b",
+  "voice.browserUnsupported":
+    "\u5f53\u524d\u6d4f\u89c8\u5668\u4e0d\u652f\u6301\u672c\u5730\u8bed\u97f3\u8bc6\u522b",
   "voice.localFailed": "\u672c\u5730\u8bed\u97f3\u8bc6\u522b\u5931\u8d25\uff1a{{error}}",
   "voice.unknownError": "\u672a\u77e5\u9519\u8bef",
   "voice.restartFailed": "\u65e0\u6cd5\u91cd\u542f\u8bed\u97f3\u8bc6\u522b",
@@ -1385,13 +1468,16 @@ const messages: TranslationMessages = {
   "toolDetail.details": "\u8be6\u60c5",
   "toolDetail.noAdditionalInfo": "\u65e0\u9644\u52a0\u4fe1\u606f",
   "archive.prepare": "\u6b63\u5728\u51c6\u5907\u672c\u5730\u6d88\u606f\u540c\u6b65\u2026",
-  "archive.skippedUnsupported": "\u5f53\u524d\u73af\u5883\u4e0d\u652f\u6301\u672c\u5730\u6d88\u606f\u5e93\uff0c\u5df2\u8df3\u8fc7",
+  "archive.skippedUnsupported":
+    "\u5f53\u524d\u73af\u5883\u4e0d\u652f\u6301\u672c\u5730\u6d88\u606f\u5e93\uff0c\u5df2\u8df3\u8fc7",
   "archive.noSessions": "\u6682\u65e0\u4f1a\u8bdd\u9700\u8981\u540c\u6b65",
   "archive.syncing": "\u6b63\u5728\u540c\u6b65\u4f1a\u8bdd\u6d88\u606f {{current}}/{{total}}",
-  "archive.storageFailed": "\u672c\u5730\u5b58\u50a8\u5199\u5165\u5931\u8d25\uff0c\u5df2\u964d\u7ea7\u8df3\u8fc7\u5168\u91cf\u540c\u6b65",
+  "archive.storageFailed":
+    "\u672c\u5730\u5b58\u50a8\u5199\u5165\u5931\u8d25\uff0c\u5df2\u964d\u7ea7\u8df3\u8fc7\u5168\u91cf\u540c\u6b65",
   "archive.done": "\u4f1a\u8bdd\u6d88\u606f\u540c\u6b65\u5b8c\u6210",
   "notification.channelName": "\u4f1a\u8bdd\u63d0\u9192",
-  "notification.channelDescription": "\u4f1a\u8bdd\u5b8c\u6210\u3001\u7b49\u5f85\u786e\u8ba4\u6216\u51fa\u9519\u65f6\u63d0\u9192",
+  "notification.channelDescription":
+    "\u4f1a\u8bdd\u5b8c\u6210\u3001\u7b49\u5f85\u786e\u8ba4\u6216\u51fa\u9519\u65f6\u63d0\u9192",
   "sessionEntries.modelCallFailed": "\u6a21\u578b\u8c03\u7528\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5",
   "sessionEntries.systemEvent": "\u7cfb\u7edf\u4e8b\u4ef6",
   "agent.category.builtin": "\u5185\u7f6e",
@@ -1413,7 +1499,8 @@ const messages: TranslationMessages = {
   "common.resize": "\u8c03\u6574\u5927\u5c0f",
   "chat.compaction.summary": "\u538b\u7f29\u6458\u8981",
   "chat.compaction.readFiles": "\u8bfb\u53d6\u6587\u4ef6\uff08\u538b\u7f29\u8be6\u60c5\uff09",
-  "chat.compaction.modifiedFiles": "\u5df2\u4fee\u6539\u6587\u4ef6\uff08\u538b\u7f29\u8be6\u60c5\uff09",
+  "chat.compaction.modifiedFiles":
+    "\u5df2\u4fee\u6539\u6587\u4ef6\uff08\u538b\u7f29\u8be6\u60c5\uff09",
 };
 
 export default messages;

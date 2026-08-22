@@ -2982,6 +2982,34 @@ export function createHttpServer(
     }
   });
 
+  // GET /sessions/:id/device-sync — draft and active stream for this Session only
+  app.get("/sessions/:id/device-sync", async (c) => {
+    try {
+      const id = parseIntegerId(c.req.param("id"));
+      if (id === null) return jsonError(c, 400, "invalid session id");
+      return c.json(await manager.getSessionDeviceSync(id));
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 409, message);
+    }
+  });
+
+  // PUT /sessions/:id/device-sync/draft — replace the unsent composer draft
+  app.put("/sessions/:id/device-sync/draft", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body || typeof body.text !== "string") {
+      return jsonError(c, 400, "invalid body, requires { text: string }");
+    }
+    try {
+      return c.json({ draft: manager.updateSessionDraft(id, body.text) });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      return jsonError(c, 409, message);
+    }
+  });
+
   app.get("/sessions/:id/commits", async (c) => {
     const sessionId = parseIntegerId(c.req.param("id"));
     if (sessionId === null) return jsonError(c, 400, "invalid session id");

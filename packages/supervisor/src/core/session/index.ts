@@ -29,5 +29,6 @@ export * from "./session-system-prompt.js";
 export * from "./session-task-commands.js";
 export * from "./session-timers.js";
 export * from "./session-unread.js";
+export * from "./sync/session-device-sync.js";
 export * from "./managed-session-runtime.js";
 export * from "./turn-file-tracker.js";

@@ -86,6 +86,12 @@ CREATE INDEX IF NOT EXISTS idx_sessions_status ON sessions(status);
 CREATE INDEX IF NOT EXISTS idx_sessions_agent ON sessions(agent_id);
 CREATE INDEX IF NOT EXISTS idx_sessions_project ON sessions(project_id);
 
+CREATE TABLE IF NOT EXISTS session_drafts (
+  session_id INTEGER PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
 -- Deferred cleanup failures survive Session deletion so Watson can repair them later.
 CREATE TABLE IF NOT EXISTS session_cleanup_failures (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

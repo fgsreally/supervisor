@@ -1,0 +1,5 @@
+CREATE TABLE IF NOT EXISTS session_drafts (
+  session_id INTEGER PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+  text TEXT NOT NULL,
+  updated_at INTEGER NOT NULL
+);

@@ -692,6 +692,7 @@ import { withUiBusy } from "@/composables/use-ui-busy";
 import { viewPreferences } from "@/utils/view-preferences";
 import { formatMessageClock } from "@/utils/format-time";
 import * as api from "@/api";
+import { SessionDeviceSync } from "@/utils/session-sync/session-device-sync";
 import type { ChatCompactionEntry, ChatEntry } from "@/types/chat-entry";
 import {
   buildDisplayGroups,
@@ -900,6 +901,10 @@ const modelMissing = computed(() => {
   return agent?.backendType === "native" && (!agent.providerId || !agent.modelId);
 });
 const inputText = ref("");
+const sessionDeviceSync = new SessionDeviceSync();
+watch(inputText, (text) => {
+  sessionDeviceSync.scheduleDraftSave(props.session.id, text);
+});
 const suggestedQuestions = ref<string[]>([]);
 const shadowRunning = ref(false);
 const pendingApprovals = ref<api.ApprovalPendingEvent[]>([]);
@@ -1770,6 +1775,7 @@ async function onMinimapSelect(userEntryId: string) {
 }
 
 async function loadSessionMessages(sessionId: string) {
+  void sessionDeviceSync.flush();
   stopStreaming();
   historyHasMore.value = false;
   tasksDetailLoaded.value = false;
@@ -1784,6 +1790,10 @@ async function loadSessionMessages(sessionId: string) {
   } finally {
     sessionLoading.value = false;
   }
+  await sessionDeviceSync.flush();
+  const deviceSync = await sessionDeviceSync.load(sessionId);
+  if (sessionId !== props.session.id) return;
+  inputText.value = deviceSync?.draft?.text ?? "";
   void refreshSessionSideData(sessionId);
   sessionTitle.value = props.session.title ?? `Session ${sessionId.substring(0, 8)}`;
   toolModal.value = null;
@@ -1803,22 +1813,30 @@ async function loadSessionMessages(sessionId: string) {
     !Array.isArray(shadowMeta) &&
     (shadowMeta as { running?: boolean }).running === true
   );
-  void maybeResumeRunningSession(sessionId);
+  void maybeResumeRunningSession(sessionId, deviceSync?.stream);
 }
 
 /** After refresh/open: if the turn is still running, restore the thinking UI + SSE. */
-async function maybeResumeRunningSession(sessionId: string) {
+async function maybeResumeRunningSession(
+  sessionId: string,
+  syncedStream?: api.SessionDeviceSyncSnapshot["stream"] | null,
+) {
   if (sessionId !== props.session.id || isStreaming.value) return;
   let running = props.session.status === "running";
   let streamingReply: string | undefined;
-  try {
-    const state = await api.getSessionState(sessionId);
-    running = running || state.isStreaming;
-    if (typeof state.streamingReply === "string" && state.streamingReply.trim()) {
-      streamingReply = state.streamingReply;
+  if (syncedStream) {
+    running = running || syncedStream.isStreaming;
+    if (syncedStream.streamingReply.trim()) streamingReply = syncedStream.streamingReply;
+  } else {
+    try {
+      const state = await api.getSessionState(sessionId);
+      running = running || state.isStreaming;
+      if (typeof state.streamingReply === "string" && state.streamingReply.trim()) {
+        streamingReply = state.streamingReply;
+      }
+    } catch {
+      // Ignore — status from session row is enough to attempt attach.
     }
-  } catch {
-    // Ignore — status from session row is enough to attempt attach.
   }
   if (!running) return;
   attachToRunningSession(streamingReply);
@@ -2233,6 +2251,8 @@ onBeforeUnmount(() => {
   // syncAgentLiveStatus / session-store watch, not view unmount.
   window.removeEventListener("supervisor:open-file", onOpenFileEvent);
   stopStreaming();
+  void sessionDeviceSync.flush();
+  sessionDeviceSync.dispose();
   shadowSuggestionCleanup?.();
   shadowSuggestionCleanup = null;
   if (initializingPollTimer) {
@@ -2946,6 +2966,7 @@ const sendMessage = async (payload: ChatSendPayload) => {
   )
     return;
   suggestedQuestions.value = [];
+  void sessionDeviceSync.clearDraft(props.session.id);
 
   if (
     !payload.images.length &&

@@ -493,6 +493,11 @@ export interface SupervisorSessionState {
   streamingReply?: string;
 }
 
+export interface SessionDeviceSyncSnapshot {
+  draft: { text: string; updatedAt: number } | null;
+  stream: { isStreaming: boolean; streamingReply: string };
+}
+
 export interface CompactResult {
   summary: string;
   firstKeptEntryId: string | null;
@@ -2091,6 +2096,19 @@ export async function createBtwSession(id: string): Promise<Session> {
 /** Get the runtime state of a session. */
 export async function getSessionState(id: string): Promise<SupervisorSessionState> {
   return fetchJson<SupervisorSessionState>(`/sessions/${id}/state`);
+}
+
+/** Load the draft and active stream after the Session messages are rendered. */
+export function getSessionDeviceSync(id: string): Promise<SessionDeviceSyncSnapshot> {
+  return fetchJson<SessionDeviceSyncSnapshot>(`/sessions/${id}/device-sync`);
+}
+
+/** Replace the unsent composer draft for this Session. */
+export function updateSessionDraft(
+  id: string,
+  text: string,
+): Promise<{ draft: SessionDeviceSyncSnapshot["draft"] }> {
+  return putJson(`/sessions/${id}/device-sync/draft`, { text });
 }
 
 /** Get available slash commands for a session. */

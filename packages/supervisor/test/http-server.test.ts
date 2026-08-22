@@ -324,6 +324,28 @@ describe("supervisor: HTTP server", () => {
     expect(state.cwd).toBe("/tmp");
   });
 
+  it("syncs a session draft and active stream snapshot", async () => {
+    const { id } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
+      id: string;
+    };
+    const initial = await req("GET", `/sessions/${id}/device-sync`);
+    expect(initial.status).toBe(200);
+    expect(await initial.json()).toEqual({
+      draft: null,
+      stream: { isStreaming: false, streamingReply: "" },
+    });
+
+    const update = await req("PUT", `/sessions/${id}/device-sync/draft`, {
+      text: "continue this later",
+    });
+    expect(update.status).toBe(200);
+    expect((await update.json()).draft.text).toBe("continue this later");
+
+    const synced = await req("GET", `/sessions/${id}/device-sync`);
+    expect((await synced.json()).draft.text).toBe("continue this later");
+    expect((await req("PUT", `/sessions/${id}/device-sync/draft`, { text: "" })).status).toBe(200);
+  });
+
   it("POST /sessions/:id headless controls return ok", async () => {
     const { id } = (await (await req("POST", "/sessions", { cwd: "/tmp" })).json()) as {
       id: string;

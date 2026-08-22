@@ -110,6 +110,7 @@ import {
 } from "./session-system-prompt.js";
 import type { SupervisorDb } from "../../db/db.js";
 import { createDefaultTools } from "../../utils/default-tools.js";
+import { SessionDeviceSync, type SessionDeviceSyncSnapshot } from "./sync/session-device-sync.js";
 
 function sessionSetupReason(options: SpawnSessionOptions): SessionSetupReason {
   void options;
@@ -417,6 +418,7 @@ export class SessionManager {
   readonly jobs: JobManager;
   private readonly detachHomeTaskSync: () => void;
   private readonly stopSessionActivity: () => void;
+  private readonly sessionDeviceSync: SessionDeviceSync;
 
   registerUiMenu(agentId: number, owner: string, menu: UiMenuDefinition): () => void {
     const menus = this.uiMenus.get(agentId) ?? new Map();
@@ -536,6 +538,7 @@ export class SessionManager {
 
   constructor(db: SupervisorDb) {
     this.db = db;
+    this.sessionDeviceSync = new SessionDeviceSync(db);
     configureSessionLogProjectResolver((sessionId) => this.db.get(sessionId)?.project_id ?? null);
     this.db.reconcileInterruptedSessionStatuses();
     this.detachHomeTaskSync = attachHomeTaskSessionSync(this.db, {
@@ -1593,6 +1596,14 @@ export class SessionManager {
 
   publishSessionEvent(sessionId: number, event: SessionOutputEvent): void {
     for (const listener of this.outputListeners.get(sessionId) ?? []) listener(sessionId, event);
+  }
+
+  async getSessionDeviceSync(sessionId: number): Promise<SessionDeviceSyncSnapshot> {
+    return this.sessionDeviceSync.getSnapshot(sessionId, await this.getState(sessionId));
+  }
+
+  updateSessionDraft(sessionId: number, text: string) {
+    return this.sessionDeviceSync.setDraft(sessionId, text);
   }
 
   reloadNativeSessionResources(agentId?: number): void {

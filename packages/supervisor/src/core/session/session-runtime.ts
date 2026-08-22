@@ -24,11 +24,19 @@ import type { SessionManager } from "./session-manager.js";
 import { resolveSessionPromptImages, type SessionPromptImage } from "./session-media.js";
 import type { SQLiteSessionStorage } from "./session-storage.js";
 import { ensureSessionDir } from "./session-files.js";
+import { getSessionDir } from "./session-files.js";
 import type { ManagedSessionRuntime } from "./managed-session-runtime.js";
 import { evaluateAgentPermission, type AgentPermissionRules } from "../agent/agent-permissions.js";
 import type { ApprovalRequest, ApprovalResult } from "../../extension/index.js";
 import { harnessAgentState, readHarnessTools } from "../agent/harness-compat.js";
 import { loadSessionExtensions } from "./session-extension-attach.js";
+import {
+  createInspectorCapture,
+  inspectorEnabled,
+  removeInspectorDirectory,
+  type InspectorCapture,
+} from "../../utils/inspector.js";
+import { join } from "node:path";
 
 export {
   harnessAgentController,
@@ -102,6 +110,7 @@ export class SessionRuntime implements ManagedSessionRuntime {
   private storage?: SQLiteSessionStorage;
   /** 与当前运行中 Agent 会话唯一绑定的 Extension 实例。 */
   private _extension: SessionExtensionHost | null = null;
+  private inspector: InspectorCapture | null = null;
   private permissionConfig: {
     rules: AgentPermissionRules;
     cwd: string;
@@ -125,6 +134,23 @@ export class SessionRuntime implements ManagedSessionRuntime {
       void this.emit(event);
       void this._extension?.handleHarnessEvent(event);
     });
+
+    if (options.session.projectId != null) {
+      const inspectorRoot = join(
+        getSessionDir(options.session.projectId, options.session.id),
+        "inspector",
+      );
+      if (inspectorEnabled()) {
+        this.inspector = createInspectorCapture({
+          actor: "session",
+          rootDir: inspectorRoot,
+          sessionId: options.session.id,
+        });
+        this.inspector.attach(this.harness);
+      } else {
+        removeInspectorDirectory(inspectorRoot);
+      }
+    }
   }
 
   private async emit(event: SessionEvent): Promise<void> {
@@ -271,6 +297,8 @@ export class SessionRuntime implements ManagedSessionRuntime {
 
   /** 清理与当前 Agent 绑定的 Extension 和其他 Resource。 */
   async clear(): Promise<void> {
+    this.inspector?.detach();
+    this.inspector = null;
     const extension = this._extension;
     if (extension) {
       await extension.clear();

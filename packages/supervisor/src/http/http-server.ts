@@ -93,8 +93,7 @@ import {
 import { listWorkspaceFiles } from "./workspace-files.js";
 import { readSessionWorkspaceFileDiff } from "./session-file-diff.js";
 import { listSessionWorkspaceFiles, readSessionWorkspaceFile } from "./session-workspace-files.js";
-import { readSessionLog } from "../utils/session-log.js";
-import { writeLog } from "../i18n/logs.js";
+import { readSessionLog, sessionLogEvent } from "../utils/session-log.js";
 import {
   buildSessionServicesDto,
   proxySessionPreviewRequest,
@@ -1449,7 +1448,7 @@ export function createHttpServer(
   app.get("/system/logs", (c) => {
     const limit = Number.parseInt(c.req.query("limit") ?? "400", 10);
     return c.json({
-      files: ["supervisor.log"],
+      files: ["system.log"],
       text: readSystemLogs({ limit: Number.isFinite(limit) ? limit : 400 }),
     });
   });
@@ -3046,7 +3045,7 @@ export function createHttpServer(
       return c.json(manager.mergeSessionSlashCommands(commands));
     } catch (e: unknown) {
       // Listing commands must not fail the composer.
-      writeLog("error", "runtime.commandsMergeFailed", {
+      sessionLogEvent(sessionId, "error", "runtime.commandsMergeFailed", {
         id: sessionId,
         error: e instanceof Error ? e.message : String(e),
       });

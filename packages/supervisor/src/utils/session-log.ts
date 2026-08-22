@@ -1,9 +1,11 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { getSessionDir } from "../core/session/session-files.js";
-import { translateRawLog, writeLog } from "../i18n/logs.js";
+import { translateLog, translateRawLog, writeLog, type LogKey } from "../i18n/logs.js";
+import { appendRotatingTextLog } from "./text-log.js";
 
 export type SessionLogLevel = "debug" | "info" | "warn" | "error";
+export const SESSION_LOG_MAX_BYTES = 2 * 1024 * 1024;
 
 export interface SessionLogEntry {
   t: number;
@@ -43,17 +45,15 @@ export function configureSessionLogProjectResolver(resolver: ProjectIdResolver):
 }
 
 function sessionLogPath(projectId: string | number, sessionId: string | number): string {
+  return join(getSessionDir(projectId, sessionId), "logs", "session.log");
+}
+
+function legacySessionLogPath(projectId: string | number, sessionId: string | number): string {
   return join(getSessionDir(projectId, sessionId), "logs", "session.jsonl");
 }
 
 function legacyExtensionLogPath(projectId: string | number, sessionId: string | number): string {
   return join(getSessionDir(projectId, sessionId), "logs", "extensions.log");
-}
-
-function ensureLogDir(projectId: string | number, sessionId: string | number): string {
-  const dir = join(getSessionDir(projectId, sessionId), "logs");
-  mkdirSync(dir, { recursive: true });
-  return dir;
 }
 
 function normalizeLevel(level: unknown): SessionLogLevel {
@@ -64,7 +64,9 @@ function normalizeLevel(level: unknown): SessionLogLevel {
 }
 
 function serializeEntry(entry: SessionLogEntry): string {
-  return `${JSON.stringify(entry)}\n`;
+  const tags = entry.tags?.length ? ` ${entry.tags.map((tag) => `[${tag}]`).join(" ")}` : "";
+  const meta = entry.meta ? ` meta=${JSON.stringify(entry.meta)}` : "";
+  return `${new Date(entry.t).toISOString()} [${entry.l}]${tags} ${entry.m}${meta}`;
 }
 
 /** Persist a structured log line for a known project/session pair. */
@@ -81,8 +83,11 @@ export function appendSessionLog(
     ...(input.meta && Object.keys(input.meta).length > 0 ? { meta: input.meta } : {}),
   };
   try {
-    ensureLogDir(projectId, sessionId);
-    appendFileSync(sessionLogPath(projectId, sessionId), serializeEntry(entry), "utf8");
+    appendRotatingTextLog(
+      sessionLogPath(projectId, sessionId),
+      serializeEntry(entry),
+      SESSION_LOG_MAX_BYTES,
+    );
   } catch (error) {
     writeLog(
       "error",
@@ -99,7 +104,7 @@ export function appendSessionLog(
 
 /**
  * Persist by session id when a project resolver is configured.
- * Always mirrors to console for server operators.
+ * Session-scoped logs are file-only; system logging is intentionally separate.
  */
 export function sessionLog(
   sessionId: number | string,
@@ -110,17 +115,27 @@ export function sessionLog(
 ): void {
   const id = Number(sessionId);
   const localizedMessage = translateRawLog(message);
-  writeLog(
-    level,
-    "runtime.sessionLog.entry",
-    { id: sessionId, message: localizedMessage },
-    meta ?? "",
-  );
-
   if (!Number.isFinite(id)) return;
-  const projectId = projectIdResolver?.(id);
+  let projectId: number | string | null | undefined;
+  try {
+    projectId = projectIdResolver?.(id);
+  } catch {
+    // Session logging must never surface a secondary error while the database is closing.
+    return;
+  }
   if (projectId == null) return;
   appendSessionLog(projectId, id, { level, message: localizedMessage, tags, meta });
+}
+
+export function sessionLogEvent(
+  sessionId: number | string,
+  level: SessionLogLevel,
+  key: LogKey,
+  params: Record<string, string | number | boolean | null | undefined> = {},
+  tags?: string[],
+  meta?: Record<string, unknown>,
+): void {
+  sessionLog(sessionId, level, translateLog(key, params), tags, meta);
 }
 
 function parseJsonlLine(line: string): SessionLogEntry | null {
@@ -143,6 +158,41 @@ function parseJsonlLine(line: string): SessionLogEntry | null {
   } catch {
     return null;
   }
+}
+
+function parseTextLine(line: string): SessionLogEntry | null {
+  const trimmed = line.trim();
+  const match = /^(\S+) \[(debug|info|warn|error)\](.*)$/i.exec(trimmed);
+  if (!match) return null;
+  const timestamp = Date.parse(match[1]);
+  let rest = match[3].trim();
+  const tags: string[] = [];
+  while (rest.startsWith("[")) {
+    const end = rest.indexOf("]");
+    if (end < 0) break;
+    tags.push(rest.slice(1, end));
+    rest = rest.slice(end + 1).trimStart();
+  }
+  let meta: Record<string, unknown> | undefined;
+  const metaIndex = rest.lastIndexOf(" meta=");
+  if (metaIndex >= 0) {
+    try {
+      const parsed = JSON.parse(rest.slice(metaIndex + 6));
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        meta = parsed as Record<string, unknown>;
+        rest = rest.slice(0, metaIndex);
+      }
+    } catch {
+      // Keep the original message when the optional metadata is malformed.
+    }
+  }
+  return {
+    t: Number.isFinite(timestamp) ? timestamp : Date.now(),
+    l: normalizeLevel(match[2].toLowerCase()),
+    m: rest,
+    ...(tags.length ? { tags } : {}),
+    ...(meta ? { meta } : {}),
+  };
 }
 
 /** Parse legacy plain-text extension log lines into structured entries. */
@@ -199,7 +249,25 @@ export function readSessionLog(
   const entries: SessionLogEntry[] = [];
   const limit = Math.min(Math.max(options?.limit ?? 100, 1), 500);
 
-  const jsonl = sessionLogPath(projectId, sessionId);
+  const textLog = sessionLogPath(projectId, sessionId);
+  if (existsSync(textLog)) {
+    try {
+      const text = readFileSync(textLog, "utf8");
+      for (const line of text.split(/\r?\n/)) {
+        const entry = parseTextLine(line);
+        if (entry && matchesFilter(entry, options)) entries.push(entry);
+      }
+    } catch (error) {
+      writeLog(
+        "error",
+        "runtime.sessionLog.readJsonlFailed",
+        {},
+        { projectId, sessionId, error: error instanceof Error ? error.message : String(error) },
+      );
+    }
+  }
+
+  const jsonl = legacySessionLogPath(projectId, sessionId);
   if (existsSync(jsonl)) {
     try {
       const text = readFileSync(jsonl, "utf8");

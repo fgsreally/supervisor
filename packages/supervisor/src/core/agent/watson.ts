@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import {
   AgentHarness,
@@ -28,11 +28,19 @@ import {
   ensureAnthropicCacheBreakpoints,
 } from "../../utils/anthropic-prompt-cache.js";
 import { isFeatureModelRef, readSupervisorSettings } from "../../utils/supervisor-settings.js";
+import { appendRotatingTextLog, readRotatingTextLog } from "../../utils/text-log.js";
+import {
+  createInspectorCapture,
+  inspectorEnabled,
+  removeInspectorDirectory,
+} from "../../utils/inspector.js";
 
 export type WatsonTaskKind = string;
+export const WATSON_LOG_MAX_BYTES = 10 * 1024 * 1024;
 
 interface WatsonRunBase {
   kind: WatsonTaskKind;
+  sessionId?: number | string;
   prompt: string;
   cwd?: string;
   systemPrompt?: string;
@@ -66,27 +74,22 @@ function watsonLogDir(): string {
   return dir;
 }
 
-function appendWatsonLog(line: string): void {
-  appendFileSync(
+function appendWatsonLog(line: string, sessionId?: number | string): void {
+  const session = sessionId == null ? "" : ` [session:${sessionId}]`;
+  appendRotatingTextLog(
     join(watsonLogDir(), "watson.log"),
-    `${new Date().toISOString()} ${line}\n`,
-    "utf8",
+    `${new Date().toISOString()}${session} ${line}`,
+    WATSON_LOG_MAX_BYTES,
   );
 }
 
 export function readWatsonLogs(options?: { limit?: number }): string {
-  const path = join(watsonLogDir(), "watson.log");
-  if (!existsSync(path)) return "";
-  const lines = readFileSync(path, "utf8").split(/\r?\n/);
-  return lines.slice(Math.max(0, lines.length - (options?.limit ?? 400))).join("\n");
+  return readRotatingTextLog(join(watsonLogDir(), "watson.log"), options?.limit ?? 400);
 }
 
 export function listWatsonLogFiles(): string[] {
   const dir = watsonLogDir();
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((name) => name.endsWith(".log"))
-    .sort();
+  return existsSync(join(dir, "watson.log")) ? ["watson.log"] : [];
 }
 
 function assistantMessageText(message: AssistantMessage | undefined): string {
@@ -139,20 +142,16 @@ function defaultWatsonSystemPrompt(kind: WatsonTaskKind, structured: boolean): s
 }
 
 interface WatsonRunLogger {
-  /** Append one timestamped trace line to this run's log file. Never throws. */
+  /** Append one timestamped trace line to the Watson log. Never throws. */
   trace(line: string): void;
   /** Append the final text/result sections (same format as before). */
   finish(text: string, result: unknown): void;
 }
 
-function createRunLogger(kind: string): WatsonRunLogger {
-  const path = join(
-    watsonLogDir(),
-    `${new Date().toISOString().replace(/[:.]/g, "-")}-${kind.replace(/[^\w.-]+/g, "_")}.log`,
-  );
+function createRunLogger(kind: string, sessionId?: number | string): WatsonRunLogger {
   const trace = (line: string): void => {
     try {
-      appendFileSync(path, `${new Date().toISOString()} ${line}\n`, "utf8");
+      appendWatsonLog(`[${kind}] ${line}`, sessionId);
     } catch {
       // Logging must never break the run.
     }
@@ -161,17 +160,10 @@ function createRunLogger(kind: string): WatsonRunLogger {
     trace,
     finish(text: string, result: unknown): void {
       try {
-        appendFileSync(
-          path,
-          [
-            "--- text ---",
-            text,
-            "--- result ---",
-            result == null ? "(none)" : JSON.stringify(result, null, 2),
-            "",
-          ].join("\n"),
-          "utf8",
-        );
+        appendWatsonLog(`[${kind}] --- text ---`, sessionId);
+        appendWatsonLog(text, sessionId);
+        appendWatsonLog(`[${kind}] --- result ---`, sessionId);
+        appendWatsonLog(result == null ? "(none)" : JSON.stringify(result, null, 2), sessionId);
       } catch {
         // Logging must never break the run.
       }
@@ -220,10 +212,22 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
   const structured = options.resultSchema !== undefined;
   const cwd = options.cwd?.trim() || process.cwd();
   const startedAt = Date.now();
-  const runLog = createRunLogger(options.kind);
+  const runLog = createRunLogger(options.kind, options.sessionId);
+  const inspectorRoot = join(watsonLogDir(), "inspector");
+  let inspector = null;
+  if (inspectorEnabled()) {
+    inspector = createInspectorCapture({
+      actor: "watson",
+      rootDir: inspectorRoot,
+      sessionId: options.sessionId,
+    });
+  } else {
+    removeInspectorDirectory(inspectorRoot);
+  }
   const stats = { llmTurns: 0, toolCalls: 0 };
   appendWatsonLog(
     `[start] kind=${options.kind} mode=${options.mode} cwd=${cwd} model=${llm.model.provider}/${llm.model.id} structured=${structured}`,
+    options.sessionId,
   );
   runLog.trace(
     `[run:start] kind=${options.kind} mode=${options.mode} cwd=${cwd} model=${llm.model.provider}/${llm.model.id} structured=${structured}`,
@@ -256,7 +260,11 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
         },
         {
           apiKey: llm.apiKey,
-          onPayload: (payload) => ensureAnthropicCacheBreakpoints(payload),
+          onPayload: (payload) => {
+            const next = ensureAnthropicCacheBreakpoints(payload);
+            inspector?.capture(next, 1);
+            return next;
+          },
         },
       );
       runLog.trace(
@@ -302,6 +310,9 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
         }),
       });
       attachAnthropicCacheBreakpoints(harness);
+      if (inspector) {
+        inspector.attach(harness);
+      }
       // Timing trace only; must not alter harness behavior.
       const toolStartedAt = new Map<string, number>();
       let turnStartedAt = 0;
@@ -352,6 +363,7 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
 
     appendWatsonLog(
       `[done] kind=${options.kind} mode=${options.mode} durationMs=${Date.now() - startedAt} llmTurns=${stats.llmTurns} toolCalls=${stats.toolCalls} chars=${text.length} hasResult=${result != null}${usageLog(lastMessage)}`,
+      options.sessionId,
     );
     runLog.trace(
       `[run:done] durationMs=${Date.now() - startedAt} llmTurns=${stats.llmTurns} toolCalls=${stats.toolCalls} chars=${text.length} hasResult=${result != null}${usageLog(lastMessage)}`,
@@ -362,6 +374,7 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
     const message = error instanceof Error ? error.message : String(error);
     appendWatsonLog(
       `[error] kind=${options.kind} mode=${options.mode} durationMs=${Date.now() - startedAt} ${message}`,
+      options.sessionId,
     );
     runLog.trace(
       `[run:error] durationMs=${Date.now() - startedAt} llmTurns=${stats.llmTurns} toolCalls=${stats.toolCalls} ${message}`,

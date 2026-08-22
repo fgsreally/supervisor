@@ -116,10 +116,13 @@ function sessionSetupReason(options: SpawnSessionOptions): SessionSetupReason {
   return "create";
 }
 import { commitAll, commitGitSnapshot, resolveSessionGitContext } from "../../utils/git.js";
-import { configureSessionLogProjectResolver, sessionLog } from "../../utils/session-log.js";
+import {
+  configureSessionLogProjectResolver,
+  sessionLog,
+  sessionLogEvent,
+} from "../../utils/session-log.js";
 import { appendSystemLog } from "../../utils/system-log.js";
 import { beginSessionTiming, timedSessionStep } from "../../utils/session-timing.js";
-import { writeLog } from "../../i18n/logs.js";
 import {
   startSessionActivityScheduler,
   hasSessionActivityPolicy,
@@ -540,7 +543,10 @@ export class SessionManager {
       onChildTerminal: (parentId) => {
         void this.scheduleReadyHomeTasks(parentId).catch((error: unknown) => {
           const message = error instanceof Error ? error.message : String(error);
-          writeLog("error", "runtime.homeTaskScheduleFailed", { id: parentId, error: message });
+          sessionLogEvent(parentId, "error", "runtime.homeTaskScheduleFailed", {
+            id: parentId,
+            error: message,
+          });
         });
       },
     });
@@ -879,7 +885,10 @@ export class SessionManager {
             void this.recordLlmError(sessionId, formatLlmErrorMessage(llmError)).catch(
               (error: unknown) => {
                 const detail = error instanceof Error ? error.message : String(error);
-                writeLog("error", "runtime.recordLlmErrorFailed", { id: sessionId, error: detail });
+                sessionLogEvent(sessionId, "error", "runtime.recordLlmErrorFailed", {
+                  id: sessionId,
+                  error: detail,
+                });
               },
             );
           }
@@ -895,7 +904,7 @@ export class SessionManager {
                 });
               } catch (error: unknown) {
                 const detail = error instanceof Error ? error.message : String(error);
-                writeLog("debug", "runtime.shadowCheckpointSkipped", {
+                sessionLogEvent(sessionId, "debug", "runtime.shadowCheckpointSkipped", {
                   id: sessionId,
                   error: detail,
                 });
@@ -921,7 +930,10 @@ export class SessionManager {
                 placeholderEntryId: shadowPlaceholderEntryId,
               }).catch((error: unknown) => {
                 const message = error instanceof Error ? error.message : String(error);
-                writeLog("error", "runtime.shadowHookFailed", { id: sessionId, error: message });
+                sessionLogEvent(sessionId, "error", "runtime.shadowHookFailed", {
+                  id: sessionId,
+                  error: message,
+                });
               });
             }
             if (!hasPendingAsks(sessionId)) {
@@ -929,7 +941,10 @@ export class SessionManager {
             }
           })().catch((error: unknown) => {
             const message = error instanceof Error ? error.message : String(error);
-            writeLog("error", "runtime.shadowHookFailed", { id: sessionId, error: message });
+            sessionLogEvent(sessionId, "error", "runtime.shadowHookFailed", {
+              id: sessionId,
+              error: message,
+            });
           });
         }
       }
@@ -971,7 +986,10 @@ export class SessionManager {
         await createSessionCheckpoint(this.db, sessionId, { label: "message" });
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        writeLog("error", "runtime.messageCheckpointFailed", { id: sessionId, error: message });
+        sessionLogEvent(sessionId, "error", "runtime.messageCheckpointFailed", {
+          id: sessionId,
+          error: message,
+        });
       }
     });
   }
@@ -1293,7 +1311,10 @@ export class SessionManager {
     if (options.awaitReady === false) {
       void ready.catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
-        writeLog("error", "runtime.sessionRuntimeStartFailed", { id: session.id, error: message });
+        sessionLogEvent(session.id, "error", "runtime.sessionRuntimeStartFailed", {
+          id: session.id,
+          error: message,
+        });
         try {
           sessionLog(
             session.id,
@@ -1669,7 +1690,10 @@ export class SessionManager {
             this.publishSessionStatus(sessionId);
           }
           if (reason.trim())
-            writeLog("debug", "runtime.permissionResolved", { id: sessionId, reason });
+            sessionLogEvent(sessionId, "debug", "runtime.permissionResolved", {
+              id: sessionId,
+              reason,
+            });
         }
       },
       broadcast: (event) => this.publishSessionEvent(sessionId, event as SessionOutputEvent),
@@ -1733,7 +1757,7 @@ export class SessionManager {
   }
 
   private reportOperationalError(sessionId: number, message: string): void {
-    writeLog("error", "runtime.sessionError", { id: sessionId, error: message });
+    sessionLogEvent(sessionId, "error", "runtime.sessionError", { id: sessionId, error: message });
     this.publishUiNotify(sessionId, message, "error");
   }
 
@@ -1947,7 +1971,10 @@ export class SessionManager {
       if (!session || session.status === "finish" || session.status === "error") continue;
       void this.drainSessionInputQueue(sessionId).catch((error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
-        writeLog("error", "runtime.sessionInputFailed", { id: sessionId, error: detail });
+        sessionLogEvent(sessionId, "error", "runtime.sessionInputFailed", {
+          id: sessionId,
+          error: detail,
+        });
       });
     }
   }
@@ -1968,7 +1995,7 @@ export class SessionManager {
       // Failures must not bounce the message back into the queue — that shows
       // as "排队中" forever. Persist the user turn (if needed) + custom error.
       await this.abandonFailedSessionInput(sessionId, next, detail).catch((persistError) => {
-        writeLog("error", "runtime.sessionInputAbandonFailed", {
+        sessionLogEvent(sessionId, "error", "runtime.sessionInputAbandonFailed", {
           id: sessionId,
           error: persistError instanceof Error ? persistError.message : String(persistError),
         });
@@ -1983,7 +2010,10 @@ export class SessionManager {
       ) {
         void this.drainSessionInputQueue(sessionId).catch((error: unknown) => {
           const detail = error instanceof Error ? error.message : String(error);
-          writeLog("error", "runtime.sessionInputQueuedFailed", { id: sessionId, error: detail });
+          sessionLogEvent(sessionId, "error", "runtime.sessionInputQueuedFailed", {
+            id: sessionId,
+            error: detail,
+          });
         });
       }
     }
@@ -2337,7 +2367,7 @@ export class SessionManager {
           await this.sendCustomMessage(id, formatGitCommitCustomMessage(commit)).catch(
             (error: unknown) => {
               const detail = error instanceof Error ? error.message : String(error);
-              writeLog("error", "runtime.customMessageFailed", { id, error: detail });
+              sessionLogEvent(id, "error", "runtime.customMessageFailed", { id, error: detail });
             },
           );
         }
@@ -2679,7 +2709,10 @@ export class SessionManager {
       await this.ensureRuntime(session.id);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      writeLog("error", "runtime.externalImportFailed", { id: session.id, error: message });
+      sessionLogEvent(session.id, "error", "runtime.externalImportFailed", {
+        id: session.id,
+        error: message,
+      });
       sessionLog(session.id, "error", `Runtime start failed: ${message}`, ["system", "runtime"], {
         error: message,
       });
@@ -3118,7 +3151,7 @@ export class SessionManager {
       try {
         runtime = await this.ensureRuntime(id);
       } catch (error: unknown) {
-        writeLog("error", "runtime.clearOnDeleteFailed", {
+        sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", {
           id,
           step: "attach_for_delete",
           error: error instanceof Error ? error.message : String(error),
@@ -3138,7 +3171,7 @@ export class SessionManager {
         sessionLog(id, "error", "session.before_delete failed", ["system", "lifecycle"], {
           error: error instanceof Error ? error.message : String(error),
         });
-        writeLog("error", "runtime.clearOnDeleteFailed", {
+        sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", {
           id,
           step: "before_delete",
           error: error instanceof Error ? error.message : String(error),
@@ -3175,7 +3208,7 @@ export class SessionManager {
     // and filesystem cleanup continues independently; failures are durable work items for Watson.
     const recordCleanupFailure = (step: string, error: unknown) => {
       const detail = error instanceof Error ? error.message : String(error);
-      writeLog("error", "runtime.clearOnDeleteFailed", { id, step, error: detail });
+      sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", { id, step, error: detail });
       try {
         this.db.recordSessionCleanupFailure({
           sessionId: id,
@@ -3185,7 +3218,7 @@ export class SessionManager {
           context: {},
         });
       } catch (recordError: unknown) {
-        writeLog("error", "runtime.clearOnDeleteFailed", {
+        sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", {
           id,
           step,
           error: recordError instanceof Error ? recordError.message : String(recordError),
@@ -3553,7 +3586,7 @@ export class SessionManager {
     this.db.updateStatus(id, "running");
     void agent.continue?.().catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
-      writeLog("error", "runtime.retryFailed", { id, error: message });
+      sessionLogEvent(id, "error", "runtime.retryFailed", { id, error: message });
       this.db.updateStatus(id, "error");
       void this.recordLlmError(id, message).catch(() => {});
     });

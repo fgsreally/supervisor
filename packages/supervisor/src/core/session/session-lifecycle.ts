@@ -15,8 +15,7 @@ import {
   resolveSessionGitContext,
   type GitChangedFile,
 } from "../../utils/git.js";
-import { sessionLog } from "../../utils/session-log.js";
-import { writeLog } from "../../i18n/logs.js";
+import { sessionLog, sessionLogEvent } from "../../utils/session-log.js";
 import { maybeRunRollingCompaction } from "./compaction/rolling.js";
 import type { SessionRuntime } from "./session-runtime.js";
 import type {
@@ -150,6 +149,7 @@ export async function commitSessionChanges(
       const diffStat = (await getGitDiffStat(cwd)) || status;
       const run = await runWatson({
         mode: "simple",
+        sessionId,
         kind: "commit-message",
         prompt: [
           "Write a concise git commit subject line for the latest work.",
@@ -202,6 +202,7 @@ async function maybeAutoNameSession(
   try {
     const run = await runWatson({
       mode: "simple",
+      sessionId,
       kind: "session-title",
       prompt: [
         "Generate a short chat session title (6-20 Chinese or English characters).",
@@ -276,7 +277,10 @@ export function handleSessionLifecycleAgentEnd(
     await maybeAutoNameSession(sessionId, event, db);
   })().catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
-    writeLog("error", "runtime.sessionLifecycleFailed", { id: sessionId, error: message });
+    sessionLogEvent(sessionId, "error", "runtime.sessionLifecycleFailed", {
+      id: sessionId,
+      error: message,
+    });
   });
 }
 
@@ -377,6 +381,7 @@ export async function finalizeSessionLifecycleGit(
       );
       await runWatson({
         mode: "agent",
+        sessionId: session.id,
         cwd: git.repoRoot,
         kind: "worktree-cleanup",
         toolsPreset: "coding",
@@ -394,7 +399,10 @@ export async function finalizeSessionLifecycleGit(
         ].join("\n"),
       }).catch((watsonError: unknown) => {
         const detail = watsonError instanceof Error ? watsonError.message : String(watsonError);
-        writeLog("error", "runtime.shadowCompletionFailed", { id: session.id, error: detail });
+        sessionLogEvent(session.id, "error", "runtime.shadowCompletionFailed", {
+          id: session.id,
+          error: detail,
+        });
       });
       try {
         await removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch);

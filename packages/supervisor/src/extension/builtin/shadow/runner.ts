@@ -15,7 +15,7 @@ import {
   normalizeShadowSubmitResult,
 } from "./protocol.js";
 import type { ShadowProtocolResult } from "./types.js";
-import { writeLog } from "../../../i18n/logs.js";
+import { sessionLogEvent } from "../../../utils/session-log.js";
 
 export type ShadowRunPreparation = {
   startedAt: number;
@@ -102,7 +102,10 @@ export async function runShadow(
     await manager.emitSessionExtensionEvent(session.id, startEvent);
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
-    writeLog("error", "runtime.shadowHookFailed", { id: session.id, error: detail });
+    sessionLogEvent(session.id, "error", "runtime.shadowHookFailed", {
+      id: session.id,
+      error: detail,
+    });
   }
 
   const standardKeys = new Set(["shadowMemory", "suggestedQuestions", "title", "message", "level"]);
@@ -116,7 +119,10 @@ export async function runShadow(
     resultSchema = createShadowResultSchema(extensionProperties);
   } catch (error: unknown) {
     const detail = error instanceof Error ? error.message : String(error);
-    writeLog("error", "runtime.shadowCompletionFailed", { id: session.id, error: detail });
+    sessionLogEvent(session.id, "error", "runtime.shadowCompletionFailed", {
+      id: session.id,
+      error: detail,
+    });
     updateShadowRunMessage(db, session.id, placeholderEntryId, { status: "failed" });
     setShadowRunning(manager, db, session.id, false);
     manager.publishShadowMessage(session.id, placeholderEntryId, "", "warning");
@@ -133,6 +139,7 @@ export async function runShadow(
   try {
     const run = await runWatson({
       mode: "agent",
+      sessionId: session.id,
       cwd: session.cwd,
       kind: "shadow",
       toolsPreset: "none",
@@ -143,14 +150,17 @@ export async function runShadow(
     });
     const normalized = normalizeShadowSubmitResult(run.result, resultSchema, extensionKeys);
     if (!normalized) {
-      writeLog("error", "runtime.shadowSubmitInvalid", { id: session.id });
+      sessionLogEvent(session.id, "error", "runtime.shadowSubmitInvalid", { id: session.id });
       finishFailed();
       return;
     }
     result = normalized;
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    writeLog("error", "runtime.shadowCompletionFailed", { id: session.id, error: message });
+    sessionLogEvent(session.id, "error", "runtime.shadowCompletionFailed", {
+      id: session.id,
+      error: message,
+    });
     finishFailed();
     return;
   }
@@ -208,7 +218,7 @@ export async function runShadow(
     })
     .catch((error: unknown) => {
       const detail = error instanceof Error ? error.message : String(error);
-      writeLog("error", "runtime.shadowHookFailed", {
+      sessionLogEvent(session.id, "error", "runtime.shadowHookFailed", {
         id: session.id,
         error: detail,
       });
@@ -219,7 +229,10 @@ export async function runShadow(
       await manager.abort(session.id);
     } catch (error: unknown) {
       const detail = error instanceof Error ? error.message : String(error);
-      writeLog("error", "runtime.shadowInterruptFailed", { id: session.id, error: detail });
+      sessionLogEvent(session.id, "error", "runtime.shadowInterruptFailed", {
+        id: session.id,
+        error: detail,
+      });
     }
   }
 }

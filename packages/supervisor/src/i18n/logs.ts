@@ -1,6 +1,6 @@
 import en from "./locales/en.json";
 import zhCN from "./locales/zh-CN.json";
-import pc from "picocolors";
+import { appendSystemLog } from "../utils/system-log.js";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 export type LogLocale = "en" | "zh-CN";
@@ -71,18 +71,31 @@ export function writeLog(
   ...details: unknown[]
 ): void {
   const message = translateLog(key, params);
-  const prefix = `[${level.toUpperCase()}]`;
-  const coloredPrefix =
-    level === "error"
-      ? pc.red(prefix)
-      : level === "warn"
-        ? pc.yellow(prefix)
-        : level === "debug"
-          ? pc.cyan(prefix)
-          : pc.blue(prefix);
-  const output = `${coloredPrefix} ${message}`;
-  if (level === "error") console.error(output, ...details);
-  else if (level === "warn") console.warn(output, ...details);
-  else if (level === "debug") console.debug(output, ...details);
-  else console.log(output, ...details);
+  const detailText = details.length > 0 ? ` details=${formatDetails(details)}` : "";
+  appendSystemLog(message + detailText, level, undefined, key, message);
+}
+
+/** User-facing guidance; always goes to the terminal and never to system.log. */
+export function writeGuidance(
+  level: LogLevel,
+  key: LogKey,
+  params: LogParams = {},
+  ...details: unknown[]
+): void {
+  const message = translateLog(key, params);
+  if (level === "error") console.error(message, ...details);
+  else console.log(message, ...details);
+}
+
+function formatDetails(details: unknown[]): string {
+  return details
+    .map((detail) => {
+      if (typeof detail === "string") return detail;
+      try {
+        return JSON.stringify(detail);
+      } catch {
+        return String(detail);
+      }
+    })
+    .join(" ");
 }

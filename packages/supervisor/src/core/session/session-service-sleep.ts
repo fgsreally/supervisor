@@ -8,7 +8,7 @@ import {
   stoppedSessionServicesMeta,
 } from "./session-services.js";
 import type { JobManager } from "../jobs/jobs.js";
-import { writeLog } from "../../i18n/logs.js";
+import { sessionLogEvent } from "../../utils/session-log.js";
 
 /** Auto-stop project services after this much inactivity (ms). */
 export const SESSION_SERVICE_SLEEP_MS = 24 * 60 * 60 * 1000;
@@ -68,7 +68,10 @@ export async function runSessionServiceSleepTick(options: {
       options.onUpdated?.(row.id);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      writeLog("error", "runtime.sessionServiceSleepFailed", { id: row.id, error: message });
+      sessionLogEvent(row.id, "error", "runtime.sessionServiceSleepFailed", {
+        id: row.id,
+        error: message,
+      });
     }
   }
 }

@@ -32,7 +32,7 @@ import type {
 import type { SessionManager } from "./session-manager.js";
 import type { SessionState, SlashCommandInfo } from "./session-runtime.js";
 import type { SessionPromptImage } from "./session-media.js";
-import { writeLog } from "../../i18n/logs.js";
+import { sessionLogEvent } from "../../utils/session-log.js";
 import type { SessionSetupReason } from "../../extension/types.js";
 
 const agentExtensionRuntimes = new WeakMap<SessionManager, Map<number, AgentExtensionRuntime>>();
@@ -161,7 +161,7 @@ export async function loadSessionExtensions(options: {
     await agentRuntime.loadSessionExtension(module.definition);
   }
   for (const moduleError of moduleErrors) {
-    writeLog("error", "runtime.extensionAttachFailed", {
+    sessionLogEvent(options.runtime.id, "error", "runtime.extensionAttachFailed", {
       slug: moduleError.slug,
       error: moduleError.error,
     });

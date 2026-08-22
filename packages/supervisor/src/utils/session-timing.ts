@@ -1,18 +1,26 @@
-import { sessionLog } from "./session-log.js";
-import { writeLog } from "../i18n/logs.js";
+import { sessionLog, sessionLogEvent } from "./session-log.js";
 
 /** Lightweight timing logs to locate slow session create / prompt stages. */
 export function beginSessionTiming(sessionId: number | string, phase: string): () => void {
   const started = Date.now();
-  writeLog("info", "runtime.sessionTimingStart", { id: sessionId, phase });
-  sessionLog(sessionId, "info", `${phase} start`, ["system", "timing"], { phase });
+  sessionLogEvent(
+    sessionId,
+    "info",
+    "runtime.sessionTimingStart",
+    { id: sessionId, phase },
+    ["timing"],
+    { phase },
+  );
   return () => {
     const durationMs = Date.now() - started;
-    writeLog("info", "runtime.sessionTimingDone", { id: sessionId, phase, durationMs });
-    sessionLog(sessionId, "info", `${phase} done ${durationMs}ms`, ["system", "timing"], {
-      phase,
-      durationMs,
-    });
+    sessionLogEvent(
+      sessionId,
+      "info",
+      "runtime.sessionTimingDone",
+      { id: sessionId, phase, durationMs },
+      ["timing"],
+      { phase, durationMs },
+    );
   };
 }
 

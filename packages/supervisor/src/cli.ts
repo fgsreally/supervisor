@@ -22,7 +22,7 @@ import { startQuickTunnel } from "./utils/cloudflare-tunnel.js";
 import { resolveUiDistDir } from "./utils/ui-dist.js";
 import { resolveWebPin } from "./utils/web-password.js";
 import { getSupervisorHome, setSupervisorHome } from "./utils/supervisor-home.js";
-import { writeLog } from "./i18n/logs.js";
+import { writeGuidance as writeLog } from "./i18n/logs.js";
 import { acquireRuntimeLock, type RuntimeLock } from "./utils/runtime-lock.js";
 import {
   buildDevPublicUrl,

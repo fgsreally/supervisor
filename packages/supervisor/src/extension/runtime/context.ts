@@ -802,6 +802,7 @@ export class Context {
       }) =>
         runWatson({
           mode: options.mode,
+          sessionId: session.id,
           cwd: options.cwd?.trim() || session.cwd,
           kind: options.kind,
           prompt: options.prompt,

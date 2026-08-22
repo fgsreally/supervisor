@@ -5,7 +5,7 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { networkInterfaces } from "node:os";
-import { writeLog } from "../i18n/logs.js";
+import { writeGuidance as writeLog } from "../i18n/logs.js";
 
 const START_TIMEOUT_MS = 45_000;
 const URL_RE = /https:\/\/[a-zA-Z0-9-]+\.trycloudflare\.com/;

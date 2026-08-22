@@ -62,19 +62,19 @@
           v-if="hasServicePreviews && !isMobileViewport"
           v-model:open="previewPopoverOpen"
           :title="t('chat.activeApps')"
-          :panel-class="previewPopoverPanelClass"
+          panel-class="session-preview-popover"
         >
           <template #trigger>
             <ChatHeaderAction
               :title="`${t('chat.activeApps')} · ${servicePreviews.length}`"
               :active="previewPopoverOpen"
               :count="servicePreviews.length"
-              @click="previewPopoverOpen = !previewPopoverOpen"
+              @click="toggleSessionPreview"
             >
               <AppWindow />
             </ChatHeaderAction>
           </template>
-          <div v-if="!previewPopoverViewing" class="session-preview-popover__list">
+          <div class="session-preview-popover__list">
             <button
               v-for="preview in servicePreviews"
               :key="previewKey(preview)"
@@ -97,24 +97,6 @@
               </span>
               <ChevronRight class="session-preview-popover__arrow" />
             </button>
-          </div>
-          <div v-else class="session-preview-popover__view">
-            <button
-              type="button"
-              class="session-preview-popover__back"
-              @click="previewPopoverViewing = false"
-            >
-              <ChevronLeft class="session-preview-popover__arrow" />
-              <span>{{ previewPopoverTitle }}</span>
-            </button>
-            <SessionPreviewPanel
-              embedded
-              class="session-preview-popover__frame"
-              :previews="popoverActivePreviews"
-              :loading="previewLoading"
-              :show-header="false"
-              v-model="lastPreviewKey"
-            />
           </div>
         </ResponsivePopover>
         <ChatHeaderAction
@@ -362,6 +344,23 @@
           v-model="lastPreviewKey"
           @close="mobilePreviewOpen = false"
         />
+        <ResponsiveSplitSurface
+          :open="!isMobileViewport && desktopPreviewOpen"
+          :ariaLabel="previewPopoverTitle"
+          :width="sidePanelWidth"
+          @close="desktopPreviewOpen = false"
+          @resize-start="startSidePanelResize"
+        >
+          <SessionPreviewPanel
+            class="chat-panel-host__body"
+            :previews="popoverActivePreviews"
+            :loading="previewLoading"
+            :title="previewPopoverTitle"
+            :show-close="true"
+            v-model="lastPreviewKey"
+            @close="desktopPreviewOpen = false"
+          />
+        </ResponsiveSplitSurface>
         <ResponsiveSplitSurface
           :open="isMobileViewport && mobileBashOpen"
           :ariaLabel="t('chat.backgroundTerminal')"
@@ -675,7 +674,6 @@ import { ref, computed, nextTick, watch, onBeforeUnmount, onMounted } from "vue"
 import {
   AppWindow,
   Braces,
-  ChevronLeft,
   ChevronRight,
   ClipboardList,
   FolderTree,
@@ -1043,7 +1041,7 @@ const showFileTreeSidebar = ref(!isFoldable.value);
 
 const contentPanelOpen = ref(false);
 const previewPopoverOpen = ref(false);
-const previewPopoverViewing = ref(false);
+const desktopPreviewOpen = ref(false);
 const failedPreviewFavicons = ref(new Set<string>());
 const contentSplitTabs = computed(() =>
   contentTabs.value.map((tab) => ({
@@ -1080,7 +1078,7 @@ const bashTerminalsActionActive = computed(() => {
 });
 const previewActionActive = computed(() => {
   if (isMobileViewport.value) return mobilePreviewOpen.value;
-  return previewPopoverOpen.value;
+  return previewPopoverOpen.value || desktopPreviewOpen.value;
 });
 
 function openBackgroundBashPanel(jobId?: string) {
@@ -1207,6 +1205,7 @@ function closeAllSidePanels() {
   showLogPanel.value = false;
   showFilesPanel.value = false;
   mobilePreviewOpen.value = false;
+  desktopPreviewOpen.value = false;
   mobileBashOpen.value = false;
   mobileBashJobId.value = null;
   bashPopoverOpen.value = false;
@@ -1888,7 +1887,7 @@ watch(
     backgroundBashCount.value = 0;
     lastPreviewKey.value = "";
     previewPopoverOpen.value = false;
-    previewPopoverViewing.value = false;
+    desktopPreviewOpen.value = false;
     startBackgroundBashPolling();
     void restorePendingApprovals(sessionId);
   },
@@ -2302,11 +2301,6 @@ const servicePreviews = computed<SessionServicesPreview[]>(() => {
   }));
 });
 const hasServicePreviews = computed(() => servicePreviews.value.length > 0);
-const previewPopoverPanelClass = computed(() =>
-  previewPopoverViewing.value
-    ? "session-preview-popover session-preview-popover--view"
-    : "session-preview-popover",
-);
 const popoverActivePreviews = computed(() =>
   servicePreviews.value.filter((item) => previewKey(item) === lastPreviewKey.value),
 );
@@ -2373,12 +2367,12 @@ async function openSessionPreview() {
   }
 
   previewPopoverOpen.value = true;
-  previewPopoverViewing.value = true;
 }
 
 function selectSessionPreview(preview: SessionServicesPreview) {
   lastPreviewKey.value = previewKey(preview);
-  previewPopoverViewing.value = true;
+  previewPopoverOpen.value = false;
+  desktopPreviewOpen.value = true;
   void wakePreviewServicesIfNeeded();
 }
 
@@ -2395,7 +2389,11 @@ function toggleSessionPreview() {
     previewPopoverOpen.value = false;
     return;
   }
-  previewPopoverOpen.value = true;
+  if (desktopPreviewOpen.value) {
+    desktopPreviewOpen.value = false;
+    return;
+  }
+  void openSessionPreview();
 }
 
 async function toggleMobilePreview() {
@@ -2470,12 +2468,8 @@ watch(hasServicePreviews, (has) => {
   if (!has) {
     mobilePreviewOpen.value = false;
     previewPopoverOpen.value = false;
-    previewPopoverViewing.value = false;
+    desktopPreviewOpen.value = false;
   }
-});
-
-watch(previewPopoverOpen, (open) => {
-  if (!open) previewPopoverViewing.value = false;
 });
 
 watch(backgroundBashCount, (count) => {
@@ -3254,21 +3248,14 @@ async function executeCustomSlash(name: string) {
   z-index: 80;
   top: 34px;
   right: 0;
-  width: 260px;
+  width: min(220px, calc(100vw - 24px));
+  max-height: min(40vh, 320px);
+  overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--app-popup-border);
   border-radius: 10px;
   background: var(--app-popup-bg);
   box-shadow: 0 10px 30px rgb(0 0 0 / 16%);
-}
-
-:deep(.session-preview-popover--view) {
-  display: flex;
-  width: min(720px, calc(100vw - 32px));
-  height: min(70vh, 640px);
-  flex-direction: column;
-  overflow: hidden;
-  padding: 0;
 }
 
 :deep(.session-bash-popover) {
@@ -3297,42 +3284,6 @@ async function executeCustomSlash(name: string) {
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-
-.session-preview-popover__view {
-  display: flex;
-  min-height: 0;
-  flex: 1;
-  flex-direction: column;
-}
-
-.session-preview-popover__back {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--app-border-subtle);
-  color: var(--app-text-primary);
-  font-size: var(--app-font-control);
-  font-weight: var(--app-font-weight-medium);
-  text-align: left;
-}
-
-.session-preview-popover__back:hover {
-  background: var(--app-hover);
-}
-
-.session-preview-popover__back span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.session-preview-popover__frame {
-  min-height: 0;
-  flex: 1;
 }
 
 .session-preview-popover__item {

@@ -2,7 +2,12 @@ import type { SupervisorDb } from "../../db/db.js";
 import type { Project } from "../../types.js";
 import { commitAll, findGitRoot } from "../../utils/git.js";
 import { normalizeProjectDescription } from "./project-description.js";
-import { detectHtmlEntries, detectSetup } from "./project-detect.js";
+import { detectHtmlEntries } from "./project-detect.js";
+import {
+  detectProjectSetup,
+  summarizeProjectSetup,
+  type ProjectSetupSummary,
+} from "../project-setup/index.js";
 import { runWatson } from "../agent/watson.js";
 import { renderPromptTemplate } from "../resource/system-prompts.js";
 import { Type } from "typebox";
@@ -36,8 +41,9 @@ export type ProjectViewDefinition = View;
 export interface ProjectServiceConfig {
   definitions: ProjectServiceDefinition[];
   views?: ProjectViewDefinition[];
-  /** Written by deterministic detection (detectSetup), not by the LLM. */
+  /** Written by deterministic project-setup detection, not by the LLM. */
   installCommand?: string;
+  setup?: ProjectSetupSummary;
   /** @deprecated Legacy rows only; process lifecycle is platform-managed. */
   stopCommand?: string;
   /** @deprecated Legacy rows only; destroy = drop the session worktree. */
@@ -82,6 +88,9 @@ export function parseProjectServicesMeta(
     definitions,
     ...(Array.isArray(value.views) ? { views } : {}),
     installCommand: optional("installCommand"),
+    ...(value.setup && typeof value.setup === "object"
+      ? { setup: value.setup as ProjectSetupSummary }
+      : {}),
     stopCommand: optional("stopCommand"),
     destroyCommand: optional("destroyCommand"),
     error: optional("error"),
@@ -295,6 +304,7 @@ export async function runProjectRuntimeParse(options: {
     mode: "agent",
     cwd: options.project.cwd,
     kind: "project-parse",
+    toolsPreset: "project-parse",
     resultSchema: ProjectRuntimeSpecSchema,
     prompt: [
       buildProjectRuntimeInstructions(options.project),
@@ -329,7 +339,8 @@ export async function applyProjectRuntimeParse(
   await commitAll(project.cwd, "chore: initialize project for supervisor");
 
   // Setup comes from deterministic detection; stop/destroy are platform-managed.
-  const setup = detectSetup(project.cwd);
+  const setup = detectProjectSetup(project.cwd);
+  const setupSummary = summarizeProjectSetup(project.cwd, setup);
   db.updateProject(projectId, {
     description: spec.description,
     parsedAt: Date.now(),
@@ -338,7 +349,8 @@ export async function applyProjectRuntimeParse(
       services: {
         definitions: spec.services.definitions,
         ...(spec.services.views ? { views: spec.services.views } : {}),
-        installCommand: setup.installCommand,
+        ...(setup?.installCommand ? { installCommand: setup.installCommand } : {}),
+        ...(setupSummary ? { setup: setupSummary } : {}),
         updatedAt: new Date().toISOString(),
       } satisfies ProjectServicesMeta,
     },

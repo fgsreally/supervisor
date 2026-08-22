@@ -23,10 +23,6 @@ import { loadBuiltinAgentPrompt } from "../../agent/builtin/prompts.js";
 import { getDb } from "../../db/db.js";
 import { getSupervisorHome } from "../../utils/supervisor-home.js";
 import { resolveLLMConfig } from "../../utils/model-utils.js";
-import {
-  attachAnthropicCacheBreakpoints,
-  ensureAnthropicCacheBreakpoints,
-} from "../../utils/anthropic-prompt-cache.js";
 import { isFeatureModelRef, readSupervisorSettings } from "../../utils/supervisor-settings.js";
 import { appendRotatingTextLog, readRotatingTextLog } from "../../utils/text-log.js";
 import {
@@ -56,7 +52,7 @@ export interface WatsonSimpleOptions extends WatsonRunBase {
 export interface WatsonAgentOptions extends WatsonRunBase {
   mode: "agent";
   cwd: string;
-  toolsPreset?: "coding" | "readonly" | "none";
+  toolsPreset?: "coding" | "readonly" | "project-parse" | "none";
   extraTools?: AgentTool[];
 }
 
@@ -104,6 +100,49 @@ function usageLog(message: AssistantMessage | undefined): string {
   const usage = message?.usage;
   if (!usage) return "";
   return ` input=${usage.input} output=${usage.output} cacheRead=${usage.cacheRead} cacheWrite=${usage.cacheWrite} totalTokens=${usage.totalTokens}`;
+}
+
+function providerPayloadLog(payload: unknown): string {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return "[llm:payload] shape=unknown";
+  }
+
+  const body = payload as Record<string, unknown>;
+  const markerLocations: string[] = [];
+  const system = Array.isArray(body.system) ? body.system : [];
+  const tools = Array.isArray(body.tools) ? body.tools : [];
+  const messages = Array.isArray(body.messages) ? body.messages : [];
+  let messageBlocks = 0;
+
+  const inspect = (value: unknown, location: string): void => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    if ("cache_control" in value) markerLocations.push(location);
+  };
+
+  system.forEach((block, index) => inspect(block, `system[${index}]`));
+  tools.forEach((tool, index) => inspect(tool, `tools[${index}]`));
+  messages.forEach((message, messageIndex) => {
+    if (!message || typeof message !== "object" || Array.isArray(message)) return;
+    const content = (message as Record<string, unknown>).content;
+    if (Array.isArray(content)) {
+      messageBlocks += content.length;
+      content.forEach((block, blockIndex) =>
+        inspect(block, `messages[${messageIndex}].content[${blockIndex}]`),
+      );
+    } else if (typeof content === "string") {
+      messageBlocks += 1;
+    }
+  });
+
+  return [
+    `[llm:payload] model=${String(body.model ?? "unknown")}`,
+    `systemBlocks=${system.length}`,
+    `toolCount=${tools.length}`,
+    `messageCount=${messages.length}`,
+    `messageBlocks=${messageBlocks}`,
+    `cacheMarkers=${markerLocations.length}`,
+    `cacheMarkerLocations=${markerLocations.join(",") || "none"}`,
+  ].join(" ");
 }
 
 function createSubmitResultTool(
@@ -189,6 +228,14 @@ function createWatsonTools(cwd: string, preset: WatsonAgentOptions["toolsPreset"
   if (shellPath || commandPrefix) options.bash = { shellPath, commandPrefix };
   if (preset === "none") return [];
   if (preset === "readonly") return createReadOnlyTools(cwd, options);
+  if (preset === "project-parse") {
+    return [
+      ...createCodingTools(cwd, options).filter((tool) => tool.name !== "bash"),
+      createGrepTool(cwd, options.grep),
+      createFindTool(cwd, options.find),
+      createLsTool(cwd, options.ls),
+    ];
+  }
   return [
     ...createCodingTools(cwd, options),
     createGrepTool(cwd, options.grep),
@@ -261,9 +308,9 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
         {
           apiKey: llm.apiKey,
           onPayload: (payload) => {
-            const next = ensureAnthropicCacheBreakpoints(payload);
-            inspector?.capture(next, 1);
-            return next;
+            runLog.trace(providerPayloadLog(payload));
+            inspector?.capture(payload, 1);
+            return payload;
           },
         },
       );
@@ -309,10 +356,13 @@ export async function runWatson(options: WatsonRunOptions): Promise<WatsonRunRes
           apiKey: llm.apiKey,
         }),
       });
-      attachAnthropicCacheBreakpoints(harness);
       if (inspector) {
         inspector.attach(harness);
       }
+      harness.on("before_provider_payload", (event) => {
+        runLog.trace(providerPayloadLog(event.payload));
+        return undefined;
+      });
       // Timing trace only; must not alter harness behavior.
       const toolStartedAt = new Map<string, number>();
       let turnStartedAt = 0;

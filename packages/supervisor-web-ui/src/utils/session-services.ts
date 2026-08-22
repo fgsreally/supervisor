@@ -92,7 +92,44 @@ export function parseSessionServicesFromMeta(
   const raw = meta?.services;
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, unknown>;
-  const status = row.status;
+  const persistedStatus = row.status;
+  const hasPersistedStatus =
+    persistedStatus === "registered" ||
+    persistedStatus === "starting" ||
+    persistedStatus === "running" ||
+    persistedStatus === "active" ||
+    persistedStatus === "idle" ||
+    persistedStatus === "stopped" ||
+    persistedStatus === "error" ||
+    persistedStatus === "unregistered";
+  const hasRuntimeReference =
+    (typeof row.jobId === "string" && row.jobId.length > 0) ||
+    typeof row.pid === "number" ||
+    (Array.isArray(row.services) &&
+      row.services.some((item) => {
+        if (!item || typeof item !== "object") return false;
+        const service = item as Record<string, unknown>;
+        return (
+          (typeof service.jobId === "string" && service.jobId.length > 0) ||
+          typeof service.pid === "number"
+        );
+      }));
+  const status: SessionServicesMeta["status"] = hasPersistedStatus
+    ? (persistedStatus as SessionServicesMeta["status"])
+    : typeof row.error === "string" && row.error.trim()
+      ? "error"
+      : hasRuntimeReference
+        ? "active"
+        : "idle";
+  if (
+    !hasPersistedStatus &&
+    !hasRuntimeReference &&
+    typeof row.startCommand !== "string" &&
+    !Array.isArray(row.services) &&
+    !Array.isArray(row.views)
+  ) {
+    return null;
+  }
   if (
     status !== "registered" &&
     status !== "starting" &&

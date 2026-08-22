@@ -14,7 +14,9 @@
   >
     <div class="form-dialog__body">
       <div class="form-dialog__field">
-        <label class="form-dialog__label" for="project-settings-name">{{ t("project.name") }}</label>
+        <label class="form-dialog__label" for="project-settings-name">{{
+          t("project.name")
+        }}</label>
         <div class="form-dialog__row">
           <input
             id="project-settings-name"
@@ -42,10 +44,7 @@
       <div class="form-dialog__field">
         <div class="form-dialog__row">
           <p class="form-dialog__hint form-dialog__grow">{{ t("project.initHint") }}</p>
-          <UiListStatus
-            :status="parseStatus"
-            :title="parseStatusTitle"
-          />
+          <UiListStatus :status="parseStatus" :title="parseStatusTitle" />
           <UiActionButton
             variant="secondary"
             :loading="parsing"
@@ -95,13 +94,11 @@ const nameDirty = computed(
 );
 
 const parseStatus = computed<UiListStatusKind>(() => {
-  if (props.parsing) return "loading";
   if (props.parsedAt) return "success";
   return "idle";
 });
 
 const parseStatusTitle = computed(() => {
-  if (props.parsing) return t("project.parsing");
   if (props.parsedAt) return t("project.parseDone");
   return undefined;
 });

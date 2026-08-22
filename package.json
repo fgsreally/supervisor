@@ -51,7 +51,8 @@
       "esbuild"
     ],
     "patchedDependencies": {
-      "@elysia/node@1.4.6": "patches/@elysia__node.patch"
+      "@elysia/node@1.4.6": "patches/@elysia__node.patch",
+      "@earendil-works/pi-ai@0.74.2": "patches/@earendil-works__pi-ai@0.74.2.patch"
     },
     "ignoredOptionalDependencies": [
       "@anthropic-ai/claude-agent-sdk-darwin-arm64",

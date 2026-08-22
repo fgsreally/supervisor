@@ -9,7 +9,7 @@ import {
   parseProjectServicesMeta,
   parseProjectRuntimeSpec,
 } from "../src/core/project/project-runtime.js";
-import { detectSetup } from "../src/core/project/project-detect.js";
+import { detectProjectSetup } from "../src/core/project-setup/index.js";
 
 describe("project runtime parsing", () => {
   it("requires git and AGENTS.md initialization only", () => {
@@ -79,7 +79,7 @@ describe("project runtime parsing", () => {
     try {
       writeFileSync(join(dir, "package.json"), "{}");
       writeFileSync(join(dir, "pnpm-lock.yaml"), "");
-      expect(detectSetup(dir).installCommand).toBe("pnpm install");
+      expect(detectProjectSetup(dir)?.installCommand).toBe("pnpm install --frozen-lockfile");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

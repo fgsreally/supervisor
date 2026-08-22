@@ -7,7 +7,6 @@ import {
   type SessionService,
   type SessionServicesMeta,
 } from "../../../core/project/project-runtime.js";
-import { canReuseParentNodeModules } from "../../../core/project/project-detect.js";
 import {
   hasRegisteredServices,
   isSessionServiceProcessAlive,
@@ -412,6 +411,7 @@ const projectServicesExtension: ExtensionDefinition = {
 
     const updateService = async (
       params: Static<typeof UPDATE_PARAMS>,
+      preferRequestedInstallCommand = true,
     ): Promise<{
       content: Array<{ type: "text"; text: string }>;
       details: unknown;
@@ -486,6 +486,7 @@ const projectServicesExtension: ExtensionDefinition = {
               services: pending,
               jobs,
               skipInstall: false,
+              preferRequestedInstallCommand,
               lastActiveAtMs: Date.now(),
               runBackground,
             });
@@ -548,6 +549,7 @@ const projectServicesExtension: ExtensionDefinition = {
             services: pending,
             jobs,
             skipInstall: false,
+            preferRequestedInstallCommand,
             lastActiveAtMs: Date.now(),
             runBackground,
           });
@@ -577,7 +579,7 @@ const projectServicesExtension: ExtensionDefinition = {
       name: UPDATE_TOOL,
       description: UPDATE_DESCRIPTION,
       parameters: UPDATE_PARAMS,
-      execute: updateService,
+      execute: (params) => updateService(params),
     });
 
     const startProjectServices = async (): Promise<void> => {
@@ -585,24 +587,21 @@ const projectServicesExtension: ExtensionDefinition = {
       if (!projectServices || projectServices.definitions.length === 0) return;
       if (hasRegisteredServices(await readServices())) return;
 
-      // Worktrees resolve dependencies from the parent project's node_modules
-      // (Node walks up); skip the one-shot install in that case.
-      const reuseParentDeps = canReuseParentNodeModules(cwd());
-      if (reuseParentDeps && projectServices.installCommand) {
-        ctx.log("info", `Skipping install: node_modules reachable from ${cwd()}`);
-      }
       for (const definition of projectServices.definitions) {
         if (hasRegisteredServices(await readServices())) {
           const current = await readServices();
           if (current?.services?.some((app) => app.name === definition.name)) continue;
         }
-        const result = await updateService({
-          action: "add",
-          name: definition.name,
-          startCommand: definition.startCommand,
-          path: definition.path,
-          installCommand: reuseParentDeps ? undefined : projectServices.installCommand,
-        });
+        const result = await updateService(
+          {
+            action: "add",
+            name: definition.name,
+            startCommand: definition.startCommand,
+            path: definition.path,
+            installCommand: projectServices.installCommand,
+          },
+          false,
+        );
         const text = result.content[0]?.text ?? "";
         if (text.includes("失败") || text.includes("未启动")) {
           ctx.log("warn", `Project service ${definition.name} was not started: ${text}`);

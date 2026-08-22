@@ -5,6 +5,7 @@ import {
   type SessionService,
   type SessionServicesMeta,
 } from "../project/project-runtime.js";
+import { resolveInstallDecision } from "../project-setup/index.js";
 import { computeServiceSleepAt } from "./session-service-sleep.js";
 import {
   runShellCommand,
@@ -349,6 +350,8 @@ export async function startRegisteredSessionServices(options: {
   services: SessionServicesMeta;
   jobs: SessionServiceJobHost;
   skipInstall?: boolean;
+  /** Preserve an explicit UpdateService command over the detected default. */
+  preferRequestedInstallCommand?: boolean;
   lastActiveAtMs?: number;
   runBackground?: (input: {
     command: string;
@@ -376,8 +379,26 @@ export async function startRegisteredSessionServices(options: {
 
   try {
     if (!options.skipInstall) {
-      const install = meta.installCommand?.trim();
-      if (install) {
+      const decision = resolveInstallDecision(options.cwd, meta.installCommand, {
+        preferRequestedCommand: options.preferRequestedInstallCommand,
+      });
+      const install = decision.installCommand?.trim();
+      sessionLog(
+        options.sessionId,
+        decision.action === "skip" ? "warn" : "info",
+        `Install decision: ${decision.action}; ${decision.reason}`,
+        ["system", "services", "setup"],
+        {
+          provider: decision.setup?.provider,
+          command: install,
+          matchedRoot: decision.matchedRoot,
+          fingerprint: decision.fingerprint,
+        },
+      );
+      if (decision.action === "reuse") {
+        meta.installCommand = install;
+        meta.installedAt = new Date().toISOString();
+      } else if (decision.action === "install" && install) {
         meta.installCommand = install;
         const resolved = substitutePortPlaceholders(install, portEnv);
         const job = await options.jobs.create(options.sessionId, {
@@ -409,6 +430,8 @@ export async function startRegisteredSessionServices(options: {
           );
         }
         meta.installedAt = new Date().toISOString();
+      } else if (decision.action === "skip") {
+        meta.installCommand = undefined;
       }
     }
 

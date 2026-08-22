@@ -1,0 +1,39 @@
+diff --git a/dist/providers/anthropic.js b/dist/providers/anthropic.js
+index 763ef8c8e835fcedacc501de53660714ab7894d3..21d5db97e45c16b002ac5ec2431d680e99883597 100644
+--- a/dist/providers/anthropic.js
++++ b/dist/providers/anthropic.js
+@@ -757,6 +757,22 @@ function buildParams(model, context, isOAuthToken, options) {
+ function normalizeToolCallId(id) {
+     return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
+ }
++function addPreviousToolUseBreakpoint(messages, cacheControl) {
++    if (!cacheControl)
++        return;
++    for (let i = messages.length - 1; i >= 0; i--) {
++        const message = messages[i];
++        if (message.role !== "assistant" || !Array.isArray(message.content))
++            continue;
++        for (let j = message.content.length - 1; j >= 0; j--) {
++            const block = message.content[j];
++            if (block.type === "tool_use") {
++                block.cache_control = cacheControl;
++                return;
++            }
++        }
++    }
++}
+ function convertMessages(messages, model, isOAuthToken, cacheControl) {
+     const params = [];
+     // Transform messages for cross-provider compatibility
+@@ -913,6 +929,11 @@ function convertMessages(messages, model, isOAuthToken, cacheControl) {
+             }
+         }
+     }
++    // MiniMax-compatible endpoints may only look back about 20 message blocks.
++    // Keep the preceding assistant tool_use as a second message breakpoint so
++    // the prior turn remains reusable. Together with system and tools this stays
++    // within the four-marker limit used by Anthropic-compatible prompt caches.
++    addPreviousToolUseBreakpoint(params, cacheControl);
+     return params;
+ }
+ function shouldUseFineGrainedToolStreamingBeta(model, context) {

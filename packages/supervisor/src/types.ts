@@ -115,6 +115,24 @@ export interface Session {
   currentTask: string | null;
 }
 
+export interface ShadowPromptRow {
+  id: number;
+  name: string;
+  description: string | null;
+  content: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface ShadowPrompt {
+  id: number;
+  name: string;
+  description: string | null;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface CreateSessionOptions {
   projectId?: number | null;
   parentId?: number;
@@ -190,6 +208,7 @@ export interface ProjectRow {
   id: number;
   name: string;
   cwd: string;
+  group_name: string | null;
   description: string | null;
   home_dir: string;
   meta: string;
@@ -203,6 +222,7 @@ export interface Project {
   name: string;
   description: string | null;
   cwd: string;
+  groupName: string | null;
   homeDir: string;
   meta: Record<string, unknown>;
   parsedAt: Date | null;
@@ -213,6 +233,7 @@ export interface Project {
 export interface CreateProjectOptions {
   name?: string;
   description?: string | null;
+  groupName?: string | null;
   cwd: string;
 }
 

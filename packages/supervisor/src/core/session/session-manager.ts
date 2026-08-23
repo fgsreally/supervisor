@@ -2514,7 +2514,12 @@ export class SessionManager {
     return this.db.getProject(id);
   }
 
-  createProject(options: { name?: string; description?: string | null; cwd: string }) {
+  createProject(options: {
+    name?: string;
+    description?: string | null;
+    groupName?: string | null;
+    cwd: string;
+  }) {
     const project = this.db.insertProject({
       ...options,
     });

@@ -48,14 +48,32 @@ describe("supervisor: SupervisorDb", () => {
     expect(db.get(99999)).toBeUndefined();
   });
 
+  it("stores and updates global Shadow prompts", () => {
+    const created = db.insertShadowPrompt({ name: "安全检查", content: "检查安全风险" });
+    expect(db.listShadowPrompts()).toHaveLength(1);
+    expect(db.getShadowPrompt(created.id)?.content).toBe("检查安全风险");
+
+    const updated = db.updateShadowPrompt(created.id, { content: "检查安全风险和隐私" });
+    expect(updated.content).toBe("检查安全风险和隐私");
+    db.deleteShadowPrompt(created.id);
+    expect(db.getShadowPrompt(created.id)).toBeUndefined();
+  });
+
   it("persists project extension metadata", () => {
-    const project = db.insertProject({ cwd: join(tmpDir, "project"), name: "Project" });
+    const project = db.insertProject({
+      cwd: join(tmpDir, "project"),
+      name: "Project",
+      groupName: "Product",
+    });
     expect(project.meta).toEqual({});
+    expect(project.groupName).toBe("Product");
 
     const updated = db.updateProject(project.id, {
       meta: { services: { definitions: [] } },
+      groupName: null,
     });
     expect(updated.meta).toEqual({ services: { definitions: [] } });
+    expect(updated.groupName).toBeNull();
   });
 
   it("lists all instances, newest first", () => {
@@ -329,6 +347,7 @@ describe("supervisor: SupervisorDb", () => {
       "parsed_at",
       "created_at",
       "updated_at",
+      "group_name",
     ]);
     expect(names("sessions")).toEqual([
       "id",

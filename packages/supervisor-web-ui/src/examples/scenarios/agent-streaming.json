@@ -1,0 +1,58 @@
+{
+  "id": "agent-streaming",
+  "project": {
+    "id": "agent",
+    "title": { "zh-CN": "Agent 交互", "en": "Agent interaction" },
+    "description": {
+      "zh-CN": "测试长文本流式输出、思考块和工具结果。",
+      "en": "Test long streaming output, thinking blocks, and tool results."
+    }
+  },
+  "session": {
+    "id": "streaming",
+    "title": { "zh-CN": "流式与工具调用", "en": "Streaming and tools" },
+    "description": {
+      "zh-CN": "不调用模型，预览 Agent 的流式交互。",
+      "en": "Preview Agent streaming interactions without calling a model."
+    }
+  },
+  "rounds": [
+    {
+      "branches": [
+        {
+          "id": "1",
+          "label": { "zh-CN": "长文本流式", "en": "Long stream" },
+          "assistant": {
+            "zh-CN": "这段文字会拆成很多小块逐步返回，用来观察输入区、滚动位置和消息气泡在流式过程中的表现。",
+            "en": "This text returns in many small chunks so you can inspect the input area, scroll position, and message bubble during streaming."
+          }
+        },
+        {
+          "id": "2",
+          "label": { "zh-CN": "思考与工具", "en": "Thinking and tool" },
+          "assistant": {
+            "zh-CN": "工具调用完成后，这是 Agent 返回的最终结果。",
+            "en": "This is the final Agent result after the tool call completes."
+          },
+          "thinking": {
+            "zh-CN": "我先检查当前上下文，再决定是否需要调用工具。",
+            "en": "I will inspect the current context before deciding whether a tool is needed."
+          },
+          "tool": {
+            "name": "inspect_workspace",
+            "arguments": { "path": "demo" },
+            "result": { "zh-CN": "已检查 demo 工作区。", "en": "The demo workspace was inspected." }
+          }
+        },
+        {
+          "id": "3",
+          "label": { "zh-CN": "快速回复", "en": "Quick reply" },
+          "assistant": {
+            "zh-CN": "这是一个快速完成的模拟回复。",
+            "en": "This is a simulated reply that completes quickly."
+          }
+        }
+      ]
+    }
+  ]
+}

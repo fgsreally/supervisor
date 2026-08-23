@@ -226,6 +226,7 @@ const API_PATH_PREFIXES = [
   "/projects",
   "/extensions",
   "/resources",
+  "/shadow-prompts",
   "/settings",
   "/devices",
   "/uploaded-icons",
@@ -1777,6 +1778,7 @@ export function createHttpServer(
       const project = manager.createProject({
         cwd: body.cwd,
         name: typeof body.name === "string" ? body.name : undefined,
+        groupName: typeof body.groupName === "string" ? body.groupName.trim() || null : null,
       });
       return c.json(project, 201);
     } catch (e: unknown) {
@@ -1800,7 +1802,7 @@ export function createHttpServer(
     const body = await c.req
       .json<Record<string, unknown>>()
       .catch((): Record<string, unknown> => ({}));
-    const patch: { name?: string; meta?: Record<string, unknown> } = {};
+    const patch: { name?: string; groupName?: string | null; meta?: Record<string, unknown> } = {};
     if (typeof body.name === "string") {
       if (!body.name.trim()) return jsonError(c, 400, "name cannot be empty");
       patch.name = body.name.trim();
@@ -1808,7 +1810,10 @@ export function createHttpServer(
     if (typeof body.meta === "object" && body.meta !== null) {
       patch.meta = body.meta as Record<string, unknown>;
     }
-    if (patch.name === undefined && patch.meta === undefined) {
+    if (typeof body.groupName === "string" || body.groupName === null) {
+      patch.groupName = typeof body.groupName === "string" ? body.groupName.trim() || null : null;
+    }
+    if (patch.name === undefined && patch.groupName === undefined && patch.meta === undefined) {
       return jsonError(c, 400, "name or meta is required");
     }
     try {
@@ -3278,6 +3283,126 @@ export function createHttpServer(
     }
   });
 
+  // Global Shadow prompt catalog. Session selection copies content into meta.shadow.
+  app.get("/shadow-prompts", (c) => c.json(manager.database.listShadowPrompts()));
+
+  app.post("/shadow-prompts", async (c) => {
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    const name = typeof body?.name === "string" ? body.name.trim() : "";
+    const content = typeof body?.content === "string" ? body.content.trim() : "";
+    const description = body?.description == null ? null : String(body.description).trim();
+    if (!name || name.length > 100 || !content || content.length > 50_000) {
+      return jsonError(c, 400, "name and content are required");
+    }
+    if (description && description.length > 300)
+      return jsonError(c, 400, "description is too long");
+    return c.json(
+      manager.database.insertShadowPrompt({ name, content, description: description || null }),
+      201,
+    );
+  });
+
+  app.patch("/shadow-prompts/:id", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid shadow prompt id");
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
+    const patch: { name?: string; description?: string | null; content?: string } = {};
+    if (Object.hasOwn(body, "name")) {
+      if (typeof body.name !== "string" || !body.name.trim() || body.name.trim().length > 100) {
+        return jsonError(c, 400, "invalid shadow prompt name");
+      }
+      patch.name = body.name.trim();
+    }
+    if (Object.hasOwn(body, "content")) {
+      if (
+        typeof body.content !== "string" ||
+        !body.content.trim() ||
+        body.content.trim().length > 50_000
+      ) {
+        return jsonError(c, 400, "invalid shadow prompt content");
+      }
+      patch.content = body.content.trim();
+    }
+    if (Object.hasOwn(body, "description")) {
+      if (body.description !== null && typeof body.description !== "string") {
+        return jsonError(c, 400, "invalid shadow prompt description");
+      }
+      const description = typeof body.description === "string" ? body.description.trim() : null;
+      if (description && description.length > 300)
+        return jsonError(c, 400, "description is too long");
+      patch.description = description || null;
+    }
+    try {
+      return c.json(manager.database.updateShadowPrompt(id, patch));
+    } catch (error: unknown) {
+      return jsonError(c, 404, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.delete("/shadow-prompts/:id", (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid shadow prompt id");
+    try {
+      manager.database.deleteShadowPrompt(id);
+      return c.json({ ok: true });
+    } catch (error: unknown) {
+      return jsonError(c, 404, error instanceof Error ? error.message : String(error));
+    }
+  });
+
+  app.put("/sessions/:id/shadow-prompt", async (c) => {
+    const id = parseIntegerId(c.req.param("id"));
+    if (id === null) return jsonError(c, 400, "invalid session id");
+    const current = manager.get(id);
+    if (!current) return jsonError(c, 404, "session not found");
+    const body = await c.req.json<Record<string, unknown>>().catch(() => null);
+    if (!body || typeof body !== "object") return jsonError(c, 400, "invalid body");
+
+    let prompt: string | undefined;
+    let promptName: string | undefined;
+    let promptId: number | undefined;
+    if (Object.hasOwn(body, "promptId")) {
+      if (body.promptId === null) {
+        prompt = undefined;
+      } else if (typeof body.promptId === "number" && Number.isSafeInteger(body.promptId)) {
+        const saved = manager.database.getShadowPrompt(body.promptId);
+        if (!saved) return jsonError(c, 404, "shadow prompt not found");
+        prompt = saved.content;
+        promptName = saved.name;
+        promptId = saved.id;
+      } else {
+        return jsonError(c, 400, "invalid shadow prompt id");
+      }
+    } else {
+      prompt = typeof body.content === "string" ? body.content.trim() : "";
+      if (prompt.length > 50_000) return jsonError(c, 400, "shadow prompt is too long");
+      if (prompt) {
+        promptName = typeof body.name === "string" ? body.name.trim().slice(0, 100) : undefined;
+      }
+    }
+
+    const shadow =
+      current.meta.shadow &&
+      typeof current.meta.shadow === "object" &&
+      !Array.isArray(current.meta.shadow)
+        ? { ...(current.meta.shadow as Record<string, unknown>) }
+        : {};
+    if (prompt) {
+      shadow.prompt = prompt;
+      if (promptName) shadow.promptName = promptName;
+      else delete shadow.promptName;
+      if (promptId !== undefined) shadow.promptId = promptId;
+      else delete shadow.promptId;
+    } else {
+      delete shadow.prompt;
+      delete shadow.promptName;
+      delete shadow.promptId;
+    }
+    manager.database.updateMeta(id, { shadow });
+    return c.json(manager.get(id));
+  });
+
   // POST /sessions/:id/read — mark all messages read and clear unread badge
   app.post("/sessions/:id/read", (c) => {
     try {
@@ -4083,6 +4208,7 @@ export function createHttpServer(
         pathname.startsWith("/projects") ||
         pathname.startsWith("/extensions") ||
         pathname.startsWith("/resources") ||
+        pathname.startsWith("/shadow-prompts") ||
         pathname.startsWith("/settings") ||
         pathname.startsWith("/uploaded-icons")
       ) {

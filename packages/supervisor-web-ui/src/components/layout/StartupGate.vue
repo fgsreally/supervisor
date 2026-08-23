@@ -518,7 +518,7 @@ onUnmounted(() => {
     inset 0 2px 4px rgb(255 255 255 / 72%),
     inset 0 -9px 18px rgb(130 125 170 / 10%),
     inset 8px 5px 20px rgb(255 255 255 / 18%),
-    0 10px 26px rgb(74 70 110 / 12%);
+    0 10px 26px rgb(74 70 110 / 10%);
   backdrop-filter: blur(18px) saturate(1.08);
   -webkit-backdrop-filter: blur(18px) saturate(1.08);
   isolation: isolate;

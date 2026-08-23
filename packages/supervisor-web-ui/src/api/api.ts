@@ -100,6 +100,7 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
+  groupName: string | null;
   cwd: string;
   homeDir: string;
   meta: Record<string, unknown>;
@@ -176,6 +177,15 @@ export interface Session {
   currentTask: string | null;
   /** UI-specific: last message preview */
   lastMessagePreview?: string;
+}
+
+export interface ShadowPrompt {
+  id: number;
+  name: string;
+  description: string | null;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface TaskArtifact {
@@ -633,11 +643,13 @@ export interface CreateProjectRequest {
   name?: string;
   description?: string | null;
   cwd: string;
+  groupName?: string | null;
 }
 
 export interface UpdateProjectRequest {
   name?: string;
   description?: string | null;
+  groupName?: string | null;
   meta?: Record<string, unknown>;
 }
 
@@ -786,6 +798,7 @@ interface RawProject {
   id: number;
   name: string;
   description: string | null;
+  groupName?: string | null;
   cwd: string;
   homeDir: string;
   meta: Record<string, unknown>;
@@ -798,6 +811,7 @@ function mapProject(raw: RawProject): Project {
   return {
     ...raw,
     id: String(raw.id),
+    groupName: raw.groupName ?? null,
     parsedAt: raw.parsedAt ?? null,
   };
 }
@@ -2172,6 +2186,37 @@ export async function updateSessionMeta(
   meta: Record<string, unknown>,
 ): Promise<Session> {
   const session = await patchJson<RawSession>(`/sessions/${id}/meta`, meta);
+  return mapSession(session);
+}
+
+export function listShadowPrompts(): Promise<ShadowPrompt[]> {
+  return fetchJson<ShadowPrompt[]>("/shadow-prompts");
+}
+
+export function createShadowPrompt(input: {
+  name: string;
+  description?: string | null;
+  content: string;
+}): Promise<ShadowPrompt> {
+  return postJson<ShadowPrompt>("/shadow-prompts", input);
+}
+
+export function updateShadowPrompt(
+  id: number,
+  patch: Partial<Pick<ShadowPrompt, "name" | "description" | "content">>,
+): Promise<ShadowPrompt> {
+  return patchJson<ShadowPrompt>(`/shadow-prompts/${id}`, patch);
+}
+
+export function deleteShadowPrompt(id: number): Promise<{ ok: boolean }> {
+  return deleteRequest<{ ok: boolean }>(`/shadow-prompts/${id}`);
+}
+
+export async function updateSessionShadowPrompt(
+  id: string,
+  input: { promptId?: number | null; content?: string; name?: string },
+): Promise<Session> {
+  const session = await putJson<RawSession>(`/sessions/${id}/shadow-prompt`, input);
   return mapSession(session);
 }
 

@@ -15,6 +15,7 @@ import { providerToUI } from "@/utils/provider-ui";
 import { viewPreferences } from "@/utils/view-preferences";
 import { resetClientResourceLifecycle } from "@/utils/client-data";
 import { subscribeAgentUiMenus } from "@/api";
+import { getExampleSessionProps } from "@/examples";
 
 type ProviderPage = "detail" | "add" | "model-add" | "model-edit";
 type AgentPage = "detail" | "add";
@@ -238,7 +239,10 @@ export const useAppShell = createGlobalState(() => {
 
   const activeSession = computed(() => {
     if (!activeSessionId.value) return null;
-    return sessionStore.sessions.find((s) => s.id === activeSessionId.value) ?? null;
+    return (
+      sessionStore.sessions.find((s) => s.id === activeSessionId.value) ??
+      getExampleSessionProps(activeSessionId.value)
+    );
   });
 
   const activeAgent = computed(() => {

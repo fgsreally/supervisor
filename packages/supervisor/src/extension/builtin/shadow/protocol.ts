@@ -52,9 +52,11 @@ export function getShadowSubmitResultDescription(): string {
   return loadBuiltinShadowResource("submit-result.md");
 }
 
-export function getShadowSystemPrompt(cwd?: string): string {
+export function getShadowSystemPrompt(cwd?: string, appendedPrompt?: string): string {
   const prompt = loadBuiltinShadowResource("system.md");
-  return cwd ? appendContextFilesToSystemPrompt(prompt, cwd) : prompt;
+  const withContext = cwd ? appendContextFilesToSystemPrompt(prompt, cwd) : prompt;
+  const extra = appendedPrompt?.trim();
+  return extra ? `${withContext}\n\n## 当前 Session 的附加提示词\n${extra}` : withContext;
 }
 
 export function formatShadowRunPrompt(shadowMemory: string, latestTurn: string): string {

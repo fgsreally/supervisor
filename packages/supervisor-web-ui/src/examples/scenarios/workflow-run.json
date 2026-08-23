@@ -1,0 +1,253 @@
+{
+  "id": "workflow-run",
+  "project": {
+    "id": "workflow-run",
+    "title": { "zh-CN": "Workflow 扩展", "en": "Workflow extension" },
+    "description": {
+      "zh-CN": "模拟 Strict SDD 从需求到验证的完整工作流",
+      "en": "Simulate a complete Strict SDD workflow from discovery to verification"
+    }
+  },
+  "session": {
+    "id": "strict-sdd-demo",
+    "title": { "zh-CN": "Strict SDD 工作流", "en": "Strict SDD workflow" },
+    "description": {
+      "zh-CN": "每一轮推进一个阶段；规划阶段提供测试与垂直切片两个分支",
+      "en": "Each round advances one stage; planning offers test and vertical-slice routes"
+    },
+    "stage": "brainstorm"
+  },
+  "rounds": [
+    {
+      "branches": [
+        {
+          "id": "1",
+          "stage": "brainstorm",
+          "label": { "zh-CN": "头脑风暴", "en": "Brainstorm" },
+          "assistant": {
+            "zh-CN": "先收集约束和目标，再保存 proposal.md，作为设计阶段的输入。",
+            "en": "I collected the constraints and goals, then saved proposal.md as input for design."
+          },
+          "tools": [
+            {
+              "name": "read",
+              "arguments": { "path": "README.md" },
+              "result": {
+                "zh-CN": "读取项目背景、用户目标和现有约束。",
+                "en": "Read the project context, user goals, and existing constraints."
+              }
+            },
+            {
+              "name": "Goal",
+              "arguments": { "title": "设计可测试的示例工作流" },
+              "result": {
+                "zh-CN": "已创建目标：设计可测试的示例工作流。",
+                "en": "Goal created: design a testable example workflow."
+              }
+            },
+            {
+              "name": "workflow_write_artifact",
+              "arguments": { "path": "proposal.md", "content": "Goals and constraints" },
+              "result": {
+                "zh-CN": "Saved workflow artifact: proposal.md",
+                "en": "Saved workflow artifact: proposal.md"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "branches": [
+        {
+          "id": "1",
+          "stage": "design",
+          "label": { "zh-CN": "设计", "en": "Design" },
+          "assistant": {
+            "zh-CN": "基于 proposal.md 形成设计方案，并让子 Agent 做一次独立评审。",
+            "en": "I used proposal.md to form the design and asked a subagent for an independent review."
+          },
+          "tools": [
+            {
+              "name": "workflow_status",
+              "arguments": {},
+              "result": {
+                "zh-CN": "{\"stage\":\"design\",\"requiredArtifacts\":[\"design.md\"]}",
+                "en": "{\"stage\":\"design\",\"requiredArtifacts\":[\"design.md\"]}"
+              }
+            },
+            {
+              "name": "spawn_agent",
+              "arguments": { "agentName": "设计评审", "description": "检查方案是否覆盖主要风险" },
+              "result": {
+                "zh-CN": "设计评审完成：发现 1 个需要在规格阶段澄清的边界。",
+                "en": "Design review complete: one boundary needs clarification in the spec stage."
+              }
+            },
+            {
+              "name": "workflow_write_artifact",
+              "arguments": { "path": "design.md", "content": "Architecture and boundaries" },
+              "result": {
+                "zh-CN": "Saved workflow artifact: design.md",
+                "en": "Saved workflow artifact: design.md"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "branches": [
+        {
+          "id": "1",
+          "stage": "spec",
+          "label": { "zh-CN": "规格", "en": "Spec" },
+          "assistant": {
+            "zh-CN": "把设计边界转换成可验证的规格，并准备进入规划。",
+            "en": "I turned the design boundaries into verifiable specs and prepared the planning stage."
+          },
+          "tools": [
+            {
+              "name": "workflow_status",
+              "arguments": {},
+              "result": {
+                "zh-CN": "{\"stage\":\"spec\",\"requiredArtifacts\":[\"specs\"]}",
+                "en": "{\"stage\":\"spec\",\"requiredArtifacts\":[\"specs\"]}"
+              }
+            },
+            {
+              "name": "workflow_write_artifact",
+              "arguments": { "path": "specs/interaction.md", "content": "Acceptance criteria" },
+              "result": {
+                "zh-CN": "Saved workflow artifact: specs/interaction.md",
+                "en": "Saved workflow artifact: specs/interaction.md"
+              }
+            },
+            {
+              "name": "workflow_complete_stage",
+              "arguments": {},
+              "result": {
+                "zh-CN": "Stage spec is waiting for confirmation.",
+                "en": "Stage spec is waiting for confirmation."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "branches": [
+        {
+          "id": "1",
+          "stage": "planning",
+          "label": { "zh-CN": "规划 → 测试", "en": "Planning → test" },
+          "assistant": {
+            "zh-CN": "规划完成，选择测试路线：先验证失败路径，再进入实现。",
+            "en": "Planning is ready. The test route verifies failure paths before implementation."
+          },
+          "tools": [
+            {
+              "name": "TodoList",
+              "arguments": {
+                "todos": [
+                  { "title": "准备失败态测试", "status": "in_progress" },
+                  { "title": "执行工作流验证", "status": "pending", "dependsOn": ["准备失败态测试"] }
+                ]
+              },
+              "result": {
+                "zh-CN": "TodoList 已更新：1 项进行中，1 项等待依赖。",
+                "en": "TodoList updated: 1 item in progress, 1 item waiting on a dependency."
+              }
+            },
+            {
+              "name": "workflow_complete_stage",
+              "arguments": {},
+              "result": {
+                "zh-CN": "Stage planning is waiting for a route choice: test or vertical.",
+                "en": "Stage planning is waiting for a route choice: test or vertical."
+              }
+            }
+          ]
+        },
+        {
+          "id": "2",
+          "stage": "planning",
+          "label": { "zh-CN": "规划 → 垂直切片", "en": "Planning → vertical" },
+          "assistant": {
+            "zh-CN": "规划完成，选择垂直切片路线：先做一条端到端最小链路。",
+            "en": "Planning is ready. The vertical route starts with one minimal end-to-end slice."
+          },
+          "tools": [
+            {
+              "name": "TodoList",
+              "arguments": {
+                "todos": [
+                  { "title": "完成最小端到端链路", "status": "in_progress" },
+                  { "title": "补充边界情况", "status": "pending", "dependsOn": ["完成最小端到端链路"] }
+                ]
+              },
+              "result": {
+                "zh-CN": "TodoList 已更新：先完成一条垂直链路，再补边界情况。",
+                "en": "TodoList updated: complete one vertical slice before edge cases."
+              }
+            },
+            {
+              "name": "workflow_complete_stage",
+              "arguments": {},
+              "result": {
+                "zh-CN": "Stage planning is waiting for a route choice: test or vertical.",
+                "en": "Stage planning is waiting for a route choice: test or vertical."
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "branches": [
+        {
+          "id": "1",
+          "stage": "implement",
+          "label": { "zh-CN": "实现与验证", "en": "Implement and verify" },
+          "assistant": {
+            "zh-CN": "实现阶段完成了最小改动，并运行验证命令。",
+            "en": "The implementation stage is complete and the verification command has run."
+          },
+          "tools": [
+            {
+              "name": "workflow_status",
+              "arguments": {},
+              "result": {
+                "zh-CN": "{\"stage\":\"implement\",\"status\":\"working\"}",
+                "en": "{\"stage\":\"implement\",\"status\":\"working\"}"
+              }
+            },
+            {
+              "name": "bash",
+              "arguments": { "command": "pnpm test --filter pi-supervisor-ui", "intent": "验证工作流" },
+              "result": {
+                "zh-CN": "Tests passed\n45 passed, 0 failed",
+                "en": "Tests passed\n45 passed, 0 failed"
+              }
+            },
+            {
+              "name": "workflow_status",
+              "arguments": {},
+              "result": {
+                "zh-CN": "{\"stage\":\"implement\",\"status\":\"ready_for_archive\"}",
+                "en": "{\"stage\":\"implement\",\"status\":\"ready_for_archive\"}"
+              }
+            }
+          ],
+          "shadow": {
+            "level": "warning",
+            "message": {
+              "zh-CN": "验证通过，但还需要确认 archive 阶段是否应保留这些示例数据。",
+              "en": "Verification passed, but confirm whether these example data should be kept for archive."
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -145,7 +145,12 @@ export async function runShadow(
       toolsPreset: "none",
       resultSchema,
       resultToolDescription: getShadowSubmitResultDescription(),
-      systemPrompt: getShadowSystemPrompt(session.cwd),
+      systemPrompt: getShadowSystemPrompt(
+        session.cwd,
+        session.meta.shadow && typeof session.meta.shadow === "object"
+          ? ((session.meta.shadow as Record<string, unknown>).prompt as string | undefined)
+          : undefined,
+      ),
       prompt: formatShadowRunPrompt(shadowMemory, latestTurn),
     });
     const normalized = normalizeShadowSubmitResult(run.result, resultSchema, extensionKeys);
@@ -171,8 +176,15 @@ export async function runShadow(
 
   const suggestedQuestions = isInfo ? (result.suggestedQuestions ?? []) : [];
   const title = isInfo ? result.title?.replace(/\s+/g, " ").trim().slice(0, 80) : undefined;
+  const latestRow = db.get(session.id);
+  const latestMeta = latestRow ? parseSessionMeta(latestRow.meta) : {};
+  const shadow =
+    latestMeta.shadow && typeof latestMeta.shadow === "object" && !Array.isArray(latestMeta.shadow)
+      ? { ...(latestMeta.shadow as Record<string, unknown>) }
+      : {};
   db.updateMeta(session.id, {
     shadow: {
+      ...shadow,
       suggestedQuestions,
       memory: isInfo ? result.shadowMemory : undefined,
       memoryUpdated: isInfo && Boolean(result.shadowMemory),

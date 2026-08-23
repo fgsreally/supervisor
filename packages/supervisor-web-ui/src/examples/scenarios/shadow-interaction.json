@@ -1,0 +1,103 @@
+{
+  "id": "shadow-interaction",
+  "project": {
+    "id": "shadow",
+    "title": { "zh-CN": "Shadow 交互", "en": "Shadow interaction" },
+    "description": {
+      "zh-CN": "测试 Shadow 的状态、建议和多轮反馈。",
+      "en": "Test Shadow states, suggestions, and multi-round feedback."
+    }
+  },
+  "session": {
+    "id": "interaction",
+    "title": { "zh-CN": "Shadow 状态与建议", "en": "Shadow states and suggestions" },
+    "description": {
+      "zh-CN": "第一轮测试普通、警告和错误；第二轮测试建议问题。",
+      "en": "Test normal, warning, and error in round one, then suggestions in round two."
+    }
+  },
+  "rounds": [
+    {
+      "branches": [
+        {
+          "id": "1",
+          "label": { "zh-CN": "普通回复", "en": "Normal reply" },
+          "assistant": {
+            "zh-CN": "这是一个模拟的普通 Shadow 回复。",
+            "en": "This is a simulated normal Shadow reply."
+          }
+        },
+        {
+          "id": "2",
+          "label": { "zh-CN": "Warning", "en": "Warning" },
+          "assistant": {
+            "zh-CN": "这是一个模拟回复，同时触发 Shadow 警告。",
+            "en": "This simulated reply also triggers a Shadow warning."
+          },
+          "shadow": {
+            "level": "warning",
+            "message": {
+              "zh-CN": "检测到当前方案可能偏离原定设计方向。",
+              "en": "The current approach may be drifting from the original design."
+            }
+          }
+        },
+        {
+          "id": "3",
+          "label": { "zh-CN": "Error", "en": "Error" },
+          "assistant": {
+            "zh-CN": "这是一个模拟回复，同时触发 Shadow 错误。",
+            "en": "This simulated reply also triggers a Shadow error."
+          },
+          "shadow": {
+            "level": "error",
+            "message": {
+              "zh-CN": "检测到高风险操作，请检查安全边界。",
+              "en": "A high-risk operation was detected. Check the safety boundary."
+            }
+          }
+        }
+      ]
+    },
+    {
+      "branches": [
+        {
+          "id": "1",
+          "label": { "zh-CN": "显示建议", "en": "Show suggestions" },
+          "assistant": {
+            "zh-CN": "这一轮会在输入区上方显示可点击的建议问题。",
+            "en": "This round shows clickable suggested questions above the input."
+          },
+          "suggestions": [
+            { "zh-CN": "继续展开这个方案", "en": "Expand this approach" },
+            { "zh-CN": "解释一下风险", "en": "Explain the risk" },
+            { "zh-CN": "回到原始设计", "en": "Return to the original design" }
+          ]
+        },
+        {
+          "id": "2",
+          "label": { "zh-CN": "Info", "en": "Info" },
+          "assistant": {
+            "zh-CN": "这是第二轮中的信息提示。",
+            "en": "This is an informational notice in the second round."
+          },
+          "shadow": {
+            "level": "info",
+            "message": {
+              "zh-CN": "Shadow 正在持续关注这次交互。",
+              "en": "Shadow is continuing to watch this interaction."
+            }
+          }
+        },
+        {
+          "id": "3",
+          "label": { "zh-CN": "普通回复", "en": "Normal reply" },
+          "assistant": {
+            "zh-CN": "这是第二轮的普通回复。",
+            "en": "This is a normal reply in the second round."
+          }
+        }
+      ]
+    }
+  ]
+}

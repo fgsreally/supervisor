@@ -1,5 +1,12 @@
 <template>
   <div class="chat-input-shell shrink-0" :class="{ 'chat-input-shell--holding': holdRecording }">
+    <ShadowPromptBar
+      v-if="sessionId"
+      :enabled="shadowEnabled ?? false"
+      :session-id="sessionId"
+      :current="shadowPrompt"
+      @saved="emit('shadow-prompt-saved', $event)"
+    />
     <div class="chat-input-hold-stage">
       <div
         v-if="holdRecording"
@@ -52,6 +59,18 @@
           <ChatPendingImages :images="pendingImages" @remove="removePendingImage" />
           <ChatPendingAttachments :attachments="attachments" @remove="removePendingAttachment" />
           <div class="chat-input-editor-wrap flex-1 min-h-0 relative">
+            <label v-if="exampleBranches?.length" class="example-branch-picker">
+              <span>{{ t("chat.exampleBranch") }}</span>
+              <select
+                :value="exampleBranch ?? exampleBranches[0]?.id"
+                :disabled="disabled"
+                @change="emit('update:example-branch', ($event.target as HTMLSelectElement).value)"
+              >
+                <option v-for="branch in exampleBranches" :key="branch.id" :value="branch.id">
+                  {{ branch.id }} · {{ branch.label }}
+                </option>
+              </select>
+            </label>
             <ChatComposer
               ref="composerRef"
               v-model="text"
@@ -146,6 +165,8 @@ import ChatPendingImages from "./ChatPendingImages.vue";
 import ChatPendingAttachments from "./ChatPendingAttachments.vue";
 import ResizeHandle from "../base/ResizeHandle.vue";
 import PastedTextDialog from "./PastedTextDialog.vue";
+import ShadowPromptBar from "./ShadowPromptBar.vue";
+import type { ShadowPromptValue } from "./ShadowPromptEditor.vue";
 import { makeAttachmentToken, makePastedTextToken } from "../../utils/user-prompt";
 
 const TOOLBAR_HEIGHT = 40;
@@ -160,10 +181,14 @@ const props = defineProps<{
   sendDisabled?: boolean;
   interrupting?: boolean;
   shadowRunning?: boolean;
+  shadowEnabled?: boolean;
+  shadowPrompt?: ShadowPromptValue | null;
   placeholder?: string;
   emptyStateTitle?: string;
   emptyStateDescription?: string;
   emptyStateAction?: string;
+  exampleBranch?: string;
+  exampleBranches?: Array<{ id: string; label: string }>;
 }>();
 
 const emit = defineEmits<{
@@ -173,6 +198,8 @@ const emit = defineEmits<{
   slash: [name: string];
   "empty-action": [];
   btw: [];
+  "shadow-prompt-saved": [session: api.Session];
+  "update:example-branch": [value: string];
 }>();
 const { t } = useI18n();
 
@@ -847,6 +874,25 @@ defineExpose({ focus, clearAfterSend, addPendingImage, restorePastedTexts });
 
 .chat-input-editor-wrap {
   touch-action: manipulation;
+}
+
+.example-branch-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px 0;
+  color: var(--app-text-muted);
+  font-size: var(--app-font-caption);
+}
+
+.example-branch-picker select {
+  min-width: 150px;
+  border: 1px solid var(--app-border-subtle);
+  border-radius: 6px;
+  padding: 3px 6px;
+  color: var(--app-text-primary);
+  background: var(--app-chat-input-island-bg, var(--app-chat-bg));
+  font-size: var(--app-font-control);
 }
 
 .hold-voice-hint {

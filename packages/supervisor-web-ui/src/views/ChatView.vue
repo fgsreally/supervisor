@@ -293,13 +293,17 @@
           <ChatInputPanel
             ref="inputPanelRef"
             v-model="inputText"
-            :session-id="session.id"
-            :workspace-id="workspaceId"
+            :session-id="sessionIdRef"
+            :workspace-id="demoSession ? '' : workspaceId"
             :agent-id="agentId"
             :disabled="inputDisabled"
             :send-disabled="isInitializing"
             :interrupting="canInterrupt"
             :shadow-running="shadowRunning"
+            :shadow-enabled="shadowEnabled"
+            :shadow-prompt="shadowPrompt"
+            :example-branches="exampleBranchOptions"
+            :example-branch="exampleBranch"
             :placeholder="inputPlaceholder"
             :empty-state-title="modelMissing ? t('chat.configureModel') : undefined"
             :empty-state-description="modelMissing ? t('chat.chooseModelContinue') : undefined"
@@ -309,6 +313,8 @@
             @slash="executeCustomSlash"
             @empty-action="openModelPicker"
             @btw="onCreateBtw"
+            @shadow-prompt-saved="onShadowPromptSaved"
+            @update:example-branch="exampleBranch = $event"
           />
         </div>
 
@@ -777,6 +783,8 @@ import {
 } from "../utils/session-services";
 import { sessionAvatar, type SessionAvatarValue } from "../utils/session-avatar";
 import { useI18n } from "@/i18n";
+import { exampleInitialEntries, getExampleBranches, isExampleSession } from "@/examples";
+import { streamExampleReply, type DemoEvent } from "@/examples/mock-agent";
 
 const props = defineProps<{
   session: {
@@ -794,6 +802,9 @@ const props = defineProps<{
       shadow?: {
         suggestedQuestions?: string[];
         running?: boolean;
+        prompt?: string;
+        promptName?: string;
+        promptId?: number;
       };
       git?: { branch?: string; worktreeEnabled?: boolean; mergeError?: string };
       workflow?: { stage: string; status: string };
@@ -818,7 +829,12 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 
-const stage = computed(() => parseSessionStage(props.session));
+const exampleStage = ref<string | null>(null);
+const stage = computed(() =>
+  isExampleSession(props.session.id)
+    ? (exampleStage.value ?? parseSessionStage(props.session))
+    : parseSessionStage(props.session),
+);
 
 function parseSessionGitPendingUpdate(
   meta: Record<string, unknown>,
@@ -901,8 +917,15 @@ const modelMissing = computed(() => {
   return agent?.backendType === "native" && (!agent.providerId || !agent.modelId);
 });
 const inputText = ref("");
+const exampleBranch = ref("1");
+const demoTurnIndex = ref(0);
+const exampleBranchOptions = computed(() =>
+  getExampleBranches(props.session.id, demoTurnIndex.value),
+);
+const demoSession = computed(() => isExampleSession(props.session.id));
 const sessionDeviceSync = new SessionDeviceSync();
 watch(inputText, (text) => {
+  if (isExampleSession(props.session.id)) return;
   sessionDeviceSync.scheduleDraftSave(props.session.id, text);
 });
 const suggestedQuestions = ref<string[]>([]);
@@ -922,9 +945,9 @@ const messageListRef = ref<InstanceType<typeof ChatMessageList> | null>(null);
 const searchBarRef = ref<InstanceType<typeof ChatSearchBar> | null>(null);
 const sessionTitle = ref("");
 const chatEntries = ref<ChatEntry[]>([]);
-const sessionIdRef = computed(() => props.session.id);
+const sessionIdRef = computed(() => (demoSession.value ? "" : props.session.id));
 /** Web + mobile both sync into MessageStorage; minimap UI is PC-only. */
-const enableMessageArchiveCrawl = computed(() => true);
+const enableMessageArchiveCrawl = computed(() => !demoSession.value);
 const { turns: archivedTurns } = useSessionMessageSync({
   sessionId: sessionIdRef,
   chatEntries,
@@ -1142,6 +1165,10 @@ async function refreshBackgroundBashCount() {
 
 function startBackgroundBashPolling() {
   if (backgroundBashPoll) clearInterval(backgroundBashPoll);
+  if (isExampleSession(props.session.id)) {
+    backgroundBashPoll = undefined;
+    return;
+  }
   void refreshBackgroundBashCount();
   backgroundBashPoll = setInterval(() => void refreshBackgroundBashCount(), 2000);
 }
@@ -1551,6 +1578,15 @@ const childSessions = computed(() =>
 );
 const configurableAgents = computed(() => agentStore.agents.filter((agent) => !agent.isBuiltin));
 const shadowEnabled = computed(() => !!props.session.shadowEnabled);
+const shadowPrompt = computed(() => {
+  const shadow = props.session.meta?.shadow;
+  if (!shadow || typeof shadow.prompt !== "string" || !shadow.prompt.trim()) return null;
+  return {
+    content: shadow.prompt,
+    name: shadow.promptName,
+    id: shadow.promptId,
+  };
+});
 const spawnedAgentIds = computed(() =>
   Array.isArray(props.session.meta?.subagentIds)
     ? props.session.meta.subagentIds
@@ -1604,7 +1640,7 @@ watch(
     showThinking.value = getShowThinking(id);
     splitAssistantMessages.value = getSplitAssistantMessages(id);
     sessionUsage.value = null;
-    if (external) return;
+    if (external || isExampleSession(id)) return;
     void api
       .getSessionUsage(id)
       .then((usage) => {
@@ -1627,6 +1663,7 @@ function stopStreaming() {
 }
 
 function startStreamingReconcilePoll() {
+  if (isExampleSession(props.session.id)) return;
   if (streamingReconcileTimer) clearInterval(streamingReconcileTimer);
   streamingReconcileTimer = setInterval(() => {
     void reconcileStreamingWithServer();
@@ -1635,6 +1672,11 @@ function startStreamingReconcilePoll() {
 
 async function interruptCurrentTurn() {
   if (!isStreaming.value) return;
+  if (isExampleSession(props.session.id)) {
+    stopStreaming();
+    activeTurn.value = null;
+    return;
+  }
   const turn = activeTurn.value;
   const shouldRetract = !!turn && !turn.assistantActivitySeen;
   try {
@@ -1786,6 +1828,16 @@ async function loadSessionMessages(sessionId: string) {
   else chatEntries.value = [];
   sessionLoading.value = true;
   try {
+    if (isExampleSession(sessionId)) {
+      chatEntries.value = exampleInitialEntries(sessionId);
+      exampleBranch.value = "1";
+      demoTurnIndex.value = 0;
+      exampleStage.value = null;
+      sessionTitle.value = props.session.title ?? t("common.session");
+      suggestedQuestions.value = [];
+      shadowRunning.value = false;
+      return;
+    }
     await applySessionMessages(sessionId);
   } finally {
     sessionLoading.value = false;
@@ -1882,6 +1934,7 @@ async function openPendingPlan() {
 }
 
 async function restorePendingApprovals(sessionId: string) {
+  if (isExampleSession(sessionId)) return;
   try {
     pendingApprovals.value = await api.getPendingSessionApprovals(sessionId);
   } catch (error) {
@@ -1914,6 +1967,10 @@ watch(
 
 function subscribeShadowSuggestions(sessionId: string) {
   shadowSuggestionCleanup?.();
+  if (isExampleSession(sessionId)) {
+    shadowSuggestionCleanup = null;
+    return;
+  }
   shadowSuggestionCleanup = api.subscribeSessionEvents(
     sessionId,
     (payload) => {
@@ -1959,7 +2016,7 @@ function insertExternalAgentText(text: string) {
 }
 
 async function saveSessionTitle() {
-  if (props.session.isBuiltin) return;
+  if (props.session.isBuiltin || isExampleSession(props.session.id)) return;
   const title = sessionTitle.value.trim();
   if (!title) return;
   await sessionStore.updateSessionMeta(props.session.id, { title });
@@ -1971,11 +2028,17 @@ async function onSessionTitleChange(value: string) {
 }
 
 async function onShadowEnabledChange(value: boolean) {
+  if (isExampleSession(props.session.id)) return;
   try {
     await sessionStore.updateSessionMeta(props.session.id, { shadowEnabled: value });
   } catch (error) {
     showUiMessage(error instanceof Error ? error.message : t("chat.shadowUpdateFailed"), "error");
   }
+}
+
+function onShadowPromptSaved(updated: api.Session) {
+  const session = sessionStore.getSessionById(props.session.id);
+  if (session) Object.assign(session, updated);
 }
 
 async function onSpawnedAgentsChange(spawnedAgentIds: string[]) {
@@ -2888,6 +2951,17 @@ async function sendStreamReply(
   chatEntries.value.push(createStreamingAssistantEntry(assistantId));
   void scrollToBottom();
 
+  if (isExampleSession(props.session.id)) {
+    streamCleanup = streamExampleReply(
+      props.session.id,
+      exampleBranch.value || "1",
+      demoTurnIndex.value,
+      (event) => applyExampleEvent(event, assistantId),
+      () => finishExampleStream(userText),
+    );
+    return;
+  }
+
   const imagePayload = images.map((img) => ({
     mediaId: img.mediaId,
     mimeType: img.mimeType,
@@ -2957,6 +3031,54 @@ async function sendStreamReply(
   );
 }
 
+function applyExampleEvent(event: DemoEvent, assistantId: string) {
+  if (event.type === "shadow_running") {
+    shadowRunning.value = event.running;
+    return;
+  }
+  if (event.type === "shadow_message") {
+    chatEntries.value.push({
+      id: event.entryId,
+      type: "notice",
+      content: event.message,
+      level: event.level,
+      shadowRun: { status: "completed" },
+      createdAt: event.timestamp,
+    });
+    return;
+  }
+  if (event.type === "shadow_suggestions") {
+    suggestedQuestions.value = event.questions;
+    return;
+  }
+  if (event.type === "example_stage") {
+    exampleStage.value = event.stage;
+    return;
+  }
+  if (event.type === "example_entry") {
+    chatEntries.value.push(event.entry);
+    void scrollToBottom();
+    return;
+  }
+  applyAgentEventToChatEntries(chatEntries.value, assistantId, event);
+  void scrollToBottom();
+}
+
+function finishExampleStream(userText: string) {
+  isStreaming.value = false;
+  streamingAssistantId.value = null;
+  streamCleanup = null;
+  activeTurn.value = null;
+  demoTurnIndex.value += 1;
+  void scrollToBottom();
+  notifyMessageComplete({
+    sessionId: props.session.id,
+    sessionName: props.session.title ?? t("common.session"),
+    muted: false,
+    preview: userText,
+  });
+}
+
 const sendMessage = async (payload: ChatSendPayload) => {
   const text = payload.text.trim();
   if (
@@ -2966,7 +3088,7 @@ const sendMessage = async (payload: ChatSendPayload) => {
   )
     return;
   suggestedQuestions.value = [];
-  void sessionDeviceSync.clearDraft(props.session.id);
+  if (!isExampleSession(props.session.id)) void sessionDeviceSync.clearDraft(props.session.id);
 
   if (
     !payload.images.length &&
@@ -3011,6 +3133,13 @@ const sendMessage = async (payload: ChatSendPayload) => {
 
   inputText.value = "";
   inputPanelRef.value?.clearAfterSend();
+  if (isExampleSession(props.session.id)) {
+    if (isStreaming.value) return;
+    chatEntries.value.push(createUserChatEntry(Date.now().toString(), text || " "));
+    void scrollToBottom();
+    void sendStreamReply(text, payload.images, payload.pastedTexts, payload.attachments);
+    return;
+  }
   if (isStreaming.value) {
     // Queue above the composer; do not inject a chat bubble with "排队中".
     const images = payload.images.map((image) => ({

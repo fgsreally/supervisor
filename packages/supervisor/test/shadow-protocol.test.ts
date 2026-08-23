@@ -112,6 +112,13 @@ describe("shadow Watson submit_result protocol", () => {
     expect(prompt).not.toContain("{{shadowMemory}}");
   });
 
+  it("appends a Session-specific Shadow prompt after the default", () => {
+    const system = getShadowSystemPrompt(undefined, "Focus on whether the design is drifting.");
+    expect(system).toContain("## 当前 Session 的附加提示词");
+    expect(system).toContain("Focus on whether the design is drifting.");
+    expect(getShadowSystemPrompt(undefined, "   ")).toBe(getShadowSystemPrompt());
+  });
+
   it("injects AGENTS.md from the session working directory", () => {
     const cwd = mkdtempSync(join(tmpdir(), "supervisor-shadow-context-"));
     try {

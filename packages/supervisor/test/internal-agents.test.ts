@@ -63,12 +63,21 @@ describe("packaged agents", () => {
     expect(db.getAgentResourceBinding(assistant.id, resource.id)?.enabled).toBe(true);
   });
 
-  it("registers Codex, Claude Code, Kimi Code, Cursor, and MiMo Code without requiring a provider", () => {
+  it("registers packaged external agents without requiring a provider", () => {
     ensurePackagedAgents(db);
     const external = db.listAgents().filter((agent) => agent.backendType !== "native");
     expect(external).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ name: "Codex", backendType: "codex", providerId: null }),
+        expect.objectContaining({
+          name: "Trae",
+          backendType: "acp",
+          providerId: null,
+          externalConfig: expect.objectContaining({
+            command: "traecli",
+            args: ["acp", "serve"],
+          }),
+        }),
         expect.objectContaining({
           name: "Claude Code",
           backendType: "claude",

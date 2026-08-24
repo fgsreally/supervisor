@@ -57,11 +57,7 @@
             <ClipboardList />
           </ChatHeaderAction>
         </div>
-        <SessionJobsPopover
-          v-if="!demoSession"
-          :session-id="session.id"
-          @detail="openJobDetail"
-        />
+        <SessionJobsPopover v-if="!demoSession" :session-id="session.id" @detail="openJobDetail" />
         <ResponsivePopover
           v-if="hasServicePreviews && !isMobileViewport"
           v-model:open="previewPopoverOpen"
@@ -259,18 +255,6 @@
           />
         </div>
 
-        <div v-if="suggestedQuestions.length" class="suggested-questions">
-          <span>{{ t("chat.suggestions") }}</span>
-          <button
-            v-for="question in suggestedQuestions"
-            :key="question"
-            type="button"
-            @click="selectSuggestedQuestion(question)"
-          >
-            {{ question }}
-          </button>
-        </div>
-
         <QueuedInputsBar
           v-if="chatComposerReady"
           :inputs="queuedInputs"
@@ -292,7 +276,12 @@
             @sync="onSyncSession"
             @dismiss="dismissPendingSync"
           />
-          <SessionChangesPopover v-if="sessionChangedFiles.length" :files="sessionChangedFiles" />
+          <SessionChangesPopover
+            v-if="sessionChangedFiles.length || suggestedQuestions.length"
+            :files="sessionChangedFiles"
+            :suggestions="suggestedQuestions"
+            @select-suggestion="selectSuggestedQuestion"
+          />
 
           <ChatInputPanel
             ref="inputPanelRef"
@@ -319,7 +308,7 @@
             @empty-action="openModelPicker"
             @btw="onCreateBtw"
             @shadow-prompt-saved="onShadowPromptSaved"
-            @update:example-branch="exampleBranch = $event"
+            @update:example-branch="selectExampleBranch"
           />
         </div>
 
@@ -926,6 +915,24 @@ const exampleBranch = ref("1");
 const demoTurnIndex = ref(0);
 const exampleBranchOptions = computed(() =>
   getExampleBranches(props.session.id, demoTurnIndex.value),
+);
+function selectExampleBranch(branchId: string) {
+  exampleBranch.value = branchId;
+  inputText.value =
+    exampleBranchOptions.value.find((branch) => branch.id === branchId)?.label ?? "";
+}
+watch(
+  [() => props.session.id, exampleBranchOptions],
+  () => {
+    if (!isExampleSession(props.session.id)) return;
+    const first = exampleBranchOptions.value[0];
+    if (!exampleBranchOptions.value.some((branch) => branch.id === exampleBranch.value)) {
+      exampleBranch.value = first?.id ?? "1";
+    }
+    inputText.value =
+      exampleBranchOptions.value.find((branch) => branch.id === exampleBranch.value)?.label ?? "";
+  },
+  { immediate: true },
 );
 const demoSession = computed(() => isExampleSession(props.session.id));
 const sessionDeviceSync = new SessionDeviceSync();
@@ -1634,7 +1641,10 @@ const showPendingSyncBanner = computed(
   () => !!sessionGitPendingUpdate.value && canSyncSession.value,
 );
 const composerStackActive = computed(
-  () => sessionChangedFiles.value.length > 0 || showPendingSyncBanner.value,
+  () =>
+    sessionChangedFiles.value.length > 0 ||
+    suggestedQuestions.value.length > 0 ||
+    showPendingSyncBanner.value,
 );
 
 watch(
@@ -3058,14 +3068,21 @@ function applyExampleEvent(event: DemoEvent, assistantId: string) {
     return;
   }
   if (event.type === "shadow_message") {
-    chatEntries.value.push({
-      id: event.entryId,
-      type: "notice",
-      content: event.message,
-      level: event.level,
-      shadowRun: { status: "completed" },
-      createdAt: event.timestamp,
-    });
+    const current = chatEntries.value.find((entry) => entry.id === event.entryId);
+    if (current?.type === "notice") {
+      current.content = event.message;
+      current.shadowRun = { status: event.complete ? "completed" : "running" };
+    } else {
+      chatEntries.value.push({
+        id: event.entryId,
+        type: "notice",
+        content: event.message,
+        level: event.level,
+        shadowRun: { status: event.complete ? "completed" : "running" },
+        createdAt: event.timestamp,
+      });
+    }
+    void scrollToBottom();
     return;
   }
   if (event.type === "shadow_suggestions") {
@@ -3558,24 +3575,6 @@ async function executeCustomSlash(name: string) {
   }
 }
 
-.suggested-questions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  color: var(--app-text-muted);
-  font-size: 12px;
-}
-
-.suggested-questions button {
-  border: 1px solid var(--app-chat-input-island-border);
-  border-radius: 999px;
-  padding: 5px 10px;
-  background: var(--app-chat-bg);
-  color: var(--app-text-primary);
-}
-
 .model-picker-backdrop {
   position: fixed;
   z-index: 100;
@@ -3710,9 +3709,5 @@ async function executeCustomSlash(name: string) {
     border-radius: 16px 16px 0 0;
     padding-bottom: env(safe-area-inset-bottom);
   }
-}
-
-.suggested-questions button:hover {
-  background: var(--app-hover);
 }
 </style>

@@ -370,11 +370,12 @@ export function chatInputTheme(editorHeightPx: number) {
       alignItems: "center",
       gap: "4px",
       verticalAlign: "baseline",
-      borderRadius: "4px",
-      padding: "1px 6px 1px 4px",
+      borderRadius: "6px",
+      padding: "3px 8px",
       margin: "0 2px",
-      fontSize: "13px",
-      lineHeight: "1.4",
+      fontSize: "var(--app-font-control)",
+      fontWeight: "var(--app-font-weight-medium)",
+      lineHeight: "1.35",
       userSelect: "none",
     },
     ".cm-chat-tag--file": {
@@ -396,9 +397,9 @@ export function chatInputTheme(editorHeightPx: number) {
       whiteSpace: "nowrap",
     },
     ".cm-chat-tag--pasted": {
-      border: "1px solid color-mix(in srgb, var(--app-accent) 28%, var(--app-border))",
-      color: "var(--app-accent)",
-      backgroundColor: "color-mix(in srgb, var(--app-accent) 10%, transparent)",
+      border: "1px solid color-mix(in srgb, var(--app-text-muted) 32%, var(--app-border))",
+      color: "var(--app-text-primary)",
+      backgroundColor: "var(--app-hover)",
       cursor: "pointer",
     },
     ".cm-chat-tag--slash": {
@@ -454,7 +455,7 @@ export function chatInputTheme(editorHeightPx: number) {
       opacity: "0.7",
     },
     ".cm-chat-tag-label": {
-      fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+      fontFamily: "inherit",
       maxWidth: "240px",
       overflow: "hidden",
       textOverflow: "ellipsis",

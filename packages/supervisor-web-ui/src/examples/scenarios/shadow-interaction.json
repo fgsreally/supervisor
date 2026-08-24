@@ -4,16 +4,16 @@
     "id": "shadow",
     "title": { "zh-CN": "Shadow 交互", "en": "Shadow interaction" },
     "description": {
-      "zh-CN": "测试 Shadow 的状态、建议和多轮反馈。",
-      "en": "Test Shadow states, suggestions, and multi-round feedback."
+      "zh-CN": "一次发送即可检查 Shadow 消息与建议。",
+      "en": "Check Shadow messages and suggestions in one send."
     }
   },
   "session": {
     "id": "interaction",
     "title": { "zh-CN": "Shadow 状态与建议", "en": "Shadow states and suggestions" },
     "description": {
-      "zh-CN": "第一轮测试普通、警告和错误；第二轮测试建议问题。",
-      "en": "Test normal, warning, and error in round one, then suggestions in round two."
+      "zh-CN": "选择普通、警告或错误状态并直接发送。",
+      "en": "Choose a normal, warning, or error state and send it."
     }
   },
   "rounds": [
@@ -21,81 +21,60 @@
       "branches": [
         {
           "id": "1",
-          "label": { "zh-CN": "普通回复", "en": "Normal reply" },
+          "label": { "zh-CN": "请演示 Shadow 的普通反馈", "en": "Show normal Shadow feedback" },
           "assistant": {
-            "zh-CN": "这是一个模拟的普通 Shadow 回复。",
-            "en": "This is a simulated normal Shadow reply."
-          }
-        },
-        {
-          "id": "2",
-          "label": { "zh-CN": "Warning", "en": "Warning" },
-          "assistant": {
-            "zh-CN": "这是一个模拟回复，同时触发 Shadow 警告。",
-            "en": "This simulated reply also triggers a Shadow warning."
-          },
-          "shadow": {
-            "level": "warning",
-            "message": {
-              "zh-CN": "检测到当前方案可能偏离原定设计方向。",
-              "en": "The current approach may be drifting from the original design."
-            }
-          }
-        },
-        {
-          "id": "3",
-          "label": { "zh-CN": "Error", "en": "Error" },
-          "assistant": {
-            "zh-CN": "这是一个模拟回复，同时触发 Shadow 错误。",
-            "en": "This simulated reply also triggers a Shadow error."
-          },
-          "shadow": {
-            "level": "error",
-            "message": {
-              "zh-CN": "检测到高风险操作，请检查安全边界。",
-              "en": "A high-risk operation was detected. Check the safety boundary."
-            }
-          }
-        }
-      ]
-    },
-    {
-      "branches": [
-        {
-          "id": "1",
-          "label": { "zh-CN": "显示建议", "en": "Show suggestions" },
-          "assistant": {
-            "zh-CN": "这一轮会在输入区上方显示可点击的建议问题。",
-            "en": "This round shows clickable suggested questions above the input."
-          },
-          "suggestions": [
-            { "zh-CN": "继续展开这个方案", "en": "Expand this approach" },
-            { "zh-CN": "解释一下风险", "en": "Explain the risk" },
-            { "zh-CN": "回到原始设计", "en": "Return to the original design" }
-          ]
-        },
-        {
-          "id": "2",
-          "label": { "zh-CN": "Info", "en": "Info" },
-          "assistant": {
-            "zh-CN": "这是第二轮中的信息提示。",
-            "en": "This is an informational notice in the second round."
+            "zh-CN": "这是主 Agent 的模拟回复。",
+            "en": "This is the main Agent's simulated reply."
           },
           "shadow": {
             "level": "info",
             "message": {
-              "zh-CN": "Shadow 正在持续关注这次交互。",
-              "en": "Shadow is continuing to watch this interaction."
+              "zh-CN": "当前方案方向清晰，可以继续推进。",
+              "en": "The current approach is clear and can proceed."
             }
-          }
+          },
+          "suggestions": [
+            { "zh-CN": "继续完善这个方案", "en": "Continue refining this approach" },
+            { "zh-CN": "列出下一步行动", "en": "List the next actions" }
+          ]
+        },
+        {
+          "id": "2",
+          "label": { "zh-CN": "请演示 Shadow 的警告反馈", "en": "Show a Shadow warning" },
+          "assistant": {
+            "zh-CN": "这是主 Agent 的模拟回复，同时触发 Shadow 警告。",
+            "en": "This simulated main Agent reply triggers a Shadow warning."
+          },
+          "shadow": {
+            "level": "warning",
+            "message": {
+              "zh-CN": "当前方案可能正在偏离原定设计方向。",
+              "en": "The current approach may be drifting from the original design."
+            }
+          },
+          "suggestions": [
+            { "zh-CN": "解释偏离带来的风险", "en": "Explain the drift risk" },
+            { "zh-CN": "回到原始设计", "en": "Return to the original design" }
+          ]
         },
         {
           "id": "3",
-          "label": { "zh-CN": "普通回复", "en": "Normal reply" },
+          "label": { "zh-CN": "请演示 Shadow 的错误反馈", "en": "Show a Shadow error" },
           "assistant": {
-            "zh-CN": "这是第二轮的普通回复。",
-            "en": "This is a normal reply in the second round."
-          }
+            "zh-CN": "这是主 Agent 的模拟回复，同时触发 Shadow 错误。",
+            "en": "This simulated main Agent reply triggers a Shadow error."
+          },
+          "shadow": {
+            "level": "error",
+            "message": {
+              "zh-CN": "检测到高风险操作，请先检查安全边界。",
+              "en": "A high-risk operation was detected. Check the safety boundary first."
+            }
+          },
+          "suggestions": [
+            { "zh-CN": "检查具体风险点", "en": "Inspect the risk points" },
+            { "zh-CN": "给出安全替代方案", "en": "Suggest a safer alternative" }
+          ]
         }
       ]
     }

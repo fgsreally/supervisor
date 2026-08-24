@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { loadPiNativesBindings, type MinimizerResult } from "../pi-natives-loader.js";
 import { buildMinimizerOptions } from "../utils/minimizer-options.js";
+import type { NativeTool } from "../tool-types.js";
 
 const BASH_INTENT_ERROR =
   "bash tool requires a non-empty `intent` field describing why you are running this command.";
@@ -58,7 +58,7 @@ function formatFixupNotice(stripped: string[]): string | undefined {
   return `[command fixups removed: ${stripped.join(", ")}]`;
 }
 
-export function createNativeBashTool(sessionCwd: string): AgentTool {
+export function createNativeBashTool(sessionCwd: string): NativeTool {
   const settings = SettingsManager.create(sessionCwd);
   const commandPrefix = settings.getShellCommandPrefix();
 

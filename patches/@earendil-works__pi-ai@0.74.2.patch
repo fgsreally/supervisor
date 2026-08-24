@@ -29,11 +29,11 @@ index 763ef8c8e835fcedacc501de53660714ab7894d3..21d5db97e45c16b002ac5ec2431d680e
              }
          }
      }
-+    // MiniMax-compatible endpoints may only look back about 20 message blocks.
-+    // Keep the preceding assistant tool_use as a second message breakpoint so
-+    // the prior turn remains reusable. Together with system and tools this stays
-+    // within the four-marker limit used by Anthropic-compatible prompt caches.
-+    addPreviousToolUseBreakpoint(params, cacheControl);
++    // MiniMax endpoints may only look back about 20 message blocks. Keep the
++    // preceding assistant tool_use as a second breakpoint so the prior turn
++    // remains reusable. Other Anthropic-compatible providers do not need this.
++    if (model.provider === "minimax" || model.provider === "minimax-cn")
++        addPreviousToolUseBreakpoint(params, cacheControl);
      return params;
  }
  function shouldUseFineGrainedToolStreamingBeta(model, context) {

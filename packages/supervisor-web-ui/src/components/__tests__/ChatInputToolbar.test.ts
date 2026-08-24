@@ -16,6 +16,16 @@ function createMockVoice(): VoiceRecognitionController {
 }
 
 describe("ChatInputToolbar", () => {
+  it("emits send when the active send button is clicked", async () => {
+    const wrapper = mount(ChatInputToolbar, {
+      props: { voice: createMockVoice(), canSend: true },
+    });
+
+    await wrapper.get(".send-btn").trigger("click");
+
+    expect(wrapper.emitted("send")).toHaveLength(1);
+  });
+
   it("turns the send action into an interrupt action while streaming", async () => {
     const wrapper = mount(ChatInputToolbar, {
       props: { voice: createMockVoice(), interrupting: true, canSend: false },

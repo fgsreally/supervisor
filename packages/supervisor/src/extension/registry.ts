@@ -1,6 +1,7 @@
 import { loadExtensionModule, requireExtensionEntry } from "./loader.js";
 import type { AnyExtensionDefinition } from "./types.js";
 import type { SupervisorDb } from "../db/db.js";
+import { ensureExtensionExternalAgents } from "./external-agents.js";
 
 export interface LoadedExtensionModule {
   slug: string;
@@ -23,6 +24,10 @@ export class ExtensionModuleRegistry {
       if (resource.meta?.builtin === true) continue;
       if (resource.sourcePath?.startsWith("builtin:")) continue;
       await this.loadResource(resource.slug, resource.sourcePath);
+      const loaded = this.modules.get(resource.slug);
+      if (loaded?.definition.externalAgents?.length) {
+        ensureExtensionExternalAgents(db, resource.slug, loaded.definition.externalAgents);
+      }
     }
   }
 

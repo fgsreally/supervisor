@@ -13,6 +13,7 @@ import {
   ensureBuiltinExtensionResources,
 } from "../../extension/builtin/ensure.js";
 import { writeLog } from "../../i18n/logs.js";
+import { ensureExtensionExternalAgents } from "../../extension/external-agents.js";
 
 export const PACKAGED_AGENT_KINDS = ["coding", "smart-router"] as const;
 export type PackagedAgentKind = (typeof PACKAGED_AGENT_KINDS)[number];
@@ -214,6 +215,16 @@ function ensureExternalAgent(
 
 /** Ensure shipped native and external agents exist in the database. */
 export function ensurePackagedAgents(db: SupervisorDb): void {
+  ensureExtensionExternalAgents(db, "builtin:trae", [
+    {
+      id: "trae",
+      name: "Trae",
+      description: "Trae CLI connected through Agent Client Protocol",
+      command: "traecli",
+      args: ["acp", "serve"],
+      detectArgs: ["--version"],
+    },
+  ]);
   ensureExternalAgent(db, {
     kind: "codex",
     name: "Codex",

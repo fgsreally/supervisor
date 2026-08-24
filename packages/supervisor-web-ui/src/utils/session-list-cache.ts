@@ -98,7 +98,6 @@ export function projectFromListCache(item: CachedProjectListItem): Project {
     id: item.id,
     name: item.name,
     description: null,
-    groupName: null,
     cwd: "",
     homeDir: "",
     meta: {},

@@ -32,7 +32,11 @@
 
         <div class="startup-feedback" aria-live="polite">
           <p v-if="error" class="startup-error">{{ error }}</p>
-          <Loader2 v-else-if="submitting" class="startup-spinner" :aria-label="t('startup.verifying')" />
+          <Loader2
+            v-else-if="submitting"
+            class="startup-spinner"
+            :aria-label="t('startup.verifying')"
+          />
         </div>
 
         <div class="pin-pad" role="group" :aria-label="t('startup.numberPad')">
@@ -361,8 +365,9 @@ onUnmounted(() => {
   justify-content: center;
   overflow: hidden;
   background:
-    radial-gradient(circle at 50% 36%, rgb(255 255 255 / 24%), transparent 43%),
-    linear-gradient(160deg, #16cb6d 0%, #07c160 48%, #049f50 100%);
+    radial-gradient(circle at 18% 12%, rgb(7 193 96 / 24%), transparent 38%),
+    radial-gradient(circle at 86% 38%, rgb(0 112 72 / 18%), transparent 42%),
+    linear-gradient(165deg, #07130e 0%, #020806 48%, #000 100%);
   color: #fff;
   text-align: center;
   isolation: isolate;
@@ -386,8 +391,8 @@ onUnmounted(() => {
   left: -18%;
   background: radial-gradient(
     circle,
-    rgb(204 255 227 / 44%) 0%,
-    rgb(85 232 155 / 25%) 42%,
+    rgb(34 197 94 / 22%) 0%,
+    rgb(7 193 96 / 12%) 42%,
     transparent 70%
   );
   animation: pin-mist-a 13s ease-in-out infinite alternate;
@@ -398,8 +403,8 @@ onUnmounted(() => {
   bottom: -8%;
   background: radial-gradient(
     circle,
-    rgb(166 255 218 / 36%) 0%,
-    rgb(0 145 104 / 24%) 45%,
+    rgb(16 185 129 / 18%) 0%,
+    rgb(0 92 62 / 14%) 45%,
     transparent 70%
   );
   animation: pin-mist-b 16s ease-in-out infinite alternate;
@@ -502,25 +507,19 @@ onUnmounted(() => {
   height: 72px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 76%);
+  border: 1px solid rgb(255 255 255 / 32%);
   border-radius: 50%;
-  background:
-    radial-gradient(
-      circle at 48% 45%,
-      rgb(255 255 255 / 34%) 0%,
-      rgb(255 255 255 / 28%) 48%,
-      rgb(255 255 255 / 44%) 76%,
-      rgb(255 255 255 / 72%) 100%
-    ),
-    rgb(255 255 255 / 18%);
+  background: radial-gradient(
+    circle,
+    transparent 0 48%,
+    rgb(255 255 255 / 7%) 66%,
+    rgb(255 255 255 / 30%) 88%,
+    rgb(255 255 255 / 58%) 100%
+  );
   color: #fff;
   box-shadow:
-    inset 0 2px 4px rgb(255 255 255 / 72%),
-    inset 0 -9px 18px rgb(130 125 170 / 10%),
-    inset 8px 5px 20px rgb(255 255 255 / 18%),
-    0 10px 26px rgb(74 70 110 / 10%);
-  backdrop-filter: blur(18px) saturate(1.08);
-  -webkit-backdrop-filter: blur(18px) saturate(1.08);
+    inset 0 0 12px rgb(255 255 255 / 10%),
+    0 8px 24px rgb(0 0 0 / 28%);
   isolation: isolate;
   transition:
     background-color 0.11s cubic-bezier(0.4, 0, 1, 1),
@@ -585,11 +584,11 @@ onUnmounted(() => {
 .pin-key--illuminated {
   border-color: rgb(255 255 255 / 92%);
   background: radial-gradient(
-    circle at 50% 50%,
-    rgb(255 255 255 / 46%) 0%,
-    rgb(255 255 255 / 54%) 36%,
-    rgb(255 255 255 / 68%) 62%,
-    rgb(255 255 255 / 92%) 100%
+    circle,
+    transparent 0 44%,
+    rgb(255 255 255 / 10%) 62%,
+    rgb(255 255 255 / 48%) 86%,
+    rgb(255 255 255 / 86%) 100%
   );
   box-shadow:
     0 0 2px 1px rgb(255 255 255 / 52%),

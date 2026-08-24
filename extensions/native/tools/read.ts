@@ -1,11 +1,11 @@
 import { existsSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
-import { relative, resolve } from "node:path";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import { relative } from "node:path";
 import { createReadTool } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { loadPiNativesBindings, type SummaryResult } from "../pi-natives-loader.js";
 import { prependSuffixNotice, resolveReadablePath } from "../utils/path-resolve.js";
+import type { NativeTool } from "../tool-types.js";
 
 const MAX_SUMMARY_BYTES = 2 * 1024 * 1024;
 const MAX_SUMMARY_LINES = 20_000;
@@ -80,7 +80,7 @@ async function trySummarize(absolutePath: string, signal?: AbortSignal): Promise
   return renderSummary(result);
 }
 
-export function createNativeReadTool(sessionCwd: string): AgentTool {
+export function createNativeReadTool(sessionCwd: string): NativeTool {
   const baseRead = createReadTool(sessionCwd);
 
   return {

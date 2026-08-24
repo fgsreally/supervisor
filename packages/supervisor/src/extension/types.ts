@@ -75,11 +75,25 @@ export interface UiMenuDescriptor {
   order?: number;
 }
 
+/** External ACP agent contributed by an extension. */
+export interface ExternalAgentDescriptor {
+  id: string;
+  name: string;
+  description?: string;
+  avatar?: string;
+  command: string;
+  args?: string[];
+  detectArgs?: string[];
+  installCommand?: string;
+  env?: Record<string, string>;
+}
+
 export interface SessionExtensionDefinition {
   /** 扩展名称（用于标识和日志） */
   name: string;
   /** Agent-level UI menu descriptors; listed without attaching a Session runtime. */
   menus?: readonly UiMenuDescriptor[];
+  externalAgents?: readonly ExternalAgentDescriptor[];
 
   /** 初始化函数 */
   setup(context: ExtensionContext): ExtensionCleanup | void | Promise<void | ExtensionCleanup>;
@@ -89,6 +103,7 @@ export interface AgentExtensionDefinition {
   name: string;
   readonly scope: "agent";
   menus?: readonly UiMenuDescriptor[];
+  externalAgents?: readonly ExternalAgentDescriptor[];
   setup(context: AgentExtensionContext): ExtensionCleanup | void | Promise<void | ExtensionCleanup>;
 }
 

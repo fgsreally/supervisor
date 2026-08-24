@@ -1,8 +1,8 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { loadPiNativesBindings } from "../pi-natives-loader.js";
+import type { NativeTool } from "../tool-types.js";
 
 const DEFAULT_LIMIT = 1000;
 const GLOB_TIMEOUT_MS = 5000;
@@ -23,7 +23,7 @@ type FindParams = {
   limit?: number;
 };
 
-export function createNativeFindTool(sessionCwd: string): AgentTool {
+export function createNativeFindTool(sessionCwd: string): NativeTool {
   return {
     name: "find",
     label: "find",

@@ -59,4 +59,5 @@ export function isAgentExtension(
 }
 
 export * from "./loader.js";
+export { ensureExtensionExternalAgents } from "./external-agents.js";
 export type * from "./types.js";

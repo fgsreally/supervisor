@@ -1778,7 +1778,6 @@ export function createHttpServer(
       const project = manager.createProject({
         cwd: body.cwd,
         name: typeof body.name === "string" ? body.name : undefined,
-        groupName: typeof body.groupName === "string" ? body.groupName.trim() || null : null,
       });
       return c.json(project, 201);
     } catch (e: unknown) {
@@ -1802,7 +1801,7 @@ export function createHttpServer(
     const body = await c.req
       .json<Record<string, unknown>>()
       .catch((): Record<string, unknown> => ({}));
-    const patch: { name?: string; groupName?: string | null; meta?: Record<string, unknown> } = {};
+    const patch: { name?: string; meta?: Record<string, unknown> } = {};
     if (typeof body.name === "string") {
       if (!body.name.trim()) return jsonError(c, 400, "name cannot be empty");
       patch.name = body.name.trim();
@@ -1810,10 +1809,7 @@ export function createHttpServer(
     if (typeof body.meta === "object" && body.meta !== null) {
       patch.meta = body.meta as Record<string, unknown>;
     }
-    if (typeof body.groupName === "string" || body.groupName === null) {
-      patch.groupName = typeof body.groupName === "string" ? body.groupName.trim() || null : null;
-    }
-    if (patch.name === undefined && patch.groupName === undefined && patch.meta === undefined) {
+    if (patch.name === undefined && patch.meta === undefined) {
       return jsonError(c, 400, "name or meta is required");
     }
     try {

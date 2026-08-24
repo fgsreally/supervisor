@@ -100,7 +100,6 @@ export interface Project {
   id: string;
   name: string;
   description: string | null;
-  groupName: string | null;
   cwd: string;
   homeDir: string;
   meta: Record<string, unknown>;
@@ -643,13 +642,11 @@ export interface CreateProjectRequest {
   name?: string;
   description?: string | null;
   cwd: string;
-  groupName?: string | null;
 }
 
 export interface UpdateProjectRequest {
   name?: string;
   description?: string | null;
-  groupName?: string | null;
   meta?: Record<string, unknown>;
 }
 
@@ -798,7 +795,6 @@ interface RawProject {
   id: number;
   name: string;
   description: string | null;
-  groupName?: string | null;
   cwd: string;
   homeDir: string;
   meta: Record<string, unknown>;
@@ -811,7 +807,6 @@ function mapProject(raw: RawProject): Project {
   return {
     ...raw,
     id: String(raw.id),
-    groupName: raw.groupName ?? null,
     parsedAt: raw.parsedAt ?? null,
   };
 }

@@ -173,9 +173,7 @@ function mediaUrl(image: { mediaId?: string; previewUrl?: string }): string {
 }
 
 function openPreview(index: number) {
-  const urls = previewableImages.value
-    .map((image) => mediaUrl(image))
-    .filter(Boolean);
+  const urls = previewableImages.value.map((image) => mediaUrl(image)).filter(Boolean);
   openImagePreview(urls, index);
 }
 
@@ -433,11 +431,12 @@ onBeforeUnmount(cancelLongPress);
   align-items: center;
   gap: 0.35rem;
   padding: 0.25rem 0.55rem;
-  border: 1px solid color-mix(in srgb, var(--app-accent) 28%, var(--app-border));
-  border-radius: 0.45rem;
-  color: var(--app-accent);
-  background: color-mix(in srgb, var(--app-accent) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--app-text-muted) 32%, var(--app-border));
+  border-radius: 0.4rem;
+  color: var(--app-text-primary);
+  background: var(--app-hover);
   font-size: var(--app-font-control);
+  font-weight: var(--app-font-weight-medium);
   cursor: pointer;
 }
 

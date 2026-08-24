@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
+import type { GrepOptions } from "@oh-my-pi/pi-natives";
 import { Type } from "typebox";
 import { loadPiNativesBindings, type GrepMatch } from "../pi-natives-loader.js";
+import type { NativeTool } from "../tool-types.js";
 
 const DEFAULT_LIMIT = 100;
 const GREP_TIMEOUT_MS = 30_000;
@@ -63,7 +64,7 @@ function formatGrepMatch(match: GrepMatch, context: number): string[] {
   return lines;
 }
 
-export function createNativeGrepTool(sessionCwd: string): AgentTool {
+export function createNativeGrepTool(sessionCwd: string): NativeTool {
   return {
     name: "grep",
     label: "grep",
@@ -104,7 +105,7 @@ export function createNativeGrepTool(sessionCwd: string): AgentTool {
           maxCount: effectiveLimit,
           contextBefore: contextValue,
           contextAfter: contextValue,
-          mode: "content",
+          mode: "content" as GrepOptions["mode"],
           gitignore: true,
           signal,
           timeoutMs: GREP_TIMEOUT_MS,

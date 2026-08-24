@@ -1,8 +1,8 @@
 import { existsSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { loadPiNativesBindings } from "../pi-natives-loader.js";
+import type { NativeTool } from "../tool-types.js";
 
 const DEFAULT_LIMIT = 500;
 const LIST_TIMEOUT_MS = 5000;
@@ -21,7 +21,7 @@ type LsParams = {
   limit?: number;
 };
 
-export function createNativeLsTool(sessionCwd: string): AgentTool {
+export function createNativeLsTool(sessionCwd: string): NativeTool {
   return {
     name: "ls",
     label: "ls",

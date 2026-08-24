@@ -21,12 +21,14 @@
       <span>{{ dateDividerLabel }}</span>
     </div>
 
-    <ShadowMessageRow
-      v-if="group.type === 'notice' && group.shadowRun"
-      :text="group.content"
-      :status="group.shadowRun.status"
-      :level="group.level"
-    />
+    <div v-if="group.type === 'notice' && group.shadowRun" :class="messageRowClass">
+      <ShadowMessageRow
+        :text="group.content"
+        :status="group.shadowRun.status"
+        :level="group.level"
+        :time-label="timeLabel"
+      />
+    </div>
 
     <div
       v-else-if="(group.type === 'notice' || group.type === 'system') && group.content"

@@ -1,19 +1,19 @@
 {
-  "id": "input-paste-text",
+  "id": "input-attachments",
   "project": {
     "id": "input",
     "title": { "zh-CN": "输入体验", "en": "Input experience" },
     "description": {
-      "zh-CN": "测试粘贴长文本后的输入区、预览和消息展示。",
-      "en": "Test the composer, preview, and message rendering for long pasted text."
+      "zh-CN": "测试长文本、图片与文件在输入区和消息中的完整交互。",
+      "en": "Test long text, images, and files in the composer and messages."
     }
   },
   "session": {
-    "id": "paste-text",
-    "title": { "zh-CN": "粘贴长文本", "en": "Paste long text" },
+    "id": "attachments",
+    "title": { "zh-CN": "长文本、图片与文件", "en": "Text, images, and files" },
     "description": {
-      "zh-CN": "直接在输入区粘贴长文本，观察折叠预览和发送后的消息内容。",
-      "en": "Paste a long document into the composer and inspect its preview and sent message."
+      "zh-CN": "选择一种输入示例，可继续粘贴长文本、选择图片或添加文件。",
+      "en": "Choose an example, then paste text, select images, or attach files."
     }
   },
   "rounds": [
@@ -21,14 +21,33 @@
       "branches": [
         {
           "id": "1",
-          "label": { "zh-CN": "分析粘贴内容", "en": "Analyze pasted text" },
-          "assistant": {
-            "zh-CN": "我收到了你粘贴的长文本。这个示例只模拟返回，用来检查长文本标记、预览和消息气泡的布局。",
-            "en": "I received the long pasted text. This is an offline response for checking the pasted-text marker, preview, and message bubble layout."
+          "label": {
+            "zh-CN": "请分析我粘贴的长文本并给出摘要",
+            "en": "Analyze my pasted text and summarize it"
           },
-          "thinking": {
-            "zh-CN": "正在整理粘贴内容的摘要…",
-            "en": "Summarizing the pasted content…"
+          "assistant": {
+            "zh-CN": "我收到了长文本。这里用于检查长文本标记、预览和消息气泡的布局。",
+            "en": "I received the long text. This checks its marker, preview, and message layout."
+          },
+          "thinking": { "zh-CN": "正在整理长文本摘要……", "en": "Summarizing the long text…" }
+        },
+        {
+          "id": "2",
+          "label": { "zh-CN": "请描述我选择的图片", "en": "Describe the selected image" },
+          "assistant": {
+            "zh-CN": "我看到了图片。这里用于检查图片选择、缩略图、预览和发送状态。",
+            "en": "I can see the image. This checks selection, thumbnails, preview, and delivery states."
+          }
+        },
+        {
+          "id": "3",
+          "label": {
+            "zh-CN": "请读取我添加的文件并概括内容",
+            "en": "Read the attached file and summarize it"
+          },
+          "assistant": {
+            "zh-CN": "我收到了文件。这里用于检查附件卡片、长文件名和发送状态。",
+            "en": "I received the file. This checks attachment cards, long filenames, and delivery states."
           }
         }
       ]

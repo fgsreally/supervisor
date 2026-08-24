@@ -64,8 +64,8 @@
         :disabled="interrupting ? false : !canSend"
         :aria-label="interrupting ? t('chat.input.interrupt') : t('chat.input.send')"
         :title="interrupting ? t('chat.input.interrupt') : t('chat.input.send')"
-        @mousedown.prevent
-        @click="onPrimaryAction"
+        @pointerdown.stop
+        @click.stop="onPrimaryAction"
       >
         <Square v-if="interrupting" class="send-btn__stop-icon" aria-hidden="true" /><template
           v-else
@@ -122,6 +122,9 @@ function onPrimaryAction() {
 
 <style scoped>
 .chat-input-toolbar {
+  position: relative;
+  z-index: 2;
+  background: var(--app-chat-input-island-bg, var(--app-chat-bg));
   color: var(--app-toolbar-icon);
 }
 .toolbar-group {

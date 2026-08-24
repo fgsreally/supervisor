@@ -1,9 +1,7 @@
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import type { AgentExtensionContext } from "pi-supervisor";
+import type { NativeTool } from "./tool-types.js";
 
-type ToolContent = Array<{ type: "text"; text: string } | { type: "image"; url: string }>;
-
-export function registerNativeTool(ctx: AgentExtensionContext, tool: AgentTool): void {
+export function registerNativeTool(ctx: AgentExtensionContext, tool: NativeTool): void {
   ctx.agent.registerTool({
     name: tool.name,
     description: tool.description,
@@ -11,7 +9,7 @@ export function registerNativeTool(ctx: AgentExtensionContext, tool: AgentTool):
     execute: async (params, context) => {
       const result = await tool.execute(context.toolCallId, params, context.signal);
       return result as {
-        content: ToolContent;
+        content: Array<{ type: "text"; text: string } | { type: "image"; url: string }>;
         details?: unknown;
         isError?: boolean;
       };

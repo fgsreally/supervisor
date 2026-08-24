@@ -151,7 +151,6 @@ function rowToProject(row: ProjectRow): Project {
     name: row.name,
     description: row.description,
     cwd: row.cwd,
-    groupName: row.group_name ?? null,
     homeDir: row.home_dir,
     meta: JSON.parse(row.meta || "{}") as Record<string, unknown>,
     parsedAt: row.parsed_at == null ? null : new Date(row.parsed_at),
@@ -301,7 +300,7 @@ export class SupervisorDb {
 
   findOrCreateProjectByCwd(
     cwd: string,
-    options?: { name?: string; description?: string | null; groupName?: string | null },
+    options?: { name?: string; description?: string | null },
   ): Project {
     const existing = this.db.prepare("SELECT * FROM projects WHERE cwd = ?").get(cwd) as
       | ProjectRow
@@ -311,14 +310,13 @@ export class SupervisorDb {
     const now = Date.now();
     const result = this.db
       .prepare(
-        `INSERT INTO projects (name, description, cwd, group_name, home_dir, meta, parsed_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (name, description, cwd, home_dir, meta, parsed_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         options?.name ?? this.projectNameFromCwd(cwd),
         options?.description ?? null,
         cwd,
-        options?.groupName ?? null,
         "",
         "{}",
         null,
@@ -332,16 +330,10 @@ export class SupervisorDb {
     return this.getProject(id)!;
   }
 
-  insertProject(row: {
-    name?: string;
-    description?: string | null;
-    groupName?: string | null;
-    cwd: string;
-  }): Project {
+  insertProject(row: { name?: string; description?: string | null; cwd: string }): Project {
     return this.findOrCreateProjectByCwd(row.cwd, {
       name: row.name,
       description: row.description,
-      groupName: row.groupName,
     });
   }
 
@@ -350,7 +342,6 @@ export class SupervisorDb {
     patch: {
       name?: string;
       description?: string | null;
-      groupName?: string | null;
       cwd?: string;
       homeDir?: string;
       meta?: Record<string, unknown>;
@@ -362,7 +353,6 @@ export class SupervisorDb {
     const name =
       typeof patch.name === "string" && patch.name.trim() ? patch.name.trim() : project.name;
     const description = patch.description === undefined ? project.description : patch.description;
-    const groupName = patch.groupName === undefined ? project.groupName : patch.groupName;
     const cwd = patch.cwd ?? project.cwd;
     const homeDir = patch.homeDir ?? project.homeDir;
     const meta = patch.meta ?? project.meta;
@@ -370,19 +360,9 @@ export class SupervisorDb {
       patch.parsedAt === undefined ? (project.parsedAt?.getTime() ?? null) : patch.parsedAt;
     this.db
       .prepare(
-        "UPDATE projects SET name = ?, description = ?, group_name = ?, cwd = ?, home_dir = ?, meta = ?, parsed_at = ?, updated_at = ? WHERE id = ?",
+        "UPDATE projects SET name = ?, description = ?, cwd = ?, home_dir = ?, meta = ?, parsed_at = ?, updated_at = ? WHERE id = ?",
       )
-      .run(
-        name,
-        description,
-        groupName,
-        cwd,
-        homeDir,
-        JSON.stringify(meta),
-        parsedAt,
-        Date.now(),
-        id,
-      );
+      .run(name, description, cwd, homeDir, JSON.stringify(meta), parsedAt, Date.now(), id);
     return this.getProject(id)!;
   }
 

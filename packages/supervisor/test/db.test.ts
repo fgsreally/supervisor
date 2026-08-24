@@ -63,17 +63,13 @@ describe("supervisor: SupervisorDb", () => {
     const project = db.insertProject({
       cwd: join(tmpDir, "project"),
       name: "Project",
-      groupName: "Product",
     });
     expect(project.meta).toEqual({});
-    expect(project.groupName).toBe("Product");
 
     const updated = db.updateProject(project.id, {
       meta: { services: { definitions: [] } },
-      groupName: null,
     });
     expect(updated.meta).toEqual({ services: { definitions: [] } });
-    expect(updated.groupName).toBeNull();
   });
 
   it("lists all instances, newest first", () => {
@@ -347,7 +343,6 @@ describe("supervisor: SupervisorDb", () => {
       "parsed_at",
       "created_at",
       "updated_at",
-      "group_name",
     ]);
     expect(names("sessions")).toEqual([
       "id",

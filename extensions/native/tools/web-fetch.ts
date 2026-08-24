@@ -1,7 +1,7 @@
-import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import { loadPiNativesBindings } from "../pi-natives-loader.js";
 import { safeFetch } from "../utils/ssrf.js";
+import type { NativeTool, NativeToolResult } from "../tool-types.js";
 
 const DEFAULT_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
@@ -31,7 +31,7 @@ function clampTimeout(seconds: number | undefined): number {
   return Math.min(MAX_TIMEOUT_MS, Math.max(1_000, Math.floor(seconds * 1000)));
 }
 
-export function createNativeWebFetchTool(): AgentTool {
+export function createNativeWebFetchTool(): NativeTool {
   return {
     name: "web_fetch",
     label: "web_fetch",
@@ -43,7 +43,7 @@ export function createNativeWebFetchTool(): AgentTool {
       _toolCallId: string,
       params: WebFetchParams,
       signal?: AbortSignal,
-    ): Promise<AgentToolResult> {
+    ): Promise<NativeToolResult> {
       const url = params.url?.trim();
       if (!url) {
         return { content: [{ type: "text", text: "Error: url is required." }], isError: true };

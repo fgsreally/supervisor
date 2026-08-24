@@ -258,10 +258,17 @@ const text = computed({
   get: () => props.modelValue,
   set: (value: string) => emit("update:modelValue", value),
 });
+const selectedExamplePrompt = computed(
+  () =>
+    props.exampleBranches?.find(
+      (branch) => branch.id === (props.exampleBranch ?? props.exampleBranches?.[0]?.id),
+    )?.label ?? "",
+);
 
 const canSend = computed(
   () =>
     (!!text.value.trim() ||
+      !!selectedExamplePrompt.value ||
       pendingImages.value.length > 0 ||
       attachments.value.length > 0 ||
       Object.values(pastedTexts.value).some((item) =>
@@ -280,7 +287,7 @@ function requestSend() {
     text.value.includes(makeAttachmentToken(item.id)),
   );
   emit("send", {
-    text: text.value,
+    text: text.value || selectedExamplePrompt.value,
     images: pendingImages.value,
     pastedTexts: activePastedTexts,
     attachments: activeAttachments,
@@ -918,6 +925,9 @@ defineExpose({ focus, clearAfterSend, addPendingImage, restorePastedTexts });
 }
 
 .chat-input-editor-wrap {
+  position: relative;
+  z-index: 0;
+  overflow: hidden;
   touch-action: manipulation;
 }
 

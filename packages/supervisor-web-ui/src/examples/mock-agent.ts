@@ -15,6 +15,7 @@ export type DemoEvent =
       message: string;
       level: "error" | "warning" | "info";
       timestamp: number;
+      complete?: boolean;
     }
   | {
       type: "shadow_suggestions";
@@ -65,7 +66,7 @@ export function streamExampleReply(
 
   if (thinking) {
     for (const chunk of thinking.match(/.{1,12}/gu) ?? [thinking]) {
-      elapsed += 75;
+      elapsed += 150;
       later(
         () =>
           emit({
@@ -79,7 +80,7 @@ export function streamExampleReply(
 
   for (const [index, tool] of tools.entries()) {
     const toolCallId = `${sessionId}:tool:${now()}:${index}`;
-    elapsed += 100;
+    elapsed += 180;
     later(
       () =>
         emit({
@@ -90,7 +91,7 @@ export function streamExampleReply(
         } as AgentEvent),
       elapsed,
     );
-    elapsed += 250;
+    elapsed += 420;
     later(
       () =>
         emit({
@@ -107,8 +108,8 @@ export function streamExampleReply(
   if (shadow) {
     emit({ type: "shadow_running", running: true, timestamp: now() });
   }
-  for (const [index, chunk] of chunks.entries()) {
-    elapsed += 90;
+  for (const chunk of chunks) {
+    elapsed += 180;
     later(
       () =>
         emit({
@@ -117,35 +118,42 @@ export function streamExampleReply(
         } as AgentEvent),
       elapsed,
     );
-    if (index === chunks.length - 1 && shadow) {
+  }
+  if (shadow) {
+    const shadowEntryId = `${sessionId}:shadow:${now()}`;
+    const shadowChunks = shadow.message.match(/.{1,8}/gu) ?? [shadow.message];
+    let shadowText = "";
+    for (const [index, chunk] of shadowChunks.entries()) {
+      elapsed += 190;
+      shadowText += chunk;
+      const message = shadowText;
+      const complete = index === shadowChunks.length - 1;
       later(() => {
         emit({
           type: "shadow_message",
-          entryId: `${sessionId}:shadow:${now()}`,
-          message: shadow.message,
+          entryId: shadowEntryId,
+          message,
           level: shadow.level,
           timestamp: now(),
+          complete,
         });
-        emit({ type: "shadow_running", running: false, timestamp: now() });
-      }, elapsed + 180);
+        if (complete) emit({ type: "shadow_running", running: false, timestamp: now() });
+      }, elapsed);
     }
   }
   if (branch.suggestions) {
     later(
       () =>
         emit({ type: "shadow_suggestions", questions: branch.suggestions ?? [], timestamp: now() }),
-      elapsed + 220,
-    );
-  }
-  if (branch.entries?.length) {
-    later(
-      () => {
-        for (const entry of branch.entries ?? []) emit({ type: "example_entry", entry });
-      },
       elapsed + 180,
     );
   }
-  later(done, elapsed + 260);
+  if (branch.entries?.length) {
+    later(() => {
+      for (const entry of branch.entries ?? []) emit({ type: "example_entry", entry });
+    }, elapsed + 180);
+  }
+  later(done, elapsed + 240);
 
   return () => {
     cancelled = true;

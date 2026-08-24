@@ -7,25 +7,31 @@
     @pointermove="onPointerMove"
     @contextmenu.prevent="onContextMenu"
   >
-    <AgentAvatar
-      v-if="avatarIcon"
-      class="chat-avatar shrink-0"
-      :agent-id="avatarAgentId || sessionId"
-      :agent-name="avatarLabel || 'A'"
-      :icon="avatarIcon"
-    />
-    <div
-      v-else
-      class="chat-avatar chat-avatar--agent shrink-0"
-      :style="{ backgroundColor: avatarColor }"
-    >
-      {{ avatarLabel }}
-    </div>
+    <slot name="avatar">
+      <AgentAvatar
+        v-if="avatarIcon"
+        class="chat-avatar shrink-0"
+        :agent-id="avatarAgentId || sessionId"
+        :agent-name="avatarLabel || 'A'"
+        :icon="avatarIcon"
+      />
+      <div
+        v-else
+        class="chat-avatar chat-avatar--agent shrink-0"
+        :style="{ backgroundColor: avatarColor }"
+      >
+        {{ avatarLabel }}
+      </div>
+    </slot>
     <div class="max-w-[82%] flex flex-col items-start min-w-0 assistant-message-body">
-      <span class="chat-msg-time chat-msg-time--agent">{{ timeLabel }}</span>
+      <span v-if="timeLabel" class="chat-msg-time chat-msg-time--agent">{{ timeLabel }}</span>
       <div
         class="relative px-3.5 py-2.5 w-full chat-bubble"
-        :class="{ 'ring-2 ring-[#07c160]/40': searchHit }"
+        :class="[
+          { 'ring-2 ring-[#07c160]/40': searchHit },
+          tone === 'warning' && 'chat-bubble--warning',
+          tone === 'error' && 'chat-bubble--error',
+        ]"
         :style="{
           background: 'var(--app-bubble-assistant)',
           color: 'var(--app-text-primary)',
@@ -51,7 +57,9 @@
               @click="executionOpen = !executionOpen"
             >
               <ChevronRight :class="{ 'external-details__chevron--open': executionOpen }" />
-              <span>{{ t("chat.executionSummary", { count: collapsedExecutionPieces.length }) }}</span>
+              <span>{{
+                t("chat.executionSummary", { count: collapsedExecutionPieces.length })
+              }}</span>
             </button>
             <div
               class="external-details__collapse"
@@ -143,11 +151,7 @@
           </div>
         </div>
       </div>
-      <span
-        v-if="durationLabel"
-        class="chat-msg-duration"
-        :class="{ 'chat-msg-duration--pinned': durationPinned }"
-      >
+      <span v-if="durationLabel" class="chat-msg-duration">
         {{ t("chat.duration", { duration: durationLabel }) }}
       </span>
     </div>
@@ -184,6 +188,7 @@ const props = defineProps<{
   avatarIcon?: string | null;
   avatarAgentId?: string;
   externalAgent?: boolean;
+  tone?: "warning" | "error";
 }>();
 
 const emit = defineEmits<{
@@ -419,9 +424,34 @@ onBeforeUnmount(cancelLongPress);
   white-space: nowrap;
 }
 
-.chat-msg-duration--pinned,
 .assistant-message-row:hover .chat-msg-duration {
   opacity: 0.85;
+}
+
+.chat-bubble--warning {
+  color: #d99000 !important;
+  background: color-mix(in srgb, #d99000 9%, var(--app-bubble-assistant)) !important;
+  box-shadow: inset 0 0 0 1px rgb(217 144 0 / 42%);
+}
+.chat-bubble--warning :deep(.md-content) {
+  color: #d99000;
+}
+.chat-bubble--warning .chat-bubble-tail {
+  background: color-mix(in srgb, #d99000 9%, var(--app-bubble-assistant)) !important;
+  box-shadow: -1px 1px 0 rgb(217 144 0 / 72%);
+}
+
+.chat-bubble--error {
+  color: var(--app-danger) !important;
+  background: color-mix(in srgb, var(--app-danger) 8%, var(--app-bubble-assistant)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--app-danger) 42%, transparent);
+}
+.chat-bubble--error :deep(.md-content) {
+  color: var(--app-danger);
+}
+.chat-bubble--error .chat-bubble-tail {
+  background: color-mix(in srgb, var(--app-danger) 8%, var(--app-bubble-assistant)) !important;
+  box-shadow: -1px 1px 0 color-mix(in srgb, var(--app-danger) 72%, transparent);
 }
 
 .chat-avatar {

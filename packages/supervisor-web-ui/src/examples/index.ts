@@ -9,7 +9,6 @@ import extensionSurfaces from "./scenarios/extension-surfaces.json";
 import sessionStates from "./scenarios/session-states.json";
 import workflowRun from "./scenarios/workflow-run.json";
 import inputPasteText from "./scenarios/input-paste-text.json";
-import inputPasteMedia from "./scenarios/input-paste-media.json";
 
 export interface LocalizedText {
   "zh-CN": string;
@@ -86,7 +85,6 @@ const scenarios = [
   sessionStates,
   workflowRun,
   inputPasteText,
-  inputPasteMedia,
 ] as unknown as ExampleScenario[];
 const locale = computed<keyof LocalizedText>(() => (getLocale() === "en" ? "en" : "zh-CN"));
 
@@ -101,24 +99,25 @@ function scenarioSessionId(scenario: ExampleScenario): string {
 }
 
 export function exampleProjects(): Project[] {
-  return scenarios.map((scenario) => ({
-    id: `example:${scenario.project.id}`,
-    name: text(scenario.project.title),
-    description: text(scenario.project.description),
-    groupName: text({ "zh-CN": "示例", en: "Examples" }),
-    cwd: "",
-    homeDir: "",
-    meta: { example: true },
-    parsedAt: null,
-    createdAt: "2020-01-01T00:00:00.000Z",
-    updatedAt: "2020-01-01T00:00:00.000Z",
-  }));
+  return [
+    {
+      id: "example:examples",
+      name: text({ "zh-CN": "示例", en: "Examples" }),
+      description: text({ "zh-CN": "界面与能力示例", en: "Interface and capability examples" }),
+      cwd: "",
+      homeDir: "",
+      meta: { example: true },
+      parsedAt: null,
+      createdAt: "2020-01-01T00:00:00.000Z",
+      updatedAt: "2020-01-01T00:00:00.000Z",
+    },
+  ];
 }
 
 export function exampleSessions(): UISession[] {
   return scenarios.map((scenario) => ({
     id: scenarioSessionId(scenario),
-    workspaceId: `example:${scenario.project.id}`,
+    workspaceId: "example:examples",
     parentId: null,
     creationMethod: "user",
     showInSessionList: true,
@@ -224,7 +223,7 @@ export function getExampleSessionProps(id: string): Session | null {
   if (!scenario) return null;
   return {
     id,
-    projectId: `example:${scenario.project.id}`,
+    projectId: "example:examples",
     parentId: null,
     status: "idle",
     cwd: "",

@@ -1,6 +1,6 @@
-import type { AgentTool, AgentToolResult } from "@earendil-works/pi-agent-core";
-import { Type } from "typebox";
+import { Type } from "pi-supervisor";
 import type { HindsightSessionState } from "../state.js";
+import type { HindsightTool } from "../tool-types.js";
 
 const retainSchema = Type.Object({
   items: Type.Array(
@@ -12,18 +12,20 @@ const retainSchema = Type.Object({
   ),
 });
 
-export function createRetainTool(getState: () => HindsightSessionState | undefined): AgentTool {
+export function createRetainTool(
+  getState: () => HindsightSessionState | undefined,
+): HindsightTool<typeof retainSchema, { count: number }> {
   return {
     name: "retain",
     description:
       "Store important facts in long-term memory. Use for durable project knowledge, decisions, and preferences.",
     parameters: retainSchema,
-    async execute(_id, params, signal): Promise<AgentToolResult> {
+    async execute(params, context) {
       const state = getState();
       if (!state) {
         throw new Error("Hindsight is not initialised for this session.");
       }
-      if (signal?.aborted) throw new Error("Aborted");
+      if (context.signal?.aborted) throw new Error("Aborted");
 
       for (const item of params.items) {
         state.enqueueRetain(item.content, item.context);

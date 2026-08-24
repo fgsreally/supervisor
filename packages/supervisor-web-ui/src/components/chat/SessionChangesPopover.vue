@@ -2,6 +2,7 @@
   <div class="changes-wrap">
     <div class="changes-header">
       <button
+        v-if="files.length"
         type="button"
         class="changes-header__toggle"
         :aria-expanded="open"
@@ -10,6 +11,17 @@
         <ChevronDown class="changes-header__chevron" :class="{ 'is-open': open }" />
         <span>{{ t("session.files.count", { count: files.length }) }}</span>
       </button>
+      <div v-if="suggestions.length" class="changes-header__suggestions">
+        <span>{{ t("chat.suggestions") }}</span>
+        <UiActionButton
+          v-for="suggestion in suggestions"
+          :key="suggestion"
+          variant="ghost"
+          @click="emit('select-suggestion', suggestion)"
+        >
+          {{ suggestion }}
+        </UiActionButton>
+      </div>
     </div>
     <div class="changes-body" :class="{ 'is-open': open }">
       <div class="changes-body__inner">
@@ -43,6 +55,7 @@ import { ref, watch } from "vue";
 import { ChevronDown } from "lucide-vue-next";
 import { useI18n } from "@/i18n";
 import FileTypeIcon from "../base/FileTypeIcon.vue";
+import UiActionButton from "../base/UiActionButton.vue";
 
 export interface SessionChangedFileView {
   path: string;
@@ -50,7 +63,11 @@ export interface SessionChangedFileView {
   lastTurn?: number;
 }
 
-const props = defineProps<{ files: SessionChangedFileView[] }>();
+const props = withDefaults(
+  defineProps<{ files: SessionChangedFileView[]; suggestions?: string[] }>(),
+  { suggestions: () => [] },
+);
+const emit = defineEmits<{ "select-suggestion": [suggestion: string] }>();
 const { t } = useI18n();
 const open = ref(true);
 
@@ -81,9 +98,25 @@ function openFile(path: string) {
 .changes-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 8px 12px 6px;
+}
+
+.changes-header__suggestions {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  color: var(--app-text-muted);
+  font-size: var(--app-font-caption);
+}
+
+.changes-header__suggestions :deep(.ui-action-button) {
+  min-height: 28px;
+  padding-inline: 8px;
 }
 
 .changes-header__toggle {

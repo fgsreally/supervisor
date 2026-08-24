@@ -43,14 +43,6 @@
           <button
             type="button"
             class="chat-list-settings-popover__action"
-            @click="openProjectGroupManager"
-          >
-            <Layers3 class="h-4 w-4" />
-            <span>{{ t("projectGroups.manage") }}</span>
-          </button>
-          <button
-            type="button"
-            class="chat-list-settings-popover__action"
             @click="openExternalImport"
           >
             <MessageSquareReply class="h-4 w-4" />
@@ -221,189 +213,124 @@
             </div>
           </template>
 
-          <template v-if="projectGroups.length">
+          <template v-if="workspaceGroups.length">
             <div
-              v-for="projectGroup in projectGroups"
-              :key="projectGroup.id"
-              class="project-group"
-              :class="{
-                'project-group--ungrouped': !projectGroup.name,
-                'project-group--example': projectGroup.example,
-                'project-group--drop-target': projectGroupDropTarget === projectGroup.id,
-              }"
-              @dragover.prevent="onProjectGroupDragOver(projectGroup)"
-              @drop.prevent="onProjectGroupDrop(projectGroup)"
-              @dragleave="onProjectGroupDragLeave(projectGroup.id)"
+              v-for="group in workspaceGroups"
+              :key="group.workspace.id"
+              class="workspace-group"
+              :class="{ 'workspace-group--example': isExampleProject(group.workspace.id) }"
+              :data-project-id="group.workspace.id"
             >
               <div
-                v-if="projectGroup.name"
-                class="list-section-header project-group__header sticky top-0 z-20"
+                class="list-section-header sticky top-0 z-10"
+                :ref="(element) => setProjectHeaderRef(group.workspace.id, element)"
                 :class="{
-                  'project-group__header--example': projectGroup.example,
-                  'project-group__header--drop-target': projectGroupDropTarget === projectGroup.id,
+                  'list-section-header--linked': highlightedProjectId === group.workspace.id,
+                  'list-section-header--example': isExampleProject(group.workspace.id),
                 }"
+                @contextmenu.prevent.stop="openProjectContextMenu(group.workspace.id, $event)"
               >
                 <button
                   type="button"
                   class="section-action-btn section-action-btn--chevron"
                   :title="
-                    isProjectGroupCollapsed(projectGroup.id)
+                    isWorkspaceCollapsed(group.workspace.id)
                       ? t('sessionList.expand')
                       : t('sessionList.collapse')
                   "
-                  @click="toggleProjectGroup(projectGroup.id)"
+                  @click="toggleWorkspaceCollapse(group.workspace.id)"
                 >
                   <ChevronRight
                     class="w-4 h-4 section-chevron"
-                    :class="{ 'section-chevron--open': !isProjectGroupCollapsed(projectGroup.id) }"
+                    :class="{ 'section-chevron--open': !isWorkspaceCollapsed(group.workspace.id) }"
                   />
                 </button>
                 <button
                   type="button"
                   class="list-section-title flex-1 truncate text-left"
-                  @click="toggleProjectGroup(projectGroup.id)"
+                  @click="toggleWorkspaceCollapse(group.workspace.id)"
                 >
-                  {{ projectGroup.name }}
+                  {{ group.workspace.name }}
                 </button>
-                <span v-if="projectGroup.example" class="project-group__badge">
-                  {{ t("projectGroups.example") }}
-                </span>
+                <button
+                  type="button"
+                  class="section-action-btn"
+                  title="Git"
+                  v-if="!isExampleProject(group.workspace.id)"
+                  @click="openProjectGit(group.workspace.id, $event)"
+                >
+                  <GitBranch class="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  class="section-action-btn"
+                  :title="t('sessionList.projectSettings')"
+                  v-if="!isExampleProject(group.workspace.id)"
+                  @click="openProjectSettings(group.workspace.id)"
+                >
+                  <Settings class="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  class="section-action-btn"
+                  :title="t('sessionList.addSession')"
+                  v-if="!isExampleProject(group.workspace.id)"
+                  @click="openAgentPicker(group.workspace.id)"
+                >
+                  <Plus class="w-4 h-4" />
+                </button>
               </div>
-              <DustTransitionGroup
-                v-if="!isProjectGroupCollapsed(projectGroup.id)"
-                name="session-list"
-                tag="div"
-                content-class="chat-list-projects project-group__projects"
+
+              <div
+                class="workspace-collapse"
+                :class="{ 'workspace-collapse--open': !isWorkspaceCollapsed(group.workspace.id) }"
               >
                 <div
-                  v-for="group in projectGroup.projects"
-                  :key="group.workspace.id"
-                  class="workspace-group"
-                  :data-project-id="group.workspace.id"
+                  class="workspace-collapse__inner"
+                  :class="{
+                    'workspace-collapse__inner--hold-leave': workspaceHoldsPinLeave(
+                      group.workspace.id,
+                    ),
+                  }"
                 >
-                  <div
-                    class="list-section-header sticky top-0 z-10"
-                    :ref="(element) => setProjectHeaderRef(group.workspace.id, element)"
-                    :class="{
-                      'list-section-header--dragging': draggedProjectId === group.workspace.id,
-                      'list-section-header--linked': highlightedProjectId === group.workspace.id,
-                    }"
-                    :draggable="!isExampleProject(group.workspace.id)"
-                    @dragstart="onProjectDragStart(group.workspace.id, $event)"
-                    @dragover.prevent
-                    @dragend="draggedProjectId = null"
-                    @contextmenu.prevent.stop="openProjectContextMenu(group.workspace.id, $event)"
-                  >
-                    <button
-                      type="button"
-                      class="section-action-btn section-action-btn--chevron"
-                      :title="
-                        isWorkspaceCollapsed(group.workspace.id)
-                          ? t('sessionList.expand')
-                          : t('sessionList.collapse')
-                      "
-                      @click="toggleWorkspaceCollapse(group.workspace.id)"
-                    >
-                      <ChevronRight
-                        class="w-4 h-4 section-chevron"
-                        :class="{
-                          'section-chevron--open': !isWorkspaceCollapsed(group.workspace.id),
-                        }"
-                      />
-                    </button>
-                    <button
-                      type="button"
-                      class="list-section-title flex-1 truncate text-left"
-                      @click="toggleWorkspaceCollapse(group.workspace.id)"
-                    >
-                      {{ group.workspace.name }}
-                    </button>
-                    <button
-                      type="button"
-                      class="section-action-btn"
-                      title="Git"
-                      v-if="!isExampleProject(group.workspace.id)"
-                      @click="openProjectGit(group.workspace.id, $event)"
-                    >
-                      <GitBranch class="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      class="section-action-btn"
-                      :title="t('sessionList.projectSettings')"
-                      v-if="!isExampleProject(group.workspace.id)"
-                      @click="openProjectSettings(group.workspace.id)"
-                    >
-                      <Settings class="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      class="section-action-btn"
-                      :title="t('sessionList.addSession')"
-                      v-if="!isExampleProject(group.workspace.id)"
-                      @click="openAgentPicker(group.workspace.id)"
-                    >
-                      <Plus class="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div
-                    class="workspace-collapse"
-                    :class="{
-                      'workspace-collapse--open': !isWorkspaceCollapsed(group.workspace.id),
-                    }"
+                  <DustTransitionGroup
+                    name="session-list"
+                    tag="div"
+                    content-class="chat-list-roots"
+                    @after-leave="onRegularSessionAfterLeave"
                   >
                     <div
-                      class="workspace-collapse__inner"
-                      :class="{
-                        'workspace-collapse__inner--hold-leave': workspaceHoldsPinLeave(
-                          group.workspace.id,
-                        ),
-                      }"
+                      v-for="root in group.sessions"
+                      :key="root.id"
+                      class="workspace-session-block"
+                      :data-session-id="root.id"
                     >
-                      <DustTransitionGroup
-                        name="session-list"
-                        tag="div"
-                        content-class="chat-list-roots"
-                        @after-leave="onRegularSessionAfterLeave"
-                      >
-                        <div
-                          v-for="root in group.sessions"
-                          :key="root.id"
-                          class="workspace-session-block"
-                          :data-session-id="root.id"
-                        >
-                          <SessionListItem
-                            :session="root"
-                            :active="activeId === root.id"
-                            mode="chat"
-                            :depth="0"
-                            @select="$emit('select', $event)"
-                            @context-menu="openContextMenu(root.id, $event)"
-                          />
-                          <SessionListSubtree
-                            v-if="childrenOf(root.id).length"
-                            :parent-id="root.id"
-                            :depth="1"
-                            :active-id="activeId"
-                            :sessions="filtered"
-                            :ancestor-open-depths="[]"
-                            @select="$emit('select', $event)"
-                            @context-menu="openContextMenu($event.sessionId, $event)"
-                          />
-                        </div>
-                      </DustTransitionGroup>
-                      <div v-if="!group.sessions.length" class="chat-list-project-empty">
-                        <MessageSquareReply
-                          class="chat-list-project-empty__icon"
-                          aria-hidden="true"
-                        />
-                        <p>{{ t("sessionList.noSessions") }}</p>
-                      </div>
+                      <SessionListItem
+                        :session="root"
+                        :active="activeId === root.id"
+                        mode="chat"
+                        :depth="0"
+                        @select="$emit('select', $event)"
+                        @context-menu="openContextMenu(root.id, $event)"
+                      />
+                      <SessionListSubtree
+                        v-if="childrenOf(root.id).length"
+                        :parent-id="root.id"
+                        :depth="1"
+                        :active-id="activeId"
+                        :sessions="filtered"
+                        :ancestor-open-depths="[]"
+                        @select="$emit('select', $event)"
+                        @context-menu="openContextMenu($event.sessionId, $event)"
+                      />
                     </div>
+                  </DustTransitionGroup>
+                  <div v-if="!group.sessions.length" class="chat-list-project-empty">
+                    <MessageSquareReply class="chat-list-project-empty__icon" aria-hidden="true" />
+                    <p>{{ t("sessionList.noSessions") }}</p>
                   </div>
                 </div>
-              </DustTransitionGroup>
+              </div>
             </div>
           </template>
         </template>
@@ -447,17 +374,6 @@
       :open="externalImportOpen"
       @close="externalImportOpen = false"
       @imported="onExternalSessionImported"
-    />
-
-    <ProjectGroupManager
-      :open="projectGroupManagerOpen"
-      :groups="projectGroupOptions"
-      :ungrouped-projects="ungroupedProjects"
-      :busy="projectGroupBusy"
-      @close="projectGroupManagerOpen = false"
-      @rename="renameProjectGroup"
-      @delete="deleteProjectGroup"
-      @create="createProjectGroup"
     />
 
     <SessionListContextMenu
@@ -522,7 +438,6 @@ import {
   ChevronDown,
   ChevronRight,
   GitBranch,
-  Layers3,
   Loader2,
   MessageSquareReply,
   Plus,
@@ -566,7 +481,6 @@ import ProjectCreateDialog from "../project/ProjectCreateDialog.vue";
 import ProjectGitMenu from "../project/ProjectGitMenu.vue";
 import ProjectListContextMenu from "../project/ProjectListContextMenu.vue";
 import ProjectSettingsMenu from "../project/ProjectSettingsMenu.vue";
-import ProjectGroupManager, { type ProjectGroupOption } from "../project/ProjectGroupManager.vue";
 import SessionAgentPicker from "./SessionAgentPicker.vue";
 import SessionListContextMenu from "./SessionListContextMenu.vue";
 import SessionListItem from "./SessionListItem.vue";
@@ -577,12 +491,6 @@ import ResponsivePopover from "../base/ResponsivePopover/index.vue";
 import { exampleProjects, exampleSessions, showExamples } from "@/examples";
 
 type ProjectWorkspaceGroup = ReturnType<typeof groupSessionsByWorkspace>[number];
-type ProjectListGroup = {
-  id: string;
-  name: string | null;
-  example: boolean;
-  projects: ProjectWorkspaceGroup[];
-};
 
 const props = defineProps<{
   activeId: string;
@@ -625,11 +533,6 @@ async function retryLoadSessions() {
 
 const query = ref("");
 const settingsPopoverOpen = ref(false);
-const projectGroupManagerOpen = ref(false);
-const projectGroupBusy = ref(false);
-const collapsedProjectGroupIds = ref<Set<string>>(new Set());
-const draggedProjectId = ref<string | null>(null);
-const projectGroupDropTarget = ref<string | null>(null);
 const highlightedProjectId = ref<string | null>(null);
 const projectBelowViewport = ref(false);
 const sessionScrollPanel = ref<HTMLElement | null>(null);
@@ -667,46 +570,6 @@ function highlightPinnedProject(session: UISession, hovered: boolean) {
   else void nextTick(refreshProjectHighlight);
 }
 
-function onProjectDragStart(projectId: string, event: DragEvent) {
-  if (isExampleProject(projectId)) return;
-  draggedProjectId.value = projectId;
-  event.dataTransfer?.setData("text/plain", projectId);
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
-}
-
-function onProjectGroupDragOver(group: ProjectListGroup) {
-  if (!draggedProjectId.value || group.example) return;
-  projectGroupDropTarget.value = group.id;
-}
-
-function onProjectGroupDragLeave(groupId: string) {
-  if (projectGroupDropTarget.value === groupId) projectGroupDropTarget.value = null;
-}
-
-async function onProjectGroupDrop(group: ProjectListGroup) {
-  const sourceId = draggedProjectId.value;
-  draggedProjectId.value = null;
-  projectGroupDropTarget.value = null;
-  if (!sourceId || group.example) return;
-  const source = sessionStore.projects.find((project) => project.id === sourceId);
-  if (!source) return;
-  const nextGroupName = group.name;
-  if ((source.groupName ?? null) === nextGroupName) return;
-  projectGroupBusy.value = true;
-  try {
-    await withUiBusy(t("projectGroups.moving"), () =>
-      sessionStore.updateProject(sourceId, { groupName: nextGroupName }),
-    );
-    showUiMessage(t("projectGroups.updated"), "success");
-  } catch (error) {
-    showUiMessage(
-      error instanceof Error ? error.message : t("projectGroups.updateFailed"),
-      "error",
-    );
-  } finally {
-    projectGroupBusy.value = false;
-  }
-}
 const searching = ref(false);
 const messageMatches = ref<Map<string, string>>(new Map());
 let searchGeneration = 0;
@@ -866,71 +729,17 @@ const regularRoots = computed(() => rootsToShow.value.filter(isRegularListVisibl
 
 const workspaceGroups = computed(() => {
   const groups = groupSessionsByWorkspace(regularRoots.value, projectCatalog.value);
-  return groups.map((g) => ({
-    ...g,
-    sessions: g.sessions.sort(sortByRecentActivity),
-  }));
+  return groups
+    .map((g) => ({
+      ...g,
+      sessions: g.sessions.sort(sortByRecentActivity),
+    }))
+    .sort((left, right) => {
+      const leftExample = isExampleProject(left.workspace.id);
+      const rightExample = isExampleProject(right.workspace.id);
+      return leftExample === rightExample ? 0 : leftExample ? -1 : 1;
+    });
 });
-
-const projectGroups = computed(() => {
-  const groups = new Map<string, ProjectListGroup>();
-  const ungrouped: ProjectListGroup = {
-    id: "__ungrouped__",
-    name: null,
-    example: false,
-    projects: [],
-  };
-  for (const project of workspaceGroups.value) {
-    const rawName =
-      projectCatalog.value.find((item) => item.id === project.workspace.id)?.groupName?.trim() ||
-      null;
-    if (!rawName) {
-      ungrouped.projects.push(project);
-      continue;
-    }
-    const id = `group:${rawName}`;
-    const existing = groups.get(id) ?? {
-      id,
-      name: rawName,
-      example: false,
-      projects: [],
-    };
-    existing.example = existing.example || project.workspace.id.startsWith("example:");
-    existing.projects.push(project);
-    groups.set(id, existing);
-  }
-  if (ungrouped.projects.length) groups.set(ungrouped.id, ungrouped);
-  return [...groups.values()];
-});
-
-const projectGroupOptions = computed<ProjectGroupOption[]>(() =>
-  projectGroups.value
-    .filter((group) => group.name)
-    .map((group) => ({
-      name: group.name!,
-      count: group.projects.length,
-      example: group.example,
-    })),
-);
-
-const ungroupedProjects = computed(
-  () =>
-    projectGroups.value
-      .find((group) => !group.name)
-      ?.projects.map((project) => ({ id: project.workspace.id, name: project.workspace.name })) ??
-    [],
-);
-
-function isProjectGroupCollapsed(id: string) {
-  return collapsedProjectGroupIds.value.has(id);
-}
-
-function toggleProjectGroup(id: string) {
-  const next = new Set(collapsedProjectGroupIds.value);
-  if (next.has(id)) next.delete(id);
-  else next.add(id);
-  collapsedProjectGroupIds.value = next;
-}
 
 function childrenOf(parentId: string): UISession[] {
   return listVisible.value.filter((s) => s.parentId === parentId).sort(sortByRecentActivity);
@@ -1125,91 +934,6 @@ function openExternalImport() {
   closeAgentPicker();
   settingsPopoverOpen.value = false;
   externalImportOpen.value = true;
-}
-
-function openProjectGroupManager() {
-  settingsPopoverOpen.value = false;
-  projectGroupManagerOpen.value = true;
-}
-
-async function renameProjectGroup(oldName: string, newName: string) {
-  if (projectGroupBusy.value || oldName === newName) return;
-  if (projectGroupOptions.value.some((group) => group.example && group.name === newName)) {
-    showUiMessage(t("projectGroups.exampleProtected"), "error");
-    return;
-  }
-  const targets = sessionStore.projects.filter((project) => project.groupName?.trim() === oldName);
-  if (!targets.length) return;
-  projectGroupBusy.value = true;
-  try {
-    await withUiBusy(t("projectGroups.saving"), () =>
-      Promise.all(
-        targets.map((project) => sessionStore.updateProject(project.id, { groupName: newName })),
-      ),
-    );
-    showUiMessage(t("projectGroups.renamed"), "success");
-  } catch (error) {
-    showUiMessage(
-      error instanceof Error ? error.message : t("projectGroups.updateFailed"),
-      "error",
-    );
-  } finally {
-    projectGroupBusy.value = false;
-  }
-}
-
-async function deleteProjectGroup(name: string) {
-  if (projectGroupBusy.value) return;
-  const group = projectGroupOptions.value.find((item) => item.name === name);
-  if (!group || group.example) return;
-  const confirmed = await requestUiDeleteConfirm({
-    title: t("projectGroups.deleteTitle"),
-    message: t("projectGroups.deleteMessage", { name }),
-    confirmText: t("projectGroups.delete"),
-    expectedText: name,
-  });
-  if (!confirmed) return;
-  const targets = sessionStore.projects.filter((project) => project.groupName?.trim() === name);
-  projectGroupBusy.value = true;
-  try {
-    await withUiBusy(t("projectGroups.deleting"), () =>
-      Promise.all(
-        targets.map((project) => sessionStore.updateProject(project.id, { groupName: null })),
-      ),
-    );
-    showUiMessage(t("projectGroups.deleted"), "success");
-  } catch (error) {
-    showUiMessage(
-      error instanceof Error ? error.message : t("projectGroups.updateFailed"),
-      "error",
-    );
-  } finally {
-    projectGroupBusy.value = false;
-  }
-}
-
-async function createProjectGroup(name: string, projectId: string) {
-  if (projectGroupBusy.value) return;
-  if (projectGroupOptions.value.some((group) => group.example && group.name === name)) {
-    showUiMessage(t("projectGroups.exampleProtected"), "error");
-    return;
-  }
-  const project = sessionStore.projects.find((item) => item.id === projectId);
-  if (!project) return;
-  projectGroupBusy.value = true;
-  try {
-    await withUiBusy(t("projectGroups.saving"), () =>
-      sessionStore.updateProject(projectId, { groupName: name }),
-    );
-    showUiMessage(t("projectGroups.created"), "success");
-  } catch (error) {
-    showUiMessage(
-      error instanceof Error ? error.message : t("projectGroups.updateFailed"),
-      "error",
-    );
-  } finally {
-    projectGroupBusy.value = false;
-  }
 }
 
 function isExampleProject(projectId: string) {
@@ -1546,50 +1270,12 @@ async function onAgentPicked(agentId: string) {
 }
 
 .chat-list-settings-popover__action:hover {
-  background: var(--app-hover-bg);
-}
-
-.project-group {
-  position: relative;
-}
-
-.project-group__header {
-  padding-left: 1rem;
-}
-
-.project-group__projects {
-  padding-left: 1rem;
-}
-
-.project-group--ungrouped .project-group__projects {
-  padding-left: 0;
-}
-
-.project-group--drop-target {
-  background: color-mix(in srgb, var(--app-accent) 6%, transparent);
-}
-
-.project-group__header--example {
-  background: color-mix(in srgb, var(--app-accent) 12%, var(--app-list-section-bg));
   color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent) 12%, var(--app-popup-bg));
 }
 
-.project-group__header--example .list-section-title {
-  color: var(--app-accent);
-}
-
-.project-group__header--drop-target {
-  background: color-mix(in srgb, var(--app-accent) 24%, var(--app-list-section-bg));
-  box-shadow: inset 3px 0 0 var(--app-accent);
-}
-
-.project-group__badge {
-  flex: none;
-  padding: 0.125rem 0.375rem;
-  border: 1px solid color-mix(in srgb, var(--app-accent) 40%, transparent);
-  border-radius: 999px;
-  color: var(--app-accent);
-  font-size: var(--app-font-micro);
+.workspace-group--example .list-section-title {
+  color: #f59e0b;
 }
 </style>
 
@@ -2175,8 +1861,7 @@ async function onAgentPicked(agentId: string) {
     font-size: 12px;
   }
 
-  .chat-list-roots,
-  .chat-list-projects {
+  .chat-list-roots {
     display: grid;
     gap: 0;
   }

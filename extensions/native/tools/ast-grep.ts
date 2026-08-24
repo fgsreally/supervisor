@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { Type } from "typebox";
 import {
   loadPiNativesBindings,
@@ -9,6 +8,7 @@ import {
   type SummaryResult,
 } from "../pi-natives-loader.js";
 import { prependSuffixNotice, resolveReadablePath } from "../utils/path-resolve.js";
+import type { NativeTool } from "../tool-types.js";
 
 const AST_TIMEOUT_MS = 30_000;
 
@@ -68,7 +68,7 @@ function renderSummary(summary: SummaryResult): string {
   ].join("\n");
 }
 
-export function createNativeAstGrepTool(sessionCwd: string): AgentTool {
+export function createNativeAstGrepTool(sessionCwd: string): NativeTool {
   return {
     name: "ast_grep",
     label: "ast_grep",

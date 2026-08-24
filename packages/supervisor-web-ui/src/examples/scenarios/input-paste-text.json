@@ -1,0 +1,37 @@
+{
+  "id": "input-paste-text",
+  "project": {
+    "id": "input",
+    "title": { "zh-CN": "输入体验", "en": "Input experience" },
+    "description": {
+      "zh-CN": "测试粘贴长文本后的输入区、预览和消息展示。",
+      "en": "Test the composer, preview, and message rendering for long pasted text."
+    }
+  },
+  "session": {
+    "id": "paste-text",
+    "title": { "zh-CN": "粘贴长文本", "en": "Paste long text" },
+    "description": {
+      "zh-CN": "直接在输入区粘贴长文本，观察折叠预览和发送后的消息内容。",
+      "en": "Paste a long document into the composer and inspect its preview and sent message."
+    }
+  },
+  "rounds": [
+    {
+      "branches": [
+        {
+          "id": "1",
+          "label": { "zh-CN": "分析粘贴内容", "en": "Analyze pasted text" },
+          "assistant": {
+            "zh-CN": "我收到了你粘贴的长文本。这个示例只模拟返回，用来检查长文本标记、预览和消息气泡的布局。",
+            "en": "I received the long pasted text. This is an offline response for checking the pasted-text marker, preview, and message bubble layout."
+          },
+          "thinking": {
+            "zh-CN": "正在整理粘贴内容的摘要…",
+            "en": "Summarizing the pasted content…"
+          }
+        }
+      ]
+    }
+  ]
+}

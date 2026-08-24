@@ -8,6 +8,8 @@ import agentStreaming from "./scenarios/agent-streaming.json";
 import extensionSurfaces from "./scenarios/extension-surfaces.json";
 import sessionStates from "./scenarios/session-states.json";
 import workflowRun from "./scenarios/workflow-run.json";
+import inputPasteText from "./scenarios/input-paste-text.json";
+import inputPasteMedia from "./scenarios/input-paste-media.json";
 
 export interface LocalizedText {
   "zh-CN": string;
@@ -83,6 +85,8 @@ const scenarios = [
   extensionSurfaces,
   sessionStates,
   workflowRun,
+  inputPasteText,
+  inputPasteMedia,
 ] as unknown as ExampleScenario[];
 const locale = computed<keyof LocalizedText>(() => (getLocale() === "en" ? "en" : "zh-CN"));
 

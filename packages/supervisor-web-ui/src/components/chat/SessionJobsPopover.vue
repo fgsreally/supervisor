@@ -28,6 +28,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { ChevronRight, Clock3, RefreshCw } from "lucide-vue-next";
 import { getSessionTimers, type SessionTimer } from "@/api";
+import { isExampleSession } from "@/examples";
 import { useI18n } from "@/i18n";
 import ChatHeaderPopover from "./ChatHeaderPopover.vue";
 
@@ -48,6 +49,10 @@ const loading = ref(false);
 let poll: ReturnType<typeof setTimeout> | undefined;
 
 async function refresh() {
+  if (isExampleSession(props.sessionId)) {
+    timers.value = [];
+    return;
+  }
   loading.value = true;
   try {
     timers.value = (await getSessionTimers(props.sessionId)).timers;
@@ -68,7 +73,13 @@ function formatInterval(value: number): string {
   if (value % 60_000 === 0) return t("jobs.minutes", { count: value / 60_000 });
   return t("jobs.seconds", { count: value / 1000 });
 }
-function schedule() { if (poll) clearTimeout(poll); poll = setTimeout(() => { void refresh().finally(schedule); }, 60_000); }
+function schedule() {
+  if (poll) clearTimeout(poll);
+  if (isExampleSession(props.sessionId)) return;
+  poll = setTimeout(() => {
+    void refresh().finally(schedule);
+  }, 60_000);
+}
 watch(() => props.sessionId, () => void refresh().finally(schedule));
 onMounted(() => void refresh().finally(schedule));
 onBeforeUnmount(() => { if (poll) clearTimeout(poll); });

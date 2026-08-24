@@ -1,4 +1,4 @@
-import type { ChatAttachmentPart, ChatPastedTextPart } from "@/types/chat-entry";
+import type { ChatAttachmentPart, ChatImagePart, ChatPastedTextPart } from "@/types/chat-entry";
 
 export type UserPromptPart =
   | { type: "text"; text: string }
@@ -114,11 +114,14 @@ export function buildOptimisticUserParts(
     mimeType: string;
     size: number;
   }> = [],
-): Array<{ type: "text"; text: string } | ChatPastedTextPart | ChatAttachmentPart> {
+  images: Array<{ name: string; mediaId: string; mimeType: string; previewUrl?: string }> = [],
+): Array<{ type: "text"; text: string } | ChatImagePart | ChatPastedTextPart | ChatAttachmentPart> {
   const byId = new Map(pastedTexts.map((item) => [item.id, item]));
   const attachmentsById = new Map(attachments.map((item) => [item.id, item]));
   const tokenRe = /\uE000(?:paste|attachment):([a-zA-Z0-9_-]+)\uE001/g;
-  const parts: Array<{ type: "text"; text: string } | ChatPastedTextPart | ChatAttachmentPart> = [];
+  const parts: Array<
+    { type: "text"; text: string } | ChatImagePart | ChatPastedTextPart | ChatAttachmentPart
+  > = images.map((image) => ({ type: "image", ...image }));
   let cursor = 0;
   for (const match of text.matchAll(tokenRe)) {
     if (match.index! > cursor) parts.push({ type: "text", text: text.slice(cursor, match.index) });

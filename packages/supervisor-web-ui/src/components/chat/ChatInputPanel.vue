@@ -177,6 +177,7 @@ const props = defineProps<{
   sessionId?: string;
   workspaceId: string;
   agentId?: string;
+  demo?: boolean;
   disabled?: boolean;
   sendDisabled?: boolean;
   interrupting?: boolean;
@@ -260,7 +261,12 @@ const text = computed({
 
 const canSend = computed(
   () =>
-    (!!text.value.trim() || pendingImages.value.length > 0) &&
+    (!!text.value.trim() ||
+      pendingImages.value.length > 0 ||
+      attachments.value.length > 0 ||
+      Object.values(pastedTexts.value).some((item) =>
+        text.value.includes(makePastedTextToken(item.id)),
+      )) &&
     !props.disabled &&
     !props.sendDisabled,
 );
@@ -551,6 +557,13 @@ onMounted(() => {
 });
 
 async function loadAutocompleteData() {
+  if (props.demo) {
+    workspaceFiles.value = [];
+    skills.value = [];
+    prompts.value = [];
+    customCommands.value = [];
+    return;
+  }
   const cwd = props.workspaceId.trim();
   if (cwd) {
     try {
@@ -584,7 +597,7 @@ async function loadAutocompleteData() {
 }
 
 async function refreshSessionCommands(force = false) {
-  if (!props.sessionId) return;
+  if (props.demo || !props.sessionId) return;
   const sessionId = props.sessionId;
   if (!force && Date.now() - lastCommandRefresh < 1000) return;
   if (commandRefreshInFlight) return commandRefreshInFlight;
@@ -656,7 +669,7 @@ onBeforeUnmount(() => {
 watch(
   () => props.modelValue,
   (value) => {
-    if (/(^|\s)\/[^\s]*$/.test(value)) {
+    if (!props.demo && /(^|\s)\/[^\s]*$/.test(value)) {
       void refreshSessionCommands(true);
     }
   },
@@ -715,6 +728,23 @@ function appendTranscript(transcript: string) {
 
 function addPendingImage(file: File) {
   if (!file.type.startsWith("image/")) return;
+  if (props.demo) {
+    const id = `demo-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const index = pendingImages.value.length + 1;
+    const label = `[Image #${index}]`;
+    pendingImages.value.push({
+      id,
+      name: file.name || label,
+      mimeType: file.type,
+      previewUrl: URL.createObjectURL(file),
+      mediaId: id,
+      placeholder: label,
+    });
+    const separator = text.value && !/\s$/.test(text.value) ? " " : "";
+    text.value += `${separator}${label}`;
+    void nextTick(() => composerRef.value?.focus());
+    return;
+  }
   if (!props.sessionId) {
     showUiMessage(t("chat.input.openSessionFirst"), "error");
     return;
@@ -769,6 +799,21 @@ function onAttachmentInputChange(event: Event) {
 }
 
 function addPendingAttachment(file: File) {
+  if (props.demo) {
+    const id = `demo-attachment-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const attachment: PendingChatAttachment = {
+      id,
+      name: file.name || "example-file",
+      path: `@/examples/${file.name || "example-file"}`,
+      mimeType: file.type || "application/octet-stream",
+      size: file.size,
+    };
+    attachments.value.push(attachment);
+    const separator = text.value && !/\s$/.test(text.value) ? " " : "";
+    text.value += `${separator}${makeAttachmentToken(id)}`;
+    void nextTick(() => composerRef.value?.focus());
+    return;
+  }
   if (!props.sessionId) {
     showUiMessage(t("chat.input.openSessionFirst"), "error");
     return;
@@ -804,7 +849,7 @@ function removePendingAttachment(id: string) {
 
 function clearPendingImages() {
   for (const img of pendingImages.value) {
-    if (img.previewUrl.startsWith("blob:")) URL.revokeObjectURL(img.previewUrl);
+    if (!props.demo && img.previewUrl.startsWith("blob:")) URL.revokeObjectURL(img.previewUrl);
   }
   pendingImages.value = [];
 }

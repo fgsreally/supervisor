@@ -43,6 +43,7 @@ export interface ChatImagePart {
   name?: string;
   mediaId?: string;
   mimeType?: string;
+  previewUrl?: string;
   missing?: boolean;
 }
 

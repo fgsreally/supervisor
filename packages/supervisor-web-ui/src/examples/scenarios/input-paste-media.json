@@ -1,0 +1,41 @@
+{
+  "id": "input-paste-media",
+  "project": {
+    "id": "input-media",
+    "title": { "zh-CN": "多媒体输入", "en": "Media input" },
+    "description": {
+      "zh-CN": "测试粘贴图片、选择图片和添加文件后的输入与消息状态。",
+      "en": "Test pasted images, selected images, and file attachments in the composer and messages."
+    }
+  },
+  "session": {
+    "id": "paste-media",
+    "title": { "zh-CN": "图片与文件", "en": "Image and file input" },
+    "description": {
+      "zh-CN": "粘贴图片或添加文件后发送，整个过程不会上传或调用模型。",
+      "en": "Paste an image or add a file and send it without uploading or calling a model."
+    }
+  },
+  "rounds": [
+    {
+      "branches": [
+        {
+          "id": "1",
+          "label": { "zh-CN": "图片输入", "en": "Image input" },
+          "assistant": {
+            "zh-CN": "我看到了这张图片。这里是离线模拟回复，用来检查图片缩略图、预览和流式消息的表现。",
+            "en": "I can see the image. This offline response checks the thumbnail, preview, and streaming message states."
+          }
+        },
+        {
+          "id": "2",
+          "label": { "zh-CN": "文件输入", "en": "File input" },
+          "assistant": {
+            "zh-CN": "我收到了这个文件。这里是离线模拟回复，用来检查附件卡片、文件名过长和发送状态。",
+            "en": "I received the file. This offline response checks the attachment card, long filenames, and delivery states."
+          }
+        }
+      ]
+    }
+  ]
+}

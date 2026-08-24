@@ -42,7 +42,7 @@
         <div v-if="images.length" class="user-message-images relative z-10">
           <button
             v-for="(image, index) in previewableImages"
-            :key="image.mediaId || `${image.name}-${index}`"
+            :key="image.mediaId || image.previewUrl || `${image.name}-${index}`"
             type="button"
             class="user-message-images__thumb-btn"
             :title="t('imagePreview.open', { label: image.name })"
@@ -50,7 +50,7 @@
           >
             <img
               class="user-message-images__thumb"
-              :src="mediaUrl(image.mediaId!)"
+              :src="mediaUrl(image)"
               :alt="image.name"
               loading="lazy"
             />
@@ -135,7 +135,13 @@ import PastedTextDialog from "./PastedTextDialog.vue";
 const props = defineProps<{
   sessionId: string;
   text: string;
-  images?: Array<{ name: string; mediaId?: string; mimeType?: string; missing?: boolean }>;
+  images?: Array<{
+    name: string;
+    mediaId?: string;
+    mimeType?: string;
+    previewUrl?: string;
+    missing?: boolean;
+  }>;
   pastedTexts?: ChatPastedTextPart[];
   attachments?: ChatAttachmentPart[];
   file?: ChatUserFileAttachment | null;
@@ -159,16 +165,16 @@ const openedPastedText = ref<ChatPastedTextPart | null>(null);
 const openedPastedTextText = ref("");
 const openedPastedTextLoading = ref(false);
 const previewableImages = computed(() =>
-  images.value.filter((image) => image.mediaId && !image.missing),
+  images.value.filter((image) => (image.mediaId || image.previewUrl) && !image.missing),
 );
 
-function mediaUrl(mediaId: string): string {
-  return sessionMediaUrl(props.sessionId, mediaId);
+function mediaUrl(image: { mediaId?: string; previewUrl?: string }): string {
+  return image.previewUrl ?? (image.mediaId ? sessionMediaUrl(props.sessionId, image.mediaId) : "");
 }
 
 function openPreview(index: number) {
   const urls = previewableImages.value
-    .map((image) => (image.mediaId ? mediaUrl(image.mediaId) : ""))
+    .map((image) => mediaUrl(image))
     .filter(Boolean);
   openImagePreview(urls, index);
 }

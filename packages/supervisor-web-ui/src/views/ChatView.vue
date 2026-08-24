@@ -46,7 +46,7 @@
           >
             <ScrollText />
           </ChatHeaderAction>
-          <SessionCommitPopover :session-id="session.id" />
+          <SessionCommitPopover v-if="!demoSession" :session-id="session.id" />
           <ChatHeaderAction
             v-if="taskCount"
             :title="`Todo · ${taskTypeSummary}`"
@@ -57,7 +57,11 @@
             <ClipboardList />
           </ChatHeaderAction>
         </div>
-        <SessionJobsPopover :session-id="session.id" @detail="openJobDetail" />
+        <SessionJobsPopover
+          v-if="!demoSession"
+          :session-id="session.id"
+          @detail="openJobDetail"
+        />
         <ResponsivePopover
           v-if="hasServicePreviews && !isMobileViewport"
           v-model:open="previewPopoverOpen"
@@ -296,6 +300,7 @@
             :session-id="sessionIdRef"
             :workspace-id="demoSession ? '' : workspaceId"
             :agent-id="agentId"
+            :demo="demoSession"
             :disabled="inputDisabled"
             :send-disabled="isInitializing"
             :interrupting="canInterrupt"
@@ -529,7 +534,7 @@
       </ResponsiveSplitSurface>
 
       <SessionFileTreeSidebar
-        v-if="!isMobileViewport && showFileTreeSidebar"
+        v-if="!demoSession && !isMobileViewport && showFileTreeSidebar"
         :session-id="session.id"
         :selected-path="selectedFileTabPath"
         :changed-files="sessionChangedFiles"
@@ -1246,6 +1251,7 @@ function closeAllSidePanels() {
 }
 
 function openSidePanel(kind: SidePanelKind) {
+  if (demoSession.value && (kind === "log" || kind === "files")) return;
   if (isMobileViewport.value) closeAllSidePanels();
   switchFoldablePanel(kind === "log" ? "content" : kind);
   switch (kind) {
@@ -1484,6 +1490,10 @@ const queuedInputs = ref<api.QueuedSessionInput[]>([]);
 const queuedActionBusyId = ref<string | null>(null);
 
 async function refreshQueuedInputs(sessionId = props.session.id) {
+  if (isExampleSession(sessionId)) {
+    queuedInputs.value = [];
+    return;
+  }
   queuedInputs.value = await api.getQueuedSessionInputs(sessionId).catch(() => []);
 }
 
@@ -1701,11 +1711,13 @@ async function interruptCurrentTurn() {
 }
 
 async function reloadMessagesFromServer(sessionId: string, localSnapshot = chatEntries.value) {
+  if (isExampleSession(sessionId)) return;
   await applySessionMessages(sessionId, localSnapshot);
   void refreshSessionSideData(sessionId);
 }
 
 async function applySessionMessages(sessionId: string, localSnapshot = chatEntries.value) {
+  if (isExampleSession(sessionId)) return;
   await sessionStore.fetchSessionMessages(sessionId);
   historyHasMore.value = sessionStore.messageCursors[sessionId]?.hasMore ?? false;
   const entries = sessionStore.messages[sessionId] ?? [];
@@ -1745,6 +1757,10 @@ function applySessionSideData(
 let sessionSideDataGeneration = 0;
 
 async function refreshSessionSideData(sessionId: string) {
+  if (isExampleSession(sessionId)) {
+    applySessionSideData(sessionId, [], [], [], []);
+    return;
+  }
   const generation = ++sessionSideDataGeneration;
   const includeTaskContent = tasksDetailLoaded.value;
   const [nextQueued, nextTasks, nextTodos, checkpoints] = await Promise.all([
@@ -1762,6 +1778,7 @@ async function refreshSessionSideData(sessionId: string) {
 const tasksDetailLoaded = ref(false);
 
 async function loadFullSessionTasks(): Promise<void> {
+  if (isExampleSession(props.session.id)) return;
   if (tasksDetailLoaded.value) return;
   const sessionId = props.session.id;
   const full = await api.getSessionTasks(sessionId, { includeContent: true }).catch(() => null);
@@ -1771,6 +1788,7 @@ async function loadFullSessionTasks(): Promise<void> {
 }
 
 async function loadOlderMessages() {
+  if (isExampleSession(props.session.id)) return;
   if (loadingOlder.value || !historyHasMore.value) return;
   loadingOlder.value = true;
   const listEl = messageListRef.value?.containerRef;
@@ -1873,6 +1891,7 @@ async function maybeResumeRunningSession(
   sessionId: string,
   syncedStream?: api.SessionDeviceSyncSnapshot["stream"] | null,
 ) {
+  if (isExampleSession(sessionId)) return;
   if (sessionId !== props.session.id || isStreaming.value) return;
   let running = props.session.status === "running";
   let streamingReply: string | undefined;
@@ -2300,7 +2319,7 @@ watch(
       clearInterval(initializingPollTimer);
       initializingPollTimer = null;
     }
-    if (status !== "initializing") return;
+    if (isExampleSession(id) || status !== "initializing") return;
     initializingPollTimer = setInterval(() => {
       void sessionStore.fetchSession(id);
     }, 500);
@@ -2416,6 +2435,7 @@ function markPreviewFaviconFailed(preview: SessionServicesPreview) {
 }
 
 async function wakePreviewServicesIfNeeded(): Promise<boolean> {
+  if (isExampleSession(props.session.id)) return true;
   const status = sessionServices.value?.status;
   if (status !== "stopped" && status !== "idle") return true;
   previewLoading.value = true;
@@ -2579,7 +2599,7 @@ watch(
 );
 
 watch(pendingAsk, (ask, prev) => {
-  if (!!ask !== !!prev) {
+  if (!isExampleSession(props.session.id) && !!ask !== !!prev) {
     void sessionStore.fetchSession(props.session.id);
   }
   if (!ask) {
@@ -2826,6 +2846,7 @@ function navigateToSubagent(sessionId: string) {
 }
 
 function onAskAnswered() {
+  if (isExampleSession(props.session.id)) return;
   void sessionStore.fetchSession(props.session.id);
   if (isStreaming.value) {
     void scrollToBottom();
@@ -3090,6 +3111,28 @@ const sendMessage = async (payload: ChatSendPayload) => {
   suggestedQuestions.value = [];
   if (!isExampleSession(props.session.id)) void sessionDeviceSync.clearDraft(props.session.id);
 
+  if (isExampleSession(props.session.id)) {
+    inputText.value = "";
+    inputPanelRef.value?.clearAfterSend();
+    if (isStreaming.value) return;
+    const userEntry = createUserChatEntry(Date.now().toString(), text || " ");
+    if (
+      userEntry.type === "message" &&
+      (payload.images.length || payload.pastedTexts.length || payload.attachments.length)
+    ) {
+      userEntry.message.content = buildOptimisticUserParts(
+        text || " ",
+        payload.pastedTexts,
+        payload.attachments,
+        payload.images,
+      );
+    }
+    chatEntries.value.push(userEntry);
+    void scrollToBottom();
+    void sendStreamReply(text, payload.images, payload.pastedTexts, payload.attachments);
+    return;
+  }
+
   if (
     !payload.images.length &&
     !payload.pastedTexts.length &&
@@ -3133,13 +3176,6 @@ const sendMessage = async (payload: ChatSendPayload) => {
 
   inputText.value = "";
   inputPanelRef.value?.clearAfterSend();
-  if (isExampleSession(props.session.id)) {
-    if (isStreaming.value) return;
-    chatEntries.value.push(createUserChatEntry(Date.now().toString(), text || " "));
-    void scrollToBottom();
-    void sendStreamReply(text, payload.images, payload.pastedTexts, payload.attachments);
-    return;
-  }
   if (isStreaming.value) {
     // Queue above the composer; do not inject a chat bubble with "排队中".
     const images = payload.images.map((image) => ({
@@ -3164,11 +3200,15 @@ const sendMessage = async (payload: ChatSendPayload) => {
     return;
   }
   const userEntry = createUserChatEntry(Date.now().toString(), text || " ");
-  if (userEntry.type === "message" && (payload.pastedTexts.length || payload.attachments.length)) {
+  if (
+    userEntry.type === "message" &&
+    (payload.images.length || payload.pastedTexts.length || payload.attachments.length)
+  ) {
     userEntry.message.content = buildOptimisticUserParts(
       text || " ",
       payload.pastedTexts,
       payload.attachments,
+      payload.images,
     );
   }
   chatEntries.value.push(userEntry);

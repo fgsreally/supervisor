@@ -15,10 +15,22 @@ export function messageTextContent(content: unknown): string {
 
 export function messageImageParts(
   content: unknown,
-): Array<{ name: string; mediaId?: string; mimeType?: string; missing?: boolean }> {
+): Array<{
+  name: string;
+  mediaId?: string;
+  mimeType?: string;
+  previewUrl?: string;
+  missing?: boolean;
+}> {
+
   if (!Array.isArray(content)) return [];
-  const images: Array<{ name: string; mediaId?: string; mimeType?: string; missing?: boolean }> =
-    [];
+  const images: Array<{
+    name: string;
+    mediaId?: string;
+    mimeType?: string;
+    previewUrl?: string;
+    missing?: boolean;
+  }> = [];
   for (const part of content) {
     if (!part || typeof part !== "object" || (part as { type?: string }).type !== "image") continue;
     const mediaId =
@@ -37,6 +49,10 @@ export function messageImageParts(
       mimeType:
         typeof (part as { mimeType?: unknown }).mimeType === "string"
           ? (part as { mimeType: string }).mimeType
+          : undefined,
+      previewUrl:
+        typeof (part as { previewUrl?: unknown }).previewUrl === "string"
+          ? (part as { previewUrl: string }).previewUrl
           : undefined,
       missing: !!(part as { missing?: boolean }).missing,
     });

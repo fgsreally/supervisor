@@ -1016,6 +1016,10 @@ export async function getAuthStatus(): Promise<{
   return body;
 }
 
+export async function requestBuildPreviewUpdate(): Promise<{ ok: boolean; restarting?: boolean }> {
+  return fetchJson("/dev-preview/update", { method: "POST" });
+}
+
 /** Upload an avatar image and return its public path. */
 export async function uploadIcon(file: File): Promise<{ path: string }> {
   const body = new FormData();

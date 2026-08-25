@@ -171,6 +171,17 @@ components/<domain>/<Name>/
 - 微信小程序设计指南：https://developers.weixin.qq.com/miniprogram/design/
 - 微信开放社区设计相关文档：https://developers.weixin.qq.com/community/develop/doc
 
+## 本地开发服务
+
+### Start
+
+```
+pnpm --filter pi-supervisor run serve:dev -- --port ${PORT1}
+pnpm --filter pi-supervisor-ui run dev -- --port ${PORT2}
+```
+
+Supervisor 后端与 web-ui 同时启动方可完整访问 UI；后端代理前端静态资源与 API。
+
 ## 华生（助手模型）
 
 - 设置页只配置一个**助手模型**（`featureModels.assistant`），不再按功能拆分模型。

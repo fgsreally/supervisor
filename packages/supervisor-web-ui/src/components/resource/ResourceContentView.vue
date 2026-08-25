@@ -1,6 +1,14 @@
 <template>
-  <div class="resource-content-view" :class="{ 'resource-content-view--fill': fill ?? true }">
+  <div
+    class="resource-content-view"
+    :class="{
+      'resource-content-view--fill': fill ?? true,
+      'resource-content-view--markdown': renderMarkdown,
+    }"
+  >
+    <MarkdownContent v-if="renderMarkdown" :content="content" variant="terminal" />
     <CodeMirrorView
+      v-else
       :content="content"
       :language="editorLanguage"
       :fill="fill ?? true"
@@ -12,6 +20,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
+import MarkdownContent from "../base/MarkdownContent.vue";
 import CodeMirrorView, { type CodeMirrorLanguage } from "../base/CodeMirrorView.vue";
 import type { UIResourceKind } from "@/types/ui";
 
@@ -33,6 +42,8 @@ const editorLanguage = computed<CodeMirrorLanguage>(() => {
   return props.kind === "extensions" || props.kind === "mcp" ? "typescript" : "markdown";
 });
 
+const renderMarkdown = computed(() => editorLanguage.value === "markdown" && !props.editable);
+
 function onContentUpdate(value: string) {
   if (props.editable) emit("update:content", value);
 }
@@ -45,5 +56,10 @@ function onContentUpdate(value: string) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.resource-content-view--markdown {
+  overflow: auto;
+  padding: 1rem;
 }
 </style>

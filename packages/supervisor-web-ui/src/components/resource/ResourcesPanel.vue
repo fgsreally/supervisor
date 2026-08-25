@@ -101,7 +101,6 @@
       :open="extensionOpen"
       @close="extensionOpen = false"
       @installed="onExtensionInstalled"
-      @uninstalled="refreshAndSelect()"
     />
   </div>
 </template>

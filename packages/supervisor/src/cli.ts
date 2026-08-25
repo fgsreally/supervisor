@@ -39,6 +39,8 @@ const KNOWN_CLI_OPTIONS = new Set([
   "password",
   "tunnel",
   "ui-dir",
+  "tls-cert",
+  "tls-key",
   "locale",
   "h",
   "help",
@@ -118,6 +120,10 @@ async function run() {
     setSupervisorHome(home);
     setDefaultCwd(home);
   }
+  const homeArg = values.home as string | undefined;
+  if (homeArg) setSupervisorHome(resolveWorkspacePath(homeArg));
+  const workspaceArg = values.workspace as string | undefined;
+  if (workspaceArg) setDefaultCwd(resolveWorkspacePath(workspaceArg));
 
   const command = cli.matchedCommandName ?? "serve";
   let runtimeLock: RuntimeLock | undefined;
@@ -142,7 +148,20 @@ async function run() {
   switch (command) {
     case "serve": {
       const port = Number(values.port);
-      process.env.PI_SUPERVISOR_URL = `http://127.0.0.1:${port}`;
+      const tlsCertArg = rawCliValue("tls-cert");
+      const tlsKeyArg = rawCliValue("tls-key");
+      if (Boolean(tlsCertArg) !== Boolean(tlsKeyArg)) {
+        throw new Error("--tls-cert and --tls-key must be provided together");
+      }
+      const tls =
+        tlsCertArg && tlsKeyArg
+          ? {
+              cert: resolveWorkspacePath(tlsCertArg),
+              key: resolveWorkspacePath(tlsKeyArg),
+            }
+          : undefined;
+      const protocol = tls ? "https" : "http";
+      process.env.PI_SUPERVISOR_URL = `${protocol}://127.0.0.1:${port}`;
       const workspaceCwd = getDefaultCwd();
       manager.createProject({ cwd: workspaceCwd });
       ensureBuiltinAssistant(db, manager);
@@ -154,25 +173,30 @@ async function run() {
       const uiDir = resolveUiDistDir(rawCliValue("ui-dir"));
       const uiDistMissing = !uiDir;
       const devMode = process.env.PI_SUPERVISOR_DEV === "1";
+      const buildPreviewMode = process.env.PI_SUPERVISOR_BUILD_PREVIEW === "1";
       const uiPort = Number(process.env.PI_SUPERVISOR_UI_PORT || "5163");
-      const publicUrl = devMode ? buildDevPublicUrl(uiPort) : null;
+      const publicUrl = devMode ? buildDevPublicUrl(uiPort, true) : null;
       const app = createHttpServer(manager, {
         password: webPassword,
         tunnelQuick: wantTunnel,
         uiDir: uiDir ?? undefined,
       });
       registerWebSocketRoutes(app, webPassword, manager);
-      app.listen({ hostname: "0.0.0.0", port });
+      app.listen({ hostname: "0.0.0.0", port, ...(tls ? { tls } : {}) });
       // Do not run recovery, Git scans, or model-backed daily analysis in the
       // same turn that opens the HTTP listener. Accepting the socket before
       // these prefixes yield previously produced a listening-but-unresponsive
       // server during development startup.
-      setTimeout(() => {
-        manager.resumePersistedSessionInputs();
-      }, 250);
-      setTimeout(() => {
-        startDailyWorkScheduler(db);
-      }, 5_000);
+      if (!buildPreviewMode) {
+        setTimeout(() => {
+          manager.resumePersistedSessionInputs();
+        }, 250);
+      }
+      if (!buildPreviewMode) {
+        setTimeout(() => {
+          startDailyWorkScheduler(db);
+        }, 5_000);
+      }
 
       let tunnelUrl: string | null = null;
       if (wantTunnel) {
@@ -196,6 +220,7 @@ async function run() {
         tunnelUrl,
         uiDistMissing,
         devMode,
+        secure: Boolean(tls) || devMode,
       });
       printExternalAgentAvailability(manager.detectExternalAgents());
       break;

@@ -22,7 +22,12 @@
           </RouterView>
         </div>
       </template>
-      <AppShell v-else :tab="mainTab" :show-nav="mobileShowPrimaryNav" @navigate="onMobileRootNavigate">
+      <AppShell
+        v-else
+        :tab="mainTab"
+        :show-nav="mobileShowPrimaryNav"
+        @navigate="onMobileRootNavigate"
+      >
         <RouterView v-slot="{ Component }">
           <KeepAlive :include="TAB_PAGE_NAMES">
             <component :is="Component" />
@@ -52,6 +57,7 @@
       @close="closeProviderEdit"
       @saved="onProviderEditSaved"
     />
+    <BuildPreviewCompass v-if="buildPreviewMode && appReady" />
   </div>
 </template>
 
@@ -70,6 +76,7 @@ import StartupGate from "./components/layout/StartupGate.vue";
 import IntroTour from "./components/onboarding/IntroTour.vue";
 import AppShell from "./components/layout/AppShell/index.vue";
 import InstanceListView from "./components/settings/InstanceListView.vue";
+import BuildPreviewCompass from "./components/build-preview/BuildPreviewCompass.vue";
 import { useAppShell } from "./composables/use-app-shell";
 import "./styles/mobile/foundation.css";
 import "./styles/mobile/components.css";
@@ -79,6 +86,7 @@ import "./styles/font-scale.css";
 import "./styles/type-scale.css";
 
 const TAB_PAGE_NAMES = "ChatPage,TodoPage,DashboardPage,ContactsPage,SettingsPage";
+const buildPreviewMode = import.meta.env.VITE_SUPERVISOR_BUILD_PREVIEW === "1";
 
 const {
   isMobile,

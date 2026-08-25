@@ -222,21 +222,31 @@ export function parseProjectRuntimeSpec(rawInput: unknown): ProjectRuntimeSpec {
         : `/${legacyPathValue}`
       : undefined;
     if (!name || !startCommand) throw new Error(`服务 ${index + 1} 缺少名称或启动命令`);
-    const placeholders = extractPortPlaceholders(startCommand).filter((value) =>
-      /^PORT[1-9]\d*$/.test(value),
-    );
-    if (
-      placeholders.length === 0 ||
-      !placeholders.every((value, placeholderIndex) => value === `PORT${placeholderIndex + 1}`)
-    ) {
-      throw new Error(
-        `服务 ${name} 的启动命令必须使用连续的 \${PORT1} 占位符；` +
-          `startCommand=${JSON.stringify(startCommand)}；` +
-          `识别到的占位符=${JSON.stringify(placeholders)}`,
-      );
-    }
     return legacyPath ? { name, startCommand, path: legacyPath } : { name, startCommand };
   });
+  const placeholdersByDefinition = definitions.map((definition) =>
+    extractPortPlaceholders(definition.startCommand).filter((value) =>
+      /^PORT[1-9]\d*$/.test(value),
+    ),
+  );
+  const placeholders = [...new Set(placeholdersByDefinition.flat())].sort(
+    (left, right) => Number(left.slice(4)) - Number(right.slice(4)),
+  );
+  if (
+    definitions.length > 0 &&
+    (placeholdersByDefinition.some((values) => values.length === 0) ||
+      placeholders.length === 0 ||
+      !placeholders.every((value, placeholderIndex) => value === `PORT${placeholderIndex + 1}`))
+  ) {
+    const failed =
+      definitions[placeholdersByDefinition.findIndex((values) => values.length === 0)] ??
+      definitions[0];
+    throw new Error(
+      `服务 ${failed?.name ?? "unknown"} 的启动命令必须使用连续的 \${PORT1} 占位符；` +
+        `startCommand=${JSON.stringify(failed?.startCommand ?? "")}；` +
+        `识别到的占位符=${JSON.stringify(placeholders)}`,
+    );
+  }
   const definitionNames = new Set(definitions.map((item) => item.name));
   const views = (Array.isArray(rawServices.views) ? rawServices.views : []).map(
     (item, index): ProjectViewDefinition => {

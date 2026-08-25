@@ -29,7 +29,7 @@
     "dev": "tsup --watch",
     "serve:dev": "cross-env PI_SUPERVISOR_DEV=1 PI_SUPERVISOR_UI_PORT=5163 esno watch --loader ./scripts/md-loader.mjs src/cli.ts serve --port 3042 --cwd ../../playground --password 123456",
     "serve:playground": "esno --loader ./scripts/md-loader.mjs src/cli.ts serve --port 3040 --cwd ../../playground --password 123456",
-    "build": "tsup && shx cp -r src/db/sql dist/sql && shx cp -r src/db/migrations dist/migrations && shx mkdir -p dist/i18n && shx cp -r src/i18n/locales dist/i18n/locales",
+    "build": "tsup && shx rm -rf dist/sql dist/migrations dist/i18n && shx cp -r src/db/sql dist/sql && shx cp -r src/db/migrations dist/migrations && shx mkdir -p dist/i18n && shx cp -r src/i18n/locales dist/i18n/locales",
     "prepack": "pnpm run build",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "test": "vitest --run --config vitest.config.ts",

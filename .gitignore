@@ -19,7 +19,12 @@ coverage/
 *~
 packages/*/dist/
 packages/*/node_modules/
+extensions/*/node_modules/
 *.cpuprofile
+pnpm-debug.log
+*.local
+.env.local
+.env.*.local
 .pi_config/
 syntax.jsonl
 out.jsonl
@@ -33,4 +38,8 @@ docs/.vitepress/cache/
 docs/.vitepress/dist/
 
 # Playground — local dev workspace (db, agents, projects, worktrees)
-playground/
+/playground/
+playground/.supervisor/
+playground/supervisor.db-shm
+playground/supervisor.db-wal
+/playwright-*.png

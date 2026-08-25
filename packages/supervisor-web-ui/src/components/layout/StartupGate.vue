@@ -507,14 +507,16 @@ onUnmounted(() => {
   height: 72px;
   place-items: center;
   overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 32%);
+  border: 0;
   border-radius: 50%;
   background: radial-gradient(
     circle,
-    transparent 0 48%,
-    rgb(255 255 255 / 7%) 66%,
-    rgb(255 255 255 / 30%) 88%,
-    rgb(255 255 255 / 58%) 100%
+    transparent 0 18%,
+    rgb(255 255 255 / 3%) 34%,
+    rgb(255 255 255 / 9%) 50%,
+    rgb(255 255 255 / 20%) 66%,
+    rgb(255 255 255 / 38%) 83%,
+    rgb(255 255 255 / 68%) 100%
   );
   color: #fff;
   box-shadow:
@@ -582,13 +584,14 @@ onUnmounted(() => {
 }
 
 .pin-key--illuminated {
-  border-color: rgb(255 255 255 / 92%);
   background: radial-gradient(
     circle,
-    transparent 0 44%,
-    rgb(255 255 255 / 10%) 62%,
-    rgb(255 255 255 / 48%) 86%,
-    rgb(255 255 255 / 86%) 100%
+    transparent 0 18%,
+    rgb(255 255 255 / 7%) 34%,
+    rgb(255 255 255 / 19%) 50%,
+    rgb(255 255 255 / 40%) 66%,
+    rgb(255 255 255 / 68%) 83%,
+    rgb(255 255 255 / 96%) 100%
   );
   box-shadow:
     0 0 2px 1px rgb(255 255 255 / 52%),
@@ -596,6 +599,25 @@ onUnmounted(() => {
     inset 0 0 12px rgb(255 255 255 / 42%);
   transition-duration: 55ms;
   transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .pin-key:hover:not(:active, :disabled) {
+    background: radial-gradient(
+      circle,
+      transparent 0 6%,
+      rgb(255 255 255 / 7%) 18%,
+      rgb(255 255 255 / 18%) 34%,
+      rgb(255 255 255 / 38%) 50%,
+      rgb(255 255 255 / 66%) 68%,
+      rgb(255 255 255 / 88%) 84%,
+      rgb(255 255 255) 100%
+    );
+    box-shadow:
+      0 0 3px 1px rgb(255 255 255 / 64%),
+      0 0 32px 8px rgb(255 255 255 / 30%),
+      inset 0 0 18px rgb(255 255 255 / 52%);
+  }
 }
 
 .pin-key--illuminated .pin-key__label {

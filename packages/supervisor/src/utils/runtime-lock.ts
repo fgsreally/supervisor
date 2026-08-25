@@ -19,7 +19,11 @@ function isProcessAlive(pid: number): boolean {
 
 /** Prevent multiple Supervisor servers from sharing one SQLite workspace. */
 export function acquireRuntimeLock(): RuntimeLock {
-  const path = join(getSupervisorHome(), "supervisor.runtime.lock");
+  const suffix =
+    process.env.PI_SUPERVISOR_RUNTIME_LOCK_SUFFIX?.trim() ??
+    (process.env.PI_SUPERVISOR_BUILD_PREVIEW === "1" ? "build-preview" : undefined);
+  const filename = suffix ? `supervisor.runtime.${suffix}.lock` : "supervisor.runtime.lock";
+  const path = join(getSupervisorHome(), filename);
   mkdirSync(getSupervisorHome(), { recursive: true });
   if (existsSync(path)) {
     const pid = Number.parseInt(readFileSync(path, "utf8").trim(), 10);

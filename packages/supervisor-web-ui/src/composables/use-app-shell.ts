@@ -190,12 +190,20 @@ export const useAppShell = createGlobalState(() => {
   }
 
   async function preloadBaseData(): Promise<void> {
-    await Promise.allSettled([
-      sessionStore.fetchProjects(),
-      sessionStore.fetchSessions(),
-      agentStore.fetchAgents(),
-      providerStore.fetchProviders(),
-    ]);
+    const tab = tabFromRoute(route);
+    const requests: Promise<unknown>[] = [];
+    if (tab === "chat") {
+      requests.push(
+        sessionStore.fetchProjects(),
+        sessionStore.fetchSessions(),
+        agentStore.fetchAgents(),
+      );
+    } else if (tab === "contacts") {
+      requests.push(agentStore.fetchAgents());
+    } else if (tab === "providers") {
+      requests.push(providerStore.fetchProviders());
+    }
+    await Promise.allSettled(requests);
   }
 
   async function loadTabData(tab: MainTab): Promise<boolean> {

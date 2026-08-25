@@ -1,6 +1,12 @@
 import type { TranslationMessages } from "../types";
 
 const messages: TranslationMessages = {
+  "buildPreview.open": "打开预览控制",
+  "buildPreview.update": "更新预览",
+  "buildPreview.updating": "正在更新…",
+  "buildPreview.restarting": "正在重新构建并重启预览…",
+  "buildPreview.restartTimeout": "预览重启超时，请检查构建服务。",
+  "buildPreview.failed": "预览更新失败",
   "chat.shadowPrompt.default": "Shadow 默认",
   "chat.shadowPrompt.custom": "当前 Session 提示词",
   "chat.shadowPrompt.active": "已附加",

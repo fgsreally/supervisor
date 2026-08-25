@@ -30,6 +30,14 @@ interface ExternalSessionFile extends ExternalSessionCandidate {
   file: string;
 }
 
+const discoveredSessions = new Map<string, ExternalSessionFile>();
+
+function externalSessionKey(
+  session: Pick<ExternalSessionCandidate, "backend" | "externalSessionId">,
+): string {
+  return `${session.backend}:${session.externalSessionId}`;
+}
+
 function jsonlFiles(root: string): string[] {
   if (!existsSync(root)) return [];
   return readdirSync(root, { recursive: true, withFileTypes: true })
@@ -542,13 +550,18 @@ async function discoverFiles(limit: number): Promise<ExternalSessionFile[]> {
   const inspected = await Promise.all(
     recent.slice(0, Math.max(limit * 3, 60)).map((item) => item.inspect(item.file)),
   );
-  return inspected.filter((item): item is ExternalSessionFile => item !== null).slice(0, limit);
+  for (const item of inspected) {
+    if (!item) continue;
+    const key = externalSessionKey(item);
+    const previous = discoveredSessions.get(key);
+    if (!previous || item.lastActiveAt > previous.lastActiveAt) discoveredSessions.set(key, item);
+  }
+  return [...discoveredSessions.values()]
+    .sort((left, right) => right.lastActiveAt.localeCompare(left.lastActiveAt))
+    .slice(0, limit);
 }
 
-export async function listExternalSessions(
-  limit = 40,
-  offset = 0,
-): Promise<ExternalSessionPage> {
+export async function listExternalSessions(limit = 40, offset = 0): Promise<ExternalSessionPage> {
   const pageSize = Math.min(Math.max(limit, 1), 100);
   const start = Math.max(offset, 0);
   const files = await discoverFiles(start + pageSize + 1);
@@ -564,12 +577,19 @@ export async function loadExternalSession(
   backend: ImportableExternalBackend,
   externalSessionId: string,
 ): Promise<{ candidate: ExternalSessionCandidate; entries: SessionTreeEntry[] }> {
-  // The picker can expose conversations far older than the first page. Search
-  // every source file here so selecting an old conversation remains importable.
-  const files = await discoverFiles(Number.MAX_SAFE_INTEGER);
-  const match = files.find(
-    (item) => item.backend === backend && item.externalSessionId === externalSessionId,
-  );
+  const key = externalSessionKey({ backend, externalSessionId });
+  const cached = discoveredSessions.get(key);
+  let match = cached;
+  if (!match) {
+    const root =
+      backend === "codex"
+        ? join(homedir(), ".codex", "sessions")
+        : join(homedir(), ".claude", "projects");
+    const inspect = backend === "codex" ? inspectCodex : inspectClaude;
+    const files = jsonlFiles(root).filter((file) => file.includes(externalSessionId));
+    const inspected = await Promise.all(files.map((file) => inspect(file)));
+    match = inspected.find((item) => item && externalSessionKey(item) === key) ?? undefined;
+  }
   if (!match) throw new Error("External session was not found");
 
   const entries: SessionTreeEntry[] = [];

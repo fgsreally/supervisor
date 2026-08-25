@@ -16,11 +16,15 @@ export function createSupervisorCli(): CAC {
       "--cwd <path>",
       "Supervisor global root (db/public/global/agents/projects; default: ~/.supervisor)",
     )
+    .option("--home <path>", "Supervisor state root (overrides --cwd for runtime data)")
+    .option("--workspace <path>", "Default project workspace (overrides --cwd for project files)")
     .option("--password <pin>", "6-digit numeric PIN for the web UI (default: random)")
     .option("--tunnel", "Expose via Cloudflare Quick Tunnel (auto-downloads cloudflared)", {
       default: false,
     })
     .option("--ui-dir <path>", "Directory of built web UI (defaults to auto-detect dist)")
+    .option("--tls-cert <path>", "TLS certificate for HTTPS")
+    .option("--tls-key <path>", "TLS private key for HTTPS")
     .option("--locale <locale>", "Console language: en or zh-CN (default: system locale)")
     .help();
   cli.command("serve", MODULE_DESCRIPTIONS.serve, { allowUnknownOptions: true });

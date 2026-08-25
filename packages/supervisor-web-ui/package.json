@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc && vite build",
+    "build:preview": "vue-tsc && vite build --mode preview",
     "build:watch": "vite build --watch",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",

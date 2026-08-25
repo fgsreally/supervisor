@@ -24,7 +24,9 @@
       >
         <RefreshCw class="w-4 h-4" :class="loading ? 'animate-spin' : ''" />
       </button>
-      <div class="session-file-tree-sidebar__title min-w-0 flex-1">{{ t("session.files.workspace") }}</div>
+      <div class="session-file-tree-sidebar__title min-w-0 flex-1">
+        {{ t("session.files.workspace") }}
+      </div>
     </div>
     <SessionFileTreePane
       class="session-file-tree-sidebar__tree"
@@ -33,7 +35,6 @@
       :loading="loading"
       :list-error="listError"
       :changed-files="changedFiles"
-      default-open
       @select="$emit('select', $event)"
       @refresh="refresh"
     />

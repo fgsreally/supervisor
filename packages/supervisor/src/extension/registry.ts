@@ -38,6 +38,10 @@ export class ExtensionModuleRegistry {
       return;
     }
     await this.loadResource(slug, resource.sourcePath);
+    const loaded = this.modules.get(slug);
+    if (loaded?.definition.externalAgents?.length) {
+      ensureExtensionExternalAgents(db, slug, loaded.definition.externalAgents);
+    }
   }
 
   private async loadResource(slug: string, sourcePath: string | null): Promise<void> {

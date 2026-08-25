@@ -21,6 +21,7 @@ export interface StartupBannerOptions {
   tunnelUrl?: string | null;
   uiDistMissing?: boolean;
   devMode?: boolean;
+  secure?: boolean;
 }
 
 function kv(label: string, value: string, valueStyle: (s: string) => string = pc.white): string {
@@ -39,17 +40,20 @@ export function resolveScanUrl(options: {
   port: number;
   publicUrl?: string | null;
   tunnelUrl?: string | null;
+  secure?: boolean;
 }): { url: string | null; kind: "tunnel" | "dev" | "lan" | null } {
   if (options.tunnelUrl?.trim()) return { url: options.tunnelUrl.trim(), kind: "tunnel" };
   if (options.publicUrl?.trim()) return { url: options.publicUrl.trim(), kind: "dev" };
   const lanIp = getLanIPv4();
-  if (lanIp) return { url: `http://${lanIp}:${options.port}`, kind: "lan" };
+  if (lanIp) {
+    return { url: `${options.secure ? "https" : "http"}://${lanIp}:${options.port}`, kind: "lan" };
+  }
   return { url: null, kind: null };
 }
 
-export function buildDevPublicUrl(uiPort: number): string | null {
+export function buildDevPublicUrl(uiPort: number, secure = false): string | null {
   const lanIp = getLanIPv4();
-  return lanIp ? `http://${lanIp}:${uiPort}` : null;
+  return lanIp ? `${secure ? "https" : "http"}://${lanIp}:${uiPort}` : null;
 }
 
 function firewallHint(ports: number[]): string | null {
@@ -62,11 +66,27 @@ function firewallHint(ports: number[]): string | null {
 }
 
 export function printStartupBanner(options: StartupBannerOptions): void {
-  const { port, pin, pinGenerated, home, database, devMode, publicUrl, tunnelUrl, uiDistMissing } =
-    options;
+  const {
+    port,
+    pin,
+    pinGenerated,
+    home,
+    database,
+    devMode,
+    secure,
+    publicUrl,
+    tunnelUrl,
+    uiDistMissing,
+  } = options;
   const uiPort = Number(process.env.PI_SUPERVISOR_UI_PORT || "5163");
-  const desktopUrl = devMode ? `http://127.0.0.1:${uiPort}` : `http://127.0.0.1:${port}`;
-  const { url: scanUrl, kind: scanKind } = resolveScanUrl({ port, publicUrl, tunnelUrl });
+  const scheme = secure ? "https" : "http";
+  const desktopUrl = devMode ? `${scheme}://127.0.0.1:${uiPort}` : `${scheme}://127.0.0.1:${port}`;
+  const { url: scanUrl, kind: scanKind } = resolveScanUrl({
+    port,
+    publicUrl,
+    tunnelUrl,
+    secure,
+  });
   const pinText = pinGenerated ? pin : pc.dim("(configured)");
   const lines: string[] = [];
 

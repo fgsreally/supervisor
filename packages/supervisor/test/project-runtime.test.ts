@@ -105,6 +105,20 @@ describe("project runtime parsing", () => {
     ).not.toBeNull();
   });
 
+  it("accepts consecutive port placeholders across service definitions", () => {
+    expect(
+      parseProjectRuntimeSpec({
+        description: "demo",
+        services: {
+          definitions: [
+            { name: "backend", startCommand: "pnpm serve --port ${PORT1}" },
+            { name: "web", startCommand: "pnpm dev --port ${PORT2}" },
+          ],
+        },
+      }).services.definitions,
+    ).toHaveLength(2);
+  });
+
   it("extracts unique cross-platform port placeholders", () => {
     expect(extractPortPlaceholders("A=$PORT B=${API_PORT} C=%PORT% D=${API_PORT}")).toEqual([
       "API_PORT",

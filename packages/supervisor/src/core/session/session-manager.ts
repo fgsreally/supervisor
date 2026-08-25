@@ -2661,6 +2661,7 @@ export class SessionManager {
     const existing = this.list().find(
       (session) => session.externalSessionId === options.externalSessionId,
     );
+    if (existing && !options.replace) return existing;
     if (existing) {
       if (!options.replace) {
         throw new Error(`该外部对话已导入为会话 #${existing.id}，不可重复引入`);
@@ -3155,17 +3156,6 @@ export class SessionManager {
     }
 
     let runtime = this.runtimes.get(id);
-    if (!runtime?.extension && session?.projectId != null) {
-      try {
-        runtime = await this.ensureRuntime(id);
-      } catch (error: unknown) {
-        sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", {
-          id,
-          step: "attach_for_delete",
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
 
     if (runtime?.extension) {
       sessionLog(id, "debug", "session.before_delete start", ["system", "lifecycle"]);

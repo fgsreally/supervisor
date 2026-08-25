@@ -72,6 +72,28 @@ function numberedPortPlaceholders(command: string): string[] {
   ].sort((left, right) => Number(left.slice(4)) - Number(right.slice(4)));
 }
 
+function localizeProjectServiceCommand(command: string): {
+  command: string;
+  ports: Map<string, string>;
+} {
+  // Project parsing numbers ports globally; UpdateService allocates them per service.
+  const ports = new Map(
+    numberedPortPlaceholders(command).map((name, index) => [name, `PORT${index + 1}`]),
+  );
+  const localized = command.replace(
+    /\$\{(PORT[1-9]\d*)\}|\$(PORT[1-9]\d*)|%(PORT[1-9]\d*)%/g,
+    (match, brace: string | undefined, dollar: string | undefined, percent: string | undefined) => {
+      const source = brace ?? dollar ?? percent;
+      const target = source ? ports.get(source) : undefined;
+      if (!target) return match;
+      if (brace) return `\${${target}}`;
+      if (dollar) return `$${target}`;
+      return `%${target}%`;
+    },
+  );
+  return { command: localized, ports };
+}
+
 export function validateNumberedPortPlaceholders(command: string): string[] | null {
   const names = numberedPortPlaceholders(command);
   if (names.length === 0) return null;
@@ -587,6 +609,13 @@ const projectServicesExtension: ExtensionDefinition = {
       if (!projectServices || projectServices.definitions.length === 0) return;
       if (hasRegisteredServices(await readServices())) return;
 
+      const localizedDefinitions = new Map(
+        projectServices.definitions.map((definition) => [
+          definition.name,
+          localizeProjectServiceCommand(definition.startCommand),
+        ]),
+      );
+
       for (const definition of projectServices.definitions) {
         if (hasRegisteredServices(await readServices())) {
           const current = await readServices();
@@ -596,7 +625,8 @@ const projectServicesExtension: ExtensionDefinition = {
           {
             action: "add",
             name: definition.name,
-            startCommand: definition.startCommand,
+            startCommand:
+              localizedDefinitions.get(definition.name)?.command ?? definition.startCommand,
             path: definition.path,
             installCommand: projectServices.installCommand,
           },
@@ -612,8 +642,10 @@ const projectServicesExtension: ExtensionDefinition = {
       if (current && (projectServices.views?.length ?? 0) > 0) {
         const views = projectServices.views!.flatMap((view) => {
           const service = current.services?.find((app) => app.name === view.service);
+          const localPort =
+            localizedDefinitions.get(view.service)?.ports.get(view.port) ?? view.port;
           const port =
-            service?.portEnv?.[view.port] ?? (view.port === "PORT1" ? service?.port : undefined);
+            service?.portEnv?.[localPort] ?? (localPort === "PORT1" ? service?.port : undefined);
           return service && port
             ? [{ name: view.name, service: view.service, port, path: view.path }]
             : [];

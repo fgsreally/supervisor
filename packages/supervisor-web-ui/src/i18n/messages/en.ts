@@ -1,6 +1,12 @@
 import type { TranslationMessages } from "../types";
 
 const messages: TranslationMessages = {
+  "buildPreview.open": "Open preview controls",
+  "buildPreview.update": "Update preview",
+  "buildPreview.updating": "Updating…",
+  "buildPreview.restarting": "Rebuilding and restarting preview…",
+  "buildPreview.restartTimeout": "Preview restart timed out. Check the build service.",
+  "buildPreview.failed": "Preview update failed",
   "chat.shadowPrompt.default": "Shadow default",
   "chat.shadowPrompt.custom": "Current session prompt",
   "chat.shadowPrompt.active": "Attached",

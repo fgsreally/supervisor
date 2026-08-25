@@ -234,6 +234,7 @@ const API_PATH_PREFIXES = [
   "/watson",
   "/client-cache",
   "/logs",
+  "/dev-preview",
 ];
 
 /** Auth-exempt UI shell when uiDir is set (PIN lives in the SPA, not HTTP middleware). */
@@ -434,7 +435,20 @@ export function createHttpServer(
   });
   appendSystemLog(`HTTP server initialized pid=${process.pid}`);
 
-  app.get("/healthz", (c) => c.json({ ok: true, tunnelQuick }));
+  app.get("/healthz", (c) =>
+    c.json({
+      ok: true,
+      tunnelQuick,
+      buildPreview: process.env.PI_SUPERVISOR_BUILD_PREVIEW === "1",
+    }),
+  );
+  app.post("/dev-preview/update", (c) => {
+    if (process.env.PI_SUPERVISOR_BUILD_PREVIEW !== "1") {
+      return jsonError(c, 404, "build preview is not enabled");
+    }
+    setTimeout(() => process.exit(75), 100);
+    return c.json({ ok: true, restarting: true });
+  });
   app.get("/auth/status", (c) =>
     c.json({
       required: Boolean(password),

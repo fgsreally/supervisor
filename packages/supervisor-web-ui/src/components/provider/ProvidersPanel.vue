@@ -1,9 +1,6 @@
 <template>
   <div class="provider-panel">
-    <div
-      v-if="!mobileSearchOpen"
-      class="provider-panel__header m-centered-list-header"
-    >
+    <div v-if="!mobileSearchOpen" class="provider-panel__header m-centered-list-header">
       <h1 class="provider-panel__title">{{ t("provider.title") }}</h1>
       <div class="m-centered-list-header__actions">
         <button
@@ -64,7 +61,9 @@
       class="context-menu fixed z-50 rounded-md shadow-lg border overflow-hidden"
       :style="{ left: `${menu.x}px`, top: `${menu.y}px` }"
     >
-      <button type="button" class="context-menu-item" @click="editSelected">{{ t("provider.edit") }}</button>
+      <button type="button" class="context-menu-item" @click="editSelected">
+        {{ t("provider.edit") }}
+      </button>
       <button
         type="button"
         class="context-menu-item context-menu-item--danger"
@@ -192,6 +191,16 @@ function deleteSelected() {
 .provider-panel__header {
   background: var(--app-list-header-bg);
   border-color: var(--app-header-divider, var(--app-border-subtle));
+}
+
+@media (min-width: 768px) {
+  .provider-panel > .provider-panel__header:first-child {
+    display: flex;
+    min-height: 4rem;
+    align-items: center;
+    padding: 0 1rem;
+    border-bottom: 1px solid var(--app-header-divider, var(--app-border-subtle));
+  }
 }
 
 .provider-panel__muted {

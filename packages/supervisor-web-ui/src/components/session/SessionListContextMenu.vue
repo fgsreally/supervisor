@@ -19,7 +19,7 @@
           type="button"
           class="session-context-menu__item w-full px-4 py-2 text-left text-[13px]"
           :class="{ 'session-context-menu__item--danger': action.danger }"
-          @click="runAction(action.id)"
+          @click.stop="runAction(action.id)"
         >
           {{ action.label }}
         </button>
@@ -39,7 +39,7 @@
           :key="`sheet-${action.id}`"
           type="button"
           :class="{ 'session-sheet__actions--danger': action.danger }"
-          @click="runAction(action.id)"
+          @click.stop="runAction(action.id)"
         >
           {{ action.label }}
         </button>

@@ -472,11 +472,7 @@ import { withUiBusy } from "@/composables/use-ui-busy";
 import { useI18n } from "@/i18n";
 import ExternalSessionImportDialog from "./ExternalSessionImportDialog.vue";
 import DustTransitionGroup from "@/components/base/DustTransitionGroup.vue";
-import {
-  isAdvancedAnimationEnabled,
-  queryDustTarget,
-  withDustRemove,
-} from "@/composables/use-dust-transition";
+import { isAdvancedAnimationEnabled } from "@/composables/use-dust-transition";
 import ProjectCreateDialog from "../project/ProjectCreateDialog.vue";
 import ProjectGitMenu from "../project/ProjectGitMenu.vue";
 import ProjectListContextMenu from "../project/ProjectListContextMenu.vue";
@@ -1121,12 +1117,8 @@ async function confirmDeleteSession() {
       next.delete(target.sessionId);
       unpinLeaveIds.value = next;
     }
-    // Advanced → dust then delete. Basic → delete and let TransitionGroup slide left.
-    const row = queryDustTarget(`[data-session-id="${CSS.escape(target.sessionId)}"]`);
     emit("delete", target.sessionId);
-    await withUiBusy(t("session.list.deleting"), () =>
-      withDustRemove(row, () => sessionStore.deleteSession(target.sessionId)),
-    );
+    await sessionStore.deleteSession(target.sessionId);
     showUiMessage(t("session.list.sessionDeleted"), "success");
   } catch (error) {
     emit("select", target.sessionId);

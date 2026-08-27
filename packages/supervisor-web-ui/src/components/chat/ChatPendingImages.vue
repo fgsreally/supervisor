@@ -1,7 +1,14 @@
 <template>
   <div v-if="images.length" class="pending-images">
     <div v-for="img in images" :key="img.id" class="pending-images__item">
-      <img :src="img.previewUrl" :alt="img.name" class="pending-images__thumb" />
+      <button
+        type="button"
+        class="pending-images__preview"
+        :title="t('imagePreview.open', { label: img.name })"
+        @click="openPendingImage(img)"
+      >
+        <img :src="img.previewUrl" :alt="img.name" class="pending-images__thumb" />
+      </button>
       <button
         type="button"
         class="pending-images__remove"
@@ -17,14 +24,23 @@
 <script setup lang="ts">
 import { X } from "lucide-vue-next";
 import { useI18n } from "@/i18n";
+import { openImagePreview } from "@/composables/use-image-preview";
 import type { PendingChatImage } from "@/types/chat-compose";
 
-defineProps<{
+const props = defineProps<{
   images: PendingChatImage[];
 }>();
 
 const emit = defineEmits<{ remove: [id: string] }>();
 const { t } = useI18n();
+
+function openPendingImage(item: PendingChatImage) {
+  const index = props.images.findIndex((image) => image.id === item.id);
+  openImagePreview(
+    props.images.map((image) => image.previewUrl),
+    index < 0 ? 0 : index,
+  );
+}
 </script>
 
 <style scoped>
@@ -37,8 +53,11 @@ const { t } = useI18n();
 
 .pending-images__item {
   position: relative;
-  width: 4.5rem;
-  height: 4.5rem;
+  display: flex;
+  width: fit-content;
+  height: fit-content;
+  max-width: 4.5rem;
+  max-height: 4.5rem;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--app-accent) 18%, var(--app-border));
@@ -47,10 +66,24 @@ const { t } = useI18n();
 }
 
 .pending-images__thumb {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+  width: auto;
+  height: auto;
+  max-width: 4.5rem;
+  max-height: 4.5rem;
+  object-fit: contain;
   display: block;
+}
+
+.pending-images__preview {
+  display: block;
+  width: fit-content;
+  height: fit-content;
+  max-width: 4.5rem;
+  max-height: 4.5rem;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
 }
 
 .pending-images__remove {

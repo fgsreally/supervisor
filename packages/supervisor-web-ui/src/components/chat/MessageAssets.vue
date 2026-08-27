@@ -67,7 +67,10 @@ function openPreview(asset: MessageAsset) {
   width: min(8.5rem, 36vw);
 }
 .asset-media-btn {
-  display: block;
+  display: inline-flex;
+  width: fit-content;
+  max-width: 100%;
+  max-height: 8.5rem;
   padding: 0;
   border: 0;
   border-radius: 0.5rem;
@@ -77,9 +80,11 @@ function openPreview(asset: MessageAsset) {
 
 .asset-media {
   display: block;
-  width: min(8.5rem, 36vw);
-  aspect-ratio: 1;
-  object-fit: cover;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 8.5rem;
+  object-fit: contain;
   border-radius: 0.5rem;
   background: #000;
 }

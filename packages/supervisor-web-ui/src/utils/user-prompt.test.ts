@@ -78,6 +78,21 @@ describe("user prompt pasted text", () => {
     });
   });
 
+  it("keeps image parts at their editor placeholder positions", () => {
+    expect(
+      buildOptimisticUserParts(
+        "before [Image #1] after",
+        [],
+        [],
+        [{ name: "image.png", mediaId: "image.png", mimeType: "image/png" }],
+      ),
+    ).toEqual([
+      { type: "text", text: "before " },
+      { type: "image", name: "image.png", mediaId: "image.png", mimeType: "image/png" },
+      { type: "text", text: " after" },
+    ]);
+  });
+
   it("parses and renders attachment tags", () => {
     const attachment = {
       id: "a1",

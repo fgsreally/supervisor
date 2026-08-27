@@ -118,13 +118,25 @@ export function buildOptimisticUserParts(
 ): Array<{ type: "text"; text: string } | ChatImagePart | ChatPastedTextPart | ChatAttachmentPart> {
   const byId = new Map(pastedTexts.map((item) => [item.id, item]));
   const attachmentsById = new Map(attachments.map((item) => [item.id, item]));
-  const tokenRe = /\uE000(?:paste|attachment):([a-zA-Z0-9_-]+)\uE001/g;
+  const imageByIndex = new Map(
+    images.map(({ name, mediaId, mimeType }, index) => [
+      index + 1,
+      { type: "image" as const, name, mediaId, mimeType },
+    ]),
+  );
+  const tokenRe = /\uE000(?:paste|attachment):([a-zA-Z0-9_-]+)\uE001|\[Image\s*#\s*(\d+)\]/gi;
   const parts: Array<
     { type: "text"; text: string } | ChatImagePart | ChatPastedTextPart | ChatAttachmentPart
-  > = images.map(({ name, mediaId, mimeType }) => ({ type: "image", name, mediaId, mimeType }));
+  > = [];
   let cursor = 0;
   for (const match of text.matchAll(tokenRe)) {
     if (match.index! > cursor) parts.push({ type: "text", text: text.slice(cursor, match.index) });
+    if (match[2]) {
+      const image = imageByIndex.get(Number(match[2]));
+      parts.push(image ?? { type: "text", text: match[0] });
+      cursor = match.index! + match[0].length;
+      continue;
+    }
     const item = byId.get(match[1]!);
     const attachment = attachmentsById.get(match[1]!);
     if (match[0].startsWith("\uE000paste:") && item)

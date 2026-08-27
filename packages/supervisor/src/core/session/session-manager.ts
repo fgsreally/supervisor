@@ -5,7 +5,6 @@ import {
   type AgentEvent,
   AgentHarness,
   type AgentHarnessEvent,
-  type AgentMessage,
   Session as AgentSession,
   type AgentTool,
   type SessionTreeEntry,
@@ -62,11 +61,7 @@ import {
 } from "../tasks/home-task-plan.js";
 import { scheduleReadyHomeTasks } from "../tasks/home-task-scheduler.js";
 import { isFeatureModelRef, readSupervisorSettings } from "../../utils/supervisor-settings.js";
-import {
-  applyProjectRuntimeParse,
-  runProjectRuntimeParse,
-  type SessionServicesMeta,
-} from "../project/project-runtime.js";
+import { applyProjectRuntimeParse, runProjectRuntimeParse } from "../project/project-runtime.js";
 import {
   parseSessionServicesMeta,
   getSessionServicesStatus,
@@ -166,7 +161,6 @@ import {
   listExternalSessions,
   loadExternalSession,
   materializeImportedImages,
-  type ExternalSessionCandidate,
   type ImportableExternalBackend,
 } from "./external/external-session-import.js";
 import {
@@ -3196,39 +3190,19 @@ export class SessionManager {
       }
       for (const child of this.children(id)) {
         if (child.spawnType === "subagent" || child.spawnType === "btw") {
-          await this.delete(child.id, options);
+          void this.delete(child.id, options).catch((error: unknown) => {
+            appendSystemLog(
+              `Session delete id=${child.id} background failure: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+              "error",
+              ["session", "lifecycle"],
+            );
+          });
         }
       }
 
       let runtime = this.runtimes.get(id);
-
-      if (runtime?.extension) {
-        sessionLog(id, "debug", "session.before_delete start", ["system", "lifecycle"]);
-        try {
-          await timedDeleteStep("beforeDelete", () =>
-            runtime.extension!.emit({
-              type: "session.before_delete",
-              sessionId: id,
-            } as ExtensionEvent),
-          );
-          sessionLog(id, "debug", "session.before_delete done", ["system", "lifecycle"]);
-        } catch (error: unknown) {
-          sessionLog(id, "error", "session.before_delete failed", ["system", "lifecycle"], {
-            error: error instanceof Error ? error.message : String(error),
-          });
-          sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", {
-            id,
-            step: "before_delete",
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-      // Start cleanup while the Session still exists, but remove its DB record before
-      // waiting so concurrent lists cannot keep presenting it as imported.
-      const unloadEval = timedDeleteStep("unloadEval", () => this.unloadEval(id));
-      const stopOwnedShellJobs = timedDeleteStep("stopOwnedShellJobs", () =>
-        this.stopOwnedShellJobs(id),
-      );
 
       if (runtime) {
         this.runtimes.delete(id);
@@ -3243,13 +3217,6 @@ export class SessionManager {
       const git = session
         ? resolveSessionGitContext({ sessionId: id, cwd: session.cwd, projectCwd })
         : null;
-      sessionLog(
-        id,
-        "info",
-        `Session deleted${projectId == null ? "" : ` projectId=${projectId}`}`,
-        ["system", "lifecycle"],
-        projectId == null ? undefined : { projectId },
-      );
       appendSystemLog(
         `Session deleted id=${id}${projectId == null ? "" : ` projectId=${projectId}`}`,
         "info",
@@ -3275,14 +3242,15 @@ export class SessionManager {
         "info",
         ["session", "timing"],
       );
-      await unloadEval;
-      await stopOwnedShellJobs;
-
       // The Session and its messages disappear atomically with the DB delete above. Slow runtime
-      // and filesystem cleanup continues independently; failures are durable work items for Watson.
+      // and filesystem cleanup continues independently; failures stay in the table for Watson and
+      // are also written to the system log.
       const recordCleanupFailure = (step: string, error: unknown) => {
         const detail = error instanceof Error ? error.message : String(error);
-        sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", { id, step, error: detail });
+        appendSystemLog(`Session cleanup failed id=${id} step=${step}: ${detail}`, "error", [
+          "session",
+          "lifecycle",
+        ]);
         try {
           this.db.recordSessionCleanupFailure({
             sessionId: id,
@@ -3292,49 +3260,56 @@ export class SessionManager {
             context: {},
           });
         } catch (recordError: unknown) {
-          sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", {
-            id,
-            step,
-            error: recordError instanceof Error ? recordError.message : String(recordError),
-          });
+          appendSystemLog(
+            `Session cleanup failure record failed id=${id}: ${
+              recordError instanceof Error ? recordError.message : String(recordError)
+            }`,
+            "error",
+            ["session", "lifecycle"],
+          );
+        }
+      };
+      const runCleanupStep = async (step: string, work: () => Promise<unknown>) => {
+        try {
+          await timedDeleteStep(step, work);
+        } catch (error: unknown) {
+          recordCleanupFailure(step, error);
         }
       };
       void (async () => {
+        if (runtime?.extension) {
+          await runCleanupStep("beforeDelete", () =>
+            runtime!.extension!.emit({
+              type: "session.before_delete",
+              sessionId: id,
+            } as ExtensionEvent),
+          );
+        }
+        await runCleanupStep("unloadEval", () => this.unloadEval(id));
+        await runCleanupStep("stopOwnedShellJobs", () => this.stopOwnedShellJobs(id));
         if (runtime) {
-          try {
-            await timedDeleteStep("runtimeClear", () => runtime.clear());
-            sessionLog(id, "info", "Runtime closed during session deletion", [
-              "system",
-              "lifecycle",
-            ]);
-          } catch (error: unknown) {
-            recordCleanupFailure("runtime", error);
-          }
+          await runCleanupStep("runtimeClear", () => runtime!.clear());
         }
         if (git) {
-          try {
-            await timedDeleteStep("worktree", () =>
-              removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch, {
-                forceBranch: true,
-              }),
-            );
-          } catch (error: unknown) {
-            recordCleanupFailure("session_worktree", error);
-          }
+          await runCleanupStep("worktree", () =>
+            removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch, {
+              forceBranch: true,
+            }),
+          );
         }
         if (session?.projectId != null) {
-          try {
-            removeSessionDirSync(session.projectId, id);
-          } catch (error: unknown) {
-            recordCleanupFailure("session_directory", error);
-          }
+          await runCleanupStep("session_directory", async () => {
+            removeSessionDirSync(session.projectId!, id);
+          });
         }
-        try {
-          if (projectId != null) removeSessionMediaDirSync(projectId, id);
-        } catch (error: unknown) {
-          recordCleanupFailure("session_media", error);
+        if (projectId != null) {
+          await runCleanupStep("session_media", async () => {
+            removeSessionMediaDirSync(projectId, id);
+          });
         }
-      })();
+      })().catch((error: unknown) => {
+        recordCleanupFailure("background", error);
+      });
     } finally {
       doneDelete();
     }

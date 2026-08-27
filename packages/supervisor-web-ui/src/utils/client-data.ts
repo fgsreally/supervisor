@@ -10,6 +10,8 @@ export type ResourceOptions<T> = {
   apply: (value: T) => void;
   loading?: (value: boolean) => void;
   onError?: (error: unknown) => void;
+  /** Read the server even when this resource was already synced this lifecycle. */
+  force?: boolean;
 };
 
 // A resource group is refreshed once per loaded application lifecycle.
@@ -51,7 +53,7 @@ async function loadClientResourceInternal<T>(options: ResourceOptions<T>): Promi
   const id = resourceIdentity(options);
   const cached = await readClientCache<T>(id).catch(() => null);
 
-  if (cached) {
+  if (cached && !options.force) {
     if (!syncedGroups.has(groupIdentity(options))) options.apply(cached.value);
     options.loading?.(false);
     groupValues.set(groupIdentity(options), cached.value);
@@ -60,7 +62,7 @@ async function loadClientResourceInternal<T>(options: ResourceOptions<T>): Promi
   }
 
   const group = groupIdentity(options);
-  if (syncedGroups.has(group) && groupValues.has(group)) {
+  if (!options.force && syncedGroups.has(group) && groupValues.has(group)) {
     return groupValues.get(group) as T;
   }
 
@@ -89,7 +91,7 @@ export function syncClientResource<T>(
   cachedValue?: T,
 ): Promise<T | undefined> {
   const group = groupIdentity(options);
-  if (syncedGroups.has(group)) return Promise.resolve(undefined);
+  if (!options.force && syncedGroups.has(group)) return Promise.resolve(undefined);
 
   const existing = inflight.get(group);
   if (existing) return existing as Promise<T | undefined>;

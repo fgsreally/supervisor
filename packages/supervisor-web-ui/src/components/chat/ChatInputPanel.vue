@@ -722,12 +722,18 @@ function appendTranscript(transcript: string) {
   void nextTick(() => composerRef.value?.focus());
 }
 
+function nextImageLabel(): string {
+  const used = new Set(pendingImages.value.map((image) => image.placeholder));
+  let index = pendingImages.value.length + 1;
+  while (used.has(`[Image #${index}]`)) index += 1;
+  return `[Image #${index}]`;
+}
+
 function addPendingImage(file: File) {
   if (!file.type.startsWith("image/")) return;
   if (props.demo) {
     const id = `demo-image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const index = pendingImages.value.length + 1;
-    const label = `[Image #${index}]`;
+    const label = nextImageLabel();
     pendingImages.value.push({
       id,
       name: file.name || label,
@@ -736,8 +742,7 @@ function addPendingImage(file: File) {
       mediaId: id,
       placeholder: label,
     });
-    const separator = text.value && !/\s$/.test(text.value) ? " " : "";
-    text.value += `${separator}${label}`;
+    composerRef.value?.insertImagePlaceholder(label);
     void nextTick(() => composerRef.value?.focus());
     return;
   }
@@ -749,8 +754,7 @@ function addPendingImage(file: File) {
   void (async () => {
     try {
       const uploaded = await api.uploadSessionMedia(sessionId, file);
-      const index = pendingImages.value.length + 1;
-      const label = `[Image #${index}]`;
+      const label = nextImageLabel();
       const previewUrl = URL.createObjectURL(file);
       pendingImages.value.push({
         id: `img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -760,8 +764,7 @@ function addPendingImage(file: File) {
         mediaId: uploaded.mediaId,
         placeholder: label,
       });
-      const separator = text.value && !/\s$/.test(text.value) ? " " : "";
-      text.value += `${separator}${label}`;
+      composerRef.value?.insertImagePlaceholder(label);
       void nextTick(() => composerRef.value?.focus());
     } catch (error) {
       showUiMessage(error instanceof Error ? error.message : t("chat.input.uploadFailed"), "error");
@@ -831,14 +834,27 @@ function addPendingAttachment(file: File) {
 
 function removePendingImage(id: string) {
   const item = pendingImages.value.find((img) => img.id === id);
-  if (item?.previewUrl.startsWith("blob:")) {
-    URL.revokeObjectURL(item.previewUrl);
-  }
+  releasePendingImage(item);
   pendingImages.value = pendingImages.value.filter((img) => img.id !== id);
   if (item?.placeholder) {
     text.value = text.value.replace(item.placeholder, "").replace(/ {2,}/g, " ").trim();
   }
 }
+
+function releasePendingImage(item: PendingChatImage | undefined) {
+  if (item?.previewUrl.startsWith("blob:")) URL.revokeObjectURL(item.previewUrl);
+}
+
+watch(
+  text,
+  (value) => {
+    const removed = pendingImages.value.filter((item) => !value.includes(item.placeholder));
+    if (removed.length === 0) return;
+    for (const item of removed) releasePendingImage(item);
+    pendingImages.value = pendingImages.value.filter((item) => value.includes(item.placeholder));
+  },
+  { flush: "post" },
+);
 
 function removePendingAttachment(id: string) {
   attachments.value = attachments.value.filter((item) => item.id !== id);
@@ -847,7 +863,7 @@ function removePendingAttachment(id: string) {
 
 function clearPendingImages() {
   for (const img of pendingImages.value) {
-    if (!props.demo && img.previewUrl.startsWith("blob:")) URL.revokeObjectURL(img.previewUrl);
+    if (img.previewUrl.startsWith("blob:")) URL.revokeObjectURL(img.previewUrl);
   }
   pendingImages.value = [];
 }

@@ -397,7 +397,9 @@ onBeforeUnmount(cancelLongPress);
 }
 
 .user-message-images__thumb-btn {
-  display: block;
+  display: inline-flex;
+  width: fit-content;
+  height: fit-content;
   padding: 0;
   border: 0;
   border-radius: 6px;
@@ -407,9 +409,11 @@ onBeforeUnmount(cancelLongPress);
 
 .user-message-images__thumb {
   display: block;
-  width: min(7.5rem, 42vw);
-  aspect-ratio: 1;
-  object-fit: cover;
+  width: auto;
+  height: auto;
+  max-width: min(7.5rem, 42vw);
+  max-height: 7.5rem;
+  object-fit: contain;
   border-radius: 6px;
   background: color-mix(in srgb, #000 12%, transparent);
 }

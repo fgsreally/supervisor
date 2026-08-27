@@ -389,6 +389,7 @@ const statusDotClass = computed(() => {
   display: block;
   width: 0;
   min-width: 0;
+  min-height: 1.5em;
   flex: 1 1 0%;
   overflow: hidden;
   color: var(--app-text-secondary);

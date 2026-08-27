@@ -1731,7 +1731,7 @@ async function reloadMessagesFromServer(sessionId: string, localSnapshot = chatE
 
 async function applySessionMessages(sessionId: string, localSnapshot = chatEntries.value) {
   if (isExampleSession(sessionId)) return;
-  await sessionStore.fetchSessionMessages(sessionId);
+  await sessionStore.fetchSessionMessages(sessionId, true);
   historyHasMore.value = sessionStore.messageCursors[sessionId]?.hasMore ?? false;
   const entries = sessionStore.messages[sessionId] ?? [];
   chatEntries.value = mergeStreamingToolsIntoPersistedEntries(

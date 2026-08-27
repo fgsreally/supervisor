@@ -1,5 +1,5 @@
 <template>
-  <div class="build-preview-compass">
+  <div v-if="enabled" class="build-preview-compass">
     <Transition name="build-preview-menu">
       <div v-if="open" class="build-preview-compass__menu" role="menu">
         <button
@@ -31,15 +31,27 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { Compass, RefreshCw } from "lucide-vue-next";
 import { requestBuildPreviewUpdate } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { useI18n } from "@/i18n";
 
 const { t } = useI18n();
+const enabled = ref(false);
 const open = ref(false);
 const updating = ref(false);
+
+onMounted(async () => {
+  try {
+    const response = await fetch(`/healthz?build-preview=${Date.now()}`, { cache: "no-store" });
+    if (!response.ok) return;
+    const body = (await response.json()) as { buildPreview?: unknown };
+    enabled.value = body.buildPreview === true;
+  } catch {
+    // The control is only useful when the preview supervisor is available.
+  }
+});
 
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -99,7 +111,7 @@ async function updatePreview() {
   justify-content: center;
   width: 3.25rem;
   height: 3.25rem;
-  border: 1px solid color-mix(in srgb, var(--app-accent) 75%, white);
+  border: 1px solid color-mix(in srgb, var(--app-accent) 75%, var(--app-shell-bg));
   border-radius: 50%;
   color: #fff;
   background: color-mix(in srgb, var(--app-accent) 82%, #111 18%);
@@ -131,8 +143,8 @@ async function updatePreview() {
   min-width: 9.5rem;
   padding: 0.375rem;
   border: 1px solid var(--app-border-subtle);
-  border-radius: var(--app-radius-card);
-  background: var(--app-surface-raised, #262626);
+  border-radius: var(--app-radius-panel);
+  background: var(--app-popup-bg);
   box-shadow: 0 0.75rem 2rem rgb(0 0 0 / 30%);
 }
 

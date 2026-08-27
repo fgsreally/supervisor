@@ -2285,7 +2285,8 @@ export function createHttpServer(
         externalSessionId: body.externalSessionId,
         replace: body.replace === true,
       });
-      return c.json(session, 201);
+      const summaries = manager.getLastMessageSummaries([session.id]);
+      return c.json(withLastMessageSummary(session, summaries), 201);
     } catch (error: unknown) {
       return jsonError(c, 409, error instanceof Error ? error.message : String(error));
     }

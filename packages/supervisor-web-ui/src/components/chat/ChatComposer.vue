@@ -509,6 +509,20 @@ function insertTrigger(trigger: "@" | "@@" | "/") {
   insertAtCursor(trigger);
 }
 
+function insertImagePlaceholder(label: string) {
+  const view = viewRef.value;
+  if (!view) return;
+  const { from, to } = view.state.selection.main;
+  const before = view.state.sliceDoc(Math.max(0, from - 1), from);
+  const prefix = before && !/\s/.test(before) ? " " : "";
+  view.dispatch({
+    changes: { from, to, insert: `${prefix}${label}` },
+    selection: { anchor: from + prefix.length + label.length },
+  });
+  syncFromView(view);
+  view.focus();
+}
+
 function blur() {
   clearBlurTimer();
   autocompleteDismissed.value = true;
@@ -521,7 +535,7 @@ function onPastedTextOpen(event: Event) {
   if (id) emit("open-pasted-text", id);
 }
 
-defineExpose({ focus, blur, insertTrigger });
+defineExpose({ focus, blur, insertTrigger, insertImagePlaceholder });
 </script>
 
 <style scoped>

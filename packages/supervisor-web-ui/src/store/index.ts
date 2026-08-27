@@ -418,7 +418,7 @@ export const useSessionStore = defineStore("session", () => {
     return getSessionById.value(id);
   }
 
-  async function fetchSessionMessages(id: string) {
+  async function fetchSessionMessages(id: string, fresh = false) {
     root.clearError();
     try {
       const resource: ResourceOptions<api.SessionMessagesPage> = {
@@ -451,7 +451,9 @@ export const useSessionStore = defineStore("session", () => {
       await loadClientResource<api.SessionMessagesPage>(resource);
       // Cached messages render immediately, but opening a Session must also wait
       // for the canonical snapshot or ChatView can remain stuck on an empty cache.
-      await syncClientResource<api.SessionMessagesPage>(resource);
+      await syncClientResource<api.SessionMessagesPage>(
+        fresh ? { ...resource, force: true } : resource,
+      );
       return messages.value[id] ?? [];
     } catch (err) {
       root.setError(err instanceof Error ? err.message : "Failed to fetch messages");
@@ -507,7 +509,7 @@ export const useSessionStore = defineStore("session", () => {
       },
       () => {
         // Complete - refresh messages
-        void fetchSessionMessages(id);
+        void fetchSessionMessages(id, true);
       },
     );
   }

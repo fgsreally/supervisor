@@ -176,8 +176,8 @@ components/<domain>/<Name>/
 ### Start
 
 ```
-pnpm --filter pi-supervisor run serve:dev -- --port ${PORT1}
-pnpm --filter pi-supervisor-ui run dev -- --port ${PORT2}
+pnpm --filter pi-supervisor run serve:dev --env.PI_SUPERVISOR_UI_PORT=${PORT2} -- --port ${PORT1}
+pnpm --filter pi-supervisor-ui run dev --env.VITE_API_PROXY_TARGET=http://localhost:${PORT1} -- --port ${PORT2}
 ```
 
 Supervisor 后端与 web-ui 同时启动方可完整访问 UI；后端代理前端静态资源与 API。

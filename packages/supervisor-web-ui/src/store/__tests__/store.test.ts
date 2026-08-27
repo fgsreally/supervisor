@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useAgentStore, useProviderStore, useRootStore, useSessionStore } from "../index";
 import { resetMessageStorageForTests } from "@/utils/message-storage";
 import { resetClientResourceLifecycle } from "@/utils/client-data";
+import { cacheKey, writeClientCache } from "@/utils/client-cache";
 
 // Mock API module
 vi.mock("@/api", () => ({
@@ -71,6 +72,46 @@ describe("Session Store", () => {
 
     expect(store.sessionsListError).toBe("Network error");
     expect(rootStore.loading.sessions).toBe(false);
+  });
+
+  it("waits for fresh messages when the cached page is empty", async () => {
+    const cachedPage = {
+      messages: [],
+      hasMore: false,
+      oldestRowId: null,
+      newestRowId: null,
+    };
+    const freshPage = {
+      ...cachedPage,
+      messages: [{ id: "message-1", type: "message", meta: {}, createdAt: 1 }],
+      oldestRowId: 1,
+      newestRowId: 1,
+    };
+    await writeClientCache(cacheKey("messages", "1"), cachedPage, Date.now(), "stale");
+
+    let resolveSync!: (value: api.ClientCacheSyncResponse) => void;
+    vi.mocked(api.syncClientCache).mockImplementation(
+      () => new Promise((resolve) => (resolveSync = resolve)),
+    );
+
+    const store = useSessionStore();
+    const loading = store.fetchSessionMessages("1");
+    await vi.waitFor(() => expect(resolveSync).toBeTypeOf("function"));
+    resolveSync({
+      resources: [
+        {
+          key: "messages",
+          queryKey: "1",
+          status: "updated",
+          fingerprint: "fresh",
+          data: freshPage,
+          syncedAt: Date.now(),
+        },
+      ],
+    });
+
+    await expect(loading).resolves.toEqual(freshPage.messages);
+    expect(store.messages["1"]).toEqual(freshPage.messages);
   });
 
   it("should create session", async () => {

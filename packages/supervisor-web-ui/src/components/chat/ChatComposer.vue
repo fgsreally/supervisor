@@ -541,6 +541,11 @@ defineExpose({ focus, blur, insertTrigger });
 
 .chat-composer-editor :deep(.cm-scroller) {
   overflow: auto;
+  scrollbar-width: none;
+}
+
+.chat-composer-editor :deep(.cm-scroller::-webkit-scrollbar) {
+  display: none;
 }
 
 .chat-placeholder {

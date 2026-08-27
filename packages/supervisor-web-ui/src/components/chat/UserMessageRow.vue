@@ -169,7 +169,7 @@ const previewableImages = computed(() =>
 );
 
 function mediaUrl(image: { mediaId?: string; previewUrl?: string }): string {
-  return image.previewUrl ?? (image.mediaId ? sessionMediaUrl(props.sessionId, image.mediaId) : "");
+  return image.mediaId ? sessionMediaUrl(props.sessionId, image.mediaId) : (image.previewUrl ?? "");
 }
 
 function openPreview(index: number) {

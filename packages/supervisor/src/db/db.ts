@@ -1537,10 +1537,12 @@ export class SupervisorDb {
            SELECT session_id, MAX(created_at) AS max_created
            FROM messages
            WHERE session_id IN (${placeholders})
+             AND role IN ('user', 'assistant', 'custom_message', 'llm_error')
              AND search_text IS NOT NULL AND search_text != ''
            GROUP BY session_id
          ) latest ON m.session_id = latest.session_id AND m.created_at = latest.max_created
-         WHERE m.search_text IS NOT NULL AND m.search_text != ''`,
+         WHERE m.role IN ('user', 'assistant', 'custom_message', 'llm_error')
+           AND m.search_text IS NOT NULL AND m.search_text != ''`,
       )
       .all(...unique) as Array<{ session_id: number; search_text: string; created_at: number }>;
     const out = new Map<number, { preview: string; createdAt: number }>();

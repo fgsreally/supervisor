@@ -419,6 +419,24 @@ describe("supervisor: SessionManager", () => {
     expect(existsSync(sessionDir)).toBe(false);
   });
 
+  it("removes the session record before slow cleanup finishes", async () => {
+    const session = manager.create();
+    let finishCleanup!: () => void;
+    const cleanup = new Promise<void>((resolve) => {
+      finishCleanup = resolve;
+    });
+    vi.spyOn(
+      manager as unknown as { stopOwnedShellJobs: () => Promise<void> },
+      "stopOwnedShellJobs",
+    ).mockReturnValue(cleanup);
+
+    const deleting = manager.delete(session.id);
+
+    expect(manager.get(session.id)).toBeUndefined();
+    finishCleanup();
+    await deleting;
+  });
+
   it("does not delete builtin assistant sessions directly", async () => {
     const session = manager.create({ isBuiltin: true });
 

@@ -1,5 +1,8 @@
 <template>
-  <div v-if="enabled" class="shadow-prompt-bar">
+  <div
+    class="shadow-prompt-bar"
+    :class="{ 'shadow-prompt-bar--disabled': !enabled, 'shadow-prompt-bar--compact': compact }"
+  >
     <button
       type="button"
       class="shadow-prompt-bar__trigger"
@@ -7,23 +10,19 @@
       :title="t('chat.shadowPrompt.open')"
       @click="open = true"
     >
-      <Sparkles aria-hidden="true" />
-      <span class="shadow-prompt-bar__label">{{
+      <Ghost aria-hidden="true" />
+      <span v-if="!compact" class="shadow-prompt-bar__label">{{
         current?.name || t("chat.shadowPrompt.custom")
       }}</span>
-      <span v-if="current" class="shadow-prompt-bar__state">{{
+      <span v-if="current && !compact" class="shadow-prompt-bar__state">{{
         t("chat.shadowPrompt.active")
       }}</span>
-      <ChevronUp v-if="open && !isMobile" aria-hidden="true" />
-      <ChevronDown v-else aria-hidden="true" />
+      <span v-else-if="!enabled && !compact" class="shadow-prompt-bar__state">{{
+        t("chat.shadowPrompt.disabled")
+      }}</span>
     </button>
 
-    <div v-if="open && !isMobile" class="shadow-prompt-bar__desktop-panel">
-      <ShadowPromptEditor :session-id="sessionId" :current="current" @saved="onSaved" />
-    </div>
-
     <ResponsiveDialog
-      v-if="isMobile"
       :open="open"
       :title="t('chat.shadowPrompt.title')"
       :description="t('chat.shadowPrompt.description')"
@@ -37,21 +36,20 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { ChevronDown, ChevronUp, Sparkles } from "lucide-vue-next";
+import { Ghost } from "lucide-vue-next";
 import type * as api from "@/api";
 import ResponsiveDialog from "../base/ResponsiveDialog/index.vue";
-import { useMobileViewport } from "../../composables/use-mobile-viewport";
 import { useI18n } from "@/i18n";
 import ShadowPromptEditor, { type ShadowPromptValue } from "./ShadowPromptEditor.vue";
 
 defineProps<{
   enabled: boolean;
+  compact?: boolean;
   sessionId: string;
   current?: ShadowPromptValue | null;
 }>();
 const emit = defineEmits<{ saved: [session: api.Session] }>();
 const { t } = useI18n();
-const isMobile = useMobileViewport();
 const open = ref(false);
 
 function onSaved(session: api.Session) {
@@ -89,6 +87,24 @@ function onSaved(session: api.Session) {
 .shadow-prompt-bar__trigger svg:last-child {
   margin-left: auto;
 }
+.shadow-prompt-bar--compact {
+  border: 0;
+  background: transparent;
+}
+.shadow-prompt-bar--compact .shadow-prompt-bar__trigger {
+  width: auto;
+  min-height: 0;
+  padding: 6px;
+  border-radius: 8px;
+}
+.shadow-prompt-bar--compact .shadow-prompt-bar__trigger svg {
+  width: 19px;
+  height: 19px;
+  color: var(--app-toolbar-icon);
+}
+.shadow-prompt-bar--compact .shadow-prompt-bar__trigger:hover svg {
+  color: var(--app-text-primary);
+}
 .shadow-prompt-bar__label {
   overflow: hidden;
   font-weight: var(--app-font-weight-medium);
@@ -98,18 +114,6 @@ function onSaved(session: api.Session) {
 .shadow-prompt-bar__state {
   color: var(--app-text-tertiary, var(--app-text-secondary));
   font-size: var(--app-font-micro);
-}
-.shadow-prompt-bar__desktop-panel {
-  position: absolute;
-  right: var(--app-space-3);
-  bottom: calc(100% + var(--app-space-2));
-  z-index: 20;
-  width: min(34rem, calc(100vw - 2rem));
-  padding: var(--app-space-4);
-  border: 1px solid var(--app-border-subtle);
-  border-radius: var(--app-radius-panel);
-  background: var(--app-surface, var(--app-chat-bg));
-  box-shadow: var(--app-shadow-popover);
 }
 @media (max-width: 767px) {
   .shadow-prompt-bar__trigger {

@@ -31,11 +31,7 @@
     </div>
     <ToolTerminal v-if="terminal" :lines="terminalLines" :prompt="terminalPrompt" />
     <div v-else class="tool-detail-panel__body custom-scrollbar">
-      <section v-for="(section, index) in sections" :key="index">
-        <label>{{ section.label }}</label>
-        <MarkdownContent v-if="section.markdown" :content="section.content" />
-        <pre v-else>{{ section.content }}</pre>
-      </section>
+      <ToolDetailSectionView v-for="(section, index) in sections" :key="index" :section="section" />
     </div>
   </aside>
 </template>
@@ -52,9 +48,9 @@ import {
 } from "@/api";
 import { showUiMessage } from "@/composables/use-ui-message";
 import { useSessionStore } from "@/store";
-import MarkdownContent from "../base/MarkdownContent.vue";
 import ToolTerminal from "./ToolTerminal.vue";
 import type { ToolDetailSection } from "./ToolDetailModal.vue";
+import ToolDetailSectionView from "./ToolDetailSection.vue";
 import { useI18n } from "@/i18n";
 
 const props = defineProps<{
@@ -120,7 +116,9 @@ const terminalLines = computed(() => {
 });
 const terminalPrompt = computed(() => {
   if (watchingJob.value) {
-    return shellState.value?.status === "running" || shellState.value?.status === "waiting" || shellState.value?.status === "active"
+    return shellState.value?.status === "running" ||
+      shellState.value?.status === "waiting" ||
+      shellState.value?.status === "active"
       ? t("tool.running")
       : t("tool.outputComplete");
   }
@@ -323,23 +321,6 @@ header svg {
   display: flex;
   flex-direction: column;
   gap: 14px;
-}
-section label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: var(--app-font-caption);
-  font-weight: var(--app-font-weight-medium);
-  color: var(--app-text-muted);
-}
-section pre {
-  margin: 0;
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: var(--app-code-bg, var(--app-hover));
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: var(--app-font-caption);
-  line-height: 1.45;
 }
 @media (max-width: 767px) {
   .tool-detail-panel {

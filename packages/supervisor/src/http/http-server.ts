@@ -2730,7 +2730,11 @@ export function createHttpServer(
     if (!session) return jsonError(c, 404, `Session ${id} not found`);
     const jobs = manager.jobs
       .list(id, { limit: 100 })
-      .filter((job) => job.kind === "shell" || job.kind === "service")
+      .filter(
+        (job) =>
+          (job.kind === "shell" || job.kind === "service") &&
+          ["queued", "running", "waiting", "active"].includes(job.status),
+      )
       .sort((a, b) => b.createdAt - a.createdAt || (b.startedAt ?? 0) - (a.startedAt ?? 0));
     let evalState: { kernels?: string[]; history?: Array<Record<string, unknown>> } = {};
     try {

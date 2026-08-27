@@ -2,6 +2,7 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import type { SessionTreeEntry } from "@/api";
 import type { ChatEntry, ChatTextPart, ChatThinkingPart, ChatToolPart } from "@/types/chat-entry";
 import { normalizeStreamingToolResult } from "./ask-tool";
+import { messageTextContent } from "./message-content";
 import type { MessageAsset } from "@/types/chat-entry";
 
 type ToolResultPayload = {
@@ -319,20 +320,24 @@ function lastUserEntryIndex(entries: ChatEntry[]): number {
 
 function captureStreamingToolSnapshot(localEntries: ChatEntry[]): {
   assistantEntry: Extract<ChatEntry, { type: "message" }>;
+  userEntry?: Extract<ChatEntry, { type: "message" }>;
   toolResults: Array<Extract<ChatEntry, { type: "toolResult" }>>;
 } | null {
   for (let index = localEntries.length - 1; index >= 0; index -= 1) {
     const entry = localEntries[index];
     if (entry?.type !== "message" || entry.message.role !== "assistant") continue;
     if (!String(entry.id).startsWith("stream-")) continue;
-    const content = Array.isArray(entry.message.content) ? entry.message.content : [];
-    const toolCalls = content.filter((part): part is ChatToolPart => part.type === "toolCall");
     const toolResults = localEntries.filter(
       (candidate): candidate is Extract<ChatEntry, { type: "toolResult" }> =>
         candidate.type === "toolResult" && String(candidate.id).startsWith("tool-result-"),
     );
-    if (toolCalls.length === 0 && toolResults.length === 0) return null;
-    return { assistantEntry: entry, toolResults };
+    const userEntry = [...localEntries.slice(0, index)]
+      .reverse()
+      .find(
+        (candidate): candidate is Extract<ChatEntry, { type: "message" }> =>
+          candidate.type === "message" && candidate.message.role === "user",
+      );
+    return { assistantEntry: entry, userEntry, toolResults };
   }
   return null;
 }
@@ -346,6 +351,12 @@ export function mergeStreamingToolsIntoPersistedEntries(
   if (!snapshot) return serverEntries;
 
   const userIndex = lastUserEntryIndex(serverEntries);
+  const localUserText = snapshot.userEntry ? messageText(snapshot.userEntry) : "";
+  const serverUserText = userIndex >= 0 ? messageText(serverEntries[userIndex]!) : "";
+  if (snapshot.userEntry && localUserText !== serverUserText) {
+    return [...serverEntries, snapshot.userEntry, snapshot.assistantEntry, ...snapshot.toolResults];
+  }
+
   if (userIndex < 0) return serverEntries;
 
   if (tailHasAssistantToolCalls(serverEntries, userIndex)) return serverEntries;
@@ -354,7 +365,7 @@ export function mergeStreamingToolsIntoPersistedEntries(
   const lastAssistantIndex = merged.length - 1;
   const lastAssistant = merged[lastAssistantIndex];
   if (lastAssistant?.type !== "message" || lastAssistant.message.role !== "assistant") {
-    return serverEntries;
+    return [...serverEntries, snapshot.assistantEntry, ...snapshot.toolResults];
   }
 
   const localContent = Array.isArray(snapshot.assistantEntry.message.content)
@@ -391,5 +402,10 @@ export function mergeStreamingToolsIntoPersistedEntries(
   }
 
   return merged;
+}
+
+function messageText(entry: ChatEntry): string {
+  if (entry.type !== "message") return "";
+  return messageTextContent(entry.message.content).trim();
 }
 import { translate as t } from "@/i18n";

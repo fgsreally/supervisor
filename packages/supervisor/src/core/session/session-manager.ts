@@ -13,6 +13,7 @@ import {
 } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 import { getAgentHomeDir } from "../../agent/index.js";
+import { inferProjectRootFromCwd } from "../agent/agent-permissions.js";
 import { getDefaultCwd } from "../../config/default-cwd.js";
 import { initializeResourceCatalog } from "../../resources/catalog-sync.js";
 import { ExtensionModuleRegistry } from "../../extension/registry.js";
@@ -116,7 +117,11 @@ function sessionSetupReason(options: SpawnSessionOptions): SessionSetupReason {
   void options;
   return "create";
 }
-import { commitAll, commitGitSnapshot, resolveSessionGitContext } from "../../utils/git.js";
+import {
+  commitGitSnapshot,
+  removeSessionWorktree,
+  resolveSessionGitContext,
+} from "../../utils/git.js";
 import {
   configureSessionLogProjectResolver,
   sessionLog,
@@ -418,6 +423,7 @@ export class SessionManager {
   readonly jobs: JobManager;
   private readonly detachHomeTaskSync: () => void;
   private readonly stopSessionActivity: () => void;
+  private readonly deletedRuntimeSweep: ReturnType<typeof setInterval>;
   private readonly sessionDeviceSync: SessionDeviceSync;
 
   registerUiMenu(agentId: number, owner: string, menu: UiMenuDefinition): () => void {
@@ -570,6 +576,8 @@ export class SessionManager {
     this.jobs.setTerminalHandler((job) => {
       this.clearServiceRuntimeIfJob(job.sessionId, job.id);
     });
+    this.deletedRuntimeSweep = setInterval(() => this.clearDeletedRuntimes(), 1_000);
+    this.deletedRuntimeSweep.unref();
     scrubStaleSessionRuntimeMeta({
       list: () => this.db.list(),
       updateMeta: (id, patch) => this.db.updateMeta(id, patch),
@@ -588,6 +596,22 @@ export class SessionManager {
     setSessionUnreadHandler((sessionId, entry, options) => {
       this.handleAssistantMessageUnread(sessionId, entry, options);
     });
+  }
+
+  private clearDeletedRuntimes(): void {
+    for (const [id, runtime] of this.runtimes) {
+      if (this.db.get(id)) continue;
+      this.runtimes.delete(id);
+      this.turnTrackers.delete(id);
+      this.sessionToolConfigs.delete(id);
+      void runtime.clear().catch((error: unknown) => {
+        appendSystemLog(
+          `Deleted Session runtime cleanup failed id=${id}: ${error instanceof Error ? error.message : String(error)}`,
+          "error",
+          ["session", "lifecycle"],
+        );
+      });
+    }
   }
 
   // Expose for home/daily-work helpers that need direct DB access.
@@ -899,7 +923,7 @@ export class SessionManager {
           this.publishSessionStatus(sessionId);
           void (async () => {
             let shadowCheckpoint;
-            if (runtime instanceof SessionRuntime && !hasPendingAsks(sessionId)) {
+            if (!hasPendingAsks(sessionId)) {
               try {
                 shadowCheckpoint = await createSessionCheckpoint(this.db, sessionId, {
                   label: "shadow-turn",
@@ -914,7 +938,6 @@ export class SessionManager {
             }
             const shadowSession = this.get(sessionId);
             if (
-              runtime instanceof SessionRuntime &&
               shadowCheckpoint &&
               shadowSession &&
               shadowSession.parentId === null &&
@@ -1106,12 +1129,14 @@ export class SessionManager {
       const agent = this.getAgentForSession(session.agentId);
       if (agent && agent.backendType !== "native") {
         const runtime = await timedSessionStep(id, "restoreRuntime/createExternalRuntime", () =>
-          this.attachExternalSessionExtensions(
-            session,
-            agent,
-            (next) => this.createExternalRuntime(next, agent),
-            "restore",
-          ),
+          session.externalSessionId
+            ? this.createExternalRuntime(session, agent)
+            : this.attachExternalSessionExtensions(
+                session,
+                agent,
+                (next) => this.createExternalRuntime(next, agent),
+                "restore",
+              ),
         );
         this.setupRuntime(session.id, runtime);
         this.db.updateStatus(session.id, "active");
@@ -2547,6 +2572,27 @@ export class SessionManager {
     await this.parseProject(projectId);
   }
 
+  private deferImportedRuntime(session: Session): void {
+    const pending = (async () => {
+      await this.waitForProjectParse(this.requireProjectId(session));
+      return this.restoreRuntime(session.id);
+    })().finally(() => {
+      this.pendingRuntimeRestores.delete(session.id);
+    });
+    this.pendingRuntimeRestores.set(session.id, pending);
+    void pending.catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      sessionLogEvent(session.id, "error", "runtime.externalImportFailed", {
+        id: session.id,
+        error: message,
+      });
+      sessionLog(session.id, "error", `Runtime start failed: ${message}`, ["system", "runtime"], {
+        error: message,
+      });
+      this.db.updateSessionFields(session.id, { errorMsg: message });
+    });
+  }
+
   updateProject(
     id: number,
     patch: { name?: string; description?: string | null; meta?: Record<string, unknown> },
@@ -2673,7 +2719,8 @@ export class SessionManager {
     const agent = this.db.listAgents().find((item) => item.backendType === options.backend);
     if (!agent) throw new Error(`${options.backend} Agent is not configured`);
 
-    const normalizedCwd = resolve(imported.candidate.cwd);
+    const importedCwd = resolve(imported.candidate.cwd);
+    const normalizedCwd = inferProjectRootFromCwd(importedCwd) ?? importedCwd;
     const comparableCwd = (value: string) =>
       process.platform === "win32" ? resolve(value).toLowerCase() : resolve(value);
     const project =
@@ -2681,23 +2728,17 @@ export class SessionManager {
         .listProjects()
         .find((item) => comparableCwd(item.cwd) === comparableCwd(normalizedCwd)) ??
       this.createProject({ cwd: normalizedCwd });
-    const commitMessage =
-      options.backend === "codex"
-        ? "checkpoint before importing codex session"
-        : "checkpoint before importing claude code session";
-    await commitAll(normalizedCwd, commitMessage);
-
-    // Import history first; attach Codex/Claude later so a runtime crash cannot
-    // leave an empty session row without messages.
-    const session = await this.spawn({
+    // Import history first; project parsing and runtime/service setup continue in
+    // the background so a slow project parse cannot block the imported messages.
+    const session = this.create({
       projectId: project.id,
       cwd: normalizedCwd,
       agentId: agent.id,
-      skipRuntime: true,
       title: imported.candidate.title,
       externalSessionId: imported.candidate.externalSessionId,
     });
     if (session.projectId == null) throw new Error("session has no project");
+    await ensureSessionDir(session.projectId, session.id);
     const entries = await materializeImportedImages(
       session.projectId,
       session.id,
@@ -2714,19 +2755,7 @@ export class SessionManager {
       });
     }
 
-    try {
-      await this.ensureRuntime(session.id);
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      sessionLogEvent(session.id, "error", "runtime.externalImportFailed", {
-        id: session.id,
-        error: message,
-      });
-      sessionLog(session.id, "error", `Runtime start failed: ${message}`, ["system", "runtime"], {
-        error: message,
-      });
-      this.db.updateSessionFields(session.id, { errorMsg: message });
-    }
+    this.deferImportedRuntime(session);
 
     if (importedLastActiveAt > 0) {
       this.db.db
@@ -3144,107 +3173,171 @@ export class SessionManager {
   }
 
   async delete(id: number, options: { allowBuiltin?: boolean } = {}): Promise<void> {
-    const row = this.db.get(id);
-    const session = row ? rowToSession(row, this.db) : undefined;
-    if (session?.isBuiltin && !options.allowBuiltin) {
-      throw new Error("Pi 助手不能删除");
-    }
-    for (const child of this.children(id)) {
-      if (child.spawnType === "subagent" || child.spawnType === "btw") {
-        await this.delete(child.id, options);
-      }
-    }
-
-    let runtime = this.runtimes.get(id);
-
-    if (runtime?.extension) {
-      sessionLog(id, "debug", "session.before_delete start", ["system", "lifecycle"]);
-      try {
-        await runtime.extension.emit({
-          type: "session.before_delete",
-          sessionId: id,
-        } as ExtensionEvent);
-        sessionLog(id, "debug", "session.before_delete done", ["system", "lifecycle"]);
-      } catch (error: unknown) {
-        sessionLog(id, "error", "session.before_delete failed", ["system", "lifecycle"], {
-          error: error instanceof Error ? error.message : String(error),
-        });
-        sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", {
-          id,
-          step: "before_delete",
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-    await this.unloadEval(id);
-    await this.stopOwnedShellJobs(id);
-
-    if (runtime) {
-      this.runtimes.delete(id);
-      this.turnTrackers.delete(id);
-      this.sessionToolConfigs.delete(id);
-    }
-    this.systemPromptOverlays.delete(id);
-    clearSessionActivityPolicy(id);
-
-    const projectId = session?.projectId ?? null;
-    sessionLog(
-      id,
-      "info",
-      `Session deleted${projectId == null ? "" : ` projectId=${projectId}`}`,
-      ["system", "lifecycle"],
-      projectId == null ? undefined : { projectId },
-    );
-    appendSystemLog(
-      `Session deleted id=${id}${projectId == null ? "" : ` projectId=${projectId}`}`,
-      "info",
-      ["session", "lifecycle"],
-    );
-    this.db.delete(id);
-
-    // The Session and its messages disappear atomically with the DB delete above. Slow runtime
-    // and filesystem cleanup continues independently; failures are durable work items for Watson.
-    const recordCleanupFailure = (step: string, error: unknown) => {
-      const detail = error instanceof Error ? error.message : String(error);
-      sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", { id, step, error: detail });
-      try {
-        this.db.recordSessionCleanupFailure({
-          sessionId: id,
-          projectId,
-          step,
-          error: detail,
-          context: {},
-        });
-      } catch (recordError: unknown) {
-        sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", {
-          id,
-          step,
-          error: recordError instanceof Error ? recordError.message : String(recordError),
-        });
-      }
+    const doneDelete = beginSessionTiming(id, "delete");
+    const timedDeleteStep = <T>(phase: string, work: () => Promise<T>): Promise<T> => {
+      const started = Date.now();
+      appendSystemLog(`Session delete id=${id} phase=${phase} start`, "info", [
+        "session",
+        "timing",
+      ]);
+      return work().finally(() => {
+        appendSystemLog(
+          `Session delete id=${id} phase=${phase} done durationMs=${Date.now() - started}`,
+          "info",
+          ["session", "timing"],
+        );
+      });
     };
-    void (async () => {
-      if (session?.projectId != null) {
-        try {
-          removeSessionDirSync(session.projectId, id);
-        } catch (error: unknown) {
-          recordCleanupFailure("session_directory", error);
+    try {
+      const row = this.db.get(id);
+      const session = row ? rowToSession(row, this.db) : undefined;
+      if (session?.isBuiltin && !options.allowBuiltin) {
+        throw new Error("Pi 助手不能删除");
+      }
+      for (const child of this.children(id)) {
+        if (child.spawnType === "subagent" || child.spawnType === "btw") {
+          await this.delete(child.id, options);
         }
       }
-      try {
-        if (projectId != null) removeSessionMediaDirSync(projectId, id);
-      } catch (error: unknown) {
-        recordCleanupFailure("session_media", error);
+
+      let runtime = this.runtimes.get(id);
+
+      if (runtime?.extension) {
+        sessionLog(id, "debug", "session.before_delete start", ["system", "lifecycle"]);
+        try {
+          await timedDeleteStep("beforeDelete", () =>
+            runtime.extension!.emit({
+              type: "session.before_delete",
+              sessionId: id,
+            } as ExtensionEvent),
+          );
+          sessionLog(id, "debug", "session.before_delete done", ["system", "lifecycle"]);
+        } catch (error: unknown) {
+          sessionLog(id, "error", "session.before_delete failed", ["system", "lifecycle"], {
+            error: error instanceof Error ? error.message : String(error),
+          });
+          sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", {
+            id,
+            step: "before_delete",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
+      // Start cleanup while the Session still exists, but remove its DB record before
+      // waiting so concurrent lists cannot keep presenting it as imported.
+      const unloadEval = timedDeleteStep("unloadEval", () => this.unloadEval(id));
+      const stopOwnedShellJobs = timedDeleteStep("stopOwnedShellJobs", () =>
+        this.stopOwnedShellJobs(id),
+      );
+
       if (runtime) {
-        try {
-          await runtime.clear();
-          sessionLog(id, "info", "Runtime closed during session deletion", ["system", "lifecycle"]);
-        } catch (error: unknown) {
-          recordCleanupFailure("runtime", error);
-        }
+        this.runtimes.delete(id);
+        this.turnTrackers.delete(id);
+        this.sessionToolConfigs.delete(id);
       }
-    })();
+      this.systemPromptOverlays.delete(id);
+      clearSessionActivityPolicy(id);
+
+      const projectId = session?.projectId ?? null;
+      const projectCwd = projectId == null ? null : this.db.getProject(projectId)?.cwd;
+      const git = session
+        ? resolveSessionGitContext({ sessionId: id, cwd: session.cwd, projectCwd })
+        : null;
+      sessionLog(
+        id,
+        "info",
+        `Session deleted${projectId == null ? "" : ` projectId=${projectId}`}`,
+        ["system", "lifecycle"],
+        projectId == null ? undefined : { projectId },
+      );
+      appendSystemLog(
+        `Session deleted id=${id}${projectId == null ? "" : ` projectId=${projectId}`}`,
+        "info",
+        ["session", "lifecycle"],
+      );
+      const deleteRecordStarted = Date.now();
+      this.db.delete(id);
+      const deleteRecordDurationMs = Date.now() - deleteRecordStarted;
+      sessionLogEvent(
+        id,
+        "info",
+        "runtime.sessionTimingDone",
+        {
+          id,
+          phase: "delete/dbRecord",
+          durationMs: deleteRecordDurationMs,
+        },
+        ["timing"],
+        { phase: "delete/dbRecord", durationMs: deleteRecordDurationMs },
+      );
+      appendSystemLog(
+        `Session delete id=${id} phase=dbRecord done durationMs=${deleteRecordDurationMs}`,
+        "info",
+        ["session", "timing"],
+      );
+      await unloadEval;
+      await stopOwnedShellJobs;
+
+      // The Session and its messages disappear atomically with the DB delete above. Slow runtime
+      // and filesystem cleanup continues independently; failures are durable work items for Watson.
+      const recordCleanupFailure = (step: string, error: unknown) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", { id, step, error: detail });
+        try {
+          this.db.recordSessionCleanupFailure({
+            sessionId: id,
+            projectId,
+            step,
+            error: detail,
+            context: {},
+          });
+        } catch (recordError: unknown) {
+          sessionLogEvent(id, "error", "runtime.clearOnDeleteFailed", {
+            id,
+            step,
+            error: recordError instanceof Error ? recordError.message : String(recordError),
+          });
+        }
+      };
+      void (async () => {
+        if (runtime) {
+          try {
+            await timedDeleteStep("runtimeClear", () => runtime.clear());
+            sessionLog(id, "info", "Runtime closed during session deletion", [
+              "system",
+              "lifecycle",
+            ]);
+          } catch (error: unknown) {
+            recordCleanupFailure("runtime", error);
+          }
+        }
+        if (git) {
+          try {
+            await timedDeleteStep("worktree", () =>
+              removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch, {
+                forceBranch: true,
+              }),
+            );
+          } catch (error: unknown) {
+            recordCleanupFailure("session_worktree", error);
+          }
+        }
+        if (session?.projectId != null) {
+          try {
+            removeSessionDirSync(session.projectId, id);
+          } catch (error: unknown) {
+            recordCleanupFailure("session_directory", error);
+          }
+        }
+        try {
+          if (projectId != null) removeSessionMediaDirSync(projectId, id);
+        } catch (error: unknown) {
+          recordCleanupFailure("session_media", error);
+        }
+      })();
+    } finally {
+      doneDelete();
+    }
   }
 
   // ============ Session Tree Methods ============
@@ -3334,6 +3427,7 @@ export class SessionManager {
   }
 
   async dispose(): Promise<void> {
+    clearInterval(this.deletedRuntimeSweep);
     this.stopSessionActivity();
     this.detachHomeTaskSync();
     setSessionUnreadHandler(null);

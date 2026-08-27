@@ -121,7 +121,7 @@ export function buildOptimisticUserParts(
   const tokenRe = /\uE000(?:paste|attachment):([a-zA-Z0-9_-]+)\uE001/g;
   const parts: Array<
     { type: "text"; text: string } | ChatImagePart | ChatPastedTextPart | ChatAttachmentPart
-  > = images.map((image) => ({ type: "image", ...image }));
+  > = images.map(({ name, mediaId, mimeType }) => ({ type: "image", name, mediaId, mimeType }));
   let cursor = 0;
   for (const match of text.matchAll(tokenRe)) {
     if (match.index! > cursor) parts.push({ type: "text", text: text.slice(cursor, match.index) });

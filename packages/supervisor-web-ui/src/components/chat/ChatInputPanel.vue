@@ -1,12 +1,5 @@
 <template>
   <div class="chat-input-shell shrink-0" :class="{ 'chat-input-shell--holding': holdRecording }">
-    <ShadowPromptBar
-      v-if="sessionId"
-      :enabled="shadowEnabled ?? false"
-      :session-id="sessionId"
-      :current="shadowPrompt"
-      @saved="emit('shadow-prompt-saved', $event)"
-    />
     <div class="chat-input-hold-stage">
       <div
         v-if="holdRecording"
@@ -104,7 +97,18 @@
             @action="onToolbarAction"
             @send="requestSend"
             @interrupt="emit('interrupt')"
-          />
+          >
+            <template #shadow>
+              <ShadowPromptBar
+                v-if="sessionId"
+                compact
+                :enabled="shadowEnabled ?? false"
+                :session-id="sessionId"
+                :current="shadowPrompt"
+                @saved="emit('shadow-prompt-saved', $event)"
+              />
+            </template>
+          </ChatInputToolbar>
           <input
             ref="imageInputRef"
             type="file"
@@ -141,8 +145,6 @@ import * as api from "@/api";
 import { useAgentStore, useSessionStore } from "@/store";
 import { useResizableHeight } from "../../composables/use-resizable-height";
 import { showUiMessage } from "../../composables/use-ui-message";
-import { isNativeApp } from "../../composables/use-native-app";
-import { pickChatImage } from "../../composables/use-native-camera";
 import { useVoiceRecognition } from "../../composables/use-voice-recognition";
 import type {
   ChatSendPayload,
@@ -694,20 +696,7 @@ function onToolbarAction(action: ChatToolbarAction) {
       composerRef.value?.focus();
       break;
     case "upload-image":
-      if (isNativeApp()) {
-        void pickChatImage()
-          .then((file) => {
-            if (file) addPendingImage(file);
-          })
-          .catch((error: unknown) => {
-            showUiMessage(
-              error instanceof Error ? error.message : t("chat.input.cameraFailed"),
-              "error",
-            );
-          });
-      } else {
-        imageInputRef.value?.click();
-      }
+      imageInputRef.value?.click();
       break;
     case "upload-attachment":
       attachmentInputRef.value?.click();
@@ -792,16 +781,18 @@ function openPastedText(id: string) {
   if (item) openedPastedText.value = item;
 }
 
-function onImageInputChange(event: Event) {
+function onAttachmentInputChange(event: Event) {
   const input = event.target as HTMLInputElement;
-  const files = Array.from(input.files ?? []);
-  for (const file of files) addPendingImage(file);
+  for (const file of Array.from(input.files ?? [])) {
+    if (file.type.startsWith("image/")) addPendingImage(file);
+    else addPendingAttachment(file);
+  }
   input.value = "";
 }
 
-function onAttachmentInputChange(event: Event) {
+function onImageInputChange(event: Event) {
   const input = event.target as HTMLInputElement;
-  for (const file of Array.from(input.files ?? [])) addPendingAttachment(file);
+  for (const file of Array.from(input.files ?? [])) addPendingImage(file);
   input.value = "";
 }
 

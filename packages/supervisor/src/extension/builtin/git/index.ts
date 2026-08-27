@@ -382,19 +382,6 @@ const gitExtension: ExtensionDefinition = {
     );
 
     ctx.on(
-      "session.before_delete",
-      async () => {
-        const git = resolveGit();
-        if (!git) return;
-        await removeWorktreeWithWatson(ctx, sessionId, git, {
-          forceBranch: true,
-          reason: "session.before_delete",
-        });
-      },
-      { priority: 100, mode: "async" },
-    );
-
-    ctx.on(
       "session.before_sync",
       async () => {
         const git = resolveGit();

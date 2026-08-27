@@ -10,6 +10,7 @@ const messages: TranslationMessages = {
   "chat.shadowPrompt.default": "Shadow default",
   "chat.shadowPrompt.custom": "Current session prompt",
   "chat.shadowPrompt.active": "Attached",
+  "chat.shadowPrompt.disabled": "Disabled",
   "chat.shadowPrompt.open": "Edit Shadow prompt",
   "chat.shadowPrompt.title": "Shadow prompt",
   "chat.shadowPrompt.description":
@@ -156,14 +157,14 @@ const messages: TranslationMessages = {
   "chat.header.cost": "Total model cost for this session",
   "chat.header.menu": "Chat information",
   "chat.input.uploadImage": "Upload image",
-  "chat.input.uploadAttachment": "Upload attachment",
+  "chat.input.uploadAttachment": "Upload image or file",
   "chat.input.shadowWorking": "Shadow agent is working",
   "chat.input.btw": "Ask a quick follow-up",
   "chat.input.interrupt": "Interrupt current session",
   "chat.input.send": "Send",
   "chat.input.emoji": "Emoji",
   "chat.input.skill": "Slash commands (/goal /plan /skill /Prompt)",
-  "chat.input.attach": "Send file",
+  "chat.input.attach": "Reference project file (@)",
   "chat.input.placeholder": "Message",
   "chat.input.holdToSpeak": "Hold to speak",
   "chat.autocomplete.hint": "↑↓ Select · Tab/Enter Confirm · Esc Close · @@ Other projects",
@@ -235,6 +236,7 @@ const messages: TranslationMessages = {
     "Delete this session? Its child sessions will also be deleted.",
   "session.list.sessionDeleted": "Session deleted",
   "session.list.deleteFailed": "Delete failed",
+  "session.list.deleting": "Deleting…",
   "session.list.completeSubagentMessage":
     "Complete this subagent session? It will be hidden from the session list without committing or merging code.",
   "session.list.completeSessionMessage":
@@ -1489,6 +1491,9 @@ const messages: TranslationMessages = {
   "toolDetail.result": "Result",
   "toolDetail.details": "Details",
   "toolDetail.noAdditionalInfo": "No additional information",
+  "toolDetail.copy": "Copy",
+  "toolDetail.copied": "Copied",
+  "toolDetail.copyFailed": "Copy failed",
   "archive.prepare": "Preparing local message sync...",
   "archive.skippedUnsupported":
     "Local message storage is not supported in this environment; skipped",

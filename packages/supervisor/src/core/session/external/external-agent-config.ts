@@ -141,6 +141,8 @@ function extraUserBinDirs(): string[] {
       // even when Supervisor was launched from an IDE with a trimmed environment.
       process.env.ProgramFiles ? join(process.env.ProgramFiles, "nodejs") : "",
       process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"], "nodejs") : "",
+      process.env.ProgramFiles ? join(process.env.ProgramFiles, "Git", "cmd") : "",
+      process.env["ProgramFiles(x86)"] ? join(process.env["ProgramFiles(x86)"], "Git", "cmd") : "",
       join(localAppData, "Programs", "nodejs"),
       join(localAppData, "Volta", "bin"),
       process.env.ProgramFiles ? join(process.env.ProgramFiles, "Volta") : "",

@@ -801,7 +801,9 @@ async function confirmDeleteProject() {
   });
   if (!ok) return;
   try {
-    await sessionStore.deleteProject(project.id, project.name);
+    await withUiBusy(t("session.list.deleting"), () =>
+      sessionStore.deleteProject(project.id, project.name),
+    );
     showUiMessage(t("session.list.projectDeleted"), "success");
   } catch (error) {
     showUiMessage(
@@ -1122,7 +1124,9 @@ async function confirmDeleteSession() {
     // Advanced → dust then delete. Basic → delete and let TransitionGroup slide left.
     const row = queryDustTarget(`[data-session-id="${CSS.escape(target.sessionId)}"]`);
     emit("delete", target.sessionId);
-    await withDustRemove(row, () => sessionStore.deleteSession(target.sessionId));
+    await withUiBusy(t("session.list.deleting"), () =>
+      withDustRemove(row, () => sessionStore.deleteSession(target.sessionId)),
+    );
     showUiMessage(t("session.list.sessionDeleted"), "success");
   } catch (error) {
     emit("select", target.sessionId);

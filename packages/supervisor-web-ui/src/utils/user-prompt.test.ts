@@ -55,6 +55,29 @@ describe("user prompt pasted text", () => {
     ]);
   });
 
+  it("does not copy temporary blob URLs into sent image parts", () => {
+    expect(
+      buildOptimisticUserParts(
+        "[Image #1]",
+        [],
+        [],
+        [
+          {
+            name: "image.png",
+            mediaId: "saved-image.png",
+            mimeType: "image/png",
+            previewUrl: "blob:https://example.invalid/temporary",
+          },
+        ],
+      )[0],
+    ).toEqual({
+      type: "image",
+      name: "image.png",
+      mediaId: "saved-image.png",
+      mimeType: "image/png",
+    });
+  });
+
   it("parses and renders attachment tags", () => {
     const attachment = {
       id: "a1",

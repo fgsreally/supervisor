@@ -39,10 +39,11 @@ const { t } = useI18n();
   position: relative;
   width: 4.5rem;
   height: 4.5rem;
-  border-radius: 6px;
+  border-radius: 10px;
   overflow: hidden;
-  border: 1px solid var(--app-border);
+  border: 1px solid color-mix(in srgb, var(--app-accent) 18%, var(--app-border));
   background: var(--app-bubble-assistant);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
 }
 
 .pending-images__thumb {
@@ -54,15 +55,16 @@ const { t } = useI18n();
 
 .pending-images__remove {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  top: 4px;
+  right: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 1.25rem;
   height: 1.25rem;
   border-radius: 999px;
-  background: rgb(0 0 0 / 0.55);
+  border: 1px solid rgb(255 255 255 / 55%);
+  background: rgb(0 0 0 / 62%);
   color: #fff;
 }
 </style>

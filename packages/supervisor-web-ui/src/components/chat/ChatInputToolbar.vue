@@ -7,6 +7,8 @@
         type="button"
         class="toolbar-icon-btn"
         :title="btn.title"
+        :aria-label="btn.title"
+        :data-tooltip="btn.title"
         :disabled="disabled"
         @mousedown.prevent
         @click="emit('action', btn.id)"
@@ -17,6 +19,8 @@
         type="button"
         class="toolbar-icon-btn inline-flex items-center"
         :title="t('chat.input.uploadImage')"
+        :aria-label="t('chat.input.uploadImage')"
+        :data-tooltip="t('chat.input.uploadImage')"
         :disabled="disabled"
         @mousedown.prevent
         @click="emit('action', 'upload-image')"
@@ -27,12 +31,15 @@
         type="button"
         class="toolbar-icon-btn inline-flex items-center"
         :title="t('chat.input.uploadAttachment')"
+        :aria-label="t('chat.input.uploadAttachment')"
+        :data-tooltip="t('chat.input.uploadAttachment')"
         :disabled="disabled"
         @mousedown.prevent
         @click="emit('action', 'upload-attachment')"
       >
         <Paperclip class="w-[19px] h-[19px] stroke-[1.5]" />
       </button>
+      <slot name="shadow" />
       <span
         v-if="shadowRunning"
         class="shadow-loading-indicator"
@@ -46,6 +53,8 @@
         type="button"
         class="toolbar-icon-btn btw-btn"
         :title="t('chat.input.btw')"
+        :aria-label="t('chat.input.btw')"
+        :data-tooltip="t('chat.input.btw')"
         :disabled="disabled"
         @mousedown.prevent
         @click="emit('action', 'btw')"
@@ -78,7 +87,6 @@
 
 <script setup lang="ts">
 import {
-  FolderOpen,
   ImagePlus,
   Loader2,
   MessageCircleQuestion,
@@ -112,7 +120,6 @@ const { t } = useI18n();
 const leftButtons = computed(() => [
   { id: "emoji" as const, icon: Smile, title: t("chat.input.emoji") },
   { id: "skill" as const, icon: Sparkles, title: t("chat.input.skill") },
-  { id: "attach" as const, icon: FolderOpen, title: t("chat.input.attach") },
 ]);
 function onPrimaryAction() {
   if (props.interrupting) emit("interrupt");
@@ -131,11 +138,38 @@ function onPrimaryAction() {
   gap: 2px;
 }
 .toolbar-icon-btn {
+  position: relative;
   padding: 6px;
   border-radius: 8px;
   transition:
     background-color 0.15s,
     color 0.15s;
+}
+.toolbar-icon-btn::after {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 30;
+  width: max-content;
+  max-width: 15rem;
+  padding: 4px 7px;
+  border-radius: 5px;
+  color: var(--app-popup-bg);
+  background: var(--app-text-primary);
+  content: attr(data-tooltip);
+  font-size: var(--app-font-micro);
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 3px);
+  transition:
+    opacity 0.12s,
+    transform 0.12s;
+}
+.toolbar-icon-btn:hover::after,
+.toolbar-icon-btn:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 .toolbar-icon-btn:hover:not(:disabled) {
   background: var(--app-hover);

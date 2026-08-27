@@ -149,7 +149,17 @@ class ImageTagWidget extends WidgetType {
     const span = document.createElement("span");
     span.className = "cm-chat-tag cm-chat-tag--image";
     span.contentEditable = "false";
-    span.textContent = this.token.slice(1, -1);
+
+    const icon = document.createElement("span");
+    icon.className = "cm-chat-tag-icon cm-chat-tag-image-icon";
+    icon.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.5"/><path d="m4 17 4.5-4.5 3.5 3 2.5-2.5 5.5 5"/></svg>';
+    span.appendChild(icon);
+
+    const text = document.createElement("span");
+    text.className = "cm-chat-tag-label";
+    text.textContent = this.token.slice(1, -1);
+    span.appendChild(text);
     return span;
   }
 
@@ -383,9 +393,11 @@ export function chatInputTheme(editorHeightPx: number) {
       color: "var(--app-tag-file-fg)",
     },
     ".cm-chat-tag--image": {
-      border: "1px solid color-mix(in srgb, var(--app-accent) 24%, var(--app-border))",
-      color: "var(--app-text-secondary)",
-      backgroundColor: "color-mix(in srgb, var(--app-hover) 78%, transparent)",
+      border: "1px solid color-mix(in srgb, var(--app-accent) 28%, var(--app-border))",
+      borderRadius: "8px",
+      color: "var(--app-accent)",
+      backgroundColor: "color-mix(in srgb, var(--app-accent) 9%, var(--app-chat-bg))",
+      boxShadow: "0 1px 2px rgb(0 0 0 / 6%)",
     },
     ".cm-chat-tag--attachment": {
       border: "1px solid color-mix(in srgb, var(--app-accent) 28%, var(--app-border))",
@@ -437,6 +449,13 @@ export function chatInputTheme(editorHeightPx: number) {
       justifyContent: "center",
       flexShrink: "0",
       opacity: "1",
+    },
+    ".cm-chat-tag-image-icon svg": {
+      width: "15px",
+      height: "15px",
+      fill: "none",
+      stroke: "currentColor",
+      strokeWidth: "1.8",
     },
     ".cm-chat-tag-source": {
       flexShrink: "0",

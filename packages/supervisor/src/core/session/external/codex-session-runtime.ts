@@ -213,7 +213,9 @@ export class CodexSessionRuntime extends ExternalSessionRuntime {
       );
       const runtime = new CodexSessionRuntime({ ...options, child });
       const isBtw = options.session.spawnType === "btw";
-      const sandbox = isBtw ? "read-only" : "workspace-write";
+      // Match direct Codex on Windows: workspace-write can deny reads through pnpm's
+      // linked node_modules tree (EPERM), even when the dependency is inside the project.
+      const sandbox = isBtw ? "read-only" : "danger-full-access";
       // Match typical local CLI: never park normal sessions on Web approval cards.
       const approvalPolicy = isBtw ? "on-request" : "never";
       try {

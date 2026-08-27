@@ -9,15 +9,7 @@
           </button>
         </div>
         <div class="tool-detail-body custom-scrollbar">
-          <div v-for="(section, i) in sections" :key="i">
-            <div class="tool-detail-section-label">{{ section.label }}</div>
-            <MarkdownContent
-              v-if="section.markdown"
-              :content="section.content"
-              class="tool-detail-section-md"
-            />
-            <pre v-else class="tool-detail-section-pre">{{ section.content }}</pre>
-          </div>
+          <ToolDetailSectionView v-for="(section, i) in sections" :key="i" :section="section" />
         </div>
       </div>
     </div>
@@ -26,7 +18,7 @@
 
 <script setup lang="ts">
 import { X } from "lucide-vue-next";
-import MarkdownContent from "../base/MarkdownContent.vue";
+import ToolDetailSectionView from "./ToolDetailSection.vue";
 
 export type ToolDetailSection = { label: string; content: string; markdown?: boolean };
 
@@ -104,33 +96,5 @@ defineEmits<{ close: [] }>();
   display: flex;
   flex-direction: column;
   gap: 1rem;
-}
-
-.tool-detail-section-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--app-text-muted);
-  margin-bottom: 0.375rem;
-}
-
-.tool-detail-section-md {
-  font-size: 0.875rem;
-  padding: 0.75rem;
-  border-radius: 0.375rem;
-  border: 1px solid var(--app-border);
-  background: var(--app-code-bg);
-}
-
-.tool-detail-section-pre {
-  font-size: 0.75rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  white-space: pre-wrap;
-  word-break: break-word;
-  padding: 0.75rem;
-  border-radius: 0.375rem;
-  border: 1px solid var(--app-border);
-  background: var(--app-code-bg);
-  color: var(--app-code-text);
 }
 </style>

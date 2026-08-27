@@ -188,6 +188,7 @@ const emit = defineEmits<{
 }>();
 
 const LOAD_OLDER_THRESHOLD_PX = 80;
+const FOLLOW_LATEST_THRESHOLD_PX = 80;
 
 function onScroll() {
   const el = containerRef.value;
@@ -457,6 +458,11 @@ async function scrollToBottom() {
   });
 }
 
+function isNearBottom(): boolean {
+  const el = containerRef.value;
+  return !el || el.scrollHeight - el.scrollTop - el.clientHeight <= FOLLOW_LATEST_THRESHOLD_PX;
+}
+
 function findGroupIndexByEntryId(entryId: string): number {
   return props.groups.findIndex((group) => group.id === entryId);
 }
@@ -471,7 +477,13 @@ async function scrollToEntryId(entryId: string): Promise<boolean> {
   return true;
 }
 
-defineExpose({ scrollToBottom, scrollToEntryId, findGroupIndexByEntryId, containerRef });
+defineExpose({
+  scrollToBottom,
+  scrollToEntryId,
+  findGroupIndexByEntryId,
+  isNearBottom,
+  containerRef,
+});
 </script>
 
 <style scoped>

@@ -208,6 +208,10 @@ describe("supervisor: HTTP server", () => {
     expect(await cancelled.json()).toEqual({
       shell: expect.objectContaining({ status: "cancelled" }),
     });
+    const activeSnapshot = (await (await req("GET", `/sessions/${id}/shells`)).json()) as {
+      shells: Array<{ id: string }>;
+    };
+    expect(activeSnapshot.shells).not.toContainEqual(expect.objectContaining({ id: job.id }));
     expect((await req("DELETE", `/sessions/${id}/shells/${service.id}`)).status).toBe(200);
     expect((await req("GET", `/sessions/${id}/jobs`)).status).toBe(404);
   });

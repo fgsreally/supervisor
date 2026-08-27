@@ -6,6 +6,50 @@ import {
 } from "../session-entries";
 
 describe("mergeStreamingToolsIntoPersistedEntries", () => {
+  it("keeps an optimistic user turn when a streaming reload is stale", () => {
+    const serverEntries = sessionTreeToChatEntries([
+      {
+        id: "old-user",
+        parentId: null,
+        type: "message",
+        isOld: false,
+        meta: {},
+        createdAt: 1,
+        message: { role: "user", content: "hi" },
+      },
+      {
+        id: "old-assistant",
+        parentId: "old-user",
+        type: "message",
+        isOld: false,
+        meta: {},
+        createdAt: 2,
+        message: { role: "assistant", content: "hello" },
+      },
+    ] as import("@/api").SessionTreeEntry[]);
+    const localEntries = [
+      ...serverEntries,
+      {
+        id: "optimistic-user",
+        type: "message" as const,
+        message: { role: "user" as const, content: "support shadow" },
+      },
+      {
+        id: "stream-2",
+        type: "message" as const,
+        message: { role: "assistant" as const, content: [{ type: "text" as const, text: "" }] },
+      },
+    ];
+
+    const merged = mergeStreamingToolsIntoPersistedEntries(serverEntries, localEntries);
+    expect(merged.slice(-2).map((entry) => entry.id)).toEqual(["optimistic-user", "stream-2"]);
+    expect(buildDisplayGroups(merged).map((group) => group.type)).toEqual([
+      "message",
+      "grouped_assistant",
+      "message",
+    ]);
+  });
+
   it("keeps streaming tool rows when server only persisted assistant text", () => {
     const serverEntries = sessionTreeToChatEntries([
       {

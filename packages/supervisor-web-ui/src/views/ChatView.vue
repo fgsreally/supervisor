@@ -1410,6 +1410,7 @@ watch(isFoldable, (value) => {
 let streamCleanup: (() => void) | null = null;
 let shadowSuggestionCleanup: (() => void) | null = null;
 let streamingReconcileTimer: ReturnType<typeof setInterval> | null = null;
+let consecutiveIdleReconciles = 0;
 
 const workspaceId = computed(() => props.session.workspaceId ?? "");
 const sessionMuted = computed(() => !!props.session.muted);
@@ -1680,10 +1681,12 @@ function stopStreaming() {
   }
   isStreaming.value = false;
   streamingAssistantId.value = null;
+  consecutiveIdleReconciles = 0;
 }
 
 function startStreamingReconcilePoll() {
   if (isExampleSession(props.session.id)) return;
+  consecutiveIdleReconciles = 0;
   if (streamingReconcileTimer) clearInterval(streamingReconcileTimer);
   streamingReconcileTimer = setInterval(() => {
     void reconcileStreamingWithServer();
@@ -1908,16 +1911,15 @@ async function maybeResumeRunningSession(
   if (syncedStream) {
     running = running || syncedStream.isStreaming;
     if (syncedStream.streamingReply.trim()) streamingReply = syncedStream.streamingReply;
-  } else {
-    try {
-      const state = await api.getSessionState(sessionId);
-      running = running || state.isStreaming;
-      if (typeof state.streamingReply === "string" && state.streamingReply.trim()) {
-        streamingReply = state.streamingReply;
-      }
-    } catch {
-      // Ignore — status from session row is enough to attempt attach.
+  }
+  try {
+    const state = await api.getSessionState(sessionId);
+    running = running || state.isStreaming;
+    if (typeof state.streamingReply === "string" && state.streamingReply.trim()) {
+      streamingReply = state.streamingReply;
     }
+  } catch {
+    // Ignore — session row/device sync is enough to attempt attach.
   }
   if (!running) return;
   attachToRunningSession(streamingReply);
@@ -2295,6 +2297,14 @@ async function onRetryLlmError() {
 
 async function scrollToBottom() {
   await messageListRef.value?.scrollToBottom();
+}
+
+function isFollowingLatest(): boolean {
+  return messageListRef.value?.isNearBottom() ?? true;
+}
+
+function scrollToBottomIfFollowing(following: boolean) {
+  if (following) void scrollToBottom();
 }
 
 async function prepareChatViewport(sessionId: string) {
@@ -2906,10 +2916,15 @@ function attachToRunningSession(streamingReply?: string) {
       if (handleApprovalEvent(payload.event)) return;
       if (payload.event.type === "session_status") {
         void sessionStore.fetchSession(props.session.id);
-        if (payload.event.status === "idle" || payload.event.status === "error") {
+        if (payload.event.status === "error") {
+          const following = isFollowingLatest();
           stopStreaming();
-          void reloadMessagesFromServer(props.session.id).then(() => scrollToBottom());
+          void reloadMessagesFromServer(props.session.id).then(() =>
+            scrollToBottomIfFollowing(following),
+          );
           void sessionStore.fetchSessions();
+        } else if (payload.event.status === "idle") {
+          void reconcileStreamingWithServer();
         }
         return;
       }
@@ -2918,16 +2933,19 @@ function attachToRunningSession(streamingReply?: string) {
         void reloadMessagesFromServer(props.session.id);
         return;
       }
+      const following = isFollowingLatest();
       applyAgentEventToChatEntries(
         chatEntries.value,
         assistantId,
         payload.event as import("@earendil-works/pi-agent-core").AgentEvent,
       );
-      void scrollToBottom();
+      scrollToBottomIfFollowing(following);
       if (payload.event.type === "agent_end") {
         const snapshot = chatEntries.value;
         stopStreaming();
-        void reloadMessagesFromServer(props.session.id, snapshot).then(() => scrollToBottom());
+        void reloadMessagesFromServer(props.session.id, snapshot).then(() =>
+          scrollToBottomIfFollowing(following),
+        );
         void sessionStore.fetchSessions();
       }
     },
@@ -2935,15 +2953,13 @@ function attachToRunningSession(streamingReply?: string) {
       if (err.name === "AbortError") return;
       console.error("Session events error:", err);
       showUiMessage(err.message, "error");
-      void reconcileStreamingWithServer();
     },
     () => {
       // Connected after refresh: if the turn already finished, drop thinking UI.
       void reconcileStreamingWithServer();
     },
     () => {
-      // SSE dropped (server restart / network). Don't leave the UI stuck on 思考中.
-      void reconcileStreamingWithServer();
+      // The periodic state check decides whether generation actually ended.
     },
   );
 }
@@ -2952,12 +2968,19 @@ async function reconcileStreamingWithServer() {
   if (!isStreaming.value) return;
   try {
     const state = await api.getSessionState(props.session.id);
-    if (state.isStreaming || state.status === "running") return;
+    if (state.isStreaming || state.status === "running") {
+      consecutiveIdleReconciles = 0;
+      return;
+    }
   } catch {
-    // Session gone or API down — still clear local thinking UI.
+    // A transient state request failure is not evidence that generation ended.
+    return;
   }
+  consecutiveIdleReconciles += 1;
+  if (consecutiveIdleReconciles < 2) return;
+  const following = isFollowingLatest();
   stopStreaming();
-  void reloadMessagesFromServer(props.session.id).then(() => scrollToBottom());
+  void reloadMessagesFromServer(props.session.id).then(() => scrollToBottomIfFollowing(following));
   void sessionStore.fetchSessions();
 }
 
@@ -3015,12 +3038,13 @@ async function sendStreamReply(
       ) {
         activeTurn.value.assistantActivitySeen = true;
       }
+      const following = isFollowingLatest();
       applyAgentEventToChatEntries(
         chatEntries.value,
         assistantId,
         event as import("@earendil-works/pi-agent-core").AgentEvent,
       );
-      void scrollToBottom();
+      scrollToBottomIfFollowing(following);
     },
     (err) => {
       console.error("Stream error:", err);
@@ -3043,11 +3067,14 @@ async function sendStreamReply(
         return;
       }
       const snapshot = chatEntries.value;
+      const following = isFollowingLatest();
       isStreaming.value = false;
       streamingAssistantId.value = null;
       streamCleanup = null;
       activeTurn.value = null;
-      void reloadMessagesFromServer(props.session.id, snapshot).then(() => scrollToBottom());
+      void reloadMessagesFromServer(props.session.id, snapshot).then(() =>
+        scrollToBottomIfFollowing(following),
+      );
       void sessionStore.fetchSessions();
       notifyMessageComplete({
         sessionId: props.session.id,

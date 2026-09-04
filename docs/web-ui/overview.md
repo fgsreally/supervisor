@@ -1,6 +1,6 @@
 # Web UI 概览
 
-`pi-supervisor-ui` 是 supervisor 的 Web 控制台。Vue 3 + Vite + Pinia + CodeMirror + Tailwind CSS。
+`wecode-ui` 是 wecode 的 Web 控制台。Vue 3 + Vite + Pinia + CodeMirror + Tailwind CSS。
 
 ## 技术栈
 
@@ -41,10 +41,10 @@ index.html → src/main.ts → App.vue
 | Skills 搜索 / 链接安装              | 完成               |
 | Workflow stage 标签                 | 完成（面板见缺口） |
 | Shadow 消息行与启用开关             | 完成               |
-| 暗色主题 / 推送 / PWA               | 完成               |
+| 暗色主题 / 推送                     | 完成               |
 | 运行中停止与未回答消息回填          | 完成               |
 | Thinking Level 切换                 | 未实现             |
-| 扩展管理 UI                         | 未实现             |
+| 插件管理 UI                         | 未实现             |
 
 ## 进一步阅读
 

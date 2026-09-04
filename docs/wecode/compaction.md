@@ -14,5 +14,5 @@
 
 ## 相关
 
-- [打包工具](/supervisor/builtin-tools)
-- [HTTP API](/supervisor/http-api)
+- [打包工具](/wecode/builtin-tools)
+- [HTTP API](/wecode/http-api)

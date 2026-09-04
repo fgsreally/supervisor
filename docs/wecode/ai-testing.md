@@ -1,6 +1,6 @@
 # AI 效果测试
 
-Supervisor 将测试分为两类：
+Wecode 将测试分为两类：
 
 - `*.test.ts`：结果确定的单元测试和集成测试，默认由 `pnpm test` 执行。
 - `*.ai.test.ts`：运行真实 Coding Agent，并由独立裁判 LLM 评价效果。
@@ -9,15 +9,15 @@ AI 测试不会直接断言模型原文。测试场景收集消息、工具调�
 
 ## 公共 API
 
-扩展项目可以直接使用 Supervisor 提供的测试模块：
+插件项目可以直接使用 Wecode 提供的测试模块：
 
 ```ts
-import { judgeAiResult, withAiTestEnvironment } from "pi-supervisor/test";
+import { judgeAiResult, withAiTestEnvironment } from "wecode/test";
 import { expect, it } from "vitest";
 
 it("improves code navigation", async () => {
   await withAiTestEnvironment(
-    { fixture: "./test/fixture", extensions: ["./src"] },
+    { fixture: "./test/fixture", plugins: ["./src"] },
     async (environment) => {
       const result = await environment.run({
         name: "code-navigation",
@@ -34,7 +34,7 @@ it("improves code navigation", async () => {
 });
 ```
 
-公共模块不依赖 Vitest，扩展可以使用任意测试框架。
+公共模块不依赖 Vitest，插件可以使用任意测试框架。
 
 ## 环境变量
 
@@ -70,13 +70,13 @@ AI_TEST_ARTIFACTS_DIR=./test-results/ai
 ## 运行
 
 ```bash
-pnpm --filter pi-supervisor run test:unit
-pnpm --filter pi-supervisor run test:ai
-pnpm --filter pi-supervisor run test:all
+pnpm --filter wecode run test:unit
+pnpm --filter wecode run test:ai
+pnpm --filter wecode run test:all
 ```
 
 没有配置被测模型凭据时，`*.ai.test.ts` 会被跳过。普通测试不会请求真实模型。
 
 ## A/B 对照
 
-使用 `compareAiResults()` 可以比较未启用扩展的 baseline 与启用扩展后的 candidate。裁判会分别评分，并返回 `baseline`、`candidate` 或 `tie`，适合验证扩展是否真正改善 Coding Agent 的解决能力。
+使用 `compareAiResults()` 可以比较未启用插件的 baseline 与启用插件后的 candidate。裁判会分别评分，并返回 `baseline`、`candidate` 或 `tie`，适合验证插件是否真正改善 Coding Agent 的解决能力。

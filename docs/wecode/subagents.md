@@ -14,11 +14,11 @@
 父代理通过工具结果、事件与显式 resume 接收摘要，不共享完整上下文。
 
 列表可见性根据 `spawn_type` 与运行状态推导；数据库不再保存 `showInSessionList`。
-直属子 Session 始终可通过父会话 children/tree 接口查看。详见[会话管理](/supervisor/session)。
+直属子 Session 始终可通过父会话 children/tree 接口查看。详见[会话管理](/wecode/session)。
 
-## 内置扩展
+## 内置插件
 
-`src/extension/builtin/subagent/` 注册 `spawn_agent` 工具，典型参数：
+`src/plugin/builtin/subagent/` 注册 `spawn_agent` 工具，典型参数：
 
 - `agentName`：创建时选择 `meta.subagentIds` 白名单内的 Agent
 - `sessionId`：继续已有的直属子 Session，不创建新 Session
@@ -28,11 +28,11 @@
 - `finish_on_result`、`timeoutMs`、`maxResultChars`：前台等待与结果截断
 - `systemPrompt`、`meta`：可选覆盖
 
-`spawn_agent` 不传 `sessionId` 时创建子 Session；传入时复用该 Session 的消息历史。若子 Session 已经是 `finish` / `finished`，Supervisor 会先将其恢复为 `idle` 并重新显示，再提交输入；若它仍在运行，输入进入与主 Session 相同的队列。
+`spawn_agent` 不传 `sessionId` 时创建子 Session；传入时复用该 Session 的消息历史。若子 Session 已经是 `finish` / `finished`，Wecode 会先将其恢复为 `idle` 并重新显示，再提交输入；若它仍在运行，输入进入与主 Session 相同的队列。
 
 `get_subagent_status` 接收 `sessionId`，返回当前状态、队列中的输入数量、最近活跃时间以及最新一条 assistant 输出。父代理可先检查执行情况，再决定是否通过 `spawn_agent` 发送普通或紧急消息。
 
-Supervisor 启动时会把遗留的 `initializing`/`starting`、`running`，以及无 `error_msg` 的 `blocked`/`waiting_user` 归一为 `idle`，并恢复 SQLite 中尚未投递的输入队列。带原因的 `blocked`（如未配模型）、`finish`、`finished` 和 `error` 保持不变。
+Wecode 启动时会把遗留的 `initializing`/`starting`、`running`，以及无 `error_msg` 的 `blocked`/`waiting_user` 归一为 `idle`，并恢复 SQLite 中尚未投递的输入队列。带原因的 `blocked`（如未配模型）、`finish`、`finished` 和 `error` 保持不变。
 
 可委派子 Agent 白名单在 `sessions.meta.subagentIds`（`number[]`），HTTP：
 
@@ -46,11 +46,11 @@ Supervisor 启动时会把遗留的 `initializing`/`starting`、`running`，以�
 
 ## 创建路径
 
-- 工具：`spawn_agent`（扩展）
+- 工具：`spawn_agent`（插件）
 - 管理器：`SessionManager.spawn()`
 - 其他子会话类型：`fork` / `clone` / `btw`（见会话文档）
 
 ## 相关
 
-- [Shadow](/supervisor/shadow)
-- [工作流](/supervisor/workflow)（Strict SDD 用子 Session 跑单阶段任务）
+- [Shadow](/wecode/shadow)
+- [工作流](/wecode/workflow)（Strict SDD 用子 Session 跑单阶段任务）

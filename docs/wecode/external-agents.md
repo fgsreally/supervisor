@@ -1,6 +1,6 @@
 # 外部 Agent
 
-Supervisor 除内置 harness 外，可驱动本机或协议型外部 Agent，实现位于 `src/core/external/`：
+Wecode 除内置 harness 外，可驱动本机或协议型外部 Agent，实现位于 `src/core/external/`：
 
 | 模块        | 文件                          | 说明                                                 |
 | ----------- | ----------------------------- | ---------------------------------------------------- |
@@ -20,9 +20,9 @@ Supervisor 除内置 harness 外，可驱动本机或协议型外部 Agent，实
 | Cursor      | `cursor`      | `agent acp` | ACP                     |
 | MiMo Code   | `mimo`        | `mimo acp`  | ACP                     |
 
-认证由用户在本机自行完成（如 `agent login`、`claude login`），Supervisor 不代管登录，与 Codex / Claude Code 一致。
+认证由用户在本机自行完成（如 `agent login`、`claude login`），Wecode 不代管登录，与 Codex / Claude Code 一致。
 
-Cursor 通过 ACP 扩展方法时：
+Cursor 通过 ACP 插件方法时：
 
 - `cursor/ask_question` / `cursor/create_plan`：桥接到 Web UI 的 `external_interaction`
 - `cursor/update_todos` / `cursor/task` / `cursor/generate_image`：通知型，当前仅记录日志
@@ -44,5 +44,5 @@ Chat 侧已有 Codex 等相关组件；完整外部 Agent 配置体验随 Agent 
 
 ## 相关
 
-- [会话管理](/supervisor/session)
-- [HTTP API](/supervisor/http-api)
+- [会话管理](/wecode/session)
+- [HTTP API](/wecode/http-api)

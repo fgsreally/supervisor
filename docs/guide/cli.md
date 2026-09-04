@@ -1,19 +1,19 @@
 # CLI 命令
 
-入口：`packages/supervisor/src/cli.ts`，构建产物 `packages/supervisor/dist/cli.mjs`，包 bin 名为 `pi-supervisor`。
+入口：`packages/wecode/src/cli.ts`，构建产物 `packages/wecode/dist/cli.mjs`，包 bin 名为 `wecode`。
 
 运行时要求 Node.js 20.6 或更高版本。包按标准 npm 包发布：
 
 ```bash
-npm install -g pi-supervisor
-pi-supervisor --help
+npm install -g wecode
+wecode --help
 ```
 
 ```bash
 pnpm run build
-node packages/supervisor/dist/cli.mjs --help
+node packages/wecode/dist/cli.mjs --help
 # 或安装后
-pi-supervisor --help
+wecode --help
 ```
 
 ## 启动 HTTP 服务器
@@ -33,60 +33,60 @@ pnpm run serve:tunnel
 ## Provider
 
 ```bash
-node packages/supervisor/dist/cli.mjs providers add
-node packages/supervisor/dist/cli.mjs providers list
-node packages/supervisor/dist/cli.mjs providers set-key
-node packages/supervisor/dist/cli.mjs providers remove
+node packages/wecode/dist/cli.mjs providers add
+node packages/wecode/dist/cli.mjs providers list
+node packages/wecode/dist/cli.mjs providers set-key
+node packages/wecode/dist/cli.mjs providers remove
 ```
 
 ## Model
 
 ```bash
-node packages/supervisor/dist/cli.mjs models list <provider-id>
-node packages/supervisor/dist/cli.mjs models add
-node packages/supervisor/dist/cli.mjs models remove
+node packages/wecode/dist/cli.mjs models list <provider-id>
+node packages/wecode/dist/cli.mjs models add
+node packages/wecode/dist/cli.mjs models remove
 ```
 
 ## Config
 
 ```bash
-node packages/supervisor/dist/cli.mjs config
-node packages/supervisor/dist/cli.mjs config show
-node packages/supervisor/dist/cli.mjs config web-search [provider]
-node packages/supervisor/dist/cli.mjs config web-fetch [provider]
-node packages/supervisor/dist/cli.mjs config browser [headless|headed]
+node packages/wecode/dist/cli.mjs config
+node packages/wecode/dist/cli.mjs config show
+node packages/wecode/dist/cli.mjs config web-search [provider]
+node packages/wecode/dist/cli.mjs config web-fetch [provider]
+node packages/wecode/dist/cli.mjs config browser [headless|headed]
 ```
 
-## Extension（全局 catalog + bind）
+## Plugin（全局 catalog + bind）
 
-扩展安装到**全局 catalog**（一份代码、多 Agent 共用），再通过数据库绑定到具体 Agent。
+插件安装到**全局 catalog**（一份代码、多 Agent 共用），再通过数据库绑定到具体 Agent。
 
 ```bash
 # 从本地路径 / npm / git 安装到全局 catalog
-node packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
-node packages/supervisor/dist/cli.mjs extensions install npm:<spec>
-node packages/supervisor/dist/cli.mjs extensions install git:<url>
+node packages/wecode/dist/cli.mjs plugins install ./plugins/strict-sdd
+node packages/wecode/dist/cli.mjs plugins install npm:<spec>
+node packages/wecode/dist/cli.mjs plugins install git:<url>
 
-node packages/supervisor/dist/cli.mjs extensions list
-node packages/supervisor/dist/cli.mjs extensions update <id>
-node packages/supervisor/dist/cli.mjs extensions uninstall <id>
+node packages/wecode/dist/cli.mjs plugins list
+node packages/wecode/dist/cli.mjs plugins update <id>
+node packages/wecode/dist/cli.mjs plugins uninstall <id>
 
 # 绑定 / 解绑到 Agent
-node packages/supervisor/dist/cli.mjs extensions bind <agent-id> <id>
-node packages/supervisor/dist/cli.mjs extensions unbind <agent-id> <id>
+node packages/wecode/dist/cli.mjs plugins bind <agent-id> <id>
+node packages/wecode/dist/cli.mjs plugins unbind <agent-id> <id>
 ```
 
-详情见 [扩展框架](/supervisor/extensions)。
+详情见 [插件框架](/wecode/plugins)。
 
 ## 通用选项
 
 | 选项                | 说明                                                                        |
 | ------------------- | --------------------------------------------------------------------------- |
 | `-p, --port <port>` | HTTP 端口，默认 3030                                                        |
-| `--cwd <path>`      | Supervisor 全局根（db/public/global/agents/projects；默认 `~/.supervisor`） |
+| `--cwd <path>`      | Wecode 全局根（db/public/global/agents/projects；默认 `~/.wecode`） |
 | `-h, --help`        | 帮助                                                                        |
 
-`--cwd` 决定全局根。数据库默认在 `<cwd>/supervisor.db`（或 `~/.supervisor/supervisor.db`）。也可用 `<home>/settings.json` 的 `dbPath` 覆盖。
+`--cwd` 决定全局根。数据库默认在 `<cwd>/wecode.db`（或 `~/.wecode/wecode.db`）。也可用 `<home>/settings.json` 的 `dbPath` 覆盖。
 
 开发时：`pnpm run dev:server` 暂用 `--cwd playground`。
 

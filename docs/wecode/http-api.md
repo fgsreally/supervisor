@@ -1,6 +1,6 @@
 # HTTP API 参考
 
-实现：`packages/supervisor/src/http/http-server.ts`（Elysia + Node）。默认端口 3030。响应 JSON；错误形如 `{ error: string }`。
+实现：`packages/wecode/src/http/http-server.ts`（Elysia + Node）。默认端口 3030。响应 JSON；错误形如 `{ error: string }`。
 
 运行时接口契约由 `@elysia/openapi` 从实际路由 schema 生成：OpenAPI JSON 位于 `/openapi/json`，交互文档位于 `/openapi`。路径参数由统一路由层声明，新增或修改接口参数时应直接修改 Elysia schema，不维护第二份接口目录。
 
@@ -12,7 +12,7 @@
 | GET    | `/settings`              | 读取设置             |
 | PATCH  | `/settings`              | 更新设置             |
 | POST   | `/settings/test-api-key` | 测试供应商 API key   |
-| GET    | `/system/logs`           | Supervisor 日志      |
+| GET    | `/system/logs`           | Wecode 日志      |
 | GET    | `/system/watson/logs`    | 华生 Agent Home 日志 |
 
 首页任务使用 `/home/tasks` 的 GET/POST、`/home/tasks/:id` 的 PATCH/DELETE，以及
@@ -52,8 +52,8 @@
 | GET    | `/agents/:id/resource-bindings`      | 资源绑定                           |
 | POST   | `/agents/:id/resources`              | 绑定资源                           |
 | DELETE | `/agents/:id/resources/:resourceId`  | 解除绑定                           |
-| GET    | `/agents/:id/extensions`             | 扩展绑定及启用状态                 |
-| PATCH  | `/agents/:id/extensions/:resourceId` | 启用或禁用扩展                     |
+| GET    | `/agents/:id/plugins`             | 插件绑定及启用状态                 |
+| PATCH  | `/agents/:id/plugins/:resourceId` | 启用或禁用插件                     |
 
 内置 Agent（`is_builtin=1`）：禁止 PATCH/DELETE 与资源绑定变更；例外是
 `PUT /agents/:id/system-md`，它允许定制数据库中的 `system_prompt`。
@@ -139,7 +139,7 @@
 | POST   | `/sessions/:id/jobs/:jobId/input` | 向支持输入的 Job 写入内容    |
 | DELETE | `/sessions/:id/jobs/:jobId`       | 取消支持取消的 Job           |
 
-Job 的状态、能力和界面语义见 [Job](/supervisor/jobs)。
+Job 的状态、能力和界面语义见 [Job](/wecode/jobs)。
 
 旧 `/sessions/:id/bash-sessions*` 路径仍作为 Job 的兼容别名存在，不应在新客户端中继续使用。
 
@@ -170,7 +170,7 @@ Job 的状态、能力和界面语义见 [Job](/supervisor/jobs)。
 | GET    | `/files/content?path=`  | 读文件（路径白名单） |
 | GET    | `/workspace/files?dir=` | 列工作区文件         |
 
-## Resources / Extensions / Upload
+## Resources / Plugins / Upload
 
 | Method | Path                        | 说明               |
 | ------ | --------------------------- | ------------------ |
@@ -179,10 +179,10 @@ Job 的状态、能力和界面语义见 [Job](/supervisor/jobs)。
 | POST   | `/resources/install`        | 安装资源           |
 | POST   | `/resources/uninstall`      | 卸载资源           |
 | PUT    | `/resources/content`        | 更新可编辑资源内容 |
-| GET    | `/extensions`               | 扩展 catalog       |
-| POST   | `/extensions/install`       | 安装扩展           |
-| POST   | `/extensions/:id/update`    | 更新扩展           |
-| POST   | `/extensions/:id/uninstall` | 卸载扩展           |
+| GET    | `/plugins`               | 插件 catalog       |
+| POST   | `/plugins/install`       | 安装插件           |
+| POST   | `/plugins/:id/update`    | 更新插件           |
+| POST   | `/plugins/:id/uninstall` | 卸载插件           |
 | POST   | `/upload/icons`             | 上传图标           |
 | GET    | `/uploaded-icons/:filename` | 读取图标           |
 | POST   | `/upload/public`            | 上传公共文件       |
@@ -199,6 +199,6 @@ Job 的状态、能力和界面语义见 [Job](/supervisor/jobs)。
 
 - Slash 命令已实现：`GET/POST /sessions/:id/commands`。
 - 文件读取有路径白名单，见 `http-server.ts` 中 `GET /files/content`。
-- 工作流语义见 [工作流](/supervisor/workflow)；外部 Agent 见 [外部 Agent](/supervisor/external-agents)。
+- 工作流语义见 [工作流](/wecode/workflow)；外部 Agent 见 [外部 Agent](/wecode/external-agents)。
 - **错误与通知**：LLM 失败会写 timeline `customType: llm_error`，可用 `POST /sessions/:id/retry`；缺模型或审批等需用户介入的情况使用 `status=blocked` 与 `error_msg`。其它运维错误通常经 SSE `ui_notify` 展示。
 - **未读**：消息使用 `messages.meta.read`，会话计数使用 `sessions.unread`；打开会话时调用 `POST /sessions/:id/read`。

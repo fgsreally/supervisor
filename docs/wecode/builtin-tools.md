@@ -1,6 +1,6 @@
 # 打包工具
 
-默认工具由 `src/utils/default-tools.ts` 的 `toolsPreset` 决定，**不是**扩展：
+默认工具由 `src/utils/default-tools.ts` 的 `toolsPreset` 决定，**不是**插件：
 
 | Preset     | 工具                                                                   |
 | ---------- | ---------------------------------------------------------------------- |
@@ -27,4 +27,4 @@
 
 `src/core/session-lifecycle.ts` 中的 worktree、自动命名、结束合并、触发 rolling compaction 等属于会话生命周期，不是 agent 可调用工具。
 
-扩展仍可通过 `ctx.agent.registerTool()` 注册自定义工具，见 [扩展框架](/supervisor/extensions)。
+插件仍可通过 `ctx.agent.registerTool()` 注册自定义工具，见 [插件框架](/wecode/plugins)。

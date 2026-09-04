@@ -1,26 +1,26 @@
-# 扩展 API
+# 插件 API
 
-扩展是按 Session 实例化的 TypeScript/JavaScript 模块。公开类型的权威来源是
-`packages/supervisor/src/extension/types.ts`，运行时装配位于 `extension/runtime/context.ts`。
+插件是按 Session 实例化的 TypeScript/JavaScript 模块。公开类型的权威来源是
+`packages/wecode/src/plugin/types.ts`，运行时装配位于 `plugin/runtime/context.ts`。
 
 ## 包与加载
 
 ```json
 {
-  "name": "my-extension",
+  "name": "my-plugin",
   "version": "1.0.0",
   "type": "module",
   "main": "./index.ts",
-  "repository": "github:acme/my-extension"
+  "repository": "github:acme/my-plugin"
 }
 ```
 
-`main` 缺省时依次尝试 `index.ts`、`index.js`。入口默认导出 `defineExtension(...)`：
+`main` 缺省时依次尝试 `index.ts`、`index.js`。入口默认导出 `definePlugin(...)`：
 
 ```ts
-import { defineExtension, Type } from "pi-supervisor";
+import { definePlugin, Type } from "wecode";
 
-export default defineExtension({
+export default definePlugin({
   name: "demo",
   setup(ctx) {
     ctx.agent.registerTool({
@@ -39,39 +39,39 @@ export default defineExtension({
 `setup` 可同步或异步，并可返回同步/异步清理函数。不要使用旧的 `ctx.runtime`、
 `ctx.cwd`、`ctx.projectDir`、`ctx.sessionId` 或 `ctx.agent.tools`；这些对象已不在公开 API 中。
 
-安装来源支持本地路径、npm 与 GitHub。扩展作为 `resources(kind=extension)` 安装到全局 catalog，
-再通过 `agent_resources` bind 到 Agent；Session 不扫描 cwd 或 Agent Home 来发现扩展。
+安装来源支持本地路径、npm 与 GitHub。插件作为 `resources(kind=plugin)` 安装到全局 catalog，
+再通过 `agent_resources` bind 到 Agent；Session 不扫描 cwd 或 Agent Home 来发现插件。
 
 ```bash
-pi-supervisor extensions install ./my-extension
-pi-supervisor extensions bind <agent-id> <extension-resource-id>
-pi-supervisor extensions update <extension-resource-id>
+wecode plugins install ./my-plugin
+wecode plugins bind <agent-id> <plugin-resource-id>
+wecode plugins update <plugin-resource-id>
 ```
 
-## `ExtensionContext`
+## `PluginContext`
 
 | 成员                  | 用途                                                    |
 | --------------------- | ------------------------------------------------------- |
 | `session`             | 当前会话、消息、meta、stage、派生 Session 与上下文操作  |
 | `agent`               | 当前 Agent 信息、工具/slash 注册、模型与 thinking level |
-| `tools`               | 枚举或调用当前 Session 已注册的扩展工具                 |
+| `tools`               | 枚举或调用当前 Session 已注册的插件工具                 |
 | `jobs`                | 创建、查询、更新、取消执行记录及输入/取消 handler       |
 | `project`             | 项目 `cwd` 与专属 `dir`                                 |
 | `ui`                  | WebSocket 广播与用户审批                                |
-| `db`                  | 原始 SQLite；扩展自行保证完整性与迁移安全               |
+| `db`                  | 原始 SQLite；插件自行保证完整性与迁移安全               |
 | `watson`              | 使用助手模型运行临时内部任务，不创建用户 Session        |
 | `flow`                | continue/pause/resume、锁和 usage scope                 |
 | `inject`              | 在 turn 边界 schedule/reattach/clear prompt 注入        |
-| `events`              | 扩展间事件总线                                          |
+| `events`              | 插件间事件总线                                          |
 | `on` / `log` / `exec` | 生命周期订阅、日志、进程执行                            |
 
 ### `ctx.session`
 
 只读身份：`id`、`cwd`、`dir`、`isMain`、`isChild`、`signal`。
 
-- `meta.get/set/patch`：Session 扩展状态。扩展键必须带自己的命名空间。
+- `meta.get/set/patch`：Session 插件状态。插件键必须带自己的命名空间。
 - `workflow.get/set/clear`：旧兼容名；当前只是 `sessions.stage` 的薄层，status 恒为
-  `working`。新扩展不应在这里保存 waiting/completed 等状态。
+  `working`。新插件不应在这里保存 waiting/completed 等状态。
 - `tasks.list/upsert/remove/getCurrentPath/setCurrentPath`：`sessions.meta.tasks/currentTask`。
 - `todos.list/replace`：`sessions.meta.todos`。
 - `messages.list/get/tree/currentBranch/search/getMeta/setMeta/patchMeta/setLabel/stats/contextUsage`。
@@ -102,7 +102,7 @@ pi-supervisor extensions update <extension-resource-id>
 另有 `listTools/getTool`、`setModel`、`setThinkingLevel/getThinkingLevel`。
 
 `findByRole("spawned")` 解析 `sessions.meta.subagentIds`。`findByTag` 是旧兼容入口，
-当前返回空列表，新扩展应显式使用 Session 的可委派 Agent 白名单。
+当前返回空列表，新插件应显式使用 Session 的可委派 Agent 白名单。
 
 ### 工具定义
 
@@ -153,7 +153,7 @@ ctx.agent.registerTool({
 结构化结果；不传则返回文本。日志统一写入华生日志目录。
 
 `ctx.db.available` 可先检查原始数据库是否可用，再使用 `prepare/query/queryOne/execute`。
-核心表没有扩展迁移隔离，优先使用高层 facade；自定义数据推荐 namespaced meta 或扩展自有表。
+核心表没有插件迁移隔离，优先使用高层 facade；自定义数据推荐 namespaced meta 或插件自有表。
 
 ## 事件
 
@@ -169,18 +169,18 @@ ctx.agent.registerTool({
 | 工具      | `tool.before_call`、`tool.after_call`                                                             |
 | 压缩/模型 | `compact.before`、`compact.after`、`model.change`                                                 |
 | HTTP/WS   | `http.request`、`http.response`、`ws.connect`、`ws.disconnect`、`ws.message`                      |
-| 扩展      | `extension.reload`、`extension.error`                                                             |
+| 插件      | `plugin.reload`、`plugin.error`                                                             |
 
 工具 guard 优先使用 `ctx.session.tools.beforeUse/afterUse`；它提供明确的 allow/block 与结果替换
 契约。事件适合观察跨组件生命周期。
 
-## 内置扩展
+## 内置插件
 
-当前 catalog 为 `supervisor-admin`、`eval`、`task-management`、`tool-loop-guard`、`timer`、
-`persistent-bash`、`skill`、`mcp`、`message-assets`、`subagent`。内置扩展也以
+当前 catalog 为 `wecode-admin`、`eval`、`task-management`、`tool-loop-guard`、`timer`、
+`persistent-bash`、`skill`、`mcp`、`message-assets`、`subagent`。内置插件也以
 `resources.meta.builtin = true` 表示；`subagent` 只加载到主 Session。
 
-`supervisor-admin` 仅绑定到内置 Pi 助手，提供受控 HTTP、数据库和扩展脚手架工具；详见
-[Pi 管理助手](/supervisor/intro-assistant)。
+`wecode-admin` 仅绑定到内置 WeCode 助手，提供受控 HTTP、数据库和插件脚手架工具；详见
+[WeCode 管理助手](/wecode/intro-assistant)。
 
-仓库根目录下的可选扩展及兼容状态见[仓库扩展](/supervisor/shipped-extensions)。
+仓库根目录下的可选插件及兼容状态见[仓库插件](/wecode/shipped-plugins)。

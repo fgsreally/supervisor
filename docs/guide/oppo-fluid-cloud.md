@@ -1,8 +1,8 @@
 # OPPO 流体云接入指南
 
-> **当前仓库未启用此路径。** Supervisor Android 端已改为仅使用 [Android 16 Live Updates](./android-live-updates.md)（ColorOS 16 会自动兼容）。下文仅供将来需要 OPPO 私有 IntelligentIntent 时参考。
+> **当前仓库未启用此路径。** Wecode Android 端已改为仅使用 [Android 16 Live Updates](./android-live-updates.md)（ColorOS 16 会自动兼容）。下文仅供将来需要 OPPO 私有 IntelligentIntent 时参考。
 
-Supervisor 在 OPPO / realme / OnePlus 设备（ColorOS 15+）上，可将 Agent 运行状态展示为**流体云**胶囊/卡片；App 前台时走端侧意图共享，App 后台或被杀死时走 OPPO Push 远程更新。
+Wecode 在 OPPO / realme / OnePlus 设备（ColorOS 15+）上，可将 Agent 运行状态展示为**流体云**胶囊/卡片；App 前台时走端侧意图共享，App 后台或被杀死时走 OPPO Push 远程更新。
 
 ## 能力概览
 
@@ -10,9 +10,9 @@ Supervisor 在 OPPO / realme / OnePlus 设备（ColorOS 15+）上，可将 Agent
 | --------------------------- | -------------------------------------------------------------------------- | ---------------------------------------- |
 | App 前台、聊天页 Agent 运行 | Android `ContentProvider` 调用系统 `IntelligentIntentProvider.shareIntent` | 已配置 `serviceId`，系统开启意图框架     |
 | App 后台、进程存活          | 同上（由 Web UI `use-live-status` 驱动）                                   | 同上                                     |
-| App 被杀死                  | Supervisor 服务端 OPPO Push `intelligent_intent`                           | OPPO Push `registration_id` + 服务端密钥 |
+| App 被杀死                  | Wecode 服务端 OPPO Push `intelligent_intent`                           | OPPO Push `registration_id` + 服务端密钥 |
 
-垂域映射：Supervisor Agent 任务使用 **`entityName: "TASK"`**（进度模板）。
+垂域映射：Wecode Agent 任务使用 **`entityName: "TASK"`**（进度模板）。
 
 ## 如何申请 OPPO 流体云资格
 
@@ -24,7 +24,7 @@ Supervisor 在 OPPO / realme / OnePlus 设备（ColorOS 15+）上，可将 Agent
 ### 2. 创建应用
 
 1. 控制台 → **应用服务** → 创建应用。
-2. 填写包名（与 `com.supervisor.app` 一致）、应用名称、签名 SHA256。
+2. 填写包名（与 `com.wecode.app` 一致）、应用名称、签名 SHA256。
 3. 上传 APK 或填写签名信息供审核。
 
 ### 3. 开通消息推送（OPPO Push）
@@ -35,7 +35,7 @@ Supervisor 在 OPPO / realme / OnePlus 设备（ColorOS 15+）上，可将 Agent
    - **MasterSecret**（服务端密钥，仅保存在服务器）
 3. 集成 OPPO 客户端 Push SDK（`com.heytap.msp:push`），获取设备的 **`registration_id`**（与 FCM token 不同）。
 
-> 当前仓库已预留 `getManufacturerPushToken()` 接口；完整远程推送还需在 `supervisor-mobile` 集成 HeyTap Push SDK 并在注册回调里上报 `registration_id`。
+> 当前仓库已预留 `getManufacturerPushToken()` 接口；完整远程推送还需在 `wecode-mobile` 集成 HeyTap Push SDK 并在注册回调里上报 `registration_id`。
 
 ### 4. 申请智慧服务 / 流体云 / 意图共享
 
@@ -61,21 +61,21 @@ Supervisor 在 OPPO / realme / OnePlus 设备（ColorOS 15+）上，可将 Agent
 
 ## 客户端配置
 
-审核通过后，在 `packages/supervisor-mobile/android/app/src/main/res/values/oppo_fluid_cloud.xml`（或在宿主 App 覆盖同名 string）填写：
+审核通过后，在 `packages/wecode-mobile/android/app/src/main/res/values/oppo_fluid_cloud.xml`（或在宿主 App 覆盖同名 string）填写：
 
 ```xml
-<string name="supervisor_oppo_intent_name">Example.Progress</string>
-<string name="supervisor_oppo_service_id_launcher">999800001</string>
-<string name="supervisor_oppo_service_id_fluid_cloud">999900001</string>
+<string name="wecode_oppo_intent_name">Example.Progress</string>
+<string name="wecode_oppo_service_id_launcher">999800001</string>
+<string name="wecode_oppo_service_id_fluid_cloud">999900001</string>
 ```
 
 `intelligent_intent_config.json` 已放在原生插件 `assets/`，并在 `AndroidManifest.xml` 中声明 `IntelligentIntentConfig`。
 
-Deep Link：`supervisor://session/{sessionId}`，点击流体云卡片可回到对应会话。
+Deep Link：`wecode://session/{sessionId}`，点击流体云卡片可回到对应会话。
 
 ## 服务端配置
 
-在 Supervisor 数据目录的 `settings.json`（或通过扩展写入）增加：
+在 Wecode 数据目录的 `settings.json`（或通过插件写入）增加：
 
 ```json
 {
@@ -105,7 +105,7 @@ Deep Link：`supervisor://session/{sessionId}`，点击流体云卡片可回到�
    - ColorOS 15+ OPPO 真机安装 debug 包。
    - 填好 `serviceId` 并完成 OPPO 测试环境搭建。
    - 打开会话触发 Agent → 状态栏/锁屏应出现流体云胶囊。
-   - 调用 `SupervisorNative.isOppoLiveUpdatesAvailable()`，`available: true` 表示就绪。
+   - 调用 `WecodeNative.isOppoLiveUpdatesAvailable()`，`available: true` 表示就绪。
 
 2. **远程推送**
    - 配置服务端 OPPO Push 密钥。
@@ -119,6 +119,6 @@ Deep Link：`supervisor://session/{sessionId}`，点击流体云卡片可回到�
 
 ## 相关源码
 
-- 端侧：`packages/pi-supervisor-native-bridge/android/.../OppoFluidCloudManager.java`
-- 服务端：`packages/supervisor/src/core/push-oppo-fluid-cloud.ts`
-- 意图 JSON 构造：`packages/supervisor/src/core/push-oppo-intelligent-intent.ts`
+- 端侧：`packages/wecode-native-bridge/android/.../OppoFluidCloudManager.java`
+- 服务端：`packages/wecode/src/core/push-oppo-fluid-cloud.ts`
+- 意图 JSON 构造：`packages/wecode/src/core/push-oppo-intelligent-intent.ts`

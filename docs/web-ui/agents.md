@@ -11,7 +11,7 @@
 | ---------------------------- | ---------------------------------------------------------------------- |
 | `AgentConfigPanel.vue`       | 核心配置面板：name、description、homeDir、provider、model、toolsPreset |
 | `AgentListItem.vue`          | Agent 列表项，显示 avatar + preset chip                                |
-| `AgentResourceBrowser.vue`   | Agent 资源浏览器：skills / prompts / extensions 树 + 文件内容编辑      |
+| `AgentResourceBrowser.vue`   | Agent 资源浏览器：skills / prompts / plugins 树 + 文件内容编辑      |
 | `AgentSystemPromptPanel.vue` | system prompt 编辑器（CodeMirror + 预览切换）                          |
 
 ## Store

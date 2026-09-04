@@ -28,7 +28,7 @@ SV 当前只做到前两层的一部分：
 
 | Agent | `ls` | `vite`/长期命令 | 怎么知道启动 |
 |---|---|---|---|
-| Supervisor | 等退出、返回输出/状态 | 显式后台；已知 dev 命令禁止前台 | 日志正则；ProjectService 查 TCP，但仍可能只凭进程活着判 active |
+| Wecode | 等退出、返回输出/状态 | 显式后台；已知 dev 命令禁止前台 | 日志正则；ProjectService 查 TCP，但仍可能只凭进程活着判 active |
 | Pi | 等退出 | 无后台任务，超时后杀进程 | 不支持 |
 | oh-my-pi | 等退出 | 显式 async；前台超阈值自动转后台；有 job 管理和完成通知 | 进程状态/日志；无通用健康检查 |
 | OpenCode | 等退出 | Shell 本身只有 timeout；后台只用于子 Agent，不用于系统进程 | 无内置服务就绪判断 |
@@ -48,8 +48,8 @@ SV 当前只做到前两层的一部分：
 
 | Agent | Plan | Goal/完成验收 |
 |---|---|---|
-| Supervisor | 真只读阶段；Plan 文件；用户 approve/revise/reject；执行后用 Todo | Goal 持久化并自动续跑，但由 Agent 自己声明 complete；没有独立验收 |
-| Pi | 核心不内置；只有示例扩展 | 无 |
+| Wecode | 真只读阶段；Plan 文件；用户 approve/revise/reject；执行后用 Todo | Goal 持久化并自动续跑，但由 Agent 自己声明 complete；没有独立验收 |
+| Pi | 核心不内置；只有示例插件 | 无 |
 | oh-my-pi | 真只读、持久 Plan、审批；还会强制 Agent 必须 ask/resolve 后才能离开 Plan | Todo 提醒；无独立 Goal 裁判 |
 | OpenCode | 独立 Plan Agent 和权限规则；Plan 文件；用户确认后切 Build | Todo；无独立 Goal 裁判 |
 | MiMo-Code | 只读回退保护、用户审批 | 独立模型读取完整记录判定 satisfied/impossible，未满足则继续 |
@@ -85,9 +85,9 @@ SV/Pi 已有 offset/limit、图片读取、截断、精确唯一替换、空白�
 
 ## 主要源码落点
 
-- SV Bash：`packages/supervisor/src/tools/bash/tool.ts`
-- SV 服务状态：`packages/supervisor/src/extension/builtin/project-services/index.ts`
-- SV Plan/Goal：`packages/supervisor/src/extension/builtin/task-management/index.ts`
+- SV Bash：`packages/wecode/src/tools/bash/tool.ts`
+- SV 服务状态：`packages/wecode/src/plugin/builtin/project-services/index.ts`
+- SV Plan/Goal：`packages/wecode/src/plugin/builtin/task-management/index.ts`
 - Qwen Goal 裁判：`qwen-code/packages/core/src/goals/goalHook.ts`
 - MiMo Goal 裁判：`MiMo-Code/packages/opencode/src/session/goal.ts`
 - oh-my-pi Bash：`oh-my-pi/packages/coding-agent/src/tools/bash.ts`

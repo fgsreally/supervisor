@@ -1,6 +1,6 @@
 # Android 16 Live Updates
 
-Supervisor 在 Android 16+（API 36）使用 **AOSP Live Updates**：系统推广的常驻进度通知，在状态栏显示 chip，在锁屏/通知栏置顶展示 Agent 运行状态。
+Wecode 在 Android 16+（API 36）使用 **AOSP Live Updates**：系统推广的常驻进度通知，在状态栏显示 chip，在锁屏/通知栏置顶展示 Agent 运行状态。
 
 ColorOS 16 等 OEM 会将符合 Google 规范的 Live Updates **自动渲染为各自流体云/实时活动 UI**，无需单独对接 OPPO IntelligentIntent。
 
@@ -25,13 +25,13 @@ ColorOS 16 等 OEM 会将符合 Google 规范的 Live Updates **自动渲染为�
 
 ## 代码位置
 
-- `packages/pi-supervisor-native-bridge/android/.../AndroidLiveUpdateManager.java`
-- Web UI 通过 `use-live-status.ts` → `SupervisorNative.startLiveStatus` / `updateLiveStatus` / `endLiveStatus`
+- `packages/wecode-native-bridge/android/.../AndroidLiveUpdateManager.java`
+- Web UI 通过 `use-live-status.ts` → `WecodeNative.startLiveStatus` / `updateLiveStatus` / `endLiveStatus`
 
 检测是否可用：
 
 ```ts
-const { available, promoted, reason } = await SupervisorNative.isAndroidLiveUpdatesAvailable();
+const { available, promoted, reason } = await WecodeNative.isAndroidLiveUpdatesAvailable();
 ```
 
 - `available`：API 36+

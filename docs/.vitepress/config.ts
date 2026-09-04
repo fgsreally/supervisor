@@ -1,8 +1,8 @@
 import { defineConfig } from "vitepress";
 
 export default defineConfig({
-  title: "Pi Supervisor Docs",
-  description: "Standalone pi-supervisor + web-ui 文档",
+  title: "WeCode Docs",
+  description: "Standalone wecode + web-ui 文档",
   lang: "zh-CN",
   lastUpdated: true,
   cleanUrls: true,
@@ -10,7 +10,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: "指南", link: "/guide/getting-started" },
-      { text: "Supervisor", link: "/supervisor/overview" },
+      { text: "WeCode", link: "/wecode/overview" },
       { text: "Web UI", link: "/web-ui/overview" },
     ],
     sidebar: {
@@ -25,31 +25,31 @@ export default defineConfig({
           ],
         },
       ],
-      "/supervisor/": [
+      "/wecode/": [
         {
-          text: "Supervisor 后端",
+          text: "WeCode 后端",
           items: [
-            { text: "概览", link: "/supervisor/overview" },
-            { text: "数据库结构", link: "/supervisor/schema-reference" },
-            { text: "Pi 管理助手", link: "/supervisor/intro-assistant" },
-            { text: "会话管理", link: "/supervisor/session" },
-            { text: "Session 专属文件与产物", link: "/supervisor/session-artifacts" },
-            { text: "Job", link: "/supervisor/jobs" },
-            { text: "工作流", link: "/supervisor/workflow" },
-            { text: "子代理", link: "/supervisor/subagents" },
-            { text: "Shadow", link: "/supervisor/shadow" },
-            { text: "外部 Agent", link: "/supervisor/external-agents" },
-            { text: "HTTP API", link: "/supervisor/http-api" },
-            { text: "扩展框架", link: "/supervisor/extensions" },
+            { text: "概览", link: "/wecode/overview" },
+            { text: "数据库结构", link: "/wecode/schema-reference" },
+            { text: "WeCode 管理助手", link: "/wecode/intro-assistant" },
+            { text: "会话管理", link: "/wecode/session" },
+            { text: "Session 专属文件与产物", link: "/wecode/session-artifacts" },
+            { text: "Job", link: "/wecode/jobs" },
+            { text: "工作流", link: "/wecode/workflow" },
+            { text: "子代理", link: "/wecode/subagents" },
+            { text: "Shadow", link: "/wecode/shadow" },
+            { text: "外部 Agent", link: "/wecode/external-agents" },
+            { text: "HTTP API", link: "/wecode/http-api" },
+            { text: "插件框架", link: "/wecode/plugins" },
             {
-              text: "Agent 级扩展运行时提案",
-              link: "/supervisor/agent-extension-runtime-proposal",
+              text: "Agent 级插件运行时提案",
+              link: "/wecode/agent-plugin-runtime-proposal",
             },
-            { text: "仓库扩展", link: "/supervisor/shipped-extensions" },
-            { text: "打包工具", link: "/supervisor/builtin-tools" },
-            { text: "MCP 集成", link: "/supervisor/mcp" },
-            { text: "上下文压缩", link: "/supervisor/compaction" },
-            { text: "AI 效果测试", link: "/supervisor/ai-testing" },
+            { text: "仓库插件", link: "/wecode/shipped-plugins" },
+            { text: "打包工具", link: "/wecode/builtin-tools" },
+            { text: "MCP 集成", link: "/wecode/mcp" },
+            { text: "上下文压缩", link: "/wecode/compaction" },
+            { text: "AI 效果测试", link: "/wecode/ai-testing" },
           ],
         },
       ],

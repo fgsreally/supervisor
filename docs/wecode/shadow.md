@@ -14,5 +14,5 @@ Shadow 是主 Session 每轮结束后的旁路分析。它不创建用户 Sessio
 - 可建议标题、提交 checkpoint；失败只记录日志，不把普通 Session 变成 Shadow Session。
 - UI 开关直接维护 `shadow_enabled` 列，不使用旧 `meta.shadowDisabled`。
 
-实现位于 `extension/builtin/shadow/runner.ts`、`protocol.ts` 与 `memory.ts`。Shadow runner
-虽然放在 builtin extension 目录下，但不是需要 bind 的 catalog 扩展。
+实现位于 `plugin/builtin/shadow/runner.ts`、`protocol.ts` 与 `memory.ts`。Shadow runner
+虽然放在 builtin plugin 目录下，但不是需要 bind 的 catalog 插件。

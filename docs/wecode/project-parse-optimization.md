@@ -35,7 +35,7 @@ Pi 官方 issue [#1736](https://github.com/earendil-works/pi/issues/1736) 也记
 - 最近的 assistant `tool_use`。
 - 当前最后的 user / `tool_result`。
 
-因此修复放在 pi-ai 依赖层，而不是 Supervisor 的 Watson 业务层。当前补丁位于：
+因此修复放在 pi-ai 依赖层，而不是 Wecode 的 Watson 业务层。当前补丁位于：
 
 `patches/@earendil-works__pi-ai@0.74.2.patch`
 

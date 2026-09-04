@@ -1,6 +1,6 @@
 # 快速开始
 
-本指南从零搭建可用的 Pi Supervisor 环境：安装依赖、构建后端、启动 HTTP API 与 Web UI，并完成一次对话。
+本指南从零搭建可用的 WeCode 环境：安装依赖、构建后端、启动 HTTP API 与 Web UI，并完成一次对话。
 
 ## 前置要求
 
@@ -15,26 +15,26 @@
 pnpm install
 ```
 
-## 2. 构建 Supervisor
+## 2. 构建 Wecode
 
 ```bash
 pnpm run build
 ```
 
-`tsup` 会将 `packages/supervisor/src/` 编译到 `packages/supervisor/dist/`，并把源码中的 Markdown 提示词内联到 JavaScript。
+`tsup` 会将 `packages/wecode/src/` 编译到 `packages/wecode/dist/`，并把源码中的 Markdown 提示词内联到 JavaScript。
 
-## 3. 启动 Supervisor HTTP API
+## 3. 启动 Wecode HTTP API
 
 ```bash
 pnpm run serve
 ```
 
-默认监听 `http://localhost:3030`，工作目录为仓库内 `playground/`，数据库路径由 `.supervisor/config.json` 的 `dbPath` 配置（默认 `.supervisor/supervisor.db`）。
+默认监听 `http://localhost:3030`，工作目录为仓库内 `playground/`，数据库路径由 `.wecode/config.json` 的 `dbPath` 配置（默认 `.wecode/wecode.db`）。
 
 也可用 CLI 显式指定工作目录：
 
 ```bash
-node packages/supervisor/dist/cli.mjs serve --port 3030 --cwd playground
+node packages/wecode/dist/cli.mjs serve --port 3030 --cwd playground
 ```
 
 健康检查：`GET http://localhost:3030/healthz` 应返回 `{ "ok": true }`。
@@ -72,7 +72,7 @@ curl -X POST http://localhost:3030/providers \
 也可使用交互式 CLI：
 
 ```bash
-node packages/supervisor/dist/cli.mjs providers add
+node packages/wecode/dist/cli.mjs providers add
 ```
 
 ## 6. 配置 Agent
@@ -88,7 +88,7 @@ curl -X POST http://localhost:3030/agents \
   }'
 ```
 
-`toolsPreset: "coding"` 会启用 read / bash / edit / write 以及 grep / find / ls 等探索工具。更多能力通过打包工具与扩展绑定启用，见 [打包工具](/supervisor/builtin-tools) 与 [扩展框架](/supervisor/extensions)。
+`toolsPreset: "coding"` 会启用 read / bash / edit / write 以及 grep / find / ls 等探索工具。更多能力通过打包工具与插件绑定启用，见 [打包工具](/wecode/builtin-tools) 与 [插件框架](/wecode/plugins)。
 
 ## 7. 创建会话并发送消息
 
@@ -106,35 +106,35 @@ curl -X POST http://localhost:3030/sessions/<session-id>/prompt \
 
 或在 Web UI Chat 页创建会话并对话。运行时输入区仍可排队或立即干预；发送按钮会变成停止图标，用于中断当前 Turn。输入 `/` 可执行 slash 命令。
 
-## 8. 可选：安装仓库扩展
+## 8. 可选：安装仓库插件
 
-仓库内提供 `extensions/native`、`extensions/hindsight`、`extensions/strict-sdd`。安装到全局 catalog 后绑定到 Agent：
+仓库内提供 `plugins/native`、`plugins/hindsight`、`plugins/strict-sdd`。安装到全局 catalog 后绑定到 Agent：
 
 ```bash
-node packages/supervisor/dist/cli.mjs extensions install ./extensions/strict-sdd
-node packages/supervisor/dist/cli.mjs extensions bind <agent-id> <extension-id>
+node packages/wecode/dist/cli.mjs plugins install ./plugins/strict-sdd
+node packages/wecode/dist/cli.mjs plugins bind <agent-id> <plugin-id>
 ```
 
-详见 [仓库扩展](/supervisor/shipped-extensions)。
+详见 [仓库插件](/wecode/shipped-plugins)。
 
 ## 故障排除
 
 ### 端口冲突
 
 ```bash
-node packages/supervisor/dist/cli.mjs serve --port 3031 --cwd playground
+node packages/wecode/dist/cli.mjs serve --port 3031 --cwd playground
 ```
 
 ### Web UI 无法连接后端
 
 1. 确认后端已启动（`http://localhost:3030/healthz` 可访问）。
 2. 不要设置 `VITE_API_BASE`，或保持为空。
-3. 检查 `packages/supervisor-web-ui` 的 Vite proxy 指向后端端口。
+3. 检查 `packages/wecode-web-ui` 的 Vite proxy 指向后端端口。
 
 ### 类型检查
 
 ```bash
-pnpm --filter pi-supervisor-ui run check
+pnpm --filter wecode-ui run check
 ```
 
 仍存在的 UI 缺口见 [Web UI 已知缺口](/web-ui/known-gaps)。

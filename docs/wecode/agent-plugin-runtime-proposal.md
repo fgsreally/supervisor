@@ -1,18 +1,18 @@
-# Agent 扩展运行时
+# Agent 插件运行时
 
-Agent 扩展通过 `defineAgentExtension()` 声明。扩展的 `setup(ctx)` 对每个 Agent runtime generation 只执行一次；Session 初始化通过 Agent 的受管事件 `session.setup` 完成。
+Agent 插件通过 `defineAgentPlugin()` 声明。插件的 `setup(ctx)` 对每个 Agent runtime generation 只执行一次；Session 初始化通过 Agent 的受管事件 `session.setup` 完成。
 
 ## 基本结构
 
 ```ts
-import { defineAgentExtension } from "pi-supervisor";
+import { defineAgentPlugin } from "wecode";
 
-export default defineAgentExtension({
+export default defineAgentPlugin({
   name: "example",
 
   setup(ctx) {
     ctx.agent.on("session.setup", async (session, reason) => {
-      // session 就是旧 ExtensionContext.session。
+      // session 就是旧 PluginContext.session。
       // reason: create | restore
     });
   },
@@ -24,28 +24,28 @@ export default defineAgentExtension({
 - `setup(ctx)`：Agent 级共享状态、工具定义、策略配置、数据库和 EventBus。
 - `ctx.agent.on("session.setup", handler)`：初始化该 Agent 当前加载的每个 Session。
 - `session.on(...)`：当前 Session 的消息、工具、Turn 和生命周期事件。
-- `ctx.events`：扩展之间主动发布的业务事件，不承担运行时生命周期。
+- `ctx.events`：插件之间主动发布的业务事件，不承担运行时生命周期。
 
 ## API 数据结构
 
 ```ts
 type SessionSetupReason = "create" | "restore";
-type ExtensionCleanup = () => void | Promise<void>;
+type PluginCleanup = () => void | Promise<void>;
 
-interface AgentExtensionDefinition {
+interface AgentPluginDefinition {
   name: string;
   readonly scope: "agent";
-  setup(context: AgentExtensionContext): void | ExtensionCleanup | Promise<void | ExtensionCleanup>;
+  setup(context: AgentPluginContext): void | PluginCleanup | Promise<void | PluginCleanup>;
 }
 
-interface AgentExtensionContext {
-  readonly agent: AgentExtensionAgent;
+interface AgentPluginContext {
+  readonly agent: AgentPluginAgent;
   readonly policies: {
     disable(policyId: string): void;
     isDisabled(policyId: string): boolean;
   };
-  readonly db: ExtensionRawDatabase;
-  readonly ui: SupervisorUiFacade;
+  readonly db: PluginRawDatabase;
+  readonly ui: WecodeUiFacade;
   readonly events: EventBus;
   readonly watson: WatsonFacade;
 
@@ -53,7 +53,7 @@ interface AgentExtensionContext {
   exec(command: string, args: string[], options?: AgentExecOptions): Promise<ExecResult>;
 }
 
-interface AgentExtensionAgent {
+interface AgentPluginAgent {
   readonly id: number;
   readonly name: string;
   readonly providerId: number;
@@ -65,24 +65,24 @@ interface AgentExtensionAgent {
   on(
     event: "session.setup",
     handler: (
-      session: ExtensionSession,
+      session: PluginSession,
       reason: SessionSetupReason,
-    ) => void | ExtensionCleanup | Promise<void | ExtensionCleanup>,
+    ) => void | PluginCleanup | Promise<void | PluginCleanup>,
   ): void;
 
   registerTool<TParams, TResult>(definition: ToolDefinition<TParams, TResult>): void;
   unregisterTool(name: string): void;
-  registerSlash(name: string, definition: ExtensionSlashDefinition): void;
+  registerSlash(name: string, definition: PluginSlashDefinition): void;
   unregisterSlash(name: string): void;
   listTools(): ToolInfo[];
   getTool(name: string): ToolInfo | undefined;
 }
 ```
 
-`ExtensionSession` 保留原 `ExtensionContext.session` 的身份、消息、meta、workflow、tasks、todos、spawn、cwd 和 system prompt 能力，并增加 Session 事件及工具状态：
+`PluginSession` 保留原 `PluginContext.session` 的身份、消息、meta、workflow、tasks、todos、spawn、cwd 和 system prompt 能力，并增加 Session 事件及工具状态：
 
 ```ts
-interface ExtensionSession {
+interface PluginSession {
   readonly id: number;
   readonly cwd: string;
   readonly dir: string;
@@ -90,19 +90,19 @@ interface ExtensionSession {
   readonly isChild: boolean;
   readonly signal: AbortSignal | undefined;
 
-  readonly messages: ExtensionSessionMessages;
-  readonly meta: ExtensionSessionMeta;
-  readonly workflow: ExtensionSessionWorkflow;
-  readonly tasks: ExtensionSessionTasks;
-  readonly todos: ExtensionSessionTodos;
+  readonly messages: PluginSessionMessages;
+  readonly meta: PluginSessionMeta;
+  readonly workflow: PluginSessionWorkflow;
+  readonly tasks: PluginSessionTasks;
+  readonly todos: PluginSessionTodos;
   readonly activity: { touch(): void };
-  readonly project: SupervisorProjectFacade;
+  readonly project: WecodeProjectFacade;
   readonly inject: TurnInjectorFacade;
 
-  on<K extends SessionExtensionEvent["type"]>(
+  on<K extends SessionPluginEvent["type"]>(
     event: K,
     handler: SessionEventHandler<K>,
-    options?: ExtensionEventHandlerOptions,
+    options?: PluginEventHandlerOptions,
   ): void;
 
   readonly tools: {
@@ -134,13 +134,13 @@ interface ExtensionSession {
 ```text
 新建 Session runtime       → reason = create
 恢复已有 Session runtime  → reason = restore
-Agent 扩展重载            → reason = restore
+Agent 插件重载            → reason = restore
 ```
 
 Session 初始化顺序：
 
 ```text
-1. 创建 Session 数据、目录和 ExtensionSession facade
+1. 创建 Session 数据、目录和 PluginSession facade
 2. 触发 agent.on("session.setup") 并等待全部 handler
 3. 使用最终 cwd、工具和 prompt 状态绑定 harness
 4. 开始处理 Session 消息与 Turn 事件
@@ -180,13 +180,13 @@ Session 事件包括：
 运行时为每次 `session.setup` 建立 Session scope，并自动追踪以下资源：
 
 - `session.on()` 事件监听器。
-- Agent 扩展注册到 Session 的工具和 slash command。
+- Agent 插件注册到 Session 的工具和 slash command。
 - 工具可见性、调用许可和 before/after guard。
 - 运行时管理的其他 Session 注册项。
 
-Session 卸载、删除或 Agent generation 切换后，这些资源按 owner 自动移除，不需要扩展保存 `off()`。
+Session 卸载、删除或 Agent generation 切换后，这些资源按 owner 自动移除，不需要插件保存 `off()`。
 
-只有运行时无法感知的资源才返回 cleanup，例如定时器、原生事件监听器、第三方订阅、扩展自行启动的进程或文件句柄：
+只有运行时无法感知的资源才返回 cleanup，例如定时器、原生事件监听器、第三方订阅、插件自行启动的进程或文件句柄：
 
 ```ts
 ctx.agent.on("session.setup", (session) => {
@@ -195,14 +195,14 @@ ctx.agent.on("session.setup", (session) => {
 });
 ```
 
-`setup(ctx)` 返回的 cleanup 清理整个 Agent 扩展实例；`session.setup` handler 返回的 cleanup 只清理对应 Session scope。
+`setup(ctx)` 返回的 cleanup 清理整个 Agent 插件实例；`session.setup` handler 返回的 cleanup 只清理对应 Session scope。
 
 ## 隐藏策略
 
-策略使用相同的 Agent 扩展结构，但不显示在 UI 中。普通扩展先声明禁用策略，随后加载未禁用策略；分发 Session setup 时策略 handler 优先执行。
+策略使用相同的 Agent 插件结构，但不显示在 UI 中。普通插件先声明禁用策略，随后加载未禁用策略；分发 Session setup 时策略 handler 优先执行。
 
 ```ts
-export default defineAgentExtension({
+export default defineAgentPlugin({
   name: "coding-agent",
   setup(ctx) {
     ctx.policies.disable("session-activity");

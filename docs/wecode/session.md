@@ -1,14 +1,14 @@
 # Session 与派生 Session
 
 Session 是运行和持久化单位：一条 `sessions` 记录、一棵消息树，以及运行时 harness。完整列与
-meta 结构见[数据库结构](/supervisor/schema-reference)。
+meta 结构见[数据库结构](/wecode/schema-reference)。
 
 ## 身份与运行配置
 
 - `agent_id` 决定 Agent、模型和 tools preset；Session 不单独保存模型配置。
 - `system_prompt` 只保存 spawn 额外说明（可选），**不是**完整运行时 system 快照。
   每次对话现拼：当前 Agent prompt + 工作目录现读的 AGENTS.md + `sessions.meta.services`。
-  扩展 `appendSystemPrompt` / `upsertSystemPromptBlock` 写入进程内 overlay，不落库。
+  插件 `appendSystemPrompt` / `upsertSystemPromptBlock` 写入进程内 overlay，不落库。
 - 核心展示/状态使用列：`title`、`avatar`、`pinned`、`muted`、`unread`、`error_msg`、
   `stage`、`shadow_enabled` 等；不要重复写入 meta。
 - 缺模型、等待审批等需要用户介入的情况使用 `status=blocked`，原因写 `error_msg`。
@@ -34,7 +34,7 @@ BTW 复用父 Session 的 Agent；如果父 Agent 是外部后端，会解析到
 ## 子 Agent 委派
 
 主 Session 可委派 Agent 的白名单保存在 `sessions.meta.subagentIds`。HTTP 使用
-`PUT /sessions/:id/subagents`，扩展使用 `ctx.agent.findByRole("spawned")` 解析。旧 `members`
+`PUT /sessions/:id/subagents`，插件使用 `ctx.agent.findByRole("spawned")` 解析。旧 `members`
 表和 tag 查找已移除。
 
 ## 输入、错误与通知
@@ -59,8 +59,8 @@ Complete/Achieve 不缓存 merge 目标，而是始终合并到执行当下 `pro
 `clone` 保留，外键将其 `parent_id` 置空。Session 关联的 messages、queued inputs 与 jobs
 级联删除。
 
-删除前扩展按 `session.before_delete` 停服务并移除 worktree。若 `git worktree remove`
-因文件占用失败，`git` 扩展会请华生阅读 AGENTS.md（本地开发服务启停）并重试，直到
+删除前插件按 `session.before_delete` 停服务并移除 worktree。若 `git worktree remove`
+因文件占用失败，`git` 插件会请华生阅读 AGENTS.md（本地开发服务启停）并重试，直到
 目录可删。
 
 ## 主要接口

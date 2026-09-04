@@ -5,7 +5,7 @@ The web UI keeps components grouped by responsibility:
 - `components/base` contains reusable controls, feedback surfaces, editors, and responsive primitives.
 - `components/agent` contains Agent configuration and Agent resource views.
 - `components/provider` contains provider and model configuration components.
-- `components/resource` contains resource, Skill, Extension, and MCP resource components.
+- `components/resource` contains resource, Skill, Plugin, and MCP resource components.
 - `components/session` contains session lists, files, logs, previews, menus, and background services.
 - `components/chat` contains message rendering and chat input components.
 - `components/tool` contains tool activity, approval, detail, and terminal surfaces.

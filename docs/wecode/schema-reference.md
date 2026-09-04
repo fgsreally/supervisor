@@ -1,12 +1,12 @@
 # 数据库结构
 
 本文记录当前运行时实际创建的 SQLite 结构。权威实现位于
-`packages/supervisor/src/db/sql/schema.sql`（新库基线）与
-`packages/supervisor/src/db/migrations/`（版本化增量迁移）；修改表结构时应同步本文。
+`packages/wecode/src/db/sql/schema.sql`（新库基线）与
+`packages/wecode/src/db/migrations/`（版本化增量迁移）；修改表结构时应同步本文。
 
 启动时先执行 `schema.sql`，再按文件名前缀数字顺序应用 `migrations/` 下尚未记录的
 `.sql` 文件（记录在 `_schema_migrations` 表）。Fork 或部署定制可在同目录追加
-`008_*.sql` 等文件，或通过环境变量 `SUPERVISOR_MIGRATIONS_DIRS`（逗号分隔路径）
+`008_*.sql` 等文件，或通过环境变量 `WECODE_MIGRATIONS_DIRS`（逗号分隔路径）
 挂载额外迁移目录。
 
 时间字段均为 Unix 毫秒。SQLite 中的布尔值使用 `INTEGER`（0/1），JSON 使用 `TEXT` 保存。
@@ -22,10 +22,10 @@
 | `messages` / `messages_fts`     | 消息树与全文索引                        |
 | `session_input_queue`           | 会话输入队列                            |
 | `todo_task`                     | Todo 任务树（规划 / 确认 / 执行）       |
-| `resources` / `agent_resources` | skill、MCP、extension 资源及 Agent 绑定 |
+| `resources` / `agent_resources` | skill、MCP、plugin 资源及 Agent 绑定 |
 | `jobs`                          | Session 执行记录                        |
 
-旧表 `extensions`、`members`、`session_tasks`、`session_todos`、`job_schedules` 会在迁移后删除。
+旧表 `plugins`、`members`、`session_tasks`、`session_todos`、`job_schedules` 会在迁移后删除。
 
 ## 核心配置表
 
@@ -56,7 +56,7 @@
 | `home_dir`                  | TEXT                           | Agent 专属目录                                               |
 | `is_builtin`                | INTEGER DEFAULT 0              | 内置标志                                                     |
 | `external_config`           | TEXT                           | 外部 Agent 配置 JSON                                         |
-| `meta`                      | TEXT DEFAULT `{}`              | 扩展命名空间数据及旧配置兼容读取                             |
+| `meta`                      | TEXT DEFAULT `{}`              | 插件命名空间数据及旧配置兼容读取                             |
 | `created_at` / `updated_at` | INTEGER                        | 时间                                                         |
 
 `external_config` 的当前形状为 `{ command, args?, env?, permissionPolicy? }`。模型只通过
@@ -67,7 +67,7 @@
 `id INTEGER PK`、`name TEXT NOT NULL`、`description TEXT`、`cwd TEXT NOT NULL UNIQUE`、
 `home_dir TEXT NOT NULL`、`created_at`、`updated_at`。
 
-`cwd` 是源码目录；`home_dir` 是 Supervisor 管理的 Project 专属目录。当前物理表没有 `meta` 列。
+`cwd` 是源码目录；`home_dir` 是 Wecode 管理的 Project 专属目录。当前物理表没有 `meta` 列。
 
 ## Session 与消息
 
@@ -93,11 +93,11 @@
 | `stage`                              | TEXT                        | 当前工作流阶段；不再使用 `meta.workflow`      |
 | `shadow_enabled`                     | INTEGER DEFAULT 0           | Shadow 开关                                   |
 | `created_at` / `last_active_at`      | INTEGER                     | 时间                                          |
-| `meta`                               | TEXT DEFAULT `{}`           | Session 扩展状态                              |
+| `meta`                               | TEXT DEFAULT `{}`           | Session 插件状态                              |
 
 ### `sessions.meta`
 
-核心身份与 UI 字段必须写专用列。当前核心/内置扩展识别以下键：
+核心身份与 UI 字段必须写专用列。当前核心/内置插件识别以下键：
 
 | 键              | 形状/归属                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -106,14 +106,14 @@
 | `todos`         | `{ id, title, status, sortOrder }[]`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `subagentIds`   | 当前 Session 可委派的 Agent ID 白名单                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `git`           | `{ worktreePath, branch, lastCommit, mergeError, pendingUpdate? }`；有 `worktreePath` 即启用 worktree；`pendingUpdate` 在其它会话 achieve 合并进项目分支后写入，提示本会话需同步                                                                                                                                                                                                                                                                                                                                                 |
-| `services`      | 项目运行时（每 session 一套）：`status` 为 `unregistered` / `idle` / `active` / `starting` / `running` / `stopped` / `error`；`installCommand?` / `startCommand` / `stopCommand?` / `destroyCommand?`；`apps: [{ name, port, path? }]` 为可预览入口；系统字段 `sleepAt` / `lastActiveAt` / `pid` / `jobId` / `installedAt` 用于闲置休眠与唤醒。Supervisor 重启时会把进程绑定字段（`pid`/`jobId`/活着的 status）清回 `idle`（登记命令与 apps 保留）。后台 bash / Eval kernel **不**写在 meta 里（jobs 表 + session 目录 `eval/`） |
+| `services`      | 项目运行时（每 session 一套）：`status` 为 `unregistered` / `idle` / `active` / `starting` / `running` / `stopped` / `error`；`installCommand?` / `startCommand` / `stopCommand?` / `destroyCommand?`；`apps: [{ name, port, path? }]` 为可预览入口；系统字段 `sleepAt` / `lastActiveAt` / `pid` / `jobId` / `installedAt` 用于闲置休眠与唤醒。Wecode 重启时会把进程绑定字段（`pid`/`jobId`/活着的 status）清回 `idle`（登记命令与 apps 保留）。后台 bash / Eval kernel **不**写在 meta 里（jobs 表 + session 目录 `eval/`） |
 | `shadow`        | Shadow 输出，例如 `suggestedQuestions`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `timers`        | Timer 定义；触发执行记录写 `jobs`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `compaction`    | rolling compaction 配置/快照                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `toolLoopGuard` | 工具循环守卫状态                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `changedFiles`  | turn 文件变更跟踪                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
-用户扩展键应带命名空间，例如 `strictSdd.status` 或 `myExt.*`。不要把仅因工具 `cwd`
+用户插件键应带命名空间，例如 `strictSdd.status` 或 `myExt.*`。不要把仅因工具 `cwd`
 产生的产物写进项目目录；按 Session > Agent/Project 的最具体归属选择专属目录。
 
 ### `messages`
@@ -125,7 +125,7 @@
 `payload` 是权威 entry；`role` 与 `search_text` 是查询/FTS 派生列；`origin_msg` 保存 slash
 展开等改写前的用户输入。`messages.meta.assets` 保存
 `{ scope: "project" | "agent" | "session", path, name?, mediaType? }[]`；
-`liteTruncated` 表示列表接口裁剪过内容。扩展可保存其它消息级命名空间键。
+`liteTruncated` 表示列表接口裁剪过内容。插件可保存其它消息级命名空间键。
 
 `messages_fts(search_text, role, session_id UNINDEXED, message_id UNINDEXED)` 由触发器同步，
 其中 `message_id` 对应 `messages.entry_id`。

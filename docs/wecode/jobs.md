@@ -1,6 +1,6 @@
 # Job
 
-Job 是系统、UI 与扩展共享的执行记录，不是模型直接调用的新工具。
+Job 是系统、UI 与插件共享的执行记录，不是模型直接调用的新工具。
 
 ## 产品语义（Web UI）
 
@@ -12,9 +12,9 @@ Job 是系统、UI 与扩展共享的执行记录，不是模型直接调用的�
 ## 持久模型
 
 `jobs` 的每行表示一次执行，记录 kind、status、execution mode、能力、输出、进度、结果、错误、
-metadata 与起止时间。完整列见[数据库结构](/supervisor/schema-reference)。
+metadata 与起止时间。完整列见[数据库结构](/wecode/schema-reference)。
 
-Supervisor 重启时：
+Wecode 重启时：
 
 - 遗留的 queued/running/waiting Job 标为 `interrupted`（记录可看，进程不恢复）
 - `sessions.meta.services` 的进程绑定字段（`pid` / `jobId`、活着的 status）清回 `idle`；
@@ -25,7 +25,7 @@ Supervisor 重启时：
 定时定义不在 Job 表。`sessions.meta.timers` 保存一次性或周期 timer；每次触发才创建独立的
 `timer.fire` Job。旧 `job_schedules` 会一次性迁移到 Session meta 后删除。
 
-扩展使用 `ctx.jobs.create/get/list/update/cancel/input`，并按能力注册取消或输入 handler。
+插件使用 `ctx.jobs.create/get/list/update/cancel/input`，并按能力注册取消或输入 handler。
 后台 shell / 项目服务仍写入 Job 表以便轮询输出，但 Web UI 默认不把它们当作「需要关注的 Job」。
 
 ## Web UI
@@ -34,4 +34,4 @@ Session Job Popover 合并展示 timer 定义和需关注的执行记录。`capa
 `cancel`、`input`、`read_output`、`retry`。Eval 与后台终端分开展示：Eval 走工具分屏；后台终端
 走独立 tab / 悬浮球面板。
 
-相关：[扩展 API](/supervisor/extensions)、[HTTP API](/supervisor/http-api)。
+相关：[插件 API](/wecode/plugins)、[HTTP API](/wecode/http-api)。

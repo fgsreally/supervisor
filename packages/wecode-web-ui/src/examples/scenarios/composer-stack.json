@@ -1,0 +1,75 @@
+{
+  "id": "composer-stack",
+  "project": {
+    "id": "composer",
+    "title": { "zh-CN": "输入区状态", "en": "Composer states" },
+    "description": {
+      "zh-CN": "检查输入区顶部多种状态同时出现时的布局。",
+      "en": "Inspect the composer layout with every upper status visible."
+    }
+  },
+  "session": {
+    "id": "all",
+    "title": { "zh-CN": "输入区顶部全部状态", "en": "All composer-top states" },
+    "description": {
+      "zh-CN": "同时展示队列消息、项目更新、文件变更和建议问题。",
+      "en": "Shows queued messages, project updates, file changes, and suggestions together."
+    }
+  },
+  "composer": {
+    "queuedInputs": [
+      {
+        "id": "queue-1",
+        "message": {
+          "zh-CN": "完成当前任务后，请继续检查移动端输入区的布局",
+          "en": "After this task, inspect the mobile composer layout"
+        },
+        "level": 1
+      },
+      {
+        "id": "queue-2",
+        "message": {
+          "zh-CN": "然后补充一组响应式测试",
+          "en": "Then add a responsive test case"
+        },
+        "level": 1
+      }
+    ],
+    "pendingUpdate": {
+      "sourceSessionId": 129,
+      "sourceTitle": { "zh-CN": "主开发会话", "en": "Main development session" },
+      "branch": "main",
+      "files": [
+        { "path": "src/components/chat/ChatInputPanel.vue", "status": "modified" },
+        { "path": "src/styles/chat.css", "status": "added" }
+      ]
+    },
+    "changedFiles": [
+      { "path": "src/components/chat/QueuedInputsBar.vue", "status": "modified" },
+      { "path": "src/components/chat/SessionChangesPopover.vue", "status": "modified" },
+      { "path": "src/components/chat/LegacyComposer.vue", "status": "deleted" }
+    ],
+    "suggestions": [
+      { "zh-CN": "检查窄屏布局", "en": "Inspect narrow layout" },
+      { "zh-CN": "查看文件差异", "en": "View file changes" },
+      { "zh-CN": "继续优化间距", "en": "Refine spacing" }
+    ]
+  },
+  "rounds": [
+    {
+      "branches": [
+        {
+          "id": "1",
+          "label": {
+            "zh-CN": "请检查输入区顶部全部状态的布局",
+            "en": "Inspect every composer-top state"
+          },
+          "assistant": {
+            "zh-CN": "这个示例会持续展示输入区顶部所有可叠加状态。",
+            "en": "This example keeps every stackable composer-top state visible."
+          }
+        }
+      ]
+    }
+  ]
+}

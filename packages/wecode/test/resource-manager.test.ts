@@ -1,0 +1,177 @@
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { promptResourceHandler } from "../src/core/resource/prompt-resource.js";
+import { mcpResourceHandler } from "../src/plugin/builtin/mcp/resource.js";
+import { WecodeDb } from "../src/db.js";
+import { indexResourceHandlers } from "../src/resources/handler.js";
+import { ResourceManager } from "../src/resources/resource-manager.js";
+
+let db: WecodeDb;
+let manager: ResourceManager;
+let tmpDir: string;
+let originalHome: string | undefined;
+let originalUserProfile: string | undefined;
+
+beforeEach(() => {
+  tmpDir = join(tmpdir(), `wecode-resource-svc-${Date.now()}`);
+  mkdirSync(tmpDir, { recursive: true });
+  originalHome = process.env.HOME;
+  originalUserProfile = process.env.USERPROFILE;
+  process.env.HOME = tmpDir;
+  process.env.USERPROFILE = tmpDir;
+  db = new WecodeDb(join(tmpDir, "test.db"));
+  manager = new ResourceManager({
+    db,
+    handlers: indexResourceHandlers([promptResourceHandler, mcpResourceHandler]),
+    ensureCatalog: async () => {},
+  });
+});
+
+afterEach(() => {
+  db.close();
+  rmSync(tmpDir, { recursive: true, force: true });
+  if (originalHome === undefined) delete process.env.HOME;
+  else process.env.HOME = originalHome;
+  if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+  else process.env.USERPROFILE = originalUserProfile;
+});
+
+describe("ResourceManager", () => {
+  it("installs prompt, binds to agent, and uninstalls when unbound", async () => {
+    const providerId = db.insertProvider({
+      slug: "test",
+      name: "Test",
+      protocol: "chat-completions",
+    });
+    const agent = db.insertAgent({
+      name: "A",
+      provider_id: providerId,
+    });
+
+    const promptSrc = join(tmpDir, "hello.md");
+    writeFileSync(promptSrc, "# Hello\n", "utf8");
+
+    const installed = await manager.installResource({ kind: "prompt", source: promptSrc });
+    expect(installed.resource.kind).toBe("prompt");
+    expect(installed.resource.slug).toBe("hello");
+    expect(existsSync(installed.resource.sourcePath!)).toBe(true);
+
+    const binding = manager.bindResource({
+      agentId: agent.id,
+      kind: "prompt",
+      slug: "hello",
+    });
+    expect(binding.agentId).toBe(agent.id);
+    expect(binding.resourceId).toBe(installed.resource.id);
+
+    const bindings = manager.listAgentBindings(agent.id, "prompt");
+    expect(bindings).toHaveLength(1);
+
+    await manager.unbindResource({ agentId: agent.id, resourceId: installed.resource.id });
+    await manager.uninstallResource("prompt", "hello");
+    expect(db.getResourceByKindSlug("prompt", "hello")).toBeUndefined();
+  });
+
+  it("creates and updates prompt content from the UI write path", async () => {
+    const created = await manager.upsertResourceContent({
+      kind: "prompt",
+      slug: "ui-prompt",
+      content: "# From UI\n",
+    });
+    expect(created.resource.slug).toBe("ui-prompt");
+    expect(existsSync(created.resource.sourcePath!)).toBe(true);
+
+    const updated = await manager.upsertResourceContent({
+      kind: "prompt",
+      slug: "ui-prompt",
+      content: "# Updated\n",
+    });
+    expect(updated.resource.id).toBe(created.resource.id);
+    expect(readFileSync(updated.resource.sourcePath!, "utf8")).toBe("# Updated\n");
+  });
+
+  it("creates mcp content and rejects invalid json", async () => {
+    const created = await manager.upsertResourceContent({
+      kind: "mcp",
+      slug: "local-tools",
+      content: JSON.stringify({ servers: { local: { type: "stdio", command: "node" } } }, null, 2),
+    });
+    expect(created.resource.slug).toBe("local-tools");
+    expect(existsSync(created.resource.sourcePath!)).toBe(true);
+
+    await expect(
+      manager.upsertResourceContent({
+        kind: "mcp",
+        slug: "bad",
+        content: "{ not json",
+      }),
+    ).rejects.toThrow(/valid JSON/);
+  });
+
+  it("refuses uninstall when resource is still bound", async () => {
+    const providerId = db.insertProvider({
+      slug: "test2",
+      name: "Test",
+      protocol: "chat-completions",
+    });
+    const agent = db.insertAgent({
+      name: "B",
+      provider_id: providerId,
+    });
+    const promptSrc = join(tmpDir, "bound.md");
+    writeFileSync(promptSrc, "# Bound\n", "utf8");
+    const installed = await manager.installResource({ kind: "prompt", source: promptSrc });
+    manager.bindResource({ agentId: agent.id, resourceId: installed.resource.id });
+    await expect(manager.uninstallResource("prompt", "bound")).rejects.toThrow(/still bound/);
+  });
+
+  it("deactivates a plugin after it is unbound from an agent", async () => {
+    const providerId = db.insertProvider({
+      slug: "plugin-test",
+      name: "Plugin Test",
+      protocol: "chat-completions",
+    });
+    const agent = db.insertAgent({ name: "Agent", provider_id: providerId });
+    const plugin = db.upsertResource({
+      kind: "plugin",
+      slug: "test-plugin",
+      source_path: null,
+    });
+    const deactivated: Array<[number, string]> = [];
+    const pluginManager = new ResourceManager({
+      db,
+      handlers: indexResourceHandlers([
+        {
+          kind: "plugin",
+          discover: () => [],
+          onUnbind: async (agentId, slug) => {
+            deactivated.push([agentId, slug]);
+          },
+        },
+      ]),
+      ensureCatalog: async () => {},
+    });
+    pluginManager.bindResource({ agentId: agent.id, resourceId: plugin.id });
+
+    await pluginManager.unbindResource({ agentId: agent.id, resourceId: plugin.id });
+
+    expect(deactivated).toEqual([[agent.id, "test-plugin"]]);
+  });
+
+  it("refuses to uninstall npx-skills external catalog entries", async () => {
+    db.upsertResource({
+      kind: "skill",
+      slug: "from-npx",
+      name: "from-npx",
+      source_path: join(tmpDir, ".agents", "skills", "from-npx"),
+      meta: { external: "npx-skills" },
+    });
+
+    await expect(manager.uninstallResource("skill", "from-npx")).rejects.toThrow(
+      /Cannot uninstall external skill\/from-npx/,
+    );
+    expect(db.getResourceByKindSlug("skill", "from-npx")).toBeDefined();
+  });
+});

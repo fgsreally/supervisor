@@ -1,0 +1,74 @@
+import type { CompactionPreparation } from "@earendil-works/pi-agent-core";
+import { compact } from "@earendil-works/pi-agent-core";
+import { Type } from "typebox";
+import { runWatson } from "../core/agent/watson.js";
+import type { LLMConfig } from "./model-utils.js";
+import type { WecodeSettings } from "./wecode-settings.js";
+
+/** Read a feature-specific model binding without cross-feature fallback. */
+export function getFeatureModelRef(
+  feature: string,
+  settings: Pick<WecodeSettings, "featureModels">,
+): { providerId: number; modelId: string } | null {
+  return settings.featureModels?.[feature] ?? null;
+}
+
+export const resolveFeatureModelRef = getFeatureModelRef;
+
+export interface UtilityCompactionResult {
+  summary: string;
+  firstKeptEntryId: string;
+  tokensBefore: number;
+  details?: unknown;
+}
+
+export async function generateDailyWorkDigest(
+  dayKey: string,
+  sections: Array<{
+    projectName: string;
+    cwd: string;
+    commits: Array<{ shortHash: string; subject: string }>;
+  }>,
+): Promise<string> {
+  const body = sections
+    .map((section) =>
+      [
+        `## ${section.projectName}`,
+        `cwd: ${section.cwd}`,
+        ...section.commits.map((commit) => `- ${commit.shortHash} ${commit.subject}`),
+      ].join("\n"),
+    )
+    .join("\n\n");
+  const run = await runWatson({
+    mode: "simple",
+    kind: "daily-work",
+    resultSchema: Type.Object({ summary: Type.String() }),
+    prompt: [
+      `Summarize the git work completed on ${dayKey}.`,
+      "Focus on accomplishments, group related commits, and do not invent anything.",
+      "Submit the markdown summary through submit_result.",
+      "",
+      body.slice(0, 12000),
+    ].join("\n"),
+  });
+  return run.result?.summary ?? "";
+}
+
+/** Compaction is a dedicated pi-agent-core capability and is not a Watson task. */
+export async function compactWithUtilityModel(
+  config: LLMConfig,
+  preparation: CompactionPreparation,
+  customInstructions?: string,
+): Promise<UtilityCompactionResult> {
+  const result = await compact(
+    preparation,
+    config.model,
+    config.apiKey,
+    undefined,
+    customInstructions,
+    undefined,
+    "off",
+  );
+  if (!result.ok) throw result.error;
+  return result.value;
+}

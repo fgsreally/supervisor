@@ -1,0 +1,663 @@
+@import "tailwindcss";
+@import "./styles/tokens/index.css";
+
+.chat-context-button {
+  display: inline-flex;
+  min-width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 6px;
+  border-radius: 6px;
+  color: var(--app-text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.chat-context-button:hover,
+.chat-context-button:focus-visible {
+  color: var(--app-accent);
+  background: var(--app-hover);
+  outline: none;
+  cursor: pointer;
+}
+
+.chat-context-button:active {
+  transform: scale(0.94);
+}
+
+.chat-header-action {
+  position: relative;
+  display: inline-flex;
+  width: 30px;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--app-text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    transform 0.1s ease;
+}
+
+.chat-header-action svg {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+/** Job-style count pill — use on goal / job / todo count buttons. */
+.chat-header-action--count {
+  gap: 0;
+}
+
+.chat-header-action__count {
+  position: absolute;
+  top: -4px;
+  right: -5px;
+  min-width: 14px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--app-accent) 16%, transparent);
+  color: var(--app-accent);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
+.chat-header-action:hover,
+.chat-header-action:focus-visible {
+  color: var(--app-accent);
+  background: var(--app-hover);
+  outline: none;
+  cursor: pointer;
+}
+
+.chat-header-action--count:hover > .chat-header-action__count,
+.chat-header-action--count:focus-visible > .chat-header-action__count {
+  background: color-mix(in srgb, var(--app-accent) 22%, transparent);
+  color: var(--app-accent);
+}
+
+.chat-header-action--active {
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent) 12%, transparent);
+}
+
+.chat-header-action--active:hover,
+.chat-header-action--active:focus-visible {
+  color: var(--app-accent);
+  background: color-mix(in srgb, var(--app-accent) 18%, transparent);
+}
+
+.chat-header-action--active.chat-header-action--count > .chat-header-action__count {
+  background: color-mix(in srgb, var(--app-accent) 22%, transparent);
+  color: var(--app-accent);
+}
+
+.chat-header-action:active {
+  transform: scale(0.94);
+}
+
+.chat-header-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* ========== Light (WeChat PC) ========== */
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  --app-shell-bg: #f3f3f3;
+  --app-nav-bg: #d6d6da;
+  --app-nav-border: #d6d6da;
+  --app-nav-icon: #6b6b6b;
+  --app-nav-icon-active: #07c160;
+  --app-nav-hover: #cbcbd0;
+  --app-nav-active-bg: #cbcbd0;
+
+  /* Sidebar denser gray; content sits next to it, not near-white. */
+  --app-list-bg: #dcdce1;
+  --app-list-header-bg: #dcdce1;
+  --app-list-search-bg: #d0d0d6;
+  --app-list-search-focus-bg: #ffffff;
+  --app-list-item-hover: #d0d0d6;
+  --app-list-item-child-hover: #d0d0d6;
+  --app-list-item-active: #c4c4c8;
+  --app-list-item-active-text: #191919;
+  --app-list-item-active-secondary: #666666;
+  --app-list-section-bg: #dcdce1;
+  --app-monochrome-icon-filter: none;
+
+  --app-chat-bg: #e3e3e5;
+  --app-chat-header-bg: #e3e3e5;
+  --app-chat-message-bg: #e3e3e5;
+  --app-chat-message-inherited: #dcdce1;
+  --app-chat-input-island-border: #d0d0d4;
+
+  --app-text-primary: #191919;
+  --app-text-secondary: #888888;
+  --app-text-body: #555555;
+  --app-text-muted: #b2b2b2;
+  --app-text-link: #576b95;
+  --app-toolbar-icon: #555555;
+
+  --app-border: #e7e7e7;
+  --app-border-subtle: #ececec;
+  --app-divider: #e8e8e8;
+  --app-hover: #f0f0f0;
+
+  --app-bubble-user: #a8eda1;
+  --app-bubble-assistant: #ededf0;
+  --app-bubble-assistant-border: transparent;
+  --app-bubble-radius: 10px;
+
+  --app-code-bg: #f3f4f6;
+  --app-code-text: #1f2937;
+  --app-code-inline-bg: rgba(0, 0, 0, 0.06);
+  --app-code-inline-text: inherit;
+
+  --app-tool-bar-border: #e5e7eb;
+  --app-tool-bar-bg: rgb(249 250 251 / 0.8);
+  --app-tool-bar-border-done: #bbf7d0;
+  --app-tool-bar-bg-done: rgb(240 253 244 / 0.5);
+  --app-tool-bar-inner-bg: rgb(243 244 246 / 0.8);
+  --app-tool-bar-inner-bg-done: rgb(220 252 231 / 0.8);
+  --app-tool-bar-inner-hover: rgb(220 252 231);
+  --app-tool-bar-icon: #6b7280;
+  --app-tool-bar-icon-done: #16a34a;
+  --app-tool-bar-text: #4b5563;
+  --app-tool-bar-text-done: #15803d;
+
+  --app-accent: #07c160;
+  --app-accent-hover: #06ad56;
+  --app-send-disabled-bg: #c9c9c9;
+  --app-send-disabled-text: #ffffff;
+
+  --app-tag-file-bg: #e8f4fd;
+  --app-tag-file-fg: #576b95;
+  --app-tag-skill-bg: #e7f8ef;
+  --app-tag-skill-fg: #06ad56;
+
+  --app-cm-bg: #ffffff;
+  --app-cm-text: #191919;
+  --app-cm-caret: #24292f;
+  --app-cm-gutter-bg: #f6f8fa;
+  --app-cm-gutter-fg: #8c959f;
+  --app-cm-gutter-border: #d0d7de;
+  --app-cm-active-line: #f6f8fa;
+  --app-cm-active-gutter: #eef1f4;
+  --app-popup-bg: #ffffff;
+  --app-popup-border: #d9d9d9;
+  --app-popup-hover: #f5f5f5;
+  --app-popup-selected: #ededed;
+
+  --app-settings-bg: #f5f5f5;
+  --app-settings-card: #ffffff;
+
+  --app-resource-sidebar-bg: #dcdce0;
+  --app-resource-tree-bg: #e3e3e5;
+  --app-btn-secondary-border: #d0d0d4;
+  --app-btn-secondary-text: #4b5563;
+  --app-btn-secondary-hover-bg: #f0f0f2;
+
+  --app-file-bubble-bg: #f2f2f2;
+  --app-file-bubble-name: #191919;
+  --app-file-bubble-size: #b2b2b2;
+  --app-file-bubble-footer-border: #e6e6e6;
+  --app-file-bubble-footer-text: #b2b2b2;
+
+  --md-text: #191919;
+  --md-font-family: inherit;
+  --md-heading-weight: 500;
+  --md-muted: #888888;
+  --md-heading: #191919;
+  --md-strong: #191919;
+  --md-heading-marker: #07c160;
+  --md-link: #576b95;
+  --md-list-marker: #07c160;
+  --md-divider: rgb(7 193 96 / 20%);
+  --md-quote-border: #07c160;
+  --md-quote-bg: rgb(7 193 96 / 6%);
+  --md-quote-text: #888888;
+  --md-inline-code-bg: rgb(6 174 86 / 10%);
+  --md-inline-code-text: #06ae56;
+  --md-code-bg: #f7f7f7;
+  --md-code-border: rgb(7 193 96 / 17%);
+  --md-code-text: #191919;
+  --md-code-keyword: #07c160;
+  --md-code-string: #059a4c;
+  --md-code-number: #74a800;
+  --md-code-comment: #888888;
+  --md-code-type: #06ae56;
+  --md-code-property: #259c5c;
+  --md-code-operator: #77bc54;
+  --md-table-border: #e7e7e7;
+  --md-table-header-bg: rgb(6 174 86 / 10%);
+  --md-table-header-text: #191919;
+
+  --app-list-tree-line: #bfc6d1;
+  --app-list-status-ring: #e6e6e6;
+  --app-status-initializing: #60a5fa;
+  --app-status-starting: var(--app-status-initializing);
+  --app-status-running: #eab308;
+  --app-status-waiting-user: #f97316;
+  --app-status-idle: #22c55e;
+  --app-status-error: #ef4444;
+  --app-status-stopped: #9ca3af;
+}
+
+/* ========== Dark ========== */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --app-shell-bg: #111111;
+  --app-nav-bg: #1f1f1f;
+  --app-nav-border: #2a2a2a;
+  --app-nav-icon: #9a9a9a;
+  --app-nav-icon-active: #07c160;
+  --app-nav-hover: #2c2c2c;
+  --app-nav-active-bg: #333333;
+
+  --app-list-bg: #262626;
+  --app-list-header-bg: #262626;
+  --app-list-search-bg: #333333;
+  --app-list-search-focus-bg: #3a3a3a;
+  --app-list-item-hover: #333333;
+  --app-list-item-child-hover: #303030;
+  --app-list-item-active: #19ac70;
+  --app-list-item-active-text: #ffffff;
+  --app-list-item-active-secondary: #c8c8c8;
+  --app-list-section-bg: #262626;
+  --app-monochrome-icon-filter: invert(1);
+
+  /* Content area stays close to sidebar, not much darker. */
+  --app-chat-bg: #232323;
+  --app-chat-header-bg: #232323;
+  --app-chat-message-bg: #232323;
+  --app-chat-message-inherited: #262626;
+  --app-chat-input-island-border: #383838;
+  --app-toolbar-icon: #d0d0d0;
+
+  --app-text-primary: #e8e8e8;
+  --app-text-secondary: #9a9a9a;
+  --app-text-body: #aaaaaa;
+  --app-text-muted: #7a7a7a;
+  --app-text-link: #7d9ec7;
+
+  --app-border: #303030;
+  --app-border-subtle: #2a2a2a;
+  --app-divider: #333333;
+  --app-hover: #2a2a2a;
+
+  --app-bubble-user: #35d28d;
+  --app-bubble-assistant: #2a2a2a;
+  --app-bubble-assistant-border: #383838;
+  --app-bubble-radius: 10px;
+
+  --app-code-bg: #1e1e1e;
+  --app-code-text: #e8e8e8;
+  --app-code-inline-bg: rgba(255, 255, 255, 0.1);
+  --app-code-inline-text: #e8e8e8;
+
+  --app-tool-bar-border: #3a3a3a;
+  --app-tool-bar-bg: rgb(42 42 42 / 0.9);
+  --app-tool-bar-border-done: rgb(7 193 96 / 0.35);
+  --app-tool-bar-bg-done: rgb(7 193 96 / 0.08);
+  --app-tool-bar-inner-bg: #333333;
+  --app-tool-bar-inner-bg-done: rgb(7 193 96 / 0.15);
+  --app-tool-bar-inner-hover: rgb(7 193 96 / 0.22);
+  --app-tool-bar-icon: #9a9a9a;
+  --app-tool-bar-icon-done: #3ddc84;
+  --app-tool-bar-text: #b0b0b0;
+  --app-tool-bar-text-done: #6ee7a8;
+
+  --app-accent: #07c160;
+  --app-accent-hover: #06ad56;
+  --app-send-disabled-bg: #333333;
+  --app-send-disabled-text: #666666;
+
+  --app-tag-file-bg: #1e3348;
+  --app-tag-file-fg: #8ab4e8;
+  --app-tag-skill-bg: #1a3328;
+  --app-tag-skill-fg: #3ddc84;
+
+  --app-cm-bg: #1e1e1e;
+  --app-cm-text: #e8e8e8;
+  --app-cm-caret: #e8e8e8;
+  --app-cm-gutter-bg: #252526;
+  --app-cm-gutter-fg: #858585;
+  --app-cm-gutter-border: #333333;
+  --app-cm-active-line: #2a2d2e;
+  --app-cm-active-gutter: #2a2d2e;
+  --app-popup-bg: #2a2a2a;
+  --app-popup-border: #404040;
+  --app-popup-hover: #333333;
+  --app-popup-selected: #383838;
+
+  --app-settings-bg: #191919;
+  --app-settings-card: #262626;
+
+  --app-resource-sidebar-bg: #141414;
+  --app-resource-tree-bg: #1f1f1f;
+  --app-btn-secondary-border: #404040;
+  --app-btn-secondary-text: #c8c8c8;
+  --app-btn-secondary-hover-bg: #333333;
+
+  --app-file-bubble-bg: #2c2c2c;
+  --app-file-bubble-name: #e8e8e8;
+  --app-file-bubble-size: #8a8a8a;
+  --app-file-bubble-footer-border: #383838;
+  --app-file-bubble-footer-text: #8a8a8a;
+
+  --md-text: rgb(255 255 255 / 80%);
+  --md-font-family: inherit;
+  --md-heading-weight: 500;
+  --md-muted: rgb(255 255 255 / 50%);
+  --md-heading: rgb(255 255 255 / 80%);
+  --md-strong: rgb(255 255 255 / 80%);
+  --md-heading-marker: #38cd7f;
+  --md-link: #7d90a9;
+  --md-list-marker: #38cd7f;
+  --md-divider: rgb(56 205 127 / 20%);
+  --md-quote-border: #38cd7f;
+  --md-quote-bg: rgb(56 205 127 / 8%);
+  --md-quote-text: rgb(255 255 255 / 50%);
+  --md-inline-code-bg: rgb(56 205 127 / 10%);
+  --md-inline-code-text: #38cd7f;
+  --md-code-bg: #202020;
+  --md-code-border: rgb(56 205 127 / 17%);
+  --md-code-text: rgb(255 255 255 / 80%);
+  --md-code-keyword: #38cd7f;
+  --md-code-string: #3eb575;
+  --md-code-number: #8fb933;
+  --md-code-comment: rgb(255 255 255 / 50%);
+  --md-code-type: #64c390;
+  --md-code-property: #51bc83;
+  --md-code-operator: #3eb575;
+  --md-table-border: rgb(255 255 255 / 15%);
+  --md-table-header-bg: rgb(56 205 127 / 10%);
+  --md-table-header-text: rgb(255 255 255 / 80%);
+
+  --app-list-tree-line: #4a4a4a;
+  --app-list-tree-line-active: #8de4be;
+  --app-list-status-ring: #262626;
+  --app-status-initializing: #5eb3ff;
+  --app-status-starting: var(--app-status-initializing);
+  --app-status-running: #f0c040;
+  --app-status-waiting-user: #fb923c;
+  --app-status-idle: #3ddc84;
+  --app-status-error: #ff6b6b;
+  --app-status-stopped: #6b6b6b;
+}
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+
+::view-transition-old(root) {
+  z-index: 1;
+}
+
+::view-transition-new(root) {
+  z-index: 2;
+}
+
+@media (max-width: 767px) {
+  :root,
+  [data-theme="light"] {
+    --app-list-bg: #e3e3e5;
+    --app-list-header-bg: #e3e3e5;
+    --app-list-section-bg: #e3e3e5;
+  }
+
+  [data-theme="dark"] {
+    --app-list-bg: #2b2b2b;
+    --app-list-header-bg: #151515;
+    --app-list-section-bg: #151515;
+  }
+
+  .session-context-menu,
+  .session-context-menu *,
+  .agent-context-menu,
+  .agent-context-menu *,
+  .context-menu,
+  .context-menu *,
+  .message-context-menu,
+  .message-context-menu *,
+  .chat-session-menu,
+  .chat-session-menu *,
+  .chat-session-menu-backdrop {
+    -webkit-touch-callout: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .chat-view .assistant-message-content,
+  .chat-view .user-message-row .chat-bubble,
+  .chat-view .cm-content {
+    -webkit-touch-callout: default;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background-color: var(--app-shell-bg);
+  color: var(--app-text-primary);
+}
+
+/* Mobile: pin the app to the visual viewport so the soft keyboard does not cover the composer. */
+@media (max-width: 767px) {
+  #app {
+    position: fixed;
+    top: var(--app-vv-offset-top, 0px);
+    left: 0;
+    width: 100%;
+    height: var(--app-vv-height, 100dvh);
+    overflow: hidden;
+  }
+
+  html.vv-keyboard-open .chat-input-shell {
+    padding-bottom: 5px;
+  }
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.35);
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Chat page enter/leave — Vue <Transition> only (no v-motion mix). */
+.chat-panel-host {
+  display: flex;
+  flex: 0 0 auto;
+  max-width: min(48vw, 44rem);
+  min-width: 22rem;
+  overflow: hidden;
+  will-change: max-width, min-width, opacity;
+}
+
+.chat-panel-host__body {
+  flex: 0 0 auto;
+  width: min(48vw, 44rem);
+  min-width: 22rem;
+  max-width: min(48vw, 44rem);
+  height: 100%;
+  will-change: transform;
+}
+
+.chat-panel-enter-active,
+.chat-panel-leave-active {
+  transition:
+    max-width 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    min-width 0.36s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.28s ease;
+}
+
+.chat-panel-enter-active .chat-panel-host__body,
+.chat-panel-leave-active .chat-panel-host__body {
+  transition: transform 0.36s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.chat-panel-enter-from,
+.chat-panel-leave-to {
+  max-width: 0 !important;
+  min-width: 0 !important;
+  opacity: 0;
+}
+
+.chat-panel-enter-from .chat-panel-host__body,
+.chat-panel-leave-to .chat-panel-host__body {
+  transform: translateX(18%);
+}
+
+.chat-overlay-enter-active {
+  transition: opacity 0.18s ease;
+}
+.chat-overlay-leave-active {
+  transition: opacity 0.14s ease;
+}
+.chat-overlay-enter-from,
+.chat-overlay-leave-to {
+  opacity: 0;
+}
+
+.chat-overlay-enter-active .ui-dialog,
+.chat-overlay-enter-active .model-picker-sheet {
+  transition:
+    opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chat-overlay-leave-active .ui-dialog,
+.chat-overlay-leave-active .model-picker-sheet {
+  transition:
+    opacity 0.14s ease,
+    transform 0.14s ease;
+}
+.chat-overlay-enter-from .ui-dialog,
+.chat-overlay-enter-from .model-picker-sheet,
+.chat-overlay-leave-to .ui-dialog,
+.chat-overlay-leave-to .model-picker-sheet {
+  opacity: 0;
+  transform: scale(0.96) translateY(6px);
+}
+
+.chat-sheet-enter-active {
+  transition: opacity 0.2s ease;
+}
+.chat-sheet-enter-active > *:last-child {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.chat-sheet-leave-active {
+  transition: opacity 0.16s ease;
+}
+.chat-sheet-leave-active > *:last-child {
+  transition: transform 0.16s ease;
+}
+.chat-sheet-enter-from,
+.chat-sheet-leave-to {
+  opacity: 0;
+}
+.chat-sheet-enter-from > *:last-child,
+.chat-sheet-leave-to > *:last-child {
+  transform: translateY(56px);
+}
+
+@media (max-width: 767px) {
+  .chat-panel-host {
+    position: fixed;
+    z-index: 60;
+    inset: auto 0 0;
+    max-width: none;
+    min-width: 0;
+    width: 100%;
+    height: min(68vh, 620px);
+    max-height: min(68vh, 620px);
+  }
+
+  .chat-panel-host__body {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    height: 100%;
+  }
+
+  .chat-panel-enter-active,
+  .chat-panel-leave-active {
+    transition:
+      transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 0.24s ease;
+  }
+
+  .chat-panel-enter-from,
+  .chat-panel-leave-to {
+    max-width: none !important;
+    min-width: 0 !important;
+    opacity: 0;
+    transform: translateY(100%);
+  }
+
+  .chat-panel-enter-from .chat-panel-host__body,
+  .chat-panel-leave-to .chat-panel-host__body {
+    transform: none;
+  }
+}
+button:not(:disabled),
+a[href],
+[role="button"]:not([aria-disabled="true"]),
+summary,
+select,
+label:has(input[type="checkbox"]),
+label:has(input[type="radio"]),
+input[type="checkbox"],
+input[type="radio"],
+input[type="range"] {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"],
+input:disabled,
+select:disabled {
+  cursor: not-allowed;
+}
+@keyframes cm-chat-image-glow {
+  0%, 100% { filter: saturate(1); }
+  50% { filter: saturate(1.35) brightness(1.08); }
+}

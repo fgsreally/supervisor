@@ -1,0 +1,38 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { defineConfig } from "vitest/config";
+
+const directory = fileURLToPath(new URL(".", import.meta.url));
+const src = resolve(directory, "src");
+
+const markdownAsTextPlugin = {
+  name: "wecode-markdown-as-text",
+  enforce: "pre" as const,
+  load(id: string) {
+    const file = id.split("?", 1)[0];
+    if (!file.endsWith(".md")) return;
+    return `export default ${JSON.stringify(readFileSync(file, "utf8"))};`;
+  },
+};
+
+export default defineConfig({
+  plugins: [markdownAsTextPlugin],
+  resolve: {
+    alias: {
+      "wecode/test": resolve(src, "testing/ai/index.ts"),
+      "../src/db.js": resolve(src, "db/db.ts"),
+      "../src/http-server.js": resolve(src, "http/http-server.ts"),
+      "../src/session-manager.js": resolve(src, "core/session/session-manager.ts"),
+      "../src/session-storage.js": resolve(src, "core/session/session-storage.ts"),
+      "../src/session-runtime.js": resolve(src, "core/session/session-runtime.ts"),
+      "../src/default-tools.js": resolve(src, "utils/default-tools.ts"),
+      "../src/utility-llm.js": resolve(src, "utils/utility-llm.ts"),
+      "../src/wecode-settings.js": resolve(src, "utils/wecode-settings.ts"),
+    },
+  },
+  test: {
+    globals: false,
+    environment: "node",
+  },
+});

@@ -1,0 +1,495 @@
+package com.wecode.app;
+
+import android.Manifest;
+import android.content.ClipData;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.net.Uri;
+import android.os.Bundle;
+import android.view.LayoutInflater;
+import android.view.View;
+import android.webkit.ValueCallback;
+import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebStorage;
+import android.webkit.CookieManager;
+import android.widget.ImageButton;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
+import android.app.Dialog;
+import android.view.Window;
+import android.view.WindowManager;
+
+import androidx.activity.OnBackPressedCallback;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.content.ContextCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+
+import com.journeyapps.barcodescanner.ScanContract;
+import com.journeyapps.barcodescanner.ScanOptions;
+import com.wecode.nativebridge.ShareIntentHandler;
+import com.wecode.nativebridge.ShareQueue;
+import com.wecode.nativebridge.WecodeNativePlugin;
+
+import java.util.List;
+import java.net.HttpURLConnection;
+import java.net.URL;
+
+public class ShellActivity extends AppCompatActivity {
+    /**
+     * SPA root tabs. At these paths, history.back() often only hits the "/" redirect
+     * (looks like a no-op) — return to the instance list instead of leaving the app.
+     */
+    private static final String HISTORY_BACK_JS =
+        "(function(){"
+            + "try{"
+            + "var path=(location.pathname||'/').replace(/\\/+$/,'')||'/';"
+            + "var roots=['/chat','/todo','/dashboard','/contacts','/settings','/providers','/resources','/active-ui'];"
+            + "if(roots.indexOf(path)!==-1)return 'root';"
+            + "history.back();"
+            + "return 'back';"
+            + "}catch(e){return 'root';}"
+            + "})()";
+
+    private WebView webView;
+    private ValueCallback<Uri[]> filePathCallback;
+    private View listPanel;
+    private View emptyView;
+    private View sectionLabel;
+    private LinearLayout instanceList;
+    private TextView scanButton;
+    private ImageButton scanHeaderButton;
+
+    private final ActivityResultLauncher<String> cameraPermissionLauncher =
+        registerForActivityResult(
+            new androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
+            granted -> {
+                if (granted) {
+                    launchScanner();
+                } else {
+                    Toast.makeText(this, R.string.shell_camera_denied, Toast.LENGTH_SHORT).show();
+                }
+            }
+        );
+
+    private final ActivityResultLauncher<ScanOptions> barcodeLauncher =
+        registerForActivityResult(
+            new ScanContract(),
+            result -> {
+                if (result.getContents() == null) {
+                    return;
+                }
+                handleScannedPayload(result.getContents());
+            }
+        );
+
+    private final ActivityResultLauncher<Intent> fileChooserLauncher =
+        registerForActivityResult(
+            new androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                Uri[] uris = parseFileChooserResult(result.getResultCode(), result.getData());
+                if (filePathCallback != null) {
+                    filePathCallback.onReceiveValue(uris);
+                    filePathCallback = null;
+                }
+            }
+        );
+
+    @Override
+    protected void onCreate(@Nullable Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_shell);
+
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), true);
+        getWindow().setStatusBarColor(Color.WHITE);
+        getWindow().setNavigationBarColor(Color.parseColor("#EDEDED"));
+        WindowInsetsControllerCompat insets =
+            WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        insets.setAppearanceLightStatusBars(true);
+        insets.setAppearanceLightNavigationBars(true);
+
+        webView = findViewById(R.id.shell_webview);
+        listPanel = findViewById(R.id.shell_list_panel);
+        emptyView = findViewById(R.id.shell_empty);
+        sectionLabel = findViewById(R.id.shell_section_label);
+        instanceList = findViewById(R.id.shell_instance_list);
+        scanButton = findViewById(R.id.shell_scan_button);
+        scanHeaderButton = findViewById(R.id.shell_scan_header_button);
+
+        View header = findViewById(R.id.shell_header);
+        int headerStart = header.getPaddingStart();
+        int headerEnd = header.getPaddingEnd();
+        int headerBottom = header.getPaddingBottom();
+        ViewCompat.setOnApplyWindowInsetsListener(
+            header,
+            (view, windowInsets) -> {
+                int statusBarTop = windowInsets
+                    .getInsets(WindowInsetsCompat.Type.statusBars())
+                    .top;
+                view.setPaddingRelative(headerStart, statusBarTop, headerEnd, headerBottom);
+                return windowInsets;
+            }
+        );
+
+        setupWebView();
+        scanButton.setOnClickListener(v -> startScanFlow());
+        scanHeaderButton.setOnClickListener(v -> startScanFlow());
+
+        getOnBackPressedDispatcher()
+            .addCallback(
+                this,
+                new OnBackPressedCallback(true) {
+                    @Override
+                    public void handleOnBackPressed() {
+                        handleShellBack();
+                    }
+                }
+            );
+
+        if (!openSharedItems(getIntent())) {
+            showInstanceList();
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        openSharedItems(intent);
+    }
+
+    private boolean openSharedItems(Intent intent) {
+        List<ShareQueue.Item> items = ShareIntentHandler.parse(this, intent);
+        if (items.isEmpty()) return false;
+        ShareQueue.enqueue(items);
+        WecodeNativePlugin.notifyShareReceived();
+        Intent main = new Intent(this, MainActivity.class);
+        main.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        startActivity(main);
+        intent.setAction(null);
+        return true;
+    }
+
+    private void handleShellBack() {
+        if (webView.getVisibility() != View.VISIBLE) {
+            moveTaskToBack(true);
+            return;
+        }
+        webView.evaluateJavascript(
+            HISTORY_BACK_JS,
+            value -> {
+                if (value == null || value.contains("root")) {
+                    // Leave the remote UI and return to the multi-instance picker.
+                    showInstanceList();
+                }
+            }
+        );
+    }
+
+    private void setupWebView() {
+        WebSettings settings = webView.getSettings();
+        settings.setJavaScriptEnabled(true);
+        settings.setDomStorageEnabled(true);
+        settings.setDatabaseEnabled(true);
+        settings.setLoadWithOverviewMode(true);
+        settings.setUseWideViewPort(true);
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
+        settings.setDisplayZoomControls(false);
+        settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setUserAgentString(settings.getUserAgentString() + " WecodeShell/1");
+
+        webView.setWebChromeClient(
+            new WebChromeClient() {
+                @Override
+                public boolean onShowFileChooser(
+                    WebView view,
+                    ValueCallback<Uri[]> callback,
+                    FileChooserParams params
+                ) {
+                    if (filePathCallback != null) {
+                        filePathCallback.onReceiveValue(null);
+                    }
+                    filePathCallback = callback;
+                    Intent intent = params != null
+                        ? params.createIntent()
+                        : new Intent(Intent.ACTION_GET_CONTENT);
+                    if (intent.getAction() == null) {
+                        intent.setAction(Intent.ACTION_GET_CONTENT);
+                    }
+                    if (intent.getType() == null) {
+                        intent.setType("*/*");
+                    }
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+                    try {
+                        fileChooserLauncher.launch(Intent.createChooser(intent, null));
+                        return true;
+                    } catch (Exception e) {
+                        filePathCallback = null;
+                        if (callback != null) callback.onReceiveValue(null);
+                        return false;
+                    }
+                }
+            }
+        );
+        webView.setWebViewClient(
+            new WebViewClient() {
+                @Override
+                public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                    Uri uri = request.getUrl();
+                    String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+                    if ("http".equals(scheme) || "https".equals(scheme)) {
+                        return false;
+                    }
+                    try {
+                        startActivity(new Intent(Intent.ACTION_VIEW, uri));
+                    } catch (Exception ignored) {
+                        // no handler
+                    }
+                    return true;
+                }
+
+                @Override
+                public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                    injectShellMarker(view);
+                }
+
+                @Override
+                public void onPageFinished(WebView view, String url) {
+                    injectShellMarker(view);
+                }
+            }
+        );
+    }
+
+    private void injectShellMarker(WebView view) {
+        view.evaluateJavascript(
+            "(function(){try{document.documentElement.classList.add('wecode-shell');}catch(e){}})();",
+            null
+        );
+    }
+
+    private void startScanFlow() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
+            == PackageManager.PERMISSION_GRANTED) {
+            launchScanner();
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA);
+        }
+    }
+
+    private void launchScanner() {
+        ScanOptions options = new ScanOptions();
+        options.setDesiredBarcodeFormats(ScanOptions.QR_CODE);
+        options.setPrompt(getString(R.string.shell_scan_prompt));
+        options.setBeepEnabled(false);
+        options.setOrientationLocked(true);
+        options.setCaptureActivity(PortraitCaptureActivity.class);
+        barcodeLauncher.launch(options);
+    }
+
+    private void handleScannedPayload(String raw) {
+        String url = ShellInstanceStore.normalizeServerUrl(raw);
+        if (url == null) {
+            Toast.makeText(this, R.string.shell_scan_invalid, Toast.LENGTH_SHORT).show();
+            return;
+        }
+        ShellInstanceStore.Instance instance = ShellInstanceStore.upsertByUrl(getPrefs(), url);
+        Toast.makeText(this, R.string.shell_added, Toast.LENGTH_SHORT).show();
+        loadServer(instance);
+    }
+
+    private void showInstanceList() {
+        webView.stopLoading();
+        webView.loadUrl("about:blank");
+        webView.setVisibility(View.GONE);
+        listPanel.setVisibility(View.VISIBLE);
+        renderInstanceList();
+    }
+
+    private void renderInstanceList() {
+        List<ShellInstanceStore.Instance> instances = ShellInstanceStore.load(getPrefs());
+        instanceList.removeAllViews();
+
+        if (instances.isEmpty()) {
+            emptyView.setVisibility(View.VISIBLE);
+            sectionLabel.setVisibility(View.GONE);
+            instanceList.setVisibility(View.GONE);
+            return;
+        }
+
+        emptyView.setVisibility(View.GONE);
+        sectionLabel.setVisibility(View.VISIBLE);
+        instanceList.setVisibility(View.VISIBLE);
+
+        LayoutInflater inflater = LayoutInflater.from(this);
+        for (int i = 0; i < instances.size(); i++) {
+            ShellInstanceStore.Instance item = instances.get(i);
+            View row = inflater.inflate(R.layout.item_shell_instance, instanceList, false);
+            TextView avatar = row.findViewById(R.id.shell_instance_avatar);
+            TextView title = row.findViewById(R.id.shell_instance_title);
+            TextView subtitle = row.findViewById(R.id.shell_instance_subtitle);
+            TextView status = row.findViewById(R.id.shell_instance_status);
+            TextView delete = row.findViewById(R.id.shell_instance_delete);
+
+            String label = item.name != null && !item.name.isEmpty()
+                ? item.name
+                : ShellInstanceStore.displayNameForUrl(item.url);
+            avatar.setText(avatarLetter(label));
+            title.setText(label);
+            subtitle.setText(item.url);
+            status.setText("检测中");
+            status.setBackgroundResource(R.drawable.shell_status_pill_offline);
+            status.setTextColor(Color.parseColor("#8C8C8C"));
+            probeInstance(item, status);
+
+            row.setOnClickListener(v -> {
+                ShellInstanceStore.touch(getPrefs(), item.id);
+                loadServer(item);
+            });
+            row.setOnLongClickListener(v -> {
+                confirmDelete(item);
+                return true;
+            });
+            delete.setOnClickListener(v -> confirmDelete(item));
+
+            instanceList.addView(row);
+            if (i < instances.size() - 1) {
+                View divider = new View(this);
+                LinearLayout.LayoutParams lp =
+                    new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        1
+                    );
+                lp.setMargins(0, dp(10), 0, dp(10));
+                divider.setLayoutParams(lp);
+                divider.setBackgroundColor(Color.TRANSPARENT);
+                instanceList.addView(divider);
+            }
+        }
+    }
+
+    private void probeInstance(ShellInstanceStore.Instance instance, TextView statusView) {
+        new Thread(() -> {
+            boolean online = false;
+            HttpURLConnection connection = null;
+            try {
+                connection = (HttpURLConnection) new URL(instance.url).openConnection();
+                connection.setRequestMethod("GET");
+                connection.setConnectTimeout(2500);
+                connection.setReadTimeout(2500);
+                connection.setInstanceFollowRedirects(true);
+                int code = connection.getResponseCode();
+                online = code >= 200 && code < 500;
+            } catch (Exception ignored) {
+                online = false;
+            } finally {
+                if (connection != null) connection.disconnect();
+            }
+            boolean result = online;
+            runOnUiThread(() -> {
+                statusView.setText(result ? "在线" : "离线");
+                statusView.setBackgroundResource(
+                    result ? R.drawable.shell_status_pill_online : R.drawable.shell_status_pill_offline
+                );
+                statusView.setTextColor(Color.parseColor(result ? "#14804A" : "#737B8C"));
+            });
+        }, "shell-probe").start();
+    }
+
+    private void confirmDelete(ShellInstanceStore.Instance item) {
+        String label = item.name != null && !item.name.isEmpty()
+            ? item.name
+            : ShellInstanceStore.displayNameForUrl(item.url);
+        Dialog dialog = new Dialog(this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        View content = LayoutInflater.from(this).inflate(R.layout.dialog_shell_delete, null);
+        TextView description = content.findViewById(R.id.shell_delete_description);
+        description.setText("将删除“" + label + "”的连接记录，以及保存在此设备上的相关数据。服务器端数据不会受到影响。");
+        content.findViewById(R.id.shell_delete_cancel).setOnClickListener(v -> dialog.dismiss());
+        content.findViewById(R.id.shell_delete_confirm_custom).setOnClickListener(v -> {
+            dialog.dismiss();
+            clearInstanceData(item);
+        });
+        dialog.setContentView(content);
+        Window window = dialog.getWindow();
+        if (window != null) {
+            window.setBackgroundDrawableResource(android.R.color.transparent);
+            window.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+            WindowManager.LayoutParams attributes = window.getAttributes();
+            attributes.width = getResources().getDisplayMetrics().widthPixels - dp(48);
+            attributes.dimAmount = 0.48f;
+            window.setAttributes(attributes);
+        }
+        dialog.show();
+    }
+
+    private void clearInstanceData(ShellInstanceStore.Instance item) {
+        WebStorage.getInstance().deleteOrigin(item.url);
+        CookieManager cookies = CookieManager.getInstance();
+        cookies.setCookie(item.url, "wecode=; Max-Age=0; Path=/");
+        cookies.flush();
+        webView.clearCache(true);
+        ShellInstanceStore.remove(getPrefs(), item.id);
+        Toast.makeText(this, "连接记录与客户端数据已删除", Toast.LENGTH_SHORT).show();
+        renderInstanceList();
+    }
+
+    private void loadServer(ShellInstanceStore.Instance instance) {
+        listPanel.setVisibility(View.GONE);
+        webView.setVisibility(View.VISIBLE);
+        webView.loadUrl(instance.url);
+        Toast.makeText(this, R.string.shell_connected, Toast.LENGTH_SHORT).show();
+    }
+
+    private static String avatarLetter(String label) {
+        if (label == null || label.isEmpty()) return "S";
+        int cp = label.codePointAt(0);
+        return new String(Character.toChars(cp)).toUpperCase();
+    }
+
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private SharedPreferences getPrefs() {
+        return getSharedPreferences(ShellInstanceStore.PREFS, MODE_PRIVATE);
+    }
+
+    @Override
+    protected void onDestroy() {
+        if (filePathCallback != null) {
+            filePathCallback.onReceiveValue(null);
+            filePathCallback = null;
+        }
+        super.onDestroy();
+    }
+
+    private static Uri[] parseFileChooserResult(int resultCode, Intent data) {
+        if (resultCode != RESULT_OK || data == null) return null;
+        ClipData clip = data.getClipData();
+        if (clip != null && clip.getItemCount() > 0) {
+            Uri[] uris = new Uri[clip.getItemCount()];
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                uris[i] = clip.getItemAt(i).getUri();
+            }
+            return uris;
+        }
+        if (data.getData() != null) return new Uri[] { data.getData() };
+        return null;
+    }
+}

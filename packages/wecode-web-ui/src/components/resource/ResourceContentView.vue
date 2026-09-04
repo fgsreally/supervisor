@@ -1,0 +1,65 @@
+<template>
+  <div
+    class="resource-content-view"
+    :class="{
+      'resource-content-view--fill': fill ?? true,
+      'resource-content-view--markdown': renderMarkdown,
+    }"
+  >
+    <MarkdownContent v-if="renderMarkdown" :content="content" variant="terminal" />
+    <CodeMirrorView
+      v-else
+      :content="content"
+      :language="editorLanguage"
+      :fill="fill ?? true"
+      :editable="editable ?? false"
+      @update:content="onContentUpdate"
+    />
+  </div>
+</template>
+
+<script setup lang="ts">
+import { computed } from "vue";
+import MarkdownContent from "../base/MarkdownContent.vue";
+import CodeMirrorView, { type CodeMirrorLanguage } from "../base/CodeMirrorView.vue";
+import type { UIResourceKind } from "@/types/ui";
+
+const props = withDefaults(
+  defineProps<{
+    content: string;
+    kind: UIResourceKind;
+    fill?: boolean;
+    editable?: boolean;
+    language?: CodeMirrorLanguage;
+  }>(),
+  { editable: false },
+);
+
+const emit = defineEmits<{ "update:content": [value: string] }>();
+
+const editorLanguage = computed<CodeMirrorLanguage>(() => {
+  if (props.language) return props.language;
+  return props.kind === "plugins" || props.kind === "mcp" ? "typescript" : "markdown";
+});
+
+const renderMarkdown = computed(() => editorLanguage.value === "markdown" && !props.editable);
+
+function onContentUpdate(value: string) {
+  if (props.editable) emit("update:content", value);
+}
+</script>
+
+<style scoped>
+.resource-content-view--fill {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.resource-content-view--markdown {
+  overflow: auto;
+  padding: 1rem;
+}
+</style>

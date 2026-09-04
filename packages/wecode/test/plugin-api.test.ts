@@ -1,0 +1,460 @@
+import { describe, expect, it, vi } from "vitest";
+import { ContextDb } from "../src/plugin/runtime/index.js";
+import { definePlugin, Type } from "../src/plugin/index.js";
+import { timerPlugin } from "../src/plugin/index.js";
+import {
+  createEventBus,
+  SessionPluginHost,
+  ToolPolicy,
+} from "../src/plugin/runtime/index.js";
+import { createPluginTestContext, type RuntimeOptions } from "./plugin-context-fixture.js";
+
+function createRuntimeOptions(overrides?: { continueTurn?: ReturnType<typeof vi.fn> }) {
+  const eventBus = createEventBus();
+  const sessionMeta: Record<string, unknown> = {};
+  return {
+    sessionId: 1,
+    parentSessionId: null,
+    sessionMeta,
+    cwd: process.cwd(),
+    sessionDir: process.cwd(),
+    projectDir: process.cwd(),
+    agent: { id: 1, name: "test", providerId: 1, modelId: "test-model" },
+    db: {
+      sqlite: undefined,
+      getMessages: async () => [],
+      getMessageById: async () => undefined,
+      getMessageTree: async () => [],
+      getCurrentBranch: async () => [],
+      searchMessages: async () => [],
+      getCustomEntries: async () => [],
+      getLatestCustomEntry: async () => undefined,
+      getSessionMeta: async () => ({ ...sessionMeta }),
+      getMessageMeta: async () => ({}),
+      getChildSessions: async () => [],
+      getParentSession: async () => undefined,
+      getMessageStats: async () => ({
+        total: 0,
+        user: 0,
+        assistant: 0,
+        tool: 0,
+        custom: 0,
+      }),
+      getContextUsage: async () => ({ tokens: null, contextWindow: 128000, percent: null }),
+    },
+    deps: {
+      appendEntry: async () => "entry-1",
+      sendMessage: async () => {},
+      sendCustomMessage: async () => "custom-1",
+      sendUserMessage: async () => {},
+      continueTurn: overrides?.continueTurn ?? vi.fn(async () => {}),
+      setActiveTools: vi.fn(async () => {}),
+      syncActiveTools: vi.fn(async () => {}),
+      getContextUsage: async () => ({ tokens: 42 }),
+      getSessionDir: async () => process.cwd(),
+      getProjectDir: async () => process.cwd(),
+      getMemberAgentsByTag: async () => [],
+      getMemberAgentsByRole: async () => [],
+      spawnSession: async () => ({
+        sessionId: 2,
+        parentId: null,
+        status: "idle",
+        agentId: null,
+      }),
+      waitForSessionIdle: async () => {},
+      getSessionResultSummary: async (sessionId: number) => ({
+        sessionId,
+        status: "idle",
+        result: "",
+        truncated: false,
+      }),
+      finishSession: async () => {},
+      pausing: async (_reason: string, work: Promise<unknown> | (() => Promise<unknown>)) =>
+        typeof work === "function" ? work() : work,
+      setSessionMeta: async (meta: Record<string, unknown>) => {
+        for (const key of Object.keys(sessionMeta)) delete sessionMeta[key];
+        Object.assign(sessionMeta, meta);
+      },
+      patchSessionMeta: async (patch: Record<string, unknown>) => Object.assign(sessionMeta, patch),
+      setMessageMeta: async () => {},
+      patchMessageMeta: async (_id: string, patch: Record<string, unknown>) => patch,
+      setLabel: async () => {},
+      isIdle: () => true,
+      isStreaming: () => false,
+      getSignal: () => undefined,
+      abort: () => {},
+      waitForIdle: async () => {},
+      fork: async () => ({
+        id: 2,
+        cwd: process.cwd(),
+        messageCount: 0,
+        createdAt: Date.now(),
+        lastActiveAt: Date.now(),
+      }),
+      switchSession: async () => {},
+      navigateTree: async () => {},
+      compact: async () => ({ summary: "", firstKeptEntryId: "", tokensBefore: 0 }),
+      setModel: async () => {},
+      setThinkingLevel: () => {},
+      getThinkingLevel: () => "none" as const,
+      getModel: () => undefined,
+      listSessionTools: () => [],
+      emitPluginEvent: async () => {},
+      exec: async () => ({ stdout: "", stderr: "", code: 0, killed: false, duration: 0 }),
+      log: () => {},
+      broadcast: () => {},
+      eventBus,
+    },
+  } as RuntimeOptions;
+}
+
+describe("plugin api", () => {
+  it("runs and reads a background bash task via unified bash tool", async () => {
+    const options = createRuntimeOptions();
+    const host = createPluginTestContext(options);
+    const { createWecodeBashTool } = await import("../src/tools/bash/index.js");
+    const bash = createWecodeBashTool({
+      cwd: process.cwd(),
+      sessionId: options.sessionId,
+      jobs: host.jobs,
+    });
+    const started = await bash.execute("bash-bg-test", {
+      intent: "start test shell",
+      command: `node -e "process.stdout.write('persistent-ready')"`,
+      run_in_background: true,
+      description: "test shell",
+      disable_timeout: true,
+    });
+    const id = (started.details as { id: string }).id;
+    await vi.waitFor(
+      async () => {
+        const read = await bash.execute("bash-bg-read", {
+          intent: "read test shell",
+          action: "read",
+          task_id: id,
+        });
+        expect(read.content[0]?.type === "text" ? read.content[0].text : "").toContain(
+          "persistent-ready",
+        );
+      },
+      { timeout: 5_000 },
+    );
+  });
+
+  it("persists timers in session meta and records fired timers as Jobs", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-07-20T04:00:00.000Z"));
+    try {
+      const options = createRuntimeOptions();
+      const sendUserMessage = vi.fn(async () => {});
+      options.deps.sendUserMessage = sendUserMessage;
+      const runtime = new SessionPluginHost(createPluginTestContext(options));
+      await runtime.load(timerPlugin, "builtin:timer");
+      const context = {
+        toolCallId: "timer-call",
+        session: { id: "1", cwd: process.cwd() },
+        reportProgress: () => {},
+      };
+
+      const created = await runtime.executeTool(
+        "TimerCreate",
+        { intent: "check deploy later", prompt: "check deploy", delaySeconds: 5 },
+        context,
+      );
+      const timer = created.details as { id: string };
+      const before = await runtime.executeTool("TimerList", { intent: "inspect timers" }, context);
+      expect((before.details as { timers: Array<{ id: string }> }).timers).toMatchObject([
+        { id: timer.id, prompt: "check deploy" },
+      ]);
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      const after = await runtime.executeTool("TimerList", { intent: "inspect timers" }, context);
+      expect((after.details as { timers: unknown[] }).timers).toEqual([]);
+      expect(sendUserMessage).toHaveBeenCalledWith(expect.stringContaining('<timer-fire id="'), {
+        source: "timer",
+        origin: "check deploy",
+      });
+      await runtime.clear();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("registers and executes plugin slash commands", async () => {
+    const handler = vi.fn(async (_args: string) => {});
+    const runtime = new SessionPluginHost(createPluginTestContext(createRuntimeOptions()));
+    await runtime.load(
+      definePlugin({
+        name: "command-test",
+        setup(ctx) {
+          ctx.agent.registerCommand("hello", { description: "Say hello", handler });
+        },
+      }),
+      "/tmp/command-test.ts",
+    );
+
+    expect(runtime.getAllCommands()).toMatchObject([
+      { name: "hello", description: "Say hello", pluginName: "command-test" },
+    ]);
+    await runtime.executeCommand("hello", "world");
+    expect(handler).toHaveBeenCalledWith("world", {
+      sessionId: 1,
+      cwd: process.cwd(),
+    });
+  });
+
+  it("lets plugins dynamically call tools registered by other plugins", async () => {
+    const runtime = new SessionPluginHost(createPluginTestContext(createRuntimeOptions()));
+    await runtime.load(
+      definePlugin({
+        name: "tool-provider",
+        setup(ctx) {
+          ctx.agent.registerTool({
+            name: "shared_echo",
+            description: "Echo a value",
+            parameters: Type.Object({ value: Type.String() }),
+            async execute(params) {
+              return { content: [{ type: "text", text: params.value }] };
+            },
+          });
+        },
+      }),
+      "/tmp/tool-provider.ts",
+    );
+
+    let received = "";
+    let owner: string | undefined;
+    await runtime.load(
+      definePlugin({
+        name: "tool-consumer",
+        async setup(ctx) {
+          owner = ctx.tools.get("shared_echo")?.pluginName;
+          const result = await ctx.tools.call("shared_echo", { value: "from plugin" });
+          received = result.content[0]?.type === "text" ? result.content[0].text : "";
+        },
+      }),
+      "/tmp/tool-consumer.ts",
+    );
+
+    expect(received).toBe("from plugin");
+    expect(owner).toBe("tool-provider");
+  });
+
+  it("ctx.db exposes raw parameterized SQL", () => {
+    const statement = {
+      all: vi.fn(() => [{ id: 1 }]),
+      get: vi.fn(() => ({ id: 1 })),
+      run: vi.fn(() => ({ changes: 1 })),
+    };
+    const prepare = vi.fn(() => statement);
+    const db = new ContextDb({ prepare });
+
+    expect(db.query<{ id: number }>("SELECT id FROM sessions WHERE id = ?", [1])).toEqual([
+      { id: 1 },
+    ]);
+    expect(db.queryOne<{ id: number }>("SELECT id FROM agents WHERE id = ?", [1])).toEqual({
+      id: 1,
+    });
+    expect(db.execute("UPDATE sessions SET status = ? WHERE id = ?", ["idle", 1])).toEqual({
+      changes: 1,
+    });
+    expect(prepare).toHaveBeenCalledTimes(3);
+  });
+
+  it("ToolPolicy blocks edit outside allowed plan file path", () => {
+    const policy = ToolPolicy.readonly()
+      .allowTool("edit")
+      .allowResource({ kind: "file", mode: "write", pattern: "/tmp/plan.md" });
+
+    expect(policy.check({ name: "edit", args: { file_path: "/tmp/plan.md" } }).allow).toBe(true);
+    expect(policy.check({ name: "edit", args: { file_path: "/tmp/other.ts" } }).allow).toBe(false);
+  });
+
+  it("session.tools.beforeUse can block tool calls", async () => {
+    const runtime = new SessionPluginHost(createPluginTestContext(createRuntimeOptions()));
+    runtime.services.tools.beforeUse(() => ({ allow: false, reason: "blocked by plugin" }));
+
+    const result = await runtime.checkToolBeforeCall("tc-1", "edit", { file_path: "/a.ts" });
+    expect(result.block).toBe(true);
+    expect(result.reason).toContain("blocked by plugin");
+  });
+
+  it("inject appends boundary messages", () => {
+    const runtime = new SessionPluginHost(createPluginTestContext(createRuntimeOptions()));
+    runtime.services.inject.schedule({ variant: "goal", content: "stay focused" });
+    const out = runtime.applyTurnInjections([
+      { role: "user", content: [{ type: "text", text: "hi" }], timestamp: Date.now() },
+    ]);
+    expect(out).toHaveLength(2);
+    const injected = out[1]?.content;
+    const injectedText = Array.isArray(injected)
+      ? injected.map((part) => ("text" in part ? part.text : "")).join("")
+      : String(injected);
+    expect(injectedText).toContain('<system-injection variant="goal">');
+  });
+
+  it("flow.continue queues a continuation turn", async () => {
+    const continueTurn = vi.fn(async () => {});
+    const runtime = new SessionPluginHost(
+      createPluginTestContext(createRuntimeOptions({ continueTurn })),
+    );
+
+    await runtime.load(
+      definePlugin({
+        name: "flow-test",
+        setup(ctx) {
+          void ctx.flow.continue({
+            prompt: "keep going",
+            origin: "goal_continuation",
+            dedupeKey: "goal:1",
+          });
+        },
+      }),
+      "/tmp/flow-test.ts",
+    );
+
+    expect(continueTurn).toHaveBeenCalledWith("keep going", {
+      source: "plugin:flow:goal_continuation",
+    });
+  });
+
+  it("SessionPluginHost.wrapTools returns error when blocked", async () => {
+    const runtime = new SessionPluginHost(createPluginTestContext(createRuntimeOptions()));
+    runtime.services.tools.setPolicy(ToolPolicy.readonly());
+
+    const [tool] = runtime.wrapTools([
+      {
+        name: "edit",
+        label: "edit",
+        description: "edit",
+        parameters: { type: "object" },
+        async execute() {
+          return {
+            content: [{ type: "text", text: "should not run" }],
+            details: {},
+          };
+        },
+      },
+    ]);
+
+    const result = await tool.execute("tc-1", { file_path: "/a.ts" });
+    expect((result as { isError?: boolean }).isError).toBe(true);
+    const textBlock = result.content.find((block) => block.type === "text");
+    expect(textBlock && "text" in textBlock ? textBlock.text : "").toContain("readonly");
+  });
+
+  it("ui.requestApproval resolves via submitApprovalResolution", async () => {
+    let approvalId = "";
+    const options = createRuntimeOptions();
+    options.deps.broadcast = ((event: { type?: string; approvalId?: string }) => {
+      if (event.type === "approval.pending" && event.approvalId) {
+        approvalId = event.approvalId;
+      }
+    }) as RuntimeOptions["deps"]["broadcast"];
+    const runtime = new SessionPluginHost(createPluginTestContext(options));
+    const { listPendingApprovals, submitApprovalResolution } =
+      await import("../src/plugin/runtime/index.js");
+
+    const promise = runtime.services.uiApproval.requestApproval({
+      kind: "plan_review",
+      title: "Plan",
+      body: "Do X",
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(approvalId).toBeTruthy();
+    expect(listPendingApprovals(1)).toEqual([
+      expect.objectContaining({
+        type: "approval.pending",
+        approvalId,
+        kind: "plan_review",
+        title: "Plan",
+      }),
+    ]);
+    submitApprovalResolution(1, approvalId, { action: "approve" });
+    await expect(promise).resolves.toEqual({ action: "approve" });
+    expect(listPendingApprovals(1)).toEqual([]);
+  });
+
+  it("每个 Agent 的插件工具注册表彼此隔离", async () => {
+    const first = new SessionPluginHost(createPluginTestContext(createRuntimeOptions()));
+    const second = new SessionPluginHost(
+      createPluginTestContext({ ...createRuntimeOptions(), sessionId: 2 }),
+    );
+
+    await first.load(
+      definePlugin({
+        name: "isolated-plugin",
+        setup(ctx) {
+          ctx.agent.registerTool({
+            name: "isolated_tool",
+            description: "只属于第一个 Agent",
+            parameters: Type.Object({}),
+            async execute() {
+              return { content: [{ type: "text", text: "ok" }] };
+            },
+          });
+        },
+      }),
+      "/tmp/isolated-plugin.ts",
+    );
+
+    expect(first.getTool("isolated_tool")).toBeDefined();
+    expect(second.getTool("isolated_tool")).toBeUndefined();
+  });
+
+  it("clear 统一执行 cleanup 并清空插件工具", async () => {
+    const plugin = new SessionPluginHost(createPluginTestContext(createRuntimeOptions()));
+    const cleanup = vi.fn();
+
+    await plugin.load(
+      definePlugin({
+        name: "cleanup-plugin",
+        setup(ctx) {
+          ctx.agent.registerTool({
+            name: "cleanup_tool",
+            description: "用于验证清理",
+            parameters: Type.Object({}),
+            async execute() {
+              return { content: [{ type: "text", text: "ok" }] };
+            },
+          });
+          return cleanup;
+        },
+      }),
+      "/tmp/cleanup-plugin.ts",
+    );
+
+    await plugin.clear();
+
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(plugin.getTool("cleanup_tool")).toBeUndefined();
+  });
+
+  it("unload 只清理当前 Session 中指定插件的资源", async () => {
+    const plugin = new SessionPluginHost(createPluginTestContext(createRuntimeOptions()));
+    const cleanup = vi.fn(async () => {});
+
+    await plugin.load(
+      definePlugin({
+        name: "removable-plugin",
+        setup(ctx) {
+          ctx.agent.registerTool({
+            name: "removable_tool",
+            description: "removed with its plugin",
+            parameters: Type.Object({}),
+            async execute() {
+              return { content: [{ type: "text", text: "ok" }] };
+            },
+          });
+          return cleanup;
+        },
+      }),
+      "/tmp/removable-plugin.ts",
+    );
+
+    await expect(plugin.unload("removable-plugin")).resolves.toBe(true);
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(plugin.getTool("removable_tool")).toBeUndefined();
+  });
+});

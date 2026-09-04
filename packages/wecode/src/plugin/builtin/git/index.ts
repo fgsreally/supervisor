@@ -1,0 +1,405 @@
+import type { PluginContext, PluginDefinition } from "../../types.js";
+import type { SessionRow } from "../../../types.js";
+import { Type } from "typebox";
+import { parseSessionMeta } from "../../../core/session/session-fields.js";
+import { formatGitCommitCustomMessage } from "../../../core/session/session-notice.js";
+import {
+  commitAll,
+  commitGitSnapshot,
+  createSessionWorktree,
+  ensureProjectGitRootSync,
+  getGitStatusPorcelain,
+  getHeadHash,
+  listChangedFilesBetween,
+  mergeSessionBranch,
+  removeSessionWorktree,
+  resolveMergeTargetBranch,
+  resolveSessionGitContext,
+  syncSessionWorktree,
+} from "../../../utils/git.js";
+import { sessionLog } from "../../../utils/session-log.js";
+
+function patchSessionMeta(
+  ctx: PluginContext,
+  sessionId: number,
+  patch: Record<string, unknown>,
+): void {
+  const row = ctx.db.queryOne<{ meta: string }>("SELECT meta FROM sessions WHERE id = ?", [
+    sessionId,
+  ]);
+  if (!row) return;
+  const merged = { ...JSON.parse(row.meta || "{}"), ...patch };
+  ctx.db.execute("UPDATE sessions SET meta = ? WHERE id = ?", [JSON.stringify(merged), sessionId]);
+}
+
+function markSiblingsPendingUpdate(
+  ctx: PluginContext,
+  achievedSessionId: number,
+  projectId: number,
+  projectCwd: string,
+  mergeResult: { branch: string; files: Array<{ path: string; status: string }> },
+): void {
+  const achieved = ctx.db.queryOne<{ title: string | null }>(
+    "SELECT title FROM sessions WHERE id = ?",
+    [achievedSessionId],
+  );
+  const pendingUpdate = {
+    sourceSessionId: achievedSessionId,
+    sourceTitle: achieved?.title ?? null,
+    branch: mergeResult.branch,
+    files: mergeResult.files,
+    markedAt: Date.now(),
+  };
+  const rows = ctx.db.query<Pick<SessionRow, "id" | "cwd" | "status" | "meta">>(
+    "SELECT id, cwd, status, meta FROM sessions WHERE project_id = ?",
+    [projectId],
+  );
+  for (const row of rows) {
+    if (row.id === achievedSessionId) continue;
+    if (row.status === "finish" || row.status === "finished") continue;
+    const git = resolveSessionGitContext({
+      sessionId: row.id,
+      cwd: row.cwd,
+      projectCwd,
+    });
+    if (!git) continue;
+    const meta = parseSessionMeta(row.meta);
+    const existingGit =
+      meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)
+        ? (meta.git as Record<string, unknown>)
+        : {};
+    patchSessionMeta(ctx, row.id, { git: { ...existingGit, pendingUpdate } });
+  }
+}
+
+function shouldCreateWorktree(isMain: boolean): boolean {
+  return isMain;
+}
+
+type SessionGit = {
+  repoRoot: string;
+  worktreePath: string;
+  branch: string;
+};
+
+/**
+ * Remove worktree; on failure ask Watson to read AGENTS.md (service stop etc.)
+ * and retry until the path is gone.
+ */
+async function removeWorktreeWithWatson(
+  ctx: PluginContext,
+  sessionId: number,
+  git: SessionGit,
+  options?: { forceBranch?: boolean; reason?: string },
+): Promise<void> {
+  const tryRemove = () =>
+    removeSessionWorktree(git.repoRoot, git.worktreePath, git.branch, {
+      forceBranch: options?.forceBranch,
+    });
+
+  let lastError = "";
+  try {
+    await tryRemove();
+    return;
+  } catch (error: unknown) {
+    lastError = error instanceof Error ? error.message : String(error);
+  }
+
+  const reason = options?.reason ?? "worktree remove failed";
+  const maxRounds = 3;
+  for (let round = 1; round <= maxRounds; round++) {
+    sessionLog(
+      sessionId,
+      "warn",
+      `worktree remove failed (${reason}), Watson cleanup ${round}/${maxRounds}: ${lastError}`,
+      ["system", "git", "worktree", "watson"],
+    );
+    try {
+      await ctx.watson.run({
+        mode: "agent",
+        cwd: git.repoRoot,
+        kind: "worktree-cleanup",
+        toolsPreset: "coding",
+        prompt: [
+          "The git worktree could not be removed while deleting/finalizing the Session; a local service or process may still be using it.",
+          "Read AGENTS.md in the project root and in the worktree first, especially the Local Development Services install/start/stop/destroy instructions.",
+          "Stop the documented services and any process using the directory, then run:",
+          `git -C ${JSON.stringify(git.repoRoot)} worktree remove --force ${JSON.stringify(git.worktreePath)}`,
+          "Use `git worktree prune` if necessary. Do not rm -rf the whole repository or unrelated paths.",
+          "Goal: remove the worktree directory so its branch can be deleted afterward.",
+          "",
+          `reason: ${reason}`,
+          `worktreePath: ${git.worktreePath}`,
+          `branch: ${git.branch}`,
+          `error: ${lastError}`,
+          `attempt: ${round}/${maxRounds}`,
+        ].join("\n"),
+      });
+    } catch (watsonError: unknown) {
+      const detail = watsonError instanceof Error ? watsonError.message : String(watsonError);
+      ctx.log("error", `Watson worktree cleanup failed: ${detail}`);
+      sessionLog(sessionId, "error", `Watson worktree cleanup failed: ${detail}`, [
+        "system",
+        "git",
+        "worktree",
+        "watson",
+      ]);
+    }
+
+    try {
+      await tryRemove();
+      sessionLog(sessionId, "info", `Worktree removed after Watson cleanup: ${git.worktreePath}`, [
+        "system",
+        "git",
+        "worktree",
+        "watson",
+      ]);
+      return;
+    } catch (error: unknown) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  throw new Error(
+    `Worktree still present after Watson cleanup: ${git.worktreePath} (${lastError})`,
+  );
+}
+
+export const GIT_UI_MENUS = [
+  { id: "git.fork-session", surface: "session" as const, label: "Fork 新会话", order: 100 },
+  { id: "git.fork-message", surface: "message" as const, label: "从此处 Fork", order: 100 },
+  { id: "git.checkpoint", surface: "session" as const, label: "创建存档点", order: 110 },
+  { id: "git.achieve", surface: "session" as const, label: "完成并归档", order: 120 },
+  { id: "git.rewind-message", surface: "message" as const, label: "回到这条消息", order: 110 },
+] as const;
+
+const gitPlugin: PluginDefinition = {
+  name: "git",
+  menus: GIT_UI_MENUS,
+  async setup(ctx) {
+    const sessionId = ctx.session.id;
+    const projectCwd = ctx.project.cwd;
+    const projectId = ctx.session.projectId;
+
+    const resolveGit = () =>
+      resolveSessionGitContext({
+        sessionId,
+        cwd: ctx.session.cwd,
+        projectCwd,
+      });
+
+    ctx.on("shadow.start", (event) => {
+      event.submitResultProperties.commitMessage = Type.Optional(
+        Type.String({
+          description:
+            "A concise checkpoint commit message when a stable intermediate milestone exists.",
+        }),
+      );
+    });
+
+    ctx.on(
+      "shadow.completed",
+      async (event) => {
+        if (event.result.level !== "info") return;
+        const rawCommitMessage = event.result.plugins.commitMessage;
+        if (typeof rawCommitMessage !== "string") return;
+        const commitMessage = rawCommitMessage.replace(/\s+/g, " ").trim().slice(0, 120);
+        if (!commitMessage) return;
+
+        try {
+          if (!event.checkpoint.gitRef || !event.checkpoint.gitHead) return;
+          const commit = await commitGitSnapshot(
+            ctx.session.cwd,
+            event.checkpoint.gitRef,
+            event.checkpoint.gitHead,
+            commitMessage,
+          );
+          const meta = await ctx.session.meta.get();
+          const gitMeta =
+            meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)
+              ? (meta.git as Record<string, unknown>)
+              : {};
+          await ctx.session.meta.patch({ git: { ...gitMeta, lastCommit: commit } });
+          await ctx.session.sendCustomMessage(formatGitCommitCustomMessage(commit), {
+            createdAt: event.startedAt,
+          });
+          sessionLog(sessionId, "info", `Shadow checkpoint committed: ${commit.hash}`, [
+            "system",
+            "git",
+            "shadow",
+          ]);
+        } catch (error: unknown) {
+          const detail = error instanceof Error ? error.message : String(error);
+          ctx.log("error", `Shadow checkpoint commit failed: ${detail}`);
+          sessionLog(sessionId, "error", `Shadow checkpoint commit failed: ${detail}`, [
+            "system",
+            "git",
+            "shadow",
+          ]);
+        }
+      },
+      { mode: "async" },
+    );
+
+    // task-management loads before git. Only compose auto-commit when both plugins are active.
+    if (ctx.tools.get("TodoList")) {
+      let completedTodoKeys = new Set(
+        (await ctx.session.todos.list())
+          .filter((todo) => todo.status === "completed")
+          .map((todo) => todo.taskKey ?? todo.title),
+      );
+      let taskCommitQueue = Promise.resolve();
+      ctx.session.tools.afterUse(async (call) => {
+        if (call.name !== "TodoList") return;
+        const args = call.args as { todos?: unknown } | undefined;
+        if (!Array.isArray(args?.todos)) return;
+        const result = call.result as { isError?: boolean } | undefined;
+        if (result?.isError) return;
+
+        const todos = await ctx.session.todos.list();
+        const nextCompleted = new Set(
+          todos
+            .filter((todo) => todo.status === "completed")
+            .map((todo) => todo.taskKey ?? todo.title),
+        );
+        const newlyCompleted = todos.filter(
+          (todo) =>
+            todo.status === "completed" && !completedTodoKeys.has(todo.taskKey ?? todo.title),
+        );
+        completedTodoKeys = nextCompleted;
+        if (!newlyCompleted.length) return;
+
+        taskCommitQueue = taskCommitQueue.then(async () => {
+          try {
+            const status = await getGitStatusPorcelain(ctx.session.cwd);
+            if (!status.trim()) return;
+            const subject =
+              newlyCompleted.length === 1
+                ? `task: ${newlyCompleted[0]!.title}`
+                : `task: complete ${newlyCompleted.length} tasks`;
+            const commit = await commitAll(ctx.session.cwd, subject.slice(0, 72));
+            if (!commit) return;
+            const meta = await ctx.session.meta.get();
+            const gitMeta =
+              meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)
+                ? (meta.git as Record<string, unknown>)
+                : {};
+            await ctx.session.meta.patch({ git: { ...gitMeta, lastCommit: commit.hash } });
+            sessionLog(sessionId, "info", `Task completion committed: ${commit.hash}`, [
+              "system",
+              "git",
+              "task",
+            ]);
+          } catch (error: unknown) {
+            const detail = error instanceof Error ? error.message : String(error);
+            ctx.log("error", `Task completion commit failed: ${detail}`);
+            sessionLog(sessionId, "error", `Task completion commit failed: ${detail}`, [
+              "system",
+              "git",
+              "task",
+            ]);
+          }
+        });
+        await taskCommitQueue;
+      });
+    }
+
+    const sessionData = await ctx.session.data.get();
+    const sessionMeta = await ctx.session.meta.get();
+    const forkSource =
+      sessionMeta.forkSource &&
+      typeof sessionMeta.forkSource === "object" &&
+      !Array.isArray(sessionMeta.forkSource)
+        ? (sessionMeta.forkSource as { gitRef?: unknown })
+        : undefined;
+    const canCreateForkWorktree =
+      sessionData.spawnType !== "fork" || typeof forkSource?.gitRef === "string";
+    if (shouldCreateWorktree(ctx.session.isMain) && canCreateForkWorktree) {
+      try {
+        sessionLog(sessionId, "info", "Creating session worktree", ["system", "git", "worktree"]);
+        const repoRoot = ensureProjectGitRootSync(projectCwd);
+        const gitMeta = await createSessionWorktree(
+          repoRoot,
+          String(sessionId),
+          typeof forkSource?.gitRef === "string" ? forkSource.gitRef : undefined,
+        );
+        await ctx.session.setCwd(gitMeta.worktreePath);
+        sessionLog(
+          sessionId,
+          "info",
+          `Worktree ready: ${gitMeta.worktreePath} (branch ${gitMeta.branch})`,
+          ["system", "git", "worktree"],
+        );
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        ctx.log("error", `Worktree create failed: ${message}`);
+        sessionLog(sessionId, "error", `Worktree create failed: ${message}`, [
+          "system",
+          "git",
+          "worktree",
+        ]);
+      }
+    }
+
+    ctx.on(
+      "session.achieve",
+      async () => {
+        const git = resolveGit();
+        if (!git) return;
+        const status = await getGitStatusPorcelain(ctx.session.cwd);
+        if (status.trim()) {
+          throw new Error(
+            "Uncommitted changes in worktree. Commit with POST /sessions/:id/commit before completing.",
+          );
+        }
+        const oldHead = await getHeadHash(git.repoRoot);
+        const parent = ctx.db.queryOne<Pick<SessionRow, "cwd"> & { parent_id: number | null }>(
+          "SELECT cwd, parent_id FROM sessions WHERE id = ?",
+          [sessionId],
+        );
+        const parentGit =
+          parent?.parent_id == null
+            ? null
+            : resolveSessionGitContext({
+                sessionId: parent.parent_id,
+                cwd: parent.cwd,
+                projectCwd,
+              });
+        const targetBranch = parentGit?.branch ?? (await resolveMergeTargetBranch(git.repoRoot));
+        await mergeSessionBranch(git.repoRoot, git.branch, targetBranch);
+        const newHead = await getHeadHash(git.repoRoot);
+        const files = await listChangedFilesBetween(git.repoRoot, oldHead, newHead);
+        await removeWorktreeWithWatson(ctx, sessionId, git, { reason: "session.achieve" });
+        await ctx.session.setCwd(git.repoRoot);
+        if (projectId != null) {
+          markSiblingsPendingUpdate(ctx, sessionId, projectId, projectCwd, {
+            branch: targetBranch,
+            files,
+          });
+        }
+      },
+      { priority: 100, mode: "sync" },
+    );
+
+    ctx.on(
+      "session.before_sync",
+      async () => {
+        const git = resolveGit();
+        if (!git) return;
+        if ((await getGitStatusPorcelain(ctx.session.cwd)).trim()) {
+          throw new Error("同步前请先提交或清理当前会话中的修改");
+        }
+        await syncSessionWorktree(projectCwd, ctx.session.cwd);
+        const meta = await ctx.session.meta.get();
+        if (meta.git && typeof meta.git === "object" && !Array.isArray(meta.git)) {
+          const gitMeta = { ...(meta.git as Record<string, unknown>) };
+          delete gitMeta.pendingUpdate;
+          await ctx.session.meta.patch({ git: gitMeta });
+        }
+      },
+      { priority: 100, mode: "sync" },
+    );
+  },
+};
+
+export default gitPlugin;

@@ -1,0 +1,22 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">WeCode</string>
+    <string name="title_activity_main">WeCode</string>
+    <string name="package_name">com.wecode.app</string>
+    <string name="custom_url_scheme">com.wecode.app</string>
+    <string name="shell_list_title">服务器</string>
+    <string name="shell_list_section">已添加的实例</string>
+    <string name="shell_empty_title">添加 WeCode 实例</string>
+    <string name="shell_empty_hint">在电脑启动 WeCode 后，扫描终端二维码即可添加。一个 App 可连接多个实例。</string>
+    <string name="shell_scan_button">扫一扫</string>
+    <string name="shell_scan_prompt">扫描电脑端 WeCode 二维码</string>
+    <string name="shell_scan_invalid">二维码不是有效的 http(s) 地址</string>
+    <string name="shell_added">已添加</string>
+    <string name="shell_connected">已连接</string>
+    <string name="shell_delete_title">删除实例</string>
+    <string name="shell_delete_message">确定删除「%1$s」？</string>
+    <string name="shell_delete_confirm">删除</string>
+    <string name="shell_cancel">取消</string>
+    <string name="shell_camera_denied">需要相机权限才能扫码</string>
+    <string name="shell_switch_servers">切换服务器</string>
+</resources>

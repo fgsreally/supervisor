@@ -1,0 +1,86 @@
+import { describe, expect, it } from "vitest";
+import { delimiter, join } from "node:path";
+import {
+  servicesToPortEnv,
+  findProjectBinDir,
+  withProjectPath,
+} from "../src/core/session/session-registered-services.js";
+import {
+  collectReservedServicePorts,
+  parseSessionServicesMeta,
+} from "../src/core/session/session-services.js";
+import { substitutePortPlaceholders } from "../src/core/session/session-service-runtime.js";
+import { validateNumberedPortPlaceholders } from "../src/plugin/builtin/service/index.js";
+
+describe("numbered session service ports", () => {
+  it("accepts consecutive PORT1..N placeholders only", () => {
+    expect(validateNumberedPortPlaceholders("server --ui ${PORT1} --api %PORT2%")).toEqual([
+      "PORT1",
+      "PORT2",
+    ]);
+    expect(validateNumberedPortPlaceholders("server --port ${PORT2}")).toBeNull();
+    expect(validateNumberedPortPlaceholders("server --port 5173")).toBeNull();
+  });
+
+  it("collects ports reserved by other sessions", () => {
+    expect(
+      collectReservedServicePorts(
+        [
+          {
+            id: 136,
+            meta: JSON.stringify({
+              services: {
+                status: "active",
+                startCommand: "pnpm dev --port ${PORT1}",
+                services: [{ name: "web", port: 4396, portEnv: { PORT1: 4396 }, path: "/" }],
+              },
+            }),
+          },
+          {
+            id: 137,
+            meta: JSON.stringify({
+              services: {
+                status: "idle",
+                startCommand: "pnpm dev --port ${PORT1}",
+                services: [{ name: "dev", port: 4428, portEnv: { PORT1: 4428 }, path: "/" }],
+              },
+            }),
+          },
+        ],
+        137,
+      ),
+    ).toEqual([4396]);
+  });
+
+  it("persists numbered ports and substitutes them on later starts", () => {
+    const services = parseSessionServicesMeta({
+      services: {
+        status: "idle",
+        startCommand: "server --ui ${PORT1} --api ${PORT2}",
+        services: [
+          {
+            name: "web",
+            port: 4396,
+            portEnv: { PORT1: 4396, PORT2: 4397 },
+            path: "/",
+          },
+        ],
+      },
+    });
+
+    expect(services?.services?.[0]?.portEnv).toEqual({ PORT1: 4396, PORT2: 4397 });
+    const env = servicesToPortEnv(services?.services);
+    expect(substitutePortPlaceholders(services!.startCommand, env)).toBe(
+      "server --ui 4396 --api 4397",
+    );
+  });
+
+  it("prefers the nearest project node_modules bin over the Wecode PATH", () => {
+    const cwd = join(process.cwd(), ".wecode", "worktrees", "test");
+    const projectBin = join(process.cwd(), "node_modules", ".bin");
+    expect(findProjectBinDir(cwd)).toBe(projectBin);
+    const existingPath = join("wecode", "node_modules", ".bin");
+    const env = withProjectPath(cwd, { Path: existingPath });
+    expect(env.Path).toBe(`${projectBin}${delimiter}${existingPath}`);
+  });
+});

@@ -1,0 +1,723 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, relative } from "node:path";
+import type { TSchema } from "typebox";
+import { getAgentHomeDir } from "./index.js";
+import { ContextAgent, ContextDb, ContextSession, ToolPolicy } from "../plugin/runtime/index.js";
+import type { WecodeDb } from "../db/db.js";
+import { listPluginInfosInDirectories, type PluginEntryInfo } from "../plugin/index.js";
+import type { PluginModuleRegistry } from "../plugin/registry.js";
+import type { PluginContext, PluginDefinition, ToolDefinition } from "../plugin/index.js";
+import { isPackagedToolId, probePackagedTool } from "../tools/catalog.js";
+import { createDefaultTools } from "../utils/default-tools.js";
+import { loadPromptTemplates, type PromptTemplate } from "../core/resource/prompt-templates.js";
+import { loadSkills, type Skill } from "./skills.js";
+import { getProjectSkillsDirectory } from "./skill-dirs.js";
+import type { Agent, ToolsPreset } from "../types.js";
+import type { Resource } from "../resources/types.js";
+
+interface ProbedTool {
+  name: string;
+  description: string;
+  pluginName: string;
+}
+
+async function probePluginTools(definition: PluginDefinition): Promise<ProbedTool[]> {
+  const registered: ProbedTool[] = [];
+  const ctx = createProbeContext((tool) => {
+    registered.push({
+      name: tool.name,
+      description: tool.description,
+      pluginName: definition.name,
+    });
+  });
+  try {
+    await definition.setup(ctx);
+  } catch {
+    // Tool discovery is best effort; keep registrations made before setup failed.
+  }
+  return registered;
+}
+
+function createProbeContext(
+  onRegister: (tool: ToolDefinition<TSchema, unknown>) => void,
+): PluginContext {
+  const noop = () => undefined;
+  const noopAsync = async () => undefined;
+  const toolRegistry = {
+    register: <TParams extends TSchema, TResult>(definition: ToolDefinition<TParams, TResult>) => {
+      onRegister(definition as ToolDefinition<TSchema, unknown>);
+    },
+    list: () => [],
+    get: () => undefined,
+  };
+
+  return {
+    db: new ContextDb(undefined),
+    session: new ContextSession({
+      id: 0,
+      record: {
+        id: 0,
+        projectId: null,
+        parentId: null,
+        status: "idle",
+        thinkingLevel: "none",
+        cwd: process.cwd(),
+        leafId: null,
+        agentId: null,
+        spawnType: null,
+        creationMethod: "user",
+        title: null,
+        systemPrompt: null,
+        avatar: null,
+        isBuiltin: false,
+        pinned: false,
+        muted: false,
+        unread: 0,
+        externalSessionId: null,
+        errorMsg: null,
+        stage: null,
+        shadowEnabled: false,
+        createdAt: new Date(0),
+        lastActiveAt: new Date(0),
+      },
+      getCwd: () => process.cwd(),
+      setCwd: noopAsync,
+      dir: process.cwd(),
+      isMain: true,
+      isChild: false,
+      getDir: async () => process.cwd(),
+      appendSystemPrompt: noopAsync,
+      upsertSystemPromptBlock: noopAsync,
+      isIdle: () => true,
+      isStreaming: () => false,
+      getSignal: () => undefined,
+      abort: noop,
+      waitForIdle: noopAsync,
+      messages: {
+        list: async () => [],
+        get: async () => undefined,
+        tree: async () => [],
+        currentBranch: async () => [],
+        search: async () => [],
+        getMeta: async () => ({}),
+        setMeta: noopAsync,
+        patchMeta: async () => ({}),
+        setLabel: noopAsync,
+        stats: async () => ({ total: 0, user: 0, assistant: 0, tool: 0, custom: 0 }),
+        contextUsage: async () => ({ tokens: null, contextWindow: 0, percent: null }),
+      },
+      data: {
+        get: async () => ({
+          id: 0,
+          projectId: null,
+          parentId: null,
+          status: "idle",
+          thinkingLevel: "none",
+          cwd: process.cwd(),
+          leafId: null,
+          agentId: null,
+          spawnType: null,
+          creationMethod: "user",
+          title: null,
+          systemPrompt: null,
+          avatar: null,
+          isBuiltin: false,
+          pinned: false,
+          muted: false,
+          unread: 0,
+          externalSessionId: null,
+          errorMsg: null,
+          stage: null,
+          shadowEnabled: false,
+          createdAt: new Date(0),
+          lastActiveAt: new Date(0),
+        }),
+        set: async () => {
+          throw new Error("session data is unavailable while probing resources");
+        },
+        patch: async () => {
+          throw new Error("session data is unavailable while probing resources");
+        },
+      },
+      meta: { get: async () => ({}), set: noopAsync, patch: async () => ({}) },
+      workflow: {
+        get: async () => null,
+        set: async () => {
+          throw new Error("workflow is unavailable while probing resources");
+        },
+        clear: noopAsync,
+      },
+      tasks: {
+        list: async () => [],
+        upsert: async () => {
+          throw new Error("Tasks are unavailable while probing resources");
+        },
+        remove: async () => false,
+        getCurrentPath: async () => null,
+        setCurrentPath: noopAsync,
+      },
+      todos: { list: async () => [], replace: async () => [] },
+      activity: { touch: noop },
+      policy: { active: noop },
+      checkpoint: async () => undefined,
+      rewindToEntry: async () => undefined,
+      agent: null,
+      project: {
+        data: {
+          get: async () => ({
+            id: 0,
+            name: "probe",
+            description: null,
+            cwd: process.cwd(),
+            homeDir: process.cwd(),
+            meta: {},
+            createdAt: new Date(0),
+            updatedAt: new Date(0),
+          }),
+          set: async () => {
+            throw new Error("project data is unavailable while probing resources");
+          },
+          patch: async () => {
+            throw new Error("project data is unavailable while probing resources");
+          },
+        },
+        cwd: process.cwd(),
+        dir: process.cwd(),
+        getDir: async () => process.cwd(),
+      },
+      inject: { schedule: noop, clear: noop, reattach: noop },
+      getParent: async () => undefined,
+      children: async () => [],
+      appendEntry: async () => "",
+      sendMessage: noopAsync,
+      sendCustomMessage: async () => "",
+      sendUserMessage: noopAsync,
+      sendToChild: noopAsync,
+      inspectChild: async () => {
+        throw new Error("Child sessions are unavailable while probing resources");
+      },
+      pausing: async <T>(_reason: string, work: Promise<T> | (() => Promise<T>)) =>
+        typeof work === "function" ? work() : work,
+      spawn: async () => ({ sessionId: 0, parentId: null, status: "idle", agentId: null }),
+      waitForResult: async () => ({
+        sessionId: 0,
+        status: "idle",
+        result: "",
+        truncated: false,
+      }),
+      finish: noopAsync,
+      fork: async () => ({
+        id: 0,
+        cwd: process.cwd(),
+        messageCount: 0,
+        createdAt: 0,
+        lastActiveAt: 0,
+      }),
+      switchTo: noopAsync,
+      navigateTree: noopAsync,
+      compact: async () => ({ summary: "", firstKeptEntryId: "", tokensBefore: 0 }),
+      tools: {
+        setPolicy: noop,
+        getPolicy: () => ToolPolicy.coding(),
+        beforeUse: () => noop,
+        afterUse: () => noop,
+        activate: noopAsync,
+        deactivate: noopAsync,
+        enable: noop,
+        disable: noop,
+      },
+      on: () => noop,
+    }),
+    agent: new ContextAgent({
+      id: 0,
+      name: "probe",
+      providerId: 0,
+      modelId: "probe",
+      backendType: "native",
+      getModel: () => ({ provider: "probe", id: "probe", contextWindow: 0 }),
+      registerTool: toolRegistry.register,
+      unregisterTool: noop,
+      activate: noopAsync,
+      deactivate: noopAsync,
+      listTools: toolRegistry.list,
+      getTool: toolRegistry.get,
+      findByTag: async () => [],
+      findByRole: async () => [],
+      setModel: noopAsync,
+      setThinkingLevel: noop,
+      getThinkingLevel: () => "none" as const,
+      data: {
+        get: async () => ({
+          id: 0,
+          name: "probe",
+          description: null,
+          avatar: null,
+          providerId: null,
+          backendType: "native" as const,
+          modelId: null,
+          systemPrompt: null,
+          toolsPreset: null,
+          homeDir: null,
+          isBuiltin: false,
+          externalConfig: null,
+          permissionRules: {},
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+        }),
+        set: async () => {
+          throw new Error("agent data is unavailable while probing resources");
+        },
+        patch: async () => {
+          throw new Error("agent data is unavailable while probing resources");
+        },
+      },
+      meta: { get: async () => ({}), set: noopAsync, patch: async () => ({}) },
+    }),
+    policies: { disable: noop, isDisabled: () => false },
+    capabilities: { provide: noop, get: () => undefined },
+    tools: {
+      list: toolRegistry.list,
+      get: toolRegistry.get,
+      call: async () => {
+        throw new Error("Tool execution is unavailable while probing resources");
+      },
+    },
+    jobs: {
+      create: async () => {
+        throw new Error("Jobs are unavailable while probing resources");
+      },
+      get: async () => undefined,
+      list: async () => [],
+      update: async () => {
+        throw new Error("Jobs are unavailable while probing resources");
+      },
+      cancel: async () => {
+        throw new Error("Jobs are unavailable while probing resources");
+      },
+      input: noopAsync,
+      setCancelHandler: noop,
+      setInputHandler: noop,
+    },
+    project: {
+      data: {
+        get: async () => ({
+          id: 0,
+          name: "probe",
+          description: null,
+          cwd: process.cwd(),
+          homeDir: process.cwd(),
+          meta: {},
+          createdAt: new Date(0),
+          updatedAt: new Date(0),
+        }),
+        set: async () => {
+          throw new Error("project data is unavailable while probing resources");
+        },
+        patch: async () => {
+          throw new Error("project data is unavailable while probing resources");
+        },
+      },
+      cwd: process.cwd(),
+      dir: process.cwd(),
+      getDir: async () => process.cwd(),
+    },
+    ui: {
+      broadcast: noop,
+      requestApproval: async () => ({ action: "approve" as const }),
+      registerMenu: () => noop,
+    },
+    on: () => noop,
+    log: noop,
+    exec: async () => ({ stdout: "", stderr: "", code: 0, killed: false, duration: 0 }),
+    events: { emit: noop, on: () => noop, off: noop },
+    flow: {
+      continue: async () => ({ queued: false }),
+      pause: noopAsync,
+      resume: noopAsync,
+      acquireLock: async () => null,
+      usage: async () => ({ turns: 0, tokens: 0, wallClockMs: 0, contextTokens: null }),
+      startScope: noop,
+      endScope: noop,
+    },
+    inject: { schedule: noop, clear: noop, reattach: noop },
+    watson: {
+      run: async () => {
+        throw new Error("Watson is unavailable while probing resources");
+      },
+    },
+  };
+}
+
+export interface SkillFileInfo {
+  relativePath: string;
+  content: string;
+}
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  /** Skill directory (parent of SKILL.md). */
+  filePath: string;
+  files: SkillFileInfo[];
+}
+
+export interface PromptTemplateInfo {
+  name: string;
+  description: string;
+  argumentHint?: string;
+  filePath: string;
+  content: string;
+}
+
+export interface PluginResourceInfo {
+  /** Plugin id = rootDir basename (or fileName without ext for flat files). */
+  id: string;
+  /** Discovery root directory (subdir for package plugins, parent dir for flat files). */
+  rootDir: string;
+  /** Absolute entry file path. */
+  entryPath: string;
+  /** Entry file name (e.g. "index.ts"). */
+  fileName: string;
+  /** Display name from package.json (if any). */
+  name: string | null;
+  /** Version from package.json (if any). */
+  version: string | null;
+  /** Description from package.json (if any). */
+  description: string | null;
+  /** All files in the plugin directory. */
+  files: PluginFileInfo[];
+}
+
+export interface PluginFileInfo {
+  relativePath: string;
+  content: string;
+}
+
+export interface McpResourceInfo {
+  id: string;
+  name: string;
+  description: string;
+  filePath: string;
+  content: string;
+}
+
+export interface ResourceLayer {
+  skills: SkillInfo[];
+  prompts: PromptTemplateInfo[];
+  plugins: PluginResourceInfo[];
+  mcp: McpResourceInfo[];
+}
+
+export function mcpResourcesToInfo(resources: Resource[]): McpResourceInfo[] {
+  return resources.flatMap((resource) => {
+    if (resource.kind !== "mcp" || !resource.sourcePath || !existsSync(resource.sourcePath)) {
+      return [];
+    }
+    return [
+      {
+        id: resource.slug,
+        name: resource.name ?? resource.slug,
+        description: resource.description ?? "MCP server configuration",
+        filePath: resource.sourcePath,
+        content: readFileSync(resource.sourcePath, "utf-8"),
+      },
+    ];
+  });
+}
+
+export interface AgentToolInfo {
+  name: string;
+  source: "preset" | "plugin" | "system";
+  pluginName?: string;
+  description?: string;
+}
+
+export interface AgentResources {
+  agentId: number;
+  homeDir: string;
+  systemMd: string;
+  toolsPreset: ToolsPreset | null;
+  tools: AgentToolInfo[];
+  layers: {
+    agent: ResourceLayer;
+    project: ResourceLayer;
+  };
+}
+
+function readSkillDirectory(baseDir: string): SkillFileInfo[] {
+  if (!existsSync(baseDir)) return [];
+  const files: SkillFileInfo[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else {
+        files.push({
+          relativePath: relative(baseDir, fullPath).replace(/\\/g, "/"),
+          content: readFileSync(fullPath, "utf-8"),
+        });
+      }
+    }
+  };
+  walk(baseDir);
+  return files;
+}
+
+function readPluginDirectory(rootDir: string): PluginFileInfo[] {
+  if (!existsSync(rootDir)) return [];
+
+  const files: PluginFileInfo[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        // Skip node_modules for performance
+        if (entry.name === "node_modules") continue;
+        walk(fullPath);
+      } else {
+        files.push({
+          relativePath: relative(rootDir, fullPath).replace(/\\/g, "/"),
+          content: readFileSync(fullPath, "utf-8"),
+        });
+      }
+    }
+  };
+  walk(rootDir);
+  return files;
+}
+
+function skillToInfo(skill: Skill): SkillInfo {
+  return {
+    name: skill.name,
+    description: skill.description,
+    filePath: skill.baseDir,
+    files: readSkillDirectory(skill.baseDir),
+  };
+}
+
+function promptToInfo(template: PromptTemplate): PromptTemplateInfo {
+  let content = "";
+  try {
+    content = readFileSync(template.filePath, "utf-8");
+  } catch {
+    content = `# ${template.name}\n\n${template.description}`;
+  }
+  return {
+    name: template.name,
+    description: template.description,
+    argumentHint: template.argumentHint,
+    filePath: template.filePath,
+    content,
+  };
+}
+
+function pluginEntryInfoToResourceInfo(info: PluginEntryInfo): PluginResourceInfo {
+  return {
+    id: info.id,
+    rootDir: info.rootDir,
+    entryPath: info.entryPath,
+    fileName: info.fileName,
+    name: info.name,
+    version: info.version,
+    description: info.description,
+    files: readPluginDirectory(info.rootDir),
+  };
+}
+
+export function skillsToResourceInfo(skills: Skill[]): SkillInfo[] {
+  return skills.map(skillToInfo);
+}
+
+export function promptsToResourceInfo(prompts: PromptTemplate[]): PromptTemplateInfo[] {
+  return prompts.map(promptToInfo);
+}
+
+/** Load skills/prompts for session runtime from DB bindings + project .agents/skills. */
+export function loadAgentSessionResources(
+  db: WecodeDb,
+  agent: Agent | undefined,
+  cwd: string,
+): { skills: Skill[]; promptTemplates: PromptTemplate[]; systemMd: string } {
+  const agentId = agent?.id;
+
+  const skillPaths =
+    agentId !== undefined
+      ? db
+          .listAgentResources(agentId, "skill")
+          .map((b) => b.resource?.sourcePath)
+          .filter((p): p is string => Boolean(p))
+      : [];
+  const promptPaths =
+    agentId !== undefined
+      ? db
+          .listAgentResources(agentId, "prompt")
+          .map((b) => b.resource?.sourcePath)
+          .filter((p): p is string => Boolean(p))
+      : [];
+
+  const projectSkillsDir = getProjectSkillsDirectory(cwd);
+  if (existsSync(projectSkillsDir)) {
+    skillPaths.push(projectSkillsDir);
+  }
+
+  const { skills } = loadSkills({
+    cwd,
+    skillPaths,
+    // Project skills are appended last and should override same-name agent skills.
+    collision: "keep-last",
+  });
+
+  const promptTemplates = loadPromptTemplates({
+    cwd,
+    promptPaths,
+  });
+
+  const systemMd = agent?.systemPrompt ?? "";
+
+  return { skills, promptTemplates, systemMd };
+}
+
+const SYSTEM_TOOLS: Array<Pick<AgentToolInfo, "name" | "source" | "description">> = [
+  { name: "spawn_agent", source: "system", description: "Spawn a delegated subagent session" },
+];
+
+/** Resolve the effective tool set for an agent (preset + system + bound plugins). */
+export async function resolveAgentTools(
+  db: WecodeDb,
+  agentId: number,
+  cwd: string,
+  pluginRegistry: PluginModuleRegistry,
+): Promise<AgentToolInfo[]> {
+  const agent = db.getAgent(agentId);
+  if (!agent) {
+    throw new Error(`Agent ${agentId} not found`);
+  }
+
+  const merged = new Map<string, AgentToolInfo>();
+  for (const tool of createDefaultTools(cwd, agent.toolsPreset ?? "coding")) {
+    merged.set(tool.name, {
+      name: tool.name,
+      source: "preset",
+      description: tool.description,
+    });
+  }
+
+  for (const tool of SYSTEM_TOOLS) {
+    merged.set(tool.name, tool);
+  }
+
+  const pluginSlugs = db.listAgentResourceSlugs(agentId, "plugin");
+  for (const mod of pluginRegistry.getMany(pluginSlugs)) {
+    if (mod.error) continue;
+    if ("scope" in mod.definition && mod.definition.scope === "agent") continue;
+    const probed = await probePluginTools(mod.definition as PluginDefinition);
+    for (const tool of probed) {
+      merged.set(tool.name, {
+        name: tool.name,
+        source: "plugin",
+        pluginName: tool.pluginName,
+        description: tool.description,
+      });
+    }
+  }
+
+  const toolSlugs = db.listAgentResourceSlugs(agentId, "tool");
+  for (const toolId of toolSlugs) {
+    if (!isPackagedToolId(toolId)) continue;
+    const probed = await probePackagedTool(toolId, cwd);
+    for (const tool of probed) {
+      if (tool.name === "(hook)") continue;
+      merged.set(tool.name, {
+        name: tool.name,
+        source: "plugin",
+        pluginName: toolId,
+        description: tool.description,
+      });
+    }
+  }
+
+  return [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** API/UI: agent resources from DB bindings + project .agents/skills. */
+export async function resolveAgentResources(
+  db: WecodeDb,
+  agentId: number,
+  cwd: string,
+  pluginRegistry: PluginModuleRegistry,
+): Promise<AgentResources> {
+  const agent = db.getAgent(agentId);
+  if (!agent) {
+    throw new Error(`Agent ${agentId} not found`);
+  }
+
+  const homeDir = agent.homeDir ?? getAgentHomeDir(agent.id);
+  const { promptTemplates, systemMd } = loadAgentSessionResources(db, agent, cwd);
+
+  const bindings = db.listAgentResources(agentId);
+  const agentSkillPaths = bindings
+    .filter((b) => b.resource?.kind === "skill" && b.resource.sourcePath)
+    .map((b) => b.resource!.sourcePath!);
+  const boundPromptPaths = new Set(
+    bindings
+      .filter((b) => b.resource?.kind === "prompt" && b.resource.sourcePath)
+      .map((b) => b.resource!.sourcePath!),
+  );
+
+  const { skills: agentBoundSkills } = loadSkills({
+    cwd,
+    skillPaths: agentSkillPaths,
+  });
+  const agentSkills = skillsToResourceInfo(agentBoundSkills);
+
+  const projectSkillsDir = getProjectSkillsDirectory(cwd);
+  const { skills: projectSkillsRaw } = loadSkills({
+    cwd,
+    skillPaths: existsSync(projectSkillsDir) ? [projectSkillsDir] : [],
+  });
+  const projectSkills = skillsToResourceInfo(projectSkillsRaw);
+
+  const agentPrompts =
+    boundPromptPaths.size > 0
+      ? promptsToResourceInfo(promptTemplates.filter((p) => boundPromptPaths.has(p.filePath)))
+      : promptsToResourceInfo(promptTemplates);
+
+  const agentPlugins = bindings
+    .filter((b) => b.resource?.kind === "plugin")
+    .map((b) => {
+      const rootDir = b.resource?.sourcePath;
+      if (!rootDir) return null;
+      const infos = listPluginInfosInDirectories([rootDir]);
+      const info = infos.find((i) => i.id === b.resource?.slug) ?? infos[0];
+      return info ? pluginEntryInfoToResourceInfo(info) : null;
+    })
+    .filter((e): e is PluginResourceInfo => e !== null);
+  const agentMcp = mcpResourcesToInfo(
+    bindings.flatMap((binding) => (binding.resource?.kind === "mcp" ? [binding.resource] : [])),
+  );
+
+  const tools = await resolveAgentTools(db, agentId, cwd, pluginRegistry);
+
+  return {
+    agentId: agent.id,
+    homeDir,
+    systemMd,
+    toolsPreset: agent.toolsPreset,
+    tools,
+    layers: {
+      agent: {
+        skills: agentSkills,
+        prompts: agentPrompts,
+        plugins: agentPlugins,
+        mcp: agentMcp,
+      },
+      project: {
+        skills: projectSkills,
+        prompts: [],
+        plugins: [],
+        mcp: [],
+      },
+    },
+  };
+}

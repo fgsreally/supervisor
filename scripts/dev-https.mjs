@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import selfsigned from "selfsigned";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const certificateDir = resolve(root, "playground", ".supervisor", "dev-https");
+const certificateDir = resolve(root, "playground", ".wecode", "dev-https");
 const certificatePath = resolve(certificateDir, "certificate.pem");
 const privateKeyPath = resolve(certificateDir, "private-key.pem");
 const caCertificatePath = resolve(certificateDir, "development-ca.pem");
@@ -45,13 +45,13 @@ export async function ensureDevHttpsCertificate() {
     const notAfterDate = new Date(notBeforeDate);
     notAfterDate.setFullYear(notAfterDate.getFullYear() + 10);
     const ca = await selfsigned.generate(
-      [{ name: "commonName", value: "Pi Supervisor Development CA" }],
+      [{ name: "commonName", value: "WeCode Development CA" }],
       {
         algorithm: "sha256",
         keySize: 2048,
         notBeforeDate,
         notAfterDate,
-        extensions: [
+        plugins: [
           { name: "basicConstraints", cA: true, critical: true },
           { name: "keyUsage", keyCertSign: true, cRLSign: true, critical: true },
         ],
@@ -94,7 +94,7 @@ export async function ensureDevHttpsCertificate() {
       notBeforeDate,
       notAfterDate,
       ca: { key: caKey, cert: caCert },
-      extensions: [
+      plugins: [
         { name: "basicConstraints", cA: false, critical: true },
         { name: "keyUsage", digitalSignature: true, keyEncipherment: true, critical: true },
         { name: "extKeyUsage", serverAuth: true },

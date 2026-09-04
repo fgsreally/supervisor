@@ -1,17 +1,17 @@
-# Supervisor 权限方案
+# Wecode 权限方案
 
 ## 目标与边界
 
-权限是 Supervisor 的系统与界面概念，不依赖 LLM 主动判断，也不要求扩展通过抛出特定错误来决定权限。
+权限是 Wecode 的系统与界面概念，不依赖 LLM 主动判断，也不要求插件通过抛出特定错误来决定权限。
 
-Supervisor 只管理自己能够控制的执行入口，包括 Native Agent 工具、扩展工具、MCP、Job、Session 与资源访问。Codex、Claude 等外部 Agent 的内部工具继续由其自身权限系统管理；Supervisor 只负责转发、展示和记录外部 Agent 发出的审批请求。
+Wecode 只管理自己能够控制的执行入口，包括 Native Agent 工具、插件工具、MCP、Job、Session 与资源访问。Codex、Claude 等外部 Agent 的内部工具继续由其自身权限系统管理；Wecode 只负责转发、展示和记录外部 Agent 发出的审批请求。
 
 ## 统一权限入口
 
-建立单一 `PermissionEngine`，所有受 Supervisor 控制的操作在真正执行前提交标准化请求：
+建立单一 `PermissionEngine`，所有受 Wecode 控制的操作在真正执行前提交标准化请求：
 
 ```text
-工具 / MCP / 扩展 / Job / Session 操作
+工具 / MCP / 插件 / Job / Session 操作
                   |
                   v
           PermissionEngine
@@ -26,7 +26,7 @@ interface PermissionRequest {
   sessionId: number;
   agentId?: number;
   parentSessionId?: number;
-  source: "native" | "extension" | "mcp" | "job" | "session" | "external";
+  source: "native" | "plugin" | "mcp" | "job" | "session" | "external";
   toolName?: string;
   capability: string;
   resources: PermissionResource[];
@@ -39,10 +39,10 @@ interface PermissionRequest {
 - Native Agent 工具
 - `ctx.tools.call()`
 - MCP 工具
-- 扩展注册工具
+- 插件注册工具
 - Job 创建、输入、取消和重试
 - 子 Session 创建、中断和继续
-- Supervisor 自己控制的文件、进程和网络访问
+- Wecode 自己控制的文件、进程和网络访问
 
 ## 工具能力声明
 
@@ -57,7 +57,7 @@ permissions: {
 }
 ```
 
-扩展只描述能力，不决定 `allow`、`ask` 或 `deny`，也不需要抛出 `ToolError`。权限结果由 `PermissionEngine` 根据规则统一判断。
+插件只描述能力，不决定 `allow`、`ask` 或 `deny`，也不需要抛出 `ToolError`。权限结果由 `PermissionEngine` 根据规则统一判断。
 
 第三方工具没有权限声明时默认 `ask`；高风险且无法解析目标的操作默认 `deny`。
 
@@ -133,15 +133,15 @@ Global
 - 最终决定
 - 用户选择
 - 实际执行结果
-- 来源 Agent、Session 和扩展
+- 来源 Agent、Session 和插件
 
-Supervisor 重启后，未完成审批统一转为 `interrupted`。旧 Promise 无法安全恢复，因此不能在重启后自动执行原操作；模型重新尝试该操作时再次发起审批。
+Wecode 重启后，未完成审批统一转为 `interrupted`。旧 Promise 无法安全恢复，因此不能在重启后自动执行原操作；模型重新尝试该操作时再次发起审批。
 
 ## 审批 UI
 
 审批卡片需要明确显示：
 
-- 发起者：Agent、Session、扩展或外部 Agent
+- 发起者：Agent、Session、插件或外部 Agent
 - 准备执行的动作
 - 目标文件、命令、域名、Job 或 Session
 - 风险说明
@@ -160,21 +160,21 @@ Supervisor 重启后，未完成审批统一转为 `interrupted`。旧 Promise �
 
 ## 外部 Agent
 
-Supervisor 不拦截外部 Agent 内部无法观察的工具调用。对于外部 Agent 原生提供的审批协议：
+Wecode 不拦截外部 Agent 内部无法观察的工具调用。对于外部 Agent 原生提供的审批协议：
 
 - 转换为统一审批 UI。
 - 保存请求与用户决定。
 - 将决定原样返回外部 Agent。
 - 在审计记录中标明决定由外部 Agent 执行。
 
-不能因为 UI 统一，就声称外部 Agent 已受 Supervisor 的完整权限沙箱约束。
+不能因为 UI 统一，就声称外部 Agent 已受 Wecode 的完整权限沙箱约束。
 
 ## 实施顺序
 
 1. 建立权限请求、规则、审计类型和数据库表。
 2. 实现 `PermissionEngine` evaluator，先以只记录模式接入，不改变现有行为。
 3. 为内置工具与 Job 增加能力声明和资源解析。
-4. 接入 Native 工具、`ctx.tools.call()`、扩展工具和 MCP。
+4. 接入 Native 工具、`ctx.tools.call()`、插件工具和 MCP。
 5. 实现持久化审批卡片和权限设置页面。
 6. 实现 Global / Project / Agent / Session 继承及子 Agent 权限上限。
 7. 将 Plan mode 的只读状态接入 Session 权限覆盖层。
@@ -182,10 +182,10 @@ Supervisor 不拦截外部 Agent 内部无法观察的工具调用。对于外�
 
 ## 验收条件
 
-- 所有 Supervisor 可控的副作用入口都经过同一 evaluator。
-- 扩展无法通过动态调用绕过权限检查。
+- 所有 Wecode 可控的副作用入口都经过同一 evaluator。
+- 插件无法通过动态调用绕过权限检查。
 - 子 Agent 无法获得高于父 Session 的权限。
-- Supervisor 重启不会静默丢失待审批记录。
+- Wecode 重启不会静默丢失待审批记录。
 - UI 能说明一次操作为什么被允许、询问或拒绝。
 - 外部 Agent 的权限边界被准确展示，不产生虚假的安全保证。
 
@@ -203,12 +203,12 @@ Supervisor 不拦截外部 Agent 内部无法观察的工具调用。对于外�
 执行系统命令 每次询问
 
 网络
-调用 Supervisor 本地接口 始终允许
+调用 Wecode 本地接口 始终允许
 访问其他网络地址 每次询问
 
-Supervisor 管理
+Wecode 管理
 查询配置和运行状态 始终允许
-修改 Agent、扩展和资源 始终允许
+修改 Agent、插件和资源 始终允许
 修改全局设置 每次询问
 
 内部再映射成 capability：
@@ -217,9 +217,9 @@ Supervisor 管理
 → filesystem.write
 → resource 必须位于 project.cwd
 
-“调用 Supervisor 本地接口”  
+“调用 Wecode 本地接口”  
 → network.connect  
-→ host 必须是当前 Supervisor 实例
+→ host 必须是当前 Wecode 实例
 
 用户不必理解这些内部名称。
 
@@ -233,28 +233,28 @@ Supervisor 管理
 ────────── ───────────────────────────────────────────────────  
 标准 项目内修改允许，项目外操作和危险命令询问  
 ────────── ───────────────────────────────────────────────────  
-完全信任 Supervisor 可控制范围内基本允许，只拦截明确禁止项
+完全信任 Wecode 可控制范围内基本允许，只拦截明确禁止项
 
-Pi 助手作为内置管理助手，还可以有一个专用预设：
+WeCode 助手作为内置管理助手，还可以有一个专用预设：
 
-Supervisor 管理助手
+Wecode 管理助手
 
 允许：
 
-- 查询 Supervisor 环境
-- 调用 Supervisor HTTP API
-- 调用 Supervisor CLI
-- 读写 Supervisor 数据库
-- 管理 Agent、资源和扩展
+- 查询 Wecode 环境
+- 调用 Wecode HTTP API
+- 调用 Wecode CLI
+- 读写 Wecode 数据库
+- 管理 Agent、资源和插件
 
 询问：
 
 - 删除大量数据
-- 访问 Supervisor 之外的数据库
+- 访问 Wecode 之外的数据库
 - 操作其他项目
 - 向公网发送数据
 
-这样用户无需逐项配置，也不会妨碍 Pi 助手直接管理系统。
+这样用户无需逐项配置，也不会妨碍 WeCode 助手直接管理系统。
 
 ———
 
@@ -262,45 +262,45 @@ Supervisor 管理助手
 
 权限主要不应靠用户提前填表，而应在第一次遇到操作时生成。
 
-例如 Pi 助手准备安装扩展：
+例如 WeCode 助手准备安装插件：
 
-Pi 助手准备安装扩展
+WeCode 助手准备安装插件
 
-扩展：  
-@company/my-extension
+插件：  
+@company/my-plugin
 
 将执行：  
-pnpm add @company/my-extension
+pnpm add @company/my-plugin
 
 影响：
 
 - 访问 npm registry
-- 修改扩展安装目录
+- 修改插件安装目录
 - 可能执行依赖安装脚本
 
 ○ 仅允许这一次  
-○ 本 Session 内允许安装扩展  
-○ 始终允许 Pi 助手安装 npm 扩展
+○ 本 Session 内允许安装插件  
+○ 始终允许 WeCode 助手安装 npm 插件
 
 [拒绝] [允许]
 
 如果用户选择：
 
-始终允许 Pi 助手安装 npm 扩展
+始终允许 WeCode 助手安装 npm 插件
 
 系统自动生成一条规则：
 
-Agent：Pi 助手  
-操作：安装 npm 扩展  
-范围：Supervisor 扩展目录  
+Agent：WeCode 助手  
+操作：安装 npm 插件  
+范围：Wecode 插件目录  
 决定：允许
 
 之后可以在权限页看到和删除：
 
 自定义规则
 
-Pi 助手可以安装 npm 扩展 [删除]  
-Pi 助手访问公网时需要询问 [删除]  
+WeCode 助手可以安装 npm 插件 [删除]  
+WeCode 助手访问公网时需要询问 [删除]  
 任何 Agent 都不能读取 ~/.ssh [删除]
 
 这比要求用户预先理解权限模型容易很多。
@@ -312,20 +312,20 @@ Pi 助手访问公网时需要询问 [删除]
 链路不是最终目的。它解决三个问题：
 
 1. 知道是谁发起的。
-2. 防止扩展借其他工具绕过限制。
+2. 防止插件借其他工具绕过限制。
 3. 允许用户配置精确规则。
 
 例如最终执行的都是数据库写入：
 
 链路 A：  
-Pi 助手  
-→ supervisor-admin  
+WeCode 助手  
+→ wecode-admin  
 → database.update  
 → agents 表
 
 链路 B：  
 普通 Agent  
-→ 第三方扩展 unknown-helper  
+→ 第三方插件 unknown-helper  
 → database.update  
 → agents 表
 
@@ -335,17 +335,17 @@ database.update agents
 
 但用户可能希望：
 
-允许 Pi 助手通过内置 supervisor-admin 修改 agents 表  
-拒绝第三方扩展修改 agents 表
+允许 WeCode 助手通过内置 wecode-admin 修改 agents 表  
+拒绝第三方插件修改 agents 表
 
 因此权限判断需要同时知道：
 
 {  
-"actor": "Pi 助手",  
-"extension": "supervisor-admin",  
+"actor": "WeCode 助手",  
+"plugin": "wecode-admin",  
 "action": "database.update",  
 "resource": {  
-"database": "Supervisor",  
+"database": "Wecode",  
 "table": "agents"  
 }  
 }
@@ -358,25 +358,25 @@ allow / ask / deny
 
 ## 数据库操作的完整例子
 
-用户对 Pi 助手说：
+用户对 WeCode 助手说：
 
-> 把所有未启用的扩展启用。
+> 把所有未启用的插件启用。
 
-Pi 助手先通过管理工具查询：
+WeCode 助手先通过管理工具查询：
 
-Pi 助手
-→ supervisor_admin  
+WeCode 助手
+→ wecode_admin  
 → database.query  
 → agent_resources 表
 
-查询属于只读，并且 Pi 助手默认具有 Supervisor 查询权限：
+查询属于只读，并且 WeCode 助手默认具有 Wecode 查询权限：
 
 决定：允许
 
 然后准备更新：
 
-Pi 助手  
-→ supervisor_admin  
+WeCode 助手  
+→ wecode_admin  
 → database.update  
 → agent_resources 表  
 → 条件：enabled = false
@@ -384,16 +384,16 @@ Pi 助手
 权限引擎得到：
 
 {  
-"agent": "Pi 助手",  
-"source": "builtin-extension:supervisor-admin",  
-"action": "更新 Agent 扩展状态",  
+"agent": "WeCode 助手",  
+"source": "builtin-plugin:wecode-admin",  
+"action": "更新 Agent 插件状态",  
 "resource": {  
-"database": "Supervisor",  
+"database": "Wecode",  
 "table": "agent_resources"  
 }  
 }
 
-如果使用“Supervisor 管理助手”预设：
+如果使用“Wecode 管理助手”预设：
 
 决定：允许
 
@@ -407,7 +407,7 @@ DELETE FROM agents
 
 界面显示：
 
-Pi 助手准备删除 12 个 Agent
+WeCode 助手准备删除 12 个 Agent
 
 这会同时影响相关 Session 和资源绑定。
 
@@ -421,35 +421,35 @@ Pi 助手准备删除 12 个 Agent
 
 > 帮我新建一个 Agent。
 
-Pi 助手发现可以调用 Supervisor HTTP API：
+WeCode 助手发现可以调用 Wecode HTTP API：
 
-Pi 助手  
-→ supervisor_admin  
+WeCode 助手  
+→ wecode_admin  
 → HTTP POST /agents  
-→ 当前 Supervisor 实例
+→ 当前 Wecode 实例
 
 规则是：
 
-Pi 助手调用当前 Supervisor 的管理接口：允许
+WeCode 助手调用当前 Wecode 的管理接口：允许
 
 所以不会询问。
 
-但如果某个扩展要调用：
+但如果某个插件要调用：
 
 POST https://unknown.example/upload
 
 系统识别为公网请求：
 
-某扩展准备向 unknown.example 发送数据
+某插件准备向 unknown.example 发送数据
 
 来源：  
-Pi 助手 → third-party-extension → HTTP
+WeCode 助手 → third-party-plugin → HTTP
 
 [拒绝] [允许一次] [始终允许该域名]
 
 这里不能依赖硬编码的 127.0.0.1:3030。资源应该是：
 
-Supervisor 当前实际监听地址
+Wecode 当前实际监听地址
 
 由运行时环境发现工具提供。
 
@@ -459,13 +459,13 @@ Supervisor 当前实际监听地址
 
 用户说：
 
-> 重启 Supervisor。
+> 重启 Wecode。
 
 调用链：
 
-Pi 助手  
-→ supervisor_admin  
-→ supervisor CLI  
+WeCode 助手  
+→ wecode_admin  
+→ wecode CLI  
 → service restart
 
 界面内部规则：
@@ -476,7 +476,7 @@ Pi 助手
 
 这比简单判断“能否执行 shell”更准确。因为：
 
-supervisor status
+wecode status
 
 和：
 
@@ -520,10 +520,10 @@ Remove-Item -Recurse C:\
 
 权限系统上线初期，我们还不知道规则是否准确。如果一开始就真正拦截，可能出现：
 
-用户让 Pi 助手创建 Agent  
+用户让 WeCode 助手创建 Agent  
 → 权限引擎错误识别成危险数据库操作  
 → 每一步都弹窗  
-→ Pi 助手无法正常工作
+→ WeCode 助手无法正常工作
 
 所以第一阶段只观察：
 
@@ -537,22 +537,22 @@ Remove-Item -Recurse C:\
 
 实际行为：已执行  
 预测决定：ask  
-原因：写入 Supervisor 数据库  
-来源：Pi 助手 → supervisor-admin → database.update
+原因：写入 Wecode 数据库  
+来源：WeCode 助手 → wecode-admin → database.update
 
-运行一段时间后发现，Pi 助手正常管理 Supervisor 会产生大量询问，就可以补充默认规则：
+运行一段时间后发现，WeCode 助手正常管理 Wecode 会产生大量询问，就可以补充默认规则：
 
-内置 Pi 助手
+内置 WeCode 助手
 
-- 内置 supervisor-admin
-- Supervisor 自身数据库  
+- 内置 wecode-admin
+- Wecode 自身数据库  
   = allow
 
 另一个记录：
 
 实际行为：已执行  
 预测决定：deny  
-原因：第三方扩展尝试读取 ~/.ssh/id_rsa
+原因：第三方插件尝试读取 ~/.ssh/id_rsa
 
 这说明识别是合理的。
 
@@ -589,10 +589,10 @@ enforcementMode: "observe" | "enforce"
 目前存在一些零散限制：
 
 - 部分编辑工具有审批
-- 扩展可以主动调用 requestApproval
+- 插件可以主动调用 requestApproval
 - Codex、Claude 等外部 Agent 有自己的审批机制
-- Agent 可以禁用某些工具和扩展
-- 操作仍受 Supervisor 进程自身的操作系统权限限制
+- Agent 可以禁用某些工具和插件
+- 操作仍受 Wecode 进程自身的操作系统权限限制
 
 但当前没有统一机制保证：
 
@@ -606,7 +606,7 @@ enforcementMode: "observe" | "enforce"
 “完全信任”应该是权限引擎建立后的一种明确配置，而且即使完全信任，也不能突破：
 
 - 操作系统权限
-- Supervisor 自身的硬安全限制
+- Wecode 自身的硬安全限制
 - 父 Session 权限上限
 - 外部 Agent 自己的沙箱
 - 明确的全局禁止规则
@@ -623,7 +623,7 @@ enforcementMode: "observe" | "enforce"
 
 {  
 "agentId": 10,  
-"action": "extension.install",  
+"action": "plugin.install",  
 "resource": {  
 "registry": "npm",  
 "package": "@company/foo"  
@@ -632,7 +632,7 @@ enforcementMode: "observe" | "enforce"
 
 用户点击：
 
-始终允许 Pi 助手安装这个扩展
+始终允许 WeCode 助手安装这个插件
 
 后端用固定代码转换成：
 
@@ -642,7 +642,7 @@ enforcementMode: "observe" | "enforce"
 "id": 10  
 },  
 "effect": "allow",  
-"capability": "extension.install",
+"capability": "plugin.install",
 "resource": {  
 "registry": "npm",  
 "package": "@company/foo"  
@@ -668,12 +668,12 @@ LLM 最多负责向用户解释为什么需要该权限，但不能决定是否�
 
 审批界面应该把范围讲清楚：
 
-Pi 助手准备安装 @company/foo
+WeCode 助手准备安装 @company/foo
 
 ○ 仅允许本次安装  
 ○ 本 Session 内允许安装 @company/foo  
-○ 始终允许 Pi 助手安装 @company/foo  
-○ 始终允许 Pi 助手从 npm 安装任意扩展
+○ 始终允许 WeCode 助手安装 @company/foo  
+○ 始终允许 WeCode 助手从 npm 安装任意插件
 
 对应行为：
 
@@ -685,11 +685,11 @@ Pi 助手准备安装 @company/foo
 ───────────────────── ─────────────────── ────────────────  
 始终允许该包 允许 重新询问  
 ───────────────────── ─────────────────── ────────────────  
-允许任意 npm 扩展 允许 允许
+允许任意 npm 插件 允许 允许
 
 我建议默认只展示前三项。
 
-“允许任意 npm 扩展”属于较宽授权，可以放在“更多选项”里，并显示风险说明，因为 npm 包可能包含安装脚本。
+“允许任意 npm 插件”属于较宽授权，可以放在“更多选项”里，并显示风险说明，因为 npm 包可能包含安装脚本。
 
 还需要注意版本：
 
@@ -706,35 +706,35 @@ Pi 助手准备安装 @company/foo
 
 ———
 
-### 4. Pi 助手更新数据库为什么默认允许？
+### 4. WeCode 助手更新数据库为什么默认允许？
 
 我说的不是：
 
-> Pi 助手执行任意 SQL 都默认允许。
+> WeCode 助手执行任意 SQL 都默认允许。
 
 默认允许的应该是一个非常窄的组合：
 
-内置 Pi 助手
+内置 WeCode 助手
 
-- 内置 supervisor-admin 扩展
-- Supervisor 自己的数据库
+- 内置 wecode-admin 插件
+- Wecode 自己的数据库
 - 已声明的结构化管理操作
 
 例如：
 
-set_extension_enabled({  
+set_plugin_enabled({  
 agentId: 10,  
-extensionId: 6,  
+pluginId: 6,  
 enabled: true  
 })
 
 这个工具只能修改特定表中的特定字段，因此可以映射成：
 
-操作：设置扩展启用状态  
-范围：当前 Supervisor  
-影响：一个 Agent 的一个扩展
+操作：设置插件启用状态  
+范围：当前 Wecode  
+影响：一个 Agent 的一个插件
 
-这类操作默认允许，是因为 Pi 助手本来的产品职责就是管理 Supervisor。如果每次启用扩展、修改 Agent 名称都弹审批，用户仍然需要学习底层管理过程，违背了 Pi 助手的目标。
+这类操作默认允许，是因为 WeCode 助手本来的产品职责就是管理 Wecode。如果每次启用插件、修改 Agent 名称都弹审批，用户仍然需要学习底层管理过程，违背了 WeCode 助手的目标。
 
 但下面这些不应默认允许：
 
@@ -746,15 +746,15 @@ SELECT * FROM credentials;
 
 推荐规则如下：
 
-操作 Pi 助手默认行为  
+操作 WeCode 助手默认行为  
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━ ━━━━━━━━━━━━━━━━━  
-查询 Supervisor 状态 允许  
+查询 Wecode 状态 允许  
 ─────────────────────────── ─────────────────  
-查询 Agent、扩展和资源 允许  
+查询 Agent、插件和资源 允许  
 ─────────────────────────── ─────────────────  
 修改一个 Agent 的普通配置 允许  
 ─────────────────────────── ─────────────────  
-启用/停用一个扩展 允许  
+启用/停用一个插件 允许  
 ─────────────────────────── ─────────────────  
 创建 Agent、绑定资源 允许  
 ─────────────────────────── ─────────────────  
@@ -775,13 +775,13 @@ SELECT * FROM credentials;
 结构化管理工具：可以精确判断影响范围  
 原始 SQL：很难可靠判断副作用
 
-因此我更推荐 Pi 助手优先使用：
+因此我更推荐 WeCode 助手优先使用：
 
 结构化 HTTP API / CLI / 管理工具
 
 数据库作为缺少上层接口时的兜底方式。即使允许直接操作数据库，也应优先提供结构化数据库工具：
 
-supervisor_db_update({  
+wecode_db_update({  
 table: "agent_resources",  
 where: { agent_id: 10, resource_id: 6 },  
 values: { enabled: 1 }  
@@ -791,7 +791,7 @@ values: { enabled: 1 }
 
 execute_sql("任意 SQL");
 
-如果你认为即便是 Pi 助手的普通配置更新也应该先询问，可以把默认预设调整成：
+如果你认为即便是 WeCode 助手的普通配置更新也应该先询问，可以把默认预设调整成：
 
 读取默认允许  
 所有写操作默认询问
@@ -824,10 +824,10 @@ enforced: false
 // 观察模式不拦截  
 return executeTool();
 
-例如扩展准备写项目外文件，规则引擎根据固定代码判断：
+例如插件准备写项目外文件，规则引擎根据固定代码判断：
 
 目标路径：C:\Windows\system32\config  
-项目路径：D:\my-project\supervisor-standalone
+项目路径：D:\my-project\wecode
 
 目标不在项目目录内  
 → 预测结果：ask
@@ -836,11 +836,11 @@ return executeTool();
 
 另一个例子：
 
-工具：supervisor_extension_enable  
-调用者：Pi 助手  
-来源：内置 supervisor-admin  
-目标：当前 Supervisor 的 extension 6  
-规则：内置管理助手可以修改普通扩展状态
+工具：wecode_plugin_enable  
+调用者：WeCode 助手  
+来源：内置 wecode-admin  
+目标：当前 Wecode 的 plugin 6  
+规则：内置管理助手可以修改普通插件状态
 
 → 预测结果：allow
 
@@ -848,7 +848,7 @@ return executeTool();
 
 工具：bash  
 命令：任意字符串  
-调用者：第三方扩展  
+调用者：第三方插件  
 目标资源：无法可靠解析  
 规则：未知高风险进程执行需要询问
 
@@ -922,9 +922,9 @@ Shadow Agent
 
 例如：
 
-supervisor_extension_enable({ agentId: 10, extensionId: 6 })
+wecode_plugin_enable({ agentId: 10, pluginId: 6 })
 
-系统知道这是“启用扩展”。
+系统知道这是“启用插件”。
 
 而：
 
@@ -938,12 +938,12 @@ bun run foo.ts --whatever
 
 目前实际情况很有限：
 
-1. Pi 助手的 supervisor_http
+1. WeCode 助手的 wecode_http
    - DELETE 请求会审批。
    - URL 包含 uninstall、kill、complete 时会审批。
    - 普通 POST、PATCH、PUT 默认不审批。
 
-2. Pi 助手的 supervisor_db_write
+2. WeCode 助手的 wecode_db_write
    - 所有 INSERT、UPDATE、DELETE 都审批。
 
 3. edit 工具
@@ -953,12 +953,12 @@ bun run foo.ts --whatever
 4. ExitPlanMode
    - 展示计划并要求用户批准、修改或拒绝。
 
-5. 扩展主动调用 ctx.ui.requestApproval()
-   - 完全依赖扩展作者主动调用。
+5. 插件主动调用 ctx.ui.requestApproval()
+   - 完全依赖插件作者主动调用。
 
 除此之外，目前没有统一的 bash、fetch、MCP、Job 权限判断。
 
-现有 supervisor_http 用 HTTP 方法和路径关键字猜风险，正是你指出的问题。例如：
+现有 wecode_http 用 HTTP 方法和路径关键字猜风险，正是你指出的问题。例如：
 
 POST /agents/10/delete-everything
 
@@ -986,14 +986,14 @@ node custom-installer.js foo
 
 ### 结构化工具
 
-extension_install({  
+plugin_install({  
 source: "npm",  
 package: "@company/foo",  
 });
 
 系统准确知道：
 
-- 操作是安装扩展
+- 操作是安装插件
 - 来源是 npm
 - 包名是 @company/foo
 - 安装目录在哪里
@@ -1015,7 +1015,7 @@ command: "npm install @company/foo",
 
 它不知道执行后的真实副作用。因此标准模式只应该显示：
 
-Pi 助手准备执行一个不透明命令
+WeCode 助手准备执行一个不透明命令
 
 npm install @company/foo
 
@@ -1031,7 +1031,7 @@ npm install @company/foo
 
 始终允许安装 @company/foo
 
-因为系统实际上没有可靠识别出这是结构化的“安装扩展”。
+因为系统实际上没有可靠识别出这是结构化的“安装插件”。
 
 结论是：
 
@@ -1051,10 +1051,10 @@ npm install @company/foo
 
 只有操作提供了可靠的“可记忆范围”时，才显示复选框。
 
-例如结构化扩展安装工具声明：
+例如结构化插件安装工具声明：
 
 permission: {  
-action: "extension.install",  
+action: "plugin.install",  
 resource: ({ packageName }) => ({  
 type: "npm-package",  
 id: packageName,  
@@ -1064,7 +1064,7 @@ rememberScopes: ["agent", "project"],
 
 系统可以展示：
 
-□ 对 Pi 助手安装 @company/foo 记住此选择
+□ 对 WeCode 助手安装 @company/foo 记住此选择
 
 而 bash 没有可靠资源声明：
 
@@ -1091,25 +1091,25 @@ rememberScopes: [],
 
 下面两个请求即使都是 POST，语义可能完全不同：
 
-POST /extensions/6/enable  
-POST /extensions/6/uninstall
+POST /plugins/6/enable  
+POST /plugins/6/uninstall
 
 权限信息必须和 HTTP 路由定义放在一起：
 
 defineRoute({  
 method: "POST",  
-path: "/extensions/:id/enable",
+path: "/plugins/:id/enable",
 
     permission: {
-      action: "extension.enable",
+      action: "plugin.enable",
       risk: "normal-write",
       resource: ({ params }) => ({
-        type: "extension",
+        type: "plugin",
         id: params.id,
       }),
     },
 
-    handler: enableExtension,
+    handler: enablePlugin,
 
 });
 
@@ -1117,18 +1117,18 @@ path: "/extensions/:id/enable",
 
 defineRoute({  
 method: "POST",  
-path: "/extensions/:id/uninstall",
+path: "/plugins/:id/uninstall",
 
     permission: {
-      action: "extension.uninstall",
+      action: "plugin.uninstall",
       risk: "destructive",
       resource: ({ params }) => ({
-        type: "extension",
+        type: "plugin",
         id: params.id,
       }),
     },
 
-    handler: uninstallExtension,
+    handler: uninstallPlugin,
 
 });
 
@@ -1137,30 +1137,30 @@ path: "/extensions/:id/uninstall",
 OpenAPI 也可以从同一个定义生成：
 
 {  
-"operationId": "extension.enable",  
-"x-supervisor-permission": {  
-"action": "extension.enable",  
+"operationId": "plugin.enable",  
+"x-wecode-permission": {  
+"action": "plugin.enable",  
 "risk": "normal-write"  
 }  
 }
 
-Pi 助手通过 supervisor_http 发出请求时，系统先在路由注册表中匹配：
+WeCode 助手通过 wecode_http 发出请求时，系统先在路由注册表中匹配：
 
-POST /extensions/6/enable  
-→ extension.enable  
+POST /plugins/6/enable  
+→ plugin.enable  
 → 普通写操作
 
 而不是看到 POST 就猜。
 
 ### 仅在工具侧检查还不够
 
-如果 Pi 助手还拥有 bash，它可以绕过 supervisor_http：
+如果 WeCode 助手还拥有 bash，它可以绕过 wecode_http：
 
-curl -X POST http://127.0.0.1:3030/extensions/6/uninstall
+curl -X POST http://127.0.0.1:3030/plugins/6/uninstall
 
 因此真正可靠的实现必须在 HTTP 服务端再次检查：
 
-Agent 调用 Supervisor HTTP  
+Agent 调用 Wecode HTTP  
 → 携带 Agent/Session 身份令牌  
 → Elysia 路由读取权限声明  
 → 服务端执行 PermissionEngine  
@@ -1172,47 +1172,47 @@ Agent 调用 Supervisor HTTP
 
 ———
 
-## 6. Pi 助手通过 fetch 启用与删除扩展
+## 6. WeCode 助手通过 fetch 启用与删除插件
 
-假设 Pi 助手调用：
+假设 WeCode 助手调用：
 
-supervisor_http({  
+wecode_http({  
 method: "POST",  
-path: "/agents/10/extensions/6/enable"  
+path: "/agents/10/plugins/6/enable"  
 })
 
 路由声明是：
 
-action: extension.enable  
+action: plugin.enable  
 risk: normal-write
 
-标准模式中的 Pi 助手预设可以是：
+标准模式中的 WeCode 助手预设可以是：
 
-内置 Pi 助手
+内置 WeCode 助手
 
-- 当前 Supervisor
-- extension.enable  
+- 当前 Wecode
+- plugin.enable  
   = allow
 
 所以直接执行。
 
 如果调用：
 
-supervisor_http({  
+wecode_http({  
 method: "POST",  
-path: "/agents/10/extensions/6/uninstall"  
+path: "/agents/10/plugins/6/uninstall"  
 })
 
 路由声明是：
 
-action: extension.uninstall  
+action: plugin.uninstall  
 risk: destructive
 
 即使同样是 POST 和 fetch，也会询问：
 
-Pi 助手准备卸载扩展 foo
+WeCode 助手准备卸载插件 foo
 
-该操作会删除扩展安装内容并解除绑定。
+该操作会删除插件安装内容并解除绑定。
 
 [拒绝] [允许一次]
 
@@ -1238,17 +1238,17 @@ UPDATE agent_resources SET enabled = 1;
 
 ### 结构化数据库操作
 
-setAgentExtensionEnabled({  
+setAgentPluginEnabled({  
 agentId: 10,  
-extensionId: 6,  
+pluginId: 6,  
 enabled: true,  
 });
 
-系统知道它是一个普通、有限、可恢复的操作，可以默认允许 Pi 助手执行。
+系统知道它是一个普通、有限、可恢复的操作，可以默认允许 WeCode 助手执行。
 
 ### 原始数据库写入
 
-supervisor_db_write({  
+wecode_db_write({  
 sql: "UPDATE ...",  
 });
 
@@ -1256,7 +1256,7 @@ sql: "UPDATE ...",
 
 完全信任模式才直接运行原始 SQL。
 
-更理想的方案是 Pi 助手根本不需要经常写原始 SQL：缺少哪个管理能力，就补哪个结构化服务操作。原始 SQL只作为兜底。
+更理想的方案是 WeCode 助手根本不需要经常写原始 SQL：缺少哪个管理能力，就补哪个结构化服务操作。原始 SQL只作为兜底。
 
 ———
 
@@ -1272,17 +1272,17 @@ CLI 命令声明
 
 调用链负责区分：
 
-Pi 助手 → 内置 supervisor-admin → extension.enable
+WeCode 助手 → 内置 wecode-admin → plugin.enable
 
 和：
 
-普通 Agent → 第三方扩展 → extension.enable
+普通 Agent → 第三方插件 → plugin.enable
 
 同一个结构化操作可以有不同规则：
 
-Pi 助手调用 extension.enable：允许  
-第三方扩展调用 extension.enable：询问  
-未知 Agent 调用 extension.enable：拒绝
+WeCode 助手调用 plugin.enable：允许  
+第三方插件调用 plugin.enable：询问  
+未知 Agent 调用 plugin.enable：拒绝
 
 所以完整判断是：
 
@@ -1302,7 +1302,7 @@ Pi 助手调用 extension.enable：允许
 它只用于发现接入缺口，例如记录：
 
 未知操作：  
-Pi 助手 → bash → npm install foo
+WeCode 助手 → bash → npm install foo
 
 原因：  
 bash 没有结构化操作声明
@@ -1310,14 +1310,14 @@ bash 没有结构化操作声明
 然后开发者决定：
 
 这是常见需求  
-→ 增加 extension_install 结构化工具
+→ 增加 plugin_install 结构化工具
 
 另一个记录：
 
 已识别：  
-Pi 助手 → supervisor_http  
-→ Elysia route extension.enable  
-→ resource extension:6
+WeCode 助手 → wecode_http  
+→ Elysia route plugin.enable  
+→ resource plugin:6
 
 表示这条链路已经可以安全制定规则。
 
@@ -1337,7 +1337,7 @@ Pi 助手 → supervisor_http
 原来的权限方案需要收缩成：
 
 1. 只对结构化操作提供细粒度、可记忆规则。
-2. Elysia 路由、CLI 命令、扩展工具在定义处声明操作语义。
+2. Elysia 路由、CLI 命令、插件工具在定义处声明操作语义。
 3. 通用 bash、原始 SQL、未知 fetch 一律视为不透明操作。
 4. 标准模式下，不透明操作默认询问，而且原则上不生成永久细粒度规则。
 5. 完全信任模式下，不透明操作直接允许。

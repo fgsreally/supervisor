@@ -1,8 +1,9 @@
 node_modules/
 dist/
+.wecode/
 .supervisor/
 .pi/
-supervisor-db-*.zip
+wecode-db-*.zip
 dist-chrome/
 dist-firefox/
 *.log
@@ -19,7 +20,8 @@ coverage/
 *~
 packages/*/dist/
 packages/*/node_modules/
-extensions/*/node_modules/
+.tmp-push-devices-test/
+plugins/*/node_modules/
 *.cpuprofile
 pnpm-debug.log
 *.local
@@ -39,7 +41,8 @@ docs/.vitepress/dist/
 
 # Playground — local dev workspace (db, agents, projects, worktrees)
 /playground/
+playground/.wecode/
 playground/.supervisor/
-playground/supervisor.db-shm
-playground/supervisor.db-wal
+playground/wecode.db-shm
+playground/wecode.db-wal
 /playwright-*.png

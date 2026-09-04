@@ -3,10 +3,10 @@
   "compilerOptions": {
     "noEmit": true,
     "paths": {
-      "pi-supervisor": ["./packages/supervisor/src/index.ts"],
-      "pi-supervisor/*": ["./packages/supervisor/src/*"]
+      "wecode": ["./packages/wecode/src/index.ts"],
+      "wecode/*": ["./packages/wecode/src/*"]
     }
   },
   "include": ["packages/*/src/**/*", "packages/*/test/**/*"],
-  "exclude": ["packages/supervisor-web-ui/**/*", "**/dist/**"]
+  "exclude": ["packages/wecode-web-ui/**/*", "**/dist/**"]
 }

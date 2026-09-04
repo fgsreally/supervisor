@@ -1,13 +1,13 @@
 # AI 代理协作规范
 
-对本仓库（supervisor-standalone）贡献或进行开发时，AI 代理解读本文件以了解约定。
+对本仓库（wecode）贡献或进行开发时，AI 代理解读本文件以了解约定。
 
 ## 可编辑范围
 
 只允许编辑以下包：
 
-- `packages/supervisor` — 后端运行时（会话管理、HTTP API、扩展框架、MCP 集成）
-- `packages/supervisor-web-ui` — Vue 3 + Vite 前端
+- `packages/wecode` — 后端运行时（会话管理、HTTP API、插件框架、MCP 集成）
+- `packages/wecode-web-ui` — Vue 3 + Vite 前端
 
 根目录配置、文档（`docs/`）也在编辑范围内。
 
@@ -24,7 +24,7 @@
 - Node.js >= 20.6.0，ESM（type: "module"）
 - 包管理器：pnpm（与 nub 兼容）
 - 语法检查：oxlint / oxfmt（无 Prettier、无 Biome）
-- 构建工具：tsdown（supervisor）、Vite（supervisor-web-ui）
+- 构建工具：tsdown（wecode）、Vite（wecode-web-ui）
 - 测试框架：vitest、Playwright（E2E）
 
 ## 构建命令
@@ -85,7 +85,7 @@ pnpm docs:build
 
 ### 字号
 
-全站 UI 文本使用封闭字号阶梯（`packages/supervisor-web-ui/src/styles/type-scale.css`），以 **rem** 定义语义 token，随根字号三档自动缩放。
+全站 UI 文本使用封闭字号阶梯（`packages/wecode-web-ui/src/styles/type-scale.css`），以 **rem** 定义语义 token，随根字号三档自动缩放。
 
 | Token                    | 字号        | 字重  | 用途                         |
 | ------------------------ | ----------- | ----- | ---------------------------- |
@@ -143,9 +143,9 @@ components/<domain>/<Name>/
 
 - **`sessions.meta` 与 `projects.meta` 以扩展数据为主**（用户插件、Shadow 输出、`meta.services` 运行实例等）。
 - 核心 UI / 身份字段用 **列**：`title`、`system_prompt`（仅 spawn 额外说明，可选）、`avatar`、`is_builtin`、`pinned`、`muted`、`unread`、`external_session_id`、`error_msg`、`stage`、`shadow_enabled`、`created_by`。
-- 服务于 Session 的扩展状态存于 `sessions.meta`：`tasks` / `currentTask` / `todos`、`subagentIds`（可委派子 Agent）、Shadow 输出、`timers`（定时设定）等；Job **执行记录**仍用 `jobs` 平台表。
+- 服务于 Session 的插件状态存于 `sessions.meta`：`tasks` / `currentTask` / `todos`、`subagentIds`（可委派子 Agent）、Shadow 输出、`timers`（定时设定）等；Job **执行记录**仍用 `jobs` 平台表。
 - Git / worktree 状态放在 **`sessions.meta.git`**：`{ worktreePath, branch, lastCommit, mergeError }`；有 `worktreePath` 即启用 worktree。
-- 扩展自定义键请带前缀（如 `myExt.*`）。
+- 插件自定义键请带前缀（如 `myExt.*`）。
 - Agents 出厂标识用列 `spawn_type`（非 meta）；内置标志用 `is_builtin`。
 
 ### Git worktree 与 Achieve
@@ -175,19 +175,31 @@ components/<domain>/<Name>/
 
 ### Start
 
+闭环开发（dev 热更新 + preview 生产构建）在仓库根目录执行：
+
 ```
-pnpm --filter pi-supervisor run serve:dev --env.PI_SUPERVISOR_UI_PORT=${PORT2} -- --port ${PORT1}
-pnpm --filter pi-supervisor-ui run dev --env.VITE_API_PROXY_TARGET=http://localhost:${PORT1} -- --port ${PORT2}
+pnpm run dev:dual
 ```
 
-Supervisor 后端与 web-ui 同时启动方可完整访问 UI；后端代理前端静态资源与 API。
+会同时拉起三条线，不要再用 bash 单独起 vite / `serve:dev`，也不要再开一份：
+
+| 线 | 地址 | 作用 |
+| --- | --- | --- |
+| **dev** | http://localhost:5163/ | Vite 热更新，改代码马上看；API `127.0.0.1:3042` |
+| **preview** | http://localhost:3043/ | 按生产构建出来的包，右下角罗盘可重建预览 |
+
+PIN 均为 `123456`。罗盘只出现在 **3043**。
+
+每次启动会**清空**仓库根目录 `dev.log`，再把 stdout/stderr 写入该文件（已 gitignore）。多个 Cursor/Codex 对话看编译或运行报错时读 `dev.log`，优先看末尾。
+
+只起热更新、不要 preview 时才用 `pnpm run dev`。只起一端：`pnpm run dev:server` / `pnpm run dev:web`（这两条不写 `dev.log`）。
 
 ## 华生（助手模型）
 
 - 设置页只配置一个**助手模型**（`featureModels.assistant`），不再按功能拆分模型。
 - **华生**是内部 runner（`spawn_type: watson`）：`AgentHarness` + 简单工具（`createDefaultTools`）+ 助手模型；**不**再走 `pi-coding-agent` 的 `createAgentSession`（避免两套 agent 系统）。
 - 不创建用户 session；任务提示词临时注入；结构化结果只用终止型 `submit_result` tool（pi 官方方式，无文本托底）。
-- 入口：`SessionManager.runWatson` / 扩展 `ctx.watson.run(...)`；日志在 agent home `logs/`，Agent 详情 Logs 可见。
+- 入口：`SessionManager.runWatson` / 插件 `ctx.watson.run(...)`；日志在 agent home `logs/`，Agent 详情 Logs 可见。
 - 项目解析分两层：**setup（依赖安装）由程序检测**（`core/project/project-detect.ts`，按 lockfile / manifest 判定，Nixpacks 式），**services + views 由华生解析**；stop / destroy 不再是命令——停止即平台杀托管进程，销毁即删除 worktree。`AGENTS.md`「本地开发服务」只写 Start（不写 port/path）。views 有程序兜底：项目根每个可访问 HTML 入口必须成 view（`ensureHtmlViews`）。
 - 创建 Session 时平台从 `project.meta.services` 继承 services 与 views 并启动进程写入 `sessions.meta.services`；worktree 能向上复用父项目 `node_modules` 时跳过安装。进程在跑且 meta 有 apps 时，「活跃应用」能看到。对话中途增删改走 `UpdateService`（action 为 add / delete / update）：新增起进程，删除关进程，修改先关再起。不要用 bash 直接跑 vite/dev。创建 Session 后把已启动的 services 注入该 Session 的 system prompt。
 - Session 可委派子 Agent 白名单：`sessions.meta.subagentIds`（不再使用 `members` 表）。

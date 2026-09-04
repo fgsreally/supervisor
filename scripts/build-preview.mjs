@@ -1,16 +1,22 @@
 import { spawn } from "node:child_process";
+import { writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
-import { ensureDevHttpsCertificate } from "./dev-https.mjs";
+import { tmpdir } from "node:os";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspace = resolve(root, "playground");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const node = process.execPath;
-const port = process.env.PI_SUPERVISOR_BUILD_PORT ?? "3043";
+const port = process.env.WECODE_BUILD_PORT ?? "3043";
+const statusPath = resolve(tmpdir(), `wecode-build-preview-${port}.json`);
 const waitForDev = process.argv.includes("--wait-dev");
 let stopping = false;
 let activeServer = null;
+
+function writeStatus(phase, progress) {
+  writeFileSync(statusPath, JSON.stringify({ phase, progress, updatedAt: Date.now() }));
+}
 
 async function waitForDevApi() {
   if (!waitForDev) return;
@@ -46,19 +52,21 @@ function run(command, args, env) {
 }
 
 async function build() {
+  writeStatus("准备构建", 5);
+  writeStatus("构建后端", 25);
   await run(pnpm, ["run", "build:preview"], {
     ...process.env,
-    VITE_SUPERVISOR_BUILD_PREVIEW: "1",
+    VITE_WECODE_BUILD_PREVIEW: "1",
   });
+  writeStatus("启动预览", 90);
 }
 
 function startServer() {
   return new Promise((resolveExit, rejectStart) => {
-    const tls = activeTls;
     const child = spawn(
       node,
       [
-        "packages/supervisor/dist/cli.mjs",
+        "packages/wecode/dist/cli.mjs",
         "serve",
         "--port",
         port,
@@ -67,24 +75,24 @@ function startServer() {
         "--workspace",
         workspace,
         "--password",
-        process.env.PI_SUPERVISOR_BUILD_PASSWORD ?? "123456",
-        "--tls-cert",
-        tls.certificatePath,
-        "--tls-key",
-        tls.privateKeyPath,
+        process.env.WECODE_BUILD_PASSWORD ?? "123456",
       ],
       {
         cwd: root,
         env: {
           ...process.env,
-          PI_SUPERVISOR_BUILD_PREVIEW: "1",
-          PI_SUPERVISOR_RUNTIME_LOCK_SUFFIX: "build-preview",
+          WECODE_BUILD_PREVIEW: "1",
+          WECODE_RUNTIME_LOCK_SUFFIX: "build-preview",
         },
         stdio: "inherit",
         windowsHide: false,
       },
     );
     activeServer = child;
+    child.once("spawn", () => {
+      writeStatus("预览启动中", 95);
+      void waitForPreviewApi(child);
+    });
     child.once("error", rejectStart);
     child.once("exit", (code, signal) => {
       activeServer = null;
@@ -94,7 +102,21 @@ function startServer() {
   });
 }
 
-const activeTls = await ensureDevHttpsCertificate();
+async function waitForPreviewApi(child) {
+  while (!stopping && activeServer === child) {
+    try {
+      const response = await fetch(`http://127.0.0.1:${port}/healthz`);
+      if (response.ok) {
+        writeStatus("预览已启动", 100);
+        return;
+      }
+    } catch {
+      // The preview process exists but is not listening yet.
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+  }
+}
+
 await waitForDevApi();
 
 function stop() {
